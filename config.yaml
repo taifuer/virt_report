@@ -1,0 +1,53 @@
+# virt-report 配置
+# 数据源均已验证可用 (2026-07)
+
+project:
+  name: virt-report
+  # 报告日期切窗所用时区；存储统一用 UTC
+  timezone: Asia/Shanghai
+
+# 数据源
+sources:
+  mailing_lists:
+    # GNU pipermail 整月 mbox: 完整历史 + 邮件头 (Message-ID/In-Reply-To), 无反爬
+    - name: qemu-devel
+      type: mbox
+      url: https://lists.gnu.org/archive/mbox/qemu-devel/
+    # KVM 当前 public-inbox Git epoch：支持按时间浅克隆/增量 fetch，不受 Atom 25 条限制
+    - name: kvm
+      type: lore_git
+      url: https://lore.kernel.org/kvm/git/1.git
+    # libvirt-devel 官方 HyperKitty：按月归档页发现线程，REST API 拉完整邮件头/正文
+    - name: libvir-list
+      type: hyperkitty
+      url: https://lists.libvirt.org/archives/list/devel@lists.libvirt.org/
+  gitlab:
+    - name: libvirt
+      project: libvirt/libvirt
+      url: https://gitlab.com
+    - name: qemu
+      project: qemu-project/qemu
+      url: https://gitlab.com
+
+storage:
+  db_path: data/virt_report.db
+
+# LLM 总结 (DeepSeek, OpenAI 兼容端点; 切 GLM 只需改 base_url/api_key_env/model)
+llm:
+  provider: deepseek
+  base_url: https://api.deepseek.com
+  api_key_env: DEEPSEEK_API_KEY
+  daily_model: deepseek-v4-flash          # flash: 快速低成本，用于日报
+  weekly_model: deepseek-v4-pro        # v4 pro: 高质量，用于周/月报
+  monthly_model: deepseek-v4-pro
+  # 单次喂给模型的线程数上限 (DeepSeek V4 上下文 1M；仍需控制噪声与成本)
+  daily_top_n: 50
+
+render:
+  output_dir: site
+  site_url: ""
+
+schedule:
+  daily_cron: "17 9 * * *"
+  weekly_cron: "23 9 * * 1"
+  monthly_cron: "33 9 1 * *"

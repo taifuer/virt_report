@@ -1,0 +1,282 @@
+"""virt-report 基础逻辑测试 (不调 LLM/网络)。覆盖周期窗口、线程折叠、URL/时间解析、sanitize、分类。"""
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+
+from virt_report import db
+from virt_report.collectors import base, hyperkitty, mbox
+from virt_report.config import Config
+from virt_report.processing import classify, threads
+from virt_report.summarize import periods, report
+
+
+# ---------- periods ----------
+def test_daily_window():
+    s, e = periods.window("daily", "2026-07-12", "Asia/Shanghai")
+    # 2026-07-12 00:00 CST = 2026-07-11 16:00 UTC; 次日 00:00 CST = 2026-07-12 16:00 UTC
+    assert s.strftime("%Y-%m-%d %H:%M") == "2026-07-11 16:00"
+    assert e.strftime("%Y-%m-%d %H:%M") == "2026-07-12 16:00"
+
+
+def test_weekly_window():
+    s, e = periods.window("weekly", "2026-W27", "Asia/Shanghai")
+    assert s.strftime("%Y-%m-%d") == "2026-06-28"  # W27 周一 = 6/29 CST = 6/28 16:00 UTC
+    assert (e - s).days == 7
+
+
+def test_monthly_window():
+    s, e = periods.window("monthly", "2026-06", "Asia/Shanghai")
+    assert s.strftime("%Y-%m-%d") == "2026-05-31"  # 6/1 00:00 CST = 5/31 16:00 UTC
+    assert e.strftime("%Y-%m-%d") == "2026-06-30"  # 7/1 00:00 CST = 6/30 16:00 UTC
+
+
+def test_period_key_for():
+    d = datetime(2026, 7, 12, 15, 0, tzinfo=timezone.utc)
+    assert periods.period_key_for("daily", d) == "2026-07-12"
+    assert periods.period_key_for("weekly", d) == "2026-W28"
+    assert periods.period_key_for("monthly", d) == "2026-07"
+
+
+def test_label():
+    assert periods.label("daily", "2026-07-12") == "2026-07-12"
+    assert "第 28 周" in periods.label("weekly", "2026-W28")
+    assert "7 月" in periods.label("monthly", "2026-07")
+
+
+# ---------- base: 时间解析/规范化 ----------
+def test_parse_dt_iso():
+    assert base.parse_dt("2026-07-12T04:27:40Z").strftime("%Y-%m-%d %H:%M") == "2026-07-12 04:27"
+    assert base.parse_dt(None) is None
+
+
+def test_parse_dt_rfc822():
+    # mail-archive RSS 用 RFC822; 修复前会返回 None -> 误标今天
+    dt = base.parse_dt("Sun, 12 Jul 2026 07:42:05 GMT")
+    assert dt is not None
+    assert dt.strftime("%Y-%m-%d") == "2026-07-12"
+
+
+def test_norm_utc_iso():
+    assert base.norm_utc_iso("2026-07-12T10:30:00.123Z") == "2026-07-12T10:30:00Z"
+    assert base.norm_utc_iso("2026-07-12T10:30:00Z") == "2026-07-12T10:30:00Z"
+    assert base.norm_utc_iso(None) is None
+
+
+# ---------- mbox: _strip_mid / URL ----------
+def test_strip_mid_normal():
+    assert mbox._strip_mid("<abc@example.com>") == "abc@example.com"
+
+
+def test_strip_mid_empty():
+    # 畸形 Message-ID 不应崩 (曾 IndexError)
+    assert mbox._strip_mid("<>") is None
+    assert mbox._strip_mid("   ") is None
+    assert mbox._strip_mid(None) is None
+
+
+# ---------- classify ----------
+def test_classify_subject():
+    assert base.classify_subject("[PATCH 0/2] foo") == "patch"
+    assert base.classify_subject("[Stable-10.0.12 1/75] x") == "patch"
+    assert base.classify_subject("[RFC v2] bar") == "rfc"
+    assert base.classify_subject("Re: question") == "discussion"
+
+
+def test_extract_topic():
+    assert classify.extract_topic("[PATCH v3 5/9] hw/audio/virtio-sound: fix") == "hw/audio"
+    assert classify.extract_topic("[Stable-10.0.12 38/75] hw/nvme: foo") == "hw/nvme"
+    assert classify.extract_topic("Re: [PATCH] target/arm: x") == "target/arm"
+
+
+# ---------- report: _sanitize (防 LLM 输出缺字段) ----------
+def test_sanitize_missing_items_key():
+    # section 缺 items 键: 旧版会崩 (dict.items 方法); 现应补 []
+    ov, secs = report._sanitize(
+        [{"project": "QEMU", "summary": "x"}],
+        [{"key": "features", "name": "新功能"},  # 无 items
+         {"key": "bugfixes", "name": "Bug", "items": [{"title": "t", "url": "u"}]}])
+    assert secs[0]["items"] == []
+    assert secs[1]["items"][0]["title"] == "t"
+    assert secs[1]["items"][0]["tag"] == ""
+
+
+def test_sanitize_non_list_items():
+    ov, secs = report._sanitize([], [{"key": "q", "name": "Q", "items": "not a list"}])
+    assert secs[0]["items"] == []
+
+
+def test_sanitize_overview():
+    ov, _ = report._sanitize([{"project": "QEMU", "summary": "s"}, "bad", {}], [])
+    assert len(ov) == 3  # 固定补齐 QEMU / Libvirt / KVM
+    assert [o["project"] for o in ov] == ["QEMU", "Libvirt", "KVM"]
+
+
+def test_sanitize_evidence_ref_controls_url_project_and_state():
+    evidence = [{
+        "ref": "T001", "project": "qemu", "subject": "Original",
+        "url": "https://trusted.example/1", "time": "2026-07-12",
+        "state": "closed", "topic": "security",
+    }]
+    _, secs = report._sanitize([], [{
+        "key": "kvm", "name": "KVM", "items": [{
+            "ref": "T001", "title": "Edited", "url": "https://fake.example/",
+            "impact": "存在风险，需尽快修复", "status": "评审中",
+        }],
+    }], evidence)
+    item = secs[0]["items"][0]  # qemu bucket, regardless of model section
+    assert item["url"] == "https://trusted.example/1"
+    assert item["status"] == "已关闭"
+    assert "关闭结论" in item["impact"]
+    assert secs[2]["items"] == []
+
+
+# ---------- threads: 主题/系列折叠 (纯函数) ----------
+def test_thread_key_series():
+    # 同系列不同 patch 应同 key
+    k1 = threads._thread_key("[RFC PATCH 115/134] foo", "AuthorA <a@x>", "2026-07-12")
+    k2 = threads._thread_key("[RFC PATCH 116/134] bar", "AuthorA <a@x>", "2026-07-12")
+    assert k1 == k2
+    assert k1.startswith("series:")
+
+
+def test_thread_key_series_different_author():
+    k1 = threads._thread_key("[PATCH 1/9] x", "A <a@x>", "2026-07-12")
+    k2 = threads._thread_key("[PATCH 2/9] x", "B <b@x>", "2026-07-12")
+    assert k1 != k2  # 不同作者 -> 不同系列
+
+
+def test_thread_key_subject():
+    # 非系列按规范化 subject
+    k1 = threads._thread_key("[PATCH] hw/nvme: fix X", None, "2026-07-12")
+    k2 = threads._thread_key("Re: [PATCH] hw/nvme: fix X", None, "2026-07-12")
+    assert k1 == k2
+
+
+# ---------- threads: _compute_ml_roots (用临时 DB) ----------
+@pytest.fixture
+def tmp_db():
+    with tempfile.TemporaryDirectory() as d:
+        conn = db.connect(Path(d) / "t.db")
+        yield conn
+        conn.close()
+
+
+def _insert(conn, nid, mid=None, irt=None, subject="s", author="a", created="2026-07-12T00:00:00Z"):
+    db.upsert_item(conn, {
+        "source": "ml", "project": "qemu-devel", "native_id": nid, "message_id": mid,
+        "in_reply_to": irt, "thread_root": None, "author": author, "subject": subject,
+        "kind": "patch", "created_at": created, "updated_at": created, "url": "u",
+        "body_excerpt": "e", "raw_json": {},
+    })
+
+
+def test_compute_roots_inreplyto_chain(tmp_db):
+    # A <- B <- C (in-reply-to 链)
+    _insert(tmp_db, "A", mid="A", irt=None, subject="[PATCH 0/2] s")
+    _insert(tmp_db, "B", mid="B", irt="A", subject="[PATCH 1/2] s")
+    _insert(tmp_db, "C", mid="C", irt="B", subject="[PATCH 2/2] s")
+    roots = threads._compute_ml_roots(tmp_db)
+    assert roots[("qemu-devel", "B")] == "A"
+    assert roots[("qemu-devel", "C")] == "A"  # C 回溯到根 A
+
+
+def test_compute_roots_preset_hyperkitty(tmp_db):
+    # hyperkitty 预设 thread_root (raw_json.thread_hash) 应被采用
+    db.upsert_item(tmp_db, {
+        "source": "ml", "project": "libvir-list", "native_id": "h1", "message_id": None,
+        "in_reply_to": None, "thread_root": None, "author": "a", "subject": "s",
+        "kind": "patch", "created_at": "2026-07-12T00:00:00Z", "updated_at": "2026-07-12T00:00:00Z",
+        "url": "u", "body_excerpt": "e", "raw_json": {"thread_hash": "TH123"},
+    })
+    roots = threads._compute_ml_roots(tmp_db)
+    assert roots[("libvir-list", "h1")] == "TH123"
+
+
+# ---------- 数据身份 / 活动时间 ----------
+def test_native_id_is_unique_per_project(tmp_db):
+    common = {
+        "source": "gitlab", "native_id": "issue:1", "message_id": None,
+        "in_reply_to": None, "thread_root": "issue:1", "author": "a",
+        "subject": "s", "kind": "issue", "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-07-12T00:00:00Z", "url": "u", "body_excerpt": "e",
+        "raw_json": {"type": "issue"},
+    }
+    db.upsert_item(tmp_db, {**common, "project": "qemu"})
+    db.upsert_item(tmp_db, {**common, "project": "libvirt"})
+    assert tmp_db.execute(
+        "SELECT COUNT(*) FROM items WHERE source='gitlab' AND native_id='issue:1'"
+    ).fetchone()[0] == 2
+
+
+def test_gitlab_thread_last_seen_uses_activity_time(tmp_db):
+    db.upsert_item(tmp_db, {
+        "source": "gitlab", "project": "qemu", "native_id": "issue:9",
+        "message_id": None, "in_reply_to": None, "thread_root": "issue:9",
+        "author": "a", "subject": "old issue active today", "kind": "issue",
+        "created_at": "2024-01-01T00:00:00Z", "updated_at": "2026-07-12T03:00:00Z",
+        "url": "u", "body_excerpt": "e",
+        "raw_json": {"type": "issue", "user_notes_count": 1},
+    })
+    threads.rebuild_threads(tmp_db)
+    row = tmp_db.execute(
+        "SELECT first_seen,last_seen FROM threads WHERE project='qemu'"
+    ).fetchone()
+    assert row["first_seen"] == "2024-01-01T00:00:00Z"
+    assert row["last_seen"] == "2026-07-12T03:00:00Z"
+
+
+def test_activity_window_includes_recently_updated_issue(tmp_db):
+    db.upsert_item(tmp_db, {
+        "source": "gitlab", "project": "qemu", "native_id": "issue:10",
+        "thread_root": "issue:10", "author": "a", "subject": "s", "kind": "issue",
+        "created_at": "2024-01-01T00:00:00Z", "updated_at": "2026-07-12T03:00:00Z",
+        "url": "u", "body_excerpt": "e", "raw_json": {"type": "issue"},
+    })
+    rows = db.get_activity_items_in_window(
+        tmp_db, "2026-07-12T00:00:00Z", "2026-07-13T00:00:00Z"
+    )
+    assert [r["native_id"] for r in rows] == ["issue:10"]
+
+
+# ---------- HyperKitty 官方 API 辅助 ----------
+def test_hyperkitty_source_parts():
+    origin, address, archive = hyperkitty._source_parts(
+        "https://lists.libvirt.org/archives/list/devel@lists.libvirt.org/"
+    )
+    assert origin == "https://lists.libvirt.org"
+    assert address == "devel@lists.libvirt.org"
+    assert archive.endswith("/archives/list/devel@lists.libvirt.org/")
+
+
+def test_hyperkitty_author_and_parent_hash():
+    assert hyperkitty._author({
+        "sender_name": "A User", "sender": {"address": "a (a) example.com"}
+    }) == "A User <a@example.com>"
+    assert hyperkitty._parent_hash(
+        "https://host/archives/api/list/x/email/ABCDEFGHIJKLMNOPQRSTUVWX/?format=json"
+    ) == "ABCDEFGHIJKLMNOPQRSTUVWX"
+
+
+# ---------- 报表项目配额端到端 ----------
+def test_report_selection_reserves_each_project(tmp_db):
+    created = "2026-07-12T00:00:00Z"
+    projects = ["qemu-devel"] * 8 + ["libvir-list", "kvm"]
+    for idx, project in enumerate(projects):
+        native_id = f"m{idx}@example.com"
+        db.upsert_item(tmp_db, {
+            "source": "ml", "project": project, "native_id": native_id,
+            "message_id": native_id, "in_reply_to": None,
+            "thread_root": None, "author": f"a{idx}",
+            "subject": f"[PATCH] change {idx}", "kind": "patch",
+            "created_at": created, "updated_at": created, "url": f"u{idx}",
+            "body_excerpt": f"body {idx}", "raw_json": {},
+        })
+    threads.rebuild_threads(tmp_db)
+    config = Config()
+    config.llm.daily_top_n = 4
+    content = report.generate(tmp_db, config, "daily", "2026-07-12")
+    selected = {t["project"] for t in content["top_threads"]}
+    assert selected == {"qemu-devel", "libvir-list", "kvm"}
+    assert len(content["top_threads"]) == 4
