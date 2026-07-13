@@ -10,7 +10,7 @@ Application code lives in `virt_report/`:
 - `render/` contains Jinja2 rendering code and templates.
 - `db.py`, `config.py`, and `cli.py` provide storage, configuration, and commands.
 
-Tests are in `tests/`. Operational wrappers are in `scripts/`. Runtime data is stored under `data/`, while generated static pages go to `site/`; treat both as generated artifacts rather than source code. The default configuration is `config.yaml`.
+Tests are in `tests/`. Operational wrappers are in `scripts/`. Runtime data is stored under `data/` and must remain untracked. Generated static pages go to `site/`; refresh and commit this deployable snapshot after rendering changes or report backfills. The default configuration is `config.yaml`.
 
 ## Build, Test, and Development Commands
 
@@ -24,7 +24,8 @@ Use the project virtual environment for all commands:
 .venv/bin/virt-report index                # rebuild the static index
 .venv/bin/python -m pytest tests/ -q        # run the test suite
 .venv/bin/python -m pyflakes virt_report tests
-.venv/bin/python -m http.server 8090 --directory site
+.venv/bin/virt-report serve --host 127.0.0.1 --port 8090
+.venv/bin/virt-report index                # optional static export
 ```
 
 ## Coding Style & Naming Conventions

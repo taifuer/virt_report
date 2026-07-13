@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import math
 
+from .architecture import FOCUS_ARCHITECTURES, detect_architectures
+
 
 def score(thread: dict, items: list) -> float:
     """计算线程 salience 分数。
@@ -54,5 +56,14 @@ def score(thread: dict, items: list) -> float:
         if any("security" in (l or "").lower() for l in labels):
             s += 3.0
             break
+
+    # 产品关注方向：有原文证据的 x86/ARM 议题优先进入候选集。
+    architecture_parts = [thread.get("subject"), thread.get("topic_tag")]
+    for it in items:
+        architecture_parts.extend((it["subject"], it["labels"]))
+    architectures = detect_architectures(architecture_parts)
+    s += 2.5 * len(FOCUS_ARCHITECTURES.intersection(architectures))
+    if architectures and not FOCUS_ARCHITECTURES.intersection(architectures):
+        s += 0.5
 
     return round(s, 2)

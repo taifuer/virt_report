@@ -1,13 +1,14 @@
 """virt-report 命令行入口。
 
 用法:
-  virt-report fetch [--since-days N]       # 采集 + 重建线程
+  virt-report fetch [--since-days N | --since YYYY-MM-DD]  # 采集 + 重建线程
   virt-report daily [YYYY-MM-DD]           # 全链路生成某日日报 (默认今天)
   virt-report index                        # 渲染首页索引
 """
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from dataclasses import replace
@@ -90,7 +91,7 @@ def _render_index(config: Config, conn) -> None:
 
     weekly = _list_reports(conn, "weekly")
     monthly = _list_reports(conn, "monthly")
-    daily = _list_reports(conn, "daily")[:15]
+    daily = _list_reports(conn, "daily")[:14]
     source_health = []
     for source, project, label in (
         ("ml", "qemu-devel", "QEMU 邮件"), ("ml", "kvm", "KVM 邮件"),
@@ -108,35 +109,36 @@ def _render_index(config: Config, conn) -> None:
             "error": row["error"] if row else "尚无采集记录",
         })
 
-    # 枚举 [min..max] 所有月份
-    lo_y, lo_m = map(int, months[0].split("-"))
-    hi_y, hi_m = map(int, months[-1].split("-"))
-    all_months: list[str] = []
-    yy, mm = lo_y, lo_m
-    while (yy < hi_y) or (yy == hi_y and mm <= hi_m):
-        all_months.append(f"{yy:04d}-{mm:02d}")
-        mm += 1
-        if mm > 12:
-            mm = 1
-            yy += 1
-    rendered = set(all_months)
-
-    for mk in all_months:
-        ctx = {"cal": build_calendar(mk, daily_keys), "weekly": weekly,
-               "monthly": monthly, "daily": daily, "rendered_months": rendered,
-               "source_health": source_health}
-        render.render_index(config, ctx, filename=f"index-{mk}.html")
-    # 主 index.html = 最近一个月
-    ctx = {"cal": build_calendar(months[-1], daily_keys), "weekly": weekly,
-           "monthly": monthly, "daily": daily, "rendered_months": rendered,
-           "source_health": source_health}
+    calendars = [build_calendar(month, daily_keys) for month in months]
+    ctx = {"cal": calendars[-1], "calendars": calendars, "weekly": weekly,
+           "monthly": monthly, "daily": daily, "source_health": source_health}
     render.render_index(config, ctx, filename="index.html")
+    # 单页日历在浏览器内切换月份，不再保留按月份复制的 index 文件。
+    for stale in config.output_dir.glob("index-????-??.html"):
+        stale.unlink()
+    render.render_about(config)
+
+    # `index` 是显式离线导出：将数据库中的全部报告写为静态快照。
+    rows = conn.execute(
+        "SELECT period,period_key,content_json FROM reports "
+        "ORDER BY period,period_key"
+    ).fetchall()
+    for row in rows:
+        content = report.enrich_architectures(json.loads(row["content_json"]))
+        render.render_report(
+            config, content, nav=_nav(conn, row["period"], row["period_key"])
+        )
 
 
 def cmd_fetch(args, config: Config) -> None:
     conn = db.connect(config.db_path)
     try:
-        since = datetime.now(timezone.utc) - timedelta(days=args.since_days)
+        if args.since:
+            since = datetime.fromisoformat(args.since).replace(
+                tzinfo=ZoneInfo(config.timezone)
+            ).astimezone(timezone.utc)
+        else:
+            since = datetime.now(timezone.utc) - timedelta(days=args.since_days)
         _fetch_all(conn, config, since=since, max_pages=args.max_pages)
     finally:
         conn.close()
@@ -184,12 +186,9 @@ def _run_period(args, config: Config, period: str) -> None:
             period_start, _ = periods.window(period, key, config.timezone)
             since = period_start - timedelta(days=7)
             _fetch_all(conn, config, since=since, max_pages=args.max_pages)
-        else:
-            threads.rebuild_threads(conn)
+        # `fetch` 已负责重建线程；--no-fetch 用于批量回填报告时避免重复全量重建。
         content = report.generate(conn, config, period, key)
-        path = render.render_report(config, content, nav=_nav(conn, period, key))
-        _render_index(config, conn)
-        print(f"{period}报已生成: {path}")
+        print(f"{period}报已生成并保存到数据库: /{period}/{key}.html")
         if period == "daily":
             ic = sum(len(s.get("items", [])) for s in content.get("sections", []))
             print(f"  总览 {len(content.get('overview', []))} / 项目 {len(content.get('sections',[]))} / 动态 {ic} / "
@@ -219,7 +218,7 @@ def cmd_index(args, config: Config) -> None:
     conn = db.connect(config.db_path)
     try:
         _render_index(config, conn)
-        print("首页索引已渲染")
+        print("静态站点快照已导出")
     finally:
         conn.close()
 
@@ -277,6 +276,12 @@ def cmd_backfill_kvm(args, config: Config) -> None:
         conn.close()
 
 
+def cmd_serve(args, config: Config) -> None:
+    """启动数据库驱动的 Web 服务。"""
+    from virt_report.server import serve
+    serve(config, host=args.host, port=args.port)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="virt-report",
                                      description="虚拟化研发动态追踪与日报生成")
@@ -286,6 +291,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p_fetch = sub.add_parser("fetch", help="采集数据 + 重建线程")
     p_fetch.add_argument("--since-days", type=int, default=3)
+    p_fetch.add_argument("--since", help="按本地日期回填，如 2026-04-01")
     p_fetch.add_argument("--max-pages", type=int, default=8)
 
     def _add_period_opts(p, key_help):
@@ -301,8 +307,11 @@ def main(argv: list[str] | None = None) -> int:
     p_monthly = sub.add_parser("monthly", help="生成月报 (默认本月)")
     _add_period_opts(p_monthly, "YYYY-MM (如 2026-07)")
 
-    sub.add_parser("index", help="渲染首页索引")
+    sub.add_parser("index", help="导出完整静态站点快照")
     sub.add_parser("status", help="显示数据源覆盖与最近采集健康状态")
+    p_serve = sub.add_parser("serve", help="启动数据库驱动的 Web 服务")
+    p_serve.add_argument("--host", default="127.0.0.1")
+    p_serve.add_argument("--port", type=int, default=8090)
     p_backfill = sub.add_parser("backfill-kvm", help="从 lore Git epochs 回填 KVM 历史")
     p_backfill.add_argument("--since", required=True, help="UTC 日期，如 2025-01-01")
     p_backfill.add_argument("--epoch-url", action="append", default=None,
@@ -317,7 +326,7 @@ def main(argv: list[str] | None = None) -> int:
 
     dispatch = {"fetch": cmd_fetch, "daily": cmd_daily, "weekly": cmd_weekly,
                 "monthly": cmd_monthly, "index": cmd_index, "status": cmd_status,
-                "backfill-kvm": cmd_backfill_kvm}
+                "backfill-kvm": cmd_backfill_kvm, "serve": cmd_serve}
     try:
         dispatch[args.cmd](args, config)
     except Exception as e:

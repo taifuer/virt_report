@@ -16,7 +16,7 @@ _SYSTEM = """你是资深虚拟化内核与云平台技术编辑，熟悉 QEMU�
 2. “提出/讨论/评审/已合并/已关闭”必须严格区分。输入没有明确状态时，只能写“提交讨论”“评审中”等保守表述。
 3. patch series 视为一个事件；同一主题的版本迭代只保留最新或最有信息量的一项，避免补丁清单式罗列。
 4. 标题可做准确、克制的中文编辑，但不得扩大原意；技术名词、函数、设备和架构名保留英文。
-5. 优先级：安全与数据损坏风险 > 架构/RFC > 已合并或接近合入的重要能力 > 高讨论缺陷 > 普通维护。
+5. 优先级：安全与数据损坏风险 > x86/ARM 架构议题 > 其他架构/RFC > 已合并或接近合入的重要能力 > 高讨论缺陷 > 普通维护。
 6. overview 要做跨条目归纳，不能只是标题拼接。无足够证据时明确写“本期未观察到显著动态”。
 7. 周期措辞必须与报告一致：日报只能写“当日/当天”，周报写“本周”，月报写“本月”，不得混用。
 8. 对 closed/已关闭事项，不得再写“待修复/需尽快修复”；只能说明其历史影响，并提示以原始 issue 的关闭结论为准。关闭不自动等于已修复。
@@ -47,7 +47,8 @@ _SYSTEM = """你是资深虚拟化内核与云平台技术编辑，熟悉 QEMU�
 - summary 说明事实，impact 解释意义；二者不要重复，均控制在 80 个汉字以内。
 - watchlist 选 2-4 个尚未尘埃落定且有延续价值的主题，不得把已完成事项写入观察列表。
 - 有多个项目存在未决重要事项时，watchlist 尽量覆盖至少两个项目，避免被单一高流量项目垄断。
-- tag 不超过 12 个字符，优先使用 migration、virtio、VFIO、x86、arm64、RISC-V、安全、CI 等社区常用名称。
+- 输入的 arch 字段由原始证据确定；x86/ARM 条目应优先纳入并靠前，但不得因此夸大其影响。
+- tag 不超过 12 个字符，优先使用 migration、virtio、VFIO、安全、CI 等社区常用子系统名称；架构会由系统单独展示，无需重复占用 tag。
 """
 
 
@@ -70,7 +71,10 @@ def build_prompt(period: str, period_key: str, threads_data: list[dict]) -> str:
         lines.append(
             f"[{t['ref']}] project={t['project']} type={kind} "
             f"messages={t['msg_count']} participants={t['participants']} "
-            f"date={t['time']} topic={t.get('topic') or '-'} state={t.get('state') or 'unknown'}"
+            f"date={t['time']} topic={t.get('topic') or '-'} "
+            f"arch={','.join(t.get('architectures', [])) or '-'} "
+            f"change={t.get('category', 'other')} "
+            f"state={t.get('state') or 'unknown'}"
         )
         lines.append(f"SUBJECT: {t['subject']}")
         if t.get("excerpt"):

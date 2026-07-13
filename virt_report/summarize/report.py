@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 
 from virt_report import db
 from virt_report.config import Config
+from virt_report.processing.architecture import detect_architectures, focus_priority
+from virt_report.processing.category import category_label, classify_change
 from . import llm_provider, periods, prompts
 
 log = logging.getLogger(__name__)
@@ -24,6 +26,7 @@ MAX_TOKENS = {"daily": 12000, "weekly": 24000, "monthly": 32000}
 REASONING_EFFORT = {"daily": "high", "weekly": "high", "monthly": "high"}
 # 周期越大、线程越多，单条摘要越短以控制输入
 EXCERPT_LEN = {"daily": 450, "weekly": 350, "monthly": 250}
+ITEM_LIMIT = {"daily": 18, "weekly": 27, "monthly": 36}
 
 
 
@@ -66,11 +69,13 @@ def _build_threads_data(conn: sqlite3.Connection, rows, excerpt_len: int = 300) 
     data = []
     for i, r in enumerate(rows, 1):
         context = _thread_context(conn, r)
+        architectures = detect_architectures((r["subject"], r["topic_tag"]))
         data.append({
             "ref": f"T{i:03d}",
             "rank": i,
             "project": r["project"],
             "kind": r["kind"],
+            "category": classify_change(r["kind"], r["subject"]),
             "msg_count": r["message_count"],
             "participants": r["participant_count"],
             "topic": r["topic_tag"],
@@ -79,6 +84,7 @@ def _build_threads_data(conn: sqlite3.Connection, rows, excerpt_len: int = 300) 
             "latest_excerpt": context["latest_excerpt"][:excerpt_len],
             "review_excerpt": context["review_excerpt"][:excerpt_len],
             "state": context["state"],
+            "architectures": architectures,
             "url": r["url"],
             "time": (r["last_seen"] or "")[:10],
         })
@@ -177,6 +183,9 @@ def _fallback(threads_data: list[dict], period: str, period_key: str,
                 "summary": (t.get("excerpt") or "")[:100] or t["subject"][:60],
                 "impact": "", "status": t.get("state") or "",
                 "url": t["url"], "tag": t.get("topic") or "",
+                "architectures": t.get("architectures", []),
+                "category": t.get("category", "other"),
+                "category_label": category_label(t.get("category")),
             })
         sections.append({"key": key, "name": name, "items": items})
     if not overview:
@@ -233,7 +242,15 @@ def _sanitize(overview: list, sections: list,
                     "status": canonical_status or it.get("status", "") or "",
                     "url": source["url"],
                     "tag": it.get("tag", "") or it.get("subsystem", "") or source.get("topic", "") or "",
+                    "architectures": source.get("architectures", []),
+                    "category": source.get("category", "other"),
+                    "category_label": category_label(source.get("category")),
                 })
+        for items in buckets.values():
+            items.sort(key=lambda item: (
+                focus_priority(item.get("architectures", [])),
+                int((item.get("ref") or "T999")[1:] or 999),
+            ))
         return ov, [
             {"key": key, "name": name, "items": buckets[key]}
             for key, name, _members in _PROJECT_GROUPS
@@ -260,10 +277,82 @@ def _sanitize(overview: list, sections: list,
                 "status": it.get("status", "") or "",
                 "url": it.get("url", "") or "",
                 "tag": it.get("tag", "") or it.get("subsystem", "") or "",
+                "architectures": it.get("architectures", [])
+                if isinstance(it.get("architectures", []), list) else [],
+                "category": it.get("category", "other")
+                if it.get("category") in {"feature", "bug", "other"} else "other",
+                "category_label": category_label(it.get("category")),
             })
         secs.append({"key": s.get("key", "") or "", "name": s.get("name", "") or "",
                      "items": items})
     return ov, secs
+
+
+def _limit_sections(sections: list[dict], limit: int) -> list[dict]:
+    """硬限制展示条数：先保留项目覆盖，再按架构关注度和证据排名筛选。"""
+    candidates: list[tuple[int, int, int, int, dict]] = []
+    selected_ids: set[int] = set()
+    selected: list[tuple[int, dict]] = []
+    for section_index, section in enumerate(sections):
+        items = section.get("items", [])
+        if items:
+            item = items[0]
+            selected.append((section_index, item))
+            selected_ids.add(id(item))
+        for position, item in enumerate(items):
+            ref = item.get("ref", "")
+            try:
+                evidence_rank = int(ref[1:])
+            except (TypeError, ValueError):
+                evidence_rank = 9999
+            candidates.append((
+                focus_priority(item.get("architectures", [])),
+                evidence_rank, section_index, position, item,
+            ))
+    for _priority, _rank, section_index, _position, item in sorted(candidates):
+        if len(selected) >= limit:
+            break
+        if id(item) in selected_ids:
+            continue
+        selected.append((section_index, item))
+        selected_ids.add(id(item))
+
+    kept = {id(item) for _index, item in selected[:limit]}
+    return [
+        {**section, "items": [item for item in section.get("items", []) if id(item) in kept]}
+        for section in sections
+    ]
+
+
+def enrich_architectures(content: dict) -> dict:
+    """为旧报告按内含证据补齐架构标签，并应用当前排序与条数规则。"""
+    evidence: dict[str, tuple[list[str], str]] = {}
+    for thread in content.get("top_threads", []):
+        architectures = detect_architectures((
+            thread.get("subject"), thread.get("topic"),
+        ))
+        thread["architectures"] = architectures
+        category = classify_change(thread.get("kind"), thread.get("subject"))
+        thread["category"] = category
+        if thread.get("ref"):
+            evidence[thread["ref"]] = (architectures, category)
+    for section in content.get("sections", []):
+        for item in section.get("items", []):
+            architectures, category = evidence.get(
+                item.get("ref", ""),
+                (item.get("architectures", []), item.get("category", "other")),
+            )
+            item["architectures"] = architectures
+            item["category"] = category
+            item["category_label"] = category_label(category)
+        section["items"].sort(key=lambda item: (
+            focus_priority(item.get("architectures", [])),
+            int((item.get("ref") or "T9999")[1:] or 9999),
+        ))
+    period = content.get("period")
+    if period in ITEM_LIMIT:
+        content["sections"] = _limit_sections(content.get("sections", []), ITEM_LIMIT[period])
+    return content
 
 
 def generate(conn: sqlite3.Connection, config: Config, period: str,
@@ -332,6 +421,7 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
         overview, sections = _fallback(threads_data, period, period_key, config.llm.api_key_env)
         headline = f"{period_key} 虚拟化社区活跃动态（模板摘要）"
     overview, sections = _sanitize(overview, sections, threads_data if parsed else None)
+    sections = _limit_sections(sections, ITEM_LIMIT[period])
     used_model = "fallback" if fallback else model
     item_count = sum(len(s.get("items", [])) for s in sections)
     content = {

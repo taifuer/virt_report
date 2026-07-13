@@ -47,13 +47,18 @@ def build_calendar(month_key: str, daily_keys: set[str]) -> dict:
 
 def render_report(config: Config, content: dict, nav: dict | None = None) -> Path:
     """渲染通用报告 HTML 到 site/<period>/<period_key>.html，返回路径。"""
-    env = _env()
-    tpl = env.get_template("report.html")
-    html = tpl.render(report=content, nav=nav, root="../", site_name=config.name)
+    html = render_report_html(config, content, nav)
     out = Path(config.output_dir) / content["period"] / f"{content['period_key']}.html"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")
     return out
+
+
+def render_report_html(config: Config, content: dict, nav: dict | None = None) -> str:
+    """将报告渲染为 HTML 字符串，供静态导出和后端路由共用。"""
+    env = _env()
+    tpl = env.get_template("report.html")
+    return tpl.render(report=content, nav=nav, root="../", site_name=config.name)
 
 
 def render_index(config: Config, ctx: dict, filename: str = "index.html") -> Path:
@@ -61,10 +66,31 @@ def render_index(config: Config, ctx: dict, filename: str = "index.html") -> Pat
 
     ctx: {'cal': calendar_dict, 'weekly': [...], 'monthly': [...], 'cur_month': 'YYYY-MM'}
     """
-    env = _env()
-    tpl = env.get_template("index.html")
-    html = tpl.render(ctx=ctx, root="", site_name=config.name)
+    html = render_index_html(config, ctx)
     out = Path(config.output_dir) / filename
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")
     return out
+
+
+def render_index_html(config: Config, ctx: dict) -> str:
+    """将首页渲染为 HTML 字符串。"""
+    env = _env()
+    tpl = env.get_template("index.html")
+    return tpl.render(ctx=ctx, root="", site_name=config.name)
+
+
+def render_about(config: Config, filename: str = "about.html") -> Path:
+    """导出关于页面。"""
+    html = render_about_html(config)
+    out = Path(config.output_dir) / filename
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    return out
+
+
+def render_about_html(config: Config) -> str:
+    """将关于页面渲染为 HTML 字符串。"""
+    env = _env()
+    tpl = env.get_template("about.html")
+    return tpl.render(root="", site_name=config.name)

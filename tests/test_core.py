@@ -8,7 +8,9 @@ import pytest
 from virt_report import db
 from virt_report.collectors import base, hyperkitty, mbox
 from virt_report.config import Config
-from virt_report.processing import classify, threads
+from virt_report.processing import architecture, category, classify, threads
+from virt_report.render import render as html_render
+from virt_report import server as web_server
 from virt_report.summarize import periods, report
 
 
@@ -90,6 +92,29 @@ def test_extract_topic():
     assert classify.extract_topic("Re: [PATCH] target/arm: x") == "target/arm"
 
 
+def test_detect_architectures_from_subsystem_and_feature_names():
+    assert architecture.detect_architectures(["[PATCH] target/i386: TDX fix"]) == ["x86"]
+    assert architecture.detect_architectures(["KVM: arm64: update GICv4"]) == ["ARM"]
+    assert architecture.detect_architectures(["target/riscv: vector update"]) == ["RISC-V"]
+    assert architecture.detect_architectures(["target/hexagon: update HVX"]) == ["Hexagon"]
+    assert architecture.detect_architectures(["loongarch64 user-only"]) == ["LoongArch"]
+    assert architecture.detect_architectures(["harmless refactor"]) == []
+
+
+def test_focus_architecture_priority():
+    assert architecture.focus_priority(["ARM"]) == 0
+    assert architecture.focus_priority(["x86", "RISC-V"]) == 0
+    assert architecture.focus_priority(["RISC-V"]) == 1
+
+
+def test_change_category_is_conservative():
+    assert category.classify_change("security", "anything") == "bug"
+    assert category.classify_change("patch", "[PATCH] Fix buffer overflow") == "bug"
+    assert category.classify_change("patch", "[PATCH] Add arm64 support") == "feature"
+    assert category.classify_change("rfc", "[RFC] Discuss migration ABI") == "other"
+    assert category.category_label("feature") == "功能"
+
+
 # ---------- report: _sanitize (防 LLM 输出缺字段) ----------
 def test_sanitize_missing_items_key():
     # section 缺 items 键: 旧版会崩 (dict.items 方法); 现应补 []
@@ -130,6 +155,100 @@ def test_sanitize_evidence_ref_controls_url_project_and_state():
     assert item["status"] == "已关闭"
     assert "关闭结论" in item["impact"]
     assert secs[2]["items"] == []
+
+
+def test_sanitize_uses_evidence_architecture_and_prioritizes_focus():
+    evidence = [
+        {"ref": "T001", "project": "kvm", "subject": "generic", "url": "u1",
+         "time": "2026-07-12", "state": "", "topic": "", "architectures": []},
+        {"ref": "T002", "project": "kvm", "subject": "x86", "url": "u2",
+         "time": "2026-07-12", "state": "", "topic": "", "architectures": ["x86"]},
+    ]
+    _, sections = report._sanitize([], [{"items": [
+        {"ref": "T001", "title": "generic"}, {"ref": "T002", "title": "x86"},
+    ]}], evidence)
+    assert [item["ref"] for item in sections[2]["items"]] == ["T002", "T001"]
+    assert sections[2]["items"][0]["architectures"] == ["x86"]
+
+
+def test_limit_sections_keeps_project_coverage_and_focus_architectures():
+    sections = [
+        {"key": "qemu", "items": [
+            {"ref": "T001", "architectures": []},
+            {"ref": "T009", "architectures": ["x86"]},
+        ]},
+        {"key": "libvirt", "items": [{"ref": "T002", "architectures": []}]},
+        {"key": "kvm", "items": [
+            {"ref": "T003", "architectures": []},
+            {"ref": "T010", "architectures": ["ARM"]},
+        ]},
+    ]
+    limited = report._limit_sections(sections, 4)
+    refs = {item["ref"] for section in limited for item in section["items"]}
+    assert {"T001", "T002", "T003"}.issubset(refs)
+    assert refs.intersection({"T009", "T010"})
+    assert sum(len(section["items"]) for section in limited) == 4
+
+
+def test_enrich_architectures_upgrades_old_report_content():
+    content = {
+        "period": "daily",
+        "top_threads": [{"ref": "T001", "subject": "KVM: arm64: GIC fix"}],
+        "sections": [{"items": [{"ref": "T001", "architectures": []}]}],
+    }
+    enriched = report.enrich_architectures(content)
+    assert enriched["top_threads"][0]["architectures"] == ["ARM"]
+    assert enriched["sections"][0]["items"][0]["architectures"] == ["ARM"]
+
+
+def test_about_page_and_architecture_badge_render():
+    about = html_render.render_about_html(Config())
+    assert "KVM Forum" in about
+    content = {
+        "period": "daily", "period_key": "2026-07-12", "label": "2026-07-12",
+        "headline": "", "fallback": False, "model": "test", "timezone": "Asia/Shanghai",
+        "window": {"start": "2026-07-11T16:00:00Z", "end": "2026-07-12T16:00:00Z"},
+        "stats": {"total_threads": 1, "total_items": 1, "ml_patches": 1,
+                  "ml_rfc": 0, "gl_issues_opened": 0, "gl_mrs_merged": 0,
+                  "by_project": {"kvm": 1}},
+        "overview": [{"project": "KVM", "summary": "x86 update"}], "watchlist": [],
+        "sections": [{"key": "kvm", "name": "KVM", "items": [{
+            "title": "x86 update", "url": "https://example.com", "architectures": ["x86"],
+            "tag": "KVM", "status": "评审中", "source": "KVM 邮件列表", "time": "2026-07-12",
+            "summary": "summary", "impact": "impact", "original_title": "",
+        }]}],
+    }
+    page = html_render.render_report_html(Config(), content)
+    assert 'class="dyn focus-arch"' in page
+    assert 'class="tag arch">x86' in page
+    assert '<div class="d-actions"><span class="tag kind-other">' in page
+    assert '<div class="d-meta"><span class="tag arch">x86' in page
+    assert "↗" not in page
+    assert 'name="color-scheme" content="light"' in page
+    assert "theme-toggle" not in page
+    assert "prefers-color-scheme:dark" not in page
+
+
+def test_index_context_limits_recent_daily_reports(tmp_db):
+    for day in range(1, 21):
+        key = f"2026-07-{day:02d}"
+        db.save_report(tmp_db, "daily", key, {"period": "daily", "period_key": key},
+                       "Asia/Shanghai", item_count=1, model="test")
+    context = web_server._index_context(tmp_db)
+    assert len(context["daily"]) == 14
+    assert context["daily"][0]["period_key"] == "2026-07-20"
+    assert [cal["month_key"] for cal in context["calendars"]] == ["2026-07"]
+
+
+def test_home_has_daily_weekly_monthly_archive_tabs():
+    context = {
+        "daily": [], "weekly": [], "monthly": [], "rendered_months": {"2026-07"},
+        "cal": html_render.build_calendar("2026-07", set()),
+    }
+    page = html_render.render_index_html(Config(), context)
+    assert page.count("data-archive-tab=") == 3
+    assert "home-toolbar" not in page
+    assert "index-2026-07.html" not in page
 
 
 # ---------- threads: 主题/系列折叠 (纯函数) ----------

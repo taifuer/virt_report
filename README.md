@@ -1,10 +1,12 @@
 # virt-report
 
-追踪 **libvirt / QEMU / KVM** 社区动态（邮件列表 + GitLab issue/MR），用 LLM 生成**中文**日报 / 周报 / 月报，以报纸风格静态网站呈现。
+追踪 **libvirt / QEMU / KVM** 社区动态（邮件列表 + GitLab issue/MR），用 LLM 生成**中文**日报 / 周报 / 月报，以简洁的网页形式呈现。
 
 ## 界面预览
 
-![virt-report 首页演示](docs/images/demo.png)
+| 首页 | 日报 | 关于 |
+|---|---|---|
+| [![virt-report 首页演示](docs/images/demo-home.png)](docs/images/demo-home.png) | [![virt-report 日报演示](docs/images/demo-daily.png)](docs/images/demo-daily.png) | [![virt-report 关于页演示](docs/images/demo-about.png)](docs/images/demo-about.png) |
 
 ## 数据源（均已验证可用）
 
@@ -51,6 +53,9 @@ cp .env.example .env   # 填入 DEEPSEEK_API_KEY (可选, 不填则降级)
 # 采集近 3 天数据 + 重建线程
 .venv/bin/virt-report fetch
 
+# 从指定本地日期开始回填（适合补齐历史月报数据）
+.venv/bin/virt-report fetch --since 2026-04-01 --max-pages 20
+
 # 检查数据覆盖、最近采集完整性和错误
 .venv/bin/virt-report status
 
@@ -70,11 +75,19 @@ cp .env.example .env   # 填入 DEEPSEEK_API_KEY (可选, 不填则降级)
 # 仅用已采集数据重新生成 (不重新采集)
 .venv/bin/virt-report daily 2026-07-12 --no-fetch
 
-# 渲染首页索引 (日历 + 周月报列表)
+# 启动数据库驱动的站点（报告按路由即时渲染）
+.venv/bin/virt-report serve --host 0.0.0.0 --port 8090
+
+# 导出完整静态快照到 site/（首页为 site/index.html）
 .venv/bin/virt-report index
+
+# 本地预览 Git 中的纯静态站点
+.venv/bin/python -m http.server 8091 --directory site
 ```
 
-产物在 `site/`：`index.html`(日历首页) + `daily/<date>.html` + `weekly/<W>.html` + `monthly/<YYYY-MM>.html`。浏览器直接打开即可。
+日常运行以 SQLite 中的报告为准，Web 服务通过 `/daily/<date>.html`、`/weekly/<W>.html` 和 `/monthly/<YYYY-MM>.html` 路由即时渲染，不再为每次生成重复写 HTML。执行 `virt-report index` 时会把首页、关于页及全部报告导出到仓库的 `site/` 目录；该目录作为可直接部署的静态快照纳入 Git。
+
+首页默认展示最近 14 期日报及最近 6 期周报/月报；更早内容通过右侧日、周、月切换器查找。报告条目按原始证据标注“功能 / 缺陷 / 其他”，并对 x86、ARM 架构议题进行明确标记和优先展示。
 
 ## 启用 AI 摘要（DeepSeek）
 
@@ -102,12 +115,13 @@ virt_report/
 ├── virt_report/
 │   ├── config.py  db.py  cli.py
 │   ├── collectors/{base,lore,gitlab}.py
-│   ├── processing/{threads,classify,rank}.py
-│   ├── summarize/{llm_provider,prompts,daily}.py
-│   └── render/{render.py, templates/{base,daily,index}.html}
+│   ├── processing/{threads,classify,rank,architecture,category}.py
+│   ├── summarize/{llm_provider,prompts,periods,report}.py
+│   ├── render/{render.py, templates/{base,index,report,about}.html}
+│   └── server.py              # SQLite 驱动的动态报告路由
 ├── scripts/run_daily.sh
 ├── data/virt_report.db         # SQLite (gitignore)
-└── site/                       # 生成的静态站点 (gitignore)
+└── site/                       # 纳入 Git 的可部署静态站点快照
 ```
 
 ## 路线图
