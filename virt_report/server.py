@@ -11,10 +11,12 @@ from urllib.parse import urlsplit
 from virt_report import db
 from virt_report.config import Config
 from virt_report.render import render
+from virt_report.processing.topics import build_topic_groups
 from virt_report.summarize import report as report_builder
 
 log = logging.getLogger(__name__)
 _REPORT_ROUTE = re.compile(r"^/(daily|weekly|monthly)/([^/]+?)(?:\.html)?$")
+_ARCHIVE_ROUTE = re.compile(r"^/(daily|weekly|monthly)(?:/|/index\.html)?$")
 
 
 def _list_reports(conn, period: str) -> list[dict]:
@@ -25,7 +27,7 @@ def _list_reports(conn, period: str) -> list[dict]:
     return [dict(row) for row in rows]
 
 
-def _index_context(conn) -> dict:
+def _index_context(conn, timezone: str = "Asia/Shanghai") -> dict:
     daily = _list_reports(conn, "daily")
     daily_keys = {row["period_key"] for row in daily}
     months = sorted({key[:7] for key in daily_keys})
@@ -33,11 +35,15 @@ def _index_context(conn) -> dict:
         from datetime import datetime
         months = [datetime.now().strftime("%Y-%m")]
     calendars = [render.build_calendar(month, daily_keys) for month in months]
+    weekly = _list_reports(conn, "weekly")
+    weekly = [dict(item, period_range=render._period_range(
+        "weekly", item["period_key"], timezone
+    )) for item in weekly]
     return {
         "cal": calendars[-1],
         "calendars": calendars,
         "daily": daily[:14],
-        "weekly": _list_reports(conn, "weekly"),
+        "weekly": weekly,
         "monthly": _list_reports(conn, "monthly"),
     }
 
@@ -93,10 +99,41 @@ def make_handler(config: Config):
             if path in ("/about", "/about/", "/about.html"):
                 self._send(200, render.render_about_html(config), head_only)
                 return
+            if path in ("/topics", "/topics/", "/topics.html"):
+                with closing(db.connect(config.db_path)) as conn:
+                    rows = conn.execute(
+                        "SELECT period,period_key,content_json FROM reports "
+                        "ORDER BY CASE period WHEN 'daily' THEN 0 "
+                        "WHEN 'weekly' THEN 1 ELSE 2 END, period_key DESC"
+                    ).fetchall()
+                    html = render.render_topics_html(config, build_topic_groups(rows))
+                self._send(200, html, head_only)
+                return
+            if path in ("/kvm-forum", "/kvm-forum/", "/kvm-forum.html"):
+                try:
+                    from virt_report.kvm_forum import load_content
+                    editions, analysis = load_content()
+                    html = render.render_kvm_forum_html(config, editions, analysis)
+                    self._send(200, html, head_only)
+                except FileNotFoundError:
+                    self._send(503, "<h1>内容准备中</h1>", head_only)
+                return
+
+            archive_match = _ARCHIVE_ROUTE.fullmatch(path)
+            if archive_match:
+                period = archive_match.group(1)
+                with closing(db.connect(config.db_path)) as conn:
+                    html = render.render_archive_html(
+                        config, period, _list_reports(conn, period)
+                    )
+                self._send(200, html, head_only)
+                return
 
             if path in ("/", "/index.html"):
                 with closing(db.connect(config.db_path)) as conn:
-                    html = render.render_index_html(config, _index_context(conn))
+                    html = render.render_index_html(
+                        config, _index_context(conn, config.timezone)
+                    )
                 self._send(200, html, head_only)
                 return
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 生成上一个月的月报。建议 crontab: 33 9 1 * *  /path/to/virt_report/scripts/run_monthly.sh
+# 生成上一个月的月报。建议 crontab: 35 0 1 * *  /path/to/virt_report/scripts/run_monthly.sh
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -8,9 +8,9 @@
   <article class="post">
     <header class="report-hero">
       <div class="kicker">{{ "Daily Brief" if report.period=="daily" else ("Weekly Review" if report.period=="weekly" else "Monthly Review") }} · {{ report.period_key }}</div>
-      <h1 class="title">{{ report.label }} 社区动态</h1>
+      <h1 class="title">{{ period_range.label }} 社区动态</h1>
       {% if report.headline %}<p style="margin:0 0 13px;color:var(--ink-2);font:650 16px/1.6 var(--serif)">{{ report.headline }}</p>{% endif %}
-      <div class="meta">{% if report.fallback %}<span class="badge warn">模板降级</span>{% else %}<span class="badge">AI 分析 · {{ report.model }}</span>{% endif %}<span>{{ report.stats.total_threads }} 个活跃线程</span><span>{{ report.window.start[:10] }} 至 {{ report.window.end[:10] }}</span><span>{{ report.timezone }}</span></div>
+      <div class="meta">{% if report.fallback %}<span class="badge warn">模板降级</span>{% else %}<span class="badge">AI 分析 · {{ report.model }}</span>{% endif %}<span>{{ report.stats.total_threads }} 个活跃线程</span><span>{{ period_range.full }}</span><span>{{ report.timezone }}</span></div>
       <div class="trust-note"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>摘要由 AI 基于本期高活跃线程生成。标题链接直达原始邮件或 issue；技术决策请以原始讨论为准。{% if report.llm_usage and report.llm_usage.total_tokens %} 本次分析使用 {{ "{:,}".format(report.llm_usage.total_tokens) }} tokens。{% endif %}</span></div>
     </header>
     {% if not report.overview and not report.sections %}<div class="empty"><h2>本周期暂无显著动态</h2><p>可能是社区活动较少，或数据采集尚未覆盖该周期。</p></div>{% else %}

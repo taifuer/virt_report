@@ -1,0 +1,236 @@
+{
+  "headline": "从基础架构扩展起步，经高性能与安全强化，全面迈向机密计算、硬件加速和 Rust 化下一代虚拟化",
+  "overview": "早期（2010-2013）聚焦 KVM/QEMU 基础功能完善，包括设备模型 qdev、virtio 网络/存储、跨架构支持（PowerPC、ARM）及管理接口 libvirt 崛起。2014-2017 年，NFV、实时性、嵌套虚拟化成为热点，同时 GPU 虚拟化与多线程 QEMU 带来性能飞跃；安全漏洞促使加固，机密计算萌芽。2018-2021 年，Spectre/Meltdown 等推动硬件隔离技术（AMD SEV、Intel TDX），轻量级微 VM（Firecracker）、vDPA 和 Rust-vmm 登场，云原生融合加深。2022-2025 年，机密计算全面深化（Arm CCA、COCONUT SVSM、guest_memfd），Rust 进入 QEMU 核心，io_uring、统一二进制、内核实时更新等传统痛点得到解决，AI 基础设施虚拟化与 Windows on Arm 适配成为新增长点。",
+  "eras": [
+    {
+      "years": "2010—2013",
+      "name": "基础架构与生态扩展期",
+      "summary": "构建设备模型 qdev、virtio 框架，完善迁移、内存、存储（qcow2）等基础功能；ARM/PowerPC 架构支持起步，libvirt、oVirt 等管理工具链逐渐成型；VFIO 引入设备直通，嵌套虚拟化初探。"
+    },
+    {
+      "years": "2014—2017",
+      "name": "性能提升与新兴负载驱动期",
+      "summary": "NFV、实时 KVM、边缘计算推动低延迟 IO 与确定性；多线程 TCG/QEMU、virgl 3D、多队列 virtio 显著提升吞吐；嵌套虚拟化成熟支持 Hyper-V/ARM；安全加固引入 SEP/SEV 早期形态，块层备份与增量特性增强。"
+    },
+    {
+      "years": "2018—2021",
+      "name": "安全危机与机密计算崛起期",
+      "summary": "Spectre/Meltdown 催生 L1TF 缓解与 CPU 模型反思；AMD SEV/SEV-ES、Intel TDX 开启机密计算；轻量级虚拟化（Firecracker、Kata）流行，vDPA 框架统一硬件加速接口；多进程 QEMU、Rust-vmm 探索重构。"
+    },
+    {
+      "years": "2022—2025",
+      "name": "机密计算深化与 Rust 转型期",
+      "summary": "Arm CCA、COCONUT SVSM、guest_memfd 将机密计算推向成熟；Rust 逐步引入 QEMU/rust-vmm 重构核；io_uring、统一二进制、内核实时更新优化传统难题；AI 虚拟化、CXL 设备直通、Windows on Arm 适配拓展新场景。"
+    }
+  ],
+  "years": [
+    {
+      "year": 2010,
+      "headline": "夯实基础：设备模型、跨架构与初级性能优化",
+      "themes": [
+        "设备模型 qdev",
+        "virtio 与 vhost 网络",
+        "跨平台 KVM（PowerPC、嵌入式）",
+        "迁移与容错",
+        "管理接口（QMP、Ganeti）"
+      ],
+      "summary": "2010 年 KVM Forum 集中展示刚起步的基础设施：qdev 设备模型、Spice 桌面虚拟化、virtio 网络加速、跨架构 PowerPC 支持；同时探讨迁移可靠性（Kemari）、集群管理（Ganeti）和性能分析，为后续发展奠定基石。"
+    },
+    {
+      "year": 2011,
+      "headline": "VFIO 破壳、存储革新与实时化萌芽",
+      "themes": [
+        "VFIO 设备直通",
+        "virtio SCSI 存储",
+        "实时 KVM",
+        "管理 API 标准化（libvirt）",
+        "后拷贝迁移"
+      ],
+      "summary": "2011 年 VFIO 独立于 KVM 实现设备直通，qcow2 格式重造，virtio SCSI 丰富存储栈；原生 KVM 工具、libvirt 管理 API 推动标准化；实时 KVM、后拷贝迁移（Yabusame）和 IO 节流等高级特性开始涌现。"
+    },
+    {
+      "year": 2012,
+      "headline": "ARM 入场、多队列与块层操作升级",
+      "themes": [
+        "ARM 虚拟化",
+        "可扩展性（大 SMP）",
+        "多队列 virtio 网络",
+        "在线块操作（快照、镜像）",
+        "VFIO 成熟与设备共享"
+      ],
+      "summary": "2012 年 ARM 架构正式引入，KVM 可扩展性成为主题；多队列网络、virtio-blk 性能优化提升 IO；在线块操作（snapshot、mirror）增强数据保护；VFIO 用户视角丰富，推动设备直通与共享。"
+    },
+    {
+      "year": 2013,
+      "headline": "嵌套深化、GPU 虚拟化与 COLO 容错",
+      "themes": [
+        "嵌套虚拟化（EPT 加速）",
+        "Virgil3D GPU 虚拟化",
+        "COLO 粗粒度容错",
+        "QEMU 多线程",
+        "oVirt 管理平台"
+      ],
+      "summary": "2013 年嵌套虚拟化走向 Shadow Turtles，嵌套 EPT 加速；Virgil3D 将 3D 能力引入 Virtio；COLO 为高可用提供粗粒度锁步方案；QEMU 多线程改造启动，设备配置与 Kimchi 简化管理。"
+    },
+    {
+      "year": 2014,
+      "headline": "NFV、用户态内存与安全加固起步",
+      "themes": [
+        "NFV 高性能 virtio 网络",
+        "userfaultfd 内存外化",
+        "GPU 直通与 KvmGT",
+        "ARM 平台设备分配",
+        "安全加固与测试"
+      ],
+      "summary": "2014 年 NFV 驱动硬件加速 virtio 和 NUMA 平衡；userfaultfd 实现内存外部化；KvmGT 提供全 GPU 虚拟化；ARM 平台设备直通、MIPS KVM 延展架构；安全加固与 qtest 测试框架首次单独成题。"
+    },
+    {
+      "year": 2015,
+      "headline": "实时 KVM 普及、virtio 1.0 与增量备份",
+      "themes": [
+        "实时 KVM 大众化",
+        "virtio 1.0 标准化",
+        "增量备份与块作业",
+        "NFV 低延迟",
+        "CPU 热插拔挑战"
+      ],
+      "summary": "2015 年实时 KVM 走向生产，提出 1000 客户机密度；virtio 1.0 规范发布；增量备份、块作业状态更新；多线程 TCG 持续推进，Avocado 测试框架面世；oVirt 超融合方案涌现。"
+    },
+    {
+      "year": 2016,
+      "headline": "机密计算初探与轻量级虚拟化兴起",
+      "themes": [
+        "AMD 内存加密（SEV 雏形）",
+        "RISC-V 架构支持",
+        "vGPU 框架",
+        "脏内存跟踪",
+        "轻量级虚拟化（libvirt admin API）"
+      ],
+      "summary": "2016 年 AMD 提出内存加密技术，揭开机密计算序幕；RISC-V QEMU 支持出现；vGPU 框架基于 VFIO 预览；脏内存跟踪优化检查点；管理 API 和轻量级 guest 工具（USB MTP）推动精简部署。"
+    },
+    {
+      "year": 2017,
+      "headline": "多进程 QEMU、vIOMMU 与云规模优化",
+      "themes": [
+        "多进程 QEMU 分解",
+        "vIOMMU（ARM/x86）",
+        "virtio-crypto 加密加速",
+        "嵌套 Hyper-V/ARM",
+        "阿里云迁移实战"
+      ],
+      "summary": "2017 年多进程 QEMU 计划降低攻击面；vIOMMU 仿真覆盖 ARM，virtio-crypto 实现加密硬件加速；嵌套虚拟化支持 Hyper-V；阿里云分享大规模迁移问题，RDMA 引入 QEMU 提升网络性能。"
+    },
+    {
+      "year": 2018,
+      "headline": "漏洞洪流下的安全加固与机密计算落地",
+      "themes": [
+        "L1TF/Spectre/Meltdown 应对",
+        "Intel SGX 与安全 VM",
+        "Kata 容器利用 QEMU",
+        "嵌套 POWER9/混合嵌套",
+        "增量备份与 virtio-mem"
+      ],
+      "summary": "2018 年面对 L1TF 等新漏洞，社区推动硬件隔离（SGX、SEV-ES）与 CPU 模型完善；Kata 容器借用 QEMU 增强隔离；嵌套虚拟化扩展至 POWER9 和 Hyper-V；virtio-mem 实现灵活内存管理，备份走向增量。"
+    },
+    {
+      "year": 2019,
+      "headline": "微 VM 崛起、RISC-V hypervisor 与硬件加速落地",
+      "themes": [
+        "微 VM（Firecracker）",
+        "RISC-V hypervisor 探索",
+        "virtio-fs 文件系统",
+        "硬件 virtio 实现探讨",
+        "KubeVirt 与云原生集成"
+      ],
+      "summary": "2019 年 Firecracker 引领微 VM 浪潮，virtio-fs 为容器提供高性能共享文件系统；RISC-V 开始探索 hypervisor；硬件加速 virtio 进入讨论，KubeVirt 将 VM 融入 Kubernetes，机密计算 SEV 增强。"
+    },
+    {
+      "year": 2020,
+      "headline": "vDPA 框架、TDX 机密计算与极小化虚拟机",
+      "themes": [
+        "vDPA 内核框架",
+        "Intel TDX 机密计算",
+        "io_uring 加速 IO",
+        "微 VM 应用（Firecracker vGPU）",
+        "virtio 内存设备（balloon/pmem/mem）"
+      ],
+      "summary": "2020 年 vDPA 统一硬件加速接口，Intel TDX 实现硬件隔离；io_uring 引入 VM 提升 IO 效率；微 VM 上探索 vGPU，virtio-mem 系列设备成熟；SR-IOV 故障转移、KVM 实时升级等实用性增强。"
+    },
+    {
+      "year": 2021,
+      "headline": "机密计算全面开花与 Rust 虚拟化初探",
+      "themes": [
+        "AMD SEV-SNP / Intel TDX 深化",
+        "vDPA 用户态（VDUSE）",
+        "Rust-vmm 安全旅程",
+        "实时升级与迁移快照增强",
+        "QEMU 复杂度反思"
+      ],
+      "summary": "2021 年 SEV-SNP、TDX 围绕启动度量、迁移展开；VDUSE 将 vDPA 推向用户空间；Rust-vmm 开启安全重构，libkrun 提供动态库 VMM；实时升级、后台快照与多设备迁移支持高可用；社区直面 QEMU 过度复杂问题。"
+    },
+    {
+      "year": 2022,
+      "headline": "机密容器、IOMMUFD 与极致启动速度",
+      "themes": [
+        "机密容器（pKVM/SEV-SNP）",
+        "IOMMUFD 集成",
+        "100ms 快速启动",
+        "eBPF 介入虚拟化",
+        "Rust 与 virtio 1.2"
+      ],
+      "summary": "2022 年机密计算深入容器（pKVM）和远端服务（COCONUT）；IOMMUFD 统一 IOMMU 接口；极致启动速度挑战 100ms；eBPF 用于准虚拟化和 QEMU；Rust virtio 后端准备就绪，virtio 1.2 发布。"
+    },
+    {
+      "year": 2023,
+      "headline": "Arm 机密计算领衔、eBPF 增强与 CPU 管理演进",
+      "themes": [
+        "Arm 机密计算架构（CCA）",
+        "SEV-TIO 可信 I/O",
+        "vDPA 影子 Virtqueue 迁移",
+        "eBPF 处理 VM 退出",
+        "Arm CPU 热插拔挑战"
+      ],
+      "summary": "2023 年演讲较少，但集中揭示 Arm CCA 和 SEV-TIO 等机密计算新层面；vDPA 通过影子队列实现实时迁移；eBPF 直接处理复杂 VM 退出；Arm CPU 模型与热插拔难题再议。"
+    },
+    {
+      "year": 2024,
+      "headline": "机密计算成熟、VFIO 新前沿与 AI 虚拟化挑战",
+      "themes": [
+        "COCONUT SVSM 机密服务",
+        "VFIO CXL 直通",
+        "AI 基础设施虚拟化",
+        "virtio-gpu 多种形态",
+        "汽车行业安全适配"
+      ],
+      "summary": "2024 年 COCONUT SVSM 提供持久状态与证明，机密计算走向闭环；VFIO 扩展到 CXL 设备，SR-IOV 深入；AI 虚拟化瓶颈和汽车行业功能安全成为新课题；virtio-gpu/video 功能丰富，实时更新落地。"
+    },
+    {
+      "year": 2025,
+      "headline": "Rust 化加速、统一二进制与 Windows on Arm 适配",
+      "themes": [
+        "Rust 在 QEMU/rust-vmm 深入",
+        "统一二进制与 io_uring 渗透",
+        "NVIDIA vGPU 上游",
+        "Arm 虚拟化（CCA、pKVM）",
+        "GiantVM 多对一虚拟化"
+      ],
+      "summary": "2025 年 Rust 从 virtio 后端进军 QEMU 核心，rust-vmm 加入 IOMMU；io_uring 全面渗透，统一二进制简化构建；NVIDIA vGPU 上游支持 Grace Blackwell；Arm 侧 CCA、pKVM、并行 vCPU 上线持续优化，GiantVM 探索多对一模式。"
+    }
+  ],
+  "model": "deepseek-v4-pro",
+  "source": "https://kvm-forum.qemu.org/archive/",
+  "method": "仅分析各年度官方页面列出的演讲标题，不读取 PPT 或视频内容。",
+  "usage": {
+    "prompt_tokens": 8871,
+    "completion_tokens": 8651,
+    "total_tokens": 17522,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 5467
+    },
+    "prompt_cache_hit_tokens": 0,
+    "prompt_cache_miss_tokens": 8871
+  }
+}

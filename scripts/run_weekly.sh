@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 生成上一周的周报。建议 crontab: 23 9 * * 1  /path/to/virt_report/scripts/run_weekly.sh
+# 生成上一周的周报。建议 crontab: 25 0 * * 1  /path/to/virt_report/scripts/run_weekly.sh
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

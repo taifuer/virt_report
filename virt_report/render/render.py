@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import calendar as _pycal
+from datetime import timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from virt_report.config import Config
+from virt_report.summarize import periods
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -58,7 +61,24 @@ def render_report_html(config: Config, content: dict, nav: dict | None = None) -
     """将报告渲染为 HTML 字符串，供静态导出和后端路由共用。"""
     env = _env()
     tpl = env.get_template("report.html")
-    return tpl.render(report=content, nav=nav, root="../", site_name=config.name)
+    return tpl.render(report=content, nav=nav, period_range=_period_range(
+        content["period"], content["period_key"], config.timezone
+    ), root="../", site_name=config.name)
+
+
+def _period_range(period: str, period_key: str, timezone: str) -> dict:
+    """返回本地时区的闭区间标签，避免展示 UTC 和排他结束日。"""
+    start_utc, end_utc = periods.window(period, period_key, timezone)
+    tz = ZoneInfo(timezone)
+    start = start_utc.astimezone(tz)
+    end = (end_utc - timedelta(microseconds=1)).astimezone(tz)
+    short = f"{start.month}.{start.day}–{end.month}.{end.day}"
+    return {
+        "short": short,
+        "full": f"{start:%Y-%m-%d} 至 {end:%Y-%m-%d}",
+        "label": f"{periods.label(period, period_key)}（{short}）"
+        if period == "weekly" else periods.label(period, period_key),
+    }
 
 
 def render_index(config: Config, ctx: dict, filename: str = "index.html") -> Path:
@@ -94,3 +114,53 @@ def render_about_html(config: Config) -> str:
     env = _env()
     tpl = env.get_template("about.html")
     return tpl.render(root="", site_name=config.name)
+
+
+def render_archive(config: Config, period: str, reports: list[dict]) -> Path:
+    """导出某一报告类型的归档页。"""
+    html = render_archive_html(config, period, reports)
+    out = Path(config.output_dir) / period / "index.html"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    return out
+
+
+def render_archive_html(config: Config, period: str, reports: list[dict]) -> str:
+    """渲染日报、周报或月报归档页。"""
+    env = _env()
+    tpl = env.get_template("archive.html")
+    enriched = [dict(item, period_range=_period_range(
+        period, item["period_key"], config.timezone
+    )) for item in reports]
+    return tpl.render(period=period, reports=enriched, root="../", site_name=config.name)
+
+
+def render_kvm_forum(config: Config, editions: list[dict], analysis: dict) -> Path:
+    """导出 KVM Forum 年度主题页。"""
+    html = render_kvm_forum_html(config, editions, analysis)
+    out = Path(config.output_dir) / "kvm-forum.html"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    return out
+
+
+def render_kvm_forum_html(config: Config, editions: list[dict], analysis: dict) -> str:
+    env = _env()
+    tpl = env.get_template("kvm_forum.html")
+    return tpl.render(editions=editions, analysis=analysis, root="", site_name=config.name)
+
+
+def render_topics(config: Config, groups: list[dict]) -> Path:
+    """导出专题聚合页。"""
+    html = render_topics_html(config, groups)
+    out = Path(config.output_dir) / "topics.html"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    return out
+
+
+def render_topics_html(config: Config, groups: list[dict]) -> str:
+    """渲染运维与性能专题聚合页。"""
+    env = _env()
+    tpl = env.get_template("topics.html")
+    return tpl.render(groups=groups, root="", site_name=config.name)

@@ -26,7 +26,7 @@ MAX_TOKENS = {"daily": 12000, "weekly": 24000, "monthly": 32000}
 REASONING_EFFORT = {"daily": "high", "weekly": "high", "monthly": "high"}
 # 周期越大、线程越多，单条摘要越短以控制输入
 EXCERPT_LEN = {"daily": 450, "weekly": 350, "monthly": 250}
-ITEM_LIMIT = {"daily": 18, "weekly": 27, "monthly": 36}
+ITEM_LIMIT = {"daily": 30, "weekly": 27, "monthly": 36}
 
 
 

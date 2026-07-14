@@ -63,9 +63,11 @@ class Render:
 
 @dataclass
 class Schedule:
-    daily_cron: str = "17 9 * * *"
-    weekly_cron: str = "23 9 * * 1"
-    monthly_cron: str = "33 9 1 * *"
+    fetch_cron: str = "7 */4 * * *"
+    daily_cron: str = "15 0 * * *"
+    weekly_cron: str = "25 0 * * 1"
+    monthly_cron: str = "35 0 1 * *"
+    auto_export: bool = False
 
 
 @dataclass

@@ -2,15 +2,17 @@
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from virt_report import db
 from virt_report.collectors import base, hyperkitty, mbox
 from virt_report.config import Config
-from virt_report.processing import architecture, category, classify, threads
+from virt_report.processing import architecture, category, classify, threads, topics
 from virt_report.render import render as html_render
 from virt_report import server as web_server
+from virt_report import scheduler
 from virt_report.summarize import periods, report
 
 
@@ -115,6 +117,13 @@ def test_change_category_is_conservative():
     assert category.category_label("feature") == "功能"
 
 
+def test_operation_topic_classification_can_overlap():
+    item = {"title": "Improve live migration performance with zero-copy"}
+    assert topics.classify_item(item) == ["migration", "performance"]
+    assert topics.classify_item({"title": "KVM: support memory hotplug"}) == ["hotplug"]
+    assert topics.classify_item({"title": "QEMU runtime live update"}) == ["live-upgrade"]
+
+
 # ---------- report: _sanitize (防 LLM 输出缺字段) ----------
 def test_sanitize_missing_items_key():
     # section 缺 items 键: 旧版会崩 (dict.items 方法); 现应补 []
@@ -188,6 +197,7 @@ def test_limit_sections_keeps_project_coverage_and_focus_architectures():
     assert {"T001", "T002", "T003"}.issubset(refs)
     assert refs.intersection({"T009", "T010"})
     assert sum(len(section["items"]) for section in limited) == 4
+    assert report.ITEM_LIMIT["daily"] == 30
 
 
 def test_enrich_architectures_upgrades_old_report_content():
@@ -249,6 +259,88 @@ def test_home_has_daily_weekly_monthly_archive_tabs():
     assert page.count("data-archive-tab=") == 3
     assert "home-toolbar" not in page
     assert "index-2026-07.html" not in page
+    assert "daily/index.html" in page
+    assert "topics.html" in page
+
+
+def test_archive_and_topic_pages_render():
+    archive = html_render.render_archive_html(Config(), "daily", [{
+        "period_key": "2026-07-13", "item_count": 18,
+        "model": "deepseek-v4-flash", "generated_at": "2026-07-14T00:00:00Z",
+    }])
+    assert "2026-07-13.html" in archive
+    groups = topics.build_topic_groups([{
+        "period": "daily", "period_key": "2026-07-13",
+        "content_json": '{"sections":[{"name":"KVM","items":[{"title":"Improve migration performance","url":"u","summary":"s"}]}]}',
+    }])
+    page = html_render.render_topics_html(Config(), groups)
+    assert "热迁移" in page
+    assert "虚机性能" in page
+    assert page.count('href="u"') == 2
+
+
+def test_weekly_range_is_local_inclusive_natural_week():
+    value = html_render._period_range("weekly", "2026-W28", "Asia/Shanghai")
+    assert value["label"] == "2026 年第 28 周（7.6–7.12）"
+    assert value["full"] == "2026-07-06 至 2026-07-12"
+
+
+def test_archive_and_topics_offer_pagination_over_ten_items():
+    reports = [{
+        "period_key": f"2026-07-{day:02d}", "item_count": 20,
+        "model": "test", "generated_at": "2026-07-14T00:00:00Z",
+    } for day in range(1, 12)]
+    archive = html_render.render_archive_html(Config(), "daily", reports)
+    assert archive.count("data-page-item href") == 11
+    assert '<option value="30">30</option>' in archive
+
+    items = ",".join(
+        '{"title":"migration %d","url":"u%d"}' % (i, i) for i in range(11)
+    )
+    groups = topics.build_topic_groups([{
+        "period": "daily", "period_key": "2026-07-13",
+        "content_json": '{"sections":[{"name":"KVM","items":[' + items + ']}]}',
+    }])
+    page = html_render.render_topics_html(Config(), groups)
+    assert "data-page-controls" in page
+
+
+def test_kvm_forum_renders_newest_first_with_source_links():
+    editions = [{
+        "year": year, "url": f"https://example.com/{year}", "titles": ["Talk"],
+        "analysis": {"headline": f"H{year}", "themes": ["KVM"], "summary": "S"},
+    } for year in (2010, 2025)]
+    analysis = {
+        "headline": "趋势", "overview": "概述", "model": "test", "method": "标题分析。",
+        "eras": [
+            {"years": "2010—2013", "name": "早期", "summary": "A"},
+            {"years": "2022—2025", "name": "近期", "summary": "B"},
+        ],
+    }
+    page = html_render.render_kvm_forum_html(Config(), editions, analysis)
+    assert page.index('id="year-2025"') < page.index('id="year-2010"')
+    assert page.index("2022—2025") < page.index("2010—2013")
+    assert "查看 2025 年原始议程" in page
+    assert 'class="era-years"' in page and 'class="era-name"' in page
+
+
+def test_scheduler_uses_just_finished_periods():
+    tz = ZoneInfo("Asia/Shanghai")
+    daily_now = datetime(2026, 7, 15, 0, 15, tzinfo=tz)
+    assert ("daily", ["daily", "2026-07-14"]) in scheduler.scheduled_commands(
+        Config(), daily_now
+    )
+    weekly_now = datetime(2026, 7, 20, 0, 25, tzinfo=tz)
+    commands = scheduler.scheduled_commands(Config(), weekly_now)
+    assert any(name == "weekly" and command[-1] == "--no-fetch"
+               for name, command in commands)
+    assert scheduler.cron_matches("7 */4 * * *", datetime(
+        2026, 7, 15, 8, 7, tzinfo=tz
+    ))
+    caught_up = scheduler.due_commands(
+        Config(), datetime(2026, 7, 20, 0, 5, tzinfo=tz), weekly_now
+    )
+    assert {name for name, _command, _at in caught_up} == {"fetch", "daily", "weekly"}
 
 
 # ---------- threads: 主题/系列折叠 (纯函数) ----------

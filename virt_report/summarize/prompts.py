@@ -3,7 +3,7 @@ from __future__ import annotations
 
 _RANGE = {"daily": "当天", "weekly": "本周", "monthly": "本月"}
 _PERIOD = {"daily": "日", "weekly": "周", "monthly": "月"}
-_ITEM_COUNT = {"daily": "12-18", "weekly": "18-27", "monthly": "24-36"}
+_ITEM_COUNT = {"daily": "20-30", "weekly": "18-27", "monthly": "24-36"}
 _KNOWN_LABEL = {"patch": "补丁", "rfc": "RFC", "issue": "Issue", "mr": "MR",
                 "bug": "缺陷", "security": "安全", "discussion": "讨论"}
 

@@ -19,6 +19,7 @@ from virt_report import db
 from virt_report.collectors import lore, lore_git, gitlab, hyperkitty, mailarchive, mbox
 from virt_report.config import Config, load_config
 from virt_report.processing import threads
+from virt_report.processing.topics import build_topic_groups
 from virt_report.render import render
 from virt_report.summarize import periods, report
 
@@ -90,6 +91,9 @@ def _render_index(config: Config, conn) -> None:
         months = [now.strftime("%Y-%m")]
 
     weekly = _list_reports(conn, "weekly")
+    weekly = [dict(item, period_range=render._period_range(
+        "weekly", item["period_key"], config.timezone
+    )) for item in weekly]
     monthly = _list_reports(conn, "monthly")
     daily = _list_reports(conn, "daily")[:14]
     source_health = []
@@ -117,6 +121,20 @@ def _render_index(config: Config, conn) -> None:
     for stale in config.output_dir.glob("index-????-??.html"):
         stale.unlink()
     render.render_about(config)
+    for period_name in ("daily", "weekly", "monthly"):
+        render.render_archive(config, period_name, _list_reports(conn, period_name))
+    topic_rows = conn.execute(
+        "SELECT period,period_key,content_json FROM reports "
+        "ORDER BY CASE period WHEN 'daily' THEN 0 WHEN 'weekly' THEN 1 ELSE 2 END, "
+        "period_key DESC"
+    ).fetchall()
+    render.render_topics(config, build_topic_groups(topic_rows))
+    try:
+        from virt_report.kvm_forum import load_content
+        editions, analysis = load_content()
+        render.render_kvm_forum(config, editions, analysis)
+    except FileNotFoundError:
+        log.warning("KVM Forum 内容尚未生成，跳过静态页面")
 
     # `index` 是显式离线导出：将数据库中的全部报告写为静态快照。
     rows = conn.execute(
@@ -282,6 +300,25 @@ def cmd_serve(args, config: Config) -> None:
     serve(config, host=args.host, port=args.port)
 
 
+def cmd_scheduler(args, config: Config) -> None:
+    """启动常驻自动采集与报告调度器。"""
+    from virt_report.scheduler import run_forever
+    run_forever(config, config_path=args.config)
+
+
+def cmd_kvm_forum(args, config: Config) -> None:
+    """采集历年议程标题并用 Pro 模型重建 KVM Forum 专页。"""
+    from virt_report.kvm_forum import analyze, fetch_titles, load_content, load_titles
+    if args.no_fetch:
+        editions = load_titles()
+    else:
+        editions = fetch_titles()
+    analysis = analyze(config, editions)
+    editions, analysis = load_content()
+    render.render_kvm_forum(config, editions, analysis)
+    print(f"KVM Forum 2010—2025 分析已生成（{analysis['model']}）")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="virt-report",
                                      description="虚拟化研发动态追踪与日报生成")
@@ -300,11 +337,11 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--max-pages", type=int, default=8)
         p.add_argument("--no-fetch", action="store_true", help="跳过采集，仅用已存数据")
 
-    p_daily = sub.add_parser("daily", help="生成日报 (默认今天)")
+    p_daily = sub.add_parser("daily", help="生成日报（默认前一个完整自然日）")
     _add_period_opts(p_daily, "YYYY-MM-DD")
-    p_weekly = sub.add_parser("weekly", help="生成周报 (默认本周)")
+    p_weekly = sub.add_parser("weekly", help="生成周报（默认上一个完整自然周）")
     _add_period_opts(p_weekly, "YYYY-Www (如 2026-W28)")
-    p_monthly = sub.add_parser("monthly", help="生成月报 (默认本月)")
+    p_monthly = sub.add_parser("monthly", help="生成月报（默认上一个完整自然月）")
     _add_period_opts(p_monthly, "YYYY-MM (如 2026-07)")
 
     sub.add_parser("index", help="导出完整静态站点快照")
@@ -312,6 +349,9 @@ def main(argv: list[str] | None = None) -> int:
     p_serve = sub.add_parser("serve", help="启动数据库驱动的 Web 服务")
     p_serve.add_argument("--host", default="127.0.0.1")
     p_serve.add_argument("--port", type=int, default=8090)
+    sub.add_parser("scheduler", help="启动自动采集与周期报告调度器")
+    p_forum = sub.add_parser("kvm-forum", help="生成 KVM Forum 年度主题分析")
+    p_forum.add_argument("--no-fetch", action="store_true", help="复用已保存的标题数据")
     p_backfill = sub.add_parser("backfill-kvm", help="从 lore Git epochs 回填 KVM 历史")
     p_backfill.add_argument("--since", required=True, help="UTC 日期，如 2025-01-01")
     p_backfill.add_argument("--epoch-url", action="append", default=None,
@@ -326,7 +366,8 @@ def main(argv: list[str] | None = None) -> int:
 
     dispatch = {"fetch": cmd_fetch, "daily": cmd_daily, "weekly": cmd_weekly,
                 "monthly": cmd_monthly, "index": cmd_index, "status": cmd_status,
-                "backfill-kvm": cmd_backfill_kvm, "serve": cmd_serve}
+                "backfill-kvm": cmd_backfill_kvm, "serve": cmd_serve,
+                "scheduler": cmd_scheduler, "kvm-forum": cmd_kvm_forum}
     try:
         dispatch[args.cmd](args, config)
     except Exception as e:

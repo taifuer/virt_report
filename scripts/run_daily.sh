@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 每日采集 + 生成日报。建议 crontab: 17 9 * * *  /path/to/virt_report/scripts/run_daily.sh
+# 每日采集 + 生成日报。建议 crontab: 15 0 * * *  /path/to/virt_report/scripts/run_daily.sh
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
