@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 from virt_report.config import Config
 from virt_report import db
+from virt_report.locking import process_lock
 from virt_report.summarize import periods
 
 log = logging.getLogger(__name__)
@@ -56,6 +57,7 @@ def scheduled_commands(config: Config, now: datetime) -> list[tuple[str, list[st
          ["fetch", "--since-days", "4", "--max-pages", "8"]),
         ("daily", config.schedule.daily_cron, [
             "daily", periods.period_key_for("daily", now - timedelta(days=1)),
+            "--no-fetch",
         ]),
         ("weekly", config.schedule.weekly_cron, [
             "weekly", periods.period_key_for("weekly", now - timedelta(days=7)), "--no-fetch",
@@ -107,12 +109,23 @@ def _report_exists(config: Config, name: str, command: list[str]) -> bool:
 
 
 def run_forever(config: Config, config_path: str | None = None) -> None:
-    """每分钟检查任务；失败任务不影响后续调度。"""
+    """每分钟检查任务；首次启动不回放历史任务，重启时补最近一天。"""
     timezone = ZoneInfo(config.timezone)
     state_path = config.db_path.parent / "scheduler_state.json"
     completed = _load_state(state_path)
-    last_check = datetime.now(timezone) - timedelta(days=1)
-    log.info("自动调度已启动 (%s)", config.timezone)
+    now = datetime.now(timezone)
+    # 全新部署不自动触发昂贵的历史采集；已有状态的重启才补跑最近一天。
+    last_check = now - (timedelta(days=1) if state_path.exists()
+                        else timedelta(minutes=1))
+    scheduler_lock = config.db_path.parent / "scheduler.lock"
+    with process_lock(scheduler_lock):
+        _run_loop(config, config_path, timezone, state_path, completed, last_check)
+
+
+def _run_loop(config: Config, config_path: str | None, timezone: ZoneInfo,
+              state_path: Path, completed: set[str], last_check: datetime) -> None:
+    log.info("自动调度已启动 (%s, catchup=%s)", config.timezone,
+             "24h" if state_path.exists() else "current-minute")
     while True:
         now = datetime.now(timezone).replace(second=0, microsecond=0)
         jobs = due_commands(config, last_check, now)

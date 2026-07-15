@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import mailbox
+import re
 import sqlite3
 from datetime import datetime, timezone
 from email.header import decode_header, make_header
@@ -21,6 +22,7 @@ from . import base
 
 log = logging.getLogger(__name__)
 CACHE_DIR = PROJECT_ROOT / "data" / "mbox"
+RANGE_OVERLAP = 64 * 1024
 
 
 def _decode_hdr(value: str | None) -> str:
@@ -94,36 +96,68 @@ def _months_range(start: datetime, end: datetime) -> list[str]:
     return months
 
 
-def _download(base_url: str, ym: str, dest: Path) -> tuple[bool, bool]:
-    """下载月度 mbox。带 If-Modified-Since: 服务端未改则 304 跳过 (省 52MB 重下)。
-    返回 (dest 可用, 上游同步成功)。缓存可在断网时降级使用，但不能推进水位。"""
-    url = base_url.rstrip("/") + "/" + ym
-    headers: dict = {}
-    if dest.exists():
-        # 用缓存文件 mtime 作 If-Modified-Since (下载成功后会把 mtime 设为服务端 Last-Modified)
-        from email.utils import formatdate
-        headers["If-Modified-Since"] = formatdate(dest.stat().st_mtime, usegmt=True)
+def _set_mtime(dest: Path, last_modified: str | None) -> None:
+    if not last_modified:
+        return
     try:
-        resp = base.http_get(url, headers=headers, retries=2)
+        import os
+        dt = parsedate_to_datetime(last_modified)
+        if dt:
+            os.utime(dest, (dt.timestamp(), dt.timestamp()))
+    except (OSError, TypeError, ValueError):
+        pass
+
+
+def _replace_cache(dest: Path, content: bytes, last_modified: str | None) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    temporary = dest.with_suffix(dest.suffix + ".tmp")
+    temporary.write_bytes(content)
+    temporary.replace(dest)
+    _set_mtime(dest, last_modified)
+
+
+def _download(base_url: str, ym: str, dest: Path) -> tuple[bool, bool]:
+    """同步月度 mbox；已有缓存时用尾部重叠校验后仅追加新增字节。"""
+    url = base_url.rstrip("/") + "/" + ym
+    if dest.exists():
+        local_size = dest.stat().st_size
+        start = max(0, local_size - RANGE_OVERLAP)
+        try:
+            response = base.http_get(
+                url, headers={"Range": f"bytes={start}-"}, retries=2
+            )
+            content_range = response.headers.get("Content-Range", "")
+            match = re.fullmatch(r"bytes (\d+)-(\d+)/(\d+)", content_range)
+            if response.status_code == 206 and match and int(match.group(1)) == start:
+                overlap = local_size - start
+                with dest.open("rb") as cached:
+                    cached.seek(start)
+                    old_tail = cached.read(overlap)
+                if response.content[:overlap] == old_tail:
+                    addition = response.content[overlap:]
+                    if addition:
+                        with dest.open("ab") as cached:
+                            cached.write(addition)
+                            cached.flush()
+                        log.info("mbox %s: Range 增量追加 %d bytes", ym, len(addition))
+                    else:
+                        log.info("mbox %s: Range 校验后无新增内容", ym)
+                    _set_mtime(dest, response.headers.get("Last-Modified"))
+                    return True, True
+                log.warning("mbox %s: 远端前缀变化，回退完整下载", ym)
+            elif response.status_code == 200:
+                _replace_cache(dest, response.content,
+                               response.headers.get("Last-Modified"))
+                return True, True
+        except Exception as exc:
+            log.warning("mbox %s: Range 同步失败，尝试完整下载: %s", ym, exc)
+
+    try:
+        resp = base.http_get(url, retries=2)
     except Exception as e:
         log.warning("mbox %s: 下载失败 %s: %s", ym, url, e)
         return dest.exists(), False  # 失败时若已有缓存则用缓存，但标记不完整
-    if resp.status_code == 304:
-        log.info("mbox %s: 未修改 (304), 用缓存", ym)
-        return True, True
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(resp.content)
-    # 把文件 mtime 设为服务端 Last-Modified, 下次 If-Modified-Since 才能正确命中 304
-    lm = resp.headers.get("Last-Modified")
-    if lm:
-        try:
-            from email.utils import parsedate_to_datetime
-            dt = parsedate_to_datetime(lm)
-            if dt:
-                import os
-                os.utime(dest, (dt.timestamp(), dt.timestamp()))
-        except Exception:
-            pass
+    _replace_cache(dest, resp.content, resp.headers.get("Last-Modified"))
     return True, True
 
 

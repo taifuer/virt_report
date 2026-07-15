@@ -5,6 +5,7 @@ import json
 import logging
 import re
 from contextlib import closing
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
@@ -17,6 +18,7 @@ from virt_report.summarize import report as report_builder
 log = logging.getLogger(__name__)
 _REPORT_ROUTE = re.compile(r"^/(daily|weekly|monthly)/([^/]+?)(?:\.html)?$")
 _ARCHIVE_ROUTE = re.compile(r"^/(daily|weekly|monthly)(?:/|/index\.html)?$")
+READINESS_MAX_AGE_HOURS = 12
 
 
 def _list_reports(conn, period: str) -> list[dict]:
@@ -68,6 +70,46 @@ def _nav(conn, period: str, key: str) -> dict:
     return {"prev": item(previous), "next": item(following)}
 
 
+def _readiness(conn, config: Config) -> dict:
+    """汇总数据库、数据源新鲜度与最新报告，供监控系统消费。"""
+    expected = ([('ml', source.name) for source in config.sources.mailing_lists] +
+                [('gitlab', source.name) for source in config.sources.gitlab])
+    now = datetime.now(timezone.utc)
+    sources = []
+    ready = True
+    for source, project in expected:
+        row = conn.execute(
+            "SELECT started_at,finished_at,success,complete,new_count,"
+            "requested_since,coverage_start,coverage_end,error FROM fetch_runs "
+            "WHERE source=? AND project=? ORDER BY id DESC LIMIT 1",
+            (source, project),
+        ).fetchone()
+        age_hours = None
+        if row:
+            finished = datetime.fromisoformat(row["finished_at"].replace("Z", "+00:00"))
+            age_hours = round((now - finished).total_seconds() / 3600, 2)
+        fresh = bool(row and row["success"] and row["complete"] and
+                     age_hours is not None and age_hours <= READINESS_MAX_AGE_HOURS)
+        ready = ready and fresh
+        sources.append({
+            "source": source, "project": project, "fresh": fresh,
+            "age_hours": age_hours, **(dict(row) if row else {}),
+        })
+    reports = {}
+    for period in ("daily", "weekly", "monthly"):
+        row = conn.execute(
+            "SELECT period_key,generated_at,item_count,model FROM reports "
+            "WHERE period=? ORDER BY period_key DESC LIMIT 1", (period,),
+        ).fetchone()
+        reports[period] = dict(row) if row else None
+    return {
+        "status": "ok" if ready else "degraded",
+        "checked_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "max_source_age_hours": READINESS_MAX_AGE_HOURS,
+        "sources": sources, "reports": reports,
+    }
+
+
 def make_handler(config: Config):
     """创建绑定项目配置的请求处理器。"""
 
@@ -94,7 +136,20 @@ def make_handler(config: Config):
         def _dispatch(self, head_only: bool) -> None:
             path = urlsplit(self.path).path
             if path == "/healthz":
-                self._send(200, "ok\n", head_only, "text/plain; charset=utf-8")
+                try:
+                    with closing(db.connect(config.db_path)) as conn:
+                        conn.execute("SELECT 1").fetchone()
+                    self._send(200, "ok\n", head_only, "text/plain; charset=utf-8")
+                except Exception:
+                    self._send(503, "database unavailable\n", head_only,
+                               "text/plain; charset=utf-8")
+                return
+            if path in ("/readyz", "/api/status"):
+                with closing(db.connect(config.db_path)) as conn:
+                    payload = _readiness(conn, config)
+                status = 200 if path == "/api/status" or payload["status"] == "ok" else 503
+                self._send(status, json.dumps(payload, ensure_ascii=False), head_only,
+                           "application/json; charset=utf-8")
                 return
             if path in ("/about", "/about/", "/about.html"):
                 self._send(200, render.render_about_html(config), head_only)

@@ -6,9 +6,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from virt_report import db
+from virt_report import db, maintenance
 from virt_report.collectors import base, hyperkitty, mbox
-from virt_report.config import Config
+from virt_report.config import Config, MailingListSource, Sources
 from virt_report.processing import architecture, category, classify, threads, topics
 from virt_report.render import render as html_render
 from virt_report import server as web_server
@@ -78,6 +78,42 @@ def test_strip_mid_empty():
     assert mbox._strip_mid("<>") is None
     assert mbox._strip_mid("   ") is None
     assert mbox._strip_mid(None) is None
+
+
+def test_mbox_download_appends_verified_range(tmp_path, monkeypatch):
+    dest = tmp_path / "month.mbox"
+    original = b"old-mail\n" * 20
+    addition = b"new-mail\n"
+    dest.write_bytes(original)
+
+    class Response:
+        status_code = 206
+        content = original + addition
+        headers = {"Content-Range": f"bytes 0-{len(content)-1}/{len(content)}"}
+
+    monkeypatch.setattr(base, "http_get", lambda *_args, **_kwargs: Response())
+    assert mbox._download("https://example.test", "2026-07", dest) == (True, True)
+    assert dest.read_bytes() == original + addition
+
+
+def test_mbox_download_falls_back_when_prefix_changed(tmp_path, monkeypatch):
+    dest = tmp_path / "month.mbox"
+    dest.write_bytes(b"old-cache")
+
+    class RangeResponse:
+        status_code = 206
+        content = b"different"
+        headers = {"Content-Range": "bytes 0-8/9"}
+
+    class FullResponse:
+        status_code = 200
+        content = b"replacement"
+        headers = {}
+
+    responses = iter((RangeResponse(), FullResponse()))
+    monkeypatch.setattr(base, "http_get", lambda *_args, **_kwargs: next(responses))
+    assert mbox._download("https://example.test", "2026-07", dest) == (True, True)
+    assert dest.read_bytes() == b"replacement"
 
 
 # ---------- classify ----------
@@ -250,6 +286,21 @@ def test_index_context_limits_recent_daily_reports(tmp_db):
     assert [cal["month_key"] for cal in context["calendars"]] == ["2026-07"]
 
 
+def test_readiness_reports_missing_and_fresh_sources(tmp_db):
+    config = Config(sources=Sources(mailing_lists=[
+        MailingListSource("qemu-devel", "mbox", "https://example.test"),
+    ]))
+    assert web_server._readiness(tmp_db, config)["status"] == "degraded"
+    db.record_fetch_run(
+        tmp_db, source="ml", project="qemu-devel", started_at=db.now_utc_iso(),
+        success=True, complete=True, new_count=0,
+        requested_since="2026-07-14T00:00:00Z",
+    )
+    payload = web_server._readiness(tmp_db, config)
+    assert payload["status"] == "ok"
+    assert payload["sources"][0]["fresh"] is True
+
+
 def test_home_has_daily_weekly_monthly_archive_tabs():
     context = {
         "daily": [], "weekly": [], "monthly": [], "rendered_months": {"2026-07"},
@@ -327,7 +378,7 @@ def test_kvm_forum_renders_newest_first_with_source_links():
 def test_scheduler_uses_just_finished_periods():
     tz = ZoneInfo("Asia/Shanghai")
     daily_now = datetime(2026, 7, 15, 0, 15, tzinfo=tz)
-    assert ("daily", ["daily", "2026-07-14"]) in scheduler.scheduled_commands(
+    assert ("daily", ["daily", "2026-07-14", "--no-fetch"]) in scheduler.scheduled_commands(
         Config(), daily_now
     )
     weekly_now = datetime(2026, 7, 20, 0, 25, tzinfo=tz)
@@ -341,6 +392,32 @@ def test_scheduler_uses_just_finished_periods():
         Config(), datetime(2026, 7, 20, 0, 5, tzinfo=tz), weekly_now
     )
     assert {name for name, _command, _at in caught_up} == {"fetch", "daily", "weekly"}
+
+
+def test_database_backup_and_restore_roundtrip(tmp_path):
+    db_path = tmp_path / "data.db"
+    connection = db.connect(db_path)
+    db.save_report(connection, "daily", "2026-07-14", {
+        "period": "daily", "period_key": "2026-07-14",
+    }, "Asia/Shanghai")
+    connection.close()
+    archive, digest = maintenance.backup_database(db_path, tmp_path / "seed.db.gz")
+    assert len(digest) == 64 and archive.exists()
+
+    connection = db.connect(db_path)
+    db.save_report(connection, "daily", "2026-07-15", {
+        "period": "daily", "period_key": "2026-07-15",
+    }, "Asia/Shanghai")
+    connection.close()
+    previous, restored_digest = maintenance.restore_database(
+        db_path, archive, expected_sha256=digest, force=True,
+    )
+    assert previous and previous.exists()
+    assert restored_digest == digest
+    connection = db.connect(db_path)
+    assert db.get_report(connection, "daily", "2026-07-14") is not None
+    assert db.get_report(connection, "daily", "2026-07-15") is None
+    connection.close()
 
 
 # ---------- threads: 主题/系列折叠 (纯函数) ----------

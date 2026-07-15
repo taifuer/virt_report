@@ -28,14 +28,14 @@
 
 | 源 | 地址 | 采集方式 | 历史覆盖 |
 |---|---|---|---|
-| qemu-devel 邮件列表 | `lists.gnu.org/archive/mbox/qemu-devel/` | **整月 mbox**（~52MB，含 Message-ID/In-Reply-To） | ✅ 完整历史 |
+| qemu-devel 邮件列表 | `lists.gnu.org/archive/mbox/qemu-devel/` | 月度 mbox 缓存 + HTTP Range 增量（含 Message-ID/In-Reply-To） | ✅ 完整历史 |
 | kvm 邮件列表 | `lore.kernel.org/kvm/git/1.git` | public-inbox Git epoch（按时间浅克隆） | ✅ 当前 epoch；支持历史回填 |
 | libvirt 邮件列表 | `lists.libvirt.org` | 官方月归档 + HyperKitty REST API | ✅ 按月回填 |
 | libvirt GitLab | `gitlab.com/libvirt/libvirt` | GitLab API v4 (issues / MRs) | ✅ |
 | qemu-project GitLab | `gitlab.com/qemu-project/qemu` | GitLab API v4 (issues；MRs 被 QEMU 禁用) | ✅ |
 
 > QEMU 不接受 GitLab MR，所有补丁走 qemu-devel 邮件列表，故 qemu-project 的 MR 端点返回 403（已优雅跳过）。
-> **qemu-devel** 用 GNU pipermail 整月 mbox，本地缓存 `data/mbox/`，带 **If-Modified-Since**（未改 304 跳过 52MB 重下）+ 批量去重。
+> **qemu-devel** 用 GNU pipermail 月度 mbox，本地缓存 `data/mbox/`；已有缓存通过 64 KiB 尾部重叠校验后只追加新增字节，校验失败才完整重下。
 > **KVM** 不再轮询 `/new.atom` 的 25 条窗口，而是同步 lore/public-inbox Git epoch，保留原始 RFC822 邮件头。日常只按时间浅克隆；`backfill-kvm` 可回填 epoch 0/1。
 > **libvirt** 使用官方 HyperKitty：月度页面发现 thread hash，REST API 获取真实 Message-ID、父邮件、作者、正文和线程关系；不再依赖第三方 mail-archive RSS。
 > 数据库以 `(source, project, native_id)` 唯一标识条目，并使用 `activity_at` 统一邮件发信时间与 GitLab 最近活动时间。
@@ -103,6 +103,12 @@ cp .env.example .env   # 填入 DEEPSEEK_API_KEY (可选, 不填则降级)
 # 导出完整静态快照到 site/（首页为 site/index.html）
 .venv/bin/virt-report index
 
+# 创建一致性的 SQLite gzip 快照（同时输出 SHA-256）
+.venv/bin/virt-report backup data/backups/virt-report.db.gz
+
+# 停止服务后校验并恢复快照；现有数据库会再自动备份一次
+.venv/bin/virt-report restore data/backups/virt-report.db.gz --sha256 <摘要> --force
+
 # 本地预览 Git 中的纯静态站点
 .venv/bin/python -m http.server 8091 --directory site
 ```
@@ -132,6 +138,8 @@ docker compose up -d --build
 
 两个容器共享 `data/`。默认每 4 小时增量采集；每天 00:15 生成前一日日报，周一 00:25 生成上周周报，每月 1 日 00:35 生成上月月报。动态 Web 直接读取 SQLite，因此无需每次全量导出静态 HTML。
 
+调度器首次启动只检查当前分钟，不会自动执行昂贵的历史补采；已有调度状态的重启会补查最近 24 小时。周期报告任务固定带 `--no-fetch`，不会在定时采集之外重复下载；采集器和调度器均有进程锁，重复容器或重叠 cron 会安全失败而不是并行写库。
+
 宿主机 cron 方式仍可使用：
 
 ```cron
@@ -154,22 +162,37 @@ git clone git@github.com:taifuer/virt_report.git
 cd virt_report
 
 cp .env.example .env
-# 编辑 .env，至少填写 DEEPSEEK_API_KEY；GITLAB_TOKEN 按需填写
+# 编辑 .env，至少填写 DEEPSEEK_API_KEY；GITLAB_TOKEN 按需填写。
+# 默认 Docker/Python/Debian 镜像适合中国大陆网络，海外环境可在 .env 覆盖。
 
-docker compose up -d --build
+# 先启动 Web；源码仓库不携带 data/，首次部署需恢复快照或手动初始化
+docker compose up -d --build web
+
+# 方案 A：从其他实例取得数据库快照后恢复（推荐，先核对 SHA-256）
+docker compose stop web scheduler
+docker compose run --rm web virt-report --config /app/config.yaml restore \
+  /app/data/backups/virt-report.db.gz --sha256 <摘要> --force
+
+# 方案 B：空库冷启动；首次 mbox 下载可能较久
+docker compose run --rm scheduler virt-report --config /app/config.yaml fetch --since-days 4
+docker compose run --rm scheduler virt-report --config /app/config.yaml daily --no-fetch
+
+docker compose up -d web scheduler
 docker compose ps
 docker compose logs -f scheduler
 ```
 
-启动后访问 `http://服务器IP:8090`。`web` 提供动态页面，`scheduler` 按 `config.yaml` 自动采集并生成日报、周报和月报；两个服务均使用 `restart: unless-stopped`，服务器重启后会自动恢复。SQLite、采集缓存和调度状态持久化在宿主机 `data/`。
+Compose 只将 Web 绑定到 `127.0.0.1:8090`，请通过 Nginx/Caddy 暴露域名和 HTTPS。`web` 提供动态页面，`scheduler` 按 `config.yaml` 自动采集并生成日报、周报和月报；两个服务均使用 `restart: unless-stopped`，服务器重启后会自动恢复。SQLite、采集缓存和调度状态持久化在宿主机 `data/`。
 
-生产环境建议使用 Nginx 或 Caddy 将域名和 HTTPS 反向代理到 `127.0.0.1:8090`，并定期备份 `data/virt_report.db`。更新部署：
+存活探针 `/healthz` 仅检查 Web 与数据库可访问；就绪探针 `/readyz` 会在任一数据源超过 12 小时未成功完整采集时返回 503；`/api/status` 始终返回相同的 JSON 状态供监控展示。生产环境应定期执行 `virt-report backup`，不要直接复制正在写入的 SQLite 文件。更新部署：
 
 ```bash
 git pull --ff-only
 docker compose up -d --build
 docker compose ps
 ```
+
+若服务器已有部署定制，更新前先执行 `git diff > ../virt-report-deploy.patch` 保存差异，再将必要设置迁移到 `.env`；不要把密钥或 `data/` 提交到 Git。
 
 ## 项目结构
 

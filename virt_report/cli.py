@@ -13,12 +13,14 @@ import logging
 import sys
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from virt_report import db
 from virt_report.collectors import lore, lore_git, gitlab, hyperkitty, mailarchive, mbox
 from virt_report.config import Config, load_config
 from virt_report.processing import threads
+from virt_report.locking import process_lock
 from virt_report.processing.topics import build_topic_groups
 from virt_report.render import render
 from virt_report.summarize import periods, report
@@ -32,6 +34,14 @@ def _today_local(tz_name: str) -> str:
 
 def _fetch_all(conn, config: Config, since: datetime, max_pages: int = 8) -> None:
     """采集所有源 (since 为 UTC datetime)。"""
+    lock_path = config.db_path.parent / "fetch.lock"
+    with process_lock(lock_path):
+        _fetch_all_locked(conn, config, since, max_pages)
+
+
+def _fetch_all_locked(conn, config: Config, since: datetime,
+                      max_pages: int = 8) -> None:
+    """在调用方已取得 fetch.lock 后执行全部采集器。"""
     since_iso = since.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     def run(source_kind: str, project: str, collector, source) -> None:
@@ -319,6 +329,27 @@ def cmd_kvm_forum(args, config: Config) -> None:
     print(f"KVM Forum 2010—2025 分析已生成（{analysis['model']}）")
 
 
+def cmd_backup(args, config: Config) -> None:
+    """生成可迁移的一致性数据库压缩快照。"""
+    from virt_report.maintenance import backup_database
+    target = Path(args.output).resolve() if args.output else None
+    path, digest = backup_database(config.db_path, target)
+    print(f"数据库备份完成: {path}")
+    print(f"SHA256: {digest}")
+
+
+def cmd_restore(args, config: Config) -> None:
+    """从压缩快照恢复数据库。恢复前应停止 web 与 scheduler。"""
+    from virt_report.maintenance import restore_database
+    previous, digest = restore_database(
+        config.db_path, Path(args.archive), expected_sha256=args.sha256,
+        force=args.force,
+    )
+    print(f"数据库恢复完成，SHA256: {digest}")
+    if previous:
+        print(f"原数据库已备份: {previous}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="virt-report",
                                      description="虚拟化研发动态追踪与日报生成")
@@ -352,6 +383,12 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("scheduler", help="启动自动采集与周期报告调度器")
     p_forum = sub.add_parser("kvm-forum", help="生成 KVM Forum 年度主题分析")
     p_forum.add_argument("--no-fetch", action="store_true", help="复用已保存的标题数据")
+    p_backup = sub.add_parser("backup", help="导出一致性的 gzip 数据库快照")
+    p_backup.add_argument("output", nargs="?", help="输出 .db.gz 路径")
+    p_restore = sub.add_parser("restore", help="从 gzip 快照恢复数据库")
+    p_restore.add_argument("archive", help="备份 .db.gz 路径")
+    p_restore.add_argument("--sha256", help="预期 SHA-256")
+    p_restore.add_argument("--force", action="store_true", help="确认替换当前数据库")
     p_backfill = sub.add_parser("backfill-kvm", help="从 lore Git epochs 回填 KVM 历史")
     p_backfill.add_argument("--since", required=True, help="UTC 日期，如 2025-01-01")
     p_backfill.add_argument("--epoch-url", action="append", default=None,
@@ -367,7 +404,8 @@ def main(argv: list[str] | None = None) -> int:
     dispatch = {"fetch": cmd_fetch, "daily": cmd_daily, "weekly": cmd_weekly,
                 "monthly": cmd_monthly, "index": cmd_index, "status": cmd_status,
                 "backfill-kvm": cmd_backfill_kvm, "serve": cmd_serve,
-                "scheduler": cmd_scheduler, "kvm-forum": cmd_kvm_forum}
+                "scheduler": cmd_scheduler, "kvm-forum": cmd_kvm_forum,
+                "backup": cmd_backup, "restore": cmd_restore}
     try:
         dispatch[args.cmd](args, config)
     except Exception as e:

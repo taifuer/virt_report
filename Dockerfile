@@ -1,8 +1,9 @@
-FROM python:3.12-slim
+ARG PYTHON_IMAGE=docker.m.daocloud.io/library/python:3.12-slim
+FROM ${PYTHON_IMAGE}
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
-ARG PIP_INDEX_URL=https://pypi.org/simple
-ARG DEBIAN_MIRROR=deb.debian.org
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG DEBIAN_MIRROR=mirrors.aliyun.com
 WORKDIR /app
 
 RUN if [ "$DEBIAN_MIRROR" != "deb.debian.org" ]; then \
