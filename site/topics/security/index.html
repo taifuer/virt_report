@@ -55,7 +55,7 @@
     </div>
   </div></header>
   <main id="main"><div class="wrap"><article class="topic-page topic-detail">
-  <header><div class="kicker"><a href="../../topics.html">专题</a></div><h1>安全与漏洞</h1><p>明确 CVE、安全缺陷与虚拟化安全增强；编号和类型仅依据原始内容 · 共 395 条</p></header>
+  <header><div class="kicker"><a href="../../topics.html">专题</a></div><h1>安全与漏洞</h1><p>明确 CVE、安全缺陷与虚拟化安全增强；编号和类型仅依据原始内容 · 共 523 条</p></header>
   <nav class="topic-controls" aria-label="专题排序与每页数量">
     <div><a class="on" href="?sort=priority&per_page=20">重点优先</a><a class="" href="?sort=latest&per_page=20">最新优先</a></div>
     <div><span>每页</span><a class="" href="?sort=priority&per_page=10">10</a><a class="on" href="?sort=priority&per_page=20">20</a><a class="" href="?sort=priority&per_page=30">30</a></div>
@@ -70,12 +70,42 @@
   <div class="topic-item-head"><a href="https://lore.kernel.org/kvm/20260626112606.1778248-1-pbonzini%40redhat.com/" target="_blank" rel="noopener noreferrer">[PATCH 5.15.y 0/8] KVM: fixes for CVE-2026-46113 and related issues</a><span class="tag kind-bug">缺陷</span></div>
   <div class="d-meta"><span class="tag">KVM</span><span class="tag security">明确 CVE</span><span class="tag security">CVE-2026-46113</span><span class="tag arch">x86</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-06-26</span></div>
 <p>类似 5.10 回传，但范围较小，需保留 kvm_is_reserved_pfn() 函数。</p></article><article class="topic-item">
-  <div class="topic-item-head"><a href="https://lore.kernel.org/qemu-devel/20260706-fix-v1-0-4b83a70e9f3b@redhat.com/" target="_blank" rel="noopener noreferrer">[PATCH 0/5] Various UI/security-related fixes</a><span class="tag kind-bug">缺陷</span></div>
-  <div class="d-meta"><span class="tag">QEMU</span><span class="tag security">明确 CVE</span><span class="tag security">CVE-2026-48002</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-13</span></div>
-<p>修复bool类型误用、uint32_t cast等，提升代码健壮性。</p></article><article class="topic-item">
   <div class="topic-item-head"><a href="https://lore.kernel.org/kvm/20260630210156.457151-1-seanjc%40google.com/" target="_blank" rel="noopener noreferrer">[PATCH v2 0/3] KVM: SVM: Fix a (very) unlikely UAF for GA Log IRQs</a><span class="tag kind-bug">缺陷</span></div>
   <div class="d-meta"><span class="tag">KVM</span><span class="tag security">安全缺陷</span><span class="tag arch">x86</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-14</span></div>
 <p>延迟添加GA Log列表避免vCPU释放后可用，已获reviewed-by。</p></article><article class="topic-item">
+  <div class="topic-item-head"><a href="https://gitlab.com/qemu-project/qemu/-/work_items/3632" target="_blank" rel="noopener noreferrer">hw/arm/smmuv3: guest-controlled STRTAB LOG2SIZE causes shift-out-of-bounds in stream-table lookup</a><span class="tag kind-bug">缺陷</span></div>
+  <div class="d-meta"><span class="tag">QEMU</span><span class="tag security">安全缺陷</span><span class="tag arch">ARM</span><span class="tag">已关闭</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-14</span></div>
+<p>UBSan 报告 guest 可控制移位值导致越界，已关闭（修复合入）。</p></article><article class="topic-item">
+  <div class="topic-item-head"><a href="https://gitlab.com/qemu-project/qemu/-/work_items/3975" target="_blank" rel="noopener noreferrer">usb-host: unchecked bInterfaceNumber causes an out-of-bounds altsetting read</a><span class="tag kind-bug">缺陷</span></div>
+  <div class="d-meta"><span class="tag">QEMU</span><span class="tag security">安全缺陷</span><span class="tag">处理中</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-16</span></div>
+<p>bInterfaceNumber 未校验直接用作数组索引，guest 可构造描述符触发越界访问。</p></article><article class="topic-item">
+  <div class="topic-item-head"><a href="https://lore.kernel.org/kvm/20260709204948.1988414-1-seanjc%40google.com/" target="_blank" rel="noopener noreferrer">[PATCH v4 00/18] KVM: SEV: Fix RMP #PF due to freeing in-use VMSA</a><span class="tag kind-bug">缺陷</span></div>
+  <div class="d-meta"><span class="tag">KVM</span><span class="tag security">安全增强</span><span class="tag arch">x86</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-15</span></div>
+<p>v4 系列强制回收 VMSA 页面，通过 gmem 的回调撤销 RMP 映射。</p></article><article class="topic-item">
+  <div class="topic-item-head"><a href="https://lore.kernel.org/qemu-devel/cover.1783604079.git.qemu_oss@crudebyte.com/" target="_blank" rel="noopener noreferrer">[PATCH 0/3] 9p: fix guest-triggered Treaddir/ACPI eject UAF</a><span class="tag kind-bug">缺陷</span></div>
+  <div class="d-meta"><span class="tag">QEMU</span><span class="tag security">安全缺陷</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-16</span></div>
+<p>xen-9p在disconnect路径中释放ring结构时未清理未完成PDU，导致UAF；且未调用v9fs_device_unrealize_common造成资源泄漏。</p></article><article class="topic-item">
+  <div class="topic-item-head"><a href="https://lore.kernel.org/kvm/20260602-sev_snp_fixes-v3-0-24bfd3ae047c%40meta.com/" target="_blank" rel="noopener noreferrer">[PATCH v3 0/4] KVM: Miscellaneous SEV/SNP related fixes</a><span class="tag kind-bug">缺陷</span></div>
+  <div class="d-meta"><span class="tag">KVM</span><span class="tag security">安全增强</span><span class="tag arch">x86</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-14</span></div>
+<p>修复CCP驱动中的错误锁状态以及SNP VM同主机迁移的未完备状态处理。</p></article><article class="topic-item">
+  <div class="topic-item-head"><a href="https://lore.kernel.org/kvm/20260701144543.39582-1-pankaj.gupta%40amd.com/" target="_blank" rel="noopener noreferrer">[PATCH] KVM: SEV: drop FOLL_LONGTERM for encrypted region registration</a><span class="tag kind-other">其他</span></div>
+  <div class="d-meta"><span class="tag">KVM</span><span class="tag security">安全增强</span><span class="tag arch">x86</span><span class="tag arch">ARM</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-15</span></div>
+<p>回退注解，因 FOLL_LONGTERM 与 MAP_SHARED 文件映射冲突（如 virtio-pmem）。</p></article><article class="topic-item">
+  <div class="topic-item-head"><a href="https://lore.kernel.org/kvm/20260513131757.116630-1-steven.price%40arm.com/" target="_blank" rel="noopener noreferrer">[PATCH v14 00/44] arm64: Support for Arm CCA in KVM</a><span class="tag kind-feature">功能</span></div>
+  <div class="d-meta"><span class="tag">KVM</span><span class="tag security">安全增强</span><span class="tag arch">ARM</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-15</span></div>
+<p>基于 RMM v2.0-bet1，支持 RMM 使用主机页面尺寸、范围 RMI API 等，简化 uAPI。</p></article><article class="topic-item">
+  <div class="topic-item-head"><a href="https://lore.kernel.org/kvm/20260713133753.223947-1-kirill%40shutemov.name/" target="_blank" rel="noopener noreferrer">[PATCH v6 0/3] x86/tdx: Fix port I/O handling bugs</a><span class="tag kind-bug">缺陷</span></div>
+  <div class="d-meta"><span class="tag">KVM</span><span class="tag security">安全增强</span><span class="tag arch">x86</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-13</span></div>
+<p>修复GENMASK off-by-one导致的宽度错误，以及32位IN指令未零扩展RAX的问题。</p></article><article class="topic-item">
+  <div class="topic-item-head"><a href="https://lore.kernel.org/kvm/cover.1783490022.git.naveen%40kernel.org/" target="_blank" rel="noopener noreferrer">[RFC PATCH v3 00/27] KVM: SVM: Add support for SEV-SNP Secure AVIC</a><span class="tag kind-feature">功能</span></div>
+  <div class="d-meta"><span class="tag">KVM</span><span class="tag security">安全增强</span><span class="tag arch">x86</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-14</span></div>
+<p>集成到 AVIC 代码路径，为受保护 APIC 提供 APICv 支持，与 TDX 对齐。</p></article><article class="topic-item">
+  <div class="topic-item-head"><a href="https://lore.kernel.org/qemu-devel/20260706-fix-v1-0-4b83a70e9f3b@redhat.com/" target="_blank" rel="noopener noreferrer">[PATCH 0/5] Various UI/security-related fixes</a><span class="tag kind-bug">缺陷</span></div>
+  <div class="d-meta"><span class="tag">QEMU</span><span class="tag security">明确 CVE</span><span class="tag security">CVE-2026-48002</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-13</span></div>
+<p>修复bool类型误用、uint32_t cast等，提升代码健壮性。</p></article><article class="topic-item">
+  <div class="topic-item-head"><a href="https://lore.kernel.org/kvm/20260630222607.497895-1-seanjc%40google.com/" target="_blank" rel="noopener noreferrer">[PATCH v3 00/12] KVM: SEV: Fix RMP #PF due to freeing in-use VMSA</a><span class="tag kind-bug">缺陷</span></div>
+  <div class="d-meta"><span class="tag">KVM</span><span class="tag security">安全增强</span><span class="tag arch">x86</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-09</span></div>
+<p>重写KVM对guest_memfd中VMSA页面的回收机制，强制在释放前解除RMP IN_USE状态，避免PUNCH_HOLE后RMP #PF。</p></article><article class="topic-item">
   <div class="topic-item-head"><a href="https://lore.kernel.org/qemu-devel/qemu-stable-11.0.3-20260712005649@cover.tls.msk.ru/" target="_blank" rel="noopener noreferrer">[Stable-11.0.3 00/81] Patch Round-up for stable 11.0.3,
  freeze on 2026-07-22</a><span class="tag kind-other">其他</span></div>
   <div class="d-meta"><span class="tag">QEMU</span><span class="tag security">明确 CVE</span><span class="tag security">CVE-2026-9238</span><span class="tag arch">ARM</span><span class="tag arch">RISC-V</span><span class="tag arch">LoongArch</span><span class="tag">稳定版回传</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-11</span></div>
@@ -84,47 +114,17 @@
  freeze on 2026-07-22</a><span class="tag kind-other">其他</span></div>
   <div class="d-meta"><span class="tag">QEMU</span><span class="tag security">明确 CVE</span><span class="tag security">CVE-2026-9238</span><span class="tag arch">ARM</span><span class="tag arch">RISC-V</span><span class="tag arch">LoongArch</span><span class="tag">稳定版回传</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-12</span></div>
 <p>针对 10.0 LTS 分支，包含类似 SPCR 修正。</p></article><article class="topic-item">
-  <div class="topic-item-head"><a href="https://lore.kernel.org/qemu-devel/20260504-qom-tests-v2-0-ef7e3dc94f7a%40redhat.com/" target="_blank" rel="noopener noreferrer">[PATCH v2 00/46] Fix various QOM object life-cycle issues</a><span class="tag kind-bug">缺陷</span></div>
-  <div class="d-meta"><span class="tag">QEMU</span><span class="tag security">明确 CVE</span><span class="tag security">CVE-2019-8934</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-05-11</span></div>
-<p>通过添加qom-tests单元测试，实例化所有非抽象类型以发现并修复多处QOM对象生命周期问题。</p></article><article class="topic-item">
-  <div class="topic-item-head"><a href="https://lists.libvirt.org/archives/list/devel@lists.libvirt.org/message/FQQPCOYMUOR5R5LMBWSYTBLQACUG4KVD/" target="_blank" rel="noopener noreferrer">[libvirt PATCH 0/4] network: reject line breaks in DNS records emitted to dnsmasq</a><span class="tag kind-other">其他</span></div>
-  <div class="d-meta"><span class="tag">Libvirt</span><span class="tag security">明确 CVE</span><span class="tag security">CVE-2026-61477</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-16</span></div>
-<p>修复DNS TXT/SRV值中XML换行符可插入dnsmasq配置的漏洞，增加换行符校验。</p></article><article class="topic-item">
-  <div class="topic-item-head"><a href="https://lore.kernel.org/qemu-devel/20260702090527.4167310-1-kraxel%40redhat.com/" target="_blank" rel="noopener noreferrer">[PATCH 0/2] hw/uefi: security fixes</a><span class="tag kind-bug">缺陷</span></div>
-  <div class="d-meta"><span class="tag">QEMU</span><span class="tag security">明确 CVE</span><span class="tag security">CVE-2026-58581</span><span class="tag security">CVE-2026-58582</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-02</span></div>
-<p>Gerd Hoffmann提交两补丁，为UEFI变量服务添加sanity check并禁用debug函数。评审指出应避免if(0)，建议改用tracepoint或移除代码。</p></article><article class="topic-item">
-  <div class="topic-item-head"><a href="https://lore.kernel.org/qemu-devel/20260606-qom-tests-v2-0-55832d978a9f%40redhat.com/" target="_blank" rel="noopener noreferrer">[GIT PULL v2 00/23] Fix various QOM object life-cycle issues</a><span class="tag kind-bug">缺陷</span></div>
-  <div class="d-meta"><span class="tag">QEMU</span><span class="tag security">明确 CVE</span><span class="tag security">CVE-2019-8934</span><span class="tag arch">RISC-V</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-06-06</span></div>
-<p>Marc-André Lureau提交PR修复QOM对象生命周期相关缺陷，包括错误引用计数和泄露。</p></article><article class="topic-item">
-  <div class="topic-item-head"><a href="https://gitlab.com/qemu-project/qemu/-/work_items/3632" target="_blank" rel="noopener noreferrer">hw/arm/smmuv3: guest-controlled STRTAB LOG2SIZE causes shift-out-of-bounds in stream-table lookup</a><span class="tag kind-bug">缺陷</span></div>
-  <div class="d-meta"><span class="tag">QEMU</span><span class="tag security">安全缺陷</span><span class="tag arch">ARM</span><span class="tag">已关闭</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-14</span></div>
-<p>guest 可通过设置 STRTAB_BASE_CFG.LOG2SIZE 触发 host 端 UndefinedBehaviorSanitizer 报告。</p></article><article class="topic-item">
-  <div class="topic-item-head"><a href="https://gitlab.com/qemu-project/qemu/-/work_items/3975" target="_blank" rel="noopener noreferrer">usb-host: unchecked bInterfaceNumber causes an out-of-bounds altsetting read</a><span class="tag kind-bug">缺陷</span></div>
-  <div class="d-meta"><span class="tag">QEMU</span><span class="tag security">安全缺陷</span><span class="tag">处理中</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-16</span></div>
-<p>bInterfaceNumber 未校验直接用作数组索引，guest 可构造描述符触发越界访问。</p></article><article class="topic-item">
-  <div class="topic-item-head"><a href="https://lore.kernel.org/kvm/20260709204948.1988414-1-seanjc%40google.com/" target="_blank" rel="noopener noreferrer">[PATCH v4 00/18] KVM: SEV: Fix RMP #PF due to freeing in-use VMSA</a><span class="tag kind-bug">缺陷</span></div>
-  <div class="d-meta"><span class="tag">KVM</span><span class="tag security">安全增强</span><span class="tag arch">x86</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-15</span></div>
-<p>在 gmem 释放时强制回收 VMSA 页面，防止因 IN_USE 状态导致 RMP #PF。</p></article><article class="topic-item">
-  <div class="topic-item-head"><a href="https://lore.kernel.org/kvm/20260602-sev_snp_fixes-v3-0-24bfd3ae047c%40meta.com/" target="_blank" rel="noopener noreferrer">[PATCH v3 0/4] KVM: Miscellaneous SEV/SNP related fixes</a><span class="tag kind-bug">缺陷</span></div>
-  <div class="d-meta"><span class="tag">KVM</span><span class="tag security">安全增强</span><span class="tag arch">x86</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-14</span></div>
-<p>修复CCP驱动中的错误锁状态以及SNP VM同主机迁移的未完备状态处理。</p></article><article class="topic-item">
-  <div class="topic-item-head"><a href="https://lore.kernel.org/kvm/20260701144543.39582-1-pankaj.gupta%40amd.com/" target="_blank" rel="noopener noreferrer">[PATCH] KVM: SEV: drop FOLL_LONGTERM for encrypted region registration</a><span class="tag kind-other">其他</span></div>
-  <div class="d-meta"><span class="tag">KVM</span><span class="tag security">安全增强</span><span class="tag arch">x86</span><span class="tag arch">ARM</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-15</span></div>
-<p>因 FOLL_WRITE|FOLL_LONGTERM 在 MAP_SHARED 文件中被拒绝，导致 virtio-pmem 错误。</p></article><article class="topic-item">
-  <div class="topic-item-head"><a href="https://lore.kernel.org/kvm/20260513131757.116630-1-steven.price%40arm.com/" target="_blank" rel="noopener noreferrer">[PATCH v14 00/44] arm64: Support for Arm CCA in KVM</a><span class="tag kind-feature">功能</span></div>
-  <div class="d-meta"><span class="tag">KVM</span><span class="tag security">安全增强</span><span class="tag arch">ARM</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-15</span></div>
-<p>支持 RMM v2.0-bet1，使用 RMI 范围 API、GIC 状态通过系统寄存器传递、简化 uAPI。</p></article><article class="topic-item">
-  <div class="topic-item-head"><a href="https://lore.kernel.org/kvm/20260713133753.223947-1-kirill%40shutemov.name/" target="_blank" rel="noopener noreferrer">[PATCH v6 0/3] x86/tdx: Fix port I/O handling bugs</a><span class="tag kind-bug">缺陷</span></div>
-  <div class="d-meta"><span class="tag">KVM</span><span class="tag security">安全增强</span><span class="tag arch">x86</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-13</span></div>
-<p>修复GENMASK off-by-one导致的宽度错误，以及32位IN指令未零扩展RAX的问题。</p></article><article class="topic-item">
-  <div class="topic-item-head"><a href="https://gitlab.com/qemu-project/qemu/-/work_items/3801" target="_blank" rel="noopener noreferrer">virtio-serial migration restore DoS</a><span class="tag kind-other">其他</span></div>
-  <div class="d-meta"><span class="tag">QEMU</span><span class="tag security">安全缺陷</span><span class="tag">处理中</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-15</span></div>
-<p>通过安全渠道报告的 migration 恢复时可能导致的拒绝服务问题，细节未公开。</p></article><article class="topic-item">
-  <div class="topic-item-head"><a href="https://lore.kernel.org/qemu-devel/cover.1783604079.git.qemu_oss@crudebyte.com/" target="_blank" rel="noopener noreferrer">[PATCH 0/3] 9p: fix guest-triggered Treaddir/ACPI eject UAF</a><span class="tag kind-bug">缺陷</span></div>
-  <div class="d-meta"><span class="tag">QEMU</span><span class="tag security">安全缺陷</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-13</span></div>
-<p>xen-9p在disconnect路径中释放ring结构时未清理未完成PDU，导致UAF；且未调用v9fs_device_unrealize_common造成资源泄漏。</p></article></div>
+  <div class="topic-item-head"><a href="https://lore.kernel.org/kvm/20260715142841.80544-1-steven.price%40arm.com/" target="_blank" rel="noopener noreferrer">[PATCH v15 00/37] arm64: Support for Arm CCA in KVM</a><span class="tag kind-feature">功能</span></div>
+  <div class="d-meta"><span class="tag">KVM</span><span class="tag security">安全增强</span><span class="tag arch">ARM</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-16</span></div>
+<p>v15 将 RMM 支持分离为前置 6 补丁，本系列 37 补丁实现 KVM 侧保护 VM 创建与运行。</p></article><article class="topic-item">
+  <div class="topic-item-head"><a href="https://lore.kernel.org/qemu-devel/20260710134720.2317856-1-marcandre.lureau@redhat.com/" target="_blank" rel="noopener noreferrer">[PATCH] vhost-user-gpu: fix integer overflow in buffer allocation</a><span class="tag kind-bug">缺陷</span></div>
+  <div class="d-meta"><span class="tag">QEMU</span><span class="tag security">安全缺陷</span><span class="tag">持续跟踪</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-12</span></div>
+<p>宽松的 width*height*4 计算在 uint32 下溢出，恶意 guest 可通过特制命令触发越界写入。</p></article><article class="topic-item">
+  <div class="topic-item-head"><a href="https://gitlab.com/qemu-project/qemu/-/work_items/3677" target="_blank" rel="noopener noreferrer">LSI 53C895A heap-use-after-free via Block Move DI to its own MMIO BAR</a><span class="tag kind-bug">缺陷</span></div>
+  <div class="d-meta"><span class="tag">QEMU</span><span class="tag security">安全缺陷</span><span class="tag">已关闭</span><span class="tag priority">报告收录</span><span>最近活动 2026-07-15</span></div>
+<p>安全披露：Block Move 操作可触发 use-after-free，已关闭（修复合入）。</p></article></div>
   <nav class="server-pager" aria-label="分页">
-<span>上一页</span>    <strong>1 / 20</strong>
+<span>上一页</span>    <strong>1 / 27</strong>
 <a href="?sort=priority&per_page=20&page=2">下一页</a>  </nav>
 </article>
 </div></main>
