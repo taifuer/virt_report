@@ -192,6 +192,20 @@ def render_topics_html(config: Config, groups: list[dict]) -> str:
     return tpl.render(groups=groups, root="", site_name=config.name)
 
 
+def render_topic_detail_html(config: Config, topic: dict) -> str:
+    env = _env()
+    tpl = env.get_template("topic_detail.html")
+    return tpl.render(topic=topic, root="../../", site_name=config.name)
+
+
+def render_topic_detail(config: Config, topic: dict) -> Path:
+    html = render_topic_detail_html(config, topic)
+    out = Path(config.output_dir) / "topics" / topic["key"] / "index.html"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    return out
+
+
 def render_metrics(config: Config, metrics: dict, filename: str = "metrics.html") -> Path:
     html = render_metrics_html(config, metrics)
     out = Path(config.output_dir) / filename
@@ -204,3 +218,9 @@ def render_metrics_html(config: Config, metrics: dict) -> str:
     env = _env()
     tpl = env.get_template("metrics.html")
     return tpl.render(metrics=metrics, root="", site_name=config.name)
+
+
+def render_metrics_login_html(config: Config, error: bool = False) -> str:
+    env = _env()
+    tpl = env.get_template("metrics_login.html")
+    return tpl.render(error=error, root="", site_name=config.name)

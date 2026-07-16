@@ -4,17 +4,14 @@
 {% block nav_home %}{% endblock %}
 {% block nav_topics %}on{% endblock %}
 {% block content %}
+{% from "_topic_items.html" import topic_items %}
 <article class="topic-page">
-  <header><div class="kicker">Topic Tracker</div><h1>专题</h1><p>直接从原始社区线程增量归类；优先展示已有报告中文摘要，其他条目使用标题和状态生成中文规则说明，不直接展示邮件正文。</p></header>
-  <nav class="topic-nav" aria-label="专题目录">{% for group in groups %}<a href="#{{ group.key }}">{{ group.name }} <span>{{ group['items']|length }}</span></a>{% endfor %}</nav>
-  {% for group in groups %}<section class="topic-group" id="{{ group.key }}" data-pager data-default-size="10">
-    <div class="topic-heading"><div><h2>{{ group.name }}</h2><p>{{ group.description }}</p></div><span class="count">{{ group['items']|length }} 条</span></div>
-    <div class="topic-items">{% for item in group['items'] %}<article class="topic-item" data-page-item>
-      <div class="topic-item-head"><a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>{% if item.category_label %}<span class="tag kind-{{ item.category|default('other') }}">{{ item.category_label }}</span>{% endif %}</div>
-      <div class="d-meta"><span class="tag">{{ item.project }}</span>{% if item.security_label %}<span class="tag security">{{ item.security_label }}</span>{% endif %}{% for cve in item.cve_ids|default([]) %}<span class="tag security">{{ cve }}</span>{% endfor %}{% for arch in item.architectures|default([]) %}<span class="tag arch">{{ arch }}</span>{% endfor %}{% if item.status %}<span class="tag">{{ item.status }}</span>{% endif %}{% if item.time %}<span>最近活动 {{ item.time }}</span>{% endif %}</div>
-      {% if item.summary %}<p>{{ item.summary }}</p>{% endif %}
-    </article>{% else %}<p class="empty-note">暂无匹配条目。</p>{% endfor %}</div>
-    {% if group['items']|length > 10 %}<div class="pager" data-page-controls><button type="button" data-page-prev>上一页</button><span data-page-status></span><button type="button" data-page-next>下一页</button><label>每页 <select data-page-size><option value="10">10</option><option value="20">20</option><option value="30">30</option></select> 条</label></div>{% endif %}
+  <header><div class="kicker">Topic Tracker</div><h1>专题</h1><p>每个专题优先展示架构重点、CVE、安全缺陷、活跃讨论及已进入报告的内容；完整条目可进入专题详情查看。</p></header>
+  <nav class="topic-nav" aria-label="专题目录">{% for group in groups %}<a href="#{{ group.key }}">{{ group.name }} <span>{{ group.total }}</span></a>{% endfor %}</nav>
+  {% for group in groups %}<section class="topic-group" id="{{ group.key }}">
+    <div class="topic-heading"><div><h2>{{ group.name }}</h2><p>{{ group.description }}</p></div><span class="count">重点 {{ group.featured_count }} / 共 {{ group.total }}</span></div>
+    {{ topic_items(group['items']) }}
+    <div class="topic-more"><a href="{{ group.detail_url }}">查看{{ group.name }}全部条目</a></div>
   </section>{% endfor %}
 </article>
 {% endblock %}

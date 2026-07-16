@@ -115,11 +115,11 @@ cp .env.example .env   # 填入 DEEPSEEK_API_KEY (可选, 不填则降级)
 .venv/bin/python -m http.server 8091 --directory site
 ```
 
-日常运行以 SQLite 中的报告为准，Web 服务通过 `/daily/`、`/weekly/`、`/monthly/` 提供独立归档页，并通过对应详情路由即时渲染；`/topics.html` 分别汇总热迁移、热升级、热插拔、启动与生命周期、虚机性能等专题。归档和专题超过 10 条后分页，可切换每页 10、20 或 30 条。采集和 AI 生成不会触发全局渲染。只有显式执行 `virt-report index`，或将 `schedule.auto_export` 设为 `true`，才会把完整快照导出到 `site/`。
+日常运行以 SQLite 中的报告为准，Web 服务通过 `/daily/`、`/weekly/`、`/monthly/` 提供独立归档页，并通过对应详情路由即时渲染。`/topics.html` 是专题总览，每类展示 8 条按 CVE、安全缺陷、报告收录、x86/ARM、社区活跃度和线程显著性综合排序的重点内容；`/topics/<专题>/` 提供完整列表、重点/最新排序和每页 10、20、30 条的服务端分页。采集和 AI 生成不会触发全局渲染。只有显式执行 `virt-report index`，或将 `schedule.auto_export` 设为 `true`，才会把完整快照导出到 `site/`。
 
 “安全与漏洞”位于现有专题页首栏，分为“明确 CVE / 安全缺陷 / 安全增强”。分类来自原始线程，不根据 AI 摘要猜测漏洞编号。专题索引表 `topic_entries` 在每次采集后增量更新，Web 首次访问也会补齐尚未索引的线程，无需重新扫描全部报告。
 
-RSS 地址为 `/feed.xml`（全部报告）、`/daily/feed.xml`、`/weekly/feed.xml`、`/monthly/feed.xml` 和 `/topics/security/feed.xml`。`/metrics.html` 展示各源最近一次及近十次采集状态、数据规模、最近报告和模型用量；`/api/metrics` 提供相同的 JSON 数据。成本依据 `config.yaml` 的人民币/百万 tokens 单价估算，仅供趋势观察，不等同于 DeepSeek 账单；价格变化时应同步更新配置。
+RSS 地址为 `/feed.xml`（全部报告）、`/daily/feed.xml`、`/weekly/feed.xml`、`/monthly/feed.xml` 和 `/topics/security/feed.xml`。页脚“运行状态”进入受保护的 `/metrics.html`，展示各源最近一次及近十次采集状态、数据规模、最近报告和模型用量；`/api/metrics` 提供相同 JSON 数据并接受 `Authorization: Bearer <METRICS_ACCESS_KEY>`。成本依据 `config.yaml` 的人民币/百万 tokens 单价估算，仅供趋势观察，不等同于 DeepSeek 账单。运行页不写入静态快照，避免绕过后端鉴权。
 
 周报严格按站点时区的 ISO 自然周统计，即周一 00:00 至下周一 00:00（右端不包含）；页面以闭区间展示为 `2026 年第 28 周（7.6–7.12）`。`/kvm-forum.html` 仅依据 KVM Forum 2010—2025 各届议程标题，由 `deepseek-v4-pro` 归纳年度主题，不读取 PPT 或视频正文。
 
@@ -168,7 +168,7 @@ git clone git@github.com:taifuer/virt_report.git
 cd virt_report
 
 cp .env.example .env
-# 编辑 .env，至少填写 DEEPSEEK_API_KEY；GITLAB_TOKEN 按需填写。
+# 编辑 .env，填写 DEEPSEEK_API_KEY 和随机生成的 METRICS_ACCESS_KEY；GITLAB_TOKEN 按需填写。
 # 默认 Docker/Python/Debian 镜像适合中国大陆网络，海外环境可在 .env 覆盖。
 
 # 先启动 Web；源码仓库不携带 data/，首次部署需恢复快照或手动初始化
@@ -190,7 +190,7 @@ docker compose logs -f scheduler
 
 Compose 只将 Web 绑定到 `127.0.0.1:8090`，请通过 Nginx/Caddy 暴露域名和 HTTPS。`web` 提供动态页面，`scheduler` 按 `config.yaml` 自动采集并生成日报、周报和月报；两个服务均使用 `restart: unless-stopped`，服务器重启后会自动恢复。SQLite、采集缓存和调度状态持久化在宿主机 `data/`。
 
-存活探针 `/healthz` 仅检查 Web 与数据库可访问；就绪探针 `/readyz` 会在任一数据源超过 12 小时未成功完整采集时返回 503；`/api/status` 返回采集健康状态，`/api/metrics` 返回运行和成本统计，便于接入外部监控。生产环境应定期执行 `virt-report backup`，不要直接复制正在写入的 SQLite 文件。更新部署：
+存活探针 `/healthz` 仅检查 Web 与数据库可访问；就绪探针 `/readyz` 只公开 `ok/degraded` 和检查时间，并在任一数据源超过 12 小时未成功完整采集时返回 503。详细 `/api/status`、`/api/metrics` 与运行页面均使用 `METRICS_ACCESS_KEY` 保护，浏览器验证成功后的安全 Cookie 默认有效 12 小时。生产环境应定期执行 `virt-report backup`，不要直接复制正在写入的 SQLite 文件。更新部署：
 
 ```bash
 git pull --ff-only
@@ -210,7 +210,7 @@ virt_report/
 │   ├── collectors/{base,lore,gitlab}.py
 │   ├── processing/{threads,classify,rank,architecture,category,topics}.py
 │   ├── summarize/{llm_provider,prompts,periods,report}.py
-│   ├── render/{render.py, templates/{base,index,report,archive,topics,metrics,kvm_forum,about}.html}
+│   ├── render/{render.py, templates/{base,index,report,archive,topics,topic_detail,metrics,kvm_forum,about}.html}
 │   ├── kvm_forum.py           # 历年议程标题采集与 Pro 模型主题分析
 │   ├── metrics.py  rss.py      # 运行/成本统计与 RSS 2.0 输出
 │   ├── scheduler.py           # 容器内自动采集与周期报告调度

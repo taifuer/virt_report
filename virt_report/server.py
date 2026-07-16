@@ -7,9 +7,9 @@ import re
 from contextlib import closing
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
-from virt_report import db
+from virt_report import access, db
 from virt_report.config import Config
 from virt_report.render import render
 from virt_report.processing import topics
@@ -18,6 +18,7 @@ from virt_report.summarize import report as report_builder
 log = logging.getLogger(__name__)
 _REPORT_ROUTE = re.compile(r"^/(daily|weekly|monthly)/([^/]+?)(?:\.html)?$")
 _ARCHIVE_ROUTE = re.compile(r"^/(daily|weekly|monthly)(?:/|/index\.html)?$")
+_TOPIC_ROUTE = re.compile(r"^/topics/([a-z-]+)(?:/|\.html)?$")
 READINESS_MAX_AGE_HOURS = 12
 
 
@@ -122,19 +123,50 @@ def make_handler(config: Config):
         def do_GET(self) -> None:  # noqa: N802
             self._dispatch(head_only=False)
 
+        def do_POST(self) -> None:  # noqa: N802
+            path = urlsplit(self.path).path
+            if path != "/metrics/login":
+                self._send(404, "<h1>404</h1><p>页面不存在。</p>")
+                return
+            access_key = config.metrics_access.access_key
+            if not access_key:
+                self._send(503, "<h1>运行状态尚未配置访问密钥</h1>")
+                return
+            try:
+                length = min(int(self.headers.get("Content-Length", "0")), 4096)
+                form = parse_qs(self.rfile.read(length).decode("utf-8"))
+                supplied = form.get("access_key", [""])[0]
+            except (TypeError, ValueError, UnicodeDecodeError):
+                supplied = ""
+            if access.is_authorized({"Authorization": f"Bearer {supplied}"}, access_key):
+                ttl = config.metrics_access.session_ttl_hours
+                token = access.issue_session(access_key, ttl)
+                self._send(303, "", extra_headers={
+                    "Location": "/metrics.html",
+                    "Set-Cookie": (f"{access.COOKIE_NAME}={token}; Path=/; Max-Age={ttl * 3600}; "
+                                   "HttpOnly; Secure; SameSite=Strict"),
+                })
+            else:
+                self._send(401, render.render_metrics_login_html(config, error=True))
+
         def _send(self, status: int, body: str, head_only: bool = False,
-                  content_type: str = "text/html; charset=utf-8") -> None:
+                  content_type: str = "text/html; charset=utf-8",
+                  extra_headers: dict[str, str] | None = None) -> None:
             payload = body.encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("Cache-Control", "no-cache")
+            for name, value in (extra_headers or {}).items():
+                self.send_header(name, value)
             self.end_headers()
             if not head_only:
                 self.wfile.write(payload)
 
         def _dispatch(self, head_only: bool) -> None:
-            path = urlsplit(self.path).path
+            parsed = urlsplit(self.path)
+            path = parsed.path
+            query = parse_qs(parsed.query)
             if path == "/healthz":
                 try:
                     with closing(db.connect(config.db_path)) as conn:
@@ -144,14 +176,26 @@ def make_handler(config: Config):
                     self._send(503, "database unavailable\n", head_only,
                                "text/plain; charset=utf-8")
                 return
-            if path in ("/readyz", "/api/status"):
+            if path == "/readyz":
                 with closing(db.connect(config.db_path)) as conn:
                     payload = _readiness(conn, config)
-                status = 200 if path == "/api/status" or payload["status"] == "ok" else 503
-                self._send(status, json.dumps(payload, ensure_ascii=False), head_only,
+                status = 200 if payload["status"] == "ok" else 503
+                public_payload = {key: payload[key] for key in ("status", "checked_at")}
+                self._send(status, json.dumps(public_payload, ensure_ascii=False), head_only,
                            "application/json; charset=utf-8")
                 return
-            if path == "/api/metrics":
+            if path in ("/api/status", "/api/metrics"):
+                if not access.is_authorized(self.headers, config.metrics_access.access_key):
+                    self._send(401, json.dumps({"error": "unauthorized"}), head_only,
+                               "application/json; charset=utf-8",
+                               {"WWW-Authenticate": "Bearer"})
+                    return
+                if path == "/api/status":
+                    with closing(db.connect(config.db_path)) as conn:
+                        payload = _readiness(conn, config)
+                    self._send(200, json.dumps(payload, ensure_ascii=False), head_only,
+                               "application/json; charset=utf-8")
+                    return
                 from virt_report.metrics import build_metrics
                 with closing(db.connect(config.db_path)) as conn:
                     payload = build_metrics(conn, config)
@@ -179,7 +223,31 @@ def make_handler(config: Config):
                     )
                 self._send(200, html, head_only)
                 return
+            topic_match = _TOPIC_ROUTE.fullmatch(path)
+            if topic_match:
+                def number(name: str, default: int) -> int:
+                    try:
+                        return int(query.get(name, [default])[0])
+                    except (TypeError, ValueError):
+                        return default
+                with closing(db.connect(config.db_path)) as conn:
+                    topic = topics.build_topic_detail(
+                        conn, topic_match.group(1), page=number("page", 1),
+                        per_page=number("per_page", 20),
+                        sort=query.get("sort", ["priority"])[0],
+                    )
+                if topic:
+                    self._send(200, render.render_topic_detail_html(config, topic), head_only)
+                else:
+                    self._send(404, "<h1>404</h1><p>专题不存在。</p>", head_only)
+                return
             if path in ("/metrics", "/metrics/", "/metrics.html"):
+                if not access.is_authorized(self.headers, config.metrics_access.access_key):
+                    status = 200 if config.metrics_access.access_key else 503
+                    html = (render.render_metrics_login_html(config) if status == 200 else
+                            "<h1>运行状态尚未配置访问密钥</h1>")
+                    self._send(status, html, head_only)
+                    return
                 from virt_report.metrics import build_metrics
                 with closing(db.connect(config.db_path)) as conn:
                     html = render.render_metrics_html(config, build_metrics(conn, config))

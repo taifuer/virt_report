@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from virt_report import db, maintenance, metrics, rss
+from virt_report import access, db, maintenance, metrics, rss
 from virt_report.collectors import base, hyperkitty, mbox
 from virt_report.config import Config, MailingListSource, Sources
 from virt_report.processing import architecture, category, classify, threads, topics
@@ -158,6 +158,9 @@ def test_operation_topic_classification_can_overlap():
     assert topics.classify_item(item) == ["migration", "performance"]
     assert topics.classify_item({"title": "KVM: support memory hotplug"}) == ["hotplug"]
     assert topics.classify_item({"title": "QEMU runtime live update"}) == ["live-upgrade"]
+    assert topics.classify_item({
+        "title": "Stable patch round-up", "body_excerpt": "migration hotplug performance",
+    }) == []
 
 
 # ---------- report: _sanitize (防 LLM 输出缺字段) ----------
@@ -355,7 +358,7 @@ def test_weekly_range_is_local_inclusive_natural_week():
     assert value["full"] == "2026-07-06 至 2026-07-12"
 
 
-def test_archive_and_topics_offer_pagination_over_ten_items(tmp_db):
+def test_archive_and_topic_detail_offer_pagination_over_ten_items(tmp_db):
     reports = [{
         "period_key": f"2026-07-{day:02d}", "item_count": 20,
         "model": "test", "generated_at": "2026-07-14T00:00:00Z",
@@ -369,7 +372,17 @@ def test_archive_and_topics_offer_pagination_over_ten_items(tmp_db):
     threads.rebuild_threads(tmp_db)
     groups = topics.build_topic_groups(tmp_db)
     page = html_render.render_topics_html(Config(), groups)
-    assert "data-page-controls" in page
+    migration = next(group for group in groups if group["key"] == "migration")
+    assert migration["total"] == 11
+    assert migration["featured_count"] == 8
+    assert "重点 8 / 共 11" in page
+    assert "topics/migration/" in page
+    detail = topics.build_topic_detail(tmp_db, "migration", page=2, per_page=10)
+    assert detail["page"] == 2 and detail["pages"] == 2
+    assert len(detail["items"]) == 1
+    detail_page = html_render.render_topic_detail_html(Config(), detail)
+    assert "2 / 2" in detail_page
+    assert "per_page=20" in detail_page
 
 
 def test_security_topic_requires_raw_evidence_and_strict_cve(tmp_db):
@@ -427,6 +440,20 @@ def test_rss_and_metrics_use_stored_report_usage(tmp_db):
     page = html_render.render_metrics_html(Config(), values)
     assert "built-in method" not in page
     assert ">0</strong><span>原始条目" in page
+
+
+def test_metrics_access_accepts_bearer_and_signed_cookie():
+    key = "test-only-long-access-key"
+    token = access.issue_session(key, 12, now=1000)
+    assert access.verify_session(token, key, now=1001)
+    assert not access.verify_session(token, key, now=1000 + 12 * 3600 + 1)
+    assert access.is_authorized({"Authorization": f"Bearer {key}"}, key)
+    assert access.is_authorized({"Cookie": f"{access.COOKIE_NAME}={token}"}, key, now=1001)
+    assert not access.is_authorized({"Authorization": "Bearer wrong"}, key)
+    login = html_render.render_metrics_login_html(Config(), error=True)
+    assert 'type="password"' in login and "密钥不正确" in login
+    assert ">运行状态</a>" in login
+    assert ">运行</a>" not in login
 
 
 def test_kvm_forum_renders_newest_first_with_source_links():

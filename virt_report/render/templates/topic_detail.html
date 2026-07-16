@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "_topic_items.html" import topic_items %}
+{% block title %}virt-report · {{ topic.name }}{% endblock %}
+{% block description %}{{ topic.name }}专题完整条目与重点排序。{% endblock %}
+{% block nav_home %}{% endblock %}
+{% block nav_topics %}on{% endblock %}
+{% block content %}
+<article class="topic-page topic-detail">
+  <header><div class="kicker"><a href="{{ root }}topics.html">专题</a></div><h1>{{ topic.name }}</h1><p>{{ topic.description }} · 共 {{ topic.total }} 条</p></header>
+  <nav class="topic-controls" aria-label="专题排序与每页数量">
+    <div><a class="{{ 'on' if topic.sort == 'priority' }}" href="?sort=priority&per_page={{ topic.per_page }}">重点优先</a><a class="{{ 'on' if topic.sort == 'latest' }}" href="?sort=latest&per_page={{ topic.per_page }}">最新优先</a></div>
+    <div><span>每页</span>{% for size in (10,20,30) %}<a class="{{ 'on' if topic.per_page == size }}" href="?sort={{ topic.sort }}&per_page={{ size }}">{{ size }}</a>{% endfor %}</div>
+  </nav>
+  {{ topic_items(topic['items']) }}
+  <nav class="server-pager" aria-label="分页">
+    {% if topic.page > 1 %}<a href="?sort={{ topic.sort }}&per_page={{ topic.per_page }}&page={{ topic.page-1 }}">上一页</a>{% else %}<span>上一页</span>{% endif %}
+    <strong>{{ topic.page }} / {{ topic.pages }}</strong>
+    {% if topic.page < topic.pages %}<a href="?sort={{ topic.sort }}&per_page={{ topic.per_page }}&page={{ topic.page+1 }}">下一页</a>{% else %}<span>下一页</span>{% endif %}
+  </nav>
+</article>
+{% endblock %}

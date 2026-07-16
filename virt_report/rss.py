@@ -8,7 +8,7 @@ from email.utils import format_datetime
 from xml.etree import ElementTree as ET
 
 from virt_report.config import Config
-from virt_report.processing.topics import build_topic_groups
+from virt_report.processing.topics import build_topic_detail
 from virt_report.summarize import periods
 
 
@@ -70,7 +70,7 @@ def report_feed(conn: sqlite3.Connection, config: Config, period: str | None = N
 
 def security_feed(conn: sqlite3.Connection, config: Config) -> str:
     base = _base_url(config)
-    group = next(group for group in build_topic_groups(conn) if group["key"] == "security")
+    group = build_topic_detail(conn, "security", page=1, per_page=20, sort="latest")
     entries = [{
         "title": item["title"], "link": item["url"],
         "published_at": item["activity_at"],
@@ -78,6 +78,6 @@ def security_feed(conn: sqlite3.Connection, config: Config) -> str:
             item.get("security_label"), " ".join(item.get("cve_ids", [])),
             item.get("summary"),
         ])),
-    } for item in group["items"][:20]]
+    } for item in group["items"]]
     return _rss("virt-report 安全与漏洞", base + "/topics/security/feed.xml",
                 "QEMU、KVM、Libvirt 安全缺陷、明确 CVE 与安全增强", entries)

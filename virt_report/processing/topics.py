@@ -2,15 +2,17 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import sqlite3
 from collections import defaultdict
+from datetime import datetime, timezone
 
 from virt_report import db
 from . import architecture, category
 
 
-RULE_VERSION = 5
+RULE_VERSION = 6
 TOPIC_RULES = (
     ("security", "安全与漏洞", "明确 CVE、安全缺陷与虚拟化安全增强；编号和类型仅依据原始内容", ()),
     ("migration", "热迁移", "迁移链路、停机窗口、脏页收敛与跨主机兼容性", (
@@ -28,7 +30,7 @@ TOPIC_RULES = (
     )),
     ("lifecycle", "启动与生命周期", "启动、关机、重启、暂停恢复与生命周期可靠性", (
         "启动", "关机", "重启", "startup", "boot", "reboot", "shutdown", "reset",
-        "suspend", "resume", "lifecycle", "firmware",
+        "suspend", "resume", "lifecycle",
     )),
     ("performance", "虚机性能", "时延、吞吐、资源开销与硬件加速优化", (
         "性能", "performance", "optimize", "optimization", "latency", "throughput",
@@ -99,7 +101,7 @@ def _security_evidence(title_text: str, cve_text: str,
 def classify_item(item: dict) -> list[str]:
     """返回条目命中的专题键；安全类型可由调用方预先提供。"""
     text = " ".join(str(item.get(field, "")) for field in (
-        "title", "original_title", "summary", "impact", "tag", "body_excerpt",
+        "title", "original_title", "tag",
     )).lower()
     keys = []
     if item.get("security_type"):
@@ -192,7 +194,7 @@ def _thread_entry(conn: sqlite3.Connection, thread: sqlite3.Row,
             title, " ".join(labels), evidence_text[:1200],
         ]),
         "cve_ids": cve_ids, "security_type": security_type,
-        "status": _status(latest, raw, title), "body_excerpt": evidence_text,
+        "status": _status(latest, raw, title), "body_excerpt": primary["body_excerpt"] or "",
     }
 
 
@@ -259,28 +261,138 @@ def _report_summaries(conn: sqlite3.Connection) -> dict[str, str]:
     return summaries
 
 
-def build_topic_groups(conn: sqlite3.Connection, limit: int = 60) -> list[dict]:
-    """从增量物化索引构建专题页面数据。"""
+def _topic_definition(topic_key: str) -> tuple[str, str] | None:
+    return next(((name, description) for key, name, description, _ in TOPIC_RULES
+                 if key == topic_key), None)
+
+
+def _canonical_title(item: dict) -> str:
+    if item.get("cve_ids"):
+        return "cve:" + ",".join(item["cve_ids"])
+    title = (item.get("title") or "").lower()
+    title = re.sub(r"^(?:re:\s*)+", "", title)
+    title = re.sub(r"\[(?:patch|rfc|resend|stable)[^\]]*\]", "", title)
+    title = re.sub(r"\bv\d+\b|\b\d+/\d+\b", "", title)
+    return re.sub(r"\W+", " ", title).strip()
+
+
+def _priority(item: dict, reference: datetime) -> tuple[float, list[str]]:
+    score = float(item.get("salience_score") or 0)
+    reasons = []
+    if item.get("summary_source") == "report":
+        score += 35
+        reasons.append("报告收录")
+    security_type = item.get("security_type")
+    if security_type == "cve":
+        title = (item.get("title") or "").upper()
+        direct_cve = any(cve in title for cve in item.get("cve_ids") or [])
+        score += 45 if direct_cve else 25
+        reasons.append("CVE" if direct_cve else "含 CVE")
+        years = [int(cve.split("-")[1]) for cve in item.get("cve_ids") or []]
+        if years and max(years) < reference.year - 2:
+            score -= 30
+    elif security_type == "defect":
+        score += 28
+        reasons.append("安全缺陷")
+    elif security_type == "enhancement":
+        score += 12
+    if item.get("category") == "bug":
+        score += 12
+    elif item.get("category") == "feature":
+        score += 5
+    focus_arch = {"x86", "ARM"}.intersection(item.get("architectures") or [])
+    if focus_arch:
+        score += 10 * len(focus_arch)
+        reasons.append("架构重点")
+    if item.get("status") in {"处理中", "评审中"}:
+        score += 8
+    elif item.get("status") == "已关闭":
+        score -= 8
+    try:
+        activity = datetime.fromisoformat(item["activity_at"].replace("Z", "+00:00"))
+        age = max(0, (reference - activity).days)
+        score += 16 if age <= 2 else 10 if age <= 7 else 4 if age <= 30 else 0
+    except (AttributeError, TypeError, ValueError):
+        pass
+    return round(score, 2), reasons
+
+
+def _load_topic_items(conn: sqlite3.Connection, topic_key: str, name: str,
+                      report_summaries: dict[str, str]) -> list[dict]:
+    rows = conn.execute(
+        "SELECT e.*,t.salience_score FROM topic_entries e LEFT JOIN threads t "
+        "ON t.thread_key=e.thread_key WHERE e.topic_key=?", (topic_key,),
+    ).fetchall()
+    items = []
+    for row in rows:
+        item = dict(row)
+        item["project"] = _PROJECT_LABELS.get(item["project"], item["project"])
+        item["architectures"] = json.loads(item["architectures"] or "[]")
+        item["cve_ids"] = json.loads(item["cve_ids"] or "[]")
+        item["security_label"] = _SECURITY_LABELS.get(item.get("security_type"), "")
+        item["category_label"] = category.category_label(item.get("category"))
+        item["time"] = (item.get("activity_at") or "")[:10]
+        report_summary = report_summaries.get(item.get("url"))
+        item["summary_source"] = "report" if report_summary else "rule"
+        item["summary"] = report_summary or _fallback_summary(item, name)
+        items.append(item)
+    reference = max((datetime.fromisoformat(item["activity_at"].replace("Z", "+00:00"))
+                     for item in items if item.get("activity_at")),
+                    default=datetime.now(timezone.utc))
+    for item in items:
+        item["priority_score"], item["priority_reasons"] = _priority(item, reference)
+    return items
+
+
+def build_topic_groups(conn: sqlite3.Connection, limit: int = 8) -> list[dict]:
+    """构建专题总览：每组只展示去重后的重点条目，并保留真实总数。"""
     sync_topic_index(conn)
     report_summaries = _report_summaries(conn)
     groups = []
     for key, name, description, _words in TOPIC_RULES:
-        rows = conn.execute(
-            "SELECT * FROM topic_entries WHERE topic_key=? "
-            "ORDER BY activity_at DESC, title LIMIT ?", (key, limit),
-        ).fetchall()
-        items = []
-        for row in rows:
-            item = dict(row)
-            item["project"] = _PROJECT_LABELS.get(item["project"], item["project"])
-            item["architectures"] = json.loads(item["architectures"] or "[]")
-            item["cve_ids"] = json.loads(item["cve_ids"] or "[]")
-            item["security_label"] = _SECURITY_LABELS.get(item.get("security_type"), "")
-            item["category_label"] = category.category_label(item.get("category"))
-            item["time"] = (item.get("activity_at") or "")[:10]
-            report_summary = report_summaries.get(item.get("url"))
-            item["summary_source"] = "report" if report_summary else "rule"
-            item["summary"] = report_summary or _fallback_summary(item, name)
-            items.append(item)
-        groups.append({"key": key, "name": name, "description": description, "items": items})
+        all_items = _load_topic_items(conn, key, name, report_summaries)
+        ranked = sorted(all_items, key=lambda item: (
+            item["priority_score"], item.get("activity_at") or ""
+        ), reverse=True)
+        seen = set()
+        featured = []
+        for item in ranked:
+            canonical = _canonical_title(item) or item["thread_key"]
+            if canonical in seen:
+                continue
+            seen.add(canonical)
+            featured.append(item)
+            if len(featured) >= limit:
+                break
+        groups.append({
+            "key": key, "name": name, "description": description,
+            "items": featured, "total": len(all_items), "featured_count": len(featured),
+            "detail_url": f"topics/{key}/",
+        })
     return groups
+
+
+def build_topic_detail(conn: sqlite3.Connection, topic_key: str, *, page: int = 1,
+                       per_page: int = 20, sort: str = "priority") -> dict | None:
+    """构建单专题详情和服务端分页数据。"""
+    definition = _topic_definition(topic_key)
+    if not definition:
+        return None
+    sync_topic_index(conn)
+    name, description = definition
+    items = _load_topic_items(conn, topic_key, name, _report_summaries(conn))
+    if sort == "latest":
+        items.sort(key=lambda item: item.get("activity_at") or "", reverse=True)
+    else:
+        sort = "priority"
+        items.sort(key=lambda item: (item["priority_score"], item.get("activity_at") or ""),
+                   reverse=True)
+    per_page = per_page if per_page in {10, 20, 30} else 20
+    pages = max(1, math.ceil(len(items) / per_page))
+    page = min(max(1, page), pages)
+    start = (page - 1) * per_page
+    return {
+        "key": topic_key, "name": name, "description": description,
+        "items": items[start:start + per_page], "total": len(items),
+        "page": page, "pages": pages, "per_page": per_page, "sort": sort,
+    }

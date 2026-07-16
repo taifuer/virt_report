@@ -135,8 +135,12 @@ def _render_index(config: Config, conn) -> None:
     for period_name in ("daily", "weekly", "monthly"):
         render.render_archive(config, period_name, _list_reports(conn, period_name))
     render.render_topics(config, topics.build_topic_groups(conn))
-    from virt_report.metrics import build_metrics
-    render.render_metrics(config, build_metrics(conn, config))
+    for topic_key, _name, _description, _words in topics.TOPIC_RULES:
+        detail = topics.build_topic_detail(conn, topic_key, page=1, per_page=20)
+        if detail:
+            render.render_topic_detail(config, detail)
+    # 运行指标必须经动态服务鉴权，不导出可绕过认证的静态快照。
+    (config.output_dir / "metrics.html").unlink(missing_ok=True)
     from virt_report import rss
     feeds = {
         config.output_dir / "feed.xml": rss.report_feed(conn, config),

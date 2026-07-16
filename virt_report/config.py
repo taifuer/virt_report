@@ -75,6 +75,16 @@ class Schedule:
 
 
 @dataclass
+class MetricsAccess:
+    access_key_env: str = "METRICS_ACCESS_KEY"
+    session_ttl_hours: int = 12
+
+    @property
+    def access_key(self) -> str | None:
+        return os.environ.get(self.access_key_env)
+
+
+@dataclass
 class Config:
     name: str = "virt-report"
     timezone: str = "Asia/Shanghai"
@@ -83,6 +93,7 @@ class Config:
     llm: LLMConfig = field(default_factory=LLMConfig)
     render: Render = field(default_factory=Render)
     schedule: Schedule = field(default_factory=Schedule)
+    metrics_access: MetricsAccess = field(default_factory=MetricsAccess)
 
     @property
     def db_path(self) -> Path:
@@ -152,6 +163,7 @@ def load_config(path: str | Path | None = None) -> Config:
         llm=LLMConfig(**raw.get("llm", {})),
         render=render,
         schedule=Schedule(**raw.get("schedule", {})),
+        metrics_access=MetricsAccess(**raw.get("metrics_access", {})),
     )
     # 确保 DB 目录存在
     config.db_path.parent.mkdir(parents=True, exist_ok=True)
