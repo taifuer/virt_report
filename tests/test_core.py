@@ -330,6 +330,26 @@ def test_archive_and_topic_pages_render():
     assert page.count('href="u"') == 2
 
 
+def test_report_generated_date_uses_site_timezone():
+    report_row = {
+        "period_key": "2026-07-15", "item_count": 29,
+        "model": "deepseek-v4-flash",
+        "generated_at": "2026-07-15T16:16:05Z",
+    }
+    archive = html_render.render_archive_html(Config(), "daily", [report_row])
+    assert "2026-07-16 生成" in archive
+    assert "2026-07-15 生成" not in archive
+    context = {
+        "daily": [report_row], "weekly": [], "monthly": [],
+        "cal": html_render.build_calendar("2026-07", {"2026-07-15"}),
+    }
+    home = html_render.render_index_html(Config(), context)
+    assert "2026-07-16 生成" in home
+    assert "2026-07-15 生成" not in home
+    assert '<span class="brand-sub">虚拟化社区动态</span>' in home
+    assert ".brand-sub{display:none}" not in home
+
+
 def test_weekly_range_is_local_inclusive_natural_week():
     value = html_render._period_range("weekly", "2026-W28", "Asia/Shanghai")
     assert value["label"] == "2026 年第 28 周（7.6–7.12）"

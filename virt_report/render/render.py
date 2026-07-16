@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import calendar as _pycal
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -12,6 +12,23 @@ from virt_report.config import Config
 from virt_report.summarize import periods
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+
+def _local_date(value: str | None, timezone: str) -> str:
+    """将数据库中的 UTC ISO 时间转换为站点时区日期。"""
+    if not value:
+        return ""
+    try:
+        instant = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return instant.astimezone(ZoneInfo(timezone)).strftime("%Y-%m-%d")
+    except (TypeError, ValueError):
+        return value[:10]
+
+
+def _with_generated_dates(reports: list[dict], timezone: str) -> list[dict]:
+    return [dict(item, generated_date=_local_date(
+        item.get("generated_at"), timezone
+    )) for item in reports]
 
 
 def _env() -> Environment:
@@ -97,7 +114,12 @@ def render_index_html(config: Config, ctx: dict) -> str:
     """将首页渲染为 HTML 字符串。"""
     env = _env()
     tpl = env.get_template("index.html")
-    return tpl.render(ctx=ctx, root="", site_name=config.name)
+    prepared = dict(ctx)
+    for period in ("daily", "weekly", "monthly"):
+        prepared[period] = _with_generated_dates(
+            list(ctx.get(period, [])), config.timezone
+        )
+    return tpl.render(ctx=prepared, root="", site_name=config.name)
 
 
 def render_about(config: Config, filename: str = "about.html") -> Path:
@@ -129,9 +151,13 @@ def render_archive_html(config: Config, period: str, reports: list[dict]) -> str
     """渲染日报、周报或月报归档页。"""
     env = _env()
     tpl = env.get_template("archive.html")
-    enriched = [dict(item, period_range=_period_range(
-        period, item["period_key"], config.timezone
-    )) for item in reports]
+    enriched = [dict(item,
+                     generated_date=_local_date(
+                         item.get("generated_at"), config.timezone
+                     ),
+                     period_range=_period_range(
+                         period, item["period_key"], config.timezone
+                     )) for item in reports]
     return tpl.render(period=period, reports=enriched, root="../", site_name=config.name)
 
 
