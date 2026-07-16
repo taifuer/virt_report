@@ -387,6 +387,8 @@ def test_security_topic_requires_raw_evidence_and_strict_cve(tmp_db):
     ]
     assert "QEMU: CVE-2026-XXXX placeholder" not in by_title
     assert by_title["KVM: arm64: add Arm CCA support"]["security_type"] == "enhancement"
+    assert "Arm CCA" in by_title["KVM: arm64: add Arm CCA support"]["summary"]
+    assert by_title["KVM: arm64: add Arm CCA support"]["summary_source"] == "rule"
 
 
 def test_security_topic_does_not_treat_generic_patch_replies_as_defects(tmp_db):
@@ -417,6 +419,7 @@ def test_rss_and_metrics_use_stored_report_usage(tmp_db):
     feed = rss.report_feed(tmp_db, Config(), "daily")
     assert "<rss version=\"2.0\">" in feed
     assert "测试日报" in feed
+    assert feed == rss.report_feed(tmp_db, Config(), "daily")
     values = metrics.build_metrics(tmp_db, Config())
     assert values["models"]["deepseek-v4-flash"]["total_tokens"] == 1500
     assert values["models"]["deepseek-v4-flash"]["calls"] == 1

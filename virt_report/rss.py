@@ -27,8 +27,9 @@ def _pub_date(value: str | None) -> str:
 def _rss(title: str, link: str, description: str, entries: list[dict]) -> str:
     root = ET.Element("rss", {"version": "2.0"})
     channel = ET.SubElement(root, "channel")
+    last_build = entries[0].get("published_at") if entries else None
     for tag, value in (("title", title), ("link", link), ("description", description),
-                       ("language", "zh-CN"), ("lastBuildDate", _pub_date(None))):
+                       ("language", "zh-CN"), ("lastBuildDate", _pub_date(last_build))):
         ET.SubElement(channel, tag).text = value
     for entry in entries:
         item = ET.SubElement(channel, "item")

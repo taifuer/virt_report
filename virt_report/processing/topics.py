@@ -10,7 +10,7 @@ from virt_report import db
 from . import architecture, category
 
 
-RULE_VERSION = 4
+RULE_VERSION = 5
 TOPIC_RULES = (
     ("security", "安全与漏洞", "明确 CVE、安全缺陷与虚拟化安全增强；编号和类型仅依据原始内容", ()),
     ("migration", "热迁移", "迁移链路、停机窗口、脏页收敛与跨主机兼容性", (
@@ -61,6 +61,24 @@ _SECURITY_LABELS = {
 _EXPLICIT_SECURITY_LABEL_RE = re.compile(
     r"^(?:security(?:::.+)?|vulnerability|cve)$", re.IGNORECASE,
 )
+_SECURITY_TECH_EXPLANATIONS = (
+    (("arm_rmm", "arm rmm", "arm cca", "realm management monitor"),
+     "Arm CCA 的 RMM 固件接口与主机支持"),
+    (("sev-snp", "sev/snp", "snp"), "AMD SEV-SNP 机密虚拟化能力"),
+    (("sev",), "AMD SEV 加密虚拟化能力"),
+    (("tdx",), "Intel TDX 机密虚拟化能力"),
+    (("confidential computing", "confidential vm"), "机密计算与机密虚机能力"),
+    (("memory encryption",), "虚机内存加密能力"),
+)
+_SECURITY_RISK_EXPLANATIONS = (
+    (("use-after-free", "uaf"), "释放后使用"),
+    (("out-of-bounds", " oob", "越界"), "越界访问"),
+    (("buffer overflow", "heap overflow", "integer overflow", "溢出"), "溢出"),
+    (("denial of service", " dos", "拒绝服务"), "拒绝服务"),
+    (("privilege escalation", "提权"), "权限提升"),
+    (("information leak", "信息泄漏"), "信息泄漏"),
+    (("memory corruption", "内存损坏"), "内存损坏"),
+)
 
 
 def _security_evidence(title_text: str, cve_text: str,
@@ -106,6 +124,29 @@ def _status(item: sqlite3.Row, raw: dict, title: str) -> str:
     return "持续跟踪"
 
 
+def _fallback_summary(item: dict, topic_name: str) -> str:
+    """为尚无 AI 报告摘要的条目生成克制的中文规则说明。"""
+    project = item.get("project") or "上游"
+    status = item.get("status") or "持续跟踪"
+    title = (item.get("title") or "").lower()
+    security_type = item.get("security_type")
+    if security_type == "cve":
+        cves = "、".join(item.get("cve_ids") or [])
+        return (f"{project} 社区正在处理 {cves} 相关讨论，当前状态为{status}。"
+                "漏洞影响与修复范围应以原始线程和上游公告为准。")
+    if security_type == "defect":
+        risk = next((label for words, label in _SECURITY_RISK_EXPLANATIONS
+                     if any(word in title for word in words)), "潜在安全问题")
+        return (f"标题显示该讨论涉及{risk}，归入安全缺陷跟踪；当前状态为{status}。"
+                "具体影响范围仍需结合原始线程确认。")
+    if security_type == "enhancement":
+        tech = next((label for words, label in _SECURITY_TECH_EXPLANATIONS
+                     if any(word in title for word in words)), "虚拟化安全能力增强")
+        return f"{project} 社区正在讨论“{tech}”，归入安全增强；当前状态为{status}。"
+    return (f"{project} 社区正在讨论{topic_name}相关改动，当前状态为{status}。"
+            "详细技术范围请查看原始线程。")
+
+
 def _thread_entry(conn: sqlite3.Connection, thread: sqlite3.Row,
                   prefetched: dict | None = None) -> dict | None:
     root = thread["thread_key"].split(":", 2)[2]
@@ -140,7 +181,7 @@ def _thread_entry(conn: sqlite3.Connection, thread: sqlite3.Row,
     evidence_text = " ".join(text_parts)
     title_text = " ".join((title, primary["subject"] or ""))
     security_type, cve_ids = _security_evidence(title_text, evidence_text, labels)
-    summary = next((row["body_excerpt"] for row in rows if row["body_excerpt"]), "")
+    summary = primary["body_excerpt"] or ""
     summary = " ".join((summary or "").split())[:360]
     return {
         "thread_key": thread["thread_key"], "project": thread["project"],
@@ -237,7 +278,9 @@ def build_topic_groups(conn: sqlite3.Connection, limit: int = 60) -> list[dict]:
             item["security_label"] = _SECURITY_LABELS.get(item.get("security_type"), "")
             item["category_label"] = category.category_label(item.get("category"))
             item["time"] = (item.get("activity_at") or "")[:10]
-            item["summary"] = report_summaries.get(item.get("url"), item.get("summary"))
+            report_summary = report_summaries.get(item.get("url"))
+            item["summary_source"] = "report" if report_summary else "rule"
+            item["summary"] = report_summary or _fallback_summary(item, name)
             items.append(item)
         groups.append({"key": key, "name": name, "description": description, "items": items})
     return groups
