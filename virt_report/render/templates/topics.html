@@ -1,17 +1,17 @@
 {% extends "base.html" %}
 {% block title %}virt-report · 专题{% endblock %}
-{% block description %}热迁移、热升级、热插拔、启动与虚机性能专题汇总。{% endblock %}
+{% block description %}安全与漏洞、热迁移、热升级、热插拔、启动与虚机性能专题汇总。{% endblock %}
 {% block nav_home %}{% endblock %}
 {% block nav_topics %}on{% endblock %}
 {% block content %}
 <article class="topic-page">
-  <header><div class="kicker">Topic Tracker</div><h1>专题</h1><p>从既有报告中归纳与虚机运维和性能直接相关的讨论；同一条目可能出现在多个专题。</p></header>
+  <header><div class="kicker">Topic Tracker</div><h1>专题</h1><p>直接从原始社区线程增量归类，已有 AI 中文摘要仅用于辅助阅读；同一条目可能出现在多个专题。</p></header>
   <nav class="topic-nav" aria-label="专题目录">{% for group in groups %}<a href="#{{ group.key }}">{{ group.name }} <span>{{ group['items']|length }}</span></a>{% endfor %}</nav>
   {% for group in groups %}<section class="topic-group" id="{{ group.key }}" data-pager data-default-size="10">
     <div class="topic-heading"><div><h2>{{ group.name }}</h2><p>{{ group.description }}</p></div><span class="count">{{ group['items']|length }} 条</span></div>
     <div class="topic-items">{% for item in group['items'] %}<article class="topic-item" data-page-item>
       <div class="topic-item-head"><a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>{% if item.category_label %}<span class="tag kind-{{ item.category|default('other') }}">{{ item.category_label }}</span>{% endif %}</div>
-      <div class="d-meta"><span class="tag">{{ item.project }}</span>{% for arch in item.architectures|default([]) %}<span class="tag arch">{{ arch }}</span>{% endfor %}{% if item.time %}<span>{{ item.time }}</span>{% endif %}<span>收录于 {{ "日报" if item.report_period=="daily" else ("周报" if item.report_period=="weekly" else "月报") }} {{ item.report_key }}</span></div>
+      <div class="d-meta"><span class="tag">{{ item.project }}</span>{% if item.security_label %}<span class="tag security">{{ item.security_label }}</span>{% endif %}{% for cve in item.cve_ids|default([]) %}<span class="tag security">{{ cve }}</span>{% endfor %}{% for arch in item.architectures|default([]) %}<span class="tag arch">{{ arch }}</span>{% endfor %}{% if item.status %}<span class="tag">{{ item.status }}</span>{% endif %}{% if item.time %}<span>最近活动 {{ item.time }}</span>{% endif %}</div>
       {% if item.summary %}<p>{{ item.summary }}</p>{% endif %}
     </article>{% else %}<p class="empty-note">暂无匹配条目。</p>{% endfor %}</div>
     {% if group['items']|length > 10 %}<div class="pager" data-page-controls><button type="button" data-page-prev>上一页</button><span data-page-status></span><button type="button" data-page-next>下一页</button><label>每页 <select data-page-size><option value="10">10</option><option value="20">20</option><option value="30">30</option></select> 条</label></div>{% endif %}

@@ -92,6 +92,31 @@ CREATE TABLE IF NOT EXISTS fetch_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_fetch_runs_source
     ON fetch_runs(source, project, finished_at);
+
+CREATE TABLE IF NOT EXISTS topic_indexed_threads (
+    thread_key        TEXT PRIMARY KEY,
+    indexed_last_seen TEXT,
+    rule_version      INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS topic_entries (
+    topic_key       TEXT NOT NULL,
+    thread_key      TEXT NOT NULL,
+    project         TEXT NOT NULL,
+    source          TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    url             TEXT,
+    summary         TEXT,
+    activity_at     TEXT,
+    category        TEXT,
+    architectures   TEXT,
+    cve_ids         TEXT,
+    security_type   TEXT,
+    status          TEXT,
+    PRIMARY KEY (topic_key, thread_key)
+);
+CREATE INDEX IF NOT EXISTS idx_topic_entries_activity
+    ON topic_entries(topic_key, activity_at DESC);
 """
 
 

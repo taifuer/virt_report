@@ -42,10 +42,15 @@ llm:
   monthly_model: deepseek-v4-pro
   # 单次喂给模型的线程数上限 (DeepSeek V4 上下文 1M；仍需控制噪声与成本)
   daily_top_n: 50
+  # 人民币/百万 tokens；仅用于运行页估算，价格变化时按官方价格页调整
+  # https://api-docs.deepseek.com/zh-cn/quick_start/pricing
+  pricing_cny:
+    deepseek-v4-flash: {cache_hit: 0.02, cache_miss: 1.0, output: 2.0}
+    deepseek-v4-pro: {cache_hit: 0.025, cache_miss: 3.0, output: 6.0}
 
 render:
   output_dir: site
-  site_url: ""
+  site_url: https://virt.taifua.com
 
 schedule:
   fetch_cron: "7 */4 * * *"       # 每 4 小时增量采集

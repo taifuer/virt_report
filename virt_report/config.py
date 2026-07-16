@@ -49,6 +49,10 @@ class LLMConfig:
     weekly_model: str = "deepseek-v4-pro"
     monthly_model: str = "deepseek-v4-pro"
     daily_top_n: int = 30
+    pricing_cny: dict[str, dict[str, float]] = field(default_factory=lambda: {
+        "deepseek-v4-flash": {"cache_hit": 0.02, "cache_miss": 1.0, "output": 2.0},
+        "deepseek-v4-pro": {"cache_hit": 0.025, "cache_miss": 3.0, "output": 6.0},
+    })
 
     @property
     def api_key(self) -> str | None:

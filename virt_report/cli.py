@@ -21,7 +21,7 @@ from virt_report.collectors import lore, lore_git, gitlab, hyperkitty, mailarchi
 from virt_report.config import Config, load_config
 from virt_report.processing import threads
 from virt_report.locking import process_lock
-from virt_report.processing.topics import build_topic_groups
+from virt_report.processing import topics
 from virt_report.render import render
 from virt_report.summarize import periods, report
 
@@ -77,6 +77,7 @@ def _fetch_all_locked(conn, config: Config, since: datetime,
     for gl in config.sources.gitlab:
         run("gitlab", gl.name, gitlab, gl)
     threads.rebuild_threads(conn)
+    topics.sync_topic_index(conn)
 
 
 def _list_reports(conn, period: str) -> list[dict]:
@@ -133,12 +134,20 @@ def _render_index(config: Config, conn) -> None:
     render.render_about(config)
     for period_name in ("daily", "weekly", "monthly"):
         render.render_archive(config, period_name, _list_reports(conn, period_name))
-    topic_rows = conn.execute(
-        "SELECT period,period_key,content_json FROM reports "
-        "ORDER BY CASE period WHEN 'daily' THEN 0 WHEN 'weekly' THEN 1 ELSE 2 END, "
-        "period_key DESC"
-    ).fetchall()
-    render.render_topics(config, build_topic_groups(topic_rows))
+    render.render_topics(config, topics.build_topic_groups(conn))
+    from virt_report.metrics import build_metrics
+    render.render_metrics(config, build_metrics(conn, config))
+    from virt_report import rss
+    feeds = {
+        config.output_dir / "feed.xml": rss.report_feed(conn, config),
+        config.output_dir / "daily" / "feed.xml": rss.report_feed(conn, config, "daily"),
+        config.output_dir / "weekly" / "feed.xml": rss.report_feed(conn, config, "weekly"),
+        config.output_dir / "monthly" / "feed.xml": rss.report_feed(conn, config, "monthly"),
+        config.output_dir / "topics" / "security" / "feed.xml": rss.security_feed(conn, config),
+    }
+    for path, body in feeds.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
     try:
         from virt_report.kvm_forum import load_content
         editions, analysis = load_content()
@@ -300,6 +309,7 @@ def cmd_backfill_kvm(args, config: Config) -> None:
             print(f"回填 {url}（从 {args.since} 起）")
             lore_git.fetch(conn, replace(source, url=url), since=since)
         threads.rebuild_threads(conn)
+        topics.sync_topic_index(conn)
     finally:
         conn.close()
 

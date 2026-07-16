@@ -190,3 +190,17 @@ def render_topics_html(config: Config, groups: list[dict]) -> str:
     env = _env()
     tpl = env.get_template("topics.html")
     return tpl.render(groups=groups, root="", site_name=config.name)
+
+
+def render_metrics(config: Config, metrics: dict, filename: str = "metrics.html") -> Path:
+    html = render_metrics_html(config, metrics)
+    out = Path(config.output_dir) / filename
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    return out
+
+
+def render_metrics_html(config: Config, metrics: dict) -> str:
+    env = _env()
+    tpl = env.get_template("metrics.html")
+    return tpl.render(metrics=metrics, root="", site_name=config.name)

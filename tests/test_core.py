@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from virt_report import db, maintenance
+from virt_report import db, maintenance, metrics, rss
 from virt_report.collectors import base, hyperkitty, mbox
 from virt_report.config import Config, MailingListSource, Sources
 from virt_report.processing import architecture, category, classify, threads, topics
@@ -314,16 +314,15 @@ def test_home_has_daily_weekly_monthly_archive_tabs():
     assert "topics.html" in page
 
 
-def test_archive_and_topic_pages_render():
+def test_archive_and_topic_pages_render(tmp_db):
     archive = html_render.render_archive_html(Config(), "daily", [{
         "period_key": "2026-07-13", "item_count": 18,
         "model": "deepseek-v4-flash", "generated_at": "2026-07-14T00:00:00Z",
     }])
     assert "2026-07-13.html" in archive
-    groups = topics.build_topic_groups([{
-        "period": "daily", "period_key": "2026-07-13",
-        "content_json": '{"sections":[{"name":"KVM","items":[{"title":"Improve migration performance","url":"u","summary":"s"}]}]}',
-    }])
+    _insert(tmp_db, "topic-1", subject="Improve migration performance")
+    threads.rebuild_threads(tmp_db)
+    groups = topics.build_topic_groups(tmp_db)
     page = html_render.render_topics_html(Config(), groups)
     assert "热迁移" in page
     assert "虚机性能" in page
@@ -356,7 +355,7 @@ def test_weekly_range_is_local_inclusive_natural_week():
     assert value["full"] == "2026-07-06 至 2026-07-12"
 
 
-def test_archive_and_topics_offer_pagination_over_ten_items():
+def test_archive_and_topics_offer_pagination_over_ten_items(tmp_db):
     reports = [{
         "period_key": f"2026-07-{day:02d}", "item_count": 20,
         "model": "test", "generated_at": "2026-07-14T00:00:00Z",
@@ -365,15 +364,66 @@ def test_archive_and_topics_offer_pagination_over_ten_items():
     assert archive.count("data-page-item href") == 11
     assert '<option value="30">30</option>' in archive
 
-    items = ",".join(
-        '{"title":"migration %d","url":"u%d"}' % (i, i) for i in range(11)
-    )
-    groups = topics.build_topic_groups([{
-        "period": "daily", "period_key": "2026-07-13",
-        "content_json": '{"sections":[{"name":"KVM","items":[' + items + ']}]}',
-    }])
+    for index in range(11):
+        _insert(tmp_db, f"migration-{index}", subject=f"migration {index}")
+    threads.rebuild_threads(tmp_db)
+    groups = topics.build_topic_groups(tmp_db)
     page = html_render.render_topics_html(Config(), groups)
     assert "data-page-controls" in page
+
+
+def test_security_topic_requires_raw_evidence_and_strict_cve(tmp_db):
+    _insert(tmp_db, "cve", subject="KVM: fix CVE-2026-46113 use-after-free")
+    _insert(tmp_db, "placeholder", subject="QEMU: CVE-2026-XXXX placeholder")
+    _insert(tmp_db, "cca", subject="KVM: arm64: add Arm CCA support")
+    threads.rebuild_threads(tmp_db)
+    assert topics.sync_topic_index(tmp_db) == 3
+    assert topics.sync_topic_index(tmp_db) == 0
+    security = next(group for group in topics.build_topic_groups(tmp_db)
+                    if group["key"] == "security")
+    by_title = {item["title"]: item for item in security["items"]}
+    assert by_title["KVM: fix CVE-2026-46113 use-after-free"]["cve_ids"] == [
+        "CVE-2026-46113"
+    ]
+    assert "QEMU: CVE-2026-XXXX placeholder" not in by_title
+    assert by_title["KVM: arm64: add Arm CCA support"]["security_type"] == "enhancement"
+
+
+def test_security_topic_does_not_treat_generic_patch_replies_as_defects(tmp_db):
+    _insert(tmp_db, "rmm", subject="firmware: arm_rmm: Add RMM v2.0 support")
+    _insert(tmp_db, "memfd", subject="KVM: guest_memfd cleanups")
+    _insert(tmp_db, "nsvm", subject="KVM: x86: optimize nSVM TLB flushes")
+    _insert(tmp_db, "oob", subject="QEMU: fix out-of-bounds access")
+    threads.rebuild_threads(tmp_db)
+    security = next(group for group in topics.build_topic_groups(tmp_db)
+                    if group["key"] == "security")
+    by_title = {item["title"]: item for item in security["items"]}
+    assert by_title["firmware: arm_rmm: Add RMM v2.0 support"]["security_type"] == "enhancement"
+    assert "KVM: guest_memfd cleanups" not in by_title
+    assert "KVM: x86: optimize nSVM TLB flushes" not in by_title
+    assert by_title["QEMU: fix out-of-bounds access"]["security_type"] == "defect"
+
+
+def test_rss_and_metrics_use_stored_report_usage(tmp_db):
+    content = {
+        "period": "daily", "period_key": "2026-07-15", "headline": "测试日报",
+        "overview": [], "fallback": False,
+        "llm_usage": {"prompt_tokens": 1000, "completion_tokens": 500,
+                      "prompt_cache_hit_tokens": 200,
+                      "prompt_cache_miss_tokens": 800},
+    }
+    db.save_report(tmp_db, "daily", "2026-07-15", content, "Asia/Shanghai",
+                   item_count=1, model="deepseek-v4-flash")
+    feed = rss.report_feed(tmp_db, Config(), "daily")
+    assert "<rss version=\"2.0\">" in feed
+    assert "测试日报" in feed
+    values = metrics.build_metrics(tmp_db, Config())
+    assert values["models"]["deepseek-v4-flash"]["total_tokens"] == 1500
+    assert values["models"]["deepseek-v4-flash"]["calls"] == 1
+    assert values["estimated_cost_cny"] > 0
+    page = html_render.render_metrics_html(Config(), values)
+    assert "built-in method" not in page
+    assert ">0</strong><span>原始条目" in page
 
 
 def test_kvm_forum_renders_newest_first_with_source_links():

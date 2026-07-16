@@ -13,6 +13,7 @@ import json
 import logging
 import re
 import sqlite3
+from itertools import groupby
 
 from virt_report import db
 from . import classify, rank
@@ -120,82 +121,67 @@ def _compute_ml_roots(conn: sqlite3.Connection) -> dict[tuple[str, str], str]:
 
 
 def rebuild_threads(conn: sqlite3.Connection) -> int:
-    """重建所有线程聚合。返回线程数。"""
+    """在单个事务中原子重建线程，避免 Web 读到清空后的半成品。"""
     roots = _compute_ml_roots(conn)
-
-    # 更新 ml 条目的 thread_root (按 native_id)
+    built = []
     with db.transaction(conn):
         conn.executemany(
             "UPDATE items SET thread_root=? WHERE project=? AND native_id=? AND source='ml'",
             [(root, project, nid) for (project, nid), root in roots.items()],
         )
-
-    # 清掉旧线程 (全量重建，避免已删 items 的脏线程残留)
-    with db.transaction(conn):
-        conn.execute("DELETE FROM threads")
-
-    # 按线程分组聚合 (ml 用 thread_root，gitlab thread_root=native_id)
-    groups = conn.execute(
-        """
-        SELECT source, project, thread_root,
-               MIN(created_at) AS first_seen, MAX(activity_at) AS last_seen,
-               COUNT(*) AS cnt
-        FROM items
-        WHERE thread_root IS NOT NULL
-        GROUP BY source, project, thread_root
-        """
-    ).fetchall()
-
-    n = 0
-    for g in groups:
-        items = conn.execute(
-            "SELECT * FROM items WHERE source=? AND project=? AND thread_root=? "
-            "ORDER BY created_at ASC",
-            (g["source"], g["project"], g["thread_root"]),
+        rows = conn.execute(
+            "SELECT * FROM items WHERE thread_root IS NOT NULL "
+            "ORDER BY source,project,thread_root,created_at"
         ).fetchall()
-        if not items:
-            continue
+        key = lambda item: (item["source"], item["project"], item["thread_root"])
+        for (source, project, root), grouped in groupby(rows, key=key):
+            items = list(grouped)
 
-        kinds = [it["kind"] for it in items]
-        subjects = [it["subject"] for it in items]
-        authors = {it["author"] for it in items if it["author"]}
-        subject = classify.best_subject(subjects)
+            kinds = [it["kind"] for it in items]
+            subjects = [it["subject"] for it in items]
+            authors = {it["author"] for it in items if it["author"]}
+            subject = classify.best_subject(subjects)
 
-        if g["source"] == "ml":
-            message_count = len(items)
-            participant_count = len(authors)
-            patch_count = sum(1 for k in kinds if k == "patch")
-        else:
-            # gitlab: 一个 issue/MR，讨论量来自 notes
-            rj = json.loads(items[0]["raw_json"] or "{}")
-            notes = rj.get("user_notes_count", 0) or 0
-            message_count = 1 + notes
-            participant_count = 1
-            patch_count = 0
+            if source == "ml":
+                message_count = len(items)
+                participant_count = len(authors)
+                patch_count = sum(1 for kind in kinds if kind == "patch")
+            else:
+                # gitlab: 一个 issue/MR，讨论量来自 notes
+                try:
+                    raw = json.loads(items[0]["raw_json"] or "{}")
+                except (TypeError, ValueError):
+                    raw = {}
+                notes = raw.get("user_notes_count", 0) or 0
+                message_count = 1 + notes
+                participant_count = 1
+                patch_count = 0
 
-        # 线程 url: ml 取根邮件 url，gitlab 取条目 url
-        root_item = next((it for it in items if it["message_id"] == g["thread_root"]
-                          or it["thread_root"] == it["native_id"]), items[0])
-        url = root_item["url"]
+            # 线程 url: ml 取根邮件 url，gitlab 取条目 url
+            root_item = next((it for it in items if it["message_id"] == root
+                              or it["thread_root"] == it["native_id"]), items[0])
 
-        thread = {
-            "thread_key": f"{g['source']}:{g['project']}:{g['thread_root']}",
-            "subject": subject,
-            "source": g["source"],
-            "project": g["project"],
-            "kind": classify.thread_kind(kinds),
-            "message_count": message_count,
-            "participant_count": participant_count,
-            "patch_count": patch_count,
-            "first_seen": g["first_seen"],
-            "last_seen": g["last_seen"],
-            "salience_score": 0.0,
-            "topic_tag": classify.extract_topic(subject),
-            "url": url,
-        }
-        thread["salience_score"] = rank.score(thread, items)
-        db.upsert_thread(conn, thread)
-        n += 1
+            thread = {
+                "thread_key": f"{source}:{project}:{root}", "subject": subject,
+                "source": source, "project": project,
+                "kind": classify.thread_kind(kinds), "message_count": message_count,
+                "participant_count": participant_count, "patch_count": patch_count,
+                "first_seen": min(item["created_at"] for item in items),
+                "last_seen": max(item["activity_at"] for item in items),
+                "salience_score": 0.0, "topic_tag": classify.extract_topic(subject),
+                "summary_cached": None, "url": root_item["url"],
+            }
+            thread["salience_score"] = rank.score(thread, items)
+            built.append(thread)
 
-    log.info("rebuilt %d threads", n)
-    return n
+        conn.execute("DELETE FROM threads")
+        conn.executemany(
+            "INSERT INTO threads (thread_key,subject,source,project,kind,message_count,"
+            "participant_count,patch_count,first_seen,last_seen,salience_score,topic_tag,"
+            "summary_cached,url) VALUES (:thread_key,:subject,:source,:project,:kind,"
+            ":message_count,:participant_count,:patch_count,:first_seen,:last_seen,"
+            ":salience_score,:topic_tag,:summary_cached,:url)", built,
+        )
+
+    log.info("rebuilt %d threads", len(built))
+    return len(built)
