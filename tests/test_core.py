@@ -278,13 +278,19 @@ def test_about_page_and_architecture_badge_render():
     assert "prefers-color-scheme:dark" not in page
 
 
-def test_index_context_limits_recent_daily_reports(tmp_db):
-    for day in range(1, 21):
-        key = f"2026-07-{day:02d}"
-        db.save_report(tmp_db, "daily", key, {"period": "daily", "period_key": key},
-                       "Asia/Shanghai", item_count=1, model="test")
+def test_index_context_applies_home_report_limits(tmp_db):
+    for index in range(1, 21):
+        for period, key in (
+            ("daily", f"2026-07-{index:02d}"),
+            ("weekly", f"2026-W{index:02d}"),
+            ("monthly", f"2026-{index:02d}"),
+        ):
+            db.save_report(tmp_db, period, key, {"period": period, "period_key": key},
+                           "Asia/Shanghai", item_count=1, model="test")
     context = web_server._index_context(tmp_db)
-    assert len(context["daily"]) == 14
+    assert len(context["daily"]) == 15
+    assert len(context["weekly"]) == 9
+    assert len(context["monthly"]) == 6
     assert context["daily"][0]["period_key"] == "2026-07-20"
     assert [cal["month_key"] for cal in context["calendars"]] == ["2026-07"]
 
@@ -376,6 +382,8 @@ def test_archive_and_topic_detail_offer_pagination_over_ten_items(tmp_db):
     assert migration["total"] == 11
     assert migration["featured_count"] == 8
     assert "重点 8 / 共 11" in page
+    assert ">查看全部条目</a>" in page
+    assert "查看热迁移全部条目" not in page
     assert "topics/migration/" in page
     detail = topics.build_topic_detail(tmp_db, "migration", page=2, per_page=10)
     assert detail["page"] == 2 and detail["pages"] == 2
@@ -452,6 +460,8 @@ def test_metrics_access_accepts_bearer_and_signed_cookie():
     assert not access.is_authorized({"Authorization": "Bearer wrong"}, key)
     login = html_render.render_metrics_login_html(Config(), error=True)
     assert 'type="password"' in login and "密钥不正确" in login
+    assert "该页面包含采集状态信息，请输入访问密钥。" in login
+    assert "模型成本信息" not in login
     assert ">运行状态</a>" in login
     assert ">运行</a>" not in login
 

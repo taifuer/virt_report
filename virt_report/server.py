@@ -45,9 +45,11 @@ def _index_context(conn, timezone: str = "Asia/Shanghai") -> dict:
     return {
         "cal": calendars[-1],
         "calendars": calendars,
-        "daily": daily[:14],
-        "weekly": weekly,
-        "monthly": _list_reports(conn, "monthly"),
+        "daily": render.limit_home_reports("daily", daily),
+        "weekly": render.limit_home_reports("weekly", weekly),
+        "monthly": render.limit_home_reports(
+            "monthly", _list_reports(conn, "monthly")
+        ),
     }
 
 

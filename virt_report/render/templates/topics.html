@@ -9,9 +9,8 @@
   <header><div class="kicker">Topic Tracker</div><h1>专题</h1><p>每个专题优先展示架构重点、CVE、安全缺陷、活跃讨论及已进入报告的内容；完整条目可进入专题详情查看。</p></header>
   <nav class="topic-nav" aria-label="专题目录">{% for group in groups %}<a href="#{{ group.key }}">{{ group.name }} <span>{{ group.total }}</span></a>{% endfor %}</nav>
   {% for group in groups %}<section class="topic-group" id="{{ group.key }}">
-    <div class="topic-heading"><div><h2>{{ group.name }}</h2><p>{{ group.description }}</p></div><span class="count">重点 {{ group.featured_count }} / 共 {{ group.total }}</span></div>
+    <div class="topic-heading"><div><h2>{{ group.name }}</h2><p>{{ group.description }}</p></div><div class="topic-heading-actions"><span class="count">重点 {{ group.featured_count }} / 共 {{ group.total }}</span><a href="{{ group.detail_url }}">查看全部条目</a></div></div>
     {{ topic_items(group['items']) }}
-    <div class="topic-more"><a href="{{ group.detail_url }}">查看{{ group.name }}全部条目</a></div>
   </section>{% endfor %}
 </article>
 {% endblock %}

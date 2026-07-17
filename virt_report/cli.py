@@ -105,8 +105,9 @@ def _render_index(config: Config, conn) -> None:
     weekly = [dict(item, period_range=render._period_range(
         "weekly", item["period_key"], config.timezone
     )) for item in weekly]
-    monthly = _list_reports(conn, "monthly")
-    daily = _list_reports(conn, "daily")[:14]
+    monthly = render.limit_home_reports("monthly", _list_reports(conn, "monthly"))
+    daily = render.limit_home_reports("daily", _list_reports(conn, "daily"))
+    weekly = render.limit_home_reports("weekly", weekly)
     source_health = []
     for source, project, label in (
         ("ml", "qemu-devel", "QEMU 邮件"), ("ml", "kvm", "KVM 邮件"),
