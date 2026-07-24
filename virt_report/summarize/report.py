@@ -27,6 +27,7 @@ REASONING_EFFORT = {"daily": "high", "weekly": "high", "monthly": "high"}
 # 周期越大、线程越多，单条摘要越短以控制输入
 EXCERPT_LEN = {"daily": 450, "weekly": 350, "monthly": 250}
 ITEM_LIMIT = {"daily": 30, "weekly": 27, "monthly": 36}
+DAILY_CONTINUING_LIMIT = 5
 
 
 
@@ -65,11 +66,63 @@ def _thread_context(conn: sqlite3.Connection, row) -> dict[str, str]:
     }
 
 
-def _build_threads_data(conn: sqlite3.Connection, rows, excerpt_len: int = 300) -> list[dict]:
+def _daily_report_history(conn: sqlite3.Connection, period_key: str,
+                          limit: int = 14) -> dict[str, dict]:
+    """Return the most recent published context for each URL before a daily report."""
+    history: dict[str, dict] = {}
+    rows = conn.execute(
+        "SELECT period_key,content_json FROM reports WHERE period='daily' "
+        "AND period_key<? ORDER BY period_key DESC LIMIT ?", (period_key, limit),
+    ).fetchall()
+    for row in rows:
+        try:
+            content = json.loads(row["content_json"])
+        except (TypeError, ValueError):
+            continue
+        for section in content.get("sections", []):
+            for item in section.get("items", []):
+                url = item.get("url")
+                if url and url not in history:
+                    history[url] = {
+                        "period_key": row["period_key"],
+                        "summary": item.get("summary", "") or "",
+                        "impact": item.get("impact", "") or "",
+                        "status": item.get("status", "") or "",
+                    }
+    return history
+
+
+def _limit_continuing_threads(rows: list, history: dict[str, dict],
+                              limit: int = DAILY_CONTINUING_LIMIT) -> list:
+    """Keep all unseen threads and only a small, project-balanced update set."""
+    fresh = [row for row in rows if row["url"] not in history]
+    continuing = [row for row in rows if row["url"] in history]
+    selected = []
+    selected_keys = set()
+    for _key, _name, projects in _PROJECT_GROUPS:
+        match = next((row for row in continuing if row["project"] in projects), None)
+        if match is not None and len(selected) < limit:
+            selected.append(match)
+            selected_keys.add(match["thread_key"])
+    for row in continuing:
+        if len(selected) >= limit:
+            break
+        if row["thread_key"] not in selected_keys:
+            selected.append(row)
+            selected_keys.add(row["thread_key"])
+    combined = fresh + selected
+    combined.sort(key=lambda row: (row["salience_score"], row["message_count"]),
+                  reverse=True)
+    return combined
+
+
+def _build_threads_data(conn: sqlite3.Connection, rows, excerpt_len: int = 300,
+                        history: dict[str, dict] | None = None) -> list[dict]:
     data = []
     for i, r in enumerate(rows, 1):
         context = _thread_context(conn, r)
         architectures = detect_architectures((r["subject"], r["topic_tag"]))
+        previous = (history or {}).get(r["url"])
         data.append({
             "ref": f"T{i:03d}",
             "rank": i,
@@ -87,6 +140,8 @@ def _build_threads_data(conn: sqlite3.Connection, rows, excerpt_len: int = 300) 
             "architectures": architectures,
             "url": r["url"],
             "time": (r["last_seen"] or "")[:10],
+            "novelty": "updated" if previous else "new",
+            "previous_report": previous or {},
         })
     return data
 
@@ -245,6 +300,10 @@ def _sanitize(overview: list, sections: list,
                     "architectures": source.get("architectures", []),
                     "category": source.get("category", "other"),
                     "category_label": category_label(source.get("category")),
+                    "novelty": source.get("novelty", "new"),
+                    "novelty_label": ("有新进展" if source.get("novelty") == "updated"
+                                      else "首次出现"),
+                    "previous_report": source.get("previous_report", {}),
                 })
         for items in buckets.values():
             items.sort(key=lambda item: (
@@ -374,7 +433,10 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
             conn, start_iso, end_iso, members, quotas[key]
         ))
     rows.sort(key=lambda r: (r["salience_score"], r["message_count"]), reverse=True)
-    threads_data = _build_threads_data(conn, rows, EXCERPT_LEN[period])
+    history = _daily_report_history(conn, period_key) if period == "daily" else {}
+    if period == "daily" and history:
+        rows = _limit_continuing_threads(rows, history)
+    threads_data = _build_threads_data(conn, rows, EXCERPT_LEN[period], history)
 
     provider = llm_provider.get_provider(config.llm)
     model = {"daily": config.llm.daily_model, "weekly": config.llm.weekly_model,

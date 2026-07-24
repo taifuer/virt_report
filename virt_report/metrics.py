@@ -40,6 +40,14 @@ def build_metrics(conn: sqlite3.Connection, config: Config) -> dict:
     report_counts = {row["period"]: row["count"] for row in conn.execute(
         "SELECT period,COUNT(*) count FROM reports GROUP BY period"
     )}
+    scheduler_runs = [dict(row) for row in conn.execute(
+        "SELECT identity,job_name,scheduled_at,started_at,finished_at,status,attempt,"
+        "exit_code,error FROM scheduler_runs ORDER BY id DESC LIMIT 20"
+    ).fetchall()]
+    scheduler_failures_24h = conn.execute(
+        "SELECT COUNT(*) FROM scheduler_runs WHERE status NOT IN ('success','running') "
+        "AND julianday(started_at)>=julianday('now','-1 day')"
+    ).fetchone()[0]
     latest_sources = []
     keys = conn.execute(
         "SELECT DISTINCT source,project FROM fetch_runs ORDER BY source,project"
@@ -118,6 +126,8 @@ def build_metrics(conn: sqlite3.Connection, config: Config) -> dict:
     return {
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "counts": counts, "report_counts": report_counts,
+        "scheduler_runs": scheduler_runs,
+        "scheduler_failures_24h": scheduler_failures_24h,
         "sources": latest_sources, "reports": report_rows[:30], "analyses": analyses,
         "models": dict(model_totals), "fallback_count": fallback_count,
         "estimated_cost_cny": round(sum(

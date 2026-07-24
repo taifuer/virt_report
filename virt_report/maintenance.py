@@ -7,7 +7,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -44,6 +44,20 @@ def backup_database(db_path: Path, target: Path | None = None) -> tuple[Path, st
             shutil.copyfileobj(src, dst, length=1024 * 1024)
         os.replace(compressed, target)
     return target, sha256_file(target)
+
+
+def prune_backups(directory: Path, keep_days: int, *, prefix: str = "auto-") -> list[Path]:
+    """Remove expired automatic snapshots without touching manual backups."""
+    if keep_days <= 0 or not directory.exists():
+        return []
+    cutoff = datetime.now(timezone.utc) - timedelta(days=keep_days)
+    removed = []
+    for path in directory.glob(f"{prefix}*.db.gz"):
+        modified = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
+        if modified < cutoff:
+            path.unlink()
+            removed.append(path)
+    return removed
 
 
 def restore_database(db_path: Path, archive: Path, *, expected_sha256: str | None = None,

@@ -1,4 +1,5 @@
 """virt-report 基础逻辑测试 (不调 LLM/网络)。覆盖周期窗口、线程折叠、URL/时间解析、sanitize、分类。"""
+import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,7 +9,7 @@ import pytest
 
 from virt_report import access, db, maintenance, metrics, rss
 from virt_report.collectors import base, hyperkitty, mbox
-from virt_report.config import Config, MailingListSource, Sources
+from virt_report.config import Config, MailingListSource, Sources, Storage
 from virt_report.processing import architecture, category, classify, threads, topics
 from virt_report.render import render as html_render
 from virt_report import server as web_server
@@ -256,6 +257,7 @@ def test_about_page_and_architecture_badge_render():
     content = {
         "period": "daily", "period_key": "2026-07-12", "label": "2026-07-12",
         "headline": "", "fallback": False, "model": "test", "timezone": "Asia/Shanghai",
+        "llm_usage": {"total_tokens": 12345},
         "window": {"start": "2026-07-11T16:00:00Z", "end": "2026-07-12T16:00:00Z"},
         "stats": {"total_threads": 1, "total_items": 1, "ml_patches": 1,
                   "ml_rfc": 0, "gl_issues_opened": 0, "gl_mrs_merged": 0,
@@ -272,6 +274,9 @@ def test_about_page_and_architecture_badge_render():
     assert 'class="tag arch">x86' in page
     assert '<div class="d-actions"><span class="tag kind-other">' in page
     assert '<div class="d-meta"><span class="tag arch">x86' in page
+    assert 'data-item-filter="x86"' in page and 'data-item-filter="bug"' in page
+    assert 'data-architectures="x86"' in page
+    assert "12,345 tokens" not in page
     assert "↗" not in page
     assert 'name="color-scheme" content="light"' in page
     assert "theme-toggle" not in page
@@ -289,8 +294,8 @@ def test_index_context_applies_home_report_limits(tmp_db):
                            "Asia/Shanghai", item_count=1, model="test")
     context = web_server._index_context(tmp_db)
     assert len(context["daily"]) == 15
-    assert len(context["weekly"]) == 9
-    assert len(context["monthly"]) == 6
+    assert len(context["weekly"]) == 15
+    assert len(context["monthly"]) == 15
     assert context["daily"][0]["period_key"] == "2026-07-20"
     assert [cal["month_key"] for cal in context["calendars"]] == ["2026-07"]
 
@@ -305,6 +310,12 @@ def test_readiness_reports_missing_and_fresh_sources(tmp_db):
         success=True, complete=True, new_count=0,
         requested_since="2026-07-14T00:00:00Z",
     )
+    payload = web_server._readiness(tmp_db, config)
+    assert payload["status"] == "degraded"
+    for period, state in payload["reports"].items():
+        db.save_report(tmp_db, period, state["expected_key"], {
+            "period": period, "period_key": state["expected_key"], "fallback": False,
+        }, config.timezone, model="test")
     payload = web_server._readiness(tmp_db, config)
     assert payload["status"] == "ok"
     assert payload["sources"][0]["fresh"] is True
@@ -321,6 +332,7 @@ def test_home_has_daily_weekly_monthly_archive_tabs():
     assert "index-2026-07.html" not in page
     assert "daily/index.html" in page
     assert "topics.html" in page
+    assert page.count("data-home-report-tab=") == 3
 
 
 def test_archive_and_topic_pages_render(tmp_db):
@@ -331,6 +343,7 @@ def test_archive_and_topic_pages_render(tmp_db):
     assert "2026-07-13.html" in archive
     _insert(tmp_db, "topic-1", subject="Improve migration performance")
     threads.rebuild_threads(tmp_db)
+    _save_report_mentions(tmp_db, "weekly", "2026-W28", ["u"])
     groups = topics.build_topic_groups(tmp_db)
     page = html_render.render_topics_html(Config(), groups)
     assert "热迁移" in page
@@ -376,12 +389,13 @@ def test_archive_and_topic_detail_offer_pagination_over_ten_items(tmp_db):
     for index in range(11):
         _insert(tmp_db, f"migration-{index}", subject=f"migration {index}")
     threads.rebuild_threads(tmp_db)
+    _save_report_mentions(tmp_db, "weekly", "2026-W28", ["u"])
     groups = topics.build_topic_groups(tmp_db)
     page = html_render.render_topics_html(Config(), groups)
     migration = next(group for group in groups if group["key"] == "migration")
     assert migration["total"] == 11
     assert migration["featured_count"] == 8
-    assert "重点 8 / 共 11" in page
+    assert "汇总 11 · 近期 0" in page
     assert ">查看全部条目</a>" in page
     assert "查看热迁移全部条目" not in page
     assert "topics/migration/" in page
@@ -398,6 +412,7 @@ def test_security_topic_requires_raw_evidence_and_strict_cve(tmp_db):
     _insert(tmp_db, "placeholder", subject="QEMU: CVE-2026-XXXX placeholder")
     _insert(tmp_db, "cca", subject="KVM: arm64: add Arm CCA support")
     threads.rebuild_threads(tmp_db)
+    _save_report_mentions(tmp_db, "weekly", "2026-W28", ["u"])
     assert topics.sync_topic_index(tmp_db) == 3
     assert topics.sync_topic_index(tmp_db) == 0
     security = next(group for group in topics.build_topic_groups(tmp_db)
@@ -408,8 +423,8 @@ def test_security_topic_requires_raw_evidence_and_strict_cve(tmp_db):
     ]
     assert "QEMU: CVE-2026-XXXX placeholder" not in by_title
     assert by_title["KVM: arm64: add Arm CCA support"]["security_type"] == "enhancement"
-    assert "Arm CCA" in by_title["KVM: arm64: add Arm CCA support"]["summary"]
-    assert by_title["KVM: arm64: add Arm CCA support"]["summary_source"] == "rule"
+    assert by_title["KVM: arm64: add Arm CCA support"]["summary"] == "weekly 精选摘要"
+    assert by_title["KVM: arm64: add Arm CCA support"]["summary_source"] == "weekly"
 
 
 def test_security_topic_does_not_treat_generic_patch_replies_as_defects(tmp_db):
@@ -418,6 +433,7 @@ def test_security_topic_does_not_treat_generic_patch_replies_as_defects(tmp_db):
     _insert(tmp_db, "nsvm", subject="KVM: x86: optimize nSVM TLB flushes")
     _insert(tmp_db, "oob", subject="QEMU: fix out-of-bounds access")
     threads.rebuild_threads(tmp_db)
+    _save_report_mentions(tmp_db, "weekly", "2026-W28", ["u"])
     security = next(group for group in topics.build_topic_groups(tmp_db)
                     if group["key"] == "security")
     by_title = {item["title"]: item for item in security["items"]}
@@ -425,6 +441,38 @@ def test_security_topic_does_not_treat_generic_patch_replies_as_defects(tmp_db):
     assert "KVM: guest_memfd cleanups" not in by_title
     assert "KVM: x86: optimize nSVM TLB flushes" not in by_title
     assert by_title["QEMU: fix out-of-bounds access"]["security_type"] == "defect"
+
+
+def test_topic_public_layers_use_curated_and_recent_report_evidence(tmp_db):
+    _insert(tmp_db, "curated", subject="migration curated", url="https://e/c",
+            created="2026-06-01T00:00:00Z")
+    _insert(tmp_db, "recent", subject="migration recent", url="https://e/r",
+            created="2026-07-20T00:00:00Z")
+    _insert(tmp_db, "stale", subject="migration stale", url="https://e/s",
+            created="2026-06-01T00:00:00Z")
+    threads.rebuild_threads(tmp_db)
+    _save_report_mentions(tmp_db, "weekly", "2026-W22", ["https://e/c"])
+    _save_report_mentions(tmp_db, "daily", "2026-07-20", ["https://e/r", "https://e/s"])
+    migration = next(group for group in topics.build_topic_groups(tmp_db)
+                     if group["key"] == "migration")
+    assert migration["raw_total"] == 3
+    assert migration["curated_count"] == 1
+    assert migration["recent_count"] == 1
+    assert {item["url"] for item in migration["items"]} == {
+        "https://e/c", "https://e/r",
+    }
+
+
+def test_daily_continuing_threads_are_capped_but_new_threads_remain():
+    rows = [{
+        "url": f"https://e/{index}", "thread_key": f"t{index}",
+        "project": "qemu-devel", "salience_score": 100 - index,
+        "message_count": index,
+    } for index in range(10)]
+    history = {row["url"]: {"summary": "旧摘要"} for row in rows[:8]}
+    selected = report._limit_continuing_threads(rows, history, limit=3)
+    assert {row["url"] for row in rows[8:]}.issubset({row["url"] for row in selected})
+    assert sum(row["url"] in history for row in selected) == 3
 
 
 def test_rss_and_metrics_use_stored_report_usage(tmp_db):
@@ -502,6 +550,33 @@ def test_scheduler_uses_just_finished_periods():
         Config(), datetime(2026, 7, 20, 0, 5, tzinfo=tz), weekly_now
     )
     assert {name for name, _command, _at in caught_up} == {"fetch", "daily", "weekly"}
+    backup_now = datetime(2026, 7, 20, 1, 5, tzinfo=tz)
+    assert any(name == "backup" and command[-2:] == ["--keep-days", "14"]
+               for name, command in scheduler.scheduled_commands(Config(), backup_now))
+
+
+def test_scheduler_retries_fallback_report_and_records_runs(tmp_path):
+    config = Config(storage=Storage(db_path=tmp_path / "scheduler.db"))
+    conn = db.connect(config.db_path)
+    db.save_report(conn, "daily", "2026-07-14", {
+        "period": "daily", "period_key": "2026-07-14", "fallback": True,
+    }, config.timezone, model="test")
+    conn.close()
+    command = ["daily", "2026-07-14", "--no-fetch"]
+    assert scheduler._report_exists(config, "daily", command) is False
+    conn = db.connect(config.db_path)
+    db.save_report(conn, "daily", "2026-07-14", {
+        "period": "daily", "period_key": "2026-07-14", "fallback": False,
+    }, config.timezone, model="test")
+    run_id = db.start_scheduler_run(
+        conn, identity="daily:2026-07-14", job_name="daily",
+        scheduled_at="2026-07-15T00:15:00+08:00", attempt=1,
+    )
+    db.finish_scheduler_run(conn, run_id, status="success", exit_code=0)
+    values = metrics.build_metrics(conn, config)
+    conn.close()
+    assert scheduler._report_exists(config, "daily", command) is True
+    assert values["scheduler_runs"][0]["status"] == "success"
 
 
 def test_database_backup_and_restore_roundtrip(tmp_path):
@@ -528,6 +603,17 @@ def test_database_backup_and_restore_roundtrip(tmp_path):
     assert db.get_report(connection, "daily", "2026-07-14") is not None
     assert db.get_report(connection, "daily", "2026-07-15") is None
     connection.close()
+
+
+def test_prune_backups_only_removes_expired_automatic_files(tmp_path):
+    old = tmp_path / "auto-2026-01-01.db.gz"
+    current = tmp_path / "auto-2026-07-24.db.gz"
+    manual = tmp_path / "virt-report.db.gz"
+    for path in (old, current, manual):
+        path.write_bytes(b"snapshot")
+    os.utime(old, (1, 1))
+    assert maintenance.prune_backups(tmp_path, 14) == [old]
+    assert current.exists() and manual.exists()
 
 
 # ---------- threads: 主题/系列折叠 (纯函数) ----------
@@ -561,13 +647,23 @@ def tmp_db():
         conn.close()
 
 
-def _insert(conn, nid, mid=None, irt=None, subject="s", author="a", created="2026-07-12T00:00:00Z"):
+def _insert(conn, nid, mid=None, irt=None, subject="s", author="a",
+            created="2026-07-12T00:00:00Z", url="u"):
     db.upsert_item(conn, {
         "source": "ml", "project": "qemu-devel", "native_id": nid, "message_id": mid,
         "in_reply_to": irt, "thread_root": None, "author": author, "subject": subject,
-        "kind": "patch", "created_at": created, "updated_at": created, "url": "u",
+        "kind": "patch", "created_at": created, "updated_at": created, "url": url,
         "body_excerpt": "e", "raw_json": {},
     })
+
+
+def _save_report_mentions(conn, period, period_key, urls):
+    items = [{"url": url, "summary": f"{period} 精选摘要", "impact": "影响说明"}
+             for url in urls]
+    db.save_report(conn, period, period_key, {
+        "period": period, "period_key": period_key, "fallback": False,
+        "sections": [{"key": "qemu", "items": items}],
+    }, "Asia/Shanghai", item_count=len(items), model="test")
 
 
 def test_compute_roots_inreplyto_chain(tmp_db):

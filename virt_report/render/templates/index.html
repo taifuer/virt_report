@@ -6,34 +6,39 @@
   <h1>Libvirt/QEMU/KVM 虚拟化社区动态</h1>
   <p>汇总 QEMU、KVM、Libvirt 邮件列表与 GitLab 中的补丁、RFC、缺陷和设计讨论，生成中文日报、周报和月报。</p>
 </section>
+<div class="home-report-tabs" role="tablist" aria-label="首页报告类型">
+  <button type="button" class="active" role="tab" aria-selected="true" data-home-report-tab="daily">日报</button>
+  <button type="button" role="tab" aria-selected="false" data-home-report-tab="weekly">周报</button>
+  <button type="button" role="tab" aria-selected="false" data-home-report-tab="monthly">月报</button>
+</div>
 <div class="home-grid">
   <div>
-    <section class="report-group first" id="daily">
+    <section class="report-group first" id="daily" data-home-report-panel="daily">
       <div class="group-head"><h2>日报</h2><span>最近 {{ ctx.daily|length if ctx else 0 }} 期</span></div>
       {% if ctx and ctx.daily %}<div class="report-list">
         {% for r in ctx.daily %}<a class="report-card" href="daily/{{ r.period_key }}.html">
-          <div class="report-card-top"><span class="type">日报</span><span class="r-model">{{ r.model or 'unknown' }}</span></div>
-          <div class="r-title">{{ r.period_key }}</div><div class="r-meta">{{ r.item_count }} 条动态 · {{ r.generated_date }} 生成</div>
+          <div class="report-card-top"><span class="type">日报</span></div>
+          <div class="r-title">{{ r.period_key }}</div>{% if r.headline %}<div class="r-summary">{{ r.headline }}</div>{% endif %}<div class="r-meta">{{ r.item_count }} 条动态 · {{ r.generated_date }} 生成</div>
         </a>{% endfor %}
-      </div>{% else %}<p class="empty-note">暂无日报，运行 <code>virt-report daily</code>。</p>{% endif %}
+      </div><a class="home-more" href="daily/index.html">查看全部日报</a>{% else %}<p class="empty-note">暂无日报，运行 <code>virt-report daily</code>。</p>{% endif %}
     </section>
-    <section class="report-group" id="weekly">
+    <section class="report-group" id="weekly" data-home-report-panel="weekly">
       <div class="group-head"><h2>周报</h2><span>最近 {{ ctx.weekly|length if ctx else 0 }} 期</span></div>
       {% if ctx and ctx.weekly %}<div class="report-list">
         {% for r in ctx.weekly %}<a class="report-card" href="weekly/{{ r.period_key }}.html">
-          <div class="report-card-top"><span class="type">周报</span><span class="r-model">{{ r.model or 'unknown' }}</span></div>
-          <div class="r-title">{{ r.period_key }} · {{ r.period_range.short }}</div><div class="r-meta">{{ r.item_count }} 条动态 · {{ r.generated_date }} 生成</div>
+          <div class="report-card-top"><span class="type">周报</span></div>
+          <div class="r-title">{{ r.period_key }} · {{ r.period_range.short }}</div>{% if r.headline %}<div class="r-summary">{{ r.headline }}</div>{% endif %}<div class="r-meta">{{ r.item_count }} 条动态 · {{ r.generated_date }} 生成</div>
         </a>{% endfor %}
-      </div>{% else %}<p class="empty-note">暂无周报，运行 <code>virt-report weekly</code>。</p>{% endif %}
+      </div><a class="home-more" href="weekly/index.html">查看全部周报</a>{% else %}<p class="empty-note">暂无周报，运行 <code>virt-report weekly</code>。</p>{% endif %}
     </section>
-    <section class="report-group" id="monthly">
+    <section class="report-group" id="monthly" data-home-report-panel="monthly">
       <div class="group-head"><h2>月报</h2><span>最近 {{ ctx.monthly|length if ctx else 0 }} 期</span></div>
       {% if ctx and ctx.monthly %}<div class="report-list">
         {% for r in ctx.monthly %}<a class="report-card" href="monthly/{{ r.period_key }}.html">
-          <div class="report-card-top"><span class="type">月报</span><span class="r-model">{{ r.model or 'unknown' }}</span></div>
-          <div class="r-title">{{ r.period_key }}</div><div class="r-meta">{{ r.item_count }} 条动态 · {{ r.generated_date }} 生成</div>
+          <div class="report-card-top"><span class="type">月报</span></div>
+          <div class="r-title">{{ r.period_key }}</div>{% if r.headline %}<div class="r-summary">{{ r.headline }}</div>{% endif %}<div class="r-meta">{{ r.item_count }} 条动态 · {{ r.generated_date }} 生成</div>
         </a>{% endfor %}
-      </div>{% else %}<p class="empty-note">暂无月报，运行 <code>virt-report monthly</code>。</p>{% endif %}
+      </div><a class="home-more" href="monthly/index.html">查看全部月报</a>{% else %}<p class="empty-note">暂无月报，运行 <code>virt-report monthly</code>。</p>{% endif %}
     </section>
   </div>
   <aside>{% if ctx and ctx.cal %}<div class="cal archive-browser">
@@ -73,4 +78,13 @@ document.querySelectorAll('[data-cal-shift]').forEach(button=>button.addEventLis
   const target=months[current+Number(button.dataset.calShift)];
   if(target){months[current].hidden=true;target.hidden=false}
 }));
+const reportTabs=[...document.querySelectorAll('[data-home-report-tab]')];
+const mobileReports=window.matchMedia('(max-width:620px)');
+function selectReportTab(button){
+  reportTabs.forEach(tab=>{const on=tab===button;tab.classList.toggle('active',on);tab.setAttribute('aria-selected',String(on))});
+  document.querySelectorAll('[data-home-report-panel]').forEach(panel=>panel.hidden=mobileReports.matches&&panel.dataset.homeReportPanel!==button.dataset.homeReportTab);
+}
+reportTabs.forEach(button=>button.addEventListener('click',()=>selectReportTab(button)));
+function syncReportPanels(){if(mobileReports.matches)selectReportTab(reportTabs.find(tab=>tab.classList.contains('active'))||reportTabs[0]);else document.querySelectorAll('[data-home-report-panel]').forEach(panel=>panel.hidden=false)}
+mobileReports.addEventListener?.('change',syncReportPanels);syncReportPanels();
 </script>{% endblock %}

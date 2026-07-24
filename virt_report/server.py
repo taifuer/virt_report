@@ -5,15 +5,17 @@ import json
 import logging
 import re
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
+from zoneinfo import ZoneInfo
 
 from virt_report import access, db
 from virt_report.config import Config
 from virt_report.render import render
 from virt_report.processing import topics
 from virt_report.summarize import report as report_builder
+from virt_report.summarize import periods
 
 log = logging.getLogger(__name__)
 _REPORT_ROUTE = re.compile(r"^/(daily|weekly|monthly)/([^/]+?)(?:\.html)?$")
@@ -24,10 +26,20 @@ READINESS_MAX_AGE_HOURS = 12
 
 def _list_reports(conn, period: str) -> list[dict]:
     rows = conn.execute(
-        "SELECT period_key,generated_at,item_count,model FROM reports "
+        "SELECT period_key,generated_at,item_count,model,content_json FROM reports "
         "WHERE period=? ORDER BY period_key DESC", (period,),
     ).fetchall()
-    return [dict(row) for row in rows]
+    result = []
+    for row in rows:
+        item = {key: row[key] for key in (
+            "period_key", "generated_at", "item_count", "model"
+        )}
+        try:
+            item["headline"] = json.loads(row["content_json"]).get("headline", "")
+        except (TypeError, ValueError):
+            item["headline"] = ""
+        result.append(item)
+    return result
 
 
 def _index_context(conn, timezone: str = "Asia/Shanghai") -> dict:
@@ -98,13 +110,39 @@ def _readiness(conn, config: Config) -> dict:
             "source": source, "project": project, "fresh": fresh,
             "age_hours": age_hours, **(dict(row) if row else {}),
         })
+    local_now = now.astimezone(ZoneInfo(config.timezone))
+    daily_offset = 1 if local_now.hour >= 1 else 2
+    weekly_offset = 14 if local_now.weekday() == 0 and local_now.hour < 1 else 7
+    previous_month_end = local_now.replace(day=1) - timedelta(days=1)
+    if local_now.day == 1 and local_now.hour < 1:
+        previous_month_end = previous_month_end.replace(day=1) - timedelta(days=1)
+    expected_keys = {
+        "daily": periods.period_key_for("daily", local_now - timedelta(days=daily_offset)),
+        "weekly": periods.period_key_for("weekly", local_now - timedelta(days=weekly_offset)),
+        "monthly": periods.period_key_for("monthly", previous_month_end),
+    }
     reports = {}
     for period in ("daily", "weekly", "monthly"):
         row = conn.execute(
-            "SELECT period_key,generated_at,item_count,model FROM reports "
+            "SELECT period_key,generated_at,item_count,model,content_json FROM reports "
             "WHERE period=? ORDER BY period_key DESC LIMIT 1", (period,),
         ).fetchone()
-        reports[period] = dict(row) if row else None
+        fallback = True
+        if row:
+            try:
+                fallback = bool(json.loads(row["content_json"]).get("fallback"))
+            except (TypeError, ValueError):
+                fallback = True
+        report_fresh = bool(row and row["period_key"] >= expected_keys[period] and not fallback)
+        ready = ready and report_fresh
+        reports[period] = ({
+            **{key: row[key] for key in ("period_key", "generated_at", "item_count", "model")},
+            "expected_key": expected_keys[period], "fresh": report_fresh,
+            "fallback": fallback,
+        } if row else {
+            "period_key": None, "expected_key": expected_keys[period],
+            "fresh": False, "fallback": True,
+        })
     return {
         "status": "ok" if ready else "degraded",
         "checked_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -118,6 +156,10 @@ def make_handler(config: Config):
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "virt-report/0.1"
+
+        def version_string(self) -> str:
+            """Avoid disclosing the host Python version in response headers."""
+            return self.server_version
 
         def do_HEAD(self) -> None:  # noqa: N802
             self._dispatch(head_only=True)
@@ -159,6 +201,17 @@ def make_handler(config: Config):
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("Cache-Control", "no-cache")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+            self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+                "script-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+                "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; "
+                "form-action 'self'",
+            )
             for name, value in (extra_headers or {}).items():
                 self.send_header(name, value)
             self.end_headers()
@@ -237,6 +290,7 @@ def make_handler(config: Config):
                         conn, topic_match.group(1), page=number("page", 1),
                         per_page=number("per_page", 20),
                         sort=query.get("sort", ["priority"])[0],
+                        scope=query.get("scope", ["curated"])[0],
                     )
                 if topic:
                     self._send(200, render.render_topic_detail_html(config, topic), head_only)

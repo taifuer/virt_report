@@ -82,11 +82,21 @@ def _fetch_all_locked(conn, config: Config, since: datetime,
 
 def _list_reports(conn, period: str) -> list[dict]:
     rs = conn.execute(
-        "SELECT period_key, generated_at, item_count, model FROM reports "
+        "SELECT period_key, generated_at, item_count, model, content_json FROM reports "
         "WHERE period=? ORDER BY period_key DESC", (period,),
     ).fetchall()
-    return [{"period_key": r["period_key"], "generated_at": r["generated_at"],
-             "item_count": r["item_count"] or 0, "model": r["model"]} for r in rs]
+    result = []
+    for r in rs:
+        try:
+            headline = json.loads(r["content_json"]).get("headline", "")
+        except (TypeError, ValueError):
+            headline = ""
+        result.append({
+            "period_key": r["period_key"], "generated_at": r["generated_at"],
+            "item_count": r["item_count"] or 0, "model": r["model"],
+            "headline": headline,
+        })
+    return result
 
 
 def _render_index(config: Config, conn) -> None:
@@ -346,11 +356,14 @@ def cmd_kvm_forum(args, config: Config) -> None:
 
 def cmd_backup(args, config: Config) -> None:
     """生成可迁移的一致性数据库压缩快照。"""
-    from virt_report.maintenance import backup_database
+    from virt_report.maintenance import backup_database, prune_backups
     target = Path(args.output).resolve() if args.output else None
     path, digest = backup_database(config.db_path, target)
     print(f"数据库备份完成: {path}")
     print(f"SHA256: {digest}")
+    if args.keep_days:
+        removed = prune_backups(path.parent, args.keep_days)
+        print(f"已清理过期自动备份: {len(removed)} 个")
 
 
 def cmd_restore(args, config: Config) -> None:
@@ -400,6 +413,8 @@ def main(argv: list[str] | None = None) -> int:
     p_forum.add_argument("--no-fetch", action="store_true", help="复用已保存的标题数据")
     p_backup = sub.add_parser("backup", help="导出一致性的 gzip 数据库快照")
     p_backup.add_argument("output", nargs="?", help="输出 .db.gz 路径")
+    p_backup.add_argument("--keep-days", type=int, default=0,
+                          help="清理超过指定天数的 auto-*.db.gz")
     p_restore = sub.add_parser("restore", help="从 gzip 快照恢复数据库")
     p_restore.add_argument("archive", help="备份 .db.gz 路径")
     p_restore.add_argument("--sha256", help="预期 SHA-256")

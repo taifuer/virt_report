@@ -117,6 +117,21 @@ CREATE TABLE IF NOT EXISTS topic_entries (
 );
 CREATE INDEX IF NOT EXISTS idx_topic_entries_activity
     ON topic_entries(topic_key, activity_at DESC);
+
+CREATE TABLE IF NOT EXISTS scheduler_runs (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    identity      TEXT NOT NULL,
+    job_name      TEXT NOT NULL,
+    scheduled_at  TEXT NOT NULL,
+    started_at    TEXT NOT NULL,
+    finished_at   TEXT,
+    status        TEXT NOT NULL,
+    attempt       INTEGER NOT NULL DEFAULT 1,
+    exit_code     INTEGER,
+    error         TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_scheduler_runs_identity
+    ON scheduler_runs(identity, started_at DESC);
 """
 
 
@@ -208,6 +223,27 @@ def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
 
 def now_utc_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def start_scheduler_run(conn: sqlite3.Connection, *, identity: str, job_name: str,
+                        scheduled_at: str, attempt: int) -> int:
+    with transaction(conn):
+        cursor = conn.execute(
+            "INSERT INTO scheduler_runs "
+            "(identity,job_name,scheduled_at,started_at,status,attempt) "
+            "VALUES (?,?,?,?,?,?)",
+            (identity, job_name, scheduled_at, now_utc_iso(), "running", attempt),
+        )
+    return int(cursor.lastrowid)
+
+
+def finish_scheduler_run(conn: sqlite3.Connection, run_id: int, *, status: str,
+                         exit_code: int | None = None, error: str | None = None) -> None:
+    with transaction(conn):
+        conn.execute(
+            "UPDATE scheduler_runs SET finished_at=?,status=?,exit_code=?,error=? "
+            "WHERE id=?", (now_utc_iso(), status, exit_code, error, run_id),
+        )
 
 
 def upsert_item(conn: sqlite3.Connection, item: dict[str, Any]) -> bool:

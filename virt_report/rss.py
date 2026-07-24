@@ -70,7 +70,9 @@ def report_feed(conn: sqlite3.Connection, config: Config, period: str | None = N
 
 def security_feed(conn: sqlite3.Connection, config: Config) -> str:
     base = _base_url(config)
-    group = build_topic_detail(conn, "security", page=1, per_page=20, sort="latest")
+    group = build_topic_detail(
+        conn, "security", page=1, per_page=20, sort="latest", scope="recent"
+    )
     entries = [{
         "title": item["title"], "link": item["url"],
         "published_at": item["activity_at"],

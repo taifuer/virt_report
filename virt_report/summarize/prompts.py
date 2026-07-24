@@ -20,6 +20,7 @@ _SYSTEM = """你是资深虚拟化内核与云平台技术编辑，熟悉 QEMU�
 6. overview 要做跨条目归纳，不能只是标题拼接。无足够证据时明确写“本期未观察到显著动态”。
 7. 周期措辞必须与报告一致：日报只能写“当日/当天”，周报写“本周”，月报写“本月”，不得混用。
 8. 对 closed/已关闭事项，不得再写“待修复/需尽快修复”；只能说明其历史影响，并提示以原始 issue 的关闭结论为准。关闭不自动等于已修复。
+9. evidence 中 novelty=updated 表示该线程曾进入近期日报。必须结合 PREVIOUS_SUMMARY 与 LATEST 说明“这次新增了什么”，不得原样重复旧结论；novelty=new 才是首次出现。
 
 只输出一个合法 JSON 对象，不要 Markdown 围栏或解释。JSON 结构示例：
 {
@@ -74,7 +75,8 @@ def build_prompt(period: str, period_key: str, threads_data: list[dict]) -> str:
             f"date={t['time']} topic={t.get('topic') or '-'} "
             f"arch={','.join(t.get('architectures', [])) or '-'} "
             f"change={t.get('category', 'other')} "
-            f"state={t.get('state') or 'unknown'}"
+            f"state={t.get('state') or 'unknown'} "
+            f"novelty={t.get('novelty', 'new')}"
         )
         lines.append(f"SUBJECT: {t['subject']}")
         if t.get("excerpt"):
@@ -83,5 +85,12 @@ def build_prompt(period: str, period_key: str, threads_data: list[dict]) -> str:
             lines.append(f"LATEST: {t['latest_excerpt']}")
         if t.get("review_excerpt") and t["review_excerpt"] != t.get("latest_excerpt"):
             lines.append(f"REVIEW: {t['review_excerpt']}")
+        previous = t.get("previous_report") or {}
+        if previous:
+            lines.append(f"PREVIOUS_REPORT: {previous.get('period_key', '-')}")
+            if previous.get("summary"):
+                lines.append(f"PREVIOUS_SUMMARY: {previous['summary']}")
+            if previous.get("status"):
+                lines.append(f"PREVIOUS_STATUS: {previous['status']}")
         lines.append("")
     return "\n".join(lines)

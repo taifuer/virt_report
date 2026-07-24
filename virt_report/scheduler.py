@@ -67,6 +67,12 @@ def scheduled_commands(config: Config, now: datetime) -> list[tuple[str, list[st
             periods.period_key_for("monthly", now.replace(day=1) - timedelta(days=1)),
             "--no-fetch",
         ]),
+        ("backup", config.schedule.backup_cron, [
+            "backup", str(
+                config.db_path.parent / "backups" / f"auto-{now:%Y-%m-%d}.db.gz"
+            ),
+            "--keep-days", str(config.schedule.backup_keep_days),
+        ]),
     ]
     return [(name, command) for name, expression, command in jobs
             if cron_matches(expression, now)]
@@ -103,7 +109,13 @@ def _report_exists(config: Config, name: str, command: list[str]) -> bool:
         return False
     conn = db.connect(config.db_path)
     try:
-        return db.get_report(conn, name, command[1]) is not None
+        row = db.get_report(conn, name, command[1])
+        if row is None:
+            return False
+        try:
+            return not bool(json.loads(row["content_json"]).get("fallback"))
+        except (TypeError, ValueError):
+            return False
     finally:
         conn.close()
 
@@ -126,33 +138,79 @@ def _run_loop(config: Config, config_path: str | None, timezone: ZoneInfo,
               state_path: Path, completed: set[str], last_check: datetime) -> None:
     log.info("自动调度已启动 (%s, catchup=%s)", config.timezone,
              "24h" if state_path.exists() else "current-minute")
+    pending: dict[str, tuple[str, list[str], datetime, int, datetime]] = {}
     while True:
         now = datetime.now(timezone).replace(second=0, microsecond=0)
         jobs = due_commands(config, last_check, now)
         last_check = now
+        jobs.extend((name, command, scheduled_at)
+                    for _identity, (name, command, scheduled_at, _attempt, retry_at)
+                    in list(pending.items()) if retry_at <= now)
         exported_report = False
         for name, command, scheduled_at in jobs:
             identity = (f"fetch:{scheduled_at.isoformat()}" if name == "fetch"
                         else f"{name}:{command[1]}")
             if identity in completed:
+                pending.pop(identity, None)
                 continue
             if _report_exists(config, name, command):
                 log.info("报告已存在，跳过自动重建: %s/%s", name, command[1])
                 completed.add(identity)
+                pending.pop(identity, None)
                 _save_state(state_path, completed)
                 continue
             argv = [sys.executable, "-m", "virt_report.cli"]
             if config_path:
                 argv.extend(["--config", config_path])
             argv.extend(command)
-            log.info("执行自动任务 %s: %s", name, " ".join(command))
-            result = subprocess.run(argv, check=False)
-            if result.returncode == 0:
+            attempt = pending.get(identity, (None, None, None, 0, None))[3] + 1
+            log.info("执行自动任务 %s (attempt=%d): %s", name, attempt,
+                     " ".join(command))
+            conn = db.connect(config.db_path)
+            try:
+                run_id = db.start_scheduler_run(
+                    conn, identity=identity, job_name=name,
+                    scheduled_at=scheduled_at.isoformat(), attempt=attempt,
+                )
+            finally:
+                conn.close()
+            result = None
+            error = None
+            try:
+                result = subprocess.run(
+                    argv, check=False, timeout=config.schedule.job_timeout_seconds
+                )
+                healthy = result.returncode == 0 and (
+                    name not in {"daily", "weekly", "monthly"} or
+                    _report_exists(config, name, command)
+                )
+                status = "success" if healthy else (
+                    "fallback" if result.returncode == 0 else "failed"
+                )
+            except subprocess.TimeoutExpired:
+                healthy = False
+                status = "timeout"
+                error = f"任务超过 {config.schedule.job_timeout_seconds} 秒"
+            conn = db.connect(config.db_path)
+            try:
+                db.finish_scheduler_run(
+                    conn, run_id, status=status,
+                    exit_code=result.returncode if result else None, error=error,
+                )
+            finally:
+                conn.close()
+            if healthy:
                 completed.add(identity)
+                pending.pop(identity, None)
                 _save_state(state_path, completed)
                 exported_report = exported_report or name in {"daily", "weekly", "monthly"}
             else:
-                log.error("自动任务 %s 失败，退出码 %d", name, result.returncode)
+                exit_code = result.returncode if result else -1
+                log.error("自动任务 %s 未完成 (%s, exit=%d)", name, status, exit_code)
+                if attempt < config.schedule.retry_limit:
+                    retry_at = now + timedelta(seconds=config.schedule.retry_delay_seconds)
+                    pending[identity] = (name, command, scheduled_at, attempt, retry_at)
+                    log.info("任务 %s 将在 %s 重试", name, retry_at.isoformat())
         if exported_report and config.schedule.auto_export:
             base_argv = [sys.executable, "-m", "virt_report.cli"]
             if config_path:

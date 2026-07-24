@@ -6,7 +6,7 @@ import math
 import re
 import sqlite3
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from virt_report import db
 from . import architecture, category
@@ -243,10 +243,11 @@ def sync_topic_index(conn: sqlite3.Connection, *, force: bool = False) -> int:
     return len(changed)
 
 
-def _report_summaries(conn: sqlite3.Connection) -> dict[str, str]:
-    summaries: dict[str, str] = {}
+def _report_mentions(conn: sqlite3.Connection) -> dict[str, list[dict]]:
+    """Return report evidence grouped by canonical source URL."""
+    mentions: dict[str, list[dict]] = defaultdict(list)
     rows = conn.execute(
-        "SELECT content_json FROM reports ORDER BY "
+        "SELECT period,period_key,generated_at,content_json FROM reports ORDER BY "
         "CASE period WHEN 'daily' THEN 0 WHEN 'weekly' THEN 1 ELSE 2 END, period_key DESC"
     ).fetchall()
     for row in rows:
@@ -256,9 +257,18 @@ def _report_summaries(conn: sqlite3.Connection) -> dict[str, str]:
             continue
         for section in content.get("sections", []):
             for item in section.get("items", []):
-                if item.get("url") and item.get("summary"):
-                    summaries.setdefault(item["url"], item["summary"])
-    return summaries
+                url = item.get("url")
+                if not url:
+                    continue
+                mentions[url].append({
+                    "period": row["period"], "period_key": row["period_key"],
+                    "generated_at": row["generated_at"],
+                    "summary": item.get("summary", "") or "",
+                    "impact": item.get("impact", "") or "",
+                })
+    for values in mentions.values():
+        values.sort(key=lambda item: item["generated_at"], reverse=True)
+    return mentions
 
 
 def _topic_definition(topic_key: str) -> tuple[str, str] | None:
@@ -279,9 +289,12 @@ def _canonical_title(item: dict) -> str:
 def _priority(item: dict, reference: datetime) -> tuple[float, list[str]]:
     score = float(item.get("salience_score") or 0)
     reasons = []
-    if item.get("summary_source") == "report":
+    if item.get("curated_mentions"):
         score += 35
-        reasons.append("报告收录")
+        reasons.append("周月报精选")
+    elif item.get("daily_mentions"):
+        score += 18
+        reasons.append("日报观察")
     security_type = item.get("security_type")
     if security_type == "cve":
         title = (item.get("title") or "").upper()
@@ -318,7 +331,7 @@ def _priority(item: dict, reference: datetime) -> tuple[float, list[str]]:
 
 
 def _load_topic_items(conn: sqlite3.Connection, topic_key: str, name: str,
-                      report_summaries: dict[str, str]) -> list[dict]:
+                      report_mentions: dict[str, list[dict]]) -> list[dict]:
     rows = conn.execute(
         "SELECT e.*,t.salience_score FROM topic_entries e LEFT JOIN threads t "
         "ON t.thread_key=e.thread_key WHERE e.topic_key=?", (topic_key,),
@@ -332,9 +345,25 @@ def _load_topic_items(conn: sqlite3.Connection, topic_key: str, name: str,
         item["security_label"] = _SECURITY_LABELS.get(item.get("security_type"), "")
         item["category_label"] = category.category_label(item.get("category"))
         item["time"] = (item.get("activity_at") or "")[:10]
-        report_summary = report_summaries.get(item.get("url"))
-        item["summary_source"] = "report" if report_summary else "rule"
-        item["summary"] = report_summary or _fallback_summary(item, name)
+        mentions = report_mentions.get(item.get("url"), [])
+        curated = [m for m in mentions if m["period"] in {"weekly", "monthly"}]
+        daily = [m for m in mentions if m["period"] == "daily"]
+        preferred = (curated or daily or [None])[0]
+        item["report_mentions"] = mentions
+        item["curated_mentions"] = curated
+        item["daily_mentions"] = daily
+        item["summary_source"] = preferred["period"] if preferred else "rule"
+        item["summary"] = (preferred["summary"] if preferred else "") or _fallback_summary(item, name)
+        item["impact"] = preferred["impact"] if preferred else ""
+        if curated:
+            periods = {m["period"] for m in curated}
+            item["scope"] = "curated"
+            item["scope_label"] = "月报汇总" if "monthly" in periods else "周报汇总"
+            item["report_keys"] = [m["period_key"] for m in curated[:3]]
+        else:
+            item["scope"] = "candidate"
+            item["scope_label"] = ""
+            item["report_keys"] = []
         items.append(item)
     reference = max((datetime.fromisoformat(item["activity_at"].replace("Z", "+00:00"))
                      for item in items if item.get("activity_at")),
@@ -344,43 +373,96 @@ def _load_topic_items(conn: sqlite3.Connection, topic_key: str, name: str,
     return items
 
 
+def _deduplicate(items: list[dict]) -> list[dict]:
+    seen = set()
+    result = []
+    for item in items:
+        canonical = _canonical_title(item) or item["thread_key"]
+        if canonical in seen:
+            continue
+        seen.add(canonical)
+        result.append(item)
+    return result
+
+
+def _partition_items(items: list[dict], topic_key: str) -> tuple[list[dict], list[dict]]:
+    """Split the raw candidate index into durable curation and short-lived watch items."""
+    reference = max((datetime.fromisoformat(item["activity_at"].replace("Z", "+00:00"))
+                     for item in items if item.get("activity_at")),
+                    default=datetime.now(timezone.utc))
+    cutoff = reference - timedelta(days=14)
+
+    def recent(item: dict) -> bool:
+        try:
+            activity = datetime.fromisoformat(item["activity_at"].replace("Z", "+00:00"))
+        except (AttributeError, TypeError, ValueError):
+            return False
+        if activity < cutoff or item["curated_mentions"]:
+            return False
+        if item["daily_mentions"]:
+            item["scope"] = "recent"
+            item["scope_label"] = "近期观察"
+            item["report_keys"] = [m["period_key"] for m in item["daily_mentions"][:3]]
+            return True
+        if (topic_key == "security" and
+                item.get("security_type") in {"cve", "defect"}):
+            item["scope"] = "recent"
+            item["scope_label"] = "安全观察"
+            return True
+        return False
+
+    curated = [item for item in items if item["curated_mentions"]]
+    watch = [item for item in items if recent(item)]
+
+    def curated_key(item: dict) -> tuple:
+        mentions = item["curated_mentions"]
+        monthly = any(m["period"] == "monthly" for m in mentions)
+        return (monthly, len(mentions), item["priority_score"], item.get("activity_at") or "")
+
+    curated.sort(key=curated_key, reverse=True)
+    watch.sort(key=lambda item: (item["priority_score"], item.get("activity_at") or ""),
+               reverse=True)
+    return _deduplicate(curated), _deduplicate(watch)
+
+
 def build_topic_groups(conn: sqlite3.Connection, limit: int = 8) -> list[dict]:
-    """构建专题总览：每组只展示去重后的重点条目，并保留真实总数。"""
+    """Build the public topic overview from curated and recent report evidence."""
     sync_topic_index(conn)
-    report_summaries = _report_summaries(conn)
+    mentions = _report_mentions(conn)
     groups = []
     for key, name, description, _words in TOPIC_RULES:
-        all_items = _load_topic_items(conn, key, name, report_summaries)
-        ranked = sorted(all_items, key=lambda item: (
-            item["priority_score"], item.get("activity_at") or ""
-        ), reverse=True)
-        seen = set()
-        featured = []
-        for item in ranked:
-            canonical = _canonical_title(item) or item["thread_key"]
-            if canonical in seen:
-                continue
-            seen.add(canonical)
-            featured.append(item)
-            if len(featured) >= limit:
-                break
+        all_items = _load_topic_items(conn, key, name, mentions)
+        curated, recent = _partition_items(all_items, key)
+        recent_slots = min(len(recent), max(1, limit // 4)) if curated else limit
+        curated_slots = min(len(curated), limit - recent_slots)
+        featured = curated[:curated_slots] + recent[:recent_slots]
+        if len(featured) < limit:
+            featured.extend(curated[curated_slots:limit - len(featured) + curated_slots])
+        if len(featured) < limit:
+            featured.extend(recent[recent_slots:limit - len(featured) + recent_slots])
         groups.append({
             "key": key, "name": name, "description": description,
-            "items": featured, "total": len(all_items), "featured_count": len(featured),
+            "items": featured, "raw_total": len(all_items),
+            "curated_count": len(curated), "recent_count": len(recent),
+            "total": len(curated) + len(recent), "featured_count": len(featured),
             "detail_url": f"topics/{key}/",
         })
     return groups
 
 
 def build_topic_detail(conn: sqlite3.Connection, topic_key: str, *, page: int = 1,
-                       per_page: int = 20, sort: str = "priority") -> dict | None:
+                       per_page: int = 20, sort: str = "priority",
+                       scope: str = "curated") -> dict | None:
     """构建单专题详情和服务端分页数据。"""
     definition = _topic_definition(topic_key)
     if not definition:
         return None
     sync_topic_index(conn)
     name, description = definition
-    items = _load_topic_items(conn, topic_key, name, _report_summaries(conn))
+    all_items = _load_topic_items(conn, topic_key, name, _report_mentions(conn))
+    curated, recent = _partition_items(all_items, topic_key)
+    scope = "recent" if scope == "recent" else "curated"
+    items = recent if scope == "recent" else curated
     if sort == "latest":
         items.sort(key=lambda item: item.get("activity_at") or "", reverse=True)
     else:
@@ -394,5 +476,6 @@ def build_topic_detail(conn: sqlite3.Connection, topic_key: str, *, page: int = 
     return {
         "key": topic_key, "name": name, "description": description,
         "items": items[start:start + per_page], "total": len(items),
+        "curated_count": len(curated), "recent_count": len(recent), "scope": scope,
         "page": page, "pages": pages, "per_page": per_page, "sort": sort,
     }
