@@ -368,13 +368,30 @@ def test_report_generated_date_uses_site_timezone():
     assert "2026-07-16 生成" in home
     assert "2026-07-15 生成" not in home
     assert '<span class="brand-sub">虚拟化社区动态</span>' in home
-    assert ('<span>virt-report</span></a><span class="brand-sub">'
+    assert ('<img class="brand-mark" src="assets/brand-mark.png" alt="" '
+            'width="31" height="31"><span>virt-report</span></a><span class="brand-sub">'
             '虚拟化社区动态</span>') in home
+    assert '<link rel="shortcut icon" href="favicon.ico">' in home
+    assert ('<link rel="icon" type="image/png" sizes="32x32" '
+            'href="favicon-32.png">') in home
     assert ('<div class="report-card-top"><div class="r-title">2026-07-15</div>'
             '<span class="type">日报</span></div>') in home
     assert ".report-card-top{display:flex;align-items:flex-start" in home
     assert ".report-card .type{flex:0 0 auto;padding-top:1px;color:var(--brand);font-size:12px" in home
     assert ".brand-sub{display:none}" not in home
+    assert "@media(max-width:620px)" in home
+    assert ".brand-mark{width:28px;height:28px}" in home
+
+
+def test_brand_assets_export_with_static_site(tmp_path):
+    html_render.export_brand_assets(tmp_path)
+    mark = tmp_path / "assets" / "brand-mark.png"
+    assert mark.read_bytes() == (
+        html_render.ASSETS_DIR / "brand-mark.png"
+    ).read_bytes()
+    assert mark.stat().st_size < 8_000
+    assert (tmp_path / "favicon-32.png").stat().st_size < 3_000
+    assert (tmp_path / "favicon.ico").stat().st_size < 8_000
 
 
 def test_weekly_range_is_local_inclusive_natural_week():

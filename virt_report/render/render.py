@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import calendar as _pycal
+import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -12,7 +13,21 @@ from virt_report.config import Config
 from virt_report.summarize import periods
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+ASSETS_DIR = Path(__file__).parent / "assets"
 HOME_REPORT_LIMITS = {"daily": 15, "weekly": 15, "monthly": 15}
+
+
+def export_brand_assets(output_dir: Path) -> None:
+    """Copy the canonical logo assets into a static site export."""
+    assets_out = output_dir / "assets"
+    assets_out.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(ASSETS_DIR / "brand-mark.png", assets_out / "brand-mark.png")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for filename in ("favicon-32.png", "favicon.ico"):
+        shutil.copyfile(ASSETS_DIR / filename, output_dir / filename)
+    # Remove the earlier simplified vector assets from refreshed snapshots.
+    (assets_out / "brand-mark.svg").unlink(missing_ok=True)
+    (output_dir / "favicon.svg").unlink(missing_ok=True)
 
 
 def limit_home_reports(period: str, reports: list[dict]) -> list[dict]:

@@ -102,6 +102,7 @@ def _list_reports(conn, period: str) -> list[dict]:
 def _render_index(config: Config, conn) -> None:
     from virt_report.render.render import build_calendar
 
+    render.export_brand_assets(config.output_dir)
     daily_rows = conn.execute(
         "SELECT period_key FROM reports WHERE period='daily'"
     ).fetchall()
