@@ -14,7 +14,7 @@ from . import architecture, category
 
 RULE_VERSION = 6
 TOPIC_RULES = (
-    ("security", "安全与漏洞", "明确 CVE、安全缺陷与虚拟化安全增强；编号和类型仅依据原始内容", ()),
+    ("security", "安全与漏洞", "明确 CVE 与具有强原始证据的安全缺陷；编号和类型仅依据原始内容", ()),
     ("migration", "热迁移", "迁移链路、停机窗口、脏页收敛与跨主机兼容性", (
         "热迁移", "migration", "migrate", "multifd", "postcopy", "precopy",
         "switchover", "dirty page", "live-migration",
@@ -387,6 +387,11 @@ def _deduplicate(items: list[dict]) -> list[dict]:
 
 def _partition_items(items: list[dict], topic_key: str) -> tuple[list[dict], list[dict]]:
     """Split the raw candidate index into durable curation and short-lived watch items."""
+    # 安全能力建设不等同于漏洞。SEV/TDX/Arm CCA 等增强仍保留在内部索引和
+    # 周期报告中，但安全专题公开层只呈现明确 CVE 与具有强证据的缺陷。
+    if topic_key == "security":
+        items = [item for item in items
+                 if item.get("security_type") in {"cve", "defect"}]
     reference = max((datetime.fromisoformat(item["activity_at"].replace("Z", "+00:00"))
                      for item in items if item.get("activity_at")),
                     default=datetime.now(timezone.utc))

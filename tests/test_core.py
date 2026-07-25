@@ -368,6 +368,12 @@ def test_report_generated_date_uses_site_timezone():
     assert "2026-07-16 生成" in home
     assert "2026-07-15 生成" not in home
     assert '<span class="brand-sub">虚拟化社区动态</span>' in home
+    assert ('<span>virt-report</span></a><span class="brand-sub">'
+            '虚拟化社区动态</span>') in home
+    assert ('<div class="report-card-top"><div class="r-title">2026-07-15</div>'
+            '<span class="type">日报</span></div>') in home
+    assert ".report-card-top{display:flex;align-items:flex-start" in home
+    assert ".report-card .type{flex:0 0 auto;padding-top:1px;color:var(--brand);font-size:12px" in home
     assert ".brand-sub{display:none}" not in home
 
 
@@ -422,9 +428,13 @@ def test_security_topic_requires_raw_evidence_and_strict_cve(tmp_db):
         "CVE-2026-46113"
     ]
     assert "QEMU: CVE-2026-XXXX placeholder" not in by_title
-    assert by_title["KVM: arm64: add Arm CCA support"]["security_type"] == "enhancement"
-    assert by_title["KVM: arm64: add Arm CCA support"]["summary"] == "weekly 精选摘要"
-    assert by_title["KVM: arm64: add Arm CCA support"]["summary_source"] == "weekly"
+    assert "KVM: arm64: add Arm CCA support" not in by_title
+    assert security["raw_total"] == 2
+    assert security["curated_count"] == 1
+    assert tmp_db.execute(
+        "SELECT COUNT(*) FROM topic_entries WHERE topic_key='security' "
+        "AND security_type='enhancement'"
+    ).fetchone()[0] == 1
 
 
 def test_security_topic_does_not_treat_generic_patch_replies_as_defects(tmp_db):
@@ -437,10 +447,35 @@ def test_security_topic_does_not_treat_generic_patch_replies_as_defects(tmp_db):
     security = next(group for group in topics.build_topic_groups(tmp_db)
                     if group["key"] == "security")
     by_title = {item["title"]: item for item in security["items"]}
-    assert by_title["firmware: arm_rmm: Add RMM v2.0 support"]["security_type"] == "enhancement"
+    assert "firmware: arm_rmm: Add RMM v2.0 support" not in by_title
     assert "KVM: guest_memfd cleanups" not in by_title
     assert "KVM: x86: optimize nSVM TLB flushes" not in by_title
     assert by_title["QEMU: fix out-of-bounds access"]["security_type"] == "defect"
+
+
+def test_security_feed_excludes_enhancements_but_keeps_internal_index(tmp_db):
+    _insert(tmp_db, "cve-feed", subject="KVM: CVE-2026-46113 use-after-free",
+            url="https://e/cve", created="2026-07-20T00:00:00Z")
+    _insert(tmp_db, "cca-feed", subject="KVM: arm64: add Arm CCA support",
+            url="https://e/cca", created="2026-07-20T00:00:00Z")
+    threads.rebuild_threads(tmp_db)
+    _save_report_mentions(tmp_db, "daily", "2026-07-20", [
+        "https://e/cve", "https://e/cca",
+    ])
+    feed = rss.security_feed(tmp_db, Config())
+    assert "CVE-2026-46113" in feed
+    assert "Arm CCA support" not in feed
+    assert tmp_db.execute(
+        "SELECT COUNT(*) FROM topic_entries WHERE security_type='enhancement'"
+    ).fetchone()[0] == 1
+
+
+def test_topic_mobile_layout_wraps_controls_and_long_titles():
+    page = html_render.render_topics_html(Config(), [])
+    assert ".topic-page{min-width:0;max-width:100%}" in page
+    assert ".topic-item-head>a{min-width:0;overflow-wrap:anywhere" in page
+    assert ".topic-heading{align-items:flex-start;flex-direction:column;gap:8px}" in page
+    assert ".topic-controls>div{width:100%;min-width:0;flex-wrap:wrap}" in page
 
 
 def test_topic_public_layers_use_curated_and_recent_report_evidence(tmp_db):

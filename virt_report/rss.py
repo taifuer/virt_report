@@ -82,4 +82,4 @@ def security_feed(conn: sqlite3.Connection, config: Config) -> str:
         ])),
     } for item in group["items"]]
     return _rss("virt-report 安全与漏洞", base + "/topics/security/feed.xml",
-                "QEMU、KVM、Libvirt 安全缺陷、明确 CVE 与安全增强", entries)
+                "QEMU、KVM、Libvirt 明确 CVE 与具有强原始证据的安全缺陷", entries)
