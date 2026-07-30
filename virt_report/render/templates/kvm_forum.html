@@ -1,22 +1,22 @@
 {% extends "base.html" %}
 {% block title %}virt-report · KVM Forum{% endblock %}
-{% block description %}KVM Forum 2010—2025 年演讲标题与年度技术主题演进。{% endblock %}
+{% block description %}KVM Forum 2010—2025 年官方议程与年度技术主题演进。{% endblock %}
 {% block nav_home %}{% endblock %}
 {% block nav_forum %}on{% endblock %}
 {% block content %}
 <article class="forum-page">
-  <header><div class="kicker">Conference Archive</div><h1>KVM Forum</h1><p>根据 2010—2025 年会议演讲标题，整理 KVM/QEMU 技术主题的年度演进。</p></header>
+  <header><div class="kicker">Conference Archive</div><h1>KVM Forum</h1><p>根据 2010—2025 年官方议程页列出的议题，整理 KVM/QEMU 技术主题的年度演进。</p></header>
   <section class="forum-overview"><h2>{{ analysis.headline }}</h2><p class="forum-overview-copy">{{ analysis.overview }}</p><details class="forum-overview-mobile"><summary>查看长期演进概述</summary><p>{{ analysis.overview }}</p></details>
     {% if analysis.eras %}<div class="era-list">{% for era in analysis.eras|reverse %}<div class="era"><strong><span class="era-years">{{ era.years }}</span><span class="era-name">{{ era.name }}</span></strong><span class="era-summary">{{ era.summary }}</span></div>{% endfor %}</div>{% endif %}
   </section>
   <div class="forum-years">{% for edition in editions|reverse %}<section class="forum-year" id="year-{{ edition.year }}">
-    <div><h2><a href="{{ edition.url }}" target="_blank" rel="noopener noreferrer">{{ edition.year }}</a></h2><span class="talk-count">{{ edition.titles|length }} 个标题</span></div>
+    <div><h2><a href="{{ edition.url }}" target="_blank" rel="noopener noreferrer">{{ edition.year }}</a></h2><span class="talk-count">{{ edition.titles|length }} 个议题</span></div>
     <div>{% set item=edition.analysis %}<h3>{{ item.headline or "样本不足" }}</h3>
       {% if item.themes %}<div class="theme-list">{% for theme in item.themes %}<span class="tag">{{ theme }}</span>{% endfor %}</div>{% endif %}
-      <p>{{ item.summary or "该年度页面未提取到足够的演讲标题，暂不作主题判断。" }}</p>
+      <p>{{ item.summary or "该年度页面未提取到足够的有效议题，暂不作主题判断。" }}</p>
       <a class="forum-source" href="{{ edition.url }}" target="_blank" rel="noopener noreferrer">查看 {{ edition.year }} 年原始议程</a>
     </div>
   </section>{% endfor %}</div>
-  <p class="forum-method">{{ analysis.method }} 分析模型：{{ analysis.model }}。年份标题和每年末尾的链接均可进入原始议程。</p>
+  <p class="forum-method">{{ analysis.method }} 辅助模型：{{ analysis.model }}。年份和每年末尾的链接均可进入原始议程。</p>
 </article>
 {% endblock %}

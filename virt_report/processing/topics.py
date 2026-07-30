@@ -7,12 +7,13 @@ import re
 import sqlite3
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from difflib import SequenceMatcher
 
 from virt_report import db
 from . import architecture, category
 
 
-RULE_VERSION = 6
+RULE_VERSION = 7
 TOPIC_RULES = (
     ("security", "安全与漏洞", "明确 CVE 与具有强原始证据的安全缺陷；编号和类型仅依据原始内容", ()),
     ("migration", "热迁移", "迁移链路、停机窗口、脏页收敛与跨主机兼容性", (
@@ -81,6 +82,19 @@ _SECURITY_RISK_EXPLANATIONS = (
     (("information leak", "信息泄漏"), "信息泄漏"),
     (("memory corruption", "内存损坏"), "内存损坏"),
 )
+_BOARD_BOOT_RE = re.compile(
+    r"\b(?:soc|cortex|firmware|board|machine model)\b.*\bboot\b|"
+    r"\bboot\b.*\b(?:soc|cortex|firmware|board|machine model)\b",
+    re.IGNORECASE,
+)
+_VIRTUAL_LIFECYCLE_RE = re.compile(
+    r"\b(?:guest|vm|virtual machine|domain|qemu|kvm|libvirt|acpi|sev|tdx)\b",
+    re.IGNORECASE,
+)
+_LOW_INFORMATION_SUMMARY_RE = re.compile(
+    r"^(?:v\d+\s*)?(?:系列)?(?:已获|由).*(?:reviewed-by|acked-by|取代|重发|审核|评审)",
+    re.IGNORECASE,
+)
 
 
 def _security_evidence(title_text: str, cve_text: str,
@@ -100,14 +114,21 @@ def _security_evidence(title_text: str, cve_text: str,
 
 def classify_item(item: dict) -> list[str]:
     """返回条目命中的专题键；安全类型可由调用方预先提供。"""
-    text = " ".join(str(item.get(field, "")) for field in (
-        "title", "original_title", "tag",
-    )).lower()
+    text = " ".join(
+        " ".join(str(item.get(field, "")).split())
+        for field in ("title", "original_title", "tag")
+    ).lower()
     keys = []
     if item.get("security_type"):
         keys.append("security")
-    keys.extend(key for key, _name, _description, words in TOPIC_RULES
-                if key != "security" and any(word in text for word in words))
+    for key, _name, _description, words in TOPIC_RULES:
+        if key == "security" or not any(word in text for word in words):
+            continue
+        # 裸机板卡/SoC 固件启动不等同于虚机启动与生命周期。
+        if (key == "lifecycle" and _BOARD_BOOT_RE.search(text)
+                and not _VIRTUAL_LIFECYCLE_RE.search(text)):
+            continue
+        keys.append(key)
     return keys
 
 
@@ -130,23 +151,42 @@ def _fallback_summary(item: dict, topic_name: str) -> str:
     """为尚无 AI 报告摘要的条目生成克制的中文规则说明。"""
     project = item.get("project") or "上游"
     status = item.get("status") or "持续跟踪"
-    title = (item.get("title") or "").lower()
+    raw_title = item.get("title") or ""
+    title = raw_title.lower()
+    core_title = re.sub(
+        r"^(?:\[[^\]]*(?:patch|rfc|resend|stable)[^\]]*\]\s*)+", "",
+        raw_title, flags=re.I,
+    ).strip()
+    title_parts = [part.strip() for part in core_title.split(":")]
+    component = title_parts[0] if len(title_parts) > 1 else ""
+    if component.lower() == project.lower():
+        component = title_parts[1] if len(title_parts) > 2 else ""
     security_type = item.get("security_type")
     if security_type == "cve":
         cves = "、".join(item.get("cve_ids") or [])
-        return (f"{project} 社区正在处理 {cves} 相关讨论，当前状态为{status}。"
-                "漏洞影响与修复范围应以原始线程和上游公告为准。")
+        risk = next((label for words, label in _SECURITY_RISK_EXPLANATIONS
+                     if any(word in title for word in words)), "安全问题")
+        location = f"{component} 中" if component else ""
+        trigger = "可由 guest 触发的" if "guest-trigger" in title else ""
+        return (f"{project} 正在修复 {location}{trigger}{risk}（{cves}），"
+                f"当前状态为{status}；影响范围以原始线程和上游公告为准。")
     if security_type == "defect":
         risk = next((label for words, label in _SECURITY_RISK_EXPLANATIONS
                      if any(word in title for word in words)), "潜在安全问题")
-        return (f"标题显示该讨论涉及{risk}，归入安全缺陷跟踪；当前状态为{status}。"
-                "具体影响范围仍需结合原始线程确认。")
+        location = f"{component} 在相关操作中" if component else "该议题"
+        trigger = "存在可由 guest 触发的" if "guest-trigger" in title else "涉及"
+        return (f"{location}{trigger}{risk}，当前状态为{status}；"
+                "触发条件与影响边界以原始页面为准。")
     if security_type == "enhancement":
         tech = next((label for words, label in _SECURITY_TECH_EXPLANATIONS
                      if any(word in title for word in words)), "虚拟化安全能力增强")
         return f"{project} 社区正在讨论“{tech}”，归入安全增强；当前状态为{status}。"
-    return (f"{project} 社区正在讨论{topic_name}相关改动，当前状态为{status}。"
-            "详细技术范围请查看原始线程。")
+    if "hardening fixes" in title:
+        return (f"该补丁系列集中修正{topic_name}链路的健壮性问题，当前状态为{status}；"
+                "具体修复项请查看原始线程。")
+    display_title = core_title[:100] or raw_title[:100]
+    return (f"{project} 正在讨论“{display_title}”相关改动，当前状态为{status}；"
+            "具体技术范围请查看原始线程。")
 
 
 def _thread_entry(conn: sqlite3.Connection, thread: sqlite3.Row,
@@ -263,6 +303,7 @@ def _report_mentions(conn: sqlite3.Connection) -> dict[str, list[dict]]:
                 mentions[url].append({
                     "period": row["period"], "period_key": row["period_key"],
                     "generated_at": row["generated_at"],
+                    "url": url,
                     "summary": item.get("summary", "") or "",
                     "impact": item.get("impact", "") or "",
                 })
@@ -281,7 +322,9 @@ def _canonical_title(item: dict) -> str:
         return "cve:" + ",".join(item["cve_ids"])
     title = (item.get("title") or "").lower()
     title = re.sub(r"^(?:re:\s*)+", "", title)
-    title = re.sub(r"\[(?:patch|rfc|resend|stable)[^\]]*\]", "", title)
+    title = re.sub(
+        r"^(?:\[[^\]]*(?:patch|rfc|resend|stable)[^\]]*\]\s*)+", "", title,
+    )
     title = re.sub(r"\bv\d+\b|\b\d+/\d+\b", "", title)
     return re.sub(r"\W+", " ", title).strip()
 
@@ -330,6 +373,143 @@ def _priority(item: dict, reference: datetime) -> tuple[float, list[str]]:
     return round(score, 2), reasons
 
 
+def _summary_is_usable(summary: str) -> bool:
+    summary = " ".join((summary or "").split())
+    return len(summary) >= 12 and not _LOW_INFORMATION_SUMMARY_RE.search(summary)
+
+
+def _apply_report_evidence(item: dict, name: str, mentions: list[dict]) -> None:
+    mentions.sort(key=lambda value: value.get("generated_at") or "", reverse=True)
+    curated = [mention for mention in mentions
+               if mention["period"] in {"weekly", "monthly"}]
+    daily = [mention for mention in mentions if mention["period"] == "daily"]
+    current = [mention for mention in mentions
+               if mention.get("url") == item.get("url")]
+    preferred = next(
+        (mention for mention in (current + curated + daily)
+         if _summary_is_usable(mention.get("summary", ""))),
+        None,
+    )
+    item["report_mentions"] = mentions
+    item["curated_mentions"] = curated
+    item["daily_mentions"] = daily
+    item["summary_source"] = preferred["period"] if preferred else "rule"
+    item["summary"] = preferred["summary"] if preferred else _fallback_summary(item, name)
+    item["impact"] = preferred.get("impact", "") if preferred else ""
+    if curated:
+        periods = {mention["period"] for mention in curated}
+        item["scope"] = "curated"
+        item["scope_label"] = "月报汇总" if "monthly" in periods else "周报汇总"
+        item["report_keys"] = list(dict.fromkeys(
+            mention["period_key"] for mention in curated
+        ))[:3]
+    else:
+        item["scope"] = "candidate"
+        item["scope_label"] = ""
+        item["report_keys"] = []
+
+
+def _same_series(left: str, right: str) -> bool:
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+    if left.startswith("cve:") or right.startswith("cve:"):
+        return False
+    if min(len(left), len(right)) < 18:
+        return False
+    ratio = SequenceMatcher(None, left, right).ratio()
+    left_tokens = {token[:-1] if len(token) > 4 and token.endswith("s") else token
+                   for token in left.split()}
+    right_tokens = {token[:-1] if len(token) > 4 and token.endswith("s") else token
+                    for token in right.split()}
+    overlap = len(left_tokens & right_tokens) / max(1, min(len(left_tokens), len(right_tokens)))
+    return ratio >= 0.84 or (overlap >= 0.88 and len(left_tokens & right_tokens) >= 4)
+
+
+def _series_version(title: str) -> int:
+    match = re.match(r"^\[[^\]]*\bv(\d+)\b", title or "", re.IGNORECASE)
+    return int(match.group(1)) if match else 0
+
+
+def _merge_series(items: list[dict], name: str) -> list[dict]:
+    """合并同一补丁系列的跨版本线程，并把旧版本报告证据带到最新版本。"""
+    grouped: list[tuple[str, str, list[dict]]] = []
+    ordered = sorted(items, key=lambda item: item.get("activity_at") or "", reverse=True)
+    for item in ordered:
+        canonical = _canonical_title(item) or item["thread_key"]
+        project = item.get("project") or ""
+        match = next(
+            (group for group in grouped
+             if group[1] == project and _same_series(canonical, group[0])),
+            None,
+        )
+        if match:
+            match[2].append(item)
+        else:
+            grouped.append((canonical, project, [item]))
+
+    merged = []
+    for _canonical, _project, members in grouped:
+        representative = max(
+            members,
+            key=lambda member: (
+                _series_version(member.get("title") or ""),
+                member.get("activity_at") or "",
+            ),
+        )
+        latest = dict(representative)
+        latest["series_count"] = len(members)
+        latest["series_version"] = max(
+            (_series_version(member.get("title") or "") for member in members),
+            default=0,
+        )
+        latest["series_titles"] = [member["title"] for member in members]
+        latest["activity_at"] = max(
+            (member.get("activity_at") or "" for member in members),
+            default=latest.get("activity_at") or "",
+        )
+        latest["time"] = latest["activity_at"][:10]
+        latest["salience_score"] = max(
+            float(member.get("salience_score") or 0) for member in members
+        )
+        latest["architectures"] = list(dict.fromkeys(
+            architecture_name
+            for member in members
+            for architecture_name in member.get("architectures", [])
+        ))
+        latest["cve_ids"] = list(dict.fromkeys(
+            cve for member in members for cve in member.get("cve_ids", [])
+        ))
+        mentions = []
+        seen_mentions = set()
+        for member in members:
+            for mention in member.get("report_mentions", []):
+                key = (mention.get("period"), mention.get("period_key"),
+                       mention.get("generated_at"), mention.get("summary"))
+                if key not in seen_mentions:
+                    seen_mentions.add(key)
+                    mentions.append(mention)
+        _apply_report_evidence(latest, name, mentions)
+        mentioned_versions = [
+            int(value) for value in re.findall(
+                r"\bv(\d+)(?!\d)", latest.get("summary") or "", re.IGNORECASE,
+            )
+        ]
+        if (latest["series_version"] > 1 and mentioned_versions
+                and max(mentioned_versions) < latest["series_version"]):
+            latest["summary"] = re.sub(
+                r"\bv\d+(?!\d)\s*", "此前版本", latest["summary"],
+                flags=re.IGNORECASE,
+            ).rstrip("。； ")
+            latest["summary"] += (
+                f"；当前已迭代至 v{latest['series_version']}，"
+                "最新变化以原始线程为准。"
+            )
+        merged.append(latest)
+    return merged
+
+
 def _load_topic_items(conn: sqlite3.Connection, topic_key: str, name: str,
                       report_mentions: dict[str, list[dict]]) -> list[dict]:
     rows = conn.execute(
@@ -346,25 +526,9 @@ def _load_topic_items(conn: sqlite3.Connection, topic_key: str, name: str,
         item["category_label"] = category.category_label(item.get("category"))
         item["time"] = (item.get("activity_at") or "")[:10]
         mentions = report_mentions.get(item.get("url"), [])
-        curated = [m for m in mentions if m["period"] in {"weekly", "monthly"}]
-        daily = [m for m in mentions if m["period"] == "daily"]
-        preferred = (curated or daily or [None])[0]
-        item["report_mentions"] = mentions
-        item["curated_mentions"] = curated
-        item["daily_mentions"] = daily
-        item["summary_source"] = preferred["period"] if preferred else "rule"
-        item["summary"] = (preferred["summary"] if preferred else "") or _fallback_summary(item, name)
-        item["impact"] = preferred["impact"] if preferred else ""
-        if curated:
-            periods = {m["period"] for m in curated}
-            item["scope"] = "curated"
-            item["scope_label"] = "月报汇总" if "monthly" in periods else "周报汇总"
-            item["report_keys"] = [m["period_key"] for m in curated[:3]]
-        else:
-            item["scope"] = "candidate"
-            item["scope_label"] = ""
-            item["report_keys"] = []
+        item["report_mentions"] = list(mentions)
         items.append(item)
+    items = _merge_series(items, name)
     reference = max((datetime.fromisoformat(item["activity_at"].replace("Z", "+00:00"))
                      for item in items if item.get("activity_at")),
                     default=datetime.now(timezone.utc))

@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from virt_report import access, db, maintenance, metrics, rss
+from virt_report import access, db, kvm_forum, maintenance, metrics, rss
 from virt_report.collectors import base, hyperkitty, mbox
 from virt_report.config import Config, MailingListSource, Sources, Storage
 from virt_report.processing import architecture, category, classify, threads, topics
@@ -161,6 +161,14 @@ def test_change_category_is_conservative():
 def test_operation_topic_classification_can_overlap():
     item = {"title": "Improve live migration performance with zero-copy"}
     assert topics.classify_item(item) == ["migration", "performance"]
+
+
+def test_board_firmware_boot_is_not_vm_lifecycle():
+    item = {"title": "hw/arm: Add Cortex-M7 SoC firmware\nboot support"}
+    assert "lifecycle" not in topics.classify_item(item)
+    assert "lifecycle" in topics.classify_item({
+        "title": "x86/fred: Fix early boot failures on SEV-SNP guests",
+    })
     assert topics.classify_item({"title": "KVM: support memory hotplug"}) == ["hotplug"]
     assert topics.classify_item({"title": "QEMU runtime live update"}) == ["live-upgrade"]
     assert topics.classify_item({
@@ -558,6 +566,91 @@ def test_topic_public_layers_use_curated_and_recent_report_evidence(tmp_db):
     }
 
 
+def test_topic_merges_patch_versions_and_keeps_curated_evidence(tmp_db):
+    old_url = "https://e/live-update-v2"
+    new_url = "https://e/live-update-v5"
+    _insert(
+        tmp_db, "live-v2",
+        subject="[PATCH v2 00/22] vfio/pci: Base Live Update support for VFIO device files",
+        url=old_url, created="2026-06-01T00:00:00Z",
+    )
+    _insert(
+        tmp_db, "live-v5",
+        subject="[PATCH v5 00/20] vfio/pci: Base Live Update support for VFIO",
+        url=new_url, created="2026-07-20T00:00:00Z",
+    )
+    threads.rebuild_threads(tmp_db)
+    _save_report_mentions(
+        tmp_db, "monthly", "2026-06", [old_url],
+        summary="v2 版本已经加入基础设备状态迁移流程",
+    )
+    _save_report_mentions(
+        tmp_db, "daily", "2026-07-20", [new_url],
+        summary="v5 版本已经调整设备状态迁移流程",
+    )
+    group = next(group for group in topics.build_topic_groups(tmp_db)
+                 if group["key"] == "live-upgrade")
+    assert group["total"] == 1
+    assert group["items"][0]["url"] == new_url
+    assert group["items"][0]["series_count"] == 2
+    assert group["items"][0]["series_version"] == 5
+    assert group["items"][0]["scope"] == "curated"
+    assert group["items"][0]["summary"] == "v5 版本已经调整设备状态迁移流程"
+    page = html_render.render_topics_html(Config(), [group])
+    assert "迭代至 v5" in page
+
+
+def test_security_fallback_names_component_risk_and_status():
+    summary = topics._fallback_summary({
+        "project": "QEMU",
+        "title": "hw/virtio-rng: guest-triggered use-after-free during reset",
+        "security_type": "defect",
+        "status": "处理中",
+    }, "安全与漏洞")
+    assert "hw/virtio-rng" in summary
+    assert "可由 guest 触发的释放后使用" in summary
+    assert "当前状态为处理中" in summary
+    assert "标题显示" not in summary
+
+
+def test_topic_series_marks_summary_from_an_older_version():
+    common = {
+        "project": "QEMU", "thread_key": "thread", "salience_score": 1,
+        "architectures": [], "cve_ids": [], "status": "评审中",
+    }
+    result = topics._merge_series([
+        {
+            **common, "title": "[PATCH v5] migration: improve switchover",
+            "url": "https://e/v5", "activity_at": "2026-07-20T00:00:00Z",
+            "report_mentions": [],
+        },
+        {
+            **common, "title": "[PATCH v2] migration: improve switchover",
+            "url": "https://e/v2", "activity_at": "2026-06-20T00:00:00Z",
+            "report_mentions": [{
+                "period": "monthly", "period_key": "2026-06",
+                "generated_at": "2026-07-01T00:00:00Z", "url": "https://e/v2",
+                "summary": "v2 调整了虚机迁移的切换处理流程", "impact": "",
+            }],
+        },
+    ], "热迁移")[0]
+    assert result["url"] == "https://e/v5"
+    assert "此前版本调整了虚机迁移的切换处理流程" in result["summary"]
+    assert "当前已迭代至 v5" in result["summary"]
+
+
+def test_cve_fallback_does_not_claim_more_than_the_title():
+    summary = topics._fallback_summary({
+        "project": "KVM",
+        "title": "[PATCH] KVM: x86: fix use-after-free (CVE-2026-12345)",
+        "security_type": "cve",
+        "cve_ids": ["CVE-2026-12345"],
+        "status": "评审中",
+    }, "安全与漏洞")
+    assert "KVM 正在修复 x86 中释放后使用（CVE-2026-12345）" in summary
+    assert "影响范围以原始线程和上游公告为准" in summary
+
+
 def test_daily_continuing_threads_are_capped_but_new_threads_remain():
     rows = [{
         "url": f"https://e/{index}", "thread_key": f"t{index}",
@@ -626,6 +719,38 @@ def test_kvm_forum_renders_newest_first_with_source_links():
     assert page.index("2022—2025") < page.index("2010—2013")
     assert "查看 2025 年原始议程" in page
     assert 'class="era-years"' in page and 'class="era-name"' in page
+    assert "1 个议题" in page and "个标题" not in page
+
+
+def test_kvm_wiki_parser_uses_title_columns_and_splits_lightning_talks():
+    wiki = """
+{| border="1"
+! !! colspan="2"|Track 1 !! colspan="2"|Track 2 !! colspan="2"|Track 3
+|-
+! Time !! Title !! Speaker !! Title !! Speaker
+|-
+|1:00pm || Talk A || Alice || Talk B || Bob || Talk C || Carol
+|-
+|2:00pm || Lightning Talks: [[Media:a.pdf | Short A]] * [[Media:b.pdf | Short B]] || A/B || ||
+|-
+|3:00pm || colspan="4" align="center"|Break
+|}
+"""
+    assert kvm_forum._parse_wiki_titles(wiki) == [
+        "Talk A", "Talk B", "Talk C", "Short A", "Short B",
+    ]
+
+
+def test_kvm_wiki_list_parser_stops_before_page_appendices():
+    wiki = """
+== Videos and Slides ==
+* Useful virtualization topic by Alice ([https://example.com/video video])
+== Photos ==
+* https://example.com/photo
+== Blogs / News Reports ==
+* https://example.com/blog
+"""
+    assert kvm_forum._parse_wiki_titles(wiki) == ["Useful virtualization topic"]
 
 
 def test_scheduler_uses_just_finished_periods():
@@ -752,8 +877,8 @@ def _insert(conn, nid, mid=None, irt=None, subject="s", author="a",
     })
 
 
-def _save_report_mentions(conn, period, period_key, urls):
-    items = [{"url": url, "summary": f"{period} 精选摘要", "impact": "影响说明"}
+def _save_report_mentions(conn, period, period_key, urls, summary=None):
+    items = [{"url": url, "summary": summary or f"{period} 精选摘要", "impact": "影响说明"}
              for url in urls]
     db.save_report(conn, period, period_key, {
         "period": period, "period_key": period_key, "fallback": False,

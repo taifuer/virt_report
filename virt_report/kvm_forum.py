@@ -17,7 +17,11 @@ CONTENT_DIR = Path(__file__).parent / "content"
 TITLES_PATH = CONTENT_DIR / "kvm_forum_titles.json"
 ANALYSIS_PATH = CONTENT_DIR / "kvm_forum_analysis.json"
 YEARS = range(2010, 2026)
-WIKI_YEARS = {2012, 2013, 2014, 2015, 2017}
+WIKI_YEARS = {2011, 2012, 2013, 2014, 2015, 2017}
+_NON_TOPIC_RE = re.compile(
+    r"^(?:break|lunch|dinner|welcome|closing|keynote|hackathon|bofs?|lightning talks)$",
+    re.IGNORECASE,
+)
 
 
 class _PresentationParser(HTMLParser):
@@ -76,6 +80,8 @@ class _PresentationParser(HTMLParser):
 
 def _clean_wiki_text(value: str) -> str:
     value = re.sub(r"<!--.*?-->", "", value, flags=re.S)
+    if "|" in value and "=" in value.split("|", 1)[0]:
+        value = value.split("|", 1)[1]
     value = re.sub(r"\[\[[^\]|]+\|([^\]]+)\]\]", r"\1", value)
     value = re.sub(r"\[\[([^\]]+)\]\]", r"\1", value)
     value = re.sub(r"\[https?://\S+\s+([^\]]+)\]", r"\1", value)
@@ -83,26 +89,78 @@ def _clean_wiki_text(value: str) -> str:
     return " ".join(value.strip(" |\t").split())
 
 
+def _wiki_link_labels(value: str) -> list[str]:
+    """提取 MediaWiki 内外链的显示文字，不读取链接目标内容。"""
+    labels = re.findall(r"\[\[[^\]|]+\|([^\]]+)\]\]", value)
+    labels.extend(re.findall(r"\[https?://\S+\s+([^\]]+)\]", value))
+    return [_clean_wiki_text(label) for label in labels if _clean_wiki_text(label)]
+
+
+def _wiki_list_section(wikitext: str) -> str:
+    """限制列表解析范围，避免把照片、博客等页面附录当作会议议题。"""
+    match = re.search(
+        r"^==+\s*(?:Videos and Slides|Presentations)\s*==+\s*$",
+        wikitext, flags=re.I | re.M,
+    )
+    if not match:
+        return ""
+    tail = wikitext[match.end():]
+    end = re.search(
+        r"^==+\s*(?:Schedule|BoFs?|Community|Photos?|Pictures?|Blogs?|Notes)\b.*==+\s*$",
+        tail, flags=re.I | re.M,
+    )
+    return tail[:end.start()] if end else tail
+
+
 def _parse_wiki_titles(wikitext: str) -> list[str]:
     """从 linux-kvm 历史议程的 MediaWiki 表格/列表提取标题。"""
     titles: list[str] = []
     for table in re.findall(r"\{\|(.*?)\|\}", wikitext, flags=re.S):
+        header = next(
+            (line for line in reversed(table.splitlines())
+             if line.startswith("!") and "time" in line.lower()
+             and "title" in line.lower()),
+            "",
+        )
+        headings = [_clean_wiki_text(cell).lower()
+                    for cell in header.lstrip("!").split("!!")]
+        title_columns = [index for index, value in enumerate(headings)
+                         if value == "title"]
         for row in re.split(r"\n\|-.*\n", table):
-            cells: list[str] = []
+            raw_cells: list[str] = []
             for line in row.splitlines():
                 if line.startswith("|") and not line.startswith("|-"):
-                    cells.extend(line.lstrip("|").split("||"))
-            cells = [_clean_wiki_text(cell) for cell in cells]
+                    raw_cells.extend(line.lstrip("|").split("||"))
+            cells = [_clean_wiki_text(cell) for cell in raw_cells]
             if not cells or not re.search(r"\d{1,2}:\d{2}", cells[0]):
                 continue
             # 议程为 Time, Title, Speaker[, Title, Speaker]。
-            for index in range(1, len(cells), 2):
+            columns = list(title_columns or range(1, len(cells), 2))
+            # 个别旧议程的三会场表头只写了两组 Title/Speaker，但数据行仍有
+            # 第三组；从已声明表头之后继续按 Title/Speaker 成对补齐。
+            if headings and len(cells) > len(headings):
+                columns.extend(range(len(headings), len(cells), 2))
+            for index in columns:
+                if index >= len(cells):
+                    continue
+                raw_title = raw_cells[index]
                 title = cells[index]
-                if title and not re.fullmatch(r"(?:break|lunch|dinner|keynote)", title, re.I):
+                if title.lower().startswith("lightning talks:"):
+                    titles.extend(label for label in _wiki_link_labels(raw_title)
+                                  if not _NON_TOPIC_RE.fullmatch(label))
+                elif title.lower() == "lightning talks":
+                    lightning = [
+                        _clean_wiki_text(line.lstrip("*# "))
+                        for line in row.splitlines()
+                        if line.lstrip().startswith(("*", "#"))
+                    ]
+                    titles.extend(label for label in lightning
+                                  if label and not _NON_TOPIC_RE.fullmatch(label))
+                elif title and not _NON_TOPIC_RE.fullmatch(title):
                     titles.append(title)
     if not titles:
         # 2015/2017 使用无表格的列表；优先取条目中的链接显示文字。
-        for line in wikitext.splitlines():
+        for line in _wiki_list_section(wikitext).splitlines():
             if not line.lstrip().startswith(("*", "#")):
                 continue
             text = _clean_wiki_text(line.lstrip("*# "))
@@ -112,7 +170,8 @@ def _parse_wiki_titles(wikitext: str) -> list[str]:
                 prefix, suffix = text.rsplit(" - ", 1)
                 if "," in suffix or " & " in suffix or "/" in suffix:
                     text = prefix
-            if len(text) >= 8 and not re.search(r"registration|schedule|slides and video", text, re.I):
+            if (len(text) >= 8 and not _NON_TOPIC_RE.fullmatch(text)
+                    and not re.search(r"registration|schedule|slides and video", text, re.I)):
                 titles.append(text)
     return list(dict.fromkeys(titles))
 
@@ -140,12 +199,16 @@ def fetch_titles() -> list[dict]:
             html = response.read().decode("utf-8", errors="replace")
         parser = _PresentationParser()
         parser.feed(html)
-        titles = list(dict.fromkeys(parser.presentations))
+        titles = list(dict.fromkeys(
+            title for title in parser.presentations
+            if not _NON_TOPIC_RE.fullmatch(title)
+        ))
         source_url = url
-        if not titles and year in WIKI_YEARS:
+        # 旧版官网的迁移页面有缺项；这些年份以 KVM Wiki 的完整议程为准。
+        if year in WIKI_YEARS:
             titles, source_url = _fetch_wiki_titles(year)
         editions.append({"year": year, "url": source_url, "titles": titles})
-        log.info("KVM Forum %d: %d 个标题", year, len(titles))
+        log.info("KVM Forum %d: %d 个议题", year, len(titles))
     CONTENT_DIR.mkdir(parents=True, exist_ok=True)
     TITLES_PATH.write_text(json.dumps({"editions": editions}, ensure_ascii=False, indent=2),
                            encoding="utf-8")
@@ -162,24 +225,24 @@ def analyze(config: Config, editions: list[dict]) -> dict:
         "\n".join(f"- {title}" for title in edition["titles"])
         for edition in editions
     )
-    prompt = f"""仅根据以下 KVM Forum 官方年度页面中的演讲标题，分析 2010—2025 年研究主题演进。
-不要推断幻灯片中的具体结论，不要把标题未体现的信息写成事实。标题为空或明显不完整的年份必须说明样本不足。
+    prompt = f"""仅根据以下 KVM Forum 官方年度议程页列出的议题名称，分析 2010—2025 年技术主题演进。
+不要推断幻灯片中的具体结论，不要把议题名称未体现的信息写成事实。议题为空或明显不完整的年份必须说明样本不足。
 
 返回 JSON：
 {{
   "headline":"一句总趋势",
   "overview":"200-350字长期演进总结",
   "eras":[{{"years":"2010—2013","name":"阶段名","summary":"阶段特征"}}],
-  "years":[{{"year":2010,"headline":"年度主题判断","themes":["主题1","主题2","主题3"],"summary":"80-140字，只基于标题"}}]
+  "years":[{{"year":2010,"headline":"年度主题判断","themes":["主题1","主题2","主题3"],"summary":"80-140字，只基于议题名称"}}]
 }}
 
 要求：years 必须覆盖 2010 至 2025 共 16 年；themes 每年 2-5 个；使用简洁、克制的中文。
 
-标题数据：
+议题数据：
 {evidence}"""
     text = provider.complete(
         prompt,
-        system="你是 Linux 虚拟化社区技术史分析员，只能依据提供的演讲标题归纳。",
+        system="你是 Linux 虚拟化社区技术史分析员，只能依据提供的议题名称做克制归纳。",
         model=config.llm.weekly_model,
         max_tokens=20000,
         json_mode=True,
@@ -192,7 +255,7 @@ def analyze(config: Config, editions: list[dict]) -> dict:
     result.update({
         "model": config.llm.weekly_model,
         "source": "https://kvm-forum.qemu.org/archive/",
-        "method": "仅分析各年度官方页面列出的演讲标题，不读取 PPT 或视频内容。",
+        "method": "仅依据各年度官方议程页的议题名称进行 AI 辅助归纳，不读取 PPT 或视频；结论不代表演讲全文内容。",
         "usage": getattr(provider, "last_usage", {}),
     })
     ANALYSIS_PATH.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
