@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import calendar as _pycal
+import hashlib
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -15,13 +16,26 @@ from virt_report.summarize import periods
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 ASSETS_DIR = Path(__file__).parent / "assets"
 HOME_REPORT_LIMITS = {"daily": 15, "weekly": 15, "monthly": 15}
+STATIC_ASSET_NAMES = ("brand-mark.png", "site.css", "site.js")
+
+
+def _asset_version() -> str:
+    """Return a short content hash used to invalidate cached shared assets."""
+    digest = hashlib.sha256()
+    for filename in STATIC_ASSET_NAMES:
+        digest.update((ASSETS_DIR / filename).read_bytes())
+    return digest.hexdigest()[:12]
+
+
+ASSET_VERSION = _asset_version()
 
 
 def export_brand_assets(output_dir: Path) -> None:
-    """Copy the canonical logo assets into a static site export."""
+    """Copy canonical shared assets into a static site export."""
     assets_out = output_dir / "assets"
     assets_out.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(ASSETS_DIR / "brand-mark.png", assets_out / "brand-mark.png")
+    for filename in STATIC_ASSET_NAMES:
+        shutil.copyfile(ASSETS_DIR / filename, assets_out / filename)
     output_dir.mkdir(parents=True, exist_ok=True)
     for filename in ("favicon-32.png", "favicon.ico"):
         shutil.copyfile(ASSETS_DIR / filename, output_dir / filename)
@@ -53,12 +67,14 @@ def _with_generated_dates(reports: list[dict], timezone: str) -> list[dict]:
 
 
 def _env() -> Environment:
-    return Environment(
+    env = Environment(
         loader=FileSystemLoader(str(TEMPLATES_DIR)),
         autoescape=select_autoescape(["html", "xml"]),
         trim_blocks=True,
         lstrip_blocks=True,
     )
+    env.globals["asset_version"] = ASSET_VERSION
+    return env
 
 
 def build_calendar(month_key: str, daily_keys: set[str]) -> dict:

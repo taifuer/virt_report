@@ -17,6 +17,10 @@ from virt_report import scheduler
 from virt_report.summarize import periods, report
 
 
+def _site_css() -> str:
+    return (html_render.ASSETS_DIR / "site.css").read_text(encoding="utf-8")
+
+
 # ---------- periods ----------
 def test_daily_window():
     s, e = periods.window("daily", "2026-07-12", "Asia/Shanghai")
@@ -376,11 +380,17 @@ def test_report_generated_date_uses_site_timezone():
             'href="favicon-32.png">') in home
     assert ('<div class="report-card-top"><div class="r-title">2026-07-15</div>'
             '<span class="type">日报</span></div>') in home
-    assert ".report-card-top{display:flex;align-items:flex-start" in home
-    assert ".report-card .type{flex:0 0 auto;padding-top:1px;color:var(--brand);font-size:12px" in home
-    assert ".brand-sub{display:none}" not in home
-    assert "@media(max-width:620px)" in home
-    assert ".brand-mark{width:28px;height:28px}" in home
+    css = _site_css()
+    assert ".report-card-top{display:flex;align-items:flex-start" in css
+    assert ".report-card .type{flex:0 0 auto;padding-top:1px;color:var(--brand);font-size:12px" in css
+    assert ".brand-sub{display:none}" not in css
+    assert "@media(max-width:620px)" in css
+    assert ".brand-mark{width:28px;height:28px}" in css
+    assert (f'<link rel="stylesheet" href="assets/site.css?v='
+            f'{html_render.ASSET_VERSION}">') in home
+    assert (f'<script src="assets/site.js?v={html_render.ASSET_VERSION}"></script>'
+            in home)
+    assert "<style>" not in home
 
 
 def test_brand_assets_export_with_static_site(tmp_path):
@@ -390,6 +400,9 @@ def test_brand_assets_export_with_static_site(tmp_path):
         html_render.ASSETS_DIR / "brand-mark.png"
     ).read_bytes()
     assert mark.stat().st_size < 8_000
+    for filename in ("site.css", "site.js"):
+        exported = tmp_path / "assets" / filename
+        assert exported.read_bytes() == (html_render.ASSETS_DIR / filename).read_bytes()
     assert (tmp_path / "favicon-32.png").stat().st_size < 3_000
     assert (tmp_path / "favicon.ico").stat().st_size < 8_000
 
@@ -488,11 +501,41 @@ def test_security_feed_excludes_enhancements_but_keeps_internal_index(tmp_db):
 
 
 def test_topic_mobile_layout_wraps_controls_and_long_titles():
-    page = html_render.render_topics_html(Config(), [])
-    assert ".topic-page{min-width:0;max-width:100%}" in page
-    assert ".topic-item-head>a{min-width:0;overflow-wrap:anywhere" in page
-    assert ".topic-heading{align-items:flex-start;flex-direction:column;gap:8px}" in page
-    assert ".topic-controls>div{width:100%;min-width:0;flex-wrap:wrap}" in page
+    css = _site_css()
+    assert ".topic-page{min-width:0;max-width:100%}" in css
+    assert ".topic-item-head>a{min-width:0;overflow-wrap:anywhere" in css
+    assert ".topic-heading{align-items:flex-start;flex-direction:column;gap:8px}" in css
+    assert ".topic-controls>div{width:100%;min-width:0;flex-wrap:wrap}" in css
+
+
+def test_report_mobile_layout_prevents_long_content_overflow():
+    css = _site_css()
+    assert "html{max-width:100%;overflow-x:hidden" in css
+    assert ".report-layout{display:grid;min-width:0;max-width:100%" in css
+    assert ".d-title{min-width:0;overflow-wrap:anywhere" in css
+    assert ".d-sum,.dyn details,.dyn details span{min-width:0;max-width:100%;overflow-wrap:anywhere" in css
+    assert ".wrap{width:calc(100% - 24px);max-width:1180px}" in css
+
+
+def test_home_mobile_uses_one_report_switch_and_visible_archive():
+    context = {
+        "daily": [], "weekly": [], "monthly": [],
+        "cal": html_render.build_calendar("2026-07", set()),
+    }
+    page = html_render.render_index_html(Config(), context)
+    css = _site_css()
+    assert page.count("data-home-report-tab=") == 3
+    assert '<div class="mobile-archive-head"><span>报告归档</span><span data-mobile-archive-label>日报</span></div>' in page
+    assert 'class="report-group first mobile-active"' in page
+    assert "[data-home-report-panel]{display:none}[data-home-report-panel].mobile-active{display:block}" in css
+    assert ".archive-browser{display:block" in css
+    assert ".archive-tabs{display:none}" in css
+    assert "data-mobile-archive-toggle" not in page
+    assert ".report-card:nth-child(n+6)" not in css
+    assert "scrollbar-width:thin" in css
+    assert "if(mobileReports.matches)selectArchive(button.dataset.homeReportTab)" in page
+    assert "sessionStorage.getItem(reportTabStorageKey)" in page
+    assert "sessionStorage.setItem(reportTabStorageKey,type)" in page
 
 
 def test_topic_public_layers_use_curated_and_recent_report_evidence(tmp_db):

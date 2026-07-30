@@ -195,12 +195,13 @@ def make_handler(config: Config):
 
         def _send(self, status: int, body: str | bytes, head_only: bool = False,
                   content_type: str = "text/html; charset=utf-8",
-                  extra_headers: dict[str, str] | None = None) -> None:
+                  extra_headers: dict[str, str] | None = None,
+                  cache_control: str = "no-cache") -> None:
             payload = body if isinstance(body, bytes) else body.encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(payload)))
-            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Cache-Control", cache_control)
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
@@ -243,11 +244,21 @@ def make_handler(config: Config):
                 "/favicon-32.png": ("favicon-32.png", "image/png"),
                 "/favicon.ico": ("favicon.ico", "image/x-icon"),
                 "/assets/brand-mark.png": ("brand-mark.png", "image/png"),
+                "/assets/site.css": ("site.css", "text/css; charset=utf-8"),
+                "/assets/site.js": ("site.js", "text/javascript; charset=utf-8"),
             }
             if path in brand_assets:
                 filename, content_type = brand_assets[path]
                 body = (render.ASSETS_DIR / filename).read_bytes()
-                self._send(200, body, head_only, content_type)
+                cache_control = (
+                    "public, max-age=31536000, immutable"
+                    if filename in {"site.css", "site.js"}
+                    else "public, max-age=3600"
+                )
+                self._send(
+                    200, body, head_only, content_type,
+                    cache_control=cache_control,
+                )
                 return
             if path in ("/api/status", "/api/metrics"):
                 if not access.is_authorized(self.headers, config.metrics_access.access_key):

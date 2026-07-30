@@ -13,7 +13,7 @@
 </div>
 <div class="home-grid">
   <div>
-    <section class="report-group first" id="daily" data-home-report-panel="daily">
+    <section class="report-group first mobile-active" id="daily" data-home-report-panel="daily">
       <div class="group-head"><h2>日报</h2><span>最近 {{ ctx.daily|length if ctx else 0 }} 期</span></div>
       {% if ctx and ctx.daily %}<div class="report-list">
         {% for r in ctx.daily %}<a class="report-card" href="daily/{{ r.period_key }}.html">
@@ -38,7 +38,7 @@
       </div><a class="home-more" href="monthly/index.html">查看全部月报</a>{% else %}<p class="empty-note">暂无月报，运行 <code>virt-report monthly</code>。</p>{% endif %}
     </section>
   </div>
-  <aside>{% if ctx and ctx.cal %}<div class="cal archive-browser">
+  <aside>{% if ctx and ctx.cal %}<div class="mobile-archive-head"><span>报告归档</span><span data-mobile-archive-label>日报</span></div><div class="cal archive-browser" id="home-archive">
     <div class="archive-tabs" role="tablist" aria-label="报告类型">
       <button type="button" class="active" role="tab" aria-selected="true" data-archive-tab="daily">日</button>
       <button type="button" role="tab" aria-selected="false" data-archive-tab="weekly">周</button>
@@ -65,10 +65,15 @@
 </div>
 {% endblock %}
 {% block scripts %}<script>
-document.querySelectorAll('[data-archive-tab]').forEach(button=>button.addEventListener('click',()=>{
-  document.querySelectorAll('[data-archive-tab]').forEach(tab=>{const on=tab===button;tab.classList.toggle('active',on);tab.setAttribute('aria-selected',String(on))});
-  document.querySelectorAll('[data-archive-panel]').forEach(panel=>panel.hidden=panel.dataset.archivePanel!==button.dataset.archiveTab);
-}));
+const archiveTabs=[...document.querySelectorAll('[data-archive-tab]')];
+const archivePanels=[...document.querySelectorAll('[data-archive-panel]')];
+const reportLabels={daily:'日报',weekly:'周报',monthly:'月报'};
+function selectArchive(type){
+  archiveTabs.forEach(tab=>{const on=tab.dataset.archiveTab===type;tab.classList.toggle('active',on);tab.setAttribute('aria-selected',String(on))});
+  archivePanels.forEach(panel=>panel.hidden=panel.dataset.archivePanel!==type);
+  const label=document.querySelector('[data-mobile-archive-label]');if(label)label.textContent=reportLabels[type]||'';
+}
+archiveTabs.forEach(button=>button.addEventListener('click',()=>selectArchive(button.dataset.archiveTab)));
 document.querySelectorAll('[data-cal-shift]').forEach(button=>button.addEventListener('click',()=>{
   const months=[...document.querySelectorAll('[data-calendar-month]')];
   const current=months.findIndex(month=>!month.hidden);
@@ -77,11 +82,15 @@ document.querySelectorAll('[data-cal-shift]').forEach(button=>button.addEventLis
 }));
 const reportTabs=[...document.querySelectorAll('[data-home-report-tab]')];
 const mobileReports=window.matchMedia('(max-width:620px)');
+const reportTabStorageKey='virt-report:home-report-tab';
+function savedReportTab(){try{return sessionStorage.getItem(reportTabStorageKey)}catch(error){return null}}
+function rememberReportTab(type){try{sessionStorage.setItem(reportTabStorageKey,type)}catch(error){}}
 function selectReportTab(button){
   reportTabs.forEach(tab=>{const on=tab===button;tab.classList.toggle('active',on);tab.setAttribute('aria-selected',String(on))});
-  document.querySelectorAll('[data-home-report-panel]').forEach(panel=>panel.hidden=mobileReports.matches&&panel.dataset.homeReportPanel!==button.dataset.homeReportTab);
+  document.querySelectorAll('[data-home-report-panel]').forEach(panel=>{const on=panel.dataset.homeReportPanel===button.dataset.homeReportTab;panel.classList.toggle('mobile-active',on);panel.hidden=mobileReports.matches&&!on});
+  if(mobileReports.matches)selectArchive(button.dataset.homeReportTab);
 }
-reportTabs.forEach(button=>button.addEventListener('click',()=>selectReportTab(button)));
-function syncReportPanels(){if(mobileReports.matches)selectReportTab(reportTabs.find(tab=>tab.classList.contains('active'))||reportTabs[0]);else document.querySelectorAll('[data-home-report-panel]').forEach(panel=>panel.hidden=false)}
-mobileReports.addEventListener?.('change',syncReportPanels);syncReportPanels();
+reportTabs.forEach(button=>button.addEventListener('click',()=>{selectReportTab(button);rememberReportTab(button.dataset.homeReportTab)}));
+function syncReportPanels(){if(mobileReports.matches){const saved=savedReportTab();selectReportTab(reportTabs.find(tab=>tab.dataset.homeReportTab===saved)||reportTabs.find(tab=>tab.classList.contains('active'))||reportTabs[0])}else document.querySelectorAll('[data-home-report-panel]').forEach(panel=>panel.hidden=false)}
+if(mobileReports.addEventListener)mobileReports.addEventListener('change',syncReportPanels);else if(mobileReports.addListener)mobileReports.addListener(syncReportPanels);syncReportPanels();
 </script>{% endblock %}
