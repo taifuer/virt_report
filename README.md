@@ -124,7 +124,7 @@ cp .env.example .env   # 填入 DEEPSEEK_API_KEY (可选, 不填则降级)
 
 RSS 地址为 `/feed.xml`（全部报告）、`/daily/feed.xml`、`/weekly/feed.xml`、`/monthly/feed.xml` 和 `/topics/security/feed.xml`。页脚“运行状态”进入受保护的 `/metrics.html`，展示各源最近一次及近十次采集状态、数据规模、最近报告和模型用量；`/api/metrics` 提供相同 JSON 数据并接受 `Authorization: Bearer <METRICS_ACCESS_KEY>`。成本依据 `config.yaml` 的人民币/百万 tokens 单价估算，仅供趋势观察，不等同于 DeepSeek 账单。运行页不写入静态快照，避免绕过后端鉴权。
 
-周报严格按站点时区的 ISO 自然周统计，即周一 00:00 至下周一 00:00（右端不包含）；页面以闭区间展示为 `2026 年第 28 周（7.6–7.12）`。`/kvm-forum.html` 仅依据 KVM Forum 2010—2025 各届议程标题，由 `deepseek-v4-pro` 归纳年度主题，不读取 PPT 或视频正文。
+周报严格按站点时区的 ISO 自然周统计，即周一 00:00 至下周一 00:00（右端不包含）；页面以闭区间展示为 `2026 年第 28 周（7.6–7.12）`。`/kvm-forum.html` 仅依据 KVM Forum 2010—2025 各届议程标题归纳年度主题，不读取 PPT 或视频正文；现有分析保留生成时使用的模型，后续重新分析时跟随当前周报模型。
 
 首页的日报、周报和月报各保留最近 15 期，卡片直接显示报告标题；移动端用三类切换，默认每类先显示 5 期，更早内容通过归档页或右侧日、周、月切换器查找。报告详情支持按项目、x86、ARM、功能和缺陷筛选，并继续对重点架构议题进行明确标记和优先展示。
 
@@ -132,9 +132,9 @@ RSS 地址为 `/feed.xml`（全部报告）、`/daily/feed.xml`、`/weekly/feed.
 
 ## 启用 AI 摘要（DeepSeek）
 
-在 `.env` 中设置 `DEEPSEEK_API_KEY`（获取：https://platform.deepseek.com/）。DeepSeek 走 OpenAI 兼容端点 `https://api.deepseek.com`，日报用 `deepseek-v4-flash`（快速低成本）、周/月报用 `deepseek-v4-pro`（高质量，见 `config.yaml`）。`.env` 由 `load_config()` 自动加载，无需手动 export。无 key 时自动降级为模板摘要并标注「降级模板」徽章。
+在 `.env` 中设置 `DEEPSEEK_API_KEY`（获取：https://platform.deepseek.com/）。DeepSeek 走 OpenAI 兼容端点 `https://api.deepseek.com`；自 2026 年 8 月 1 日起，新生成的日报、周报和月报统一使用 `deepseek-v4-flash`。`.env` 由 `load_config()` 自动加载，无需手动 export。无 key 时自动降级为模板摘要并标注「降级模板」徽章。
 
-> 日报使用 `deepseek-v4-flash`，周/月报使用 `deepseek-v4-pro`。模型支持 1M 上下文和 JSON Output；项目仍限制候选线程数以降低噪声与成本。若模型 ID 变化，调整 `config.yaml` 即可。
+> `deepseek-v4-flash` 支持 1M 上下文、思考模式和 JSON Output；项目仍限制候选线程数以降低噪声与成本。历史报告保留原有内容和模型记录，配置中继续保留旧模型单价用于成本估算。若模型 ID 变化，调整 `config.yaml` 即可。
 
 ## 定时调度
 

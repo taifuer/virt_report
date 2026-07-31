@@ -45,9 +45,9 @@ class LLMConfig:
     provider: str = "deepseek"
     base_url: str = "https://api.deepseek.com"
     api_key_env: str = "DEEPSEEK_API_KEY"
-    daily_model: str = "deepseek-flash"
-    weekly_model: str = "deepseek-v4-pro"
-    monthly_model: str = "deepseek-v4-pro"
+    daily_model: str = "deepseek-v4-flash"
+    weekly_model: str = "deepseek-v4-flash"
+    monthly_model: str = "deepseek-v4-flash"
     daily_top_n: int = 30
     pricing_cny: dict[str, dict[str, float]] = field(default_factory=lambda: {
         "deepseek-v4-flash": {"cache_hit": 0.02, "cache_miss": 1.0, "output": 2.0},

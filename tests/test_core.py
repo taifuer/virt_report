@@ -264,8 +264,16 @@ def test_enrich_architectures_upgrades_old_report_content():
 
 
 def test_about_page_and_architecture_badge_render():
-    about = html_render.render_about_html(Config())
+    config = Config()
+    assert {config.llm.daily_model, config.llm.weekly_model,
+            config.llm.monthly_model} == {"deepseek-v4-flash"}
+    about = html_render.render_about_html(config)
     assert "KVM Forum" in about
+    assert "2026 年 8 月 1 日起" in about
+    assert "DeepSeek-V4-Flash 正式版" in about
+    assert 'href="https://api-docs.deepseek.com/zh-cn/updates/"' in about
+    assert 'href="mailto:taifu@taifua.com"' in about
+    assert "摘要偏差、分类错误、链接失效或其他问题" in about
     content = {
         "period": "daily", "period_key": "2026-07-12", "label": "2026-07-12",
         "headline": "", "fallback": False, "model": "test", "timezone": "Asia/Shanghai",
