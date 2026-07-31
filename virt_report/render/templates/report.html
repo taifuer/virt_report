@@ -8,7 +8,7 @@
   <article class="post">
     <header class="report-hero">
       <div class="kicker">{{ "Daily Brief" if report.period=="daily" else ("Weekly Review" if report.period=="weekly" else "Monthly Review") }} · {{ report.period_key }}</div>
-      <h1 class="title">{{ period_range.label }} 社区动态</h1>
+      {% if report.period == "weekly" %}<h1 class="title weekly-title"><span>{{ period_range.name }}</span><span class="weekly-range">{{ period_range.short }}</span></h1>{% else %}<h1 class="title">{{ period_range.label }} 社区动态</h1>{% endif %}
       {% if report.headline %}<p style="margin:0 0 13px;color:var(--ink-2);font:650 16px/1.6 var(--serif)">{{ report.headline }}</p>{% endif %}
       <div class="meta">{% if report.fallback %}<span class="badge warn">模板降级</span>{% else %}<span class="badge">AI 分析 · {{ report.model }}</span>{% endif %}<span>{{ report.stats.total_threads }} 个活跃线程</span><span>{{ period_range.full }}</span><span>{{ report.timezone }}</span></div>
       <div class="trust-note"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>摘要由 AI 基于本期高活跃线程生成。标题链接直达原始邮件或 issue；技术决策请以原始讨论为准。</span></div>

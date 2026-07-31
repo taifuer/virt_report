@@ -293,6 +293,12 @@ def test_about_page_and_architecture_badge_render():
     assert 'name="color-scheme" content="light"' in page
     assert "theme-toggle" not in page
     assert "prefers-color-scheme:dark" not in page
+    weekly = dict(content, period="weekly", period_key="2026-W28",
+                  label="2026 年第 28 周")
+    weekly_page = html_render.render_report_html(Config(), weekly)
+    assert ('<h1 class="title weekly-title"><span>2026 年第 28 周</span>'
+            '<span class="weekly-range">7.6–7.12</span></h1>') in weekly_page
+    assert "（7.6–7.12） 社区动态</h1>" not in weekly_page
 
 
 def test_index_context_applies_home_report_limits(tmp_db):
@@ -453,8 +459,14 @@ def test_brand_assets_export_with_static_site(tmp_path):
 
 def test_weekly_range_is_local_inclusive_natural_week():
     value = html_render._period_range("weekly", "2026-W28", "Asia/Shanghai")
+    assert value["name"] == "2026 年第 28 周"
     assert value["label"] == "2026 年第 28 周（7.6–7.12）"
     assert value["full"] == "2026-07-06 至 2026-07-12"
+    archive = html_render.render_archive_html(Config(), "weekly", [{
+        "period_key": "2026-W28", "item_count": 27, "model": "test",
+        "generated_at": "2026-07-13T00:00:00Z",
+    }])
+    assert 'class="archive-key weekly-key">2026 年第 28 周（7.6–7.12）' in archive
 
 
 def test_archive_and_topic_detail_offer_pagination_over_ten_items(tmp_db):
@@ -571,7 +583,10 @@ def test_home_mobile_uses_one_report_switch_and_visible_archive():
     assert page.count("data-home-report-tab=") == 3
     assert '<div class="mobile-archive-head"><span>报告归档</span><span data-mobile-archive-label>日报</span></div>' in page
     assert 'class="report-group first mobile-active"' in page
-    assert "[data-home-report-panel]{display:none}[data-home-report-panel].mobile-active{display:block}" in css
+    assert "[data-home-report-panel]{display:none;margin-top:0}" in css
+    assert "[data-home-report-panel].mobile-active{display:block}" in css
+    assert ".archive-row{grid-template-columns:minmax(0,1fr) auto;gap:5px 12px}" in css
+    assert ".archive-key.weekly-key{white-space:nowrap;font-size:15px}" in css
     assert ".archive-browser{display:block" in css
     assert ".archive-tabs{display:none}" in css
     assert "data-mobile-archive-toggle" not in page

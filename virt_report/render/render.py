@@ -130,6 +130,7 @@ def _period_range(period: str, period_key: str, timezone: str) -> dict:
     return {
         "short": short,
         "full": f"{start:%Y-%m-%d} 至 {end:%Y-%m-%d}",
+        "name": periods.label(period, period_key),
         "label": f"{periods.label(period, period_key)}（{short}）"
         if period == "weekly" else periods.label(period, period_key),
     }

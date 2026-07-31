@@ -7,7 +7,7 @@
 <article class="archive-page">
   <header><div class="kicker">Report Archive</div><h1>{{ type_name }}</h1><p>共 {{ reports|length }} 期，按时间从新到旧排列。</p></header>
   <div class="archive-table" data-pager data-default-size="10">{% for report in reports %}<a class="archive-row" data-page-item href="{{ report.period_key }}.html">
-    <span class="archive-key">{{ report.period_range.label if period=="weekly" else report.period_key }}</span>
+    <span class="archive-key{% if period=="weekly" %} weekly-key{% endif %}">{{ report.period_range.label if period=="weekly" else report.period_key }}</span>
     <span>{{ report.item_count }} 条精选</span><span>{{ report.model or "unknown" }}</span><span>{{ report.generated_date }} 生成</span>
   </a>{% else %}<p class="empty-note">暂无{{ type_name }}。</p>{% endfor %}</div>
   {% if reports|length > 10 %}<div class="pager" data-page-controls><button type="button" data-page-prev>上一页</button><span data-page-status></span><button type="button" data-page-next>下一页</button><label>每页 <select data-page-size><option value="10">10</option><option value="20">20</option><option value="30">30</option></select> 条</label></div>{% endif %}
