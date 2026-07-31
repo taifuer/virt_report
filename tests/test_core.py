@@ -363,6 +363,42 @@ def test_archive_and_topic_pages_render(tmp_db):
     assert page.count('href="u"') == 2
 
 
+def test_topic_snapshot_serves_overview_and_detail_without_recompute(tmp_db, monkeypatch):
+    _insert(tmp_db, "snapshot-topic", subject="Improve migration performance")
+    threads.rebuild_threads(tmp_db)
+    _save_report_mentions(tmp_db, "weekly", "2026-W28", ["u"])
+    counts = topics.refresh_topic_snapshots(tmp_db)
+    assert counts["migration"] == 1
+    assert tmp_db.execute("SELECT COUNT(*) FROM topic_snapshots").fetchone()[0] == len(
+        topics.TOPIC_RULES
+    )
+
+    def fail_recompute(_conn):
+        raise AssertionError("Web request must not recompute topic snapshots")
+
+    monkeypatch.setattr(topics, "_compute_topic_payloads", fail_recompute)
+    groups = topics.build_topic_groups(tmp_db, allow_rebuild=False)
+    migration = next(group for group in groups if group["key"] == "migration")
+    assert migration["total"] == 1
+    assert "report_mentions" not in migration["items"][0]
+    detail = topics.build_topic_detail(
+        tmp_db, "migration", page=1, per_page=10, allow_rebuild=False,
+    )
+    assert detail["total"] == 1
+    assert detail["items"][0]["url"] == "u"
+
+
+def test_topic_request_does_not_rebuild_when_snapshot_is_missing(tmp_db, monkeypatch):
+    def fail_recompute(_conn):
+        raise AssertionError("Request path attempted an offline rebuild")
+
+    monkeypatch.setattr(topics, "_compute_topic_payloads", fail_recompute)
+    assert topics.build_topic_groups(tmp_db, allow_rebuild=False) is None
+    assert topics.build_topic_detail(
+        tmp_db, "migration", allow_rebuild=False,
+    ) is None
+
+
 def test_report_generated_date_uses_site_timezone():
     report_row = {
         "period_key": "2026-07-15", "item_count": 29,

@@ -20,6 +20,7 @@ Use the project virtual environment for all commands:
 .venv/bin/pip install -e .                 # editable install
 .venv/bin/virt-report fetch --since-days 3 # collect data and rebuild threads
 .venv/bin/virt-report daily --no-fetch     # generate a report from stored data
+.venv/bin/virt-report topics-refresh       # rebuild offline topic snapshots
 .venv/bin/virt-report status               # inspect source coverage and health
 .venv/bin/virt-report index                # rebuild the static index
 .venv/bin/python -m pytest tests/ -q        # run the test suite

@@ -594,14 +594,84 @@ def _partition_items(items: list[dict], topic_key: str) -> tuple[list[dict], lis
     return _deduplicate(curated), _deduplicate(watch)
 
 
-def build_topic_groups(conn: sqlite3.Connection, limit: int = 8) -> list[dict]:
-    """Build the public topic overview from curated and recent report evidence."""
+_PUBLIC_ITEM_FIELDS = {
+    "thread_key", "project", "source", "title", "url", "summary", "impact",
+    "activity_at", "category", "architectures", "cve_ids", "security_type",
+    "status", "security_label", "category_label", "time", "report_keys",
+    "scope", "scope_label", "series_count", "series_version", "priority_score",
+}
+
+
+def _public_item(item: dict) -> dict:
+    """只保留页面、分页与 RSS 需要的字段，控制持久化快照体积。"""
+    return {key: value for key, value in item.items() if key in _PUBLIC_ITEM_FIELDS}
+
+
+def _compute_topic_payloads(conn: sqlite3.Connection) -> dict[str, dict]:
+    """从物化专题索引离线计算版本链、报告证据和公开分层。"""
     sync_topic_index(conn)
     mentions = _report_mentions(conn)
-    groups = []
+    payloads = {}
     for key, name, description, _words in TOPIC_RULES:
         all_items = _load_topic_items(conn, key, name, mentions)
         curated, recent = _partition_items(all_items, key)
+        payloads[key] = {
+            "key": key, "name": name, "description": description,
+            "raw_total": len(all_items),
+            "curated": [_public_item(item) for item in curated],
+            "recent": [_public_item(item) for item in recent],
+        }
+    return payloads
+
+
+def refresh_topic_snapshots(conn: sqlite3.Connection) -> dict[str, int]:
+    """离线重建专题公开快照，并在全部计算成功后原子替换旧快照。"""
+    payloads = _compute_topic_payloads(conn)
+    generated_at = db.now_utc_iso()
+    with db.transaction(conn):
+        conn.execute("DELETE FROM topic_snapshots")
+        conn.executemany(
+            "INSERT INTO topic_snapshots "
+            "(topic_key,rule_version,generated_at,content_json) VALUES (?,?,?,?)",
+            [
+                (key, RULE_VERSION, generated_at,
+                 json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+                for key, payload in payloads.items()
+            ],
+        )
+    return {
+        key: len(payload["curated"]) + len(payload["recent"])
+        for key, payload in payloads.items()
+    }
+
+
+def _load_topic_snapshots(conn: sqlite3.Connection) -> dict[str, dict] | None:
+    rows = conn.execute(
+        "SELECT topic_key,rule_version,content_json FROM topic_snapshots"
+    ).fetchall()
+    expected = {key for key, _name, _description, _words in TOPIC_RULES}
+    if ({row["topic_key"] for row in rows} != expected
+            or any(row["rule_version"] != RULE_VERSION for row in rows)):
+        return None
+    try:
+        return {row["topic_key"]: json.loads(row["content_json"]) for row in rows}
+    except (TypeError, ValueError):
+        return None
+
+
+def build_topic_groups(conn: sqlite3.Connection, limit: int = 8, *,
+                       allow_rebuild: bool = True) -> list[dict] | None:
+    """从持久化快照构建专题概览；仅离线任务允许缺失时现场计算。"""
+    payloads = _load_topic_snapshots(conn)
+    if payloads is None:
+        if not allow_rebuild:
+            return None
+        payloads = _compute_topic_payloads(conn)
+    groups = []
+    for key, _name, _description, _words in TOPIC_RULES:
+        payload = payloads[key]
+        curated = payload["curated"]
+        recent = payload["recent"]
         recent_slots = min(len(recent), max(1, limit // 4)) if curated else limit
         curated_slots = min(len(curated), limit - recent_slots)
         featured = curated[:curated_slots] + recent[:recent_slots]
@@ -610,8 +680,9 @@ def build_topic_groups(conn: sqlite3.Connection, limit: int = 8) -> list[dict]:
         if len(featured) < limit:
             featured.extend(recent[recent_slots:limit - len(featured) + recent_slots])
         groups.append({
-            "key": key, "name": name, "description": description,
-            "items": featured, "raw_total": len(all_items),
+            "key": key, "name": payload["name"],
+            "description": payload["description"],
+            "items": featured, "raw_total": payload["raw_total"],
             "curated_count": len(curated), "recent_count": len(recent),
             "total": len(curated) + len(recent), "featured_count": len(featured),
             "detail_url": f"topics/{key}/",
@@ -621,17 +692,23 @@ def build_topic_groups(conn: sqlite3.Connection, limit: int = 8) -> list[dict]:
 
 def build_topic_detail(conn: sqlite3.Connection, topic_key: str, *, page: int = 1,
                        per_page: int = 20, sort: str = "priority",
-                       scope: str = "curated") -> dict | None:
-    """构建单专题详情和服务端分页数据。"""
+                       scope: str = "curated",
+                       allow_rebuild: bool = True) -> dict | None:
+    """从持久化快照构建单专题详情和服务端分页数据。"""
     definition = _topic_definition(topic_key)
     if not definition:
         return None
-    sync_topic_index(conn)
     name, description = definition
-    all_items = _load_topic_items(conn, topic_key, name, _report_mentions(conn))
-    curated, recent = _partition_items(all_items, topic_key)
+    payloads = _load_topic_snapshots(conn)
+    if payloads is None:
+        if not allow_rebuild:
+            return None
+        payloads = _compute_topic_payloads(conn)
+    payload = payloads[topic_key]
+    curated = payload["curated"]
+    recent = payload["recent"]
     scope = "recent" if scope == "recent" else "curated"
-    items = recent if scope == "recent" else curated
+    items = list(recent if scope == "recent" else curated)
     if sort == "latest":
         items.sort(key=lambda item: item.get("activity_at") or "", reverse=True)
     else:

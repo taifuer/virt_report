@@ -77,7 +77,7 @@ def _fetch_all_locked(conn, config: Config, since: datetime,
     for gl in config.sources.gitlab:
         run("gitlab", gl.name, gitlab, gl)
     threads.rebuild_threads(conn)
-    topics.sync_topic_index(conn)
+    topics.refresh_topic_snapshots(conn)
 
 
 def _list_reports(conn, period: str) -> list[dict]:
@@ -241,6 +241,7 @@ def _run_period(args, config: Config, period: str) -> None:
             _fetch_all(conn, config, since=since, max_pages=args.max_pages)
         # `fetch` 已负责重建线程；--no-fetch 用于批量回填报告时避免重复全量重建。
         content = report.generate(conn, config, period, key)
+        topics.refresh_topic_snapshots(conn)
         print(f"{period}报已生成并保存到数据库: /{period}/{key}.html")
         if period == "daily":
             ic = sum(len(s.get("items", [])) for s in content.get("sections", []))
@@ -270,8 +271,22 @@ def cmd_monthly(args, config: Config) -> None:
 def cmd_index(args, config: Config) -> None:
     conn = db.connect(config.db_path)
     try:
+        topics.refresh_topic_snapshots(conn)
         _render_index(config, conn)
         print("静态站点快照已导出")
+    finally:
+        conn.close()
+
+
+def cmd_topics_refresh(args, config: Config) -> None:
+    """离线重建网页直接读取的专题快照。"""
+    del args
+    conn = db.connect(config.db_path)
+    try:
+        counts = topics.refresh_topic_snapshots(conn)
+        print("专题快照已更新: " + " / ".join(
+            f"{key}={count}" for key, count in counts.items()
+        ))
     finally:
         conn.close()
 
@@ -325,7 +340,7 @@ def cmd_backfill_kvm(args, config: Config) -> None:
             print(f"回填 {url}（从 {args.since} 起）")
             lore_git.fetch(conn, replace(source, url=url), since=since)
         threads.rebuild_threads(conn)
-        topics.sync_topic_index(conn)
+        topics.refresh_topic_snapshots(conn)
     finally:
         conn.close()
 
@@ -405,6 +420,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_period_opts(p_monthly, "YYYY-MM (如 2026-07)")
 
     sub.add_parser("index", help="导出完整静态站点快照")
+    sub.add_parser("topics-refresh", help="离线重建专题数据快照")
     sub.add_parser("status", help="显示数据源覆盖与最近采集健康状态")
     p_serve = sub.add_parser("serve", help="启动数据库驱动的 Web 服务")
     p_serve.add_argument("--host", default="127.0.0.1")
@@ -434,6 +450,7 @@ def main(argv: list[str] | None = None) -> int:
 
     dispatch = {"fetch": cmd_fetch, "daily": cmd_daily, "weekly": cmd_weekly,
                 "monthly": cmd_monthly, "index": cmd_index, "status": cmd_status,
+                "topics-refresh": cmd_topics_refresh,
                 "backfill-kvm": cmd_backfill_kvm, "serve": cmd_serve,
                 "scheduler": cmd_scheduler, "kvm-forum": cmd_kvm_forum,
                 "backup": cmd_backup, "restore": cmd_restore}

@@ -294,9 +294,15 @@ def make_handler(config: Config):
                 return
             if path in ("/topics", "/topics/", "/topics.html"):
                 with closing(db.connect(config.db_path)) as conn:
-                    html = render.render_topics_html(
-                        config, topics.build_topic_groups(conn)
-                    )
+                    groups = topics.build_topic_groups(conn, allow_rebuild=False)
+                if groups is None:
+                    static_path = config.output_dir / "topics.html"
+                    if static_path.exists():
+                        self._send(200, static_path.read_bytes(), head_only)
+                    else:
+                        self._send(503, "<h1>专题快照准备中</h1>", head_only)
+                    return
+                html = render.render_topics_html(config, groups)
                 self._send(200, html, head_only)
                 return
             topic_match = _TOPIC_ROUTE.fullmatch(path)
@@ -312,11 +318,23 @@ def make_handler(config: Config):
                         per_page=number("per_page", 20),
                         sort=query.get("sort", ["priority"])[0],
                         scope=query.get("scope", ["curated"])[0],
+                        allow_rebuild=False,
                     )
                 if topic:
                     self._send(200, render.render_topic_detail_html(config, topic), head_only)
                 else:
-                    self._send(404, "<h1>404</h1><p>专题不存在。</p>", head_only)
+                    static_path = (
+                        config.output_dir / "topics" / topic_match.group(1) / "index.html"
+                    )
+                    if not query and static_path.exists():
+                        self._send(200, static_path.read_bytes(), head_only)
+                    elif any(
+                        key == topic_match.group(1)
+                        for key, _name, _description, _words in topics.TOPIC_RULES
+                    ):
+                        self._send(503, "<h1>专题快照准备中</h1>", head_only)
+                    else:
+                        self._send(404, "<h1>404</h1><p>专题不存在。</p>", head_only)
                 return
             if path in ("/metrics", "/metrics/", "/metrics.html"):
                 if not access.is_authorized(self.headers, config.metrics_access.access_key):

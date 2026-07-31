@@ -118,6 +118,13 @@ CREATE TABLE IF NOT EXISTS topic_entries (
 CREATE INDEX IF NOT EXISTS idx_topic_entries_activity
     ON topic_entries(topic_key, activity_at DESC);
 
+CREATE TABLE IF NOT EXISTS topic_snapshots (
+    topic_key       TEXT PRIMARY KEY,
+    rule_version    INTEGER NOT NULL,
+    generated_at    TEXT NOT NULL,
+    content_json    TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS scheduler_runs (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     identity      TEXT NOT NULL,
