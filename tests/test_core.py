@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from virt_report import access, db, kvm_forum, maintenance, metrics, rss
+from virt_report import access, conferences, db, kvm_forum, maintenance, metrics, rss
 from virt_report.collectors import base, hyperkitty, mbox
 from virt_report.config import Config, MailingListSource, Sources, Storage
 from virt_report.processing import architecture, category, classify, threads, topics
@@ -274,6 +274,9 @@ def test_about_page_and_architecture_badge_render():
     assert 'href="https://api-docs.deepseek.com/zh-cn/updates/"' in about
     assert 'href="mailto:taifu@taifua.com"' in about
     assert "摘要偏差、分类错误、链接失效或其他问题" in about
+    assert "关注会议" in about and "USENIX Security" in about
+    assert about.index("会议内容扩展") < about.index("AI 模型更新")
+    assert "学术会议内容覆盖 2010—2026 年" in about
     content = {
         "period": "daily", "period_key": "2026-07-12", "label": "2026-07-12",
         "headline": "", "fallback": False, "model": "test", "timezone": "Asia/Shanghai",
@@ -779,6 +782,101 @@ def test_kvm_forum_renders_newest_first_with_source_links():
     assert "查看 2025 年原始议程" in page
     assert 'class="era-years"' in page and 'class="era-name"' in page
     assert "1 个议题" in page and "个标题" not in page
+    assert "查看长期演进概述" not in page
+    assert 'class="forum-overview-mobile"' not in page
+
+
+def test_conference_catalogue_is_curated_and_renders_without_documents():
+    content = conferences.load_content()
+    assert content["paper_count"] >= 80
+    assert content["years"] == list(range(2026, 2009, -1))
+    assert all(not paper["url"].lower().endswith((".pdf", ".ppt", ".pptx"))
+               for paper in content["papers"])
+    assert any(paper["venue"] == "vee" for paper in content["papers"])
+    assert any("KVM" in paper["topics"] for paper in content["papers"])
+    assert len(content["analysis"]["years"]) == 17
+    assert all(item["paper_count"] for item in content["analysis"]["years"])
+
+    page = html_render.render_conferences_html(Config(), content)
+    assert "学术会议" in page and "academic-conferences.html" in page
+    assert 'href="kvm-forum.html">查看技术演进</a>' in page
+    assert 'href="conference-papers.html">查看相关议题</a>' in page
+    assert '<details class="conference-sources" open>' in page
+    assert "重点" not in page and "待严格筛选" not in page
+    assert "data-conference-browser" not in page
+    assert "不调用 DeepSeek 自动生成" in page
+    assert 'href="conferences.html" class="on">会议</a>' in page
+
+    timeline = html_render.render_academic_conferences_html(Config(), content)
+    assert timeline.index('id="year-2026"') < timeline.index('id="year-2010"')
+    assert "技术演进" not in timeline.split("<h1>", 1)[1].split("</h1>", 1)[0]
+    assert f'{content["paper_count"]} 个议题' not in timeline
+    assert "查看 2026 年相关议题" in timeline
+    assert 'href="conference-papers.html">查看全部相关议题</a>' not in timeline
+    assert "查看长期演进概述" not in timeline
+    assert 'class="forum-overview-mobile"' not in timeline
+
+    papers = html_render.render_conference_papers_html(Config(), content)
+    assert "data-conference-browser" in papers
+    assert "编辑点评" not in papers and "<strong>点评</strong>" in papers
+    assert "代表性内容仅作辅助标记" in papers
+    assert "conference-papers.html?year=2025" not in papers
+
+    assets = (html_render.ASSETS_DIR / "site.js").read_text(encoding="utf-8")
+    assert "new URLSearchParams(window.location.search)" in assets
+    assert "matching.length" in assets and "个议题" in assets
+    assert "[hidden]{display:none!important}" in _site_css()
+
+
+def test_conference_title_filter_is_conservative():
+    assert conferences.is_candidate_title(
+        "Accelerating Nested Virtualization with HyperTurtle"
+    )
+    assert conferences.is_candidate_title(
+        "A KVM Hypervisor for ARM"
+    )
+    assert not conferences.is_candidate_title(
+        "Java Virtual Machine Garbage Collection"
+    )
+    assert not conferences.is_candidate_title(
+        "A Virtual Reality Display"
+    )
+
+
+def test_conference_schema_separates_catalogue_and_editor_review(tmp_path):
+    conn = db.connect(tmp_path / "conference.db")
+    tables = {row[0] for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    )}
+    assert {"conference_editions", "conference_papers",
+            "conference_reviews"} <= tables
+    assert conferences.import_editor_reviews(conn) >= 80
+    assert conn.execute("SELECT COUNT(*) FROM conference_reviews").fetchone()[0] >= 80
+    conn.close()
+
+
+def test_conference_static_xml_parser_uses_complete_edition(monkeypatch):
+    payload = b"""<bht><dblpcites><r><inproceedings key="conf/vee/T25">
+      <author>Alice</author><title>A KVM Hypervisor.</title><year>2025</year>
+      <ee>https://doi.org/10.1/test</ee><url>db/conf/vee/vee2025.html#T25</url>
+    </inproceedings></r></dblpcites></bht>"""
+    monkeypatch.setattr(conferences, "_get_dblp_xml", lambda _s, _u: payload)
+    rows = conferences.fetch_dblp_edition(object(), "vee", 2025)
+    assert rows and rows[0]["title"] == "A KVM Hypervisor"
+    assert rows[0]["authors"] == ["Alice"]
+    assert rows[0]["doi"] == "10.1/test"
+
+
+def test_kvm_forum_uses_conference_navigation():
+    editions = [{
+        "year": 2025, "url": "https://example.com/2025", "titles": ["Talk"],
+        "analysis": {"headline": "H", "themes": [], "summary": "S"},
+    }]
+    analysis = {"headline": "H", "overview": "O", "model": "M",
+                "method": "标题分析。", "eras": []}
+    page = html_render.render_kvm_forum_html(Config(), editions, analysis)
+    assert 'href="conferences.html" class="on">会议</a>' in page
+    assert ">KVM Forum</a>" not in page.split("</nav>", 1)[0]
 
 
 def test_kvm_wiki_parser_uses_title_columns_and_splits_lightning_talks():

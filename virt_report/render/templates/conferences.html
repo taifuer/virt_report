@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}virt-report · 会议{% endblock %}
+{% block description %}KVM Forum 与系统领域学术会议中的虚拟化技术演进。{% endblock %}
+{% block nav_home %}{% endblock %}
+{% block nav_conferences %}on{% endblock %}
+{% block content %}
+<article class="conference-page">
+  <header><div class="kicker">Conference Archive</div><h1>会议</h1><p>按工程实践与学术研究两条线索，观察 QEMU、KVM 及相关虚拟化技术的长期演进。</p></header>
+  <div class="conference-guides">
+    <section class="conference-guide-row">
+      <div><span class="guide-range">2010—2025</span><h2>KVM Forum</h2></div>
+      <p>依据历届官方议程标题，整理 QEMU、KVM、virtio 与虚拟化工程实践的年度主题。</p>
+      <a class="forum-source" href="kvm-forum.html">查看技术演进</a>
+    </section>
+    <section class="conference-guide-row">
+      <div><span class="guide-range">{{ content.analysis.coverage }}</span><h2>学术会议</h2></div>
+      <p>跨 {{ content.academic_venues|length }} 个系统会议汇总虚拟化相关研究，按年度点评技术演变。</p>
+      <div class="conference-guide-actions"><a class="forum-source" href="academic-conferences.html">查看技术演进</a><a class="forum-source" href="conference-papers.html">查看相关议题</a></div>
+    </section>
+  </div>
+  <details class="conference-sources" open><summary>收录会议与来源</summary>
+    <div class="venue-list">{% for venue in content.academic_venues %}<div class="venue-row">
+      <div class="venue-name"><h3>{{ venue.name }}</h3><small>{{ venue.full_name }}</small></div>
+      <p>{{ venue.focus }}</p>
+      <div class="venue-actions"><a href="{{ venue.url }}" target="_blank" rel="noopener noreferrer">官方网站</a></div>
+    </div>{% endfor %}</div>
+  </details>
+  <p class="conference-method">{{ content.method }}</p>
+</article>
+{% endblock %}

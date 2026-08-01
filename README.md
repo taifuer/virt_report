@@ -16,6 +16,14 @@
 
 [![virt-report 专题页演示](docs/images/demo-topics.png)](docs/images/demo-topics.png)
 
+### 会议
+
+[![virt-report 会议页演示](docs/images/demo-conferences.png)](docs/images/demo-conferences.png)
+
+### 学术会议
+
+[![virt-report 学术会议演示](docs/images/demo-academic-conferences.png)](docs/images/demo-academic-conferences.png)
+
 ### KVM Forum
 
 [![virt-report KVM Forum 演示](docs/images/demo-kvm-forum.png)](docs/images/demo-kvm-forum.png)
@@ -54,6 +62,7 @@
 - **可观测采集**：`fetch_runs` 记录每个源的请求窗口、覆盖范围、完整性和错误；单源失败不阻断其他源，失败不推进水位。
 - **分层专题索引**：原始线程只作为候选池；公开专题以周报/月报精选为长期汇总，并补充最近 14 天日报中的新进展。“安全与漏洞”公开层仅接受完整 CVE 与强漏洞证据，安全能力增强只保留在内部索引和周期报告中。
 - **RSS 与运行指标**：报告和安全专题提供 RSS 2.0；运行页展示采集完整性、数据规模、报告 token 与按配置单价估算的成本。
+- **会议观察**：`/conferences.html` 是统一入口，分别进入 KVM Forum 与学术会议年度演变；`/conference-papers.html` 保存经人工复核的相关议题。网页只读取离线快照，不在请求时采集或调用 LLM。
 - **降级容错**：未配置 DeepSeek key 时自动走模板降级；调度器不会把降级结果标记为完成，而会按配置重试并留下运行记录。
 
 ## 安装
@@ -90,8 +99,15 @@ cp .env.example .env   # 填入 DEEPSEEK_API_KEY (可选, 不填则降级)
 .venv/bin/virt-report weekly
 .venv/bin/virt-report monthly 2026-07
 
-# 更新 KVM Forum 2010—2025 演讲标题并用 Pro 模型生成年度主题点评
+# 更新 KVM Forum 2010—2025 演讲标题并生成年度主题点评
 .venv/bin/virt-report kvm-forum
+
+# 获取 2010—2026 学术会议标题元数据、导入编辑快照并列出待复核候选
+.venv/bin/virt-report conference-catalog --from-year 2010 --to-year 2026 --list-candidates
+
+# DBLP 限流时可按会议分批续跑；摘要补充是可选步骤
+.venv/bin/virt-report conference-catalog --venue vee --from-year 2010 --to-year 2026
+.venv/bin/virt-report conference-catalog --no-fetch --enrich-abstracts --abstract-limit 20
 
 # 仅用已采集数据重新生成 (不重新采集)
 .venv/bin/virt-report daily 2026-07-12 --no-fetch
@@ -124,9 +140,9 @@ cp .env.example .env   # 填入 DEEPSEEK_API_KEY (可选, 不填则降级)
 
 RSS 地址为 `/feed.xml`（全部报告）、`/daily/feed.xml`、`/weekly/feed.xml`、`/monthly/feed.xml` 和 `/topics/security/feed.xml`。页脚“运行状态”进入受保护的 `/metrics.html`，展示各源最近一次及近十次采集状态、数据规模、最近报告和模型用量；`/api/metrics` 提供相同 JSON 数据并接受 `Authorization: Bearer <METRICS_ACCESS_KEY>`。成本依据 `config.yaml` 的人民币/百万 tokens 单价估算，仅供趋势观察，不等同于 DeepSeek 账单。运行页不写入静态快照，避免绕过后端鉴权。
 
-周报严格按站点时区的 ISO 自然周统计，即周一 00:00 至下周一 00:00（右端不包含）；页面以闭区间展示为 `2026 年第 28 周（7.6–7.12）`。`/kvm-forum.html` 仅依据 KVM Forum 2010—2025 各届议程标题归纳年度主题，不读取 PPT 或视频正文；现有分析保留生成时使用的模型，后续重新分析时跟随当前周报模型。
+周报严格按站点时区的 ISO 自然周统计，即周一 00:00 至下周一 00:00（右端不包含）；页面以闭区间展示为 `2026 年第 28 周（7.6–7.12）`。`/conferences.html` 是统一会议入口，`/kvm-forum.html` 仅依据 KVM Forum 2010—2025 各届议程标题归纳年度主题，不读取 PPT 或视频正文。`/academic-conferences.html` 按年度和阶段呈现 2010—2025 完整年度及截至 2026 年 8 月 1 日已公布内容的跨会议技术演变，`/conference-papers.html` 提供会议、年份和分页筛选。学术会议完整标题元数据保存在本地 SQLite，公开快照只纳入经人工复核的虚拟化相关议题及中文简介、点评；不读取论文 PDF，也不调用 DeepSeek 自动点评。
 
-首页的日报、周报和月报各保留最近 15 期，卡片直接显示报告标题；移动端用三类切换，默认每类先显示 5 期，更早内容通过归档页或右侧日、周、月切换器查找。报告详情支持按项目、x86、ARM、功能和缺陷筛选，并继续对重点架构议题进行明确标记和优先展示。
+首页的日报、周报和月报各保留最近 15 期，卡片直接显示报告标题；移动端用三类切换并完整保留每类 15 期，更早内容通过归档页或右侧日、周、月切换器查找。报告详情支持按项目、x86、ARM、功能和缺陷筛选，并继续对重点架构议题进行明确标记和优先展示。
 
 日报最多精选 30 条，而不是简单按邮件数量截取：候选线程先按活跃度、补丁/RFC/安全信号和项目配额排序，再保证 QEMU、Libvirt、KVM 的覆盖，并优先保留 x86、ARM 议题。已在近 14 期日报出现的线程最多保留 5 条，提示词会要求对比上次摘要说明本次进展，减少连续日报重复。周报和月报上限分别为 27、36 条。
 
@@ -213,8 +229,10 @@ virt_report/
 │   ├── collectors/{base,lore,gitlab}.py
 │   ├── processing/{threads,classify,rank,architecture,category,topics}.py
 │   ├── summarize/{llm_provider,prompts,periods,report}.py
-│   ├── render/{render.py, templates/{base,index,report,archive,topics,topic_detail,metrics,kvm_forum,about}.html}
-│   ├── kvm_forum.py           # 历年议程标题采集与 Pro 模型主题分析
+│   ├── render/{render.py, templates/{base,index,report,archive,topics,metrics,conferences,academic_conferences,conference_papers,kvm_forum,about}.html}
+│   ├── conferences.py         # 学术会议元数据采集、筛选、编辑快照加载与校验
+│   ├── content/conferences.json # 经复核的学术会议议题、简介、点评与年度演变
+│   ├── kvm_forum.py           # 历年议程标题采集与模型主题分析
 │   ├── metrics.py  rss.py      # 运行/成本统计与 RSS 2.0 输出
 │   ├── scheduler.py           # 容器内自动采集与周期报告调度
 │   └── server.py              # SQLite 驱动的动态报告路由
@@ -230,4 +248,4 @@ virt_report/
 - ✅ **阶段 2**：HyperKitty 采集器补 libvirt-devel (RSS+thread hash 折叠 patch series)；通用周期报告生成器；周报；日历导航首页。
 - ✅ **阶段 3**：月报；周/月报主题聚类 (LLM 跨源归纳 themes)；cron 全调度 (频繁采集 + 日/周/月报)。
 - ✅ **阶段 4**：独立报告归档、原始线程增量专题、安全与漏洞、RSS、运行/成本统计及 Docker 自动调度。
-- 🚧 **阶段 5**：已完成专题分层、日报重复抑制、调度记录/重试/自动备份和基础 CI；继续细化 patch series 折叠，并按实际价值扩展高质量数据源。暂不加入邮件订阅。
+- 🚧 **阶段 5**：已完成专题分层、日报重复抑制、调度记录/重试/自动备份、基础 CI，以及 2010—2026 学术会议年度演变与独立议题列表；继续细化 patch series 折叠，并随官方议程增补当年内容。暂不加入邮件订阅。

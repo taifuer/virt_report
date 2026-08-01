@@ -139,6 +139,49 @@ CREATE TABLE IF NOT EXISTS scheduler_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_scheduler_runs_identity
     ON scheduler_runs(identity, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS conference_editions (
+    venue         TEXT NOT NULL,
+    year          INTEGER NOT NULL,
+    source_url    TEXT,
+    fetched_at    TEXT NOT NULL,
+    source_status TEXT NOT NULL DEFAULT 'ok',
+    paper_count   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (venue, year)
+);
+
+CREATE TABLE IF NOT EXISTS conference_papers (
+    paper_id      TEXT PRIMARY KEY,
+    venue         TEXT NOT NULL,
+    year          INTEGER NOT NULL,
+    title         TEXT NOT NULL,
+    authors_json  TEXT NOT NULL DEFAULT '[]',
+    abstract      TEXT,
+    doi           TEXT,
+    official_url  TEXT,
+    source_url    TEXT,
+    fetched_at    TEXT NOT NULL,
+    raw_json      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_conference_papers_year
+    ON conference_papers(year DESC, venue);
+
+CREATE TABLE IF NOT EXISTS conference_reviews (
+    paper_id           TEXT PRIMARY KEY,
+    relevance          TEXT NOT NULL,
+    relevance_reason   TEXT,
+    relation           TEXT,
+    topics_json        TEXT NOT NULL DEFAULT '[]',
+    architectures_json TEXT NOT NULL DEFAULT '[]',
+    introduction_zh    TEXT,
+    commentary         TEXT,
+    representative     INTEGER NOT NULL DEFAULT 0,
+    reviewed_at        TEXT NOT NULL,
+    FOREIGN KEY (paper_id) REFERENCES conference_papers(paper_id)
+        ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_conference_reviews_relevance
+    ON conference_reviews(relevance, representative);
 """
 
 

@@ -214,6 +214,57 @@ def render_kvm_forum_html(config: Config, editions: list[dict], analysis: dict) 
     return tpl.render(editions=editions, analysis=analysis, root="", site_name=config.name)
 
 
+def render_conferences(config: Config, content: dict, filename: str = "conferences.html") -> Path:
+    """Export the editor-maintained conference directory."""
+    html = render_conferences_html(config, content)
+    out = Path(config.output_dir) / filename
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    return out
+
+
+def render_conferences_html(config: Config, content: dict) -> str:
+    env = _env()
+    tpl = env.get_template("conferences.html")
+    return tpl.render(content=content, root="", site_name=config.name)
+
+
+def render_academic_conferences(
+        config: Config, content: dict,
+        filename: str = "academic-conferences.html") -> Path:
+    """Export the cross-venue academic conference timeline."""
+    html = render_academic_conferences_html(config, content)
+    out = Path(config.output_dir) / filename
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    return out
+
+
+def render_academic_conferences_html(config: Config, content: dict) -> str:
+    env = _env()
+    tpl = env.get_template("academic_conferences.html")
+    return tpl.render(content=content, root="", site_name=config.name)
+
+
+def render_conference_papers(
+        config: Config, content: dict,
+        filename: str = "conference-papers.html") -> Path:
+    """Export the filterable reviewed-paper catalogue."""
+    html = render_conference_papers_html(config, content)
+    out = Path(config.output_dir) / filename
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    return out
+
+
+def render_conference_papers_html(config: Config, content: dict) -> str:
+    env = _env()
+    tpl = env.get_template("conference_papers.html")
+    venues_by_key = {item["key"]: item for item in content["venues"]}
+    return tpl.render(content=content, venues_by_key=venues_by_key, root="",
+                      site_name=config.name)
+
+
 def render_topics(config: Config, groups: list[dict]) -> Path:
     """导出专题聚合页。"""
     html = render_topics_html(config, groups)

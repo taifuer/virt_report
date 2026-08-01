@@ -144,6 +144,11 @@ def _render_index(config: Config, conn) -> None:
     for stale in config.output_dir.glob("index-????-??.html"):
         stale.unlink()
     render.render_about(config)
+    from virt_report.conferences import load_content as load_conference_content
+    conference_content = load_conference_content()
+    render.render_conferences(config, conference_content)
+    render.render_academic_conferences(config, conference_content)
+    render.render_conference_papers(config, conference_content)
     for period_name in ("daily", "weekly", "monthly"):
         render.render_archive(config, period_name, _list_reports(conn, period_name))
     render.render_topics(config, topics.build_topic_groups(conn))
@@ -370,6 +375,36 @@ def cmd_kvm_forum(args, config: Config) -> None:
     print(f"KVM Forum 2010—2025 分析已生成（{analysis['model']}）")
 
 
+def cmd_conference_catalog(args, config: Config) -> None:
+    """Refresh the local full-title catalogue and show review candidates."""
+    from virt_report import conferences
+
+    conn = db.connect(config.db_path)
+    try:
+        if args.no_fetch:
+            imported = conferences.import_editor_reviews(conn)
+            result = {"imported_reviews": imported}
+        else:
+            result = conferences.refresh_catalogue(
+                conn, start_year=args.from_year, end_year=args.to_year,
+                venues=args.venue,
+            )
+        if args.enrich_abstracts:
+            result["abstracts_added"] = conferences.enrich_candidate_abstracts(
+                conn, limit=args.abstract_limit
+            )
+        candidates = conferences.candidate_rows(
+            conn, start_year=args.from_year, end_year=args.to_year
+        )
+        result["candidate_titles"] = len(candidates)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if args.list_candidates:
+            for item in candidates:
+                print(f"{item['year']}\t{item['venue']}\t{item['title']}")
+    finally:
+        conn.close()
+
+
 def cmd_backup(args, config: Config) -> None:
     """生成可迁移的一致性数据库压缩快照。"""
     from virt_report.maintenance import backup_database, prune_backups
@@ -428,6 +463,21 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("scheduler", help="启动自动采集与周期报告调度器")
     p_forum = sub.add_parser("kvm-forum", help="生成 KVM Forum 年度主题分析")
     p_forum.add_argument("--no-fetch", action="store_true", help="复用已保存的标题数据")
+    p_catalog = sub.add_parser(
+        "conference-catalog", help="采集学术会议标题元数据并列出待审核候选"
+    )
+    p_catalog.add_argument("--from-year", type=int, default=2010)
+    p_catalog.add_argument("--to-year", type=int, default=2026)
+    p_catalog.add_argument("--venue", action="append", default=None,
+                           help="只采集指定会议 key，可重复")
+    p_catalog.add_argument("--no-fetch", action="store_true",
+                           help="不访问网络，仅同步编辑审核内容")
+    p_catalog.add_argument("--list-candidates", action="store_true",
+                           help="在摘要后逐行输出待审核标题")
+    p_catalog.add_argument("--enrich-abstracts", action="store_true",
+                           help="通过 Crossref 补充候选议题可用的公开摘要")
+    p_catalog.add_argument("--abstract-limit", type=int, default=200,
+                           help="单次最多补充的摘要数")
     p_backup = sub.add_parser("backup", help="导出一致性的 gzip 数据库快照")
     p_backup.add_argument("output", nargs="?", help="输出 .db.gz 路径")
     p_backup.add_argument("--keep-days", type=int, default=0,
@@ -453,6 +503,7 @@ def main(argv: list[str] | None = None) -> int:
                 "topics-refresh": cmd_topics_refresh,
                 "backfill-kvm": cmd_backfill_kvm, "serve": cmd_serve,
                 "scheduler": cmd_scheduler, "kvm-forum": cmd_kvm_forum,
+                "conference-catalog": cmd_conference_catalog,
                 "backup": cmd_backup, "restore": cmd_restore}
     try:
         dispatch[args.cmd](args, config)

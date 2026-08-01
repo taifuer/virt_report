@@ -292,6 +292,26 @@ def make_handler(config: Config):
             if path in ("/about", "/about/", "/about.html"):
                 self._send(200, render.render_about_html(config), head_only)
                 return
+            if path in ("/conferences", "/conferences/", "/conferences.html"):
+                from virt_report.conferences import load_content
+                self._send(200, render.render_conferences_html(
+                    config, load_content()
+                ), head_only)
+                return
+            if path in ("/academic-conferences", "/academic-conferences/",
+                        "/academic-conferences.html"):
+                from virt_report.conferences import load_content
+                self._send(200, render.render_academic_conferences_html(
+                    config, load_content()
+                ), head_only)
+                return
+            if path in ("/conference-papers", "/conference-papers/",
+                        "/conference-papers.html"):
+                from virt_report.conferences import load_content
+                self._send(200, render.render_conference_papers_html(
+                    config, load_content()
+                ), head_only)
+                return
             if path in ("/topics", "/topics/", "/topics.html"):
                 with closing(db.connect(config.db_path)) as conn:
                     groups = topics.build_topic_groups(conn, allow_rebuild=False)
