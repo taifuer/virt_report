@@ -219,6 +219,20 @@ def make_handler(config: Config):
             if not head_only:
                 self.wfile.write(payload)
 
+        def _send_feed(self, body: str, head_only: bool = False) -> None:
+            """发送可缓存的 Feed，并响应订阅器的条件请求。"""
+            from virt_report import rss
+            headers = rss.feed_http_headers(body)
+            not_modified = rss.is_not_modified(self.headers, headers)
+            self._send(
+                304 if not_modified else 200,
+                "" if not_modified else body,
+                head_only,
+                "application/rss+xml; charset=utf-8",
+                headers,
+                cache_control="public, max-age=300",
+            )
+
         def _dispatch(self, head_only: bool) -> None:
             parsed = urlsplit(self.path)
             path = parsed.path
@@ -279,15 +293,12 @@ def make_handler(config: Config):
                            "application/json; charset=utf-8")
                 return
             if path in ("/feed.xml", "/daily/feed.xml", "/weekly/feed.xml",
-                        "/monthly/feed.xml", "/topics/security/feed.xml"):
+                        "/monthly/feed.xml"):
                 from virt_report import rss
                 with closing(db.connect(config.db_path)) as conn:
-                    if path == "/topics/security/feed.xml":
-                        body = rss.security_feed(conn, config)
-                    else:
-                        period = path.split("/")[1] if path != "/feed.xml" else None
-                        body = rss.report_feed(conn, config, period)
-                self._send(200, body, head_only, "application/rss+xml; charset=utf-8")
+                    period = path.split("/")[1] if path != "/feed.xml" else None
+                    body = rss.report_feed(conn, config, period)
+                self._send_feed(body, head_only)
                 return
             if path in ("/about", "/about/", "/about.html"):
                 self._send(200, render.render_about_html(config), head_only)

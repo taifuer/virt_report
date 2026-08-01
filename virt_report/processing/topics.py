@@ -603,7 +603,7 @@ _PUBLIC_ITEM_FIELDS = {
 
 
 def _public_item(item: dict) -> dict:
-    """只保留页面、分页与 RSS 需要的字段，控制持久化快照体积。"""
+    """只保留页面与分页需要的字段，控制持久化快照体积。"""
     return {key: value for key, value in item.items() if key in _PUBLIC_ITEM_FIELDS}
 
 

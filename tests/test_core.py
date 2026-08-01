@@ -277,6 +277,20 @@ def test_about_page_and_architecture_badge_render():
     assert "关注会议" in about and "USENIX Security" in about
     assert about.index("会议内容扩展") < about.index("AI 模型更新")
     assert "学术会议内容覆盖 2010—2026 年" in about
+    assert "RSS 订阅" in about
+    assert 'href="feed.xml"><span>全部报告</span><small>三类报告 · 最近 50 份</small>' in about
+    assert 'href="daily/feed.xml"><span>日报</span><small>最近 30 期</small>' in about
+    assert 'href="weekly/feed.xml"><span>周报</span><small>最近 26 期</small>' in about
+    assert 'href="monthly/feed.xml"><span>月报</span><small>最近 24 期</small>' in about
+    assert 'topics/security/feed.xml' not in about
+    assert "RSS 提供近期报告更新，完整历史请查看对应报告归档" in about
+    assert "漏洞告警源" not in about
+    footer = about.split('<footer class="site-foot">', 1)[1].split("</footer>", 1)[0]
+    assert ">RSS</a>" not in footer
+    assert "虚拟化社区动态。数据来自社区，分析仅供参考。" in footer
+    assert '分析仅供参考。<a href="metrics.html">运行状态</a>' in footer
+    assert footer.count("<span") == 1
+    assert ".foot-row a{white-space:nowrap}" in _site_css()
     content = {
         "period": "daily", "period_key": "2026-07-12", "label": "2026-07-12",
         "headline": "", "fallback": False, "model": "test", "timezone": "Asia/Shanghai",
@@ -550,7 +564,7 @@ def test_security_topic_does_not_treat_generic_patch_replies_as_defects(tmp_db):
     assert by_title["QEMU: fix out-of-bounds access"]["security_type"] == "defect"
 
 
-def test_security_feed_excludes_enhancements_but_keeps_internal_index(tmp_db):
+def test_security_topic_excludes_enhancements_but_keeps_internal_index(tmp_db):
     _insert(tmp_db, "cve-feed", subject="KVM: CVE-2026-46113 use-after-free",
             url="https://e/cve", created="2026-07-20T00:00:00Z")
     _insert(tmp_db, "cca-feed", subject="KVM: arm64: add Arm CCA support",
@@ -559,9 +573,12 @@ def test_security_feed_excludes_enhancements_but_keeps_internal_index(tmp_db):
     _save_report_mentions(tmp_db, "daily", "2026-07-20", [
         "https://e/cve", "https://e/cca",
     ])
-    feed = rss.security_feed(tmp_db, Config())
-    assert "CVE-2026-46113" in feed
-    assert "Arm CCA support" not in feed
+    detail = topics.build_topic_detail(
+        tmp_db, "security", page=1, per_page=20, sort="latest", scope="recent"
+    )
+    titles = {item["title"] for item in detail["items"]}
+    assert "KVM: CVE-2026-46113 use-after-free" in titles
+    assert "KVM: arm64: add Arm CCA support" not in titles
     assert tmp_db.execute(
         "SELECT COUNT(*) FROM topic_entries WHERE security_type='enhancement'"
     ).fetchone()[0] == 1
@@ -736,9 +753,21 @@ def test_rss_and_metrics_use_stored_report_usage(tmp_db):
     db.save_report(tmp_db, "daily", "2026-07-15", content, "Asia/Shanghai",
                    item_count=1, model="deepseek-v4-flash")
     feed = rss.report_feed(tmp_db, Config(), "daily")
-    assert "<rss version=\"2.0\">" in feed
+    assert '<rss xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">' in feed
     assert "测试日报" in feed
+    assert "<link>http://127.0.0.1:8090/</link>" in feed
+    assert ('<atom:link href="http://127.0.0.1:8090/daily/feed.xml" '
+            'rel="self" type="application/rss+xml"') in feed
+    assert "<category>日报</category>" in feed
+    assert "<generator>virt-report</generator>" in feed
     assert feed == rss.report_feed(tmp_db, Config(), "daily")
+    headers = rss.feed_http_headers(feed)
+    assert headers["ETag"].startswith('"') and headers["ETag"].endswith('"')
+    assert headers["Last-Modified"] in feed
+    assert rss.is_not_modified({"If-None-Match": headers["ETag"]}, headers)
+    assert rss.is_not_modified({"If-Modified-Since": headers["Last-Modified"]}, headers)
+    assert not rss.is_not_modified({"If-None-Match": '"stale"',
+                                    "If-Modified-Since": headers["Last-Modified"]}, headers)
     values = metrics.build_metrics(tmp_db, Config())
     assert values["models"]["deepseek-v4-flash"]["total_tokens"] == 1500
     assert values["models"]["deepseek-v4-flash"]["calls"] == 1
@@ -746,6 +775,23 @@ def test_rss_and_metrics_use_stored_report_usage(tmp_db):
     page = html_render.render_metrics_html(Config(), values)
     assert "built-in method" not in page
     assert ">0</strong><span>原始条目" in page
+
+
+def test_rss_period_limits_are_explicit_and_security_feed_is_not_public():
+    assert rss.FEED_LIMITS == {None: 50, "daily": 30, "weekly": 26, "monthly": 24}
+    assert not hasattr(rss, "security_feed")
+
+
+def test_daily_rss_keeps_the_latest_thirty_reports(tmp_db):
+    for day in range(1, 32):
+        content = {
+            "period": "daily", "period_key": f"2026-07-{day:02d}",
+            "headline": f"第 {day} 期", "overview": [],
+        }
+        db.save_report(tmp_db, "daily", content["period_key"], content,
+                       "Asia/Shanghai", item_count=1, model="test")
+    feed = rss.report_feed(tmp_db, Config(), "daily")
+    assert feed.count("<item>") == 30
 
 
 def test_metrics_access_accepts_bearer_and_signed_cookie():
@@ -798,6 +844,7 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert all(item["paper_count"] for item in content["analysis"]["years"])
 
     page = html_render.render_conferences_html(Config(), content)
+    assert '<div class="kicker">Conference Archive</div>' in page
     assert "学术会议" in page and "academic-conferences.html" in page
     assert 'href="kvm-forum.html">查看技术演进</a>' in page
     assert 'href="conference-papers.html">查看相关议题</a>' in page
@@ -808,6 +855,7 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert 'href="conferences.html" class="on">会议</a>' in page
 
     timeline = html_render.render_academic_conferences_html(Config(), content)
+    assert "会议</a> · Academic Conference Review" in timeline
     assert timeline.index('id="year-2026"') < timeline.index('id="year-2010"')
     assert "技术演进" not in timeline.split("<h1>", 1)[1].split("</h1>", 1)[0]
     assert f'{content["paper_count"]} 个议题' not in timeline
@@ -817,6 +865,8 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert 'class="forum-overview-mobile"' not in timeline
 
     papers = html_render.render_conference_papers_html(Config(), content)
+    assert "会议</a> · Academic Topic Archive" in papers
+    assert "会议</a> · <a href=\"academic-conferences.html\">学术会议</a>" not in papers
     assert "data-conference-browser" in papers
     assert "编辑点评" not in papers and "<strong>点评</strong>" in papers
     assert "代表性内容仅作辅助标记" in papers
@@ -877,6 +927,8 @@ def test_kvm_forum_uses_conference_navigation():
     page = html_render.render_kvm_forum_html(Config(), editions, analysis)
     assert 'href="conferences.html" class="on">会议</a>' in page
     assert ">KVM Forum</a>" not in page.split("</nav>", 1)[0]
+    assert "会议</a> · KVM Forum Review" in page
+    assert "会议</a> · Conference Archive" not in page
 
 
 def test_kvm_wiki_parser_uses_title_columns_and_splits_lightning_talks():

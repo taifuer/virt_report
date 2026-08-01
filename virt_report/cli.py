@@ -164,8 +164,9 @@ def _render_index(config: Config, conn) -> None:
         config.output_dir / "daily" / "feed.xml": rss.report_feed(conn, config, "daily"),
         config.output_dir / "weekly" / "feed.xml": rss.report_feed(conn, config, "weekly"),
         config.output_dir / "monthly" / "feed.xml": rss.report_feed(conn, config, "monthly"),
-        config.output_dir / "topics" / "security" / "feed.xml": rss.security_feed(conn, config),
     }
+    # 安全专题是社区讨论观察，不是完整漏洞告警源；清理旧版静态 Feed。
+    (config.output_dir / "topics" / "security" / "feed.xml").unlink(missing_ok=True)
     for path, body in feeds.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(body, encoding="utf-8")

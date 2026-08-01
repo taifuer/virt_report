@@ -2,6 +2,8 @@
 
 追踪 **libvirt / QEMU / KVM** 社区动态（邮件列表 + GitLab issue/MR），用 LLM 生成**中文**日报 / 周报 / 月报，以简洁的网页形式呈现。
 
+从数据源整改到生产部署的完整建设过程、踩坑与可复用方法，见 [项目复盘](PROJECT_RETROSPECTIVE.md)。
+
 ## 界面预览
 
 ### 首页
@@ -61,7 +63,7 @@
 - **LLM 前置压缩**：日报先按项目分别从 50 个候选线程中取配额（QEMU 50%、Libvirt 25%、KVM 25%），再按显著性排序；最终精选 20–30 条。上下文包含首封、最新回复、评审信号与 GitLab 状态。
 - **可观测采集**：`fetch_runs` 记录每个源的请求窗口、覆盖范围、完整性和错误；单源失败不阻断其他源，失败不推进水位。
 - **分层专题索引**：原始线程只作为候选池；公开专题以周报/月报精选为长期汇总，并补充最近 14 天日报中的新进展。“安全与漏洞”公开层仅接受完整 CVE 与强漏洞证据，安全能力增强只保留在内部索引和周期报告中。
-- **RSS 与运行指标**：报告和安全专题提供 RSS 2.0；运行页展示采集完整性、数据规模、报告 token 与按配置单价估算的成本。
+- **RSS 与运行指标**：日报、周报和月报提供 RSS 2.0；运行页展示采集完整性、数据规模、报告 token 与按配置单价估算的成本。
 - **会议观察**：`/conferences.html` 是统一入口，分别进入 KVM Forum 与学术会议年度演变；`/conference-papers.html` 保存经人工复核的相关议题。网页只读取离线快照，不在请求时采集或调用 LLM。
 - **降级容错**：未配置 DeepSeek key 时自动走模板降级；调度器不会把降级结果标记为完成，而会按配置重试并留下运行记录。
 
@@ -136,9 +138,9 @@ cp .env.example .env   # 填入 DEEPSEEK_API_KEY (可选, 不填则降级)
 
 日常运行以 SQLite 中的报告为准，Web 服务通过 `/daily/`、`/weekly/`、`/monthly/` 提供独立归档页，并通过对应详情路由即时渲染。专题的分类、版本链合并和报告证据关联会在采集或报告生成后离线写入 SQLite 快照；网页请求只读取快照并完成轻量分页、排序，不会重新扫描原始数据。`/topics.html` 每类最多展示 8 条，先取周报/月报精选，再补最近 14 天日报观察；`/topics/<专题>/` 可在“汇总精选 / 近期观察”之间切换，并支持重点/最新排序及每页 10、20、30 条。需要手动刷新时运行 `virt-report topics-refresh`。采集和 AI 生成不会触发全局 HTML 渲染；只有显式执行 `virt-report index`，或将 `schedule.auto_export` 设为 `true`，才会把完整快照导出到 `site/`。
 
-“安全与漏洞”位于现有专题页首栏，只分为“明确 CVE / 安全缺陷”。分类来自原始线程，不根据 AI 摘要猜测漏洞编号；SEV、TDX、Arm CCA 等安全能力增强仍保留在内部索引和日报、周报、月报中，但不进入安全专题与安全 RSS。专题索引表 `topic_entries` 在采集后增量更新，公开分层结果写入 `topic_snapshots`；Web 请求不会执行索引或版本链重建。
+“安全与漏洞”位于现有专题页首栏，只分为“明确 CVE / 安全缺陷”。分类来自原始线程，不根据 AI 摘要猜测漏洞编号；SEV、TDX、Arm CCA 等安全能力增强仍保留在内部索引和日报、周报、月报中，但不进入安全专题。该专题是社区讨论的辅助汇总，并非完整漏洞告警源，因此不提供独立 RSS。专题索引表 `topic_entries` 在采集后增量更新，公开分层结果写入 `topic_snapshots`；Web 请求不会执行索引或版本链重建。
 
-RSS 地址为 `/feed.xml`（全部报告）、`/daily/feed.xml`、`/weekly/feed.xml`、`/monthly/feed.xml` 和 `/topics/security/feed.xml`。页脚“运行状态”进入受保护的 `/metrics.html`，展示各源最近一次及近十次采集状态、数据规模、最近报告和模型用量；`/api/metrics` 提供相同 JSON 数据并接受 `Authorization: Bearer <METRICS_ACCESS_KEY>`。成本依据 `config.yaml` 的人民币/百万 tokens 单价估算，仅供趋势观察，不等同于 DeepSeek 账单。运行页不写入静态快照，避免绕过后端鉴权。
+RSS 地址为 `/feed.xml`（最近 50 份全部报告）、`/daily/feed.xml`（最近 30 期）、`/weekly/feed.xml`（最近 26 期）和 `/monthly/feed.xml`（最近 24 期）。RSS 用于接收近期更新，完整历史以报告归档页为准。动态服务支持 ETag 与 Last-Modified 条件请求。页脚“运行状态”进入受保护的 `/metrics.html`，展示各源最近一次及近十次采集状态、数据规模、最近报告和模型用量；`/api/metrics` 提供相同 JSON 数据并接受 `Authorization: Bearer <METRICS_ACCESS_KEY>`。成本依据 `config.yaml` 的人民币/百万 tokens 单价估算，仅供趋势观察，不等同于 DeepSeek 账单。运行页不写入静态快照，避免绕过后端鉴权。
 
 周报严格按站点时区的 ISO 自然周统计，即周一 00:00 至下周一 00:00（右端不包含）；页面以闭区间展示为 `2026 年第 28 周（7.6–7.12）`。`/conferences.html` 是统一会议入口，`/kvm-forum.html` 仅依据 KVM Forum 2010—2025 各届议程标题归纳年度主题，不读取 PPT 或视频正文。`/academic-conferences.html` 按年度和阶段呈现 2010—2025 完整年度及截至 2026 年 8 月 1 日已公布内容的跨会议技术演变，`/conference-papers.html` 提供会议、年份和分页筛选。学术会议完整标题元数据保存在本地 SQLite，公开快照只纳入经人工复核的虚拟化相关议题及中文简介、点评；不读取论文 PDF，也不调用 DeepSeek 自动点评。
 
