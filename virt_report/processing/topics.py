@@ -15,7 +15,6 @@ from . import architecture, category
 
 RULE_VERSION = 7
 TOPIC_RULES = (
-    ("security", "安全与漏洞", "明确 CVE 与具有强原始证据的安全缺陷；编号和类型仅依据原始内容", ()),
     ("migration", "热迁移", "迁移链路、停机窗口、脏页收敛与跨主机兼容性", (
         "热迁移", "migration", "migrate", "multifd", "postcopy", "precopy",
         "switchover", "dirty page", "live-migration",
@@ -29,15 +28,16 @@ TOPIC_RULES = (
         "vcpu unplug", "vcpu hotplug", "memory unplug", "memory hotplug",
         "device unplug", "device hotplug",
     )),
-    ("lifecycle", "启动与生命周期", "启动、关机、重启、暂停恢复与生命周期可靠性", (
-        "启动", "关机", "重启", "startup", "boot", "reboot", "shutdown", "reset",
-        "suspend", "resume", "lifecycle",
-    )),
     ("performance", "虚机性能", "时延、吞吐、资源开销与硬件加速优化", (
         "性能", "performance", "optimize", "optimization", "latency", "throughput",
         "acceleration", "accelerate", "scalability", "benchmark", "overhead",
         "fast path", "fast-path", "zero-copy", "ioeventfd", "pml", "tph",
     )),
+    ("lifecycle", "启动与生命周期", "启动、关机、重启、暂停恢复与生命周期可靠性", (
+        "启动", "关机", "重启", "startup", "boot", "reboot", "shutdown", "reset",
+        "suspend", "resume", "lifecycle",
+    )),
+    ("security", "安全与漏洞", "明确 CVE 与具有强原始证据的安全缺陷；编号和类型仅依据原始内容", ()),
 )
 
 _CVE_RE = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE)
@@ -691,7 +691,7 @@ def build_topic_groups(conn: sqlite3.Connection, limit: int = 8, *,
 
 
 def build_topic_detail(conn: sqlite3.Connection, topic_key: str, *, page: int = 1,
-                       per_page: int = 20, sort: str = "priority",
+                       per_page: int = 10, sort: str = "priority",
                        scope: str = "curated",
                        allow_rebuild: bool = True) -> dict | None:
     """从持久化快照构建单专题详情和服务端分页数据。"""
@@ -715,7 +715,7 @@ def build_topic_detail(conn: sqlite3.Connection, topic_key: str, *, page: int = 
         sort = "priority"
         items.sort(key=lambda item: (item["priority_score"], item.get("activity_at") or ""),
                    reverse=True)
-    per_page = per_page if per_page in {10, 20, 30} else 20
+    per_page = per_page if per_page in {10, 20, 30} else 10
     pages = max(1, math.ceil(len(items) / per_page))
     page = min(max(1, page), pages)
     start = (page - 1) * per_page

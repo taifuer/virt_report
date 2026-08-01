@@ -346,7 +346,7 @@ def make_handler(config: Config):
                 with closing(db.connect(config.db_path)) as conn:
                     topic = topics.build_topic_detail(
                         conn, topic_match.group(1), page=number("page", 1),
-                        per_page=number("per_page", 20),
+                        per_page=number("per_page", 10),
                         sort=query.get("sort", ["priority"])[0],
                         scope=query.get("scope", ["curated"])[0],
                         allow_rebuild=False,

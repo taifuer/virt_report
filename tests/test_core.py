@@ -389,6 +389,18 @@ def test_archive_and_topic_pages_render(tmp_db):
     _save_report_mentions(tmp_db, "weekly", "2026-W28", ["u"])
     groups = topics.build_topic_groups(tmp_db)
     page = html_render.render_topics_html(Config(), groups)
+    assert [group["key"] for group in groups] == [
+        "migration", "live-upgrade", "hotplug", "performance", "lifecycle", "security",
+    ]
+    assert page.index('id="migration"') < page.index('id="security"')
+    assert ('id="security" data-topic-group' in page
+            and 'aria-controls="topic-group-content-security"' in page)
+    assert ('aria-controls="topic-group-content-security">安全与漏洞</button>' in page
+            and 'id="topic-group-content-security" class="topic-group-content" '
+                'data-topic-group-content hidden' in page)
+    assert ('aria-controls="topic-group-content-migration">热迁移</button>' in page
+            and 'id="topic-group-content-migration" class="topic-group-content" '
+                'data-topic-group-content>' in page)
     assert "热迁移" in page
     assert "虚机性能" in page
     assert page.count('href="u"') == 2
@@ -500,7 +512,10 @@ def test_archive_and_topic_detail_offer_pagination_over_ten_items(tmp_db):
         "model": "test", "generated_at": "2026-07-14T00:00:00Z",
     } for day in range(1, 12)]
     archive = html_render.render_archive_html(Config(), "daily", reports)
+    assert '<div data-pager data-default-size="10"><div class="archive-table">' in archive
     assert archive.count("data-page-item href") == 11
+    assert archive.count("data-page-item href=\"2026-07-") == 11
+    assert archive.count(" hidden") == 1
     assert '<option value="30">30</option>' in archive
 
     for index in range(11):
@@ -521,7 +536,16 @@ def test_archive_and_topic_detail_offer_pagination_over_ten_items(tmp_db):
     assert len(detail["items"]) == 1
     detail_page = html_render.render_topic_detail_html(Config(), detail)
     assert "2 / 2" in detail_page
-    assert "per_page=20" in detail_page
+    assert 'class="on" href="?scope=curated&sort=priority&per_page=10">10</a>' in detail_page
+
+    default_detail = topics.build_topic_detail(tmp_db, "migration")
+    assert default_detail["per_page"] == 10
+    assert default_detail["pages"] == 2
+    assert len(default_detail["items"]) == 10
+    assert topics.build_topic_detail(tmp_db, "migration", per_page=999)["per_page"] == 10
+
+    assets = (html_render.ASSETS_DIR / "site.js").read_text(encoding="utf-8")
+    assert "[data-topic-group]" in assets and "aria-expanded" in assets
 
 
 def test_security_topic_requires_raw_evidence_and_strict_cve(tmp_db):
@@ -848,7 +872,8 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert "学术会议" in page and "academic-conferences.html" in page
     assert 'href="kvm-forum.html">查看技术演进</a>' in page
     assert 'href="conference-papers.html">查看相关议题</a>' in page
-    assert '<details class="conference-sources" open>' in page
+    assert '<section class="conference-sources"><h2>收录会议与来源</h2>' in page
+    assert '<details class="conference-sources"' not in page
     assert "重点" not in page and "待严格筛选" not in page
     assert "data-conference-browser" not in page
     assert "不调用 DeepSeek 自动生成" in page
@@ -867,6 +892,11 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     papers = html_render.render_conference_papers_html(Config(), content)
     assert "会议</a> · Academic Topic Archive" in papers
     assert "会议</a> · <a href=\"academic-conferences.html\">学术会议</a>" not in papers
+    paper_tags = [part.split(">", 1)[0]
+                  for part in papers.split("data-conference-item")[1:]]
+    assert len(paper_tags) == content["paper_count"]
+    assert all(" hidden" not in tag for tag in paper_tags[:10])
+    assert all(" hidden" in tag for tag in paper_tags[10:])
     assert "data-conference-browser" in papers
     assert "编辑点评" not in papers and "<strong>点评</strong>" in papers
     assert "代表性内容仅作辅助标记" in papers

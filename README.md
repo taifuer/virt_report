@@ -136,7 +136,7 @@ cp .env.example .env   # 填入 DEEPSEEK_API_KEY (可选, 不填则降级)
 .venv/bin/python -m http.server 8091 --directory site
 ```
 
-日常运行以 SQLite 中的报告为准，Web 服务通过 `/daily/`、`/weekly/`、`/monthly/` 提供独立归档页，并通过对应详情路由即时渲染。专题的分类、版本链合并和报告证据关联会在采集或报告生成后离线写入 SQLite 快照；网页请求只读取快照并完成轻量分页、排序，不会重新扫描原始数据。`/topics.html` 每类最多展示 8 条，先取周报/月报精选，再补最近 14 天日报观察；`/topics/<专题>/` 可在“汇总精选 / 近期观察”之间切换，并支持重点/最新排序及每页 10、20、30 条。需要手动刷新时运行 `virt-report topics-refresh`。采集和 AI 生成不会触发全局 HTML 渲染；只有显式执行 `virt-report index`，或将 `schedule.auto_export` 设为 `true`，才会把完整快照导出到 `site/`。
+日常运行以 SQLite 中的报告为准，Web 服务通过 `/daily/`、`/weekly/`、`/monthly/` 提供独立归档页，并通过对应详情路由即时渲染。专题的分类、版本链合并和报告证据关联会在采集或报告生成后离线写入 SQLite 快照；网页请求只读取快照并完成轻量分页、排序，不会重新扫描原始数据。日报、周报、月报归档和会议议题默认每页显示 10 条；`/topics.html` 每类最多展示 8 条，先取周报/月报精选，再补最近 14 天日报观察；`/topics/<专题>/` 可在“汇总精选 / 近期观察”之间切换，并支持重点/最新排序，默认每页 10 条，可切换为 20 或 30 条。需要手动刷新时运行 `virt-report topics-refresh`。采集和 AI 生成不会触发全局 HTML 渲染；只有显式执行 `virt-report index`，或将 `schedule.auto_export` 设为 `true`，才会把完整快照导出到 `site/`。
 
 “安全与漏洞”位于现有专题页首栏，只分为“明确 CVE / 安全缺陷”。分类来自原始线程，不根据 AI 摘要猜测漏洞编号；SEV、TDX、Arm CCA 等安全能力增强仍保留在内部索引和日报、周报、月报中，但不进入安全专题。该专题是社区讨论的辅助汇总，并非完整漏洞告警源，因此不提供独立 RSS。专题索引表 `topic_entries` 在采集后增量更新，公开分层结果写入 `topic_snapshots`；Web 请求不会执行索引或版本链重建。
 

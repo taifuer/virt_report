@@ -13,7 +13,7 @@
       <span data-conference-count>{{ content.paper_count }} 个议题</span>
     </div>
     <p class="conference-empty" data-conference-empty hidden>当前筛选条件下没有已审核议题。</p>
-    <div class="paper-list">{% for paper in content.papers %}<article class="paper-row" data-conference-item data-venue="{{ paper.venue }}" data-year="{{ paper.year }}">
+    <div class="paper-list">{% for paper in content.papers %}<article class="paper-row" data-conference-item data-venue="{{ paper.venue }}" data-year="{{ paper.year }}"{% if loop.index > 10 %} hidden{% endif %}>
       <div class="paper-meta"><span>{{ paper.year }}</span><strong>{{ venues_by_key[paper.venue].name }}</strong><span class="relation {{ 'direct' if paper.relation == '直接关联' else '' }}">{{ paper.relation }}</span></div>
       <div class="paper-body"><h2><a href="{{ paper.url }}" target="_blank" rel="noopener noreferrer">{{ paper.title }}</a></h2>
         <p><strong>内容</strong>{{ paper.introduction }}</p><p class="editor-comment"><strong>点评</strong>{{ paper.commentary }}</p>
