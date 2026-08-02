@@ -17,12 +17,13 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 ASSETS_DIR = Path(__file__).parent / "assets"
 HOME_REPORT_LIMITS = {"daily": 15, "weekly": 9, "monthly": 6}
 STATIC_ASSET_NAMES = ("brand-mark.png", "site.css", "site.js")
+FAVICON_ASSET_NAMES = ("favicon-32.png", "favicon.ico")
 
 
 def _asset_version() -> str:
     """Return a short content hash used to invalidate cached shared assets."""
     digest = hashlib.sha256()
-    for filename in STATIC_ASSET_NAMES:
+    for filename in STATIC_ASSET_NAMES + FAVICON_ASSET_NAMES:
         digest.update((ASSETS_DIR / filename).read_bytes())
     return digest.hexdigest()[:12]
 
@@ -37,7 +38,7 @@ def export_brand_assets(output_dir: Path) -> None:
     for filename in STATIC_ASSET_NAMES:
         shutil.copyfile(ASSETS_DIR / filename, assets_out / filename)
     output_dir.mkdir(parents=True, exist_ok=True)
-    for filename in ("favicon-32.png", "favicon.ico"):
+    for filename in FAVICON_ASSET_NAMES:
         shutil.copyfile(ASSETS_DIR / filename, output_dir / filename)
     # Remove the earlier simplified vector assets from refreshed snapshots.
     (assets_out / "brand-mark.svg").unlink(missing_ok=True)

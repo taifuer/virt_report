@@ -508,12 +508,14 @@ def test_report_generated_date_uses_site_timezone():
     assert "2026-07-16 生成" in home
     assert "2026-07-15 生成" not in home
     assert '<span class="brand-sub">虚拟化社区动态</span>' in home
-    assert ('<img class="brand-mark" src="assets/brand-mark.png" alt="" '
+    assert (f'<img class="brand-mark" src="assets/brand-mark.png?v='
+            f'{html_render.ASSET_VERSION}" alt="" '
             'width="31" height="31"><span>virt-report</span></a><span class="brand-sub">'
             '虚拟化社区动态</span>') in home
-    assert '<link rel="shortcut icon" href="favicon.ico">' in home
-    assert ('<link rel="icon" type="image/png" sizes="32x32" '
-            'href="favicon-32.png">') in home
+    assert (f'<link rel="shortcut icon" href="favicon.ico?v='
+            f'{html_render.ASSET_VERSION}">') in home
+    assert (f'<link rel="icon" type="image/png" sizes="32x32" '
+            f'href="favicon-32.png?v={html_render.ASSET_VERSION}">') in home
     assert ('<div class="report-card-top"><div class="r-title">2026-07-15</div>'
             '<span class="type">日报</span></div>') in home
     css = _site_css()
@@ -535,7 +537,8 @@ def test_brand_assets_export_with_static_site(tmp_path):
     assert mark.read_bytes() == (
         html_render.ASSETS_DIR / "brand-mark.png"
     ).read_bytes()
-    assert mark.stat().st_size < 8_000
+    # The raster-first mark retains subtle perspective shading while staying small.
+    assert mark.stat().st_size < 48_000
     for filename in ("site.css", "site.js"):
         exported = tmp_path / "assets" / filename
         assert exported.read_bytes() == (html_render.ASSETS_DIR / filename).read_bytes()
