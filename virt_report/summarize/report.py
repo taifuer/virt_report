@@ -7,12 +7,17 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
 from datetime import datetime, timezone
 
 from virt_report import db
 from virt_report.config import Config
-from virt_report.processing.architecture import detect_architectures, focus_priority
+from virt_report.processing.architecture import (
+    detect_architectures,
+    focus_priority,
+    normalize_architectures,
+)
 from virt_report.processing.category import category_label, classify_change
 from . import llm_provider, periods, prompts
 
@@ -198,9 +203,32 @@ def _source_label(t: dict) -> str:
 
 _PROJECT_GROUPS = [
     ("qemu", "QEMU", ("qemu-devel", "qemu")),
-    ("libvirt", "Libvirt", ("libvir-list", "libvirt")),
     ("kvm", "KVM", ("kvm",)),
+    ("libvirt", "Libvirt", ("libvir-list", "libvirt")),
 ]
+
+
+def _order_report_projects(content: dict) -> dict:
+    """按站点固定阅读顺序整理概览和项目区块，不改变条目内容。"""
+    key_order = {key: index for index, (key, _name, _members) in enumerate(
+        _PROJECT_GROUPS
+    )}
+    name_order = {name.casefold(): index for index, (_key, name, _members) in enumerate(
+        _PROJECT_GROUPS
+    )}
+    content["overview"] = sorted(
+        content.get("overview", []),
+        key=lambda item: name_order.get(
+            str(item.get("project", "")).casefold(), len(name_order)
+        ) if isinstance(item, dict) else len(name_order),
+    )
+    content["sections"] = sorted(
+        content.get("sections", []),
+        key=lambda section: key_order.get(
+            str(section.get("key", "")).casefold(), len(key_order)
+        ) if isinstance(section, dict) else len(key_order),
+    )
+    return content
 
 
 def _project_of(t: dict) -> tuple[str, str]:
@@ -383,8 +411,59 @@ def _limit_sections(sections: list[dict], limit: int) -> list[dict]:
     ]
 
 
+def _complete_watchlist(watchlist: list[dict], sections: list[dict]) -> list[dict]:
+    """补全模型遗漏的观察理由；无法关联证据的空项不进入页面。"""
+    by_project: dict[str, list[dict]] = {}
+    for section in sections:
+        items = section.get("items", [])
+        for project in (section.get("key", ""), section.get("name", "")):
+            if project:
+                by_project.setdefault(project.casefold(), []).extend(items)
+
+    completed: list[dict] = []
+    for entry in watchlist:
+        if not isinstance(entry, dict):
+            continue
+        project = str(entry.get("project", "") or "").strip()
+        topic = str(entry.get("topic", "") or "").strip()
+        reason = str(entry.get("reason", "") or "").strip()
+        if not project or not topic:
+            continue
+        if not reason:
+            topic_words = {
+                word for word in re.findall(r"[a-z0-9_+-]+", topic.casefold())
+                if len(word) > 2
+            }
+            best: tuple[int, dict] | None = None
+            for item in by_project.get(project.casefold(), []):
+                haystack = " ".join(str(item.get(field, "") or "") for field in (
+                    "title", "original_title", "tag", "summary",
+                )).casefold()
+                compact_topic = re.sub(r"\W+", "", topic.casefold())
+                compact_haystack = re.sub(r"\W+", "", haystack)
+                score = 100 if compact_topic and compact_topic in compact_haystack else 0
+                score += 10 * len(topic_words.intersection(
+                    re.findall(r"[a-z0-9_+-]+", haystack)
+                ))
+                if score and (best is None or score > best[0]):
+                    best = (score, item)
+            if best:
+                item = best[1]
+                summary = str(item.get("summary", "") or "").rstrip("。；; ")
+                status = str(item.get("status", "") or "").strip()
+                if summary:
+                    reason = summary + "。"
+                if status and status not in {"已合并", "已关闭"}:
+                    reason += f"当前状态为{status}，后续版本与评审结论值得观察。"
+            if not reason:
+                continue
+        completed.append({"project": project, "topic": topic, "reason": reason})
+    return completed[:4]
+
+
 def enrich_architectures(content: dict) -> dict:
     """为旧报告按内含证据补齐架构标签，并应用当前排序与条数规则。"""
+    _order_report_projects(content)
     evidence: dict[str, tuple[list[str], str]] = {}
     for thread in content.get("top_threads", []):
         architectures = detect_architectures((
@@ -401,7 +480,7 @@ def enrich_architectures(content: dict) -> dict:
                 item.get("ref", ""),
                 (item.get("architectures", []), item.get("category", "other")),
             )
-            item["architectures"] = architectures
+            item["architectures"] = normalize_architectures(architectures)
             item["category"] = category
             item["category_label"] = category_label(category)
         section["items"].sort(key=lambda item: (
@@ -411,6 +490,9 @@ def enrich_architectures(content: dict) -> dict:
     period = content.get("period")
     if period in ITEM_LIMIT:
         content["sections"] = _limit_sections(content.get("sections", []), ITEM_LIMIT[period])
+    content["watchlist"] = _complete_watchlist(
+        content.get("watchlist", []), content.get("sections", [])
+    )
     return content
 
 
@@ -484,6 +566,7 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
         headline = f"{period_key} 虚拟化社区活跃动态（模板摘要）"
     overview, sections = _sanitize(overview, sections, threads_data if parsed else None)
     sections = _limit_sections(sections, ITEM_LIMIT[period])
+    watchlist = _complete_watchlist(watchlist, sections)
     used_model = "fallback" if fallback else model
     item_count = sum(len(s.get("items", [])) for s in sections)
     content = {

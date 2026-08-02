@@ -15,7 +15,7 @@ from virt_report.summarize import periods
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 ASSETS_DIR = Path(__file__).parent / "assets"
-HOME_REPORT_LIMITS = {"daily": 15, "weekly": 15, "monthly": 15}
+HOME_REPORT_LIMITS = {"daily": 15, "weekly": 9, "monthly": 6}
 STATIC_ASSET_NAMES = ("brand-mark.png", "site.css", "site.js")
 
 

@@ -57,7 +57,7 @@ def score(thread: dict, items: list) -> float:
             s += 3.0
             break
 
-    # 产品关注方向：有原文证据的 x86/ARM 议题优先进入候选集。
+    # 产品关注方向：有原文证据的 x86/Arm 议题优先进入候选集。
     architecture_parts = [thread.get("subject"), thread.get("topic_tag")]
     for it in items:
         architecture_parts.extend((it["subject"], it["labels"]))

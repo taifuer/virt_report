@@ -356,7 +356,7 @@ def _priority(item: dict, reference: datetime) -> tuple[float, list[str]]:
         score += 12
     elif item.get("category") == "feature":
         score += 5
-    focus_arch = {"x86", "ARM"}.intersection(item.get("architectures") or [])
+    focus_arch = {"x86", "Arm"}.intersection(item.get("architectures") or [])
     if focus_arch:
         score += 10 * len(focus_arch)
         reasons.append("架构重点")
@@ -520,7 +520,9 @@ def _load_topic_items(conn: sqlite3.Connection, topic_key: str, name: str,
     for row in rows:
         item = dict(row)
         item["project"] = _PROJECT_LABELS.get(item["project"], item["project"])
-        item["architectures"] = json.loads(item["architectures"] or "[]")
+        item["architectures"] = architecture.normalize_architectures(
+            json.loads(item["architectures"] or "[]")
+        )
         item["cve_ids"] = json.loads(item["cve_ids"] or "[]")
         item["security_label"] = _SECURITY_LABELS.get(item.get("security_type"), "")
         item["category_label"] = category.category_label(item.get("category"))
@@ -654,9 +656,15 @@ def _load_topic_snapshots(conn: sqlite3.Connection) -> dict[str, dict] | None:
             or any(row["rule_version"] != RULE_VERSION for row in rows)):
         return None
     try:
-        return {row["topic_key"]: json.loads(row["content_json"]) for row in rows}
+        payloads = {row["topic_key"]: json.loads(row["content_json"]) for row in rows}
     except (TypeError, ValueError):
         return None
+    for payload in payloads.values():
+        for item in payload.get("curated", []) + payload.get("recent", []):
+            item["architectures"] = architecture.normalize_architectures(
+                item.get("architectures", [])
+            )
+    return payloads
 
 
 def build_topic_groups(conn: sqlite3.Connection, limit: int = 8, *,

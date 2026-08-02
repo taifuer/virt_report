@@ -9,7 +9,7 @@ _ARCH_PATTERNS = (
     ("x86", re.compile(
         r"(?<![a-z0-9])(?:x86(?:_64)?|i[3-6]86|amd64|target/i386|kvm[/_-]?x86|"
         r"vmx|svm|tdx|sev(?:-snp)?)(?![a-z0-9])", re.IGNORECASE)),
-    ("ARM", re.compile(
+    ("Arm", re.compile(
         r"(?<![a-z0-9])(?:arm(?:32|64)?|aarch64|target/arm|kvm[/_-]?arm|"
         r"gicv?[234]?|sve2?|sme2?)(?![a-z0-9])", re.IGNORECASE)),
     ("RISC-V", re.compile(
@@ -24,7 +24,17 @@ _ARCH_PATTERNS = (
         r"(?<![a-z0-9])(?:hexagon|target/hexagon)(?![a-z0-9])", re.IGNORECASE)),
 )
 
-FOCUS_ARCHITECTURES = frozenset({"x86", "ARM"})
+FOCUS_ARCHITECTURES = frozenset({"x86", "Arm"})
+
+
+def normalize_architectures(architectures: Iterable[str]) -> list[str]:
+    """统一结构化架构标签，同时兼容旧报告中的 ARM 写法。"""
+    normalized: list[str] = []
+    for architecture in architectures:
+        label = "Arm" if str(architecture).casefold() == "arm" else str(architecture)
+        if label and label not in normalized:
+            normalized.append(label)
+    return normalized
 
 
 def detect_architectures(parts: Iterable[str | None]) -> list[str]:
@@ -34,5 +44,7 @@ def detect_architectures(parts: Iterable[str | None]) -> list[str]:
 
 
 def focus_priority(architectures: Iterable[str]) -> int:
-    """x86/ARM 返回 0，供升序排序时前置展示。"""
-    return 0 if FOCUS_ARCHITECTURES.intersection(architectures) else 1
+    """x86/Arm 返回 0，供升序排序时前置展示。"""
+    return 0 if FOCUS_ARCHITECTURES.intersection(
+        normalize_architectures(architectures)
+    ) else 1

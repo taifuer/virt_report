@@ -17,7 +17,7 @@
       <div class="paper-meta"><span>{{ paper.year }}</span><strong>{{ venues_by_key[paper.venue].name }}</strong><span class="relation {{ 'direct' if paper.relation == '直接关联' else '' }}">{{ paper.relation }}</span></div>
       <div class="paper-body"><h2><a href="{{ paper.url }}" target="_blank" rel="noopener noreferrer">{{ paper.title }}</a></h2>
         <p><strong>内容</strong>{{ paper.introduction }}</p><p class="editor-comment"><strong>点评</strong>{{ paper.commentary }}</p>
-        <div class="paper-tags">{% if paper.representative %}<span class="tag representative">代表性议题</span>{% endif %}{% for architecture in paper.architectures %}<span class="tag arch">{{ architecture }}</span>{% endfor %}{% for topic in paper.topics %}<span class="tag">{{ topic }}</span>{% endfor %}</div>
+        <div class="paper-tags">{% if paper.representative %}<span class="tag representative">代表性议题</span>{% endif %}{% for architecture in paper.architectures %}<span class="tag arch{% if architecture in ['x86', 'Arm'] %} focus{% endif %}">{{ architecture }}</span>{% endfor %}{% for topic in paper.topics %}<span class="tag">{{ topic }}</span>{% endfor %}</div>
       </div>
     </article>{% endfor %}</div>
     <div class="conference-pager" data-conference-pager><button type="button" data-conference-prev>上一页</button><strong data-conference-status>1 / 1</strong><button type="button" data-conference-next>下一页</button><label>每页<select data-conference-size><option value="10">10</option><option value="20">20</option><option value="30">30</option></select></label></div>

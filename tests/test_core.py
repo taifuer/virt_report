@@ -137,7 +137,7 @@ def test_extract_topic():
 
 def test_detect_architectures_from_subsystem_and_feature_names():
     assert architecture.detect_architectures(["[PATCH] target/i386: TDX fix"]) == ["x86"]
-    assert architecture.detect_architectures(["KVM: arm64: update GICv4"]) == ["ARM"]
+    assert architecture.detect_architectures(["KVM: arm64: update GICv4"]) == ["Arm"]
     assert architecture.detect_architectures(["target/riscv: vector update"]) == ["RISC-V"]
     assert architecture.detect_architectures(["target/hexagon: update HVX"]) == ["Hexagon"]
     assert architecture.detect_architectures(["loongarch64 user-only"]) == ["LoongArch"]
@@ -145,6 +145,7 @@ def test_detect_architectures_from_subsystem_and_feature_names():
 
 
 def test_focus_architecture_priority():
+    assert architecture.normalize_architectures(["ARM", "Arm", "x86"]) == ["Arm", "x86"]
     assert architecture.focus_priority(["ARM"]) == 0
     assert architecture.focus_priority(["x86", "RISC-V"]) == 0
     assert architecture.focus_priority(["RISC-V"]) == 1
@@ -195,8 +196,8 @@ def test_sanitize_non_list_items():
 
 def test_sanitize_overview():
     ov, _ = report._sanitize([{"project": "QEMU", "summary": "s"}, "bad", {}], [])
-    assert len(ov) == 3  # 固定补齐 QEMU / Libvirt / KVM
-    assert [o["project"] for o in ov] == ["QEMU", "Libvirt", "KVM"]
+    assert len(ov) == 3  # 固定补齐 QEMU / KVM / Libvirt
+    assert [o["project"] for o in ov] == ["QEMU", "KVM", "Libvirt"]
 
 
 def test_sanitize_evidence_ref_controls_url_project_and_state():
@@ -215,7 +216,7 @@ def test_sanitize_evidence_ref_controls_url_project_and_state():
     assert item["url"] == "https://trusted.example/1"
     assert item["status"] == "已关闭"
     assert "关闭结论" in item["impact"]
-    assert secs[2]["items"] == []
+    assert secs[1]["items"] == []
 
 
 def test_sanitize_uses_evidence_architecture_and_prioritizes_focus():
@@ -228,8 +229,8 @@ def test_sanitize_uses_evidence_architecture_and_prioritizes_focus():
     _, sections = report._sanitize([], [{"items": [
         {"ref": "T001", "title": "generic"}, {"ref": "T002", "title": "x86"},
     ]}], evidence)
-    assert [item["ref"] for item in sections[2]["items"]] == ["T002", "T001"]
-    assert sections[2]["items"][0]["architectures"] == ["x86"]
+    assert [item["ref"] for item in sections[1]["items"]] == ["T002", "T001"]
+    assert sections[1]["items"][0]["architectures"] == ["x86"]
 
 
 def test_limit_sections_keeps_project_coverage_and_focus_architectures():
@@ -241,7 +242,7 @@ def test_limit_sections_keeps_project_coverage_and_focus_architectures():
         {"key": "libvirt", "items": [{"ref": "T002", "architectures": []}]},
         {"key": "kvm", "items": [
             {"ref": "T003", "architectures": []},
-            {"ref": "T010", "architectures": ["ARM"]},
+            {"ref": "T010", "architectures": ["Arm"]},
         ]},
     ]
     limited = report._limit_sections(sections, 4)
@@ -256,11 +257,50 @@ def test_enrich_architectures_upgrades_old_report_content():
     content = {
         "period": "daily",
         "top_threads": [{"ref": "T001", "subject": "KVM: arm64: GIC fix"}],
-        "sections": [{"items": [{"ref": "T001", "architectures": []}]}],
+        "overview": [
+            {"project": "Libvirt"}, {"project": "QEMU"}, {"project": "KVM"},
+        ],
+        "sections": [
+            {"key": "libvirt", "items": []},
+            {"key": "qemu", "items": []},
+            {"key": "kvm", "items": [{"ref": "T001", "architectures": []}]},
+        ],
     }
     enriched = report.enrich_architectures(content)
-    assert enriched["top_threads"][0]["architectures"] == ["ARM"]
-    assert enriched["sections"][0]["items"][0]["architectures"] == ["ARM"]
+    assert enriched["top_threads"][0]["architectures"] == ["Arm"]
+    assert [item["project"] for item in enriched["overview"]] == [
+        "QEMU", "KVM", "Libvirt",
+    ]
+    assert [section["key"] for section in enriched["sections"]] == [
+        "qemu", "kvm", "libvirt",
+    ]
+    assert enriched["sections"][1]["items"][0]["architectures"] == ["Arm"]
+
+
+def test_enrich_report_completes_or_drops_empty_watchlist_reasons():
+    content = {
+        "period": "daily",
+        "top_threads": [],
+        "watchlist": [
+            {"project": "QEMU", "topic": "migration fast snapshot load", "reason": ""},
+            {"project": "KVM", "topic": "unmatched topic", "reason": ""},
+        ],
+        "sections": [{"key": "qemu", "name": "QEMU", "items": [{
+            "ref": "T001", "title": "migration: 实现快照快速加载",
+            "original_title": "[PATCH v4] migration: fast snapshot load",
+            "summary": "仅加载设备状态，RAM 页按需加载",
+            "status": "评审中", "architectures": ["ARM"], "category": "feature",
+        }]}],
+    }
+
+    enriched = report.enrich_architectures(content)
+
+    assert enriched["sections"][0]["items"][0]["architectures"] == ["Arm"]
+    assert enriched["watchlist"] == [{
+        "project": "QEMU",
+        "topic": "migration fast snapshot load",
+        "reason": "仅加载设备状态，RAM 页按需加载。当前状态为评审中，后续版本与评审结论值得观察。",
+    }]
 
 
 def test_about_page_and_architecture_badge_render():
@@ -308,16 +348,23 @@ def test_about_page_and_architecture_badge_render():
     }
     page = html_render.render_report_html(Config(), content)
     assert 'class="dyn focus-arch"' in page
-    assert 'class="tag arch">x86' in page
+    assert 'class="tag arch focus">x86' in page
     assert '<div class="d-actions"><span class="tag kind-other">' in page
-    assert '<div class="d-meta"><span class="tag arch">x86' in page
+    assert '<div class="d-meta"><span class="tag arch focus">x86' in page
     assert 'data-item-filter="x86"' in page and 'data-item-filter="bug"' in page
+    assert page.index('data-item-filter="feature"') < page.index('data-item-filter="x86"')
+    assert 'data-item-filter="Arm">Arm</button>' in page
     assert 'data-architectures="x86"' in page
     assert "12,345 tokens" not in page
     assert "↗" not in page
     assert 'name="color-scheme" content="light"' in page
     assert "theme-toggle" not in page
     assert "prefers-color-scheme:dark" not in page
+    css = _site_css()
+    assert ".report-hero:before" not in css
+    assert ".sec-title>span:first-child:before" not in css
+    assert ".dyn.focus-arch{border-left" not in css
+    assert "border-left:3px solid var(--brand)" not in css
     weekly = dict(content, period="weekly", period_key="2026-W28",
                   label="2026 年第 28 周")
     weekly_page = html_render.render_report_html(Config(), weekly)
@@ -337,9 +384,11 @@ def test_index_context_applies_home_report_limits(tmp_db):
                            "Asia/Shanghai", item_count=1, model="test")
     context = web_server._index_context(tmp_db)
     assert len(context["daily"]) == 15
-    assert len(context["weekly"]) == 15
-    assert len(context["monthly"]) == 15
+    assert len(context["weekly"]) == 9
+    assert len(context["monthly"]) == 6
     assert context["daily"][0]["period_key"] == "2026-07-20"
+    assert context["weekly"][-1]["period_key"] == "2026-W12"
+    assert context["monthly"][-1]["period_key"] == "2026-15"
     assert [cal["month_key"] for cal in context["calendars"]] == ["2026-07"]
 
 
@@ -870,6 +919,9 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     page = html_render.render_conferences_html(Config(), content)
     assert '<div class="kicker">Conference Archive</div>' in page
     assert "学术会议" in page and "academic-conferences.html" in page
+    assert '<div><h2>KVM Forum</h2><span class="guide-range">2010—2025</span></div>' in page
+    assert (f'<div><h2>学术会议</h2><span class="guide-range">'
+            f'{content["analysis"]["coverage"]}</span></div>') in page
     assert 'href="kvm-forum.html">查看技术演进</a>' in page
     assert 'href="conference-papers.html">查看相关议题</a>' in page
     assert '<section class="conference-sources"><h2>收录会议与来源</h2>' in page
@@ -878,6 +930,7 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert "data-conference-browser" not in page
     assert "不调用 DeepSeek 自动生成" in page
     assert 'href="conferences.html" class="on">会议</a>' in page
+    assert ".guide-range{display:block" in _site_css()
 
     timeline = html_render.render_academic_conferences_html(Config(), content)
     assert "会议</a> · Academic Conference Review" in timeline
