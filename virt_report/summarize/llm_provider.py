@@ -50,7 +50,7 @@ class OpenAICompatibleProvider(LLMProvider):
         """调用 /chat/completions。
 
         thinking: "enabled"/"disabled"/None。DeepSeek v4 思考模式开关；思考模式不支持 temperature。
-        reasoning_effort: "high"/"max"。思考强度。
+        reasoning_effort: "low"/"high"/"max"。DeepSeek V4 思考强度。
         对 429/5xx 与网络异常做退避重试。
         """
         if not self.api_key:

@@ -88,13 +88,15 @@ def _list_reports(conn, period: str) -> list[dict]:
     result = []
     for r in rs:
         try:
-            headline = json.loads(r["content_json"]).get("headline", "")
+            content = json.loads(r["content_json"])
         except (TypeError, ValueError):
-            headline = ""
+            continue
+        if content.get("fallback"):
+            continue
         result.append({
             "period_key": r["period_key"], "generated_at": r["generated_at"],
             "item_count": r["item_count"] or 0, "model": r["model"],
-            "headline": headline,
+            "headline": content.get("headline", ""),
         })
     return result
 
@@ -103,9 +105,7 @@ def _render_index(config: Config, conn) -> None:
     from virt_report.render.render import build_calendar
 
     render.export_brand_assets(config.output_dir)
-    daily_rows = conn.execute(
-        "SELECT period_key FROM reports WHERE period='daily'"
-    ).fetchall()
+    daily_rows = _list_reports(conn, "daily")
     daily_keys = {r["period_key"] for r in daily_rows}
     months = sorted({k[:7] for k in daily_keys})  # YYYY-MM
     if not months:
@@ -183,7 +183,16 @@ def _render_index(config: Config, conn) -> None:
         "ORDER BY period,period_key"
     ).fetchall()
     for row in rows:
-        content = report.enrich_architectures(json.loads(row["content_json"]))
+        try:
+            raw_content = json.loads(row["content_json"])
+        except (TypeError, ValueError):
+            continue
+        if raw_content.get("fallback"):
+            (config.output_dir / row["period"] / f"{row['period_key']}.html").unlink(
+                missing_ok=True
+            )
+            continue
+        content = report.enrich_architectures(raw_content)
         render.render_report(
             config, content, nav=_nav(conn, row["period"], row["period_key"])
         )
@@ -220,14 +229,22 @@ def _period_key(args, config: Config, period: str) -> str:
 
 def _nav(conn, period: str, key: str) -> dict:
     """取同周期相邻已生成报告的导航 (prev/next)，无则对应项为 None。"""
-    prev = conn.execute(
-        "SELECT period_key FROM reports WHERE period=? AND period_key<? "
-        "ORDER BY period_key DESC LIMIT 1", (period, key),
-    ).fetchone()
-    nxt = conn.execute(
-        "SELECT period_key FROM reports WHERE period=? AND period_key>? "
-        "ORDER BY period_key ASC LIMIT 1", (period, key),
-    ).fetchone()
+    def adjacent(operator: str, direction: str):
+        rows = conn.execute(
+            f"SELECT period_key,content_json FROM reports WHERE period=? "
+            f"AND period_key{operator}? ORDER BY period_key {direction}",
+            (period, key),
+        ).fetchall()
+        for row in rows:
+            try:
+                if not json.loads(row["content_json"]).get("fallback"):
+                    return row
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    prev = adjacent("<", "DESC")
+    nxt = adjacent(">", "ASC")
     def item(r):
         if not r:
             return None
@@ -246,7 +263,13 @@ def _run_period(args, config: Config, period: str) -> None:
             since = period_start - timedelta(days=7)
             _fetch_all(conn, config, since=since, max_pages=args.max_pages)
         # `fetch` 已负责重建线程；--no-fetch 用于批量回填报告时避免重复全量重建。
-        content = report.generate(conn, config, period, key)
+        content = report.generate(
+            conn, config, period, key,
+            publish_fallback=not args.require_ai,
+        )
+        if content.get("fallback") and args.require_ai:
+            print(f"{period}报 AI 点评尚未完成，降级内容未发布: /{period}/{key}.html")
+            return
         topics.refresh_topic_snapshots(conn)
         print(f"{period}报已生成并保存到数据库: /{period}/{key}.html")
         if period == "daily":
@@ -447,6 +470,10 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--since-days", type=int, default=3)
         p.add_argument("--max-pages", type=int, default=8)
         p.add_argument("--no-fetch", action="store_true", help="跳过采集，仅用已存数据")
+        p.add_argument(
+            "--require-ai", action="store_true",
+            help="仅在 AI 点评成功时发布；失败时保留生成状态供自动重试",
+        )
 
     p_daily = sub.add_parser("daily", help="生成日报（默认前一个完整自然日）")
     _add_period_opts(p_daily, "YYYY-MM-DD")

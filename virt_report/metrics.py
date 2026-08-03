@@ -37,9 +37,7 @@ def build_metrics(conn: sqlite3.Connection, config: Config) -> dict:
         "threads": conn.execute("SELECT COUNT(*) FROM threads").fetchone()[0],
         "topic_entries": conn.execute("SELECT COUNT(*) FROM topic_entries").fetchone()[0],
     }
-    report_counts = {row["period"]: row["count"] for row in conn.execute(
-        "SELECT period,COUNT(*) count FROM reports GROUP BY period"
-    )}
+    report_counts: dict[str, int] = defaultdict(int)
     scheduler_runs = [dict(row) for row in conn.execute(
         "SELECT identity,job_name,scheduled_at,started_at,finished_at,status,attempt,"
         "exit_code,error FROM scheduler_runs ORDER BY id DESC LIMIT 20"
@@ -80,10 +78,11 @@ def build_metrics(conn: sqlite3.Connection, config: Config) -> dict:
         "cache_miss_tokens": 0, "output_tokens": 0, "estimated_cost_cny": 0.0,
     })
 
-    def add_usage(model: str, usage: dict, *, report_call: bool = False) -> dict:
+    def add_usage(model: str, usage: dict, *, report_call: bool = False,
+                  calls: int = 1) -> dict:
         cost = _usage_cost(model, usage, config)
         totals = model_totals[model or "unknown"]
-        totals["calls"] += 1
+        totals["calls"] += calls
         totals["reports"] += int(report_call)
         for field in ("total_tokens", "cache_hit_tokens", "cache_miss_tokens",
                       "output_tokens"):
@@ -103,8 +102,13 @@ def build_metrics(conn: sqlite3.Connection, config: Config) -> dict:
             content = {}
         fallback = bool(content.get("fallback"))
         fallback_count += int(fallback)
+        if not fallback:
+            report_counts[row["period"]] += 1
         usage = content.get("llm_usage") or {}
-        cost = (add_usage(row["model"] or "", usage, report_call=True)
+        cost = (add_usage(
+                    row["model"] or "", usage, report_call=True,
+                    calls=max(1, int(content.get("llm_attempts") or 1)),
+                )
                 if usage else _usage_cost(row["model"] or "", usage, config))
         entry = {"period": row["period"], "period_key": row["period_key"],
                  "generated_at": row["generated_at"], "model": row["model"],
@@ -125,7 +129,7 @@ def build_metrics(conn: sqlite3.Connection, config: Config) -> dict:
         totals["estimated_cost_cny"] = round(totals["estimated_cost_cny"], 4)
     return {
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "counts": counts, "report_counts": report_counts,
+        "counts": counts, "report_counts": dict(report_counts),
         "scheduler_runs": scheduler_runs,
         "scheduler_failures_24h": scheduler_failures_24h,
         "sources": latest_sources, "reports": report_rows[:30], "analyses": analyses,

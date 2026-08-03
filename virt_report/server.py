@@ -22,6 +22,64 @@ _REPORT_ROUTE = re.compile(r"^/(daily|weekly|monthly)/([^/]+?)(?:\.html)?$")
 _ARCHIVE_ROUTE = re.compile(r"^/(daily|weekly|monthly)(?:/|/index\.html)?$")
 _TOPIC_ROUTE = re.compile(r"^/topics/([a-z-]+)(?:/|\.html)?$")
 READINESS_MAX_AGE_HOURS = 12
+_REPORT_TYPE_NAMES = {"daily": "日报", "weekly": "周报", "monthly": "月报"}
+
+
+def _published_content(row) -> dict | None:
+    """解析正式报告；历史 fallback 行不再视为已发布内容。"""
+    if not row:
+        return None
+    try:
+        content = json.loads(row["content_json"])
+    except (TypeError, ValueError):
+        return None
+    return None if content.get("fallback") else content
+
+
+def _generation_state_view(row) -> dict:
+    status = row["status"]
+    title, description = {
+        "running": (
+            "AI 点评生成中",
+            "本期报告尚未发布，完成后会自动显示。",
+        ),
+        "retry_wait": (
+            "AI 点评正在重新生成",
+            "首次生成未完成，系统将按计划自动重试。",
+        ),
+        "failed": (
+            "AI 点评暂未完成",
+            "本期报告尚未发布，请稍后再来查看。",
+        ),
+    }.get(status, ("AI 点评准备中", "本期报告尚未发布。"))
+    period = row["period"]
+    return {
+        "period": period,
+        "period_key": row["period_key"],
+        "period_label": periods.label(period, row["period_key"]),
+        "type_name": _REPORT_TYPE_NAMES[period],
+        "status": status,
+        "active": status in {"running", "retry_wait"},
+        "title": title,
+        "description": description,
+        "attempt": int(row["attempt"] or 0),
+        "updated_at": row["updated_at"],
+        "retry_at": row["retry_at"],
+    }
+
+
+def _generation_states(conn, period: str) -> list[dict]:
+    """只显示比最新正稿更新的未完成状态，避免历史失败长期占据首页。"""
+    published = _list_reports(conn, period)
+    latest_key = published[0]["period_key"] if published else ""
+    result = []
+    for row in db.list_report_generation_states(conn, period):
+        if latest_key and row["period_key"] <= latest_key:
+            continue
+        if _published_content(db.get_report(conn, period, row["period_key"])):
+            continue
+        result.append(_generation_state_view(row))
+    return result
 
 
 def _list_reports(conn, period: str) -> list[dict]:
@@ -31,13 +89,13 @@ def _list_reports(conn, period: str) -> list[dict]:
     ).fetchall()
     result = []
     for row in rows:
+        content = _published_content(row)
+        if content is None:
+            continue
         item = {key: row[key] for key in (
             "period_key", "generated_at", "item_count", "model"
         )}
-        try:
-            item["headline"] = json.loads(row["content_json"]).get("headline", "")
-        except (TypeError, ValueError):
-            item["headline"] = ""
+        item["headline"] = content.get("headline", "")
         result.append(item)
     return result
 
@@ -62,18 +120,24 @@ def _index_context(conn, timezone: str = "Asia/Shanghai") -> dict:
         "monthly": render.limit_home_reports(
             "monthly", _list_reports(conn, "monthly")
         ),
+        "generation_states": {
+            period: _generation_states(conn, period)[:1]
+            for period in ("daily", "weekly", "monthly")
+        },
     }
 
 
 def _nav(conn, period: str, key: str) -> dict:
-    previous = conn.execute(
-        "SELECT period_key FROM reports WHERE period=? AND period_key<? "
-        "ORDER BY period_key DESC LIMIT 1", (period, key),
-    ).fetchone()
-    following = conn.execute(
-        "SELECT period_key FROM reports WHERE period=? AND period_key>? "
-        "ORDER BY period_key ASC LIMIT 1", (period, key),
-    ).fetchone()
+    def adjacent(operator: str, direction: str):
+        rows = conn.execute(
+            f"SELECT period_key,content_json FROM reports WHERE period=? "
+            f"AND period_key{operator}? ORDER BY period_key {direction}",
+            (period, key),
+        ).fetchall()
+        return next((row for row in rows if _published_content(row)), None)
+
+    previous = adjacent("<", "DESC")
+    following = adjacent(">", "ASC")
 
     def item(row):
         if not row:
@@ -394,7 +458,8 @@ def make_handler(config: Config):
                 period = archive_match.group(1)
                 with closing(db.connect(config.db_path)) as conn:
                     html = render.render_archive_html(
-                        config, period, _list_reports(conn, period)
+                        config, period, _list_reports(conn, period),
+                        _generation_states(conn, period)[:1],
                     )
                 self._send(200, html, head_only)
                 return
@@ -412,17 +477,31 @@ def make_handler(config: Config):
                 period, key = report_match.groups()
                 with closing(db.connect(config.db_path)) as conn:
                     row = db.get_report(conn, period, key)
-                    if row:
+                    parsed = _published_content(row)
+                    state = db.get_report_generation_state(conn, period, key)
+                    if parsed:
                         content = report_builder.enrich_architectures(
-                            json.loads(row["content_json"])
+                            parsed
                         )
                         html = render.render_report_html(
                             config, content, _nav(conn, period, key)
                         )
+                        response_status = 200
+                        response_cache = "no-cache"
+                    elif state:
+                        state_view = _generation_state_view(state)
+                        html = render.render_report_pending_html(config, state_view)
+                        response_status = 202 if state_view["active"] else 200
+                        response_cache = "no-store"
                     else:
                         html = ""
                 if html:
-                    self._send(200, html, head_only)
+                    headers = ({"Retry-After": "60"}
+                               if response_status == 202 else None)
+                    self._send(
+                        response_status, html, head_only,
+                        extra_headers=headers, cache_control=response_cache,
+                    )
                 else:
                     self._send(404, "<h1>404</h1><p>未找到该报告。</p>", head_only)
                 return

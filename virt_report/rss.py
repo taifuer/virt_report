@@ -89,12 +89,14 @@ def report_feed(conn: sqlite3.Connection, config: Config, period: str | None = N
         where, params = "WHERE period=?", (period,)
     rows = conn.execute(
         "SELECT period,period_key,generated_at,content_json FROM reports " + where +
-        " ORDER BY generated_at DESC LIMIT ?", params + (FEED_LIMITS[period],),
+        " ORDER BY generated_at DESC", params,
     ).fetchall()
     entries = []
     labels = {"daily": "日报", "weekly": "周报", "monthly": "月报"}
     for row in rows:
         content = json.loads(row["content_json"])
+        if content.get("fallback"):
+            continue
         overview = " ".join(item.get("summary", "") for item in content.get("overview", []))
         entries.append({
             "title": f"{periods.label(row['period'], row['period_key'])} {labels[row['period']]}",
@@ -103,6 +105,8 @@ def report_feed(conn: sqlite3.Connection, config: Config, period: str | None = N
             "description": content.get("headline") or overview,
             "category": labels[row["period"]],
         })
+        if len(entries) >= FEED_LIMITS[period]:
+            break
     suffix = labels.get(period, "报告")
     feed_path = f"/{period}/feed.xml" if period else "/feed.xml"
     return _rss(f"virt-report {suffix}", base + "/", base + feed_path,

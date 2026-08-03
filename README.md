@@ -50,7 +50,7 @@
 > **libvirt** 使用官方 HyperKitty：月度页面发现 thread hash，REST API 获取真实 Message-ID、父邮件、作者、正文和线程关系；不再依赖第三方 mail-archive RSS。
 > 数据库以 `(source, project, native_id)` 唯一标识条目，并使用 `activity_at` 统一邮件发信时间与 GitLab 最近活动时间。
 > 时间解析：`base.parse_dt` 同时支持 ISO 与 RFC822（mail-archive RSS 用 RFC822，曾因只认 ISO 导致 kvm/libvirt 日期全误标今天）。
-> DeepSeek V4 使用 `thinking={type:enabled}` + `reasoning_effort=high`；JSON 输出通过不可变 `Txxx` 证据引用回填真实 URL。max_tokens 日 12000 / 周 24000 / 月 32000，并记录实际 usage。
+> DeepSeek V4 使用 `thinking={type:enabled}` + `reasoning_effort=high`；JSON 输出通过不可变 `Txxx` 证据引用回填真实 URL。输出预算为日报 32K、周报 48K、月报 64K，JSON 截断重试最高 96K，并累计记录各次调用的实际 usage。
 
 ## 架构
 
@@ -65,7 +65,7 @@
 - **分层专题索引**：原始线程只作为候选池；公开专题以周报/月报精选为长期汇总，并补充最近 14 天日报中的新进展。“安全与漏洞”公开层仅接受完整 CVE 与强漏洞证据，安全能力增强只保留在内部索引和周期报告中。
 - **RSS 与运行指标**：日报、周报和月报提供 RSS 2.0；运行页展示采集完整性、数据规模、报告 token 与按配置单价估算的成本。
 - **会议观察**：`/conferences.html` 是统一入口，分别进入 KVM Forum 与学术会议年度演变；`/conference-papers.html` 保存经人工复核的相关议题。网页只读取离线快照，不在请求时采集或调用 LLM。
-- **降级容错**：未配置 DeepSeek key 时自动走模板降级；调度器不会把降级结果标记为完成，而会按配置重试并留下运行记录。
+- **原子发布与重试**：自动报告只有在 AI 点评成功后才正式发布；生成中、等待重试和最终失败使用独立状态，不会让模板降级内容短暂出现在首页、RSS 或专题中。
 
 ## 安装
 
@@ -73,7 +73,7 @@
 cd virt_report
 python3 -m venv .venv
 .venv/bin/pip install -e .
-cp .env.example .env   # 填入 DEEPSEEK_API_KEY (可选, 不填则降级)
+cp .env.example .env   # 填入 DEEPSEEK_API_KEY（自动发布报告时必需）
 ```
 
 ## 使用
@@ -150,7 +150,7 @@ RSS 地址为 `/feed.xml`（最近 50 份全部报告）、`/daily/feed.xml`（�
 
 ## 启用 AI 摘要（DeepSeek）
 
-在 `.env` 中设置 `DEEPSEEK_API_KEY`（获取：https://platform.deepseek.com/）。DeepSeek 走 OpenAI 兼容端点 `https://api.deepseek.com`；自 2026 年 8 月 1 日起，新生成的日报、周报和月报统一使用 `deepseek-v4-flash`。`.env` 由 `load_config()` 自动加载，无需手动 export。无 key 时自动降级为模板摘要并标注「降级模板」徽章。
+在 `.env` 中设置 `DEEPSEEK_API_KEY`（获取：https://platform.deepseek.com/）。DeepSeek 走 OpenAI 兼容端点 `https://api.deepseek.com`；自 2026 年 8 月 1 日起，新生成的日报、周报和月报统一使用 `deepseek-v4-flash`。`.env` 由 `load_config()` 自动加载，无需手动 export。自动调度未取得有效 AI 结果时不会发布模板摘要；首页和归档显示生成状态，详情页会自动刷新，成功后再一次性发布正式报告。手工命令仍可生成模板内容用于排查。
 
 > `deepseek-v4-flash` 支持 1M 上下文、思考模式和 JSON Output；项目仍限制候选线程数以降低噪声与成本。历史报告保留原有内容和模型记录，配置中继续保留旧模型单价用于成本估算。若模型 ID 变化，调整 `config.yaml` 即可。
 
@@ -165,7 +165,7 @@ docker compose up -d --build
 
 两个容器共享 `data/`。默认每 4 小时增量采集；每天 00:15 生成前一日日报，周一 00:25 生成上周周报，每月 1 日 00:35 生成上月月报，并在每天 01:05 创建数据库快照。动态 Web 直接读取 SQLite，因此无需每次全量导出静态 HTML。
 
-调度器首次启动只检查当前分钟，不会自动执行昂贵的历史补采；已有调度状态的重启会补查最近 24 小时。周期报告任务固定带 `--no-fetch`，不会在定时采集之外重复下载；每个任务默认最长运行 1 小时，失败或降级结果最多重试 3 次，运行结果写入 `scheduler_runs` 并在受保护的运行页展示。自动快照默认保留 14 天，且只清理 `auto-*.db.gz`，不会删除手工备份。采集器和调度器均有进程锁，重复容器或重叠 cron 会安全失败而不是并行写库。
+调度器首次启动只检查当前分钟，不会自动执行昂贵的历史补采；已有调度状态的重启会补查最近 24 小时。周期报告任务固定带 `--no-fetch --require-ai`，不会在定时采集之外重复下载，也不会发布降级稿；每个任务默认最长运行 1 小时，未完成时最多重试 3 次。重试状态持久化在 SQLite，容器重启后可继续，并会在达到上限后停止而不是无限重复；运行结果写入 `scheduler_runs` 并在受保护的运行页展示。自动快照默认保留 14 天，且只清理 `auto-*.db.gz`，不会删除手工备份。采集器和调度器均有进程锁，重复容器或重叠 cron 会安全失败而不是并行写库。
 
 宿主机 cron 方式仍可使用：
 
@@ -211,7 +211,7 @@ docker compose logs -f scheduler
 
 Compose 只将 Web 绑定到 `127.0.0.1:8090`，请通过 Nginx/Caddy 暴露域名和 HTTPS。`web` 提供动态页面，`scheduler` 按 `config.yaml` 自动采集并生成日报、周报和月报；两个服务均使用 `restart: unless-stopped`，服务器重启后会自动恢复。SQLite、采集缓存和调度状态持久化在宿主机 `data/`。
 
-存活探针 `/healthz` 仅检查 Web 与数据库可访问；就绪探针 `/readyz` 只公开 `ok/degraded` 和检查时间，并在任一数据源超过 12 小时未成功完整采集、应生成的日报/周报/月报缺失或仍为降级结果时返回 503。详细 `/api/status`、`/api/metrics` 与运行页面均使用 `METRICS_ACCESS_KEY` 保护，浏览器验证成功后的安全 Cookie 默认有效 12 小时。Web 响应默认附带 CSP、防嵌入、MIME 嗅探与 Referrer Policy 等安全头。不要直接复制正在写入的 SQLite 文件。更新部署：
+存活探针 `/healthz` 仅检查 Web 与数据库可访问；就绪探针 `/readyz` 只公开 `ok/degraded` 和检查时间，并在任一数据源超过 12 小时未成功完整采集，或应生成的日报、周报、月报尚未正式发布时返回 503。详细 `/api/status`、`/api/metrics` 与运行页面均使用 `METRICS_ACCESS_KEY` 保护，浏览器验证成功后的安全 Cookie 默认有效 12 小时。Web 响应默认附带 CSP、防嵌入、MIME 嗅探与 Referrer Policy 等安全头。不要直接复制正在写入的 SQLite 文件。更新部署：
 
 ```bash
 git pull --ff-only

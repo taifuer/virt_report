@@ -295,6 +295,8 @@ def _report_mentions(conn: sqlite3.Connection) -> dict[str, list[dict]]:
             content = json.loads(row["content_json"])
         except (TypeError, ValueError):
             continue
+        if content.get("fallback"):
+            continue
         for section in content.get("sections", []):
             for item in section.get("items", []):
                 url = item.get("url")

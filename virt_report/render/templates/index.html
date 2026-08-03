@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% block title %}virt-report · 虚拟化社区动态{% endblock %}
 {% block description %}聚合 QEMU、KVM、Libvirt 邮件列表与 GitLab 动态的中文技术简报。{% endblock %}
+{% macro generation_notices(states, prefix) -%}
+  {% if states %}<div class="generation-notices">{% for state in states %}<a class="generation-notice {{ state.status }}" href="{{ prefix }}{{ state.period_key }}.html">
+    <i aria-hidden="true"></i><span><strong>{{ state.period_label }} · {{ state.title }}</strong><small>{{ state.description }}</small></span>
+  </a>{% endfor %}</div>{% endif %}
+{%- endmacro %}
 {% block content %}
 <section class="home-hero">
   <h1>Libvirt/QEMU/KVM 虚拟化社区动态</h1>
@@ -15,6 +20,7 @@
   <div>
     <section class="report-group first mobile-active" id="daily" data-home-report-panel="daily">
       <div class="group-head"><h2>日报</h2><span>最近 {{ ctx.daily|length if ctx else 0 }} 期</span></div>
+{{ generation_notices(ctx.generation_states.daily|default([]), "daily/") }}
       {% if ctx and ctx.daily %}<div class="report-list">
         {% for r in ctx.daily %}<a class="report-card" href="daily/{{ r.period_key }}.html">
           <div class="report-card-top"><div class="r-title">{{ r.period_key }}</div><span class="type">日报</span></div>{% if r.headline %}<div class="r-summary">{{ r.headline }}</div>{% endif %}<div class="r-meta">{{ r.item_count }} 条动态 · {{ r.generated_date }} 生成</div>
@@ -23,6 +29,7 @@
     </section>
     <section class="report-group" id="weekly" data-home-report-panel="weekly">
       <div class="group-head"><h2>周报</h2><span>最近 {{ ctx.weekly|length if ctx else 0 }} 期</span></div>
+{{ generation_notices(ctx.generation_states.weekly|default([]), "weekly/") }}
       {% if ctx and ctx.weekly %}<div class="report-list">
         {% for r in ctx.weekly %}<a class="report-card" href="weekly/{{ r.period_key }}.html">
           <div class="report-card-top"><div class="r-title">{{ r.period_key }} · {{ r.period_range.short }}</div><span class="type">周报</span></div>{% if r.headline %}<div class="r-summary">{{ r.headline }}</div>{% endif %}<div class="r-meta">{{ r.item_count }} 条动态 · {{ r.generated_date }} 生成</div>
@@ -31,6 +38,7 @@
     </section>
     <section class="report-group" id="monthly" data-home-report-panel="monthly">
       <div class="group-head"><h2>月报</h2><span>最近 {{ ctx.monthly|length if ctx else 0 }} 期</span></div>
+{{ generation_notices(ctx.generation_states.monthly|default([]), "monthly/") }}
       {% if ctx and ctx.monthly %}<div class="report-list">
         {% for r in ctx.monthly %}<a class="report-card" href="monthly/{{ r.period_key }}.html">
           <div class="report-card-top"><div class="r-title">{{ r.period_key }}</div><span class="type">月报</span></div>{% if r.headline %}<div class="r-summary">{{ r.headline }}</div>{% endif %}<div class="r-meta">{{ r.item_count }} 条动态 · {{ r.generated_date }} 生成</div>

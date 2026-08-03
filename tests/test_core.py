@@ -14,7 +14,7 @@ from virt_report.processing import architecture, category, classify, threads, to
 from virt_report.render import render as html_render
 from virt_report import server as web_server
 from virt_report import scheduler
-from virt_report.summarize import periods, report
+from virt_report.summarize import llm_provider, periods, report
 
 
 def _site_css() -> str:
@@ -1051,12 +1051,12 @@ def test_kvm_wiki_list_parser_stops_before_page_appendices():
 def test_scheduler_uses_just_finished_periods():
     tz = ZoneInfo("Asia/Shanghai")
     daily_now = datetime(2026, 7, 15, 0, 15, tzinfo=tz)
-    assert ("daily", ["daily", "2026-07-14", "--no-fetch"]) in scheduler.scheduled_commands(
+    assert ("daily", ["daily", "2026-07-14", "--no-fetch", "--require-ai"]) in scheduler.scheduled_commands(
         Config(), daily_now
     )
     weekly_now = datetime(2026, 7, 20, 0, 25, tzinfo=tz)
     commands = scheduler.scheduled_commands(Config(), weekly_now)
-    assert any(name == "weekly" and command[-1] == "--no-fetch"
+    assert any(name == "weekly" and "--no-fetch" in command and "--require-ai" in command
                for name, command in commands)
     assert scheduler.cron_matches("7 */4 * * *", datetime(
         2026, 7, 15, 8, 7, tzinfo=tz
@@ -1092,6 +1092,114 @@ def test_scheduler_retries_fallback_report_and_records_runs(tmp_path):
     conn.close()
     assert scheduler._report_exists(config, "daily", command) is True
     assert values["scheduler_runs"][0]["status"] == "success"
+
+
+def test_report_generation_state_is_cleared_by_atomic_publish(tmp_db):
+    db.set_report_generation_state(
+        tmp_db, "daily", "2026-07-15", status="running", attempt=1,
+        scheduled_at="2026-07-16T00:15:00+08:00",
+    )
+    assert db.get_report_generation_state(tmp_db, "daily", "2026-07-15")
+    db.save_report(tmp_db, "daily", "2026-07-15", {
+        "period": "daily", "period_key": "2026-07-15", "fallback": False,
+    }, "Asia/Shanghai", model="deepseek-v4-flash")
+    assert db.get_report_generation_state(tmp_db, "daily", "2026-07-15") is None
+
+
+def test_pending_report_is_separate_from_published_lists_and_rss(tmp_db):
+    db.set_report_generation_state(
+        tmp_db, "daily", "2026-07-16", status="retry_wait", attempt=1,
+        scheduled_at="2026-07-17T00:15:00+08:00",
+        retry_at="2026-07-17T00:30:00+08:00",
+    )
+    context = web_server._index_context(tmp_db)
+    assert context["daily"] == []
+    assert context["generation_states"]["daily"][0]["title"] == "AI 点评正在重新生成"
+    page = html_render.render_index_html(Config(), context)
+    assert "2026-07-16 · AI 点评正在重新生成" in page
+    assert "最近 0 期" in page
+    assert "2026-07-16" not in rss.report_feed(tmp_db, Config(), "daily")
+
+    state = web_server._generation_state_view(
+        db.get_report_generation_state(tmp_db, "daily", "2026-07-16")
+    )
+    detail = html_render.render_report_pending_html(Config(), state)
+    assert '<meta name="robots" content="noindex, nofollow">' in detail
+    assert "页面将在 60 秒后自动刷新" in detail
+    archive = html_render.render_archive_html(Config(), "daily", [], [state])
+    assert "共 0 期已发布报告" in archive
+    assert "AI 点评正在重新生成" in archive
+
+
+def test_legacy_fallback_is_not_public_or_used_as_topic_evidence(tmp_db):
+    db.save_report(tmp_db, "daily", "2026-07-15", {
+        "period": "daily", "period_key": "2026-07-15", "fallback": True,
+        "headline": "模板摘要", "overview": [], "sections": [{
+            "key": "qemu", "name": "QEMU", "items": [{
+                "url": "https://example.com/fallback", "summary": "非 AI 摘要",
+            }],
+        }],
+    }, "Asia/Shanghai", model="fallback")
+    assert web_server._list_reports(tmp_db, "daily") == []
+    assert "模板摘要" not in rss.report_feed(tmp_db, Config(), "daily")
+    assert "https://example.com/fallback" not in topics._report_mentions(tmp_db)
+
+
+def test_deferred_fallback_is_not_published(tmp_db, monkeypatch):
+    monkeypatch.setattr(llm_provider, "get_provider", lambda _config: None)
+    content = report.generate(
+        tmp_db, Config(), "daily", "2026-07-12", publish_fallback=False,
+    )
+    assert content["fallback"] is True
+    assert db.get_report(tmp_db, "daily", "2026-07-12") is None
+
+
+def test_v4_flash_output_budgets_leave_room_for_reasoning():
+    assert report.MAX_TOKENS == {
+        "daily": 32768, "weekly": 49152, "monthly": 65536,
+    }
+    assert report.MAX_RETRY_TOKENS <= 384000
+    assert report.EXCERPT_LEN == {"daily": 600, "weekly": 600, "monthly": 600}
+
+
+def test_llm_usage_is_accumulated_across_json_retries():
+    total = {}
+    report._merge_usage(total, {
+        "prompt_tokens": 100, "completion_tokens": 200,
+        "prompt_tokens_details": {"cached_tokens": 40},
+    })
+    report._merge_usage(total, {
+        "prompt_tokens": 80, "completion_tokens": 120,
+        "prompt_tokens_details": {"cached_tokens": 30},
+    })
+    assert total == {
+        "prompt_tokens": 180, "completion_tokens": 320,
+        "prompt_tokens_details": {"cached_tokens": 70},
+    }
+    assert report._complete_llm_json({"sections": []}, "stop") is True
+    assert report._complete_llm_json({"sections": []}, "length") is False
+
+
+def test_scheduler_restore_marks_exhausted_report_completed(tmp_path):
+    config = Config(storage=Storage(db_path=tmp_path / "scheduler-retry.db"))
+    conn = db.connect(config.db_path)
+    db.set_report_generation_state(
+        conn, "daily", "2026-07-15", status="running",
+        attempt=config.schedule.retry_limit,
+        scheduled_at="2026-07-16T00:15:00+08:00",
+    )
+    conn.close()
+    now = datetime(2026, 7, 16, 1, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    pending, exhausted = scheduler._restore_report_retries(
+        config, ZoneInfo("Asia/Shanghai"), now,
+    )
+    assert pending == {}
+    assert exhausted == {"daily:2026-07-15"}
+    conn = db.connect(config.db_path)
+    assert db.get_report_generation_state(
+        conn, "daily", "2026-07-15"
+    )["status"] == "failed"
+    conn.close()
 
 
 def test_database_backup_and_restore_roundtrip(tmp_path):

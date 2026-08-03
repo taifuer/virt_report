@@ -68,6 +68,18 @@ CREATE TABLE IF NOT EXISTS reports (
     PRIMARY KEY (period, period_key)
 );
 
+CREATE TABLE IF NOT EXISTS report_generation_state (
+    period        TEXT NOT NULL,          -- daily | weekly | monthly
+    period_key    TEXT NOT NULL,
+    status        TEXT NOT NULL,          -- running | retry_wait | failed
+    attempt       INTEGER NOT NULL DEFAULT 1,
+    scheduled_at  TEXT,
+    updated_at    TEXT NOT NULL,
+    retry_at      TEXT,
+    error         TEXT,
+    PRIMARY KEY (period, period_key)
+);
+
 CREATE TABLE IF NOT EXISTS fetch_state (
     source        TEXT NOT NULL,
     project       TEXT NOT NULL,
@@ -296,6 +308,71 @@ def finish_scheduler_run(conn: sqlite3.Connection, run_id: int, *, status: str,
         )
 
 
+def set_report_generation_state(
+    conn: sqlite3.Connection,
+    period: str,
+    period_key: str,
+    *,
+    status: str,
+    attempt: int = 1,
+    scheduled_at: str | None = None,
+    retry_at: str | None = None,
+    error: str | None = None,
+) -> None:
+    """记录尚未正式发布的周期报告生成状态。"""
+    with transaction(conn):
+        conn.execute(
+            """
+            INSERT INTO report_generation_state (
+                period,period_key,status,attempt,scheduled_at,updated_at,retry_at,error
+            ) VALUES (?,?,?,?,?,?,?,?)
+            ON CONFLICT(period,period_key) DO UPDATE SET
+                status=excluded.status,
+                attempt=excluded.attempt,
+                scheduled_at=COALESCE(excluded.scheduled_at,
+                                      report_generation_state.scheduled_at),
+                updated_at=excluded.updated_at,
+                retry_at=excluded.retry_at,
+                error=excluded.error
+            """,
+            (period, period_key, status, attempt, scheduled_at, now_utc_iso(),
+             retry_at, error),
+        )
+
+
+def get_report_generation_state(
+    conn: sqlite3.Connection, period: str, period_key: str,
+) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT * FROM report_generation_state WHERE period=? AND period_key=?",
+        (period, period_key),
+    ).fetchone()
+
+
+def list_report_generation_states(
+    conn: sqlite3.Connection, period: str | None = None,
+) -> list[sqlite3.Row]:
+    if period:
+        return conn.execute(
+            "SELECT * FROM report_generation_state WHERE period=? "
+            "ORDER BY period_key DESC", (period,),
+        ).fetchall()
+    return conn.execute(
+        "SELECT * FROM report_generation_state "
+        "ORDER BY period,period_key DESC"
+    ).fetchall()
+
+
+def clear_report_generation_state(
+    conn: sqlite3.Connection, period: str, period_key: str,
+) -> None:
+    with transaction(conn):
+        conn.execute(
+            "DELETE FROM report_generation_state WHERE period=? AND period_key=?",
+            (period, period_key),
+        )
+
+
 def upsert_item(conn: sqlite3.Connection, item: dict[str, Any]) -> bool:
     """插入或更新一条 item。返回 True 表示新增，False 表示已存在(仅更新)。"""
     existed = item_exists(conn, item["source"], item["project"], item["native_id"])
@@ -501,6 +578,11 @@ def save_report(
                 json.dumps(content, ensure_ascii=False),
                 html_path, item_count, model,
             ),
+        )
+        # 正式内容写入与生成中状态清理保持在同一事务内；读取端不会看到半发布状态。
+        conn.execute(
+            "DELETE FROM report_generation_state WHERE period=? AND period_key=?",
+            (period, period_key),
         )
 
 

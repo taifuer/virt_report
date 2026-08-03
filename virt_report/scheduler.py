@@ -16,6 +16,7 @@ from virt_report.locking import process_lock
 from virt_report.summarize import periods
 
 log = logging.getLogger(__name__)
+REPORT_JOBS = {"daily", "weekly", "monthly"}
 
 
 def _field_matches(field: str, value: int) -> bool:
@@ -57,15 +58,16 @@ def scheduled_commands(config: Config, now: datetime) -> list[tuple[str, list[st
          ["fetch", "--since-days", "4", "--max-pages", "8"]),
         ("daily", config.schedule.daily_cron, [
             "daily", periods.period_key_for("daily", now - timedelta(days=1)),
-            "--no-fetch",
+            "--no-fetch", "--require-ai",
         ]),
         ("weekly", config.schedule.weekly_cron, [
-            "weekly", periods.period_key_for("weekly", now - timedelta(days=7)), "--no-fetch",
+            "weekly", periods.period_key_for("weekly", now - timedelta(days=7)),
+            "--no-fetch", "--require-ai",
         ]),
         ("monthly", config.schedule.monthly_cron, [
             "monthly",
             periods.period_key_for("monthly", now.replace(day=1) - timedelta(days=1)),
-            "--no-fetch",
+            "--no-fetch", "--require-ai",
         ]),
         ("backup", config.schedule.backup_cron, [
             "backup", str(
@@ -105,7 +107,7 @@ def _save_state(path: Path, completed: set[str]) -> None:
 
 
 def _report_exists(config: Config, name: str, command: list[str]) -> bool:
-    if name not in {"daily", "weekly", "monthly"}:
+    if name not in REPORT_JOBS:
         return False
     conn = db.connect(config.db_path)
     try:
@@ -134,11 +136,66 @@ def run_forever(config: Config, config_path: str | None = None) -> None:
         _run_loop(config, config_path, timezone, state_path, completed, last_check)
 
 
+def _parse_state_time(value: str | None, timezone: ZoneInfo,
+                      default: datetime) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value or "")
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone)
+        return parsed.astimezone(timezone)
+    except ValueError:
+        return default
+
+
+def _restore_report_retries(
+    config: Config, timezone: ZoneInfo, now: datetime,
+) -> tuple[
+    dict[str, tuple[str, list[str], datetime, int, datetime]],
+    set[str],
+]:
+    """恢复重启前尚未完成的报告；崩溃时的 running 状态立即进入下一次尝试。"""
+    restored: dict[str, tuple[str, list[str], datetime, int, datetime]] = {}
+    exhausted: set[str] = set()
+    conn = db.connect(config.db_path)
+    try:
+        for row in db.list_report_generation_states(conn):
+            identity = f"{row['period']}:{row['period_key']}"
+            if row["status"] == "failed":
+                exhausted.add(identity)
+                continue
+            if row["status"] not in {"running", "retry_wait"}:
+                continue
+            attempt = int(row["attempt"] or 0)
+            if attempt >= config.schedule.retry_limit:
+                db.set_report_generation_state(
+                    conn, row["period"], row["period_key"], status="failed",
+                    attempt=attempt, scheduled_at=row["scheduled_at"],
+                    error="调度进程中断且已达到重试上限",
+                )
+                exhausted.add(identity)
+                continue
+            scheduled_at = _parse_state_time(row["scheduled_at"], timezone, now)
+            retry_at = (_parse_state_time(row["retry_at"], timezone, now)
+                        if row["status"] == "retry_wait" else now)
+            command = [row["period"], row["period_key"], "--no-fetch", "--require-ai"]
+            restored[identity] = (
+                row["period"], command, scheduled_at, attempt, retry_at,
+            )
+    finally:
+        conn.close()
+    return restored, exhausted
+
+
 def _run_loop(config: Config, config_path: str | None, timezone: ZoneInfo,
               state_path: Path, completed: set[str], last_check: datetime) -> None:
     log.info("自动调度已启动 (%s, catchup=%s)", config.timezone,
              "24h" if state_path.exists() else "current-minute")
-    pending: dict[str, tuple[str, list[str], datetime, int, datetime]] = {}
+    pending, exhausted = _restore_report_retries(
+        config, timezone, datetime.now(timezone).replace(second=0, microsecond=0)
+    )
+    if exhausted:
+        completed.update(exhausted)
+        _save_state(state_path, completed)
     while True:
         now = datetime.now(timezone).replace(second=0, microsecond=0)
         jobs = due_commands(config, last_check, now)
@@ -147,9 +204,17 @@ def _run_loop(config: Config, config_path: str | None, timezone: ZoneInfo,
                     for _identity, (name, command, scheduled_at, _attempt, retry_at)
                     in list(pending.items()) if retry_at <= now)
         exported_report = False
+        cycle_identities: set[str] = set()
         for name, command, scheduled_at in jobs:
             identity = (f"fetch:{scheduled_at.isoformat()}" if name == "fetch"
                         else f"{name}:{command[1]}")
+            # 重启补跑与持久化重试可能指向同一报告；同一轮只执行一次，并尊重等待期。
+            if identity in cycle_identities:
+                continue
+            cycle_identities.add(identity)
+            retry = pending.get(identity)
+            if retry and retry[4] > now:
+                continue
             if identity in completed:
                 pending.pop(identity, None)
                 continue
@@ -157,6 +222,12 @@ def _run_loop(config: Config, config_path: str | None, timezone: ZoneInfo,
                 log.info("报告已存在，跳过自动重建: %s/%s", name, command[1])
                 completed.add(identity)
                 pending.pop(identity, None)
+                if name in REPORT_JOBS:
+                    conn = db.connect(config.db_path)
+                    try:
+                        db.clear_report_generation_state(conn, name, command[1])
+                    finally:
+                        conn.close()
                 _save_state(state_path, completed)
                 continue
             argv = [sys.executable, "-m", "virt_report.cli"]
@@ -168,6 +239,11 @@ def _run_loop(config: Config, config_path: str | None, timezone: ZoneInfo,
                      " ".join(command))
             conn = db.connect(config.db_path)
             try:
+                if name in REPORT_JOBS:
+                    db.set_report_generation_state(
+                        conn, name, command[1], status="running", attempt=attempt,
+                        scheduled_at=scheduled_at.isoformat(),
+                    )
                 run_id = db.start_scheduler_run(
                     conn, identity=identity, job_name=name,
                     scheduled_at=scheduled_at.isoformat(), attempt=attempt,
@@ -181,7 +257,7 @@ def _run_loop(config: Config, config_path: str | None, timezone: ZoneInfo,
                     argv, check=False, timeout=config.schedule.job_timeout_seconds
                 )
                 healthy = result.returncode == 0 and (
-                    name not in {"daily", "weekly", "monthly"} or
+                    name not in REPORT_JOBS or
                     _report_exists(config, name, command)
                 )
                 status = "success" if healthy else (
@@ -203,14 +279,40 @@ def _run_loop(config: Config, config_path: str | None, timezone: ZoneInfo,
                 completed.add(identity)
                 pending.pop(identity, None)
                 _save_state(state_path, completed)
-                exported_report = exported_report or name in {"daily", "weekly", "monthly"}
+                exported_report = exported_report or name in REPORT_JOBS
             else:
                 exit_code = result.returncode if result else -1
                 log.error("自动任务 %s 未完成 (%s, exit=%d)", name, status, exit_code)
+                # 先移除旧条目，避免达到上限时反复执行同一个 attempt。
+                pending.pop(identity, None)
                 if attempt < config.schedule.retry_limit:
-                    retry_at = now + timedelta(seconds=config.schedule.retry_delay_seconds)
+                    retry_at = (datetime.now(timezone).replace(microsecond=0) +
+                                timedelta(seconds=config.schedule.retry_delay_seconds))
                     pending[identity] = (name, command, scheduled_at, attempt, retry_at)
+                    if name in REPORT_JOBS:
+                        conn = db.connect(config.db_path)
+                        try:
+                            db.set_report_generation_state(
+                                conn, name, command[1], status="retry_wait",
+                                attempt=attempt, scheduled_at=scheduled_at.isoformat(),
+                                retry_at=retry_at.isoformat(), error=error or status,
+                            )
+                        finally:
+                            conn.close()
                     log.info("任务 %s 将在 %s 重试", name, retry_at.isoformat())
+                else:
+                    if name in REPORT_JOBS:
+                        conn = db.connect(config.db_path)
+                        try:
+                            db.set_report_generation_state(
+                                conn, name, command[1], status="failed",
+                                attempt=attempt, scheduled_at=scheduled_at.isoformat(),
+                                error=error or status,
+                            )
+                        finally:
+                            conn.close()
+                    completed.add(identity)
+                    _save_state(state_path, completed)
         if exported_report and config.schedule.auto_export:
             base_argv = [sys.executable, "-m", "virt_report.cli"]
             if config_path:

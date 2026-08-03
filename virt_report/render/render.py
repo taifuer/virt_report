@@ -121,6 +121,16 @@ def render_report_html(config: Config, content: dict, nav: dict | None = None) -
     ), root="../", site_name=config.name)
 
 
+def render_report_pending_html(config: Config, state: dict) -> str:
+    """渲染尚未正式发布的报告状态页。"""
+    env = _env()
+    tpl = env.get_template("report_pending.html")
+    prepared = dict(state, period_range=_period_range(
+        state["period"], state["period_key"], config.timezone
+    ))
+    return tpl.render(state=prepared, root="../", site_name=config.name)
+
+
 def _period_range(period: str, period_key: str, timezone: str) -> dict:
     """返回本地时区的闭区间标签，避免展示 UTC 和排他结束日。"""
     start_utc, end_utc = periods.window(period, period_key, timezone)
@@ -154,6 +164,9 @@ def render_index_html(config: Config, ctx: dict) -> str:
     env = _env()
     tpl = env.get_template("index.html")
     prepared = dict(ctx)
+    prepared.setdefault("generation_states", {
+        "daily": [], "weekly": [], "monthly": [],
+    })
     for period in ("daily", "weekly", "monthly"):
         prepared[period] = _with_generated_dates(
             list(ctx.get(period, [])), config.timezone
@@ -186,7 +199,8 @@ def render_archive(config: Config, period: str, reports: list[dict]) -> Path:
     return out
 
 
-def render_archive_html(config: Config, period: str, reports: list[dict]) -> str:
+def render_archive_html(config: Config, period: str, reports: list[dict],
+                        generation_states: list[dict] | None = None) -> str:
     """渲染日报、周报或月报归档页。"""
     env = _env()
     tpl = env.get_template("archive.html")
@@ -197,7 +211,10 @@ def render_archive_html(config: Config, period: str, reports: list[dict]) -> str
                      period_range=_period_range(
                          period, item["period_key"], config.timezone
                      )) for item in reports]
-    return tpl.render(period=period, reports=enriched, root="../", site_name=config.name)
+    return tpl.render(
+        period=period, reports=enriched,
+        generation_states=generation_states or [], root="../", site_name=config.name,
+    )
 
 
 def render_kvm_forum(config: Config, editions: list[dict], analysis: dict) -> Path:

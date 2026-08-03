@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}virt-report · {{ state.period_label }} · {{ state.title }}{% endblock %}
+{% block description %}{{ state.period_label }}{{ state.type_name }}尚未发布。{% endblock %}
+{% block nav_home %}{% endblock %}
+{% block head_extra %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+<article class="generation-page">
+  <div class="generation-box {{ state.status }}">
+    <div class="kicker">{{ state.type_name }} · {{ state.period_range.full }}</div>
+    <div class="generation-title"><i aria-hidden="true"></i><h1>{{ state.title }}</h1></div>
+    <p>{{ state.description }}</p>
+    {% if state.active %}<p class="generation-help">页面将在 60 秒后自动刷新，也可以<a href="{{ state.period_key }}.html">立即刷新</a>。</p>
+    {% else %}<p class="generation-help">已生成的日报、周报和月报仍可从<a href="../index.html">首页</a>查看。</p>{% endif %}
+  </div>
+</article>
+{% endblock %}
+{% block scripts %}{% if state.active %}<script>window.setTimeout(()=>window.location.reload(),60000);</script>{% endif %}{% endblock %}

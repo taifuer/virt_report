@@ -1,7 +1,7 @@
 """通用周期报告生成器 (daily / weekly / monthly)。
 
 取周期窗口内 Top 线程 -> LLM 总结 -> 结构化内容 (含 themes/takeaways/dynamics/stats)。
-无 LLM key 或调用失败时走模板降级。内容落 reports 表。
+无 LLM key 或调用失败时可生成内部模板降级内容；自动任务只发布 AI 正稿。
 """
 from __future__ import annotations
 
@@ -23,16 +23,36 @@ from . import llm_provider, periods, prompts
 
 log = logging.getLogger(__name__)
 
-# 每周期喂给 LLM 的线程数上限 (DeepSeek v4 上下文 64K+, 可喂更多)
+# 每周期喂给 LLM 的线程数上限。V4 Flash 支持 1M 上下文；候选数仍按信噪比和
+# 成本约束，而不是为了填满上下文盲目扩大。
 TOP_N = {"daily": None, "weekly": 60, "monthly": 100}  # daily 用 config.llm.daily_top_n
-# DeepSeek V4 最大输出远高于本值；这里为完整 JSON 和思考内容留足余量。
-MAX_TOKENS = {"daily": 12000, "weekly": 24000, "monthly": 32000}
+# V4 Flash 最大输出为 384K；思考 token 与最终 JSON 共用输出预算。以下上限可避免
+# 日报在 high reasoning 下被 12K 提前截断，同时保留明确的成本边界。
+MAX_TOKENS = {"daily": 32768, "weekly": 49152, "monthly": 65536}
+MAX_RETRY_TOKENS = 98304
 # 思考强度 (high/max); 高强度更慢，high 已足够且快约一倍
 REASONING_EFFORT = {"daily": "high", "weekly": "high", "monthly": "high"}
-# 周期越大、线程越多，单条摘要越短以控制输入
-EXCERPT_LEN = {"daily": 450, "weekly": 350, "monthly": 250}
+# 采集层单段证据上限为 600 字；V4 Flash 的 1M 上下文足以让长周期报告保留
+# 完整的 opening/latest/review 证据，不再为月报额外截成 250 字。
+EXCERPT_LEN = {"daily": 600, "weekly": 600, "monthly": 600}
 ITEM_LIMIT = {"daily": 30, "weekly": 27, "monthly": 36}
 DAILY_CONTINUING_LIMIT = 5
+
+
+def _merge_usage(total: dict, current: dict) -> None:
+    """累加多次模型响应的 token 用量，避免截断重试低估成本。"""
+    for key, value in (current or {}).items():
+        if isinstance(value, dict):
+            nested = total.setdefault(key, {})
+            if isinstance(nested, dict):
+                _merge_usage(nested, value)
+        elif isinstance(value, (int, float)):
+            total[key] = total.get(key, 0) + value
+
+
+def _complete_llm_json(parsed: dict | None, finish_reason: str | None) -> bool:
+    """即使 JSON 可解析，length 也代表响应被上限截断，不能正式发布。"""
+    return bool(parsed) and finish_reason != "length"
 
 
 
@@ -83,6 +103,8 @@ def _daily_report_history(conn: sqlite3.Connection, period_key: str,
         try:
             content = json.loads(row["content_json"])
         except (TypeError, ValueError):
+            continue
+        if content.get("fallback"):
             continue
         for section in content.get("sections", []):
             for item in section.get("items", []):
@@ -497,8 +519,8 @@ def enrich_architectures(content: dict) -> dict:
 
 
 def generate(conn: sqlite3.Connection, config: Config, period: str,
-             period_key: str) -> dict:
-    """生成某个周期(日/周/月)的报告内容并落库。"""
+             period_key: str, *, publish_fallback: bool = True) -> dict:
+    """生成某个周期报告；自动任务可选择只在 AI 成功时发布。"""
     start_utc, end_utc = periods.window(period, period_key, config.timezone)
     start_iso, end_iso = _iso(start_utc), _iso(end_utc)
 
@@ -524,22 +546,41 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
     model = {"daily": config.llm.daily_model, "weekly": config.llm.weekly_model,
              "monthly": config.llm.monthly_model}[period]
     fallback = False
+    aggregate_usage: dict = {}
+    aggregate_reasoning_chars = 0
+    llm_attempts = 0
 
     parsed = None
     if provider and threads_data:
         user = prompts.build_prompt(period, period_key, threads_data)
         for attempt in range(2):
             try:
+                max_tokens = (MAX_TOKENS[period] if attempt == 0 else
+                              min(MAX_TOKENS[period] * 2, MAX_RETRY_TOKENS))
+                attempt_user = user
+                if attempt:
+                    attempt_user += (
+                        "\n\n上一次响应未形成完整合法 JSON。请减少铺陈，严格遵守字段"
+                        "和条目数量限制，确保在输出上限内闭合整个 JSON 对象。"
+                    )
                 text = provider.complete(
-                    user, system=prompts.system_prompt(period, period_key), model=model,
-                    max_tokens=MAX_TOKENS[period], json_mode=True,
+                    attempt_user, system=prompts.system_prompt(period, period_key), model=model,
+                    max_tokens=max_tokens, json_mode=True,
                     thinking="enabled", reasoning_effort=REASONING_EFFORT[period],
                 )
+                llm_attempts += 1
+                _merge_usage(aggregate_usage, getattr(provider, "last_usage", {}))
+                aggregate_reasoning_chars += getattr(provider, "last_reasoning_chars", 0)
                 parsed = llm_provider.extract_json(text)
-                if parsed:
+                finish_reason = getattr(provider, "last_finish_reason", None)
+                if _complete_llm_json(parsed, finish_reason):
                     break
-                log.warning("LLM 返回空或不可解析 (len=%d), %s", len(text or ""),
-                            "重试" if attempt == 0 else "放弃")
+                parsed = None
+                log.warning(
+                    "LLM 返回空或不可解析 (len=%d, finish=%s, max_tokens=%d), %s",
+                    len(text or ""), finish_reason, max_tokens,
+                    "提高输出预算后重试" if attempt == 0 else "放弃",
+                )
             except Exception as e:
                 log.warning("LLM 调用失败 (provider 已重试), 使用降级: %s", e)
                 parsed = None
@@ -577,13 +618,17 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
         "sections": sections, "stats": stats,
         "top_threads": threads_data, "model": used_model, "fallback": fallback,
         "generated_at": db.now_utc_iso(),
-        "llm_usage": getattr(provider, "last_usage", {}) if provider and not fallback else {},
-        "llm_finish_reason": getattr(provider, "last_finish_reason", None) if provider and not fallback else None,
-        "reasoning_chars": getattr(provider, "last_reasoning_chars", 0) if provider and not fallback else 0,
+        "llm_usage": aggregate_usage,
+        "llm_attempts": llm_attempts,
+        "llm_finish_reason": getattr(provider, "last_finish_reason", None) if provider else None,
+        "reasoning_chars": aggregate_reasoning_chars,
     }
-    db.save_report(conn, period, period_key, content, config.timezone,
-                   item_count=item_count, model=used_model)
-    log.info("%s报 %s 生成完成 (overview=%d, sections=%d, items=%d, model=%s, fallback=%s)",
+    published = not fallback or publish_fallback
+    if published:
+        db.save_report(conn, period, period_key, content, config.timezone,
+                       item_count=item_count, model=used_model)
+    log.info("%s报 %s 生成完成 (overview=%d, sections=%d, items=%d, model=%s, "
+             "fallback=%s, published=%s)",
              period, period_key, len(overview), len(sections), item_count,
-             used_model, fallback)
+             used_model, fallback, published)
     return content
