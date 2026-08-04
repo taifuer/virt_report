@@ -169,6 +169,7 @@ CREATE TABLE IF NOT EXISTS conference_papers (
     title         TEXT NOT NULL,
     authors_json  TEXT NOT NULL DEFAULT '[]',
     affiliations_json TEXT NOT NULL DEFAULT '[]',
+    institutions_json TEXT NOT NULL DEFAULT '[]',
     affiliation_source TEXT,
     affiliation_source_url TEXT,
     affiliation_verified_at TEXT,
@@ -226,6 +227,7 @@ def _migrate_conference_metadata(conn: sqlite3.Connection) -> None:
     )}
     additions = {
         "affiliations_json": "TEXT NOT NULL DEFAULT '[]'",
+        "institutions_json": "TEXT NOT NULL DEFAULT '[]'",
         "affiliation_source": "TEXT",
         "affiliation_source_url": "TEXT",
         "affiliation_verified_at": "TEXT",

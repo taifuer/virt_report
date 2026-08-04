@@ -1,25 +1,24 @@
 {% extends "base.html" %}
-{% block title %}virt-report · 学术会议议题{% endblock %}
-{% block description %}系统领域学术会议中的虚拟化相关议题列表。{% endblock %}
+{% block title %}virt-report · 相关论文{% endblock %}
+{% block description %}系统领域学术会议中的虚拟化相关论文列表。{% endblock %}
 {% block nav_home %}{% endblock %}
 {% block nav_conferences %}on{% endblock %}
 {% block content %}
 <article class="conference-page">
-  <header><div class="kicker"><a href="conferences.html">会议</a> · Academic Topic Archive</div><h1>相关议题</h1><p>保留与系统虚拟化机制直接相关或能解释其演进的内容；代表性内容仅作辅助标记，不构成论文推荐。</p></header>
+  <header><div class="kicker"><a href="conferences.html">会议</a> · Academic Paper Archive</div><h1>相关论文</h1><p>保留与系统虚拟化机制直接相关或能解释其演进的论文；代表性标记只用于辅助观察技术脉络。</p></header>
   <section class="conference-section paper-observer" data-conference-browser data-default-size="10">
-    <div class="conference-controls" aria-label="议题筛选">
+    <div class="conference-controls" aria-label="论文筛选">
       <label>会议<select data-conference-venue><option value="">全部</option>{% for venue in content.paper_venues %}<option value="{{ venue.key }}">{{ venue.name }}</option>{% endfor %}</select></label>
       <label>年份<select data-conference-year><option value="">全部</option>{% for year in content.years %}<option value="{{ year }}">{{ year }}</option>{% endfor %}</select></label>
-      <span data-conference-count>{{ content.paper_count }} 个议题</span>
+      <span data-conference-count>{{ content.paper_count }} 篇论文</span>
     </div>
-    <p class="conference-empty" data-conference-empty hidden>当前筛选条件下没有已审核议题。</p>
+    <p class="conference-empty" data-conference-empty hidden>当前筛选条件下没有已审核论文。</p>
     <div class="paper-list">{% for paper in content.papers %}<article class="paper-row" data-conference-item data-venue="{{ paper.venue }}" data-year="{{ paper.year }}"{% if loop.index > 10 %} hidden{% endif %}>
       <div class="paper-meta"><span>{{ paper.year }}</span><strong>{{ venues_by_key[paper.venue].name }}</strong><span class="relation {{ 'direct' if paper.relation == '直接关联' else '' }}">{{ paper.relation }}</span></div>
       <div class="paper-body"><h2><a href="{{ paper.url }}" target="_blank" rel="noopener noreferrer">{{ paper.title }}</a></h2>
-        {% if paper.author_label %}<p class="paper-credit"><strong>作者</strong><span title="{{ paper.author_full_label }}">{{ paper.author_label }}</span></p>{% endif %}
-        {% if paper.institution_label %}<p class="paper-credit"{% if paper.affiliation_source_label %} title="单位元数据来源：{{ paper.affiliation_source_label }}{% if paper.affiliation_verified_at %}；核验时间：{{ paper.affiliation_verified_at }}{% endif %}"{% endif %}><strong>作者单位</strong><span title="{{ paper.institution_full_label }}">{{ paper.institution_label }}</span></p>{% endif %}
+        {% if paper.institution_label %}<div class="paper-credit"{% if paper.affiliation_source_label %} title="单位元数据来源：{{ paper.affiliation_source_label }}{% if paper.affiliation_verified_at %}；核验时间：{{ paper.affiliation_verified_at }}{% endif %}"{% endif %}><strong>单位</strong><div class="paper-credit-content"><span>{{ paper.institution_label }}</span>{% if paper.institutions|length > 4 %}<details class="paper-credit-more"><summary>查看全部单位</summary><span>{{ paper.institution_full_label }}</span></details>{% endif %}</div></div>{% endif %}
         <p><strong>内容</strong>{{ paper.introduction }}</p><p class="editor-comment"><strong>点评</strong>{{ paper.commentary }}</p>
-        <div class="paper-tags">{% if paper.representative %}<span class="tag representative">代表性议题</span>{% endif %}{% for architecture in paper.architectures %}<span class="tag arch{% if architecture in ['x86', 'Arm'] %} focus{% endif %}">{{ architecture }}</span>{% endfor %}{% for topic in paper.topics %}<span class="tag">{{ topic }}</span>{% endfor %}</div>
+        <div class="paper-tags">{% if paper.representative %}<span class="tag representative">代表性论文</span>{% endif %}{% for architecture in paper.architectures %}<span class="tag arch{% if architecture in ['x86', 'Arm'] %} focus{% endif %}">{{ architecture }}</span>{% endfor %}{% for topic in paper.topics %}<span class="tag">{{ topic }}</span>{% endfor %}</div>
       </div>
     </article>{% endfor %}</div>
     <div class="conference-pager" data-conference-pager><button type="button" data-conference-prev>上一页</button><strong data-conference-status>1 / 1</strong><button type="button" data-conference-next>下一页</button><label>每页<select data-conference-size><option value="10">10</option><option value="20">20</option><option value="30">30</option></select></label></div>

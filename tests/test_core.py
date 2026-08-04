@@ -918,6 +918,12 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert any("KVM" in paper["topics"] for paper in content["papers"])
     assert len(content["analysis"]["years"]) == 17
     assert all(item["paper_count"] for item in content["analysis"]["years"])
+    assert all(paper["institutions"] for paper in content["papers"])
+    blowfish = next(
+        paper for paper in content["papers"] if paper["id"] == "osdi26-blowfish"
+    )
+    assert len(blowfish["institutions"]) == 4
+    assert blowfish["institutions"].count("Peking University") == 1
 
     page = html_render.render_conferences_html(Config(), content)
     assert '<div class="kicker">Conference Archive</div>' in page
@@ -926,7 +932,7 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert (f'<div><h2>学术会议</h2><span class="guide-range">'
             f'{content["analysis"]["coverage"]}</span></div>') in page
     assert 'href="kvm-forum.html">查看技术演进</a>' in page
-    assert 'href="conference-papers.html">查看相关议题</a>' in page
+    assert 'href="conference-papers.html">查看相关论文</a>' in page
     assert '<section class="conference-sources"><h2>收录会议与来源</h2>' in page
     assert '<details class="conference-sources"' not in page
     assert "重点" not in page and "待严格筛选" not in page
@@ -939,14 +945,14 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert "会议</a> · Academic Conference Review" in timeline
     assert timeline.index('id="year-2026"') < timeline.index('id="year-2010"')
     assert "技术演进" not in timeline.split("<h1>", 1)[1].split("</h1>", 1)[0]
-    assert f'{content["paper_count"]} 个议题' not in timeline
-    assert "查看 2026 年相关议题" in timeline
-    assert 'href="conference-papers.html">查看全部相关议题</a>' not in timeline
+    assert f'{content["paper_count"]} 篇论文' not in timeline
+    assert "查看 2026 年相关论文" in timeline
+    assert 'href="conference-papers.html">查看全部相关论文</a>' not in timeline
     assert "查看长期演进概述" not in timeline
     assert 'class="forum-overview-mobile"' not in timeline
 
     papers = html_render.render_conference_papers_html(Config(), content)
-    assert "会议</a> · Academic Topic Archive" in papers
+    assert "会议</a> · Academic Paper Archive" in papers
     assert "会议</a> · <a href=\"academic-conferences.html\">学术会议</a>" not in papers
     paper_tags = [part.split(">", 1)[0]
                   for part in papers.split("data-conference-item")[1:]]
@@ -955,12 +961,17 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert all(" hidden" in tag for tag in paper_tags[10:])
     assert "data-conference-browser" in papers
     assert "编辑点评" not in papers and "<strong>点评</strong>" in papers
-    assert "代表性内容仅作辅助标记" in papers
+    assert "<strong>作者</strong>" not in papers
+    assert papers.count("<strong>单位</strong>") == content["paper_count"]
+    assert papers.count("查看全部单位") == sum(
+        len(paper["institutions"]) > 4 for paper in content["papers"]
+    )
+    assert "代表性标记只用于辅助观察技术脉络" in papers
     assert "conference-papers.html?year=2025" not in papers
 
     assets = (html_render.ASSETS_DIR / "site.js").read_text(encoding="utf-8")
     assert "new URLSearchParams(window.location.search)" in assets
-    assert "matching.length" in assets and "个议题" in assets
+    assert "matching.length" in assets and "篇论文" in assets
     assert "[hidden]{display:none!important}" in _site_css()
 
 

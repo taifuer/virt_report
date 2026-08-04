@@ -18,7 +18,7 @@
 
 [![virt-report 专题页演示](docs/images/demo-topics.png)](docs/images/demo-topics.png)
 
-更多页面：[日报归档](https://virt.taifua.com/daily/) · [周报](https://virt.taifua.com/weekly/) · [月报](https://virt.taifua.com/monthly/) · [专题](https://virt.taifua.com/topics.html) · [会议](https://virt.taifua.com/conferences.html) · [学术会议演进](https://virt.taifua.com/academic-conferences.html) · [相关议题](https://virt.taifua.com/conference-papers.html) · [KVM Forum](https://virt.taifua.com/kvm-forum.html) · [关于](https://virt.taifua.com/about.html) · [RSS](https://virt.taifua.com/feed.xml)
+更多页面：[日报归档](https://virt.taifua.com/daily/) · [周报](https://virt.taifua.com/weekly/) · [月报](https://virt.taifua.com/monthly/) · [专题](https://virt.taifua.com/topics.html) · [会议](https://virt.taifua.com/conferences.html) · [学术会议演进](https://virt.taifua.com/academic-conferences.html) · [相关论文](https://virt.taifua.com/conference-papers.html) · [KVM Forum](https://virt.taifua.com/kvm-forum.html) · [关于](https://virt.taifua.com/about.html) · [RSS](https://virt.taifua.com/feed.xml)
 
 ## 数据源（均已验证可用）
 
@@ -50,7 +50,7 @@
 - **可观测采集**：`fetch_runs` 记录每个源的请求窗口、覆盖范围、完整性和错误；单源失败不阻断其他源，失败不推进水位。
 - **分层专题索引**：原始线程只作为候选池；公开专题以周报/月报精选为长期汇总，并补充最近 14 天日报中的新进展。“安全与漏洞”公开层仅接受完整 CVE 与强漏洞证据，安全能力增强只保留在内部索引和周期报告中。
 - **RSS 与运行指标**：日报、周报和月报提供 RSS 2.0；运行页展示采集完整性、数据规模、报告 token 与按配置单价估算的成本。
-- **会议观察**：`/conferences.html` 是统一入口，分别进入 KVM Forum 与学术会议年度演变；`/conference-papers.html` 保存经人工复核的相关议题。网页只读取离线快照，不在请求时采集或调用 LLM。
+- **会议观察**：`/conferences.html` 是统一入口，分别进入 KVM Forum 与学术会议年度演变；`/conference-papers.html` 保存经人工复核的相关论文。网页只读取离线快照，不在请求时采集或调用 LLM。
 - **原子发布与重试**：自动报告只有在 AI 点评成功后才正式发布；生成中、等待重试和最终失败使用独立状态，不会让模板降级内容短暂出现在首页、RSS 或专题中。
 
 ## 安装
@@ -93,7 +93,7 @@ cp .env.example .env   # 填入 DEEPSEEK_API_KEY（自动发布报告时必需�
 # 获取 2010—2026 学术会议标题元数据、导入编辑快照并列出待复核候选
 .venv/bin/virt-report conference-catalog --from-year 2010 --to-year 2026 --list-candidates
 
-# DBLP 限流时可按会议分批续跑；摘要和作者单位补充均为年度维护步骤
+# DBLP 限流时可按会议分批续跑；摘要和论文单位补充均为年度维护步骤
 .venv/bin/virt-report conference-catalog --venue vee --from-year 2010 --to-year 2026
 .venv/bin/virt-report conference-catalog --no-fetch --enrich-abstracts --abstract-limit 20
 .venv/bin/virt-report conference-catalog --no-fetch --enrich-affiliations --sync-public-metadata
@@ -133,7 +133,7 @@ cp .env.example .env   # 填入 DEEPSEEK_API_KEY（自动发布报告时必需�
 
 RSS 地址为 `/feed.xml`（最近 50 份全部报告）、`/daily/feed.xml`（最近 30 期）、`/weekly/feed.xml`（最近 26 期）和 `/monthly/feed.xml`（最近 24 期）。RSS 用于接收近期更新，完整历史以报告归档页为准。动态服务支持 ETag 与 Last-Modified 条件请求。页脚“运行状态”进入受保护的 `/metrics.html`，展示各源最近一次及近十次采集状态、数据规模、最近报告和模型用量；`/api/metrics` 提供相同 JSON 数据并接受 `Authorization: Bearer <METRICS_ACCESS_KEY>`。成本依据 `config.yaml` 的人民币/百万 tokens 单价估算，仅供趋势观察，不等同于 DeepSeek 账单。运行页不写入静态快照，避免绕过后端鉴权。
 
-周报严格按站点时区的 ISO 自然周统计，即周一 00:00 至下周一 00:00（右端不包含）；页面以闭区间展示为 `2026 年第 28 周（7.6–7.12）`。`/conferences.html` 是统一会议入口，`/kvm-forum.html` 仅依据 KVM Forum 2010—2025 各届议程标题归纳年度主题，不读取 PPT 或视频正文。`/academic-conferences.html` 按年度和阶段呈现 2010—2025 完整年度及截至 2026 年 8 月 1 日已公布内容的跨会议技术演变，`/conference-papers.html` 提供会议、年份和分页筛选。学术会议完整标题元数据保存在本地 SQLite，公开快照只纳入经人工复核的虚拟化相关议题及中文简介、点评；作者与单位仅采用会议官方页面或 DOI 对应的 Crossref 明确元数据，缺失时不作推断。不读取论文 PDF，也不调用 DeepSeek 自动点评。
+周报严格按站点时区的 ISO 自然周统计，即周一 00:00 至下周一 00:00（右端不包含）；页面以闭区间展示为 `2026 年第 28 周（7.6–7.12）`。`/conferences.html` 是统一会议入口，`/kvm-forum.html` 仅依据 KVM Forum 2010—2025 各届议程标题归纳年度主题，不读取 PPT 或视频正文。`/academic-conferences.html` 按年度和阶段呈现 2010—2025 完整年度及截至 2026 年 8 月 1 日已公布内容的跨会议技术演变，`/conference-papers.html` 提供会议、年份和分页筛选。学术会议完整标题元数据保存在本地 SQLite，公开快照只纳入经人工复核的虚拟化相关论文及中文简介、点评；页面优先展示依据会议官方页面或 DOI/Crossref 出版元数据逐篇核验的单位，缺失时使用作者所属机构的公开论文页，并统一规范化去重；不展示作者，也不推断通讯作者。不读取论文 PDF，不调用 DeepSeek 自动点评。
 
 首页分别保留最近 15 期日报、9 期周报和 6 期月报，卡片直接显示报告标题；移动端使用同一组数据，通过三类 Tab 切换，更早内容可从归档页或右侧日、周、月切换器查找。报告详情支持按项目、功能、缺陷、x86 和 Arm 筛选，并继续对重点架构议题进行明确标记和优先展示。
 
@@ -245,4 +245,4 @@ virt_report/
 - ✅ **阶段 2**：HyperKitty 采集器补 libvirt-devel (RSS+thread hash 折叠 patch series)；通用周期报告生成器；周报；日历导航首页。
 - ✅ **阶段 3**：月报；周/月报主题聚类 (LLM 跨源归纳 themes)；cron 全调度 (频繁采集 + 日/周/月报)。
 - ✅ **阶段 4**：独立报告归档、原始线程增量专题、安全与漏洞、RSS、运行/成本统计及 Docker 自动调度。
-- 🚧 **阶段 5**：已完成专题分层、日报重复抑制、调度记录/重试/自动备份、基础 CI，以及 2010—2026 学术会议年度演变与独立议题列表；继续细化 patch series 折叠，并随官方议程增补当年内容。暂不加入邮件订阅。
+- 🚧 **阶段 5**：已完成专题分层、日报重复抑制、调度记录/重试/自动备份、基础 CI，以及 2010—2026 学术会议年度演变与独立论文列表；继续细化 patch series 折叠，并随官方议程增补当年内容。暂不加入邮件订阅。

@@ -52,7 +52,7 @@ def test_conference_affiliation_schema_migrates_existing_database(tmp_path):
         "PRAGMA table_info(conference_papers)"
     )}
     assert {
-        "affiliations_json", "affiliation_source",
+        "affiliations_json", "institutions_json", "affiliation_source",
         "affiliation_source_url", "affiliation_verified_at",
     } <= columns
     assert migrated.execute(
@@ -111,6 +111,9 @@ def test_crossref_affiliation_enrichment_and_public_sync(tmp_path, monkeypatch):
     assert row["affiliation_source"] == "crossref"
     assert row["affiliation_source_url"].endswith("10.1/test")
     assert row["affiliation_verified_at"].endswith("Z")
+    assert json.loads(conn.execute(
+        "SELECT institutions_json FROM conference_papers"
+    ).fetchone()[0]) == ["Example University", "Example Labs"]
 
     content_path = tmp_path / "conferences.json"
     content_path.write_text(
@@ -206,7 +209,10 @@ def test_public_affiliations_render_compactly_and_missing_values_stay_hidden(
                 {"name": "A", "institutions": ["University One"]},
                 {"name": "B", "institutions": ["Company Two"]},
             ],
-            institutions=["University One", "Company Two"],
+            institutions=[
+                "SCS, Peking University, China", "Peking University",
+                "Company Two", "University Three", "Lab Four", "Center Five",
+            ],
             affiliation_source="crossref",
             affiliation_source_url="https://api.crossref.org/works/10.1/test",
             affiliation_verified_at="2026-08-04T00:00:00Z",
@@ -218,12 +224,18 @@ def test_public_affiliations_render_compactly_and_missing_values_stay_hidden(
         encoding="utf-8",
     )
     monkeypatch.setattr(conferences, "CONTENT_PATH", path)
+    monkeypatch.setattr(
+        conferences, "INSTITUTION_OVERRIDES_PATH", tmp_path / "missing.json"
+    )
     conferences.load_content.cache_clear()
     content = conferences.load_content()
     page = html_render.render_conference_papers_html(Config(), content)
-    assert "A · B · C · D · E · 等 6 位作者" in page
-    assert "University One · Company Two" in page
-    assert page.count("<strong>作者</strong>") == 1
-    assert page.count("<strong>作者单位</strong>") == 1
+    assert "<strong>作者</strong>" not in page
+    assert ("Peking University · Company Two · University Three · Lab Four"
+            in page)
+    assert "等 5 家单位" in page
+    assert page.count("Peking University") == 2
+    assert page.count("<strong>单位</strong>") == 1
+    assert "查看全部单位" in page and "Center Five" in page
     assert "单位元数据来源：Crossref；核验时间：2026-08-04T00:00:00Z" in page
     conferences.load_content.cache_clear()

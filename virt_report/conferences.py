@@ -19,13 +19,16 @@ from functools import lru_cache
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Iterable
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 import requests
 
 from virt_report import db
 
 CONTENT_PATH = Path(__file__).parent / "content" / "conferences.json"
+INSTITUTION_OVERRIDES_PATH = (
+    Path(__file__).parent / "content" / "conference_institutions.json"
+)
 REQUIRED_PAPER_FIELDS = {
     "id", "year", "venue", "title", "url", "introduction", "commentary",
     "relation", "topics",
@@ -86,6 +89,18 @@ def _normalized_title(value: object) -> str:
         return ""
     value = html.unescape(re.sub(r"<[^>]+>", " ", value))
     return re.sub(r"\W+", " ", value.casefold()).strip()
+
+
+def _official_title_matches(expected: object, actual: object) -> bool:
+    """Allow only known editorial suffixes on an otherwise exact title."""
+    expected_normalized = _normalized_title(expected)
+    actual_normalized = _normalized_title(actual)
+    if actual_normalized == expected_normalized:
+        return True
+    return actual_normalized in {
+        f"{expected_normalized} operational systems",
+        f"{expected_normalized} operational systems paper",
+    }
 
 
 def is_candidate_title(title: str) -> bool:
@@ -293,8 +308,10 @@ def import_editor_reviews(conn: sqlite3.Connection, content: dict | None = None)
     count = 0
     for paper in content.get("papers", []):
         pid = paper_id(paper["venue"], paper["year"], paper["title"])
+        paper_doi = _doi_from_url(paper["url"])
         authors = paper.get("authors", [])
         affiliations = paper.get("author_affiliations", [])
+        institutions = canonical_institutions(paper.get("institutions", []))
         affiliation_source = paper.get("affiliation_source")
         affiliation_source_url = paper.get("affiliation_source_url")
         affiliation_verified_at = paper.get("affiliation_verified_at")
@@ -305,35 +322,43 @@ def import_editor_reviews(conn: sqlite3.Connection, content: dict | None = None)
             conn.execute("""
                 INSERT INTO conference_papers (
                     paper_id,venue,year,title,authors_json,affiliations_json,
+                    institutions_json,doi,
                     affiliation_source,affiliation_source_url,
                     affiliation_verified_at,official_url,source_url,fetched_at,
                     raw_json
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 pid, paper["venue"], paper["year"], paper["title"],
                 json.dumps(authors, ensure_ascii=False),
                 json.dumps(affiliations, ensure_ascii=False),
+                json.dumps(institutions, ensure_ascii=False), paper_doi or None,
                 affiliation_source, affiliation_source_url,
                 affiliation_verified_at, paper["url"], paper["url"],
                 reviewed_at, "{}",
             ))
-        elif authors or affiliations or affiliation_source:
+        else:
             # Metadata explicitly committed in the public snapshot is reviewed
             # provenance and must not be discarded on a fresh database import.
             conn.execute("""
                 UPDATE conference_papers SET
+                    official_url=?,doi=COALESCE(doi,?),
                     authors_json=CASE WHEN ? != '[]' THEN ? ELSE authors_json END,
                     affiliations_json=CASE WHEN ? != '[]' THEN ?
                                            ELSE affiliations_json END,
+                    institutions_json=CASE WHEN ? != '[]' THEN ?
+                                           ELSE institutions_json END,
                     affiliation_source=COALESCE(?,affiliation_source),
                     affiliation_source_url=COALESCE(?,affiliation_source_url),
                     affiliation_verified_at=COALESCE(?,affiliation_verified_at)
                 WHERE paper_id=?
             """, (
+                paper["url"], paper_doi or None,
                 json.dumps(authors, ensure_ascii=False),
                 json.dumps(authors, ensure_ascii=False),
                 json.dumps(affiliations, ensure_ascii=False),
                 json.dumps(affiliations, ensure_ascii=False),
+                json.dumps(institutions, ensure_ascii=False),
+                json.dumps(institutions, ensure_ascii=False),
                 affiliation_source, affiliation_source_url,
                 affiliation_verified_at, pid,
             ))
@@ -467,6 +492,51 @@ def _clean_metadata_text(value: object) -> str:
     return re.sub(r"\s+", " ", html.unescape(value)).strip()
 
 
+def _canonical_institution_parts(value: object) -> list[str]:
+    """Return conservative canonical institutions for one source label.
+
+    Publisher metadata often repeats the same institution with department,
+    country, or abbreviation variants.  Only aliases that unambiguously name
+    the same organisation are collapsed here; unknown labels are preserved.
+    A combined CAS/UCAS affiliation remains one collaboration label so the
+    display preserves the official author line without counting spelling
+    variants twice.
+    """
+    cleaned = _clean_metadata_text(value).strip(" ,;")
+    if not cleaned:
+        return []
+    folded = cleaned.casefold()
+    if "institute of computing technology" in folded and (
+            "chinese academy of sciences" in folded
+            or re.search(r"\bcas\b", folded)):
+        if "university of chinese academy of sciences" in folded:
+            return [
+                "Institute of Computing Technology, Chinese Academy of "
+                "Sciences / University of Chinese Academy of Sciences"
+            ]
+        return ["Institute of Computing Technology, Chinese Academy of Sciences"]
+    if "university of chinese academy of sciences" in folded:
+        return ["University of Chinese Academy of Sciences"]
+    if "peking university" in folded:
+        return ["Peking University"]
+    if "huawei cloud" in folded:
+        return ["Huawei Cloud"]
+    return [cleaned]
+
+
+def canonical_institutions(values: Iterable[object]) -> list[str]:
+    """Canonicalize and de-duplicate institutions in source order."""
+    result: list[str] = []
+    keys: set[str] = set()
+    for value in values:
+        for institution in _canonical_institution_parts(value):
+            key = re.sub(r"\W+", " ", institution.casefold()).strip()
+            if key and key not in keys:
+                keys.add(key)
+                result.append(institution)
+    return result
+
+
 def _crossref_author_metadata(message: dict) -> tuple[list[str], list[dict]]:
     """Return names and explicit author-affiliation mappings from Crossref."""
     names: list[str] = []
@@ -572,12 +642,11 @@ def enrich_usenix_affiliations(
         except (requests.RequestException, subprocess.SubprocessError,
                 RuntimeError, ValueError) as exc:
             result["errors"] += 1
-            log.warning("USENIX 作者单位补充失败 %s: %s", row["paper_id"], exc)
+            log.warning("USENIX 论文单位补充失败 %s: %s", row["paper_id"], exc)
             continue
         metadata = parse_citation_metadata(page)
         result["checked"] += 1
-        if (_normalized_title(metadata["title"])
-                != _normalized_title(row["title"])):
+        if not _official_title_matches(row["title"], metadata["title"]):
             result["title_mismatch"] += 1
             log.warning("USENIX 页面标题不一致，跳过 %s", row["paper_id"])
             continue
@@ -589,12 +658,15 @@ def enrich_usenix_affiliations(
             result["without_affiliations"] += 1
         conn.execute("""
             UPDATE conference_papers SET authors_json=?,affiliations_json=?,
+                institutions_json=?,
                 affiliation_source='usenix',affiliation_source_url=?,
                 affiliation_verified_at=?
             WHERE paper_id=?
         """, (
             json.dumps(metadata["authors"], ensure_ascii=False),
             json.dumps(metadata["author_affiliations"], ensure_ascii=False),
+            json.dumps(canonical_institutions(metadata["institutions"]),
+                       ensure_ascii=False),
             row["official_url"], db.now_utc_iso(), row["paper_id"],
         ))
         result["updated"] += 1
@@ -705,7 +777,7 @@ def enrich_affiliations(
         except (requests.RequestException, subprocess.SubprocessError,
                 json.JSONDecodeError, RuntimeError, ValueError) as exc:
             result["errors"] += 1
-            log.warning("作者单位补充失败 %s: %s", row["paper_id"], exc)
+            log.warning("论文单位补充失败 %s: %s", row["paper_id"], exc)
             continue
         message = payload.get("message", {})
         returned_doi = _clean_metadata_text(message.get("DOI"))
@@ -714,10 +786,10 @@ def enrich_affiliations(
             log.warning("Crossref DOI 不一致，跳过 %s", row["paper_id"])
             continue
         authors, mappings = _crossref_author_metadata(message)
-        institutions = {
+        institutions = canonical_institutions(
             institution for mapping in mappings
             for institution in mapping["institutions"]
-        }
+        )
         existing_authors = json.loads(row["authors_json"] or "[]")
         authors_json = row["authors_json"] or "[]"
         if authors and authors != existing_authors:
@@ -727,11 +799,13 @@ def enrich_affiliations(
         source_url = CROSSREF_API.format(doi)
         conn.execute("""
             UPDATE conference_papers SET authors_json=?,affiliations_json=?,
+                institutions_json=?,
                 affiliation_source='crossref',affiliation_source_url=?,
                 affiliation_verified_at=?
             WHERE paper_id=?
         """, (
             authors_json, json.dumps(mappings, ensure_ascii=False),
+            json.dumps(institutions, ensure_ascii=False),
             source_url, verified_at, row["paper_id"],
         ))
         result["checked"] += 1
@@ -744,6 +818,14 @@ def enrich_affiliations(
         time.sleep(0.25)
     conn.commit()
     return result
+
+
+def _doi_from_url(value: object) -> str:
+    """Extract a DOI embedded in a trusted publisher URL, if present."""
+    cleaned = unquote(_clean_metadata_text(value))
+    match = re.search(r"(?:doi\.org/|/doi/)(10\.\d{4,9}/[^?#\s]+)", cleaned,
+                      flags=re.IGNORECASE)
+    return match.group(1).rstrip("/.") if match else ""
 
 
 def _valid_string_list(value: object) -> list[str]:
@@ -784,7 +866,8 @@ def sync_public_metadata(conn: sqlite3.Connection,
     for paper in content.get("papers", []):
         pid = paper_id(paper["venue"], paper["year"], paper["title"])
         row = conn.execute("""
-            SELECT authors_json,affiliations_json,affiliation_source,
+            SELECT authors_json,affiliations_json,institutions_json,
+                   affiliation_source,
                    affiliation_source_url,affiliation_verified_at
             FROM conference_papers WHERE paper_id=?
         """, (pid,)).fetchone()
@@ -794,10 +877,14 @@ def sync_public_metadata(conn: sqlite3.Connection,
         mappings = _valid_affiliation_mappings(
             json.loads(row["affiliations_json"] or "[]")
         )
-        institutions = list(dict.fromkeys(
-            institution for mapping in mappings
-            for institution in mapping["institutions"]
-        ))
+        institutions = canonical_institutions(
+            json.loads(row["institutions_json"] or "[]")
+        )
+        if not institutions:
+            institutions = canonical_institutions(
+                institution for mapping in mappings
+                for institution in mapping["institutions"]
+            )
         if not authors and not institutions:
             continue
         before = {key: paper.get(key) for key in (
@@ -830,7 +917,34 @@ def sync_public_metadata(conn: sqlite3.Connection,
 
 
 def _read_content() -> dict:
-    return json.loads(CONTENT_PATH.read_text(encoding="utf-8"))
+    content = json.loads(CONTENT_PATH.read_text(encoding="utf-8"))
+    if not INSTITUTION_OVERRIDES_PATH.exists():
+        return content
+    overrides = json.loads(
+        INSTITUTION_OVERRIDES_PATH.read_text(encoding="utf-8")
+    )
+    papers_by_id = {paper["id"]: paper for paper in content.get("papers", [])}
+    unknown = set(overrides.get("papers", {})) - papers_by_id.keys()
+    if unknown:
+        raise ValueError(
+            f"单位核验文件引用未知论文: {', '.join(sorted(unknown))}"
+        )
+    verified_at = overrides.get("verified_at")
+    for pid, metadata in overrides.get("papers", {}).items():
+        if not isinstance(metadata, dict):
+            raise ValueError(f"论文单位核验记录格式错误: {pid}")
+        institutions = canonical_institutions(metadata.get("institutions", []))
+        source_url = _clean_metadata_text(metadata.get("source_url"))
+        if not institutions or not source_url.startswith("https://"):
+            raise ValueError(f"论文单位核验记录不完整: {pid}")
+        paper = papers_by_id[pid]
+        paper["institutions"] = institutions
+        paper["affiliation_source"] = metadata.get("source", "official")
+        paper["affiliation_source_url"] = source_url
+        paper["affiliation_verified_at"] = (
+            metadata.get("verified_at") or verified_at
+        )
+    return content
 
 
 def _compact_label(values: list[str], limit: int, noun: str) -> str:
@@ -869,23 +983,26 @@ def load_content() -> dict:
         )
         if not authors:
             authors = list(dict.fromkeys(item["name"] for item in mappings))
-        institutions = _valid_string_list(paper.get("institutions", []))
-        for mapping in mappings:
-            for institution in mapping["institutions"]:
-                if institution not in institutions:
-                    institutions.append(institution)
+        institutions = canonical_institutions(
+            _valid_string_list(paper.get("institutions", []))
+        )
+        if not institutions:
+            institutions = canonical_institutions(
+                institution for mapping in mappings
+                for institution in mapping["institutions"]
+            )
         source_url = paper.get("affiliation_source_url")
         if source_url and not source_url.startswith("https://"):
-            raise ValueError(f"作者单位来源必须使用 HTTPS: {paper['id']}")
+            raise ValueError(f"论文单位来源必须使用 HTTPS: {paper['id']}")
         paper["authors"] = authors
         paper["author_affiliations"] = mappings
         paper["institutions"] = institutions
-        paper["author_label"] = _compact_label(authors, 5, "位作者")
-        paper["author_full_label"] = " · ".join(authors)
-        paper["institution_label"] = _compact_label(institutions, 5, "家机构")
+        paper["institution_label"] = _compact_label(institutions, 4, "家单位")
         paper["institution_full_label"] = " · ".join(institutions)
         paper["affiliation_source_label"] = {
             "usenix": "USENIX 官方页面", "crossref": "Crossref",
+            "official": "会议官方页面",
+            "institution": "机构论文页面",
         }.get(paper.get("affiliation_source"), paper.get("affiliation_source", ""))
         paper.setdefault("architectures", [])
         paper.setdefault("representative", False)

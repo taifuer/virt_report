@@ -530,18 +530,18 @@ def main(argv: list[str] | None = None) -> int:
     p_catalog.add_argument("--abstract-limit", type=int, default=200,
                            help="单次最多补充的摘要数")
     p_catalog.add_argument("--enrich-affiliations", action="store_true",
-                           help="通过会议官方页和已有 DOI/Crossref 补充作者单位")
+                           help="通过会议官方页和 DOI/Crossref 补充论文单位")
     p_catalog.add_argument("--discover-dois", action="store_true",
                            help="通过 Crossref 标题检索精确匹配缺失 DOI（较慢）")
     p_catalog.add_argument("--affiliation-limit", type=int, default=200,
-                           help="每个作者单位来源单次最多核验的记录数")
+                           help="每个论文单位来源单次最多核验的记录数")
     p_catalog.add_argument("--affiliation-source",
                            choices=("all", "usenix", "crossref"), default="all",
-                           help="限定作者单位来源（默认先官方页再 Crossref）")
+                           help="限定单位来源（默认官方页和 Crossref）")
     p_catalog.add_argument("--refresh-affiliations", action="store_true",
-                           help="重新核验已检查过的作者单位元数据")
+                           help="重新核验已检查过的论文单位元数据")
     p_catalog.add_argument("--sync-public-metadata", action="store_true",
-                           help="将已核验作者单位同步到公开会议快照")
+                           help="将已核验论文单位同步到公开会议快照")
     p_backup = sub.add_parser("backup", help="导出一致性的 gzip 数据库快照")
     p_backup.add_argument("output", nargs="?", help="输出 .db.gz 路径")
     p_backup.add_argument("--keep-days", type=int, default=0,
