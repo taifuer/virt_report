@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from virt_report.config import Config
-from virt_report.summarize import periods
+from virt_report.summarize import periods, report as report_builder
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 ASSETS_DIR = Path(__file__).parent / "assets"
@@ -116,7 +116,15 @@ def render_report_html(config: Config, content: dict, nav: dict | None = None) -
     """将报告渲染为 HTML 字符串，供静态导出和后端路由共用。"""
     env = _env()
     tpl = env.get_template("report.html")
-    return tpl.render(report=content, nav=nav, period_range=_period_range(
+    prepared = dict(content)
+    stats = dict(content.get("stats") or {})
+    source_rows = report_builder.project_source_rows(stats)
+    stats["by_project_source"] = source_rows
+    stats["project_source_max"] = max(
+        (row["count"] for row in source_rows), default=1
+    )
+    prepared["stats"] = stats
+    return tpl.render(report=prepared, nav=nav, period_range=_period_range(
         content["period"], content["period_key"], config.timezone
     ), root="../", site_name=config.name)
 

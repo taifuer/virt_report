@@ -39,7 +39,9 @@ Tests use `pytest`. Name files `test_*.py` and functions `test_<behavior>`. Netw
 
 ## Commit & Pull Request Guidelines
 
-Use concise imperative commits such as `Fix GitLab activity windows` or `Add HyperKitty pagination`, and keep each commit focused. Commit as `taifu <taifu@taifua.com>` and append this exact trailer to every commit:
+Use concise imperative commits such as `Fix GitLab activity windows` or `Add HyperKitty pagination`, and keep each commit focused. Maintainer-authored repository commits use `taifu <taifu@taifua.com>`. External contributors must retain their real Git author identity; never replace their authorship with the maintainer identity.
+
+Append this exact trailer only when Codex materially contributed to the commit; omit it from work completed without Codex assistance:
 
 ```text
 Co-Authored-By: Codex (GPT-5.6 Sol) <noreply@openai.com>

@@ -16,6 +16,8 @@
     <div class="paper-list">{% for paper in content.papers %}<article class="paper-row" data-conference-item data-venue="{{ paper.venue }}" data-year="{{ paper.year }}"{% if loop.index > 10 %} hidden{% endif %}>
       <div class="paper-meta"><span>{{ paper.year }}</span><strong>{{ venues_by_key[paper.venue].name }}</strong><span class="relation {{ 'direct' if paper.relation == '直接关联' else '' }}">{{ paper.relation }}</span></div>
       <div class="paper-body"><h2><a href="{{ paper.url }}" target="_blank" rel="noopener noreferrer">{{ paper.title }}</a></h2>
+        {% if paper.author_label %}<p class="paper-credit"><strong>作者</strong><span title="{{ paper.author_full_label }}">{{ paper.author_label }}</span></p>{% endif %}
+        {% if paper.institution_label %}<p class="paper-credit"{% if paper.affiliation_source_label %} title="单位元数据来源：{{ paper.affiliation_source_label }}{% if paper.affiliation_verified_at %}；核验时间：{{ paper.affiliation_verified_at }}{% endif %}"{% endif %}><strong>作者单位</strong><span title="{{ paper.institution_full_label }}">{{ paper.institution_label }}</span></p>{% endif %}
         <p><strong>内容</strong>{{ paper.introduction }}</p><p class="editor-comment"><strong>点评</strong>{{ paper.commentary }}</p>
         <div class="paper-tags">{% if paper.representative %}<span class="tag representative">代表性议题</span>{% endif %}{% for architecture in paper.architectures %}<span class="tag arch{% if architecture in ['x86', 'Arm'] %} focus{% endif %}">{{ architecture }}</span>{% endfor %}{% for topic in paper.topics %}<span class="tag">{{ topic }}</span>{% endfor %}</div>
       </div>

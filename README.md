@@ -18,21 +18,7 @@
 
 [![virt-report 专题页演示](docs/images/demo-topics.png)](docs/images/demo-topics.png)
 
-### 会议
-
-[![virt-report 会议页演示](docs/images/demo-conferences.png)](docs/images/demo-conferences.png)
-
-### 学术会议
-
-[![virt-report 学术会议演示](docs/images/demo-academic-conferences.png)](docs/images/demo-academic-conferences.png)
-
-### KVM Forum
-
-[![virt-report KVM Forum 演示](docs/images/demo-kvm-forum.png)](docs/images/demo-kvm-forum.png)
-
-### 关于
-
-[![virt-report 关于页演示](docs/images/demo-about.png)](docs/images/demo-about.png)
+更多页面：[日报归档](https://virt.taifua.com/daily/) · [周报](https://virt.taifua.com/weekly/) · [月报](https://virt.taifua.com/monthly/) · [专题](https://virt.taifua.com/topics.html) · [会议](https://virt.taifua.com/conferences.html) · [学术会议演进](https://virt.taifua.com/academic-conferences.html) · [相关议题](https://virt.taifua.com/conference-papers.html) · [KVM Forum](https://virt.taifua.com/kvm-forum.html) · [关于](https://virt.taifua.com/about.html) · [RSS](https://virt.taifua.com/feed.xml)
 
 ## 数据源（均已验证可用）
 
@@ -107,9 +93,14 @@ cp .env.example .env   # 填入 DEEPSEEK_API_KEY（自动发布报告时必需�
 # 获取 2010—2026 学术会议标题元数据、导入编辑快照并列出待复核候选
 .venv/bin/virt-report conference-catalog --from-year 2010 --to-year 2026 --list-candidates
 
-# DBLP 限流时可按会议分批续跑；摘要补充是可选步骤
+# DBLP 限流时可按会议分批续跑；摘要和作者单位补充均为年度维护步骤
 .venv/bin/virt-report conference-catalog --venue vee --from-year 2010 --to-year 2026
 .venv/bin/virt-report conference-catalog --no-fetch --enrich-abstracts --abstract-limit 20
+.venv/bin/virt-report conference-catalog --no-fetch --enrich-affiliations --sync-public-metadata
+
+# 缺少 DOI 时可做严格标题匹配；该 Crossref 检索较慢，按需单独执行
+.venv/bin/virt-report conference-catalog --no-fetch --discover-dois \
+  --enrich-affiliations --sync-public-metadata
 
 # 仅用已采集数据重新生成 (不重新采集)
 .venv/bin/virt-report daily 2026-07-12 --no-fetch
@@ -138,11 +129,11 @@ cp .env.example .env   # 填入 DEEPSEEK_API_KEY（自动发布报告时必需�
 
 日常运行以 SQLite 中的报告为准，Web 服务通过 `/daily/`、`/weekly/`、`/monthly/` 提供独立归档页，并通过对应详情路由即时渲染。专题的分类、版本链合并和报告证据关联会在采集或报告生成后离线写入 SQLite 快照；网页请求只读取快照并完成轻量分页、排序，不会重新扫描原始数据。日报、周报、月报归档和会议议题默认每页显示 10 条；`/topics.html` 每类最多展示 8 条，先取周报/月报精选，再补最近 14 天日报观察；`/topics/<专题>/` 可在“汇总精选 / 近期观察”之间切换，并支持重点/最新排序，默认每页 10 条，可切换为 20 或 30 条。需要手动刷新时运行 `virt-report topics-refresh`。采集和 AI 生成不会触发全局 HTML 渲染；只有显式执行 `virt-report index`，或将 `schedule.auto_export` 设为 `true`，才会把完整快照导出到 `site/`。
 
-“安全与漏洞”位于现有专题页首栏，只分为“明确 CVE / 安全缺陷”。分类来自原始线程，不根据 AI 摘要猜测漏洞编号；SEV、TDX、Arm CCA 等安全能力增强仍保留在内部索引和日报、周报、月报中，但不进入安全专题。该专题是社区讨论的辅助汇总，并非完整漏洞告警源，因此不提供独立 RSS。专题索引表 `topic_entries` 在采集后增量更新，公开分层结果写入 `topic_snapshots`；Web 请求不会执行索引或版本链重建。
+“安全与漏洞”位于专题页最后，只分为“明确 CVE / 安全缺陷”。分类来自原始线程，不根据 AI 摘要猜测漏洞编号；SEV、TDX、Arm CCA 等安全能力增强仍保留在内部索引和日报、周报、月报中，但不进入安全专题。专题索引表 `topic_entries` 在采集后增量更新，公开分层结果写入 `topic_snapshots`；Web 请求不会执行索引或版本链重建。
 
 RSS 地址为 `/feed.xml`（最近 50 份全部报告）、`/daily/feed.xml`（最近 30 期）、`/weekly/feed.xml`（最近 26 期）和 `/monthly/feed.xml`（最近 24 期）。RSS 用于接收近期更新，完整历史以报告归档页为准。动态服务支持 ETag 与 Last-Modified 条件请求。页脚“运行状态”进入受保护的 `/metrics.html`，展示各源最近一次及近十次采集状态、数据规模、最近报告和模型用量；`/api/metrics` 提供相同 JSON 数据并接受 `Authorization: Bearer <METRICS_ACCESS_KEY>`。成本依据 `config.yaml` 的人民币/百万 tokens 单价估算，仅供趋势观察，不等同于 DeepSeek 账单。运行页不写入静态快照，避免绕过后端鉴权。
 
-周报严格按站点时区的 ISO 自然周统计，即周一 00:00 至下周一 00:00（右端不包含）；页面以闭区间展示为 `2026 年第 28 周（7.6–7.12）`。`/conferences.html` 是统一会议入口，`/kvm-forum.html` 仅依据 KVM Forum 2010—2025 各届议程标题归纳年度主题，不读取 PPT 或视频正文。`/academic-conferences.html` 按年度和阶段呈现 2010—2025 完整年度及截至 2026 年 8 月 1 日已公布内容的跨会议技术演变，`/conference-papers.html` 提供会议、年份和分页筛选。学术会议完整标题元数据保存在本地 SQLite，公开快照只纳入经人工复核的虚拟化相关议题及中文简介、点评；不读取论文 PDF，也不调用 DeepSeek 自动点评。
+周报严格按站点时区的 ISO 自然周统计，即周一 00:00 至下周一 00:00（右端不包含）；页面以闭区间展示为 `2026 年第 28 周（7.6–7.12）`。`/conferences.html` 是统一会议入口，`/kvm-forum.html` 仅依据 KVM Forum 2010—2025 各届议程标题归纳年度主题，不读取 PPT 或视频正文。`/academic-conferences.html` 按年度和阶段呈现 2010—2025 完整年度及截至 2026 年 8 月 1 日已公布内容的跨会议技术演变，`/conference-papers.html` 提供会议、年份和分页筛选。学术会议完整标题元数据保存在本地 SQLite，公开快照只纳入经人工复核的虚拟化相关议题及中文简介、点评；作者与单位仅采用会议官方页面或 DOI 对应的 Crossref 明确元数据，缺失时不作推断。不读取论文 PDF，也不调用 DeepSeek 自动点评。
 
 首页分别保留最近 15 期日报、9 期周报和 6 期月报，卡片直接显示报告标题；移动端使用同一组数据，通过三类 Tab 切换，更早内容可从归档页或右侧日、周、月切换器查找。报告详情支持按项目、功能、缺陷、x86 和 Arm 筛选，并继续对重点架构议题进行明确标记和优先展示。
 
@@ -184,8 +175,8 @@ docker compose up -d --build
 推荐在单台 Linux 服务器上使用 Docker Compose 部署。服务器需要能够访问 GitHub、GitLab、邮件列表、lore.kernel.org 和 DeepSeek API。
 
 ```bash
-# 私有仓库需要预先配置有读取权限的 SSH Key
-git clone git@github.com:taifuer/virt_report.git
+# 私有状态需要 GitHub 凭据；公开后可直接克隆
+git clone https://github.com/taifuer/virt_report.git
 cd virt_report
 
 cp .env.example .env
@@ -243,6 +234,10 @@ virt_report/
 ├── data/virt_report.db         # SQLite (gitignore)
 └── site/                       # 纳入 Git 的可部署静态站点快照
 ```
+
+## 开源与贡献
+
+软件代码采用 [Apache License 2.0](LICENSE)。生成内容与第三方数据的许可边界见[数据政策](DATA_POLICY.md)和 [NOTICE](NOTICE)。提交改进前请阅读[贡献指南](CONTRIBUTING.md)与[行为准则](CODE_OF_CONDUCT.md)；安全问题请按照[安全政策](SECURITY.md)私下报告。
 
 ## 路线图
 

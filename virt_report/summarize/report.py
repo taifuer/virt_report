@@ -38,6 +38,181 @@ EXCERPT_LEN = {"daily": 600, "weekly": 600, "monthly": 600}
 ITEM_LIMIT = {"daily": 30, "weekly": 27, "monthly": 36}
 DAILY_CONTINUING_LIMIT = 5
 
+# 报告统计的固定展示顺序。collector_* 对应采集/数据库内部标识，其余字段是
+# 保存到新报告中的稳定、可读结构；历史报告仍通过 by_project 兼容。
+PROJECT_SOURCE_ORDER = (
+    {
+        "collector_project": "qemu-devel", "collector_source": "ml",
+        "project": "qemu", "project_label": "QEMU",
+        "source": "mailing_list", "source_label": "邮件列表",
+    },
+    {
+        "collector_project": "qemu", "collector_source": "gitlab",
+        "project": "qemu", "project_label": "QEMU",
+        "source": "gitlab", "source_label": "GitLab",
+    },
+    {
+        "collector_project": "kvm", "collector_source": "ml",
+        "project": "kvm", "project_label": "KVM",
+        "source": "mailing_list", "source_label": "邮件列表",
+    },
+    {
+        "collector_project": "libvir-list", "collector_source": "ml",
+        "project": "libvirt", "project_label": "Libvirt",
+        "source": "mailing_list", "source_label": "邮件列表",
+    },
+    {
+        "collector_project": "libvirt", "collector_source": "gitlab",
+        "project": "libvirt", "project_label": "Libvirt",
+        "source": "gitlab", "source_label": "GitLab",
+    },
+)
+
+_PROJECT_SOURCE_BY_LEGACY_KEY = {
+    item["collector_project"]: item for item in PROJECT_SOURCE_ORDER
+}
+_PROJECT_SOURCE_BY_PUBLIC_KEY = {
+    (item["project"], item["source"]): item for item in PROJECT_SOURCE_ORDER
+}
+
+
+def _source_fields(source: str) -> tuple[str, str]:
+    """Return the stable source key and its Chinese display label."""
+    if source in ("ml", "mailing_list"):
+        return "mailing_list", "邮件列表"
+    if source == "gitlab":
+        return "gitlab", "GitLab"
+    return source, source
+
+
+def _project_source_breakdown(
+        counts: dict[tuple[str, str], int]) -> list[dict]:
+    """Build a stable project/source breakdown without dropping future sources."""
+    remaining = dict(counts)
+    rows: list[dict] = []
+    for definition in PROJECT_SOURCE_ORDER:
+        identity = (
+            definition["collector_project"], definition["collector_source"]
+        )
+        count = remaining.pop(identity, 0)
+        if count:
+            rows.append({
+                "project": definition["project"],
+                "project_label": definition["project_label"],
+                "source": definition["source"],
+                "source_label": definition["source_label"],
+                "count": count,
+            })
+    for (project, source), count in sorted(remaining.items()):
+        if not count:
+            continue
+        source_key, source_label = _source_fields(source)
+        rows.append({
+            "project": project,
+            "project_label": project,
+            "source": source_key,
+            "source_label": source_label,
+            "count": count,
+        })
+    return rows
+
+
+def project_source_rows(stats: dict) -> list[dict]:
+    """Return ordered display rows for new and legacy report statistics.
+
+    New reports carry ``by_project_source``. Older saved JSON only has the
+    collector-oriented ``by_project`` mapping, so derive the same rows from it
+    at render time instead of requiring a historical data migration.
+    """
+    structured = stats.get("by_project_source")
+    if isinstance(structured, list):
+        known_counts: dict[tuple[str, str], int] = {}
+        unknown_rows: list[dict] = []
+        for raw in structured:
+            if not isinstance(raw, dict):
+                continue
+            try:
+                count = int(raw.get("count", 0))
+            except (TypeError, ValueError):
+                continue
+            if count <= 0:
+                continue
+            project = str(raw.get("project", "")).strip()
+            source, source_label = _source_fields(
+                str(raw.get("source", "")).strip()
+            )
+            definition = _PROJECT_SOURCE_BY_PUBLIC_KEY.get((project, source))
+            if definition:
+                key = (definition["project"], definition["source"])
+                known_counts[key] = known_counts.get(key, 0) + count
+            elif project:
+                unknown_rows.append({
+                    "project": project,
+                    "project_label": str(
+                        raw.get("project_label") or project
+                    ),
+                    "source": source,
+                    "source_label": str(
+                        raw.get("source_label") or source_label
+                    ),
+                    "count": count,
+                })
+
+        rows = []
+        for definition in PROJECT_SOURCE_ORDER:
+            count = known_counts.get(
+                (definition["project"], definition["source"]), 0
+            )
+            if count:
+                rows.append({
+                    "project": definition["project"],
+                    "project_label": definition["project_label"],
+                    "source": definition["source"],
+                    "source_label": definition["source_label"],
+                    "count": count,
+                })
+        rows.extend(sorted(
+            unknown_rows,
+            key=lambda row: (
+                row["project_label"].casefold(), row["source_label"].casefold()
+            ),
+        ))
+        return rows
+
+    rows = []
+    for project, raw_count in (stats.get("by_project") or {}).items():
+        try:
+            count = int(raw_count)
+        except (TypeError, ValueError):
+            continue
+        if count <= 0:
+            continue
+        definition = _PROJECT_SOURCE_BY_LEGACY_KEY.get(project)
+        if definition:
+            rows.append({
+                "project": definition["project"],
+                "project_label": definition["project_label"],
+                "source": definition["source"],
+                "source_label": definition["source_label"],
+                "count": count,
+            })
+        else:
+            rows.append({
+                "project": project,
+                "project_label": project,
+                "source": "",
+                "source_label": "",
+                "count": count,
+            })
+    order = {
+        (item["project"], item["source"]): index
+        for index, item in enumerate(PROJECT_SOURCE_ORDER)
+    }
+    return sorted(rows, key=lambda row: (
+        order.get((row["project"], row["source"]), len(order)),
+        row["project_label"].casefold(), row["source_label"].casefold(),
+    ))
+
 
 def _merge_usage(total: dict, current: dict) -> None:
     """累加多次模型响应的 token 用量，避免截断重试低估成本。"""
@@ -176,11 +351,16 @@ def _build_threads_data(conn: sqlite3.Connection, rows, excerpt_len: int = 300,
 def _stats(conn: sqlite3.Connection, start_iso: str, end_iso: str) -> dict:
     items = db.get_activity_items_in_window(conn, start_iso, end_iso)
     by_project: dict[str, int] = {}
+    project_source_counts: dict[tuple[str, str], int] = {}
     by_kind: dict[str, int] = {}
     by_source: dict[str, int] = {}
     ml_patches = ml_rfc = gl_issues_opened = 0
     for it in items:
         by_project[it["project"]] = by_project.get(it["project"], 0) + 1
+        identity = (it["project"], it["source"])
+        project_source_counts[identity] = (
+            project_source_counts.get(identity, 0) + 1
+        )
         by_kind[it["kind"]] = by_kind.get(it["kind"], 0) + 1
         by_source[it["source"]] = by_source.get(it["source"], 0) + 1
         if it["source"] == "ml":
@@ -205,6 +385,7 @@ def _stats(conn: sqlite3.Connection, start_iso: str, end_iso: str) -> dict:
         "total_items": len(items),
         "total_threads": total_threads,
         "by_project": by_project,
+        "by_project_source": _project_source_breakdown(project_source_counts),
         "by_kind": by_kind,
         "by_source": by_source,
         "ml_patches": ml_patches,

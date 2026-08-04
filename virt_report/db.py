@@ -168,6 +168,10 @@ CREATE TABLE IF NOT EXISTS conference_papers (
     year          INTEGER NOT NULL,
     title         TEXT NOT NULL,
     authors_json  TEXT NOT NULL DEFAULT '[]',
+    affiliations_json TEXT NOT NULL DEFAULT '[]',
+    affiliation_source TEXT,
+    affiliation_source_url TEXT,
+    affiliation_verified_at TEXT,
     abstract      TEXT,
     doi           TEXT,
     official_url  TEXT,
@@ -205,6 +209,7 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON;")
     conn.executescript(SCHEMA)
     _migrate_items_v2(conn)
+    _migrate_conference_metadata(conn)
     conn.executescript("""
         CREATE INDEX IF NOT EXISTS idx_items_created ON items(created_at);
         CREATE INDEX IF NOT EXISTS idx_items_activity ON items(activity_at);
@@ -212,6 +217,28 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
         CREATE INDEX IF NOT EXISTS idx_items_project ON items(project);
     """)
     return conn
+
+
+def _migrate_conference_metadata(conn: sqlite3.Connection) -> None:
+    """Add affiliation provenance fields to pre-existing catalogues."""
+    columns = {row[1] for row in conn.execute(
+        "PRAGMA table_info(conference_papers)"
+    )}
+    additions = {
+        "affiliations_json": "TEXT NOT NULL DEFAULT '[]'",
+        "affiliation_source": "TEXT",
+        "affiliation_source_url": "TEXT",
+        "affiliation_verified_at": "TEXT",
+    }
+    missing = [(name, declaration) for name, declaration in additions.items()
+               if name not in columns]
+    if not missing:
+        return
+    with transaction(conn):
+        for name, declaration in missing:
+            conn.execute(
+                f"ALTER TABLE conference_papers ADD COLUMN {name} {declaration}"
+            )
 
 
 def _migrate_items_v2(conn: sqlite3.Connection) -> None:

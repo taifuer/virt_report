@@ -417,6 +417,29 @@ def cmd_conference_catalog(args, config: Config) -> None:
             result["abstracts_added"] = conferences.enrich_candidate_abstracts(
                 conn, limit=args.abstract_limit
             )
+        if args.discover_dois:
+            result["doi_discovery"] = conferences.discover_curated_dois(
+                conn, limit=args.affiliation_limit,
+            )
+        if args.enrich_affiliations:
+            if args.affiliation_source in {"all", "usenix"}:
+                result["usenix_affiliations"] = (
+                    conferences.enrich_usenix_affiliations(
+                        conn, limit=args.affiliation_limit,
+                        force=args.refresh_affiliations,
+                    )
+                )
+            if args.affiliation_source in {"all", "crossref"}:
+                result["crossref_affiliations"] = (
+                    conferences.enrich_affiliations(
+                        conn, limit=args.affiliation_limit,
+                        force=args.refresh_affiliations,
+                    )
+                )
+        if args.sync_public_metadata:
+            result["public_metadata_updated"] = (
+                conferences.sync_public_metadata(conn)
+            )
         candidates = conferences.candidate_rows(
             conn, start_year=args.from_year, end_year=args.to_year
         )
@@ -499,13 +522,26 @@ def main(argv: list[str] | None = None) -> int:
     p_catalog.add_argument("--venue", action="append", default=None,
                            help="只采集指定会议 key，可重复")
     p_catalog.add_argument("--no-fetch", action="store_true",
-                           help="不访问网络，仅同步编辑审核内容")
+                           help="不刷新 DBLP 目录；enrich/discover 选项仍会联网")
     p_catalog.add_argument("--list-candidates", action="store_true",
                            help="在摘要后逐行输出待审核标题")
     p_catalog.add_argument("--enrich-abstracts", action="store_true",
                            help="通过 Crossref 补充候选议题可用的公开摘要")
     p_catalog.add_argument("--abstract-limit", type=int, default=200,
                            help="单次最多补充的摘要数")
+    p_catalog.add_argument("--enrich-affiliations", action="store_true",
+                           help="通过会议官方页和已有 DOI/Crossref 补充作者单位")
+    p_catalog.add_argument("--discover-dois", action="store_true",
+                           help="通过 Crossref 标题检索精确匹配缺失 DOI（较慢）")
+    p_catalog.add_argument("--affiliation-limit", type=int, default=200,
+                           help="每个作者单位来源单次最多核验的记录数")
+    p_catalog.add_argument("--affiliation-source",
+                           choices=("all", "usenix", "crossref"), default="all",
+                           help="限定作者单位来源（默认先官方页再 Crossref）")
+    p_catalog.add_argument("--refresh-affiliations", action="store_true",
+                           help="重新核验已检查过的作者单位元数据")
+    p_catalog.add_argument("--sync-public-metadata", action="store_true",
+                           help="将已核验作者单位同步到公开会议快照")
     p_backup = sub.add_parser("backup", help="导出一致性的 gzip 数据库快照")
     p_backup.add_argument("output", nargs="?", help="输出 .db.gz 路径")
     p_backup.add_argument("--keep-days", type=int, default=0,
