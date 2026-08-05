@@ -314,7 +314,8 @@ def test_about_page_and_architecture_badge_render():
     assert 'href="https://api-docs.deepseek.com/zh-cn/updates/"' in about
     assert 'href="mailto:taifu@taifua.com"' in about
     assert "摘要偏差、分类错误、链接失效或其他问题" in about
-    assert "关注会议" in about and "USENIX Security" in about
+    assert "收录会议" in about and "USENIX Security" in about
+    assert "关注会议" not in about
     assert about.index("会议内容扩展") < about.index("AI 模型更新")
     assert "学术会议内容覆盖 2010—2026 年" in about
     assert "RSS 订阅" in about
@@ -918,6 +919,10 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert any("KVM" in paper["topics"] for paper in content["papers"])
     assert len(content["analysis"]["years"]) == 17
     assert all(item["paper_count"] for item in content["analysis"]["years"])
+    assert content["year_counts"] == {
+        year: sum(paper["year"] == year for paper in content["papers"])
+        for year in content["years"]
+    }
     assert all(paper["institutions"] for paper in content["papers"])
     blowfish = next(
         paper for paper in content["papers"] if paper["id"] == "osdi26-blowfish"
@@ -933,7 +938,14 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
             f'{content["analysis"]["coverage"]}</span></div>') in page
     assert 'href="kvm-forum.html">查看技术演进</a>' in page
     assert 'href="conference-papers.html">查看相关论文</a>' in page
-    assert '<section class="conference-sources"><h2>收录会议与来源</h2>' in page
+    assert (f'跨 {len(content["academic_venues"])} 个系统会议收录 '
+            f'{content["paper_count"]} 篇虚拟化相关论文') in page
+    assert '<section class="conference-sources"><h2>收录学术会议</h2>' in page
+    for venue in content["academic_venues"]:
+        assert (f'href="conference-papers.html?venue={venue["key"]}">'
+                f'{venue["paper_count"]} 篇相关论文</a>') in page
+    assert "国内技术活动" not in page
+    assert "持续讨论与技术来源" not in page
     assert '<details class="conference-sources"' not in page
     assert "重点" not in page and "待严格筛选" not in page
     assert "data-conference-browser" not in page
@@ -960,18 +972,36 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert all(" hidden" not in tag for tag in paper_tags[:10])
     assert all(" hidden" in tag for tag in paper_tags[10:])
     assert "data-conference-browser" in papers
+    assert 'role="group" aria-label="论文筛选"' in papers
+    assert papers.count(
+        f'value="" data-option-label="全部">全部（{content["paper_count"]}）</option>'
+    ) == 2
+    for venue in content["paper_venues"]:
+        assert (f'value="{venue["key"]}" data-option-label="{venue["name"]}">'
+                f'{venue["name"]}（{venue["paper_count"]}）</option>') in papers
+    for year in content["years"]:
+        assert (f'value="{year}" data-option-label="{year}">'
+                f'{year}（{content["year_counts"][year]}）</option>') in papers
+    assert papers.count('aria-live="polite" aria-atomic="true"') == 2
     assert "编辑点评" not in papers and "<strong>点评</strong>" in papers
     assert "<strong>作者</strong>" not in papers
     assert papers.count("<strong>单位</strong>") == content["paper_count"]
-    assert papers.count("查看全部单位") == sum(
-        len(paper["institutions"]) > 4 for paper in content["papers"]
+    assert papers.count('class="paper-credit-more"') == sum(
+        len(paper["institutions"]) > conferences.INSTITUTION_DISPLAY_LIMIT
+        for paper in content["papers"]
     )
+    assert "另 1 家单位" in papers and "另 2 家单位" in papers
     assert "代表性标记只用于辅助观察技术脉络" in papers
     assert "conference-papers.html?year=2025" not in papers
 
     assets = (html_render.ASSETS_DIR / "site.js").read_text(encoding="utf-8")
     assert "new URLSearchParams(window.location.search)" in assets
     assert "matching.length" in assets and "篇论文" in assets
+    assert "facetCounts(venue,'venue','year',year.value)" in assets
+    assert "facetCounts(year,'year','venue',venue.value)" in assets
+    assert "option.disabled=" in assets and "optionCount===0" in assets
+    assert "window.history.replaceState" in assets
+    assert "url.searchParams.set" in assets and "url.searchParams.delete" in assets
     assert "[hidden]{display:none!important}" in _site_css()
 
 

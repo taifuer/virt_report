@@ -29,6 +29,7 @@ CONTENT_PATH = Path(__file__).parent / "content" / "conferences.json"
 INSTITUTION_OVERRIDES_PATH = (
     Path(__file__).parent / "content" / "conference_institutions.json"
 )
+INSTITUTION_DISPLAY_LIMIT = 5
 REQUIRED_PAPER_FIELDS = {
     "id", "year", "venue", "title", "url", "introduction", "commentary",
     "relation", "topics",
@@ -947,15 +948,6 @@ def _read_content() -> dict:
     return content
 
 
-def _compact_label(values: list[str], limit: int, noun: str) -> str:
-    """Build a readable list while keeping conference rows compact."""
-    shown = values[:limit]
-    label = " · ".join(shown)
-    if len(values) > limit:
-        label += f" · 等 {len(values)} {noun}"
-    return label
-
-
 @lru_cache(maxsize=1)
 def load_content() -> dict:
     """Return validated public content plus derived page data."""
@@ -997,8 +989,13 @@ def load_content() -> dict:
         paper["authors"] = authors
         paper["author_affiliations"] = mappings
         paper["institutions"] = institutions
-        paper["institution_label"] = _compact_label(institutions, 4, "家单位")
-        paper["institution_full_label"] = " · ".join(institutions)
+        paper["institution_label"] = " · ".join(
+            institutions[:INSTITUTION_DISPLAY_LIMIT]
+        )
+        paper["institution_hidden"] = institutions[INSTITUTION_DISPLAY_LIMIT:]
+        paper["institution_hidden_label"] = " · ".join(
+            paper["institution_hidden"]
+        )
         paper["affiliation_source_label"] = {
             "usenix": "USENIX 官方页面", "crossref": "Crossref",
             "official": "会议官方页面",
@@ -1044,6 +1041,10 @@ def load_content() -> dict:
         paper["relation"] == "直接关联" for paper in papers
     )
     content["years"] = sorted({paper["year"] for paper in papers}, reverse=True)
+    content["year_counts"] = {
+        year: sum(paper["year"] == year for paper in papers)
+        for year in content["years"]
+    }
     content["academic_venues"] = [
         venue for venue in venues if venue["kind"] == "学术会议"
     ]

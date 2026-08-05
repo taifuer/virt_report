@@ -212,6 +212,7 @@ def test_public_affiliations_render_compactly_and_missing_values_stay_hidden(
             institutions=[
                 "SCS, Peking University, China", "Peking University",
                 "Company Two", "University Three", "Lab Four", "Center Five",
+                "Institute Six",
             ],
             affiliation_source="crossref",
             affiliation_source_url="https://api.crossref.org/works/10.1/test",
@@ -231,11 +232,11 @@ def test_public_affiliations_render_compactly_and_missing_values_stay_hidden(
     content = conferences.load_content()
     page = html_render.render_conference_papers_html(Config(), content)
     assert "<strong>作者</strong>" not in page
-    assert ("Peking University · Company Two · University Three · Lab Four"
-            in page)
-    assert "等 5 家单位" in page
-    assert page.count("Peking University") == 2
+    assert ("Peking University · Company Two · University Three · Lab Four · "
+            "Center Five" in page)
+    assert "另 1 家单位" in page and "Institute Six" in page
+    assert page.count("Peking University") == 1
     assert page.count("<strong>单位</strong>") == 1
-    assert "查看全部单位" in page and "Center Five" in page
+    assert "查看全部单位" not in page
     assert "单位元数据来源：Crossref；核验时间：2026-08-04T00:00:00Z" in page
     conferences.load_content.cache_clear()
