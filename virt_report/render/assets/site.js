@@ -16,11 +16,15 @@ document.querySelectorAll('[data-conference-browser]').forEach(root=>{
   const draw=()=>{facetCounts(venue,'venue','year',year.value);facetCounts(year,'year','venue',venue.value);const matching=items.filter(item=>(!venue.value||item.dataset.venue===venue.value)&&(!year.value||item.dataset.year===year.value));const pages=Math.max(1,Math.ceil(matching.length/size));page=Math.min(page,pages-1);items.forEach(item=>item.hidden=true);matching.slice(page*size,(page+1)*size).forEach(item=>item.hidden=false);count.textContent=`${matching.length} 篇论文`;if(empty)empty.hidden=matching.length>0;status.textContent=`${page+1} / ${pages}`;prev.disabled=page===0;next.disabled=page===pages-1};
   [venue,year].forEach(control=>control.addEventListener('change',()=>{page=0;syncUrl();draw()}));sizeSelect.addEventListener('change',()=>{size=Number(sizeSelect.value);page=0;draw()});prev.addEventListener('click',()=>{page--;draw()});next.addEventListener('click',()=>{page++;draw()});draw();
 });
+const topicDrawers=new Map();
 document.querySelectorAll('[data-topic-group]').forEach(root=>{
   const toggle=root.querySelector('[data-topic-group-toggle]'),content=root.querySelector('[data-topic-group-content]');if(!toggle||!content)return;
   const draw=expanded=>{toggle.setAttribute('aria-expanded',String(expanded));toggle.title=`${expanded?'收起':'展开'}${toggle.textContent.trim()}`;content.hidden=!expanded;root.classList.toggle('is-collapsed',!expanded)};
-  toggle.addEventListener('click',()=>draw(toggle.getAttribute('aria-expanded')!=='true'));draw(toggle.getAttribute('aria-expanded')==='true');
+  topicDrawers.set(root.id,draw);toggle.addEventListener('click',()=>draw(toggle.getAttribute('aria-expanded')!=='true'));draw(toggle.getAttribute('aria-expanded')==='true');
 });
+const expandTopicHash=hash=>{const draw=topicDrawers.get(hash.replace(/^#/,''));if(draw)draw(true)};
+document.querySelectorAll('[data-topic-nav] a[href^="#"]').forEach(link=>link.addEventListener('click',()=>expandTopicHash(link.hash)));
+window.addEventListener('hashchange',()=>expandTopicHash(window.location.hash));expandTopicHash(window.location.hash);
 if(window.matchMedia('(max-width:620px)').matches){
   const currentNav=document.querySelector('.main-nav a.on');if(currentNav)currentNav.scrollIntoView({block:'nearest',inline:'center'});
 }

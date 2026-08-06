@@ -7,10 +7,10 @@
 {% from "_topic_items.html" import topic_items %}
 <article class="topic-page">
   <header><div class="kicker">Topic Tracker</div><h1>专题</h1><p>默认展示周报、月报中的精选内容，并补充最近 14 天日报中的新进展；原始候选仅作为内部索引，不直接堆叠到页面。</p></header>
-  <nav class="topic-nav" aria-label="专题目录">{% for group in groups %}<a href="#{{ group.key }}">{{ group.name }} <span>{{ group.total }}</span></a>{% endfor %}</nav>
-  {% for group in groups %}<section class="topic-group{{ ' is-collapsed' if group.key == 'security' }}" id="{{ group.key }}" data-topic-group>
-    <div class="topic-heading"><div><h2><button type="button" class="topic-group-toggle" data-topic-group-toggle aria-expanded="{{ 'false' if group.key == 'security' else 'true' }}" aria-controls="topic-group-content-{{ group.key }}">{{ group.name }}</button></h2><p>{{ group.description }}</p></div><div class="topic-heading-actions"><span class="count">汇总 {{ group.curated_count }} · 近期 {{ group.recent_count }}</span><a href="{{ group.detail_url }}">查看全部条目</a></div></div>
-    <div id="topic-group-content-{{ group.key }}" class="topic-group-content" data-topic-group-content{% if group.key == 'security' %} hidden{% endif %}>{{ topic_items(group['items']) }}</div>
+  <nav class="topic-nav" aria-label="专题目录" data-topic-nav>{% for group in groups %}<a href="#{{ group.key }}">{{ group.name }} <span>{{ group.total }}</span></a>{% endfor %}</nav>
+  {% for group in groups %}<section class="topic-group" id="{{ group.key }}" data-topic-group>
+    <div class="topic-heading"><div><h2><button type="button" class="topic-group-toggle" data-topic-group-toggle aria-expanded="true" aria-controls="topic-group-content-{{ group.key }}">{{ group.name }}</button></h2><p>{{ group.description }}</p></div><div class="topic-heading-actions"><span class="count">汇总 {{ group.curated_count }} · 近期 {{ group.recent_count }}</span><a href="{{ group.detail_url }}">查看全部条目</a></div></div>
+    <div id="topic-group-content-{{ group.key }}" class="topic-group-content" data-topic-group-content>{{ topic_items(group['items']) }}</div>
   </section>{% endfor %}
 </article>
 {% endblock %}

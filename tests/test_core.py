@@ -14,7 +14,7 @@ from virt_report.processing import architecture, category, classify, threads, to
 from virt_report.render import render as html_render
 from virt_report import server as web_server
 from virt_report import scheduler
-from virt_report.summarize import llm_provider, periods, report
+from virt_report.summarize import llm_provider, periods, prompts, report
 
 
 def _site_css() -> str:
@@ -52,6 +52,19 @@ def test_label():
     assert periods.label("daily", "2026-07-12") == "2026-07-12"
     assert "第 28 周" in periods.label("weekly", "2026-W28")
     assert "7 月" in periods.label("monthly", "2026-07")
+
+
+def test_period_analysis_prompt_is_only_requested_for_weekly_and_monthly():
+    daily = prompts.system_prompt("daily", "2026-08-03")
+    weekly = prompts.system_prompt("weekly", "2026-W31")
+    monthly = prompts.system_prompt("monthly", "2026-07")
+
+    assert '"period_analysis": [' not in daily
+    assert "日报不得输出 period_analysis 字段" in daily
+    assert '"period_analysis": [' in weekly and "2-3 条" in weekly
+    assert "100-140 个汉字" in weekly
+    assert '"period_analysis": [' in monthly and "3-4 条" in monthly
+    assert "140-200 个汉字" in monthly
 
 
 # ---------- base: 时间解析/规范化 ----------
@@ -219,6 +232,68 @@ def test_sanitize_evidence_ref_controls_url_project_and_state():
     assert secs[1]["items"] == []
 
 
+def test_period_analysis_requires_distinct_current_refs_and_trusted_links():
+    evidence = [
+        {"ref": "T001", "project": "qemu-devel", "subject": "QEMU original",
+         "url": "https://trusted.example/qemu"},
+        {"ref": "T002", "project": "kvm", "subject": "KVM original",
+         "url": "https://trusted.example/kvm"},
+        {"ref": "T003", "project": "libvir-list", "subject": "Libvirt original",
+         "url": "https://trusted.example/libvirt"},
+    ]
+    raw = [
+        {
+            "topic": "机密计算内存链路", "progress": "形成跨项目依赖关系。",
+            "unresolved": "接口仍在评审。",
+            "refs": ["T001", "T001", "T999", "T002"],
+            "url": "https://fake.example/",
+        },
+        {
+            "topic": "机密计算 内存链路", "progress": "重复主题。",
+            "unresolved": "不应保留。", "refs": ["T002", "T003"],
+        },
+        {
+            "topic": "另一个名称", "progress": "重复证据组。",
+            "unresolved": "不应保留。", "refs": ["T002", "T001"],
+        },
+        {
+            "topic": "证据不足", "progress": "只有一条有效证据。",
+            "unresolved": "不应保留。", "refs": ["T003", "T404"],
+        },
+    ]
+
+    sanitized = report._sanitize_period_analysis(raw, evidence, "weekly")
+
+    assert len(sanitized) == 1
+    assert sanitized[0]["refs"] == ["T001", "T002"]
+    assert sanitized[0]["evidence"] == [
+        {"ref": "T001", "project": "QEMU", "title": "QEMU original",
+         "url": "https://trusted.example/qemu"},
+        {"ref": "T002", "project": "KVM", "title": "KVM original",
+         "url": "https://trusted.example/kvm"},
+    ]
+    assert report._sanitize_period_analysis(raw, evidence, "daily") == []
+    assert report._sanitize_period_analysis("bad", evidence, "monthly") == []
+
+    more_evidence = evidence + [
+        {"ref": f"T00{index}", "project": "kvm",
+         "subject": f"Evidence {index}",
+         "url": f"https://trusted.example/{index}"}
+        for index in range(4, 7)
+    ]
+    many = [{
+        "topic": f"主题 {index}", "progress": "有明确关联进展。",
+        "unresolved": "仍有待定事项。",
+        "refs": [f"T00{index}", f"T00{index + 1}"],
+    } for index in range(1, 6)]
+    assert len(report._sanitize_period_analysis(
+        many, more_evidence, "weekly"
+    )) == 3
+    assert len(report._sanitize_period_analysis(
+        many, more_evidence, "monthly"
+    )) == 4
+
+
 def test_sanitize_uses_evidence_architecture_and_prioritizes_focus():
     evidence = [
         {"ref": "T001", "project": "kvm", "subject": "generic", "url": "u1",
@@ -366,12 +441,51 @@ def test_about_page_and_architecture_badge_render():
     assert ".sec-title>span:first-child:before" not in css
     assert ".dyn.focus-arch{border-left" not in css
     assert "border-left:3px solid var(--brand)" not in css
+    old_weekly = dict(content, period="weekly", period_key="2026-W28",
+                      label="2026 年第 28 周")
+    assert 'id="period-analysis"' not in html_render.render_report_html(
+        Config(), old_weekly
+    )
     weekly = dict(content, period="weekly", period_key="2026-W28",
-                  label="2026 年第 28 周")
+                  label="2026 年第 28 周", period_analysis=[{
+                      "topic": "机密计算内存链路",
+                      "progress": "KVM 与 QEMU 的相关接口同步推进。",
+                      "unresolved": "内存转换接口仍在评审。",
+                      "evidence": [{
+                          "ref": "T001", "project": "KVM",
+                          "title": "guest_memfd 原位转换",
+                          "url": "https://trusted.example/kvm",
+                      }, {
+                          "ref": "T002", "project": "QEMU",
+                          "title": "RME Realm 支持",
+                          "url": "https://trusted.example/qemu",
+                      }],
+                  }])
     weekly_page = html_render.render_report_html(Config(), weekly)
     assert ('<h1 class="title weekly-title"><span>2026 年第 28 周</span>'
             '<span class="weekly-range">7.6–7.12</span></h1>') in weekly_page
     assert "（7.6–7.12） 社区动态</h1>" not in weekly_page
+    assert '<section class="report-section" id="period-analysis">' in weekly_page
+    assert weekly_page.index('id="overview"') < weekly_page.index(
+        'id="period-analysis"') < weekly_page.index('id="stats"')
+    assert "技术脉络" in weekly_page and "进展：" in weekly_page
+    assert "未决：" in weekly_page and "guest_memfd 原位转换" in weekly_page
+    assert 'href="https://trusted.example/kvm"' in weekly_page
+    assert '<a href="#period-analysis">技术脉络' in weekly_page
+    analysis_html = weekly_page.split('id="period-analysis"', 1)[1].split(
+        "</section>", 1
+    )[0]
+    assert "<details" not in analysis_html
+
+    monthly = dict(weekly, period="monthly", period_key="2026-07",
+                   label="2026 年 7 月")
+    monthly_page = html_render.render_report_html(Config(), monthly)
+    assert 'id="period-analysis"' in monthly_page
+
+    daily_with_analysis = dict(content, period_analysis=weekly["period_analysis"])
+    daily_page = html_render.render_report_html(Config(), daily_with_analysis)
+    assert 'id="period-analysis"' not in daily_page
+    assert 'href="#period-analysis"' not in daily_page
 
 
 def test_index_context_applies_home_report_limits(tmp_db):
@@ -445,9 +559,10 @@ def test_archive_and_topic_pages_render(tmp_db):
     assert page.index('id="migration"') < page.index('id="security"')
     assert ('id="security" data-topic-group' in page
             and 'aria-controls="topic-group-content-security"' in page)
-    assert ('aria-controls="topic-group-content-security">安全与漏洞</button>' in page
+    assert ('aria-expanded="true" '
+            'aria-controls="topic-group-content-security">安全与漏洞</button>' in page
             and 'id="topic-group-content-security" class="topic-group-content" '
-                'data-topic-group-content hidden' in page)
+                'data-topic-group-content>' in page)
     assert ('aria-controls="topic-group-content-migration">热迁移</button>' in page
             and 'id="topic-group-content-migration" class="topic-group-content" '
                 'data-topic-group-content>' in page)
@@ -599,6 +714,8 @@ def test_archive_and_topic_detail_offer_pagination_over_ten_items(tmp_db):
 
     assets = (html_render.ASSETS_DIR / "site.js").read_text(encoding="utf-8")
     assert "[data-topic-group]" in assets and "aria-expanded" in assets
+    assert "[data-topic-nav]" in assets and "link.addEventListener('click'" in assets
+    assert "hashchange" in assets and "expandTopicHash(window.location.hash)" in assets
 
 
 def test_security_topic_requires_raw_evidence_and_strict_cve(tmp_db):
@@ -1192,7 +1309,13 @@ def test_deferred_fallback_is_not_published(tmp_db, monkeypatch):
         tmp_db, Config(), "daily", "2026-07-12", publish_fallback=False,
     )
     assert content["fallback"] is True
+    assert content["period_analysis"] == []
     assert db.get_report(tmp_db, "daily", "2026-07-12") is None
+    weekly = report.generate(
+        tmp_db, Config(), "weekly", "2026-W28", publish_fallback=False,
+    )
+    assert weekly["fallback"] is True
+    assert weekly["period_analysis"] == []
 
 
 def test_v4_flash_output_budgets_leave_room_for_reasoning():

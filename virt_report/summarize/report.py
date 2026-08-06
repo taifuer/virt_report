@@ -37,6 +37,8 @@ REASONING_EFFORT = {"daily": "high", "weekly": "high", "monthly": "high"}
 EXCERPT_LEN = {"daily": 600, "weekly": 600, "monthly": 600}
 ITEM_LIMIT = {"daily": 30, "weekly": 27, "monthly": 36}
 DAILY_CONTINUING_LIMIT = 5
+PERIOD_ANALYSIS_LIMIT = {"weekly": 3, "monthly": 4}
+PERIOD_ANALYSIS_REF_LIMIT = 5
 
 # 报告统计的固定展示顺序。collector_* 对应采集/数据库内部标识，其余字段是
 # 保存到新报告中的稳定、可读结构；历史报告仍通过 by_project 兼容。
@@ -664,6 +666,72 @@ def _complete_watchlist(watchlist: list[dict], sections: list[dict]) -> list[dic
     return completed[:4]
 
 
+def _sanitize_period_analysis(raw_analysis: object, threads_data: list[dict],
+                              period: str) -> list[dict]:
+    """Keep evidence-backed weekly/monthly analysis and restore trusted links."""
+    if period not in PERIOD_ANALYSIS_LIMIT or not isinstance(raw_analysis, list):
+        return []
+
+    evidence = {
+        thread.get("ref"): thread
+        for thread in threads_data
+        if isinstance(thread, dict) and thread.get("ref")
+    }
+    sanitized: list[dict] = []
+    seen_topics: set[str] = set()
+    seen_ref_groups: set[tuple[str, ...]] = set()
+    for entry in raw_analysis:
+        if not isinstance(entry, dict):
+            continue
+        if not all(isinstance(entry.get(field), str) for field in (
+            "topic", "progress", "unresolved",
+        )):
+            continue
+        topic = entry["topic"].strip()
+        progress = entry["progress"].strip()
+        unresolved = entry["unresolved"].strip()
+        raw_refs = entry.get("refs", [])
+        if not topic or not progress or not unresolved or not isinstance(raw_refs, list):
+            continue
+
+        refs: list[str] = []
+        for raw_ref in raw_refs:
+            if not isinstance(raw_ref, str):
+                continue
+            ref = raw_ref.strip()
+            source = evidence.get(ref)
+            if (not source or ref in refs or not source.get("subject")
+                    or not source.get("url")):
+                continue
+            refs.append(ref)
+            if len(refs) >= PERIOD_ANALYSIS_REF_LIMIT:
+                break
+        if len(refs) < 2:
+            continue
+
+        topic_key = re.sub(r"[\W_]+", "", topic.casefold())
+        ref_group = tuple(sorted(refs))
+        if not topic_key or topic_key in seen_topics or ref_group in seen_ref_groups:
+            continue
+        seen_topics.add(topic_key)
+        seen_ref_groups.add(ref_group)
+        sanitized.append({
+            "topic": topic,
+            "progress": progress,
+            "unresolved": unresolved,
+            "refs": refs,
+            "evidence": [{
+                "ref": ref,
+                "project": _project_of(evidence[ref])[1],
+                "title": evidence[ref]["subject"],
+                "url": evidence[ref]["url"],
+            } for ref in refs],
+        })
+        if len(sanitized) >= PERIOD_ANALYSIS_LIMIT[period]:
+            break
+    return sanitized
+
+
 def enrich_architectures(content: dict) -> dict:
     """为旧报告按内含证据补齐架构标签，并应用当前排序与条数规则。"""
     _order_report_projects(content)
@@ -771,6 +839,7 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
     overview, sections = [], []
     headline = ""
     watchlist: list[dict] = []
+    raw_period_analysis: object = []
     if parsed:
         headline = parsed.get("headline", "") or ""
         overview = parsed.get("overview", []) or []
@@ -782,6 +851,7 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
                 "topic": w.get("topic", "") or "",
                 "reason": w.get("reason", "") or "",
             } for w in raw_watchlist if isinstance(w, dict)][:4]
+        raw_period_analysis = parsed.get("period_analysis", [])
     if not parsed or (not overview and not sections):
         fallback = True
         overview, sections = _fallback(threads_data, period, period_key, config.llm.api_key_env)
@@ -789,6 +859,9 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
     overview, sections = _sanitize(overview, sections, threads_data if parsed else None)
     sections = _limit_sections(sections, ITEM_LIMIT[period])
     watchlist = _complete_watchlist(watchlist, sections)
+    period_analysis = _sanitize_period_analysis(
+        raw_period_analysis if not fallback else [], threads_data, period
+    )
     used_model = "fallback" if fallback else model
     item_count = sum(len(s.get("items", [])) for s in sections)
     content = {
@@ -796,6 +869,7 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
         "label": periods.label(period, period_key), "timezone": config.timezone,
         "window": {"start": start_iso, "end": end_iso},
         "headline": headline, "overview": overview, "watchlist": watchlist,
+        "period_analysis": period_analysis,
         "sections": sections, "stats": stats,
         "top_threads": threads_data, "model": used_model, "fallback": fallback,
         "generated_at": db.now_utc_iso(),
