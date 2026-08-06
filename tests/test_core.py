@@ -469,7 +469,7 @@ def test_about_page_and_architecture_badge_render():
     assert weekly_page.index('id="overview"') < weekly_page.index(
         'id="period-analysis"') < weekly_page.index('id="stats"')
     assert "技术脉络" in weekly_page and "进展：" in weekly_page
-    assert "未决：" in weekly_page and "guest_memfd 原位转换" in weekly_page
+    assert "仍在讨论：" in weekly_page and "guest_memfd 原位转换" in weekly_page
     assert 'href="https://trusted.example/kvm"' in weekly_page
     assert '<a href="#period-analysis">技术脉络' in weekly_page
     analysis_html = weekly_page.split('id="period-analysis"', 1)[1].split(
