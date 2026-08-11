@@ -28,3 +28,11 @@ window.addEventListener('hashchange',()=>expandTopicHash(window.location.hash));
 if(window.matchMedia('(max-width:620px)').matches){
   const currentNav=document.querySelector('.main-nav a.on');if(currentNav)currentNav.scrollIntoView({block:'nearest',inline:'center'});
 }
+const backToTop=document.querySelector('[data-back-to-top]');
+if(backToTop){
+  let backToTopFrame=0;const siteFooter=document.querySelector('.site-foot');
+  const drawBackToTop=()=>{let footerOverlap=0;if(siteFooter){const footerRect=siteFooter.getBoundingClientRect();footerOverlap=Math.max(0,Math.min(footerRect.height,window.innerHeight-footerRect.top))}backToTop.style.setProperty('--footer-offset',`${Math.round(footerOverlap)}px`);const scrollRange=Math.max(0,document.documentElement.scrollHeight-window.innerHeight);const longPage=scrollRange>0;const revealAt=Math.min(Math.max(480,window.innerHeight*.75),scrollRange*.6);const pastThreshold=window.scrollY>revealAt;backToTop.classList.toggle('is-visible',longPage&&pastThreshold);backToTopFrame=0};
+  const requestBackToTopDraw=()=>{if(!backToTopFrame)backToTopFrame=window.requestAnimationFrame(drawBackToTop)};
+  backToTop.addEventListener('click',()=>window.scrollTo({top:0,behavior:window.matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth'}));
+  window.addEventListener('scroll',requestBackToTopDraw,{passive:true});window.addEventListener('resize',requestBackToTopDraw);if('ResizeObserver'in window)new ResizeObserver(requestBackToTopDraw).observe(document.body);drawBackToTop();
+}

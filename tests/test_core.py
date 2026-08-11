@@ -644,6 +644,39 @@ def test_report_generated_date_uses_site_timezone():
             f'{html_render.ASSET_VERSION}">') in home
     assert (f'<script src="assets/site.js?v={html_render.ASSET_VERSION}"></script>'
             in home)
+    assert home.count('data-back-to-top') == 1
+    assert ('class="back-to-top" type="button" data-back-to-top '
+            'aria-label="返回顶部" title="返回顶部"') in home
+    assert ('<svg viewBox="0 0 20 20" width="18" height="18" fill="none">'
+            in home)
+    report_page = html_render.render_report_html(Config(), {
+            "period": "daily", "period_key": "2026-07-15",
+            "label": "2026-07-15", "headline": "", "fallback": False,
+            "model": "test", "timezone": "Asia/Shanghai",
+            "window": {}, "stats": {}, "overview": [], "watchlist": [],
+            "sections": [],
+        })
+    assert report_page.count('data-back-to-top') == 1
+    assert 'class="back-top"' not in report_page
+    assets = (html_render.ASSETS_DIR / "site.js").read_text(encoding="utf-8")
+    assert "[data-back-to-top]" in assets
+    assert ("document.documentElement.scrollHeight-window.innerHeight" in
+            assets)
+    assert "const longPage=scrollRange>0" in assets
+    assert ("Math.min(Math.max(480,window.innerHeight*.75),scrollRange*.6)" in
+            assets)
+    assert "requestAnimationFrame(drawBackToTop)" in assets
+    assert "document.querySelector('.site-foot')" in assets
+    assert "Math.min(footerRect.height,window.innerHeight-footerRect.top)" in assets
+    assert "--footer-offset" in assets
+    assert "window.scrollTo({top:0,behavior:" in assets
+    assert "prefers-reduced-motion:reduce" in assets
+    assert "new ResizeObserver(requestBackToTopDraw).observe(document.body)" in assets
+    assert ".back-to-top.is-visible{" in css
+    assert ".back-to-top>span{display:grid;width:40px;height:40px" in css
+    assert "border-radius:11px" in css
+    assert "var(--footer-offset)" in css
+    assert "safe-area-inset-bottom" in css
     assert "<style>" not in home
 
 
