@@ -383,6 +383,7 @@ def test_about_page_and_architecture_badge_render():
     assert {config.llm.daily_model, config.llm.weekly_model,
             config.llm.monthly_model} == {"deepseek-v4-flash"}
     about = html_render.render_about_html(config)
+    assert "<title>关于 - virt-report</title>" in about
     assert "KVM Forum" in about
     assert "2026 年 8 月 1 日起" in about
     assert "DeepSeek-V4-Flash 正式版" in about
@@ -404,6 +405,8 @@ def test_about_page_and_architecture_badge_render():
     footer = about.split('<footer class="site-foot">', 1)[1].split("</footer>", 1)[0]
     assert ">RSS</a>" not in footer
     assert "虚拟化社区动态。数据来自社区，分析仅供参考。" in footer
+    assert ('© 2026 <a href="index.html"><strong>virt-report</strong></a> - '
+            '虚拟化社区动态。') in footer
     assert '分析仅供参考。<a href="metrics.html">运行状态</a>' in footer
     assert footer.count("<span") == 1
     assert ".foot-row a{white-space:nowrap}" in _site_css()
@@ -423,6 +426,9 @@ def test_about_page_and_architecture_badge_render():
         }]}],
     }
     page = html_render.render_report_html(Config(), content)
+    assert "<title>2026-07-12 日报 - virt-report</title>" in page
+    assert ('© 2026 <a href="../index.html"><strong>virt-report</strong></a> - '
+            '虚拟化社区动态。') in page
     assert 'class="dyn focus-arch"' in page
     assert 'class="tag arch focus">x86' in page
     assert '<div class="d-actions"><span class="tag kind-other">' in page
@@ -462,6 +468,7 @@ def test_about_page_and_architecture_badge_render():
                       }],
                   }])
     weekly_page = html_render.render_report_html(Config(), weekly)
+    assert "<title>2026 年第 28 周周报 - virt-report</title>" in weekly_page
     assert ('<h1 class="title weekly-title"><span>2026 年第 28 周</span>'
             '<span class="weekly-range">7.6–7.12</span></h1>') in weekly_page
     assert "（7.6–7.12） 社区动态</h1>" not in weekly_page
@@ -480,6 +487,7 @@ def test_about_page_and_architecture_badge_render():
     monthly = dict(weekly, period="monthly", period_key="2026-07",
                    label="2026 年 7 月")
     monthly_page = html_render.render_report_html(Config(), monthly)
+    assert "<title>2026 年 7 月月报 - virt-report</title>" in monthly_page
     assert 'id="period-analysis"' in monthly_page
 
     daily_with_analysis = dict(content, period_analysis=weekly["period_analysis"])
@@ -553,6 +561,7 @@ def test_archive_and_topic_pages_render(tmp_db):
     _save_report_mentions(tmp_db, "weekly", "2026-W28", ["u"])
     groups = topics.build_topic_groups(tmp_db)
     page = html_render.render_topics_html(Config(), groups)
+    assert "<title>专题 - virt-report</title>" in page
     assert [group["key"] for group in groups] == [
         "migration", "live-upgrade", "hotplug", "performance", "lifecycle", "security",
     ]
@@ -614,6 +623,7 @@ def test_report_generated_date_uses_site_timezone():
         "generated_at": "2026-07-15T16:16:05Z",
     }
     archive = html_render.render_archive_html(Config(), "daily", [report_row])
+    assert "<title>日报 - virt-report</title>" in archive
     assert "2026-07-16 生成" in archive
     assert "2026-07-15 生成" not in archive
     context = {
@@ -621,6 +631,7 @@ def test_report_generated_date_uses_site_timezone():
         "cal": html_render.build_calendar("2026-07", {"2026-07-15"}),
     }
     home = html_render.render_index_html(Config(), context)
+    assert "<title>virt-report - 虚拟化社区动态</title>" in home
     assert "2026-07-16 生成" in home
     assert "2026-07-15 生成" not in home
     assert '<span class="brand-sub">虚拟化社区动态</span>' in home
@@ -736,6 +747,7 @@ def test_archive_and_topic_detail_offer_pagination_over_ten_items(tmp_db):
     assert detail["page"] == 2 and detail["pages"] == 2
     assert len(detail["items"]) == 1
     detail_page = html_render.render_topic_detail_html(Config(), detail)
+    assert "<title>热迁移 - virt-report</title>" in detail_page
     assert "2 / 2" in detail_page
     assert 'class="on" href="?scope=curated&sort=priority&per_page=10">10</a>' in detail_page
 
@@ -1000,6 +1012,7 @@ def test_rss_and_metrics_use_stored_report_usage(tmp_db):
     assert values["models"]["deepseek-v4-flash"]["calls"] == 1
     assert values["estimated_cost_cny"] > 0
     page = html_render.render_metrics_html(Config(), values)
+    assert "<title>运行状态 - virt-report</title>" in page
     assert "built-in method" not in page
     assert ">0</strong><span>原始条目" in page
 
@@ -1030,6 +1043,7 @@ def test_metrics_access_accepts_bearer_and_signed_cookie():
     assert access.is_authorized({"Cookie": f"{access.COOKIE_NAME}={token}"}, key, now=1001)
     assert not access.is_authorized({"Authorization": "Bearer wrong"}, key)
     login = html_render.render_metrics_login_html(Config(), error=True)
+    assert "<title>运行状态验证 - virt-report</title>" in login
     assert 'type="password"' in login and "密钥不正确" in login
     assert "该页面包含采集状态信息，请输入访问密钥。" in login
     assert "模型成本信息" not in login
@@ -1050,6 +1064,7 @@ def test_kvm_forum_renders_newest_first_with_source_links():
         ],
     }
     page = html_render.render_kvm_forum_html(Config(), editions, analysis)
+    assert "<title>KVM Forum - virt-report</title>" in page
     assert page.index('id="year-2025"') < page.index('id="year-2010"')
     assert page.index("2022—2025") < page.index("2010—2013")
     assert "查看 2025 年原始议程" in page
@@ -1081,6 +1096,7 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert blowfish["institutions"].count("Peking University") == 1
 
     page = html_render.render_conferences_html(Config(), content)
+    assert "<title>会议 - virt-report</title>" in page
     assert '<div class="kicker">Conference Archive</div>' in page
     assert "学术会议" in page and "academic-conferences.html" in page
     assert '<div><h2>KVM Forum</h2><span class="guide-range">2010—2025</span></div>' in page
@@ -1104,6 +1120,7 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert ".guide-range{display:block" in _site_css()
 
     timeline = html_render.render_academic_conferences_html(Config(), content)
+    assert "<title>学术会议 - virt-report</title>" in timeline
     assert "会议</a> · Academic Conference Review" in timeline
     assert timeline.index('id="year-2026"') < timeline.index('id="year-2010"')
     assert "技术演进" not in timeline.split("<h1>", 1)[1].split("</h1>", 1)[0]
@@ -1114,6 +1131,7 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert 'class="forum-overview-mobile"' not in timeline
 
     papers = html_render.render_conference_papers_html(Config(), content)
+    assert "<title>相关论文 - virt-report</title>" in papers
     assert "会议</a> · Academic Paper Archive" in papers
     assert "会议</a> · <a href=\"academic-conferences.html\">学术会议</a>" not in papers
     paper_tags = [part.split(">", 1)[0]
@@ -1315,6 +1333,8 @@ def test_pending_report_is_separate_from_published_lists_and_rss(tmp_db):
         db.get_report_generation_state(tmp_db, "daily", "2026-07-16")
     )
     detail = html_render.render_report_pending_html(Config(), state)
+    assert ("<title>2026-07-16 日报（AI 点评正在重新生成） - "
+            "virt-report</title>") in detail
     assert '<meta name="robots" content="noindex, nofollow">' in detail
     assert "页面将在 60 秒后自动刷新" in detail
     archive = html_render.render_archive_html(Config(), "daily", [], [state])
