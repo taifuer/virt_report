@@ -1275,7 +1275,8 @@ def test_scheduler_uses_just_finished_periods():
     )
     assert {name for name, _command, _at in caught_up} == {"fetch", "daily", "weekly"}
     backup_now = datetime(2026, 7, 20, 1, 5, tzinfo=tz)
-    assert any(name == "backup" and command[-2:] == ["--keep-days", "14"]
+    assert Config().schedule.backup_keep_days == 7
+    assert any(name == "backup" and command[-2:] == ["--keep-days", "7"]
                for name, command in scheduler.scheduled_commands(Config(), backup_now))
 
 
