@@ -198,6 +198,48 @@ def render_about_html(config: Config) -> str:
     return tpl.render(root="", site_name=config.name)
 
 
+def render_search(config: Config, result: dict, filename: str = "search.html") -> Path:
+    """导出搜索入口；带查询参数的结果由动态服务返回。"""
+    html = render_search_html(config, result)
+    out = Path(config.output_dir) / filename
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    return out
+
+
+def render_search_html(config: Config, result: dict) -> str:
+    """渲染社区议题搜索页。"""
+    from urllib.parse import urlencode
+
+    env = _env()
+    tpl = env.get_template("search.html")
+    prepared = dict(result)
+
+    def page_url(page: int) -> str:
+        values = {
+            "q": prepared.get("query", ""),
+            "project": prepared.get("project", ""),
+            "category": prepared.get("category", ""),
+            "architecture": prepared.get("architecture", ""),
+            "sort": prepared.get("sort", "relevance"),
+            "per_page": prepared.get("per_page", 10),
+            "page": page,
+        }
+        return "search.html?" + urlencode({
+            key: value for key, value in values.items()
+            if value not in ("", None)
+        })
+
+    prepared["prev_url"] = (
+        page_url(prepared["page"] - 1) if prepared.get("page", 1) > 1 else ""
+    )
+    prepared["next_url"] = (
+        page_url(prepared["page"] + 1)
+        if prepared.get("page", 1) < prepared.get("pages", 0) else ""
+    )
+    return tpl.render(result=prepared, root="", site_name=config.name)
+
+
 def render_archive(config: Config, period: str, reports: list[dict]) -> Path:
     """导出某一报告类型的归档页。"""
     html = render_archive_html(config, period, reports)

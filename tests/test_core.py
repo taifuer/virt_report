@@ -635,6 +635,7 @@ def test_report_generated_date_uses_site_timezone():
     assert "2026-07-16 生成" in home
     assert "2026-07-15 生成" not in home
     assert '<span class="brand-sub">虚拟化社区动态</span>' in home
+    assert 'class="mobile-search-icon " aria-label="搜索" title="搜索"' in home
     assert (f'<img class="brand-mark" src="assets/brand-mark.png?v='
             f'{html_render.ASSET_VERSION}" alt="" '
             'width="31" height="31"><span>virt-report</span></a><span class="brand-sub">'
@@ -651,6 +652,22 @@ def test_report_generated_date_uses_site_timezone():
     assert ".brand-sub{display:none}" not in css
     assert "@media(max-width:620px)" in css
     assert ".brand-mark{width:28px;height:28px}" in css
+    assert ".mobile-search-icon{display:none}" in css
+    assert (".main-nav .nav-search-icon{display:grid;width:34px;height:34px;"
+            "place-items:center;padding:0;margin-left:1px;"
+            "border:1px solid var(--line-soft);background:var(--surface-2)" in css)
+    assert (".mobile-search-icon{display:flex;flex:0 0 36px;width:36px;height:36px;"
+            "margin-left:auto;align-items:center;justify-content:center;"
+            "border:1px solid var(--line-soft);border-radius:8px;"
+            "background:var(--surface-2)" in css)
+    assert "padding-top:6px;column-gap:0;justify-content:space-between" in css
+    assert "@media(max-width:699px)" in css
+    assert ".main-nav .nav-search-icon{display:none}" in css
+    assert "select:not([multiple]){-webkit-appearance:none;appearance:none" in css
+    assert "background-position:right 11px center" in css
+    assert "select:not([multiple]):focus-visible{border-color:var(--brand)" in css
+    assert "select:not([multiple]):disabled{background-color:var(--surface-2)" in css
+    assert "select:not([multiple]),.pager button,.conference-pager button{min-height:42px}" in css
     assert (f'<link rel="stylesheet" href="assets/site.css?v='
             f'{html_render.ASSET_VERSION}">') in home
     assert (f'<script src="assets/site.js?v={html_render.ASSET_VERSION}"></script>'

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}搜索 - virt-report{% endblock %}
+{% block description %}搜索 QEMU、KVM、Libvirt 社区议题的中文点评与原始标题。{% endblock %}
+{% block nav_home %}{% endblock %}
+{% block nav_search %}on{% endblock %}
+{% block nav_search_mobile %}on{% endblock %}
+{% macro highlight(parts) -%}{% for part in parts %}{% if part.match %}<mark>{{ part.text }}</mark>{% else %}{{ part.text }}{% endif %}{% endfor %}{%- endmacro %}
+{% block content %}
+<article class="search-page">
+  <header class="search-header">
+    <div class="kicker">Community Search</div>
+    <h1>搜索社区议题</h1>
+    <p>检索已进入日报、周报、月报或专题的中文点评与原始英文标题。</p>
+  </header>
+
+  <form class="search-form" action="{{ root }}search.html" method="get" role="search" data-search-form>
+    <div class="search-query-row">
+      <label class="sr-only" for="search-query">搜索关键词</label>
+      <div class="search-input-wrap">
+        <input id="search-query" type="search" name="q" value="{{ result.query }}" maxlength="100" placeholder="搜索热迁移、VFIO、virtio…" autocomplete="off">
+        <button class="search-clear" type="button" data-search-clear aria-label="清除搜索" title="清除搜索"{% if not result.query %} hidden{% endif %}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <button type="submit">搜索</button>
+    </div>
+    {% if not result.query %}
+    <div class="search-examples" role="group" aria-label="搜索建议"><a href="search.html?q=热迁移">热迁移</a><a href="search.html?q=VFIO">VFIO</a><a href="search.html?q=virtio">virtio</a></div>
+    {% endif %}
+    <div class="search-filters">
+      <label><span>项目</span><select name="project"><option value="">全部</option>{% for key,label in result.projects %}<option value="{{ key }}"{% if result.project == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+      <label><span>类型</span><select name="category"><option value="">全部</option>{% for key,label in result.categories %}<option value="{{ key }}"{% if result.category == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+      <label><span>架构</span><select name="architecture"><option value="">全部</option>{% for key,label in result.architectures %}<option value="{{ key }}"{% if result.architecture == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+      <label><span>排序</span><select name="sort">{% for key,label in result.sorts %}<option value="{{ key }}"{% if result.sort == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+      <label><span>每页</span><select name="per_page">{% for value in result.page_sizes %}<option value="{{ value }}"{% if result.per_page == value %} selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
+      {% if result.query or result.project or result.category or result.architecture or result.sort != 'relevance' %}<a class="search-reset" href="{{ root }}search.html">清除</a>{% endif %}
+    </div>
+  </form>
+
+  {% if result.error %}<div class="search-message error" role="alert">{{ result.error }}</div>
+  {% elif result.query %}
+    <div class="search-result-head">
+      <div><strong>{{ result.total }}</strong> 个相关议题</div>
+      {% if result.expansions %}<small>同时匹配 {{ result.expansions|join('、') }}</small>{% endif %}
+    </div>
+    {% if result['items'] %}<div class="search-results">
+      {% for item in result['items'] %}<article class="search-result">
+        <div class="search-result-title">{% if item.url %}<a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ highlight(item.title_parts) }}</a>{% else %}{{ highlight(item.title_parts) }}{% endif %}</div>
+        <div class="search-result-meta">
+          <span class="tag">{{ item.project_label }}</span><span class="tag kind-{{ item.category }}">{{ item.category_label }}</span>{% for arch in item.architectures %}<span class="tag arch{% if arch in ['x86','Arm'] %} focus{% endif %}">{{ arch }}</span>{% endfor %}<span>{{ item.source_label }}</span><span>{{ item.kind_label }}</span>{% if item.date %}<span>{{ item.date }}</span>{% endif %}
+        </div>
+        {% if item.title_zh and item.original_title != item.title_zh %}<div class="search-original">{{ highlight(item.original_title_parts) }}</div>{% endif %}
+        {% if item.summary %}<p class="search-summary">{{ highlight(item.summary_parts) }}</p>{% endif %}
+        {% if item.impact %}<p class="search-impact"><strong>影响：</strong>{{ item.impact }}</p>{% endif %}
+        <div class="search-result-actions">
+          {% for ref in item.report_refs[:3] %}<a href="{{ root }}{{ ref.href }}">查看{{ ref.period_label }}点评</a>{% endfor %}
+          {% if item.url %}<a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">原始讨论</a>{% endif %}
+          {% if item.topics %}<span>专题：{{ item.topics[:3]|join('、') }}</span>{% endif %}
+        </div>
+      </article>{% endfor %}
+    </div>
+    {% if result.pages > 1 %}<nav class="search-pager" aria-label="搜索结果分页">{% if result.prev_url %}<a href="{{ result.prev_url }}">上一页</a>{% else %}<span>上一页</span>{% endif %}<strong>{{ result.page }} / {{ result.pages }}</strong>{% if result.next_url %}<a href="{{ result.next_url }}">下一页</a>{% else %}<span>下一页</span>{% endif %}</nav>{% endif %}
+    {% else %}<div class="search-empty"><h2>没有找到相关议题</h2><p>可以减少筛选条件，或改用原始英文技术名搜索。</p></div>{% endif %}
+  {% else %}
+    {% if result.index.refreshed_at %}
+    <p class="search-index-time">已收录 {{ result.index.document_count }} 个去重议题 · 索引更新于 {{ result.index.refreshed_at[:10] }}</p>
+    {% endif %}
+  {% endif %}
+</article>
+{% endblock %}
+{% block scripts %}<script>
+const searchForm=document.querySelector('[data-search-form]'),searchQuery=document.querySelector('#search-query'),searchClear=document.querySelector('[data-search-clear]');
+if(searchForm&&searchQuery&&searchClear){
+  const hadQuery=searchQuery.value.trim().length>0;
+  searchForm.querySelectorAll('select').forEach(select=>select.addEventListener('change',()=>{if(searchQuery.value.trim().length>=2)searchForm.requestSubmit()}));
+  searchQuery.addEventListener('input',()=>{searchClear.hidden=!searchQuery.value;if(hadQuery&&!searchQuery.value)window.location.assign(searchForm.action)});
+  searchClear.addEventListener('click',()=>{searchQuery.value='';searchClear.hidden=true;if(hadQuery)window.location.assign(searchForm.action);else searchQuery.focus()});
+}
+</script>{% endblock %}

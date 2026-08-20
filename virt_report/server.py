@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
-from virt_report import access, db
+from virt_report import access, db, search as search_index
 from virt_report.config import Config
 from virt_report.render import render
 from virt_report.processing import topics
@@ -363,6 +363,28 @@ def make_handler(config: Config):
                     period = path.split("/")[1] if path != "/feed.xml" else None
                     body = rss.report_feed(conn, config, period)
                 self._send_feed(body, head_only)
+                return
+            if path in ("/search", "/search/", "/search.html"):
+                def search_value(name: str, default: str = "") -> str:
+                    return query.get(name, [default])[0]
+
+                def search_number(name: str, default: int) -> int:
+                    try:
+                        return int(search_value(name, str(default)))
+                    except (TypeError, ValueError):
+                        return default
+
+                with closing(db.connect(config.db_path)) as conn:
+                    result = search_index.search(
+                        conn, search_value("q"),
+                        project=search_value("project"),
+                        category_key=search_value("category"),
+                        architecture_key=search_value("architecture"),
+                        sort=search_value("sort", "relevance"),
+                        page=search_number("page", 1),
+                        per_page=search_number("per_page", 10),
+                    )
+                self._send(200, render.render_search_html(config, result), head_only)
                 return
             if path in ("/about", "/about/", "/about.html"):
                 self._send(200, render.render_about_html(config), head_only)

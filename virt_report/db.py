@@ -199,6 +199,52 @@ CREATE TABLE IF NOT EXISTS conference_reviews (
 );
 CREATE INDEX IF NOT EXISTS idx_conference_reviews_relevance
     ON conference_reviews(relevance, representative);
+
+CREATE TABLE IF NOT EXISTS search_documents (
+    document_key   TEXT PRIMARY KEY,
+    thread_key     TEXT,
+    project        TEXT NOT NULL,
+    project_label  TEXT NOT NULL,
+    source         TEXT NOT NULL,
+    source_label   TEXT NOT NULL,
+    kind           TEXT,
+    category       TEXT NOT NULL DEFAULT 'other',
+    architectures  TEXT NOT NULL DEFAULT '[]',
+    topics         TEXT NOT NULL DEFAULT '[]',
+    original_title TEXT NOT NULL,
+    title_zh       TEXT,
+    summary         TEXT,
+    impact          TEXT,
+    search_text     TEXT NOT NULL,
+    first_seen      TEXT,
+    last_seen       TEXT,
+    url             TEXT,
+    curated         INTEGER NOT NULL DEFAULT 0,
+    salience_score  REAL NOT NULL DEFAULT 0,
+    report_refs     TEXT NOT NULL DEFAULT '[]',
+    indexed_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_search_documents_filters
+    ON search_documents(curated, project, category, last_seen DESC);
+CREATE INDEX IF NOT EXISTS idx_search_documents_architectures
+    ON search_documents(architectures);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS search_documents_fts USING fts5(
+    document_key UNINDEXED,
+    title_zh,
+    original_title,
+    summary,
+    impact,
+    tags,
+    tokenize='trigram'
+);
+
+CREATE TABLE IF NOT EXISTS search_index_state (
+    singleton      INTEGER PRIMARY KEY CHECK (singleton = 1),
+    refreshed_at   TEXT NOT NULL,
+    document_count INTEGER NOT NULL,
+    curated_count  INTEGER NOT NULL
+);
 """
 
 

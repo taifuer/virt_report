@@ -51,6 +51,7 @@
 - **分层专题索引**：原始线程只作为候选池；公开专题以周报/月报精选为长期汇总，并补充最近 14 天日报中的新进展。“安全与漏洞”公开层仅接受完整 CVE 与强漏洞证据，安全能力增强只保留在内部索引和周期报告中。
 - **RSS 与运行指标**：日报、周报和月报提供 RSS 2.0；运行页展示采集完整性、数据规模、报告 token 与按配置单价估算的成本。
 - **会议观察**：`/conferences.html` 是统一入口，分别进入 KVM Forum 与学术会议年度演变；`/conference-papers.html` 保存经人工复核的相关论文。网页只读取离线快照，不在请求时采集或调用 LLM。
+- **中英文搜索**：`/search.html` 检索已点评议题的中文标题、摘要与原始英文标题；同一议题跨日报、周报和月报自动去重，不将未点评的原始线程和邮件正文混入结果，查询也不调用 LLM。
 - **原子发布与重试**：自动报告只有在 AI 点评成功后才正式发布；生成中、等待重试和最终失败使用独立状态，不会让模板降级内容短暂出现在首页、RSS 或专题中。
 
 ## 安装
@@ -114,6 +115,9 @@ cp .env.example .env   # 填入 DEEPSEEK_API_KEY（自动发布报告时必需�
 # 离线重建专题分类、版本链和报告证据快照
 .venv/bin/virt-report topics-refresh
 
+# 单独重建已点评社区议题搜索索引
+.venv/bin/virt-report search-refresh
+
 # 导出完整静态快照到 site/（首页为 site/index.html）
 .venv/bin/virt-report index
 
@@ -127,7 +131,7 @@ cp .env.example .env   # 填入 DEEPSEEK_API_KEY（自动发布报告时必需�
 .venv/bin/python -m http.server 8091 --directory site
 ```
 
-日常运行以 SQLite 中的报告为准，Web 服务通过 `/daily/`、`/weekly/`、`/monthly/` 提供独立归档页，并通过对应详情路由即时渲染。专题的分类、版本链合并和报告证据关联会在采集或报告生成后离线写入 SQLite 快照；网页请求只读取快照并完成轻量分页、排序，不会重新扫描原始数据。日报、周报、月报归档和会议议题默认每页显示 10 条；`/topics.html` 每类最多展示 8 条，先取周报/月报精选，再补最近 14 天日报观察；`/topics/<专题>/` 可在“汇总精选 / 近期观察”之间切换，并支持重点/最新排序，默认每页 10 条，可切换为 20 或 30 条。需要手动刷新时运行 `virt-report topics-refresh`。采集和 AI 生成不会触发全局 HTML 渲染；只有显式执行 `virt-report index`，或将 `schedule.auto_export` 设为 `true`，才会把完整快照导出到 `site/`。
+日常运行以 SQLite 中的报告为准，Web 服务通过 `/daily/`、`/weekly/`、`/monthly/` 提供独立归档页，并通过对应详情路由即时渲染。专题的分类、版本链合并和报告证据关联会在采集或报告生成后离线写入 SQLite 快照；网页请求只读取快照并完成轻量分页、排序，不会重新扫描原始数据。日报、周报、月报归档和会议议题默认每页显示 10 条；`/topics.html` 每类最多展示 8 条，先取周报/月报精选，再补最近 14 天日报观察；`/topics/<专题>/` 可在“汇总精选 / 近期观察”之间切换，并支持重点/最新排序，默认每页 10 条，可切换为 20 或 30 条。搜索索引同样在采集、报告生成或专题刷新后离线更新；动态服务仅执行 SQLite FTS 查询，不会在请求时重新构建索引或调用 AI。需要手动刷新时运行 `virt-report topics-refresh` 或 `virt-report search-refresh`。采集和 AI 生成不会触发全局 HTML 渲染；只有显式执行 `virt-report index`，或将 `schedule.auto_export` 设为 `true`，才会把完整快照导出到 `site/`。
 
 “安全与漏洞”位于专题页最后，只分为“明确 CVE / 安全缺陷”。分类来自原始线程，不根据 AI 摘要猜测漏洞编号；SEV、TDX、Arm CCA 等安全能力增强仍保留在内部索引和日报、周报、月报中，但不进入安全专题。专题索引表 `topic_entries` 在采集后增量更新，公开分层结果写入 `topic_snapshots`；Web 请求不会执行索引或版本链重建。
 
@@ -156,7 +160,7 @@ docker compose up -d --build
 
 两个容器共享 `data/`。默认每 4 小时增量采集；每天 00:15 生成前一日日报，周一 00:25 生成上周周报，每月 1 日 00:35 生成上月月报，并在每天 01:05 创建数据库快照。动态 Web 直接读取 SQLite，因此无需每次全量导出静态 HTML。
 
-调度器首次启动只检查当前分钟，不会自动执行昂贵的历史补采；已有调度状态的重启会补查最近 24 小时。周期报告任务固定带 `--no-fetch --require-ai`，不会在定时采集之外重复下载，也不会发布降级稿；每个任务默认最长运行 1 小时，未完成时最多重试 3 次。重试状态持久化在 SQLite，容器重启后可继续，并会在达到上限后停止而不是无限重复；运行结果写入 `scheduler_runs` 并在受保护的运行页展示。自动快照默认保留 14 天，且只清理 `auto-*.db.gz`，不会删除手工备份。采集器和调度器均有进程锁，重复容器或重叠 cron 会安全失败而不是并行写库。
+调度器首次启动只检查当前分钟，不会自动执行昂贵的历史补采；已有调度状态的重启会补查最近 24 小时。周期报告任务固定带 `--no-fetch --require-ai`，不会在定时采集之外重复下载，也不会发布降级稿；每个任务默认最长运行 1 小时，未完成时最多重试 3 次。重试状态持久化在 SQLite，容器重启后可继续，并会在达到上限后停止而不是无限重复；运行结果写入 `scheduler_runs` 并在受保护的运行页展示。自动快照默认保留 7 天，且只清理 `auto-*.db.gz`，不会删除手工备份。采集器和调度器均有进程锁，重复容器或重叠 cron 会安全失败而不是并行写库。
 
 宿主机 cron 方式仍可使用：
 
@@ -218,11 +222,11 @@ docker compose ps
 virt_report/
 ├── config.yaml                 # 数据源/LLM/调度配置
 ├── virt_report/
-│   ├── config.py  db.py  cli.py
+│   ├── config.py  db.py  cli.py  search.py
 │   ├── collectors/{base,lore,gitlab}.py
 │   ├── processing/{threads,classify,rank,architecture,category,topics}.py
 │   ├── summarize/{llm_provider,prompts,periods,report}.py
-│   ├── render/{render.py, templates/{base,index,report,archive,topics,metrics,conferences,academic_conferences,conference_papers,kvm_forum,about}.html}
+│   ├── render/{render.py, templates/{base,index,report,archive,search,topics,metrics,conferences,academic_conferences,conference_papers,kvm_forum,about}.html}
 │   ├── conferences.py         # 学术会议元数据采集、筛选、编辑快照加载与校验
 │   ├── content/conferences.json # 经复核的学术会议议题、简介、点评与年度演变
 │   ├── kvm_forum.py           # 历年议程标题采集与模型主题分析
@@ -245,4 +249,4 @@ virt_report/
 - ✅ **阶段 2**：HyperKitty 采集器补 libvirt-devel (RSS+thread hash 折叠 patch series)；通用周期报告生成器；周报；日历导航首页。
 - ✅ **阶段 3**：月报；周/月报主题聚类 (LLM 跨源归纳 themes)；cron 全调度 (频繁采集 + 日/周/月报)。
 - ✅ **阶段 4**：独立报告归档、原始线程增量专题、安全与漏洞、RSS、运行/成本统计及 Docker 自动调度。
-- 🚧 **阶段 5**：已完成专题分层、日报重复抑制、调度记录/重试/自动备份、基础 CI，以及 2010—2026 学术会议年度演变与独立论文列表；继续细化 patch series 折叠，并随官方议程增补当年内容。暂不加入邮件订阅。
+- 🚧 **阶段 5**：已完成专题分层、日报重复抑制、中英文社区议题搜索、调度记录/重试/自动备份、基础 CI，以及 2010—2026 学术会议年度演变与独立论文列表；继续细化 patch series 折叠，并随官方议程增补当年内容。暂不加入邮件订阅。
