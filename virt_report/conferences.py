@@ -23,7 +23,7 @@ from urllib.parse import unquote, urlparse
 
 import requests
 
-from virt_report import db
+from virt_report import __version__, db
 
 CONTENT_PATH = Path(__file__).parent / "content" / "conferences.json"
 INSTITUTION_OVERRIDES_PATH = (
@@ -119,7 +119,9 @@ def _request_session() -> requests.Session:
     # Server deployments sometimes inherit a workstation-only proxy address.
     session.trust_env = False
     session.headers.update({
-        "User-Agent": "virt-report/0.1 (conference metadata; taifu@taifua.com)",
+        "User-Agent": (
+            f"virt-report/{__version__} (conference metadata; taifu@taifua.com)"
+        ),
         "Accept": "application/json",
     })
     return session

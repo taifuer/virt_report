@@ -383,6 +383,17 @@ def finish_scheduler_run(conn: sqlite3.Connection, run_id: int, *, status: str,
         )
 
 
+def interrupt_stale_scheduler_runs(conn: sqlite3.Connection) -> int:
+    """Close runs left active when the previous scheduler process stopped."""
+    with transaction(conn):
+        cursor = conn.execute(
+            "UPDATE scheduler_runs SET finished_at=?,status='interrupted',"
+            "exit_code=NULL,error=? WHERE status='running' AND finished_at IS NULL",
+            (now_utc_iso(), "调度进程重启，原任务未完成"),
+        )
+    return int(cursor.rowcount)
+
+
 def set_report_generation_state(
     conn: sqlite3.Connection,
     period: str,

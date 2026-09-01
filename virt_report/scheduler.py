@@ -133,6 +133,13 @@ def run_forever(config: Config, config_path: str | None = None) -> None:
                         else timedelta(minutes=1))
     scheduler_lock = config.db_path.parent / "scheduler.lock"
     with process_lock(scheduler_lock):
+        conn = db.connect(config.db_path)
+        try:
+            interrupted = db.interrupt_stale_scheduler_runs(conn)
+        finally:
+            conn.close()
+        if interrupted:
+            log.warning("已关闭重启前未完成的调度记录: %d", interrupted)
         _run_loop(config, config_path, timezone, state_path, completed, last_check)
 
 

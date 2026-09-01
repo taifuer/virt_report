@@ -7,7 +7,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from virt_report import access, conferences, db, kvm_forum, maintenance, metrics, rss
+from virt_report import __version__, access, cli, conferences, db, kvm_forum
+from virt_report import maintenance, metrics, rss
 from virt_report.collectors import base, hyperkitty, mbox
 from virt_report.config import Config, MailingListSource, Sources, Storage
 from virt_report.processing import architecture, category, classify, threads, topics
@@ -19,6 +20,14 @@ from virt_report.summarize import llm_provider, periods, prompts, report
 
 def _site_css() -> str:
     return (html_render.ASSETS_DIR / "site.css").read_text(encoding="utf-8")
+
+
+# ---------- version ----------
+def test_cli_reports_package_version(capsys):
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["--version"])
+    assert exit_info.value.code == 0
+    assert capsys.readouterr().out.strip() == f"virt-report {__version__}"
 
 
 # ---------- periods ----------
@@ -1321,6 +1330,33 @@ def test_scheduler_retries_fallback_report_and_records_runs(tmp_path):
     conn.close()
     assert scheduler._report_exists(config, "daily", command) is True
     assert values["scheduler_runs"][0]["status"] == "success"
+
+
+def test_stale_scheduler_runs_are_interrupted_on_restart(tmp_db):
+    stale_id = db.start_scheduler_run(
+        tmp_db, identity="fetch:stale", job_name="fetch",
+        scheduled_at="2026-07-15T04:07:00+08:00", attempt=1,
+    )
+    completed_id = db.start_scheduler_run(
+        tmp_db, identity="fetch:complete", job_name="fetch",
+        scheduled_at="2026-07-15T08:07:00+08:00", attempt=1,
+    )
+    db.finish_scheduler_run(tmp_db, completed_id, status="success", exit_code=0)
+
+    assert db.interrupt_stale_scheduler_runs(tmp_db) == 1
+    stale = tmp_db.execute(
+        "SELECT status,finished_at,exit_code,error FROM scheduler_runs WHERE id=?",
+        (stale_id,),
+    ).fetchone()
+    completed = tmp_db.execute(
+        "SELECT status FROM scheduler_runs WHERE id=?", (completed_id,),
+    ).fetchone()
+    assert stale["status"] == "interrupted"
+    assert stale["finished_at"]
+    assert stale["exit_code"] is None
+    assert stale["error"] == "调度进程重启，原任务未完成"
+    assert completed["status"] == "success"
+    assert db.interrupt_stale_scheduler_runs(tmp_db) == 0
 
 
 def test_report_generation_state_is_cleared_by_atomic_publish(tmp_db):

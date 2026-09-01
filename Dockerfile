@@ -14,7 +14,8 @@ RUN if [ "$DEBIAN_MIRROR" != "deb.debian.org" ]; then \
     && rm -rf /var/lib/apt/lists/*
 
 COPY . .
-RUN pip install --no-cache-dir --index-url "$PIP_INDEX_URL" .
+RUN python -m pip install --no-cache-dir --index-url "$PIP_INDEX_URL" "pip==26.2.1" \
+    && python -m pip install --no-cache-dir --index-url "$PIP_INDEX_URL" .
 
 EXPOSE 8090
 CMD ["virt-report", "--config", "/app/config.yaml", "serve", "--host", "0.0.0.0", "--port", "8090"]

@@ -66,5 +66,4 @@ embargoed, paywalled, or unlawfully obtained material.
 
 To report an incorrect attribution, misleading summary, stale link, or request
 review of published material, email [taifu@taifua.com](mailto:taifu@taifua.com)
-with the page URL and the requested correction. Security vulnerabilities should
-instead follow [SECURITY.md](SECURITY.md).
+with the page URL and the requested correction.

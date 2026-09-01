@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from virt_report import db, search as search_index
+from virt_report import __version__, db, search as search_index
 from virt_report.collectors import lore, lore_git, gitlab, hyperkitty, mailarchive, mbox
 from virt_report.config import Config, load_config
 from virt_report.processing import threads
@@ -497,6 +497,8 @@ def cmd_restore(args, config: Config) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="virt-report",
                                      description="虚拟化研发动态追踪与日报生成")
+    parser.add_argument("--version", action="version",
+                        version=f"%(prog)s {__version__}")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--config", default=None, help="配置文件路径")
     sub = parser.add_subparsers(dest="cmd", required=True)

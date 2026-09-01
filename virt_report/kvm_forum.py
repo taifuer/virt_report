@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from virt_report import __version__
 from virt_report.config import Config
 from virt_report.summarize import llm_provider
 
@@ -182,7 +183,9 @@ def _fetch_wiki_titles(year: int) -> tuple[list[str], str]:
         "prop": "wikitext", "format": "json",
     })
     api_url = f"https://www.linux-kvm.org/api.php?{params}"
-    request = Request(api_url, headers={"User-Agent": "virt-report/0.1"})
+    request = Request(api_url, headers={
+        "User-Agent": f"virt-report/{__version__}",
+    })
     with urlopen(request, timeout=30) as response:
         payload = json.loads(response.read().decode("utf-8"))
     wikitext = payload["parse"]["wikitext"]["*"]
@@ -194,7 +197,9 @@ def fetch_titles() -> list[dict]:
     editions = []
     for year in YEARS:
         url = f"https://kvm-forum.qemu.org/{year}/"
-        request = Request(url, headers={"User-Agent": "virt-report/0.1"})
+        request = Request(url, headers={
+            "User-Agent": f"virt-report/{__version__}",
+        })
         with urlopen(request, timeout=30) as response:
             html = response.read().decode("utf-8", errors="replace")
         parser = _PresentationParser()

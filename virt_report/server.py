@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
-from virt_report import access, db, search as search_index
+from virt_report import __version__, access, db, search as search_index
 from virt_report.config import Config
 from virt_report.render import render
 from virt_report.processing import topics
@@ -219,7 +219,7 @@ def make_handler(config: Config):
     """创建绑定项目配置的请求处理器。"""
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "virt-report/0.1"
+        server_version = f"virt-report/{__version__}"
 
         def version_string(self) -> str:
             """Avoid disclosing the host Python version in response headers."""

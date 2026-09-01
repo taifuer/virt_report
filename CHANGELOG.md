@@ -1,30 +1,34 @@
-# Changelog
+# 更新日志
 
-Notable project changes are recorded here. Dates use `YYYY-MM-DD`; the first
-public release remains a draft until the repository visibility is changed.
+本文件记录各版本中对使用者有影响的主要变化。
 
-## [0.1.0] - Unreleased
+## [1.0.0] - 2026-09-01
 
-First public beta candidate.
+首个稳定版本，打通了从公开虚拟化社区数据采集到中文报告发布的完整流程。
 
-### Added
+### 新增
 
-- Incremental collectors for QEMU, KVM, and libvirt mailing lists and GitLab.
-- DeepSeek-assisted Chinese daily, weekly, and monthly reports with atomic
-  publication, retries, and persisted generation state.
-- Curated topic views, reviewed-issue search, RSS feeds, KVM Forum history, and
-  academic-conference virtualization reviews.
-- Responsive server-rendered and static-exported pages with source links and
-  architecture/category filters.
-- Docker Compose deployment, recurring collection and report generation,
-  health/readiness checks, protected operational metrics, and SQLite backups.
-- Apache-2.0 licensing plus contribution, conduct, security, content-provenance,
-  and generated-data policies.
+- 增量采集 QEMU、KVM、libvirt 邮件列表及 QEMU、libvirt GitLab 活动，并重建邮件线程。
+- 使用 DeepSeek 生成带原始链接的日报、自然周周报和自然月月报。
+- 提供热迁移、热升级、热插拔、性能优化、生命周期及安全与漏洞专题。
+- 提供已点评议题搜索、RSS、KVM Forum 与学术会议技术演进。
+- 支持 Docker Compose 部署、自动调度、运行状态、健康检查和 SQLite 备份。
 
-### Release checks
+### 改进
 
-- Python 3.11 and 3.12 tests and the container build pass in GitHub Actions.
-- Runtime databases, raw archives, caches, logs, backups, and credentials are
-  excluded from the source release.
-- The tracked static snapshot is current through the 2026-08-31 daily report,
-  2026-W35 weekly report, and 2026-08 monthly report.
+- 报告仅在 AI 点评成功并通过结构校验后发布；失败任务进入持久化重试，不发布临时降级稿。
+- 专题和搜索使用离线快照与索引，页面访问不会触发采集、全文扫描或 AI 调用。
+- 首页、归档、报告、专题和会议页面适配桌面端与移动端，并统一导航和品牌标识。
+- 报告按项目、功能或缺陷、x86/Arm 架构组织重点内容，保留可追溯的原始证据。
+- 会议内容保留经人工复核的标题、简介、点评和单位来源，不读取论文 PDF 或演讲 PPT。
+- Docker 构建工具链固定使用 pip 26.2.1，避免继承基础镜像中的旧版本。
+
+### 修复
+
+- KVM 改用 lore/public-inbox Git，避免 Atom 时间窗口遗漏高频邮件。
+- libvirt 改用官方 HyperKitty，恢复 Message-ID、父子关系和真实发信时间。
+- qemu-devel 使用月度 mbox 缓存和增量下载，减少重复传输。
+- 统一时间解析和自然周期边界，修复报告日期误标与周报区间重叠。
+- 调度器区分首次启动与重启，并通过锁、超时、重试和中断状态清理避免重复任务与状态误报。
+
+[1.0.0]: https://github.com/taifuer/virt_report/releases/tag/v1.0.0
