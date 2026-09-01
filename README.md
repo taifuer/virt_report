@@ -179,7 +179,6 @@ docker compose up -d --build
 推荐在单台 Linux 服务器上使用 Docker Compose 部署。服务器需要能够访问 GitHub、GitLab、邮件列表、lore.kernel.org 和 DeepSeek API。
 
 ```bash
-# 私有状态需要 GitHub 凭据；公开后可直接克隆
 git clone https://github.com/taifuer/virt_report.git
 cd virt_report
 
@@ -241,7 +240,7 @@ virt_report/
 
 ## 开源与贡献
 
-软件代码采用 [Apache License 2.0](LICENSE)。生成内容与第三方数据的许可边界见[数据政策](DATA_POLICY.md)和 [NOTICE](NOTICE)。提交改进前请阅读[贡献指南](CONTRIBUTING.md)与[行为准则](CODE_OF_CONDUCT.md)；安全问题请按照[安全政策](SECURITY.md)私下报告。
+软件代码采用 [Apache License 2.0](LICENSE)。生成内容与第三方数据的许可边界见[数据政策](DATA_POLICY.md)和 [NOTICE](NOTICE)，首版发布内容见[更新记录](CHANGELOG.md)。提交改进前请阅读[贡献指南](CONTRIBUTING.md)与[行为准则](CODE_OF_CONDUCT.md)；安全问题请按照[安全政策](SECURITY.md)私下报告。
 
 ## 路线图
 

@@ -390,6 +390,8 @@ def test_about_page_and_architecture_badge_render():
     assert 'href="https://api-docs.deepseek.com/zh-cn/updates/"' in about
     assert 'href="mailto:taifu@taifua.com"' in about
     assert "摘要偏差、分类错误、链接失效或其他问题" in about
+    assert "线上站点使用百度统计了解总体访问情况" in about
+    assert "项目源码及自行部署默认不包含访问统计" in about
     assert "收录会议" in about and "USENIX Security" in about
     assert "关注会议" not in about
     assert about.index("会议内容扩展") < about.index("AI 模型更新")

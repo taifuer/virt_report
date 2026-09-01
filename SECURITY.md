@@ -2,9 +2,10 @@
 
 ## Supported Versions
 
-Security fixes are applied to the current `main` branch and the latest published
-container image. Older commits, local modifications, and archived images are not
-maintained as separate release lines.
+Security fixes are applied to the current `main` branch. Container images are
+built locally from the repository; the project does not currently maintain a
+separate, versioned registry-image release line. Older commits, local
+modifications, and archived images are not maintained as separate release lines.
 
 ## Reporting a Vulnerability
 

@@ -49,6 +49,15 @@ headers, private metrics, local logs, or raw archive files. Operators are
 responsible for reviewing the model provider's current terms and configuring
 retention and access controls appropriate to their deployment.
 
+## Hosted-Site Analytics
+
+The hosted site at `virt.taifua.com` uses Baidu Analytics to understand aggregate
+page visits. This integration is injected by the production deployment, is not
+included in the repository source, and is not required for self-hosting. A
+visitor's browser may therefore connect to Baidu's analytics service when using
+the hosted site. Self-hosting operators are responsible for disclosing any
+analytics they add and for following applicable laws and provider terms.
+
 ## Contributions and Corrections
 
 New sources must be public, relevant to virtualization, and documented with a
