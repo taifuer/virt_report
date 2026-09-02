@@ -434,11 +434,14 @@ def test_about_page_and_architecture_badge_render():
     footer = about.split('<footer class="site-foot">', 1)[1].split("</footer>", 1)[0]
     assert ">RSS</a>" not in footer
     assert "虚拟化社区动态。数据来自社区，分析仅供参考。" in footer
-    assert ('© 2026 <a href="index.html"><strong>virt-report</strong></a> - '
+    assert ('© 2026 <a href="https://github.com/taifuer/virt_report" '
+            'target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - '
             '虚拟化社区动态。') in footer
     assert '分析仅供参考。<a href="metrics.html">运行状态</a>' in footer
     assert footer.count("<span") == 1
     assert ".foot-row a{white-space:nowrap}" in _site_css()
+    assert ".about-hero header>p+p{margin-top:6px}" in _site_css()
+    assert ".about-hero header>.about-contact{margin-top" not in _site_css()
     content = {
         "period": "daily", "period_key": "2026-07-12", "label": "2026-07-12",
         "headline": "", "fallback": False, "model": "test", "timezone": "Asia/Shanghai",
@@ -456,7 +459,8 @@ def test_about_page_and_architecture_badge_render():
     }
     page = html_render.render_report_html(Config(), content)
     assert "<title>2026-07-12 日报 - virt-report</title>" in page
-    assert ('© 2026 <a href="../index.html"><strong>virt-report</strong></a> - '
+    assert ('© 2026 <a href="https://github.com/taifuer/virt_report" '
+            'target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - '
             '虚拟化社区动态。') in page
     assert 'class="dyn focus-arch"' in page
     assert 'class="tag arch focus">x86' in page
