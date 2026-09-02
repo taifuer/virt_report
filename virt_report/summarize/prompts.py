@@ -7,6 +7,15 @@ _ITEM_COUNT = {"daily": "20-30", "weekly": "18-27", "monthly": "24-36"}
 _KNOWN_LABEL = {"patch": "补丁", "rfc": "RFC", "issue": "Issue", "mr": "MR",
                 "bug": "缺陷", "security": "安全", "discussion": "讨论"}
 
+_WATCHLIST_SCHEMA = {
+    "daily": """  \"watchlist\": [
+    {\"project\":\"KVM\",\"topic\":\"短主题\",\"reason\":\"后续值得观察的原因\"}
+  ],
+""",
+    "weekly": "",
+    "monthly": "",
+}
+
 _PERIOD_ANALYSIS_SCHEMA = {
     "daily": "",
     "weekly": """  \"period_analysis\": [
@@ -20,20 +29,28 @@ _PERIOD_ANALYSIS_SCHEMA = {
 }
 
 _PERIOD_ANALYSIS_REQUIREMENT = {
-    "daily": "- 日报不得输出 period_analysis 字段。",
+    "daily": (
+        "- 日报不得输出 period_analysis 字段。\n"
+        "- watchlist 选 2-4 个尚未尘埃落定且有延续价值的主题，不得把已完成事项写入"
+        "观察列表；project、topic 和 reason 都必须为非空字符串。\n"
+        "- 有多个项目存在仍在讨论的重要事项时，watchlist 尽量覆盖至少两个项目，"
+        "避免被单一高流量项目垄断。"
+    ),
     "weekly": (
         "- period_analysis 用于关联同一技术链上的多个议题：progress 说明本周已经"
         "发生的具体推进及其关系，unresolved 只写证据明确显示的仍在讨论或待确认的"
-        "事项；不得重复 overview、watchlist 或单条摘要，也不得为了凑数强行关联。\n"
+        "事项；不得重复 overview 或单条摘要，也不得为了凑数强行关联。\n"
         "- 周报输出 2-3 条 period_analysis；每条必须关联至少 2 个不同且存在的 ref，"
-        "progress 与 unresolved 合计控制在 100-140 个汉字。"
+        "progress 与 unresolved 合计控制在 100-140 个汉字。\n"
+        "- 周报不输出 watchlist；下一周期需要关注的内容统一写入 unresolved。"
     ),
     "monthly": (
         "- period_analysis 用于关联同一技术链上的多个议题：progress 说明本月已经"
         "发生的具体推进及其关系，unresolved 只写证据明确显示的仍在讨论或待确认的"
-        "事项；不得重复 overview、watchlist 或单条摘要，也不得为了凑数强行关联。\n"
+        "事项；不得重复 overview 或单条摘要，也不得为了凑数强行关联。\n"
         "- 月报输出 3-4 条 period_analysis；每条必须关联至少 2 个不同且存在的 ref，"
-        "progress 与 unresolved 合计控制在 140-200 个汉字。"
+        "progress 与 unresolved 合计控制在 140-200 个汉字。\n"
+        "- 月报不输出 watchlist；下一周期需要关注的内容统一写入 unresolved。"
     ),
 }
 
@@ -60,10 +77,7 @@ _SYSTEM = """你是资深虚拟化内核与云平台技术编辑，熟悉 QEMU�
     {"project":"KVM","summary":"1-2句趋势判断"},
     {"project":"Libvirt","summary":"1-2句趋势判断"}
   ],
-  "watchlist": [
-    {"project":"KVM","topic":"短主题","reason":"下一周期值得继续观察的原因"}
-  ],
-{period_analysis_schema}  "sections": [
+{watchlist_schema}{period_analysis_schema}  "sections": [
     {"key":"qemu","name":"QEMU","items":[
       {"ref":"T001","title":"准确简洁的标题","summary":"改了什么及背景","impact":"对研发/用户的具体意义","tag":"子系统或架构","status":"讨论中/评审中/已合并/已关闭/新提交"}
     ]},
@@ -76,8 +90,6 @@ _SYSTEM = """你是资深虚拟化内核与云平台技术编辑，熟悉 QEMU�
 - overview 固定包含 QEMU、KVM、Libvirt，顺序固定。
 - items 总数约 {item_count}；质量优先，证据不足可以更少。三个项目有有效输入时都要覆盖。
 - summary 说明事实，impact 解释意义；二者不要重复，均控制在 80 个汉字以内。
-- watchlist 选 2-4 个尚未尘埃落定且有延续价值的主题，不得把已完成事项写入观察列表；project、topic 和 reason 都必须为非空字符串。
-- 有多个项目存在仍在讨论的重要事项时，watchlist 尽量覆盖至少两个项目，避免被单一高流量项目垄断。
 {period_analysis_requirement}
 - 输入的 arch 字段由原始证据确定；x86/Arm 条目可在技术影响相近时优先纳入，但不得因此夸大其影响。
 - tag 不超过 12 个字符，优先使用 migration、virtio、VFIO、安全、CI 等社区常用子系统名称；架构会由系统单独展示，无需重复占用 tag。
@@ -89,6 +101,7 @@ def system_prompt(period: str, period_key: str) -> str:
     return (_SYSTEM.replace("{range}", _RANGE[period])
             .replace("{period}", _PERIOD[period])
             .replace("{item_count}", _ITEM_COUNT[period])
+            .replace("{watchlist_schema}", _WATCHLIST_SCHEMA[period])
             .replace("{period_analysis_schema}", _PERIOD_ANALYSIS_SCHEMA[period])
             .replace("{period_analysis_requirement}",
                      _PERIOD_ANALYSIS_REQUIREMENT[period]))

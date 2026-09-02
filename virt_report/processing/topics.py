@@ -13,7 +13,7 @@ from virt_report import db
 from . import architecture, category
 
 
-RULE_VERSION = 7
+RULE_VERSION = 8
 TOPIC_RULES = (
     ("migration", "热迁移", "迁移链路、停机窗口、脏页收敛与跨主机兼容性", (
         "热迁移", "migration", "migrate", "multifd", "postcopy", "precopy",
@@ -91,6 +91,13 @@ _VIRTUAL_LIFECYCLE_RE = re.compile(
     r"\b(?:guest|vm|virtual machine|domain|qemu|kvm|libvirt|acpi|sev|tdx)\b",
     re.IGNORECASE,
 )
+_NON_VM_MIGRATION_RE = re.compile(
+    r"\bdecodetree migrations?\b|"
+    r"\bmigrations?\s+(?:to|from)\s+(?:meson|cmake|decodetree|sphinx)\b|"
+    r"\bmigrat(?:e|ing)\b.{0,80}\b(?:to|from)\s+"
+    r"(?:meson|cmake|decodetree|sphinx)\b",
+    re.IGNORECASE,
+)
 _LOW_INFORMATION_SUMMARY_RE = re.compile(
     r"^(?:v\d+\s*)?(?:系列)?(?:已获|由).*(?:reviewed-by|acked-by|取代|重发|审核|评审)",
     re.IGNORECASE,
@@ -124,12 +131,26 @@ def classify_item(item: dict) -> list[str]:
     for key, _name, _description, words in TOPIC_RULES:
         if key == "security" or not any(word in text for word in words):
             continue
+        # “decodetree migrations”“migrate to meson”等是源码或构建系统迁移，
+        # 与虚机状态迁移无关，不能仅凭裸 migration 关键词进入热迁移专题。
+        if key == "migration" and _NON_VM_MIGRATION_RE.search(text):
+            continue
         # 裸机板卡/SoC 固件启动不等同于虚机启动与生命周期。
         if (key == "lifecycle" and _BOARD_BOOT_RE.search(text)
                 and not _VIRTUAL_LIFECYCLE_RE.search(text)):
             continue
         keys.append(key)
     return keys
+
+
+def topic_links_for_item(item: dict) -> list[dict[str, str]]:
+    """Return stable public topic links for a report item."""
+    names = {key: name for key, name, _description, _words in TOPIC_RULES}
+    return [
+        {"key": key, "name": names[key]}
+        for key in classify_item(item)
+        if key in names
+    ]
 
 
 def _status(item: sqlite3.Row, raw: dict, title: str) -> str:

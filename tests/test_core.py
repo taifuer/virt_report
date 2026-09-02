@@ -70,9 +70,14 @@ def test_period_analysis_prompt_is_only_requested_for_weekly_and_monthly():
 
     assert '"period_analysis": [' not in daily
     assert "日报不得输出 period_analysis 字段" in daily
+    assert '"watchlist": [' in daily
     assert '"period_analysis": [' in weekly and "2-3 条" in weekly
+    assert '"watchlist": [' not in weekly
+    assert "周报不输出 watchlist" in weekly
     assert "100-140 个汉字" in weekly
     assert '"period_analysis": [' in monthly and "3-4 条" in monthly
+    assert '"watchlist": [' not in monthly
+    assert "月报不输出 watchlist" in monthly
     assert "140-200 个汉字" in monthly
 
 
@@ -184,6 +189,19 @@ def test_change_category_is_conservative():
 def test_operation_topic_classification_can_overlap():
     item = {"title": "Improve live migration performance with zero-copy"}
     assert topics.classify_item(item) == ["migration", "performance"]
+
+
+def test_source_code_migration_is_not_vm_migration():
+    assert "migration" not in topics.classify_item({
+        "title": ("target/ppc: PPC TCG Improvements "
+                  "(decodetree migrations + ISA flag updates)"),
+    })
+    assert "migration" not in topics.classify_item({
+        "title": "tests/tcg: migrate build definitions to meson",
+    })
+    assert "migration" in topics.classify_item({
+        "title": "migration: improve multifd switchover latency",
+    })
 
 
 def test_board_firmware_boot_is_not_vm_lifecycle():
@@ -485,11 +503,12 @@ def test_about_page_and_architecture_badge_render():
     assert "（7.6–7.12） 社区动态</h1>" not in weekly_page
     assert '<section class="report-section" id="period-analysis">' in weekly_page
     assert weekly_page.index('id="overview"') < weekly_page.index(
-        'id="period-analysis"') < weekly_page.index('id="stats"')
-    assert "技术脉络" in weekly_page and "进展：" in weekly_page
-    assert "仍在讨论：" in weekly_page and "guest_memfd 原位转换" in weekly_page
+        'id="stats"') < weekly_page.index('id="period-analysis"')
+    assert "技术脉络" not in weekly_page
+    assert "进展" in weekly_page and "本期变化：" in weekly_page
+    assert "讨论中：" in weekly_page and "guest_memfd 原位转换" in weekly_page
     assert 'href="https://trusted.example/kvm"' in weekly_page
-    assert '<a href="#period-analysis">技术脉络' in weekly_page
+    assert '<a href="#period-analysis">进展' in weekly_page
     analysis_html = weekly_page.split('id="period-analysis"', 1)[1].split(
         "</section>", 1
     )[0]
@@ -505,6 +524,43 @@ def test_about_page_and_architecture_badge_render():
     daily_page = html_render.render_report_html(Config(), daily_with_analysis)
     assert 'id="period-analysis"' not in daily_page
     assert 'href="#period-analysis"' not in daily_page
+
+
+def test_weekly_progress_replaces_duplicate_watchlist():
+    content = {
+        "period": "weekly", "period_key": "2026-W28",
+        "label": "2026 年第 28 周", "headline": "", "fallback": False,
+        "model": "test", "timezone": "Asia/Shanghai",
+        "stats": {"total_threads": 1, "total_items": 1, "ml_patches": 1,
+                  "ml_rfc": 0, "gl_issues_opened": 0, "gl_mrs_merged": 0},
+        "overview": [{"project": "KVM", "summary": "本周概览"}],
+        "watchlist": [{"project": "KVM", "topic": "重复主题",
+                       "reason": "后续值得观察。"}],
+        "period_analysis": [{
+            "topic": "重复主题", "progress": "本周已有推进。",
+            "unresolved": "接口仍在讨论。", "evidence": [],
+        }],
+        "sections": [],
+    }
+    page = html_render.render_report_html(Config(), content)
+    assert 'id="period-analysis"' in page
+    assert 'id="watchlist"' not in page
+    assert 'href="#watchlist"' not in page
+
+
+def test_report_items_link_to_matching_topics():
+    content = {
+        "period": "daily", "period_key": "2026-08-01",
+        "overview": [], "watchlist": [], "top_threads": [],
+        "sections": [{"key": "qemu", "name": "QEMU", "items": [{
+            "ref": "T001", "title": "Improve live migration with multifd",
+            "original_title": "", "architectures": [], "category": "feature",
+        }]}],
+    }
+    enriched = report.enrich_architectures(content)
+    assert enriched["sections"][0]["items"][0]["topic_links"] == [{
+        "key": "migration", "name": "热迁移",
+    }]
 
 
 def test_index_context_applies_home_report_limits(tmp_db):

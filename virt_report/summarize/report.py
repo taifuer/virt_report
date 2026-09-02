@@ -19,6 +19,7 @@ from virt_report.processing.architecture import (
     normalize_architectures,
 )
 from virt_report.processing.category import category_label, classify_change
+from virt_report.processing.topics import topic_links_for_item
 from . import llm_provider, periods, prompts
 
 log = logging.getLogger(__name__)
@@ -754,6 +755,7 @@ def enrich_architectures(content: dict) -> dict:
             item["architectures"] = normalize_architectures(architectures)
             item["category"] = category
             item["category_label"] = category_label(category)
+            item["topic_links"] = topic_links_for_item(item)
         section["items"].sort(key=lambda item: (
             focus_priority(item.get("architectures", [])),
             int((item.get("ref") or "T9999")[1:] or 9999),
