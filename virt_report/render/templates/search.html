@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pagination.html" import pagination %}
 {% block title %}搜索 - virt-report{% endblock %}
 {% block description %}搜索 QEMU、KVM、Libvirt 社区议题的中文点评与原始标题。{% endblock %}
 {% block nav_home %}{% endblock %}
@@ -14,6 +15,7 @@
   </header>
 
   <form class="search-form" action="{{ root }}search.html" method="get" role="search" data-search-form>
+    <input type="hidden" name="per_page" value="{{ result.per_page }}">
     <div class="search-query-row">
       <label class="sr-only" for="search-query">搜索关键词</label>
       <div class="search-input-wrap">
@@ -30,14 +32,13 @@
       <label><span>类型</span><select name="category"><option value="">全部</option>{% for key,label in result.categories %}<option value="{{ key }}"{% if result.category == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
       <label><span>架构</span><select name="architecture"><option value="">全部</option>{% for key,label in result.architectures %}<option value="{{ key }}"{% if result.architecture == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
       <label><span>排序</span><select name="sort">{% for key,label in result.sorts %}<option value="{{ key }}"{% if result.sort == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-      <label><span>每页</span><select name="per_page">{% for value in result.page_sizes %}<option value="{{ value }}"{% if result.per_page == value %} selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
       {% if result.query or result.project or result.category or result.architecture or result.sort != 'relevance' %}<a class="search-reset" href="{{ root }}search.html">清除</a>{% endif %}
     </div>
   </form>
 
   {% if result.error %}<div class="search-message error" role="alert">{{ result.error }}</div>
   {% elif result.query %}
-    <div class="search-result-head">
+    <div class="search-result-head paginated-list" id="search-results">
       <div><strong>{{ result.total }}</strong> 个相关议题</div>
       {% if result.expansions %}<small>同时匹配 {{ result.expansions|join('、') }}</small>{% endif %}
     </div>
@@ -57,7 +58,7 @@
         </div>
       </article>{% endfor %}
     </div>
-    {% if result.pages > 1 %}<nav class="search-pager" aria-label="搜索结果分页">{% if result.prev_url %}<a href="{{ result.prev_url }}">上一页</a>{% else %}<span>上一页</span>{% endif %}<strong>{{ result.page }} / {{ result.pages }}</strong>{% if result.next_url %}<a href="{{ result.next_url }}">下一页</a>{% else %}<span>下一页</span>{% endif %}</nav>{% endif %}
+    {{ pagination(namespace='search', page=result.page, pages=result.pages, per_page=result.per_page, prev_url=result.prev_url, next_url=result.next_url, server=true, anchor='search-results', label='搜索分页') }}
     {% else %}<div class="search-empty"><h2>没有找到相关议题</h2><p>可以减少筛选条件，或改用原始英文技术名搜索。</p></div>{% endif %}
   {% else %}
     {% if result.index.refreshed_at %}

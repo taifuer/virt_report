@@ -145,6 +145,8 @@ def _render_index(config: Config, conn) -> None:
     for stale in config.output_dir.glob("index-????-??.html"):
         stale.unlink()
     render.render_about(config)
+    from virt_report import versions
+    render.render_versions(config, versions.load_content(config))
     render.render_search(config, search_index.search(conn, ""))
     from virt_report.conferences import load_content as load_conference_content
     conference_content = load_conference_content()
@@ -323,6 +325,23 @@ def cmd_topics_refresh(args, config: Config) -> None:
         ))
     finally:
         conn.close()
+
+
+def cmd_versions_refresh(args, config: Config) -> None:
+    """Fetch official release metadata and rebuild only its offline page."""
+    from virt_report import versions
+    snapshot = (versions.load_content(config) if args.no_fetch else
+                versions.refresh(config, from_year=args.from_year))
+    content = versions.load_content(config)
+    render.render_versions(config, content)
+    count = sum(row["kind"] == "feature" for row in content["releases"])
+    print(f"版本快照已更新：{count} 个正式功能版本")
+    if args.update_bundled:
+        print(f"公开基线已更新：{versions.export_public_snapshot(config)}")
+    failed = [name for name, status in snapshot["sources"].items()
+              if not status["ok"] and not args.no_fetch]
+    if failed:
+        raise RuntimeError("部分版本源更新失败，已保留历史记录：" + ", ".join(failed))
 
 
 def cmd_search_refresh(args, config: Config) -> None:
@@ -527,6 +546,10 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("index", help="导出完整静态站点快照")
     sub.add_parser("topics-refresh", help="离线重建专题数据快照")
+    p_versions = sub.add_parser("versions-refresh", help="更新官方版本记录与时间线快照")
+    p_versions.add_argument("--from-year", type=int, default=2003, help="起始年份（默认 2003）")
+    p_versions.add_argument("--no-fetch", action="store_true", help="仅用离线版本数据重新渲染")
+    p_versions.add_argument("--update-bundled", action="store_true", help="维护者手动更新仓库内公开版本基线")
     sub.add_parser("search-refresh", help="离线重建社区议题搜索索引")
     sub.add_parser("status", help="显示数据源覆盖与最近采集健康状态")
     p_serve = sub.add_parser("serve", help="启动数据库驱动的 Web 服务")
@@ -586,6 +609,7 @@ def main(argv: list[str] | None = None) -> int:
     dispatch = {"fetch": cmd_fetch, "daily": cmd_daily, "weekly": cmd_weekly,
                 "monthly": cmd_monthly, "index": cmd_index, "status": cmd_status,
                 "topics-refresh": cmd_topics_refresh,
+                "versions-refresh": cmd_versions_refresh,
                 "search-refresh": cmd_search_refresh,
                 "backfill-kvm": cmd_backfill_kvm, "serve": cmd_serve,
                 "scheduler": cmd_scheduler, "kvm-forum": cmd_kvm_forum,

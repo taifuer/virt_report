@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import pagination %}
+{% block title %}版本 - virt-report{% endblock %}
+{% block description %}QEMU、KVM 与 Libvirt 的历史版本时间线、发布要点与官方记录。{% endblock %}
+{% block nav_home %}{% endblock %}
+{% block content %}
+<article class="versions-page">
+  <header class="versions-header">
+    <div class="kicker">Release Timeline</div>
+    <h1>版本</h1>
+    <p>QEMU、KVM 与 Libvirt 的历史发布记录。KVM 随 Linux 内核发布，以对应内核版本标注。</p>
+  </header>
+  <div class="version-latest" aria-label="最新功能版本">
+    <span class="version-latest-label">最新功能版本</span>
+    {% for item in content.latest if item %}<a href="#release-{{ item.project }}-{{ item.version }}" data-version-jump><strong>{{ item.project_label }}</strong><span>{{ 'Linux ' if item.project == 'kvm' else '' }}{{ item.version }}</span><time datetime="{{ item.released_on }}">{{ item.released_on }}</time></a>{% endfor %}
+  </div>
+  <div data-version-browser data-view="compact" data-default-project="{{ content.default_project }}">
+    <div class="version-controls" id="version-list">
+      <label for="version-project">项目<select id="version-project" data-version-project><option value="">全部项目</option>{% for key, name in content.projects.items() %}<option value="{{ key }}"{% if key == content.default_project %} selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
+      <label for="version-year">年份<select id="version-year" data-version-year><option value="">全部年份</option>{% for year in content.years %}<option value="{{ year }}">{{ year }}</option>{% endfor %}</select></label>
+      <div class="version-view" role="group" aria-label="时间线视图"><button type="button" data-version-view="compact" aria-pressed="true">精简</button><button type="button" data-version-view="detailed" aria-pressed="false">详细</button></div>
+      <span class="version-result-count" data-version-count role="status">{{ content.initial_count }} 个功能版本</span>
+    </div>
+    <p class="version-view-note" data-version-help>精简显示所选范围内全部功能版本；切换详细视图可查看发布要点与相关统计。</p>
+    <div class="version-timeline">
+      {% for group in content.year_groups %}
+      <section class="version-year" data-version-group id="year-{{ group.year }}" aria-labelledby="year-title-{{ group.year }}"{% if not group.initial_count %} hidden{% endif %}>
+        <details class="version-year-disclosure" data-version-disclosure open>
+        <summary><h2 id="year-title-{{ group.year }}">{{ group.year }}<span data-version-year-count>{{ group.initial_count }} 个版本</span><svg class="version-year-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 8 5 5 5-5"/></svg></h2></summary>
+        <ol>
+          {% for item in group.releases %}
+          <li class="version-entry" id="release-{{ item.project }}-{{ item.version }}" data-version-item data-project="{{ item.project }}" data-year="{{ item.year }}"{% if item.project != content.default_project %} hidden{% endif %}>
+            <time class="version-date" datetime="{{ item.released_on }}">{{ item.released_on }}</time>
+            <div class="version-body">
+              <div class="version-heading"><h3><span class="version-project">{{ item.project_label }}</span><span>{{ 'Linux ' if item.project == 'kvm' else '' }}{{ item.version }}</span></h3><a class="version-source" href="{{ item.source_url }}" target="_blank" rel="noopener noreferrer">{{ '发布标签' if item.date_source == 'release_tag' else '发布公告' }}</a></div>
+              <div class="version-detail">
+                {% if item.notes %}<ul class="version-notes">{% for note in item.notes %}<li>{{ note }}</li>{% endfor %}</ul>{% elif item.highlights %}<ul class="version-notes version-original" lang="en" aria-label="官方要点原文">{% for note in item.highlights %}<li>{{ note }}</li>{% endfor %}</ul>{% else %}<p class="version-note-empty">已核验版本与日期，详细变更请查看官方记录。</p>{% endif %}
+                {% if item.commits or item.contributors or item.note_source_url != item.source_url %}<div class="version-meta">
+                  {% if item.commits %}<span>{{ item.commits }}{{ '+' if item.commits_approximate else '' }} 次提交</span>{% endif %}{% if item.contributors %}<span>{{ item.contributors }} 位贡献者</span>{% endif %}
+                  {% if item.note_source_url != item.source_url %}<a href="{{ item.note_source_url }}" target="_blank" rel="noopener noreferrer">{{ 'KVM 合并说明' if item.project == 'kvm' else '发布要点来源' }}</a>{% endif %}
+                </div>{% endif %}
+              </div>
+            </div>
+          </li>
+          {% endfor %}
+        </ol>
+        </details>
+      </section>
+      {% endfor %}
+    </div>
+    <p class="empty" data-version-empty{% if content.initial_count %} hidden{% endif %}>当前筛选下没有版本记录，可选择其他年份或项目。</p>
+    {{ pagination(namespace='version', pages=content.initial_pages, label='版本分页', hidden=true) }}
+  </div>
+  <div class="version-sources">
+    <p>两种视图均展示正式功能版本，不仅限于整数大版本；不列出维护补丁及 RC。{% if content.checked_at %}最近检查：{{ content.checked_at[:10] }}。{% endif %}</p>
+    <p>{% for item in content.coverage %}{{ item.name }} 自 {{ item.year }} 年起{{ '；' if not loop.last else '。' }}{% endfor %}日期来自官方公告或带日期的发布标签；早期缺乏可核验日期的版本暂不列出。</p>
+    <p>提交与贡献者数量仅在官方提供时显示，不等同于代码行数；KVM 随内核发布，不代表每个版本均有 KVM 功能变更。</p>
+    <p><span>官方完整版本记录：</span><a href="https://gitlab.com/qemu-project/qemu/-/tags" target="_blank" rel="noopener noreferrer">QEMU</a><a href="https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux/+refs" target="_blank" rel="noopener noreferrer">KVM / Linux</a><a href="https://gitlab.com/libvirt/libvirt/-/tags?search=%5Ev" target="_blank" rel="noopener noreferrer">Libvirt</a></p>
+  </div>
+</article>
+{% endblock %}

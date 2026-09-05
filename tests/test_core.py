@@ -417,8 +417,18 @@ def test_about_page_and_architecture_badge_render():
     assert 'href="https://api-docs.deepseek.com/zh-cn/updates/"' in about
     assert 'href="mailto:taifu@taifua.com"' in about
     assert "摘要偏差、分类错误、链接失效或其他问题" in about
-    assert "线上站点使用百度统计了解总体访问情况" in about
-    assert "项目源码及自行部署默认不包含访问统计" in about
+    assert "线上站点使用百度统计了解总体访问情况" not in about
+    assert "项目源码及自行部署默认不包含访问统计" not in about
+    actions = about.split('<nav class="about-actions"', 1)[1].split("</nav>", 1)[0]
+    assert 'href="topics.html">查看专题</a>' in actions
+    assert 'href="conferences.html">查看会议</a>' in actions
+    assert 'href="versions.html">查看版本</a>' in actions
+    assert about.index('class="about-contact"') < about.index('class="about-actions"') < about.index('class="about-sections"')
+    assert "<h2>版本记录</h2>" not in about
+    latest_update = about.split('<li class="update-item">', 1)[1].split("</li>", 1)[0]
+    assert "<span>版本时间线</span>" in latest_update
+    assert "历史功能版本、发布时间与发布要点" in latest_update
+    assert "报告目录" not in latest_update and "<a " not in latest_update
     assert "收录会议" in about and "USENIX Security" in about
     assert "关注会议" not in about
     assert about.index("会议内容扩展") < about.index("AI 模型更新")
@@ -619,6 +629,8 @@ def test_home_has_daily_weekly_monthly_archive_tabs():
     assert "daily/index.html" in page
     assert "topics.html" in page
     assert page.count("data-home-report-tab=") == 3
+    assert "home-version-link" not in page
+    assert 'href="versions.html"' not in page
 
 
 def test_archive_and_topic_pages_render(tmp_db):
@@ -738,7 +750,8 @@ def test_report_generated_date_uses_site_timezone():
     assert "background-position:right 11px center" in css
     assert "select:not([multiple]):focus-visible{border-color:var(--brand)" in css
     assert "select:not([multiple]):disabled{background-color:var(--surface-2)" in css
-    assert "select:not([multiple]),.pager button,.conference-pager button{min-height:42px}" in css
+    assert "select:not([multiple]){min-height:42px}" in css
+    assert ".pagination .pagination-button{min-height:42px}" in css
     assert (f'<link rel="stylesheet" href="assets/site.css?v='
             f'{html_render.ASSET_VERSION}">') in home
     assert (f'<script src="assets/site.js?v={html_render.ASSET_VERSION}"></script>'
@@ -812,7 +825,8 @@ def test_archive_and_topic_detail_offer_pagination_over_ten_items(tmp_db):
         "model": "test", "generated_at": "2026-07-14T00:00:00Z",
     } for day in range(1, 12)]
     archive = html_render.render_archive_html(Config(), "daily", reports)
-    assert '<div data-pager data-default-size="10"><div class="archive-table">' in archive
+    assert 'data-pager data-default-size="10"><div class="archive-table">' in archive
+    assert 'class="pagination"' in archive
     assert archive.count("data-page-item href") == 11
     assert archive.count("data-page-item href=\"2026-07-") == 11
     assert archive.count(" hidden") == 1
@@ -837,7 +851,9 @@ def test_archive_and_topic_detail_offer_pagination_over_ten_items(tmp_db):
     detail_page = html_render.render_topic_detail_html(Config(), detail)
     assert "<title>热迁移 - virt-report</title>" in detail_page
     assert "2 / 2" in detail_page
-    assert 'class="on" href="?scope=curated&sort=priority&per_page=10">10</a>' in detail_page
+    assert 'data-pagination-server data-pagination-anchor="topic-list"' in detail_page
+    assert '<option value="10" selected>10</option>' in detail_page
+    assert 'page=1#topic-list">上一页</a>' in detail_page
 
     default_detail = topics.build_topic_detail(tmp_db, "migration")
     assert default_detail["per_page"] == 10
@@ -921,7 +937,7 @@ def test_topic_mobile_layout_wraps_controls_and_long_titles():
 
 def test_report_mobile_layout_prevents_long_content_overflow():
     css = _site_css()
-    assert "html{max-width:100%;overflow-x:hidden" in css
+    assert "html{max-width:100%;overflow-x:clip" in css
     assert ".report-layout{display:grid;min-width:0;max-width:100%" in css
     assert ".d-title{min-width:0;overflow-wrap:anywhere" in css
     assert ".d-sum,.dyn details,.dyn details span{min-width:0;max-width:100%;overflow-wrap:anywhere" in css
@@ -1251,12 +1267,12 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert "conference-papers.html?year=2025" not in papers
 
     assets = (html_render.ASSETS_DIR / "site.js").read_text(encoding="utf-8")
-    assert "new URLSearchParams(window.location.search)" in assets
+    assert "new URLSearchParams(location.search)" in assets
     assert "matching.length" in assets and "篇论文" in assets
     assert "facetCounts(venue,'venue','year',year.value)" in assets
     assert "facetCounts(year,'year','venue',venue.value)" in assets
     assert "option.disabled=" in assets and "optionCount===0" in assets
-    assert "window.history.replaceState" in assets
+    assert "history.replaceState" in assets
     assert "url.searchParams.set" in assets and "url.searchParams.delete" in assets
     assert "[hidden]{display:none!important}" in _site_css()
 

@@ -207,6 +207,44 @@ def render_search(config: Config, result: dict, filename: str = "search.html") -
     return out
 
 
+def render_versions_html(config: Config, content: dict) -> str:
+    """Display feature releases only, without mutating the stored snapshot."""
+    prepared = dict(content)
+    releases = [row for row in content["releases"] if row["kind"] == "feature"]
+    releases.sort(key=lambda row: (row["released_on"], row["project"]), reverse=True)
+    prepared["releases"] = releases
+    prepared["default_project"] = "qemu"
+    prepared["years"] = sorted({row["year"] for row in releases}, reverse=True)
+    prepared["year_groups"] = [
+        {"year": year, "releases": [row for row in releases if row["year"] == year],
+         "initial_count": sum(row["year"] == year and row["project"] == prepared["default_project"]
+                              for row in releases)}
+        for year in prepared["years"]
+    ]
+    prepared["initial_count"] = sum(row["project"] == prepared["default_project"] for row in releases)
+    prepared["initial_pages"] = max(1, (prepared["initial_count"] + 9) // 10)
+    prepared["coverage"] = [
+        {"name": name, "year": min((row["year"] for row in releases
+                                   if row["project"] == project), default="—")}
+        for project, name in content["projects"].items()
+    ]
+    prepared["latest"] = [next((row for row in releases
+                                 if row["project"] == project
+                                 and row["kind"] == "feature"), None)
+                          for project in content["projects"]]
+    return _env().get_template("versions.html").render(
+        content=prepared, root="", site_name=config.name,
+    )
+
+
+def render_versions(config: Config, content: dict) -> Path:
+    """Export only the version timeline, without rebuilding other pages."""
+    out = config.output_dir / "versions.html"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(render_versions_html(config, content), encoding="utf-8")
+    return out
+
+
 def render_search_html(config: Config, result: dict) -> str:
     """渲染社区议题搜索页。"""
     from urllib.parse import urlencode
@@ -228,7 +266,7 @@ def render_search_html(config: Config, result: dict) -> str:
         return "search.html?" + urlencode({
             key: value for key, value in values.items()
             if value not in ("", None)
-        })
+        }) + "#search-results"
 
     prepared["prev_url"] = (
         page_url(prepared["page"] - 1) if prepared.get("page", 1) > 1 else ""

@@ -1,0 +1,14 @@
+{% macro pagination(namespace='page', page=1, pages=1, per_page=10, prev_url='', next_url='', server=false, anchor='', label='列表分页', hidden=false) -%}
+<nav class="pagination" aria-label="{{ label }}" data-{{ namespace }}-controls{% if server %} data-pagination-server data-pagination-anchor="{{ anchor }}"{% endif %}{% if hidden %} hidden{% endif %}>
+  <label class="pagination-size">每页<select data-{{ namespace }}-size{% if server %} data-pagination-size{% endif %} aria-label="每页数量">{% for size in (10,20,30) %}<option value="{{ size }}"{% if size == per_page %} selected{% endif %}>{{ size }}</option>{% endfor %}</select>条</label>
+  <div class="pagination-nav">
+    {% if server %}
+      {% if prev_url %}<a class="pagination-button" href="{{ prev_url }}">上一页</a>{% else %}<span class="pagination-button" aria-disabled="true">上一页</span>{% endif %}
+    {% else %}<button class="pagination-button" type="button" data-{{ namespace }}-prev{% if page <= 1 %} disabled{% endif %}>上一页</button>{% endif %}
+    <span class="pagination-status" data-{{ namespace }}-status aria-live="polite" aria-atomic="true">{{ page }} / {{ pages }}</span>
+    {% if server %}
+      {% if next_url %}<a class="pagination-button" href="{{ next_url }}">下一页</a>{% else %}<span class="pagination-button" aria-disabled="true">下一页</span>{% endif %}
+    {% else %}<button class="pagination-button" type="button" data-{{ namespace }}-next{% if page >= pages %} disabled{% endif %}>下一页</button>{% endif %}
+  </div>
+</nav>
+{%- endmacro %}

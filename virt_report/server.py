@@ -389,6 +389,12 @@ def make_handler(config: Config):
             if path in ("/about", "/about/", "/about.html"):
                 self._send(200, render.render_about_html(config), head_only)
                 return
+            if path in ("/versions", "/versions/", "/versions.html"):
+                from virt_report.versions import load_content
+                self._send(200, render.render_versions_html(
+                    config, load_content(config)
+                ), head_only)
+                return
             if path in ("/conferences", "/conferences/", "/conferences.html"):
                 from virt_report.conferences import load_content
                 self._send(200, render.render_conferences_html(

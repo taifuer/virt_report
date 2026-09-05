@@ -72,6 +72,7 @@ class Schedule:
     weekly_cron: str = "25 0 * * 1"
     monthly_cron: str = "35 0 1 * *"
     backup_cron: str = "5 1 * * *"
+    versions_cron: str = "35 3 * * *"
     backup_keep_days: int = 7
     job_timeout_seconds: int = 3600
     retry_limit: int = 3

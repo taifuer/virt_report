@@ -56,6 +56,7 @@ def scheduled_commands(config: Config, now: datetime) -> list[tuple[str, list[st
     jobs: list[tuple[str, str, list[str]]] = [
         ("fetch", config.schedule.fetch_cron,
          ["fetch", "--since-days", "4", "--max-pages", "8"]),
+        ("versions", config.schedule.versions_cron, ["versions-refresh"]),
         ("daily", config.schedule.daily_cron, [
             "daily", periods.period_key_for("daily", now - timedelta(days=1)),
             "--no-fetch", "--require-ai",
@@ -213,7 +214,7 @@ def _run_loop(config: Config, config_path: str | None, timezone: ZoneInfo,
         exported_report = False
         cycle_identities: set[str] = set()
         for name, command, scheduled_at in jobs:
-            identity = (f"fetch:{scheduled_at.isoformat()}" if name == "fetch"
+            identity = (f"{name}:{scheduled_at.isoformat()}" if name in {"fetch", "versions"}
                         else f"{name}:{command[1]}")
             # 重启补跑与持久化重试可能指向同一报告；同一轮只执行一次，并尊重等待期。
             if identity in cycle_identities:

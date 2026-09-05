@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pagination.html" import pagination %}
 {% block title %}相关论文 - virt-report{% endblock %}
 {% block description %}系统领域学术会议中的虚拟化相关论文列表。{% endblock %}
 {% block nav_home %}{% endblock %}
@@ -13,7 +14,7 @@
       <span data-conference-count aria-live="polite" aria-atomic="true">{{ content.paper_count }} 篇论文</span>
     </div>
     <p class="conference-empty" data-conference-empty hidden>当前筛选条件下没有已审核论文。</p>
-    <div class="paper-list">{% for paper in content.papers %}<article class="paper-row" data-conference-item data-venue="{{ paper.venue }}" data-year="{{ paper.year }}"{% if loop.index > 10 %} hidden{% endif %}>
+    <div class="paper-list paginated-list" id="paper-list">{% for paper in content.papers %}<article class="paper-row" data-conference-item data-venue="{{ paper.venue }}" data-year="{{ paper.year }}"{% if loop.index > 10 %} hidden{% endif %}>
       <div class="paper-meta"><span>{{ paper.year }}</span><strong>{{ venues_by_key[paper.venue].name }}</strong><span class="relation {{ 'direct' if paper.relation == '直接关联' else '' }}">{{ paper.relation }}</span></div>
       <div class="paper-body"><h2><a href="{{ paper.url }}" target="_blank" rel="noopener noreferrer">{{ paper.title }}</a></h2>
         {% if paper.institution_label %}<div class="paper-credit"{% if paper.affiliation_source_label %} title="单位元数据来源：{{ paper.affiliation_source_label }}{% if paper.affiliation_verified_at %}；核验时间：{{ paper.affiliation_verified_at }}{% endif %}"{% endif %}><strong>单位</strong><div class="paper-credit-content"><span>{{ paper.institution_label }}</span>{% if paper.institution_hidden %}<details class="paper-credit-more"><summary>另 {{ paper.institution_hidden|length }} 家单位</summary><span>{{ paper.institution_hidden_label }}</span></details>{% endif %}</div></div>{% endif %}
@@ -21,7 +22,7 @@
         <div class="paper-tags">{% if paper.representative %}<span class="tag representative">代表性论文</span>{% endif %}{% for architecture in paper.architectures %}<span class="tag arch{% if architecture in ['x86', 'Arm'] %} focus{% endif %}">{{ architecture }}</span>{% endfor %}{% for topic in paper.topics %}<span class="tag">{{ topic }}</span>{% endfor %}</div>
       </div>
     </article>{% endfor %}</div>
-    <div class="conference-pager" data-conference-pager><button type="button" data-conference-prev>上一页</button><strong data-conference-status aria-live="polite" aria-atomic="true">1 / 1</strong><button type="button" data-conference-next>下一页</button><label>每页<select data-conference-size><option value="10">10</option><option value="20">20</option><option value="30">30</option></select></label></div>
+    {{ pagination(namespace='conference', pages=([1, (content.paper_count + 9) // 10]|max), label='论文分页') }}
   </section>
 </article>
 {% endblock %}
