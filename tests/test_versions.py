@@ -383,3 +383,59 @@ def test_partial_refresh_exposes_failures_without_losing_new_rows(tmp_path, monk
 def test_version_refresh_is_a_separate_daily_scheduler_job():
     now = datetime(2026, 9, 5, 3, 35, tzinfo=ZoneInfo("Asia/Shanghai"))
     assert scheduler.scheduled_commands(Config(), now) == [("versions", ["versions-refresh"])]
+
+
+def test_kernel_github_tag_uses_verified_tagger_date():
+    tag = {"tag": "v7.2", "message": "Linux 7.2\nSigned release", "object": {"type": "commit"},
+           "tagger": {"date": "2026-08-16T21:32:00Z"}}
+    row = versions.parse_kernel_github_tag(tag, "7.2")
+    assert row["released_on"] == "2026-08-16"
+    assert row["date_source"] == "release_tag"
+    with pytest.raises(ValueError):
+        versions.parse_kernel_github_tag(dict(tag, message="Fix KVM crash"), "7.2")
+    with pytest.raises(ValueError):
+        versions.parse_kernel_github_tag(dict(tag, tag="v7.3"), "7.2")
+    with pytest.raises(ValueError):
+        versions.parse_kernel_github_tag(dict(tag, tagger={"date": "2026-08-16"}), "7.2")
+
+
+@pytest.mark.parametrize("missing_tag", [False, True])
+def test_kernel_fallback_preserves_history_and_records_partial_failures(missing_tag):
+    calls = []
+    old = dict(record("kvm", "6.12", "2024-11-17"), highlights=["KVM verified note"])
+
+    class Cache:
+        def get(self, url, **kwargs):
+            calls.append(url)
+            if url == versions.KERNEL_TAGS:
+                raise ConnectionError("Mirror unreachable")
+            if "matching-refs" in url:
+                return json.dumps([{"ref": "refs/tags/v" + version,
+                                    "object": {"type": "tag", "sha": "a" * 40}}
+                                   for version in ("6.12", "7.2", "7.3-rc1")])
+            if url == versions.KERNEL_RELEASES:
+                return json.dumps({"releases": [
+                    {"version": "7.2.3", "released": {"isodate": "2026-09-02"},
+                     "gitweb": "https://git.kernel.org/stable/h/v7.2.3"},
+                    {"version": "7.3-rc1"}, {"version": "next-20260904"},
+                ]})
+            if missing_tag:
+                raise ConnectionError("Tag unavailable")
+            return json.dumps({"tag": "v7.2", "message": "Linux 7.2", "object": {"type": "commit"},
+                               "tagger": {"date": "2026-08-16T21:32:00Z"}})
+
+    result = versions.fetch_project("kvm", Cache(), 2003, date(2026, 9, 5), {"6.12": old})
+    assert next(row for row in result if row["version"] == "6.12") == old
+    assert {row["version"] for row in result} == ({"6.12", "7.2.3"} if missing_tag else {"6.12", "7.2", "7.2.3"})
+    assert result.failed_versions == (["7.2"] if missing_tag else [])
+    assert len([url for url in calls if url.startswith(versions.KERNEL_GITHUB + "tags/")]) == 1
+
+
+@pytest.mark.parametrize("invalid", [[], {"message": "API rate limit exceeded"}])
+def test_kernel_fallback_does_not_report_success_for_invalid_index(invalid):
+    class Cache:
+        def get(self, _url, **_kwargs):
+            return json.dumps(invalid)
+
+    with pytest.raises(ValueError):
+        versions.fetch_kernel_fallback(Cache(), {}, date(2026, 9, 5))

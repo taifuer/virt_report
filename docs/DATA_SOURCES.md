@@ -45,6 +45,9 @@ GitLab 活动使用 `updated_after` 一类的精确时间窗口，并保留创�
   官方 stable 标签索引用于发现版本，日期读取 `kernel.googlesource.com` 上的
   annotated release tag，不使用压缩包修改时间。离线数据保留各分支最新维护版，
   页面只展示功能版本，不将内核的全部维护更新表述为 KVM 更新。
+  服务器无法连接 Google 镜像时，改用 kernel.org 官方发布清单与
+  Torvalds 官方 GitHub 仓库的 annotated tags，沿用已核验历史日期和要点，
+  只读取缺失功能版本的标签日期；不克隆内核仓库，不使用提交时间代替发布日期。
 - KVM 要点引用维护者的合并标签或主线合并提交说明；缺少可用说明时只提供
   已核验的发布日期与原始链接。合并说明不代表后续修复的完整清单。
 

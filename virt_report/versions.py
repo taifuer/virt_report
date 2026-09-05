@@ -30,6 +30,8 @@ QEMU_ARCHIVE = "https://www.qemu.org/blog/category/releases/index.html"
 LIBVIRT_NEWS = "https://libvirt.org/news.html"
 KERNEL_MIRROR = "https://kernel.googlesource.com/pub/scm/"
 KERNEL_TAGS = KERNEL_MIRROR + "linux/kernel/git/stable/linux/+refs/tags?format=JSON"
+KERNEL_RELEASES = "https://www.kernel.org/releases.json"
+KERNEL_GITHUB = "https://api.github.com/repos/torvalds/linux/git/"
 GITLAB_REPOS = {"qemu": "qemu-project/qemu", "libvirt": "libvirt/libvirt"}
 VERSION_RE = re.compile(r"\d+\.\d+(?:\.\d+){0,2}\Z")
 FOCUS = re.compile(r"migration|migrat|snapshot|hotplug|performance|iothread|"
@@ -424,6 +426,70 @@ def kernel_versions(refs: dict) -> list[str]:
                   key=lambda version: tuple(map(int, version.split("."))), reverse=True)
 
 
+def parse_kernel_github_tag(tag: dict, version: str) -> dict:
+    """Verify an annotated Torvalds release tag; never use its commit date."""
+    identity = rf"Linux v?{re.escape(version)}(?:\s|$)"
+    if (tag.get("tag") != f"v{version}" or tag.get("object", {}).get("type") != "commit"
+            or not re.match(identity, tag.get("message", ""), re.I)):
+        raise ValueError(f"Linux {version} 官方仓库发布标签无法核验")
+    stamp = datetime.fromisoformat(tag["tagger"]["date"].replace("Z", "+00:00"))
+    if stamp.tzinfo is None:
+        raise ValueError("发布标签缺少时区")
+    return _record("kvm", version, stamp.date().isoformat(),
+                   f"https://github.com/torvalds/linux/releases/tag/v{version}",
+                   date_source="release_tag", released_at=stamp.astimezone(timezone.utc).isoformat())
+
+
+def fetch_kernel_fallback(cache: SourceCache, existing: dict[str, dict], today: date) -> list[dict]:
+    """Use independent official endpoints when the Gitiles mirror is unreachable."""
+    refs = json.loads(cache.get(KERNEL_GITHUB + "matching-refs/tags/v"))
+    if not isinstance(refs, list):
+        raise ValueError("Torvalds 官方仓库未返回标签清单")
+    features = {version: row.get("object", {}) for row in refs
+                if (version := row.get("ref", "").removeprefix("refs/tags/v"))
+                and release_family("kvm", version) == version}
+    if not features:
+        raise ValueError("Torvalds 官方仓库未返回正式功能版本")
+    current = json.loads(cache.get(KERNEL_RELEASES)).get("releases", [])
+    records = {version: dict(row) for version, row in existing.items()}
+    current_count = 0
+    for release in current:
+        version = release.get("version", "")
+        if release_family("kvm", version) is None:
+            continue  # RC and linux-next are not formal releases.
+        url = release.get("gitweb", "")
+        if urlsplit(url).hostname != "git.kernel.org":
+            raise ValueError("kernel.org 发布清单缺少官方记录链接")
+        row = _record("kvm", version, release["released"]["isodate"], url)
+        if _valid(row, today):
+            records.setdefault(version, row)
+            current_count += 1
+    if not current_count:
+        raise ValueError("kernel.org 发布清单未返回有效版本")
+
+    def read_tag(version: str) -> dict:
+        tag = features[version]
+        if tag.get("type") != "tag" or not re.fullmatch(r"[a-f0-9]{40}", tag.get("sha", "")):
+            raise ValueError("正式版本缺少 annotated tag")
+        payload = json.loads(cache.get(KERNEL_GITHUB + "tags/" + tag["sha"], immutable=True))
+        return parse_kernel_github_tag(payload, version)
+
+    batch = ReleaseBatch()
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {pool.submit(read_tag, version): version
+                   for version in features if version not in records}
+        for future in as_completed(futures):
+            try:
+                row = future.result()
+                if _valid(row, today):
+                    records[row["version"]] = row
+            except Exception:
+                batch.failed_versions.append(futures[future])
+                log.warning("Linux %s 备用发布标签暂未取得，保留已有记录", futures[future])
+    batch.extend(records.values())
+    return batch
+
+
 def fetch_project(project: str, cache: SourceCache, since_year: int,
                   today: date, existing: dict[str, dict]) -> list[dict]:
     if project in GITLAB_REPOS:
@@ -462,7 +528,13 @@ def fetch_project(project: str, cache: SourceCache, since_year: int,
                     log.warning("QEMU %s 发布要点暂未取得", record["version"])
         return list(records.values())
 
-    stable_refs = json.loads(cache.get(KERNEL_TAGS).removeprefix(")]}'\n"))
+    try:
+        stable_refs = json.loads(cache.get(KERNEL_TAGS).removeprefix(")]}'\n"))
+        if not isinstance(stable_refs, dict) or not kernel_versions(stable_refs):
+            raise ValueError("Linux 标签索引未返回正式版本")
+    except Exception:
+        log.info("Linux Gitiles 镜像不可用，改用 kernel.org 发布清单和 Torvalds 官方仓库")
+        return fetch_kernel_fallback(cache, existing, today)
     try:
         refs_text = cache.get(KERNEL_MIRROR + "virt/kvm/kvm/+refs/tags?format=JSON")
         refs = json.loads(refs_text.removeprefix(")]}'\n"))
