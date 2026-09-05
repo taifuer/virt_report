@@ -17,6 +17,7 @@ log = logging.getLogger(__name__)
 CONTENT_DIR = Path(__file__).parent / "content"
 TITLES_PATH = CONTENT_DIR / "kvm_forum_titles.json"
 ANALYSIS_PATH = CONTENT_DIR / "kvm_forum_analysis.json"
+PREVIEW_PATH = CONTENT_DIR / "kvm_forum_preview.json"
 YEARS = range(2010, 2026)
 WIKI_YEARS = {2011, 2012, 2013, 2014, 2015, 2017}
 _NON_TOPIC_RE = re.compile(
@@ -268,12 +269,20 @@ def analyze(config: Config, editions: list[dict]) -> dict:
 
 
 def load_content() -> tuple[list[dict], dict]:
-    """读取已提交的标题证据与 AI 分析。"""
+    """读取历史点评及独立维护的会前预览，不在页面请求中采集或调用模型。"""
     titles = json.loads(TITLES_PATH.read_text(encoding="utf-8"))["editions"]
     analysis = json.loads(ANALYSIS_PATH.read_text(encoding="utf-8"))
     by_year = {item["year"]: item for item in analysis.get("years", [])}
     for edition in titles:
         edition["analysis"] = by_year.get(edition["year"], {})
+    if PREVIEW_PATH.exists():
+        preview = json.loads(PREVIEW_PATH.read_text(encoding="utf-8"))
+        if preview["year"] not in {item["year"] for item in titles}:
+            preview["titles"] = [item["title"] for item in preview["talks"]]
+            preview["selected_talks"] = [item for item in preview["talks"]
+                                         if item["url"] in preview["selected_urls"]]
+            titles.append(preview)
+    titles.sort(key=lambda item: item["year"])
     return titles, analysis
 
 

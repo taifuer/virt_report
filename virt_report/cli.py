@@ -436,6 +436,17 @@ def cmd_kvm_forum(args, config: Config) -> None:
     print(f"KVM Forum 2010—2025 分析已生成（{analysis['model']}）")
 
 
+def cmd_conference_check(args, config: Config) -> None:
+    """Check configured official lists without changing published content."""
+    from virt_report.conference_watch import check_updates
+
+    output = Path(config.db_path).parent / "conference-checks.json"
+    result = check_updates(output, venues=args.venue, year=args.year)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    if any(item["status"] == "error" for item in result["sources"]):
+        raise RuntimeError("部分会议来源核对失败；保留上次成功结果，请查看核对报告")
+
+
 def cmd_conference_catalog(args, config: Config) -> None:
     """Refresh the local full-title catalogue and show review candidates."""
     from virt_report import conferences
@@ -558,6 +569,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("scheduler", help="启动自动采集与周期报告调度器")
     p_forum = sub.add_parser("kvm-forum", help="生成 KVM Forum 年度主题分析")
     p_forum.add_argument("--no-fetch", action="store_true", help="复用已保存的标题数据")
+    p_check = sub.add_parser(
+        "conference-check", help="核对官方录用名单增量，仅保存待审核报告，不发布"
+    )
+    p_check.add_argument("--venue", action="append", help="限定已配置的会议，可重复")
+    p_check.add_argument("--year", type=int, help="限定核对年份")
     p_catalog = sub.add_parser(
         "conference-catalog", help="采集学术会议标题元数据并列出待审核候选"
     )
@@ -614,6 +630,7 @@ def main(argv: list[str] | None = None) -> int:
                 "backfill-kvm": cmd_backfill_kvm, "serve": cmd_serve,
                 "scheduler": cmd_scheduler, "kvm-forum": cmd_kvm_forum,
                 "conference-catalog": cmd_conference_catalog,
+                "conference-check": cmd_conference_check,
                 "backup": cmd_backup, "restore": cmd_restore}
     try:
         dispatch[args.cmd](args, config)

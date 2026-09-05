@@ -425,6 +425,7 @@ def test_about_page_and_architecture_badge_render():
     assert 'href="versions.html">查看版本</a>' in actions
     assert about.index('class="about-contact"') < about.index('class="about-actions"') < about.index('class="about-sections"')
     assert "<h2>版本记录</h2>" not in about
+    assert "会议内容与检索" not in about
     latest_update = about.split('<li class="update-item">', 1)[1].split("</li>", 1)[0]
     assert "<span>版本时间线</span>" in latest_update
     assert "历史功能版本、发布时间与发布要点" in latest_update
@@ -1172,6 +1173,10 @@ def test_kvm_forum_renders_newest_first_with_source_links():
     assert page.index('id="year-2025"') < page.index('id="year-2010"')
     assert page.index("2022—2025") < page.index("2010—2013")
     assert "查看 2025 年原始议程" in page
+    for edition in editions:
+        assert f'<h2>{edition["year"]}</h2>' in page
+        assert page.count(f'href="{edition["url"]}"') == 1
+    assert "年份和每年末尾的链接" not in page
     assert 'class="era-years"' in page and 'class="era-name"' in page
     assert "1 个议题" in page and "个标题" not in page
     assert "查看长期演进概述" not in page
@@ -1203,14 +1208,14 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert "<title>会议 - virt-report</title>" in page
     assert '<div class="kicker">Conference Archive</div>' in page
     assert "学术会议" in page and "academic-conferences.html" in page
-    assert '<div><h2>KVM Forum</h2><span class="guide-range">2010—2025</span></div>' in page
+    assert '<div><h2>KVM Forum</h2><span class="guide-range">2010—2026</span></div>' in page
     assert (f'<div><h2>学术会议</h2><span class="guide-range">'
             f'{content["analysis"]["coverage"]}</span></div>') in page
     assert 'href="kvm-forum.html">查看技术演进</a>' in page
     assert 'href="conference-papers.html">查看相关论文</a>' in page
     assert (f'跨 {len(content["academic_venues"])} 个系统会议收录 '
             f'{content["paper_count"]} 篇虚拟化相关论文') in page
-    assert '<section class="conference-sources"><h2>收录学术会议</h2>' in page
+    assert '<section class="conference-sources" id="conference-sources"><h2>收录学术会议</h2>' in page
     for venue in content["academic_venues"]:
         assert (f'href="conference-papers.html?venue={venue["key"]}">'
                 f'{venue["paper_count"]} 篇相关论文</a>') in page

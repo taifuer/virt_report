@@ -74,6 +74,11 @@ cp .env.example .env
 ## 会议内容维护
 
 ```bash
+# 核对配置过的官方录用名单，不等待 DBLP 收录；不调用模型、不自动发布
+.venv/bin/virt-report conference-check --year 2026
+# 也可限定来源，重复检查会列出相较上次新增的标题
+.venv/bin/virt-report conference-check --venue sosp --year 2026
+
 # 更新 KVM Forum 标题并生成年度主题分析
 .venv/bin/virt-report kvm-forum
 
@@ -100,6 +105,23 @@ cp .env.example .env
 ```
 
 学术会议条目需要人工复核后才能进入公开内容；维护过程不读取论文 PDF。
+`conference-check` 的来源在 `virt_report/content/conferences.json` 的 `edition_checks` 中配置，
+核对报告保存在数据库同目录的 `conference-checks.json`（默认 `data/`，不提交）。
+首次检查列出全部标题作为基线，后续列出新增标题和仍未收录的匹配候选；来源出错时保留上次成功数据并返回失败状态。
+它不修改公开的“核对时间”，也不删除消失的论文。建议会议公布结果期间手动或按月执行；默认调度器不新增网络任务。
+
+候选识别覆盖 KVM、QEMU、SEV-SNP、TDX 等技术名，并可参考目录中已有的公开摘要。
+命中只是人工复核线索，不能把摘要背景中提到的技术自动视为研究对象。
+DBLP 全量目录继续保存在 SQLite；官方名单检查作为提前发现新论文的补充，两者都不自动发布。
+编辑完成后更新论文、年度点评及对应 `edition_checks` 的日期和说明，再运行 `index` 导出静态快照。
+只有标题的已录用论文须标注 `publication_status: accepted` 和 `evidence_level: title`，不能推断机制、架构或性能数字。
+
+KVM Forum 的会前预览独立保存在 `virt_report/content/kvm_forum_preview.json`，包含核对日期、公开议题链接与人工点评。
+`kvm-forum` 命令仍用于历史标题和辅助分析，会调用配置中的模型；查看和导出页面不会调用模型，也不会覆盖独立预览。
+会议结束后需人工复核最终议程，再将该届转为年度内容，不会仅凭日期自动更改“预览”状态。
+
+论文页支持中英文关键词、单位与主题标签筛选，并与会议、年份、分页组合使用；URL 保留筛选状态。
+专题的相关研究由 `topic_links` 手动精选，每类最多三篇，不参与社区条目数量或排序；版本链接只是同主题参考，不表示论文已落地。
 
 ## 版本时间线
 

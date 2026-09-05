@@ -1,0 +1,8 @@
+{% if related %}
+<section class="related-research" id="related-research" aria-labelledby="related-research-title">
+  <h2 id="related-research-title">相关研究</h2>
+  <p>同主题的精选论文与发布记录，不表示论文已经进入上游或对应版本。</p>
+  <ul>{% for paper in related.papers %}<li><a href="{{ root }}conference-papers.html#paper-{{ paper.id }}">{{ paper.title }}</a><span>{{ paper.venue_name }} · {{ paper.year }}</span></li>{% endfor %}</ul>
+  {% if related.releases %}<div class="research-version-links"><span>版本记录</span>{% for item in related.releases %}<a href="{{ root }}{{ item.href }}">{{ item.label }}</a>{% endfor %}</div>{% endif %}
+</section>
+{% endif %}

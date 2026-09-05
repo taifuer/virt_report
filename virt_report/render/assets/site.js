@@ -82,13 +82,23 @@ document.querySelectorAll('[data-pager]').forEach(root=>{
 });
 document.querySelectorAll('[data-conference-browser]').forEach(root=>{
   const items=[...root.querySelectorAll('[data-conference-item]')],venue=root.querySelector('[data-conference-venue]'),year=root.querySelector('[data-conference-year]'),count=root.querySelector('[data-conference-count]'),status=root.querySelector('[data-conference-status]'),empty=root.querySelector('[data-conference-empty]'),prev=root.querySelector('[data-conference-prev]'),next=root.querySelector('[data-conference-next]'),sizeSelect=root.querySelector('[data-conference-size]');
-  if(!items.length||!venue||!year||!prev||!next||!sizeSelect)return;
+  if(!venue||!year||!prev||!next||!sizeSelect)return;
+  const form=root.querySelector('[data-conference-search]'),query=root.querySelector('[data-conference-query]'),clear=root.querySelector('[data-conference-clear]'),reset=root.querySelector('[data-conference-reset]'),topicFilter=root.querySelector('[data-conference-topic-filter]'),topicLabel=root.querySelector('[data-conference-topic-label]');
+  const normalize=value=>value.normalize('NFKC').toLocaleLowerCase().replace(/\s+/g,' ').trim();
+  const indexed=new Map(items.map(item=>[item,{text:normalize(item.textContent),topics:JSON.parse(item.dataset.topics||'[]')}]));
   const params=new URLSearchParams(location.search);
   if([...venue.options].some(option=>option.value===params.get('venue')))venue.value=params.get('venue');
   if([...year.options].some(option=>option.value===params.get('year')))year.value=params.get('year');
+  if(query)query.value=(params.get('q')||'').slice(0,120);
+  let topic=(params.get('topic')||'').slice(0,100);
   let {page,size}=readPageState();sizeSelect.value=String(size);
+  const matchesText=item=>{
+    const data=indexed.get(item),words=normalize(query?.value||'').split(' ').filter(Boolean);
+    return (!topic||data.topics.includes(topic))&&words.every(word=>data.text.includes(word));
+  };
+  const matches=item=>matchesText(item)&&(!venue.value||item.dataset.venue===venue.value)&&(!year.value||item.dataset.year===year.value);
   const facetCounts=(select,key,otherKey,otherValue)=>{
-    const available=items.filter(item=>!otherValue||item.dataset[otherKey]===otherValue);
+    const available=items.filter(item=>matchesText(item)&&(!otherValue||item.dataset[otherKey]===otherValue));
     [...select.options].forEach(option=>{
       const optionCount=option.value?available.filter(item=>item.dataset[key]===option.value).length:available.length;
       option.textContent=`${option.dataset.optionLabel}（${optionCount}）`;
@@ -97,17 +107,41 @@ document.querySelectorAll('[data-conference-browser]').forEach(root=>{
   };
   const draw=()=>{
     facetCounts(venue,'venue','year',year.value);facetCounts(year,'year','venue',venue.value);
-    const matching=items.filter(item=>(!venue.value||item.dataset.venue===venue.value)&&(!year.value||item.dataset.year===year.value));
+    const matching=items.filter(matches);
     const pages=Math.max(1,Math.ceil(matching.length/size));page=Math.max(0,Math.min(page,pages-1));
     items.forEach(item=>item.hidden=true);matching.slice(page*size,(page+1)*size).forEach(item=>item.hidden=false);
     count.textContent=`${matching.length} 篇论文`;if(empty)empty.hidden=matching.length>0;
     status.textContent=`${page+1} / ${pages}`;prev.disabled=page===0;next.disabled=page===pages-1;
-    writeListState({venue:venue.value,year:year.value,page:page+1,per_page:size});
+    if(clear)clear.hidden=!query.value;
+    if(topicFilter)topicFilter.hidden=!topic;
+    if(topicLabel)topicLabel.textContent=topic;
+    if(reset)reset.hidden=!(venue.value||year.value||topic||query?.value);
+    root.querySelectorAll('[data-paper-topic]').forEach(link=>{const active=link.dataset.paperTopic===topic;link.classList.toggle('active',active);if(active)link.setAttribute('aria-current','true');else link.removeAttribute('aria-current')});
+    writeListState({venue:venue.value,year:year.value,q:query?.value.trim()||'',topic,page:page+1,per_page:size});
   };
-  [venue,year].forEach(control=>control.addEventListener('change',()=>{page=0;draw()}));
-  sizeSelect.addEventListener('change',()=>{size=Number(sizeSelect.value);page=0;draw();scrollList(root.querySelector('.paper-list'))});
-  const move=delta=>{page+=delta;draw();scrollList(root.querySelector('.paper-list'))};
-  prev.addEventListener('click',()=>move(-1));next.addEventListener('click',()=>move(1));draw();
+  const changed=()=>{page=0;writeListState({},'');draw()};
+  [venue,year].forEach(control=>control.addEventListener('change',changed));
+  form?.addEventListener('submit',event=>{event.preventDefault();changed()});
+  query?.addEventListener('input',changed);
+  clear?.addEventListener('click',()=>{query.value='';changed();query.focus()});
+  reset?.addEventListener('click',()=>{venue.value='';year.value='';topic='';if(query)query.value='';changed()});
+  root.querySelector('[data-conference-topic-clear]')?.addEventListener('click',()=>{topic='';changed()});
+  root.querySelectorAll('[data-paper-topic]').forEach(link=>link.addEventListener('click',event=>{
+    if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey||event.button!==0)return;
+    event.preventDefault();topic=link.dataset.paperTopic;changed();scrollList(root);
+  }));
+  sizeSelect.addEventListener('change',()=>{size=Number(sizeSelect.value);changed();scrollList(root.querySelector('.paper-list'))});
+  const move=delta=>{page+=delta;writeListState({},'');draw();scrollList(root.querySelector('.paper-list'))};
+  const revealPaper=()=>{
+    const target=items.find(item=>`#${item.id}`===location.hash);
+    if(!target)return false;
+    if(!matches(target)){venue.value='';year.value='';topic='';if(query)query.value=''}
+    page=Math.floor(items.filter(matches).indexOf(target)/size);draw();
+    requestAnimationFrame(()=>scrollList(target));return true;
+  };
+  window.addEventListener('hashchange',revealPaper);
+  prev.addEventListener('click',()=>move(-1));next.addEventListener('click',()=>move(1));
+  if(!revealPaper())draw();
 });
 document.querySelectorAll('[data-version-browser]').forEach(root=>{
   const items=[...root.querySelectorAll('[data-version-item]')],groups=[...root.querySelectorAll('[data-version-group]')],project=root.querySelector('[data-version-project]'),year=root.querySelector('[data-version-year]'),sizeSelect=root.querySelector('[data-version-size]'),prev=root.querySelector('[data-version-prev]'),next=root.querySelector('[data-version-next]'),status=root.querySelector('[data-version-status]'),controls=root.querySelector('[data-version-controls]'),viewButtons=[...root.querySelectorAll('[data-version-view]')];

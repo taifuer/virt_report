@@ -57,11 +57,13 @@ DBLP_TOC_NAMES = {
 }
 _DIRECT_PATTERNS = (
     r"\bqemu\b", r"\bkvm\b", r"\bhypervisor", r"\bvirtual machine",
-    r"\bvirtualized?\b", r"\bvirtualization\b", r"\bvmm\b", r"\bmicrovm",
+    r"\bvirtuali[sz](?:e[ds]?|ation)\b", r"\bvmm\b", r"\bmicrovm",
     r"\bvirtio\b", r"\bvhost\b", r"\bparavirtual", r"\bnested virtual",
     r"\bvm migration\b", r"\blive migration\b", r"\bvm exit",
 )
 _RELATED_PATTERNS = (
+    r"\bsev(?:-snp|-es)?\b", r"\btdx\b", r"\barm cca\b", r"\bpkvm\b",
+    r"\bguest_memfd\b", r"\bopen vswitch\b",
     r"\bconfidential vm", r"\bconfidential virtual", r"\btrusted execution",
     r"\bsecure enclave", r"\bdevice passthrough", r"\bsr-iov\b", r"\biommu\b",
     r"\bserverless.*snapshot", r"\bsnapshot.*serverless", r"\bmemory balloon",
@@ -70,7 +72,7 @@ _RELATED_PATTERNS = (
 )
 _EXCLUDE_PATTERNS = (
     r"\bjava virtual machine\b", r"\bjvm\b", r"\bvirtual reality\b",
-    r"\bvirtual network function\b", r"\bvirtual memory\b",
+    r"\bvirtual network function\b",
 )
 log = logging.getLogger(__name__)
 
@@ -104,11 +106,17 @@ def _official_title_matches(expected: object, actual: object) -> bool:
     }
 
 
-def is_candidate_title(title: str) -> bool:
-    """Conservatively flag titles for human virtualization review."""
+def is_candidate_title(title: str, abstract: str | None = "") -> bool:
+    """Flag metadata for review, never as an automatic inclusion decision.
+
+    An abstract can recover an opaque title. Technical names such as TDX also
+    occur in related-work paragraphs, so a match still needs editorial review.
+    Generic virtual memory, JVM and VR are not system-virtualization evidence.
+    """
     value = html.unescape(title).casefold()
     if any(re.search(pattern, value) for pattern in _EXCLUDE_PATTERNS):
         return False
+    value += " " + html.unescape(abstract or "").casefold()
     return any(re.search(pattern, value) for pattern in (
         *_DIRECT_PATTERNS, *_RELATED_PATTERNS,
     ))
@@ -431,8 +439,8 @@ def refresh_catalogue(conn: sqlite3.Connection, start_year: int = 2010,
         WHERE p.year BETWEEN ? AND ? AND r.paper_id IS NULL
     """, (start_year, end_year)).fetchone()[0]
     candidates = sum(
-        is_candidate_title(row[0]) for row in conn.execute("""
-            SELECT p.title FROM conference_papers p
+        is_candidate_title(row[0], row[1]) for row in conn.execute("""
+            SELECT p.title,p.abstract FROM conference_papers p
             LEFT JOIN conference_reviews r ON r.paper_id=p.paper_id
             WHERE p.year BETWEEN ? AND ? AND r.paper_id IS NULL
         """, (start_year, end_year))
@@ -443,14 +451,15 @@ def refresh_catalogue(conn: sqlite3.Connection, start_year: int = 2010,
 
 def candidate_rows(conn: sqlite3.Connection, start_year: int = 2010,
                    end_year: int = 2026) -> list[dict]:
-    """Return title-matched, not-yet-reviewed rows for editorial inspection."""
+    """Return metadata-matched, not-yet-reviewed rows for editorial inspection."""
     rows = conn.execute("""
         SELECT p.* FROM conference_papers p
         LEFT JOIN conference_reviews r ON r.paper_id=p.paper_id
         WHERE p.year BETWEEN ? AND ? AND r.paper_id IS NULL
         ORDER BY p.year DESC,p.venue,p.title
     """, (start_year, end_year)).fetchall()
-    return [dict(row) for row in rows if is_candidate_title(row["title"])]
+    return [dict(row) for row in rows
+            if is_candidate_title(row["title"], row["abstract"])]
 
 
 def enrich_candidate_abstracts(conn: sqlite3.Connection, limit: int = 200) -> int:
@@ -958,6 +967,10 @@ def load_content() -> dict:
     venue_keys = {item["key"] for item in venues}
     if len(venue_keys) != len(venues):
         raise ValueError("会议目录包含重复 key")
+    for check in content.get("edition_checks", []):
+        if (check["venue"] not in venue_keys
+                or not check["source_url"].startswith("https://")):
+            raise ValueError("会议核对记录包含未知会议或非 HTTPS 来源")
 
     papers = content.get("papers", [])
     paper_ids: set[str] = set()
@@ -1020,6 +1033,16 @@ def load_content() -> dict:
         paper["venue_name"] = venue_names[paper["venue"]]
     for venue in venues:
         venue["paper_count"] = counts[venue["key"]]
+        checks = [item for item in content.get("edition_checks", [])
+                  if item["venue"] == venue["key"]]
+        venue["latest_check"] = max(
+            checks, key=lambda item: (item["year"], item["checked_at"]),
+            default=None,
+        )
+        venue["latest_year"] = max(
+            (paper["year"] for paper in papers if paper["venue"] == venue["key"]),
+            default=None,
+        )
 
     analysis = content.get("analysis", {})
     representative_ids = {
@@ -1053,4 +1076,36 @@ def load_content() -> dict:
     content["paper_venues"] = [
         venue for venue in content["academic_venues"] if venue["paper_count"]
     ]
+    related = {"topics": content.get("topic_links", [])}
+    known_topics = {item["key"]: item for item in related["topics"]}
+    if len(known_topics) != len(related["topics"]):
+        raise ValueError("专题关联包含重复 key")
+    content["related_topics"] = []
+    for item in related["topics"]:
+        if not re.fullmatch(r"[a-z]+(?:-[a-z]+)*", item["key"]):
+            raise ValueError("专题关联 key 格式错误")
+        ids = item["paper_ids"]
+        if not 1 <= len(ids) <= 3 or len(set(ids)) != len(ids):
+            raise ValueError("每个专题应关联 1—3 篇不重复的精选论文")
+        if any(not release["href"].startswith("versions.html?")
+               for release in item.get("releases", [])):
+            raise ValueError("相关版本只允许指向本站版本页")
+        unknown = set(item["paper_ids"]) - paper_ids
+        if unknown:
+            raise ValueError(f"专题关联引用未知论文: {sorted(unknown)}")
+        content["related_topics"].append({
+            **item, "papers": [by_id[pid] for pid in item["paper_ids"]],
+        })
+    for paper in papers:
+        paper["community_topics"] = [
+            {"key": key, "name": item["name"]}
+            for key, item in known_topics.items()
+            if paper["id"] in item["paper_ids"]
+        ]
     return content
+
+
+def related_topic_content(topic_key: str) -> dict | None:
+    """Return a small editorial reference list, separate from community items."""
+    return next((item for item in load_content()["related_topics"]
+                 if item["key"] == topic_key), None)

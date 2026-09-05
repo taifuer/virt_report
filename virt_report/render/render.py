@@ -330,9 +330,16 @@ def render_conferences(config: Config, content: dict, filename: str = "conferenc
 
 
 def render_conferences_html(config: Config, content: dict) -> str:
+    from virt_report.kvm_forum import load_content
+
     env = _env()
     tpl = env.get_template("conferences.html")
-    return tpl.render(content=content, root="", site_name=config.name)
+    editions, _ = load_content()
+    years = [item["year"] for item in editions]
+    preview_year = next((item["year"] for item in editions if item.get("preview")), None)
+    return tpl.render(content=content, root="", site_name=config.name,
+                      forum_coverage=f"{min(years)}—{max(years)}",
+                      forum_preview_year=preview_year)
 
 
 def render_academic_conferences(
@@ -384,13 +391,20 @@ def render_topics_html(config: Config, groups: list[dict]) -> str:
     """渲染运维与性能专题聚合页。"""
     env = _env()
     tpl = env.get_template("topics.html")
-    return tpl.render(groups=groups, root="", site_name=config.name)
+    from virt_report.conferences import load_content
+
+    research_keys = {item["key"] for item in load_content()["related_topics"]}
+    return tpl.render(groups=groups, root="", site_name=config.name,
+                      research_keys=research_keys)
 
 
 def render_topic_detail_html(config: Config, topic: dict) -> str:
+    from virt_report.conferences import related_topic_content
+
     env = _env()
     tpl = env.get_template("topic_detail.html")
-    return tpl.render(topic=topic, root="../../", site_name=config.name)
+    return tpl.render(topic=topic, root="../../", site_name=config.name,
+                      related=related_topic_content(topic["key"]))
 
 
 def render_topic_detail(config: Config, topic: dict) -> Path:

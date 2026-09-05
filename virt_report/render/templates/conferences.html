@@ -8,8 +8,8 @@
   <header><div class="kicker">Conference Archive</div><h1>会议</h1><p>按工程实践与学术研究两条线索，观察 QEMU、KVM 及相关虚拟化技术的长期演进。</p></header>
   <div class="conference-guides">
     <section class="conference-guide-row">
-      <div><h2>KVM Forum</h2><span class="guide-range">2010—2025</span></div>
-      <p>依据历届官方议程标题，整理 QEMU、KVM、virtio 与虚拟化工程实践的年度主题。</p>
+      <div><h2>KVM Forum</h2><span class="guide-range">{{ forum_coverage }}</span></div>
+      <p>依据历届官方议程，整理 QEMU、KVM、virtio 与虚拟化工程实践的年度主题。{% if forum_preview_year %}含 {{ forum_preview_year }} 年议程预览。{% endif %}</p>
       <a class="forum-source" href="kvm-forum.html">查看技术演进</a>
     </section>
     <section class="conference-guide-row">
@@ -18,13 +18,14 @@
       <div class="conference-guide-actions"><a class="forum-source" href="academic-conferences.html">查看技术演进</a><a class="forum-source" href="conference-papers.html">查看相关论文</a></div>
     </section>
   </div>
-  <section class="conference-sources"><h2>收录学术会议</h2>
+  <section class="conference-sources" id="conference-sources"><h2>收录学术会议</h2>
     <div class="venue-list">{% for venue in content.academic_venues %}<div class="venue-row">
       <div class="venue-name"><h3>{{ venue.name }}</h3><small>{{ venue.full_name }}</small></div>
-      <p>{{ venue.focus }}</p>
+      <div class="venue-description"><p>{{ venue.focus }}</p>{% if venue.latest_check %}<p class="venue-check"><a href="{{ venue.latest_check.source_url }}" target="_blank" rel="noopener noreferrer">{{ venue.latest_check.year }} · {{ venue.latest_check.status }}</a><span>核对于 {{ venue.latest_check.checked_at }}</span><span>{{ venue.latest_check.note }}</span></p>{% elif venue.latest_year %}<p class="venue-check">已收录至 {{ venue.latest_year }} 年；本轮未复核该会议目录。</p>{% endif %}</div>
       <div class="venue-actions"><a href="conference-papers.html?venue={{ venue.key }}">{{ venue.paper_count }} 篇相关论文</a><a href="{{ venue.url }}" target="_blank" rel="noopener noreferrer">官方网站</a></div>
     </div>{% endfor %}</div>
   </section>
+  <p class="conference-method">{{ content.coverage }}。</p>
   <p class="conference-method">{{ content.method }}</p>
 </article>
 {% endblock %}

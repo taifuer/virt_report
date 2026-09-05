@@ -8,18 +8,27 @@
 <article class="conference-page">
   <header><div class="kicker"><a href="conferences.html">会议</a> · Academic Paper Archive</div><h1>相关论文</h1><p>保留与系统虚拟化机制直接相关或能解释其演进的论文；代表性标记只用于辅助观察技术脉络。</p></header>
   <section class="conference-section paper-observer" data-conference-browser data-default-size="10">
+    <form class="paper-search" role="search" action="conference-papers.html" data-conference-search>
+      <label class="sr-only" for="paper-query">搜索论文标题、中文点评或单位</label>
+      <div class="paper-search-input"><input id="paper-query" name="q" type="search" maxlength="120" placeholder="搜索标题、中文点评或单位…" autocomplete="off" data-conference-query><button type="button" data-conference-clear aria-label="清除关键词" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+      <button type="submit">搜索</button>
+    </form>
+    <div class="paper-active-topic" data-conference-topic-filter hidden><span>主题：<strong data-conference-topic-label></strong></span><button type="button" data-conference-topic-clear>清除主题</button></div>
     <div class="conference-controls" role="group" aria-label="论文筛选">
       <label>会议<select data-conference-venue><option value="" data-option-label="全部">全部（{{ content.paper_count }}）</option>{% for venue in content.paper_venues %}<option value="{{ venue.key }}" data-option-label="{{ venue.name }}">{{ venue.name }}（{{ venue.paper_count }}）</option>{% endfor %}</select></label>
       <label>年份<select data-conference-year><option value="" data-option-label="全部">全部（{{ content.paper_count }}）</option>{% for year in content.years %}<option value="{{ year }}" data-option-label="{{ year }}">{{ year }}（{{ content.year_counts[year] }}）</option>{% endfor %}</select></label>
       <span data-conference-count aria-live="polite" aria-atomic="true">{{ content.paper_count }} 篇论文</span>
+      <button type="button" class="paper-reset" data-conference-reset hidden>清除筛选</button>
     </div>
     <p class="conference-empty" data-conference-empty hidden>当前筛选条件下没有已审核论文。</p>
-    <div class="paper-list paginated-list" id="paper-list">{% for paper in content.papers %}<article class="paper-row" data-conference-item data-venue="{{ paper.venue }}" data-year="{{ paper.year }}"{% if loop.index > 10 %} hidden{% endif %}>
+    <div class="paper-list paginated-list" id="paper-list">{% for paper in content.papers %}<article class="paper-row" id="paper-{{ paper.id }}" data-conference-item data-venue="{{ paper.venue }}" data-year="{{ paper.year }}" data-topics='{{ paper.topics|tojson }}'{% if loop.index > 10 %} hidden{% endif %}>
       <div class="paper-meta"><span>{{ paper.year }}</span><strong>{{ venues_by_key[paper.venue].name }}</strong><span class="relation {{ 'direct' if paper.relation == '直接关联' else '' }}">{{ paper.relation }}</span></div>
       <div class="paper-body"><h2><a href="{{ paper.url }}" target="_blank" rel="noopener noreferrer">{{ paper.title }}</a></h2>
         {% if paper.institution_label %}<div class="paper-credit"{% if paper.affiliation_source_label %} title="单位元数据来源：{{ paper.affiliation_source_label }}{% if paper.affiliation_verified_at %}；核验时间：{{ paper.affiliation_verified_at }}{% endif %}"{% endif %}><strong>单位</strong><div class="paper-credit-content"><span>{{ paper.institution_label }}</span>{% if paper.institution_hidden %}<details class="paper-credit-more"><summary>另 {{ paper.institution_hidden|length }} 家单位</summary><span>{{ paper.institution_hidden_label }}</span></details>{% endif %}</div></div>{% endif %}
+        {% if paper.publication_status == 'accepted' or paper.evidence_level == 'title' %}<p class="paper-evidence">{% if paper.publication_status == 'accepted' %}已录用{% endif %}{% if paper.evidence_level == 'title' %} · 仅有公开标题，待摘要补充{% endif %}</p>{% endif %}
         <p><strong>内容</strong>{{ paper.introduction }}</p><p class="editor-comment"><strong>点评</strong>{{ paper.commentary }}</p>
-        <div class="paper-tags">{% if paper.representative %}<span class="tag representative">代表性论文</span>{% endif %}{% for architecture in paper.architectures %}<span class="tag arch{% if architecture in ['x86', 'Arm'] %} focus{% endif %}">{{ architecture }}</span>{% endfor %}{% for topic in paper.topics %}<span class="tag">{{ topic }}</span>{% endfor %}</div>
+        <div class="paper-tags">{% if paper.representative %}<span class="tag representative">代表性论文</span>{% endif %}{% for architecture in paper.architectures %}<span class="tag arch{% if architecture in ['x86', 'Arm'] %} focus{% endif %}">{{ architecture }}</span>{% endfor %}{% for topic in paper.topics %}<a class="tag" href="conference-papers.html?topic={{ topic|urlencode }}" data-paper-topic="{{ topic }}" title="筛选{{ topic }}论文">{{ topic }}</a>{% endfor %}</div>
+        {% if paper.community_topics %}<div class="paper-community-links"><span>社区专题</span>{% for item in paper.community_topics %}<a href="topics/{{ item.key }}/index.html">{{ item.name }}</a>{% endfor %}</div>{% endif %}
       </div>
     </article>{% endfor %}</div>
     {{ pagination(namespace='conference', pages=([1, (content.paper_count + 9) // 10]|max), label='论文分页') }}

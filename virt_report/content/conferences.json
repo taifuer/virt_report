@@ -1,8 +1,39 @@
 {
   "version": 1,
-  "updated_at": "2026-08-04",
-  "coverage": "2010—2025 十六个完整年度，2026 截至 8 月 1 日",
-  "method": "离线保存会议目录的标题元数据，再依据官方页面公开的标题和简介或摘要审核虚拟化相关性；论文单位逐篇优先采用会议官方页面或 DOI 对应的 Crossref 出版元数据核验，缺失时使用作者所属机构的公开论文页，并统一规范化和去重；不展示作者，也不推断通讯作者；不读取 PDF 论文或演讲材料。2026 年仅纳入截至 8 月 1 日已有正式议程或录用结果的会议，后续随官方结果增补。公开页面只保留审核后的相关论文、中文转述与编辑点评，不调用 DeepSeek 自动生成。",
+  "updated_at": "2026-09-05",
+  "coverage": "覆盖 2010—2026 年，最近补充于 2026 年 9 月 5 日；各会议核对进度见来源列表",
+  "method": "离线保存会议目录的标题元数据，再依据官方页面公开的标题和简介或摘要审核虚拟化相关性；论文单位优先采用会议官方页或 Crossref 元数据，缺失时参考机构公开论文页，并规范化去重。不读取 PDF、PPT 或视频，不展示作者，不推断通讯作者。公开页面只保留审核后的相关论文、中文转述与编辑点评，不调用 DeepSeek 自动生成。已录用但只有标题的论文单独标注，不据此推断实现机制、性能数据或上游落地情况；各会议分别核对，收录数量不代表全部相关论文数量。",
+  "edition_checks": [
+    {
+      "venue": "sosp", "year": 2026, "checked_at": "2026-09-05",
+      "status": "录用名单已核对",
+      "note": "已补充 CPU 虚拟化论文；目前依据标题，待公开摘要后完善点评。",
+      "source_url": "https://sigops.org/s/conferences/sosp/2026/accepted.html",
+      "parser": "sosp"
+    },
+    {
+      "venue": "usenix-security", "year": 2026, "checked_at": "2026-09-05",
+      "status": "议程与相关摘要已核对",
+      "note": "补充机密虚机、MicroVM 资源隔离与 KVM 固件重托管研究；不泛化收录一般安全论文。",
+      "source_url": "https://www.usenix.org/conference/usenixsecurity26/technical-sessions",
+      "parser": "usenix"
+    },
+    {
+      "venue": "socc", "year": 2026, "checked_at": "2026-09-05",
+      "status": "首轮标题已核对",
+      "note": "暂未确认需纳入的强相关论文，待公开简介与后续录用结果。",
+      "source_url": "https://acmsocc.org/2026/accepted-papers.html",
+      "parser": "socc"
+    }
+  ],
+  "topic_links": [
+    {"key": "migration", "name": "热迁移", "paper_ids": ["osdi26-m3u", "eurosys26-heterogeneous-migration", "vee16-migration-optimizations"], "releases": [{"label": "QEMU 10.1：迁移路径优化", "href": "versions.html?project=qemu&view=detailed#release-qemu-10.1.0"}]},
+    {"key": "live-upgrade", "name": "热升级", "paper_ids": ["vee19-live-replacement", "osdi25-vio"], "releases": [{"label": "QEMU 10.2：在线更新", "href": "versions.html?project=qemu&view=detailed#release-qemu-10.2.0"}]},
+    {"key": "hotplug", "name": "热插拔", "paper_ids": ["vee21-virtio-mem"], "releases": [{"label": "QEMU 7.0：Arm virtio-mem", "href": "versions.html?project=qemu&view=detailed#release-qemu-7.0.0"}]},
+    {"key": "performance", "name": "虚机性能", "paper_ids": ["osdi26-mwait-sched", "atc25-hyperturtle", "fast26-rosenbridge"], "releases": [{"label": "QEMU 10.0：virtio-scsi 多队列", "href": "versions.html?project=qemu&view=detailed#release-qemu-10.0.0"}]},
+    {"key": "lifecycle", "name": "启动与生命周期", "paper_ids": ["osdi24-sabre", "nsdi20-firecracker", "asplos26-vm-recovery"], "releases": [{"label": "QEMU 9.0：mapped-ram 快照", "href": "versions.html?project=qemu&view=detailed#release-qemu-9.0.0"}]},
+    {"key": "security", "name": "安全与漏洞", "paper_ids": ["security26-staleus", "security26-free", "security25-tdxploit"], "releases": []}
+  ],
   "analysis": {
     "coverage": "2010—2026",
     "headline": "从 Hypervisor 机制优化走向轻量化、机密计算与生产协同",
@@ -50,7 +81,7 @@
           "virtio",
           "机密虚机"
         ],
-        "summary": "截至 2026 年 8 月，OSDI 与 FAST 已分别设置虚拟化相关专场，研究从 vCPU 空闲、嵌套页表、虚机内存回收一路延伸到高端 VM 后拷贝迁移和 virtio 高速存储路径。EuroSys 进一步关注跨异构处理器迁移、嵌套虚拟化测试和跨 ISA 模拟，StackWarp 则再次说明机密虚机的安全边界仍受底层微架构共享状态影响。",
+        "summary": "截至 2026 年 9 月 5 日，已收录研究同时关注运行效率与隔离边界：OSDI、FAST 的议题从 vCPU 空闲、嵌套运行和弹性内存，延伸到大虚机后拷贝迁移与高速 I/O；EuroSys 补充异构处理器迁移与虚拟化测试。Security 的研究把可信边界从微架构共享状态延伸到互连配置、固件更新、MicroVM 资源记账与虚拟交换缓存；Khost 则展示 KVM 在固件重托管中的机制复用。SOSP 录用名单出现新的 CPU 虚拟化论文，目前只有标题，尚不能据此评价机制和收益。2026 年仍在补充，以上是已公开内容中的阶段性观察。",
         "representative_ids": [
           "osdi26-janus",
           "osdi26-m3u",
@@ -66,7 +97,7 @@
           "VMM 热升级",
           "机密虚机"
         ],
-        "summary": "这一年的代表议题不再只证明机制可行，而是减少多层切换、让直通设备保留内存弹性，并把更新、调度和可信执行纳入云端运行约束。HyperTurtle 与 VIO 分别从执行路径和 I/O 路径降低虚拟化成本，TETD、CoFunc 则继续缩小机密工作负载的可信边界。",
+        "summary": "这一年的代表议题不再只证明机制可行，而是减少多层切换、让直通设备保留内存弹性，并把更新、调度和可信执行纳入云端运行约束。HyperTurtle 与 VIO 分别从执行路径和 I/O 路径降低虚拟化成本，TETD、CoFunc 则继续缩小机密工作负载的可信边界。补录的 TDXploit 提醒我们：可信域的内存隔离与共享硬件上的侧信道防护是不同问题，已有缓解措施仍需持续验证。",
         "representative_ids": [
           "atc25-hyperturtle",
           "osdi25-vio",
@@ -415,6 +446,110 @@
     }
   ],
   "papers": [
+    {
+      "id": "security26-free", "year": 2026, "venue": "usenix-security",
+      "title": "Enjoy the Free Lunch, Someone Paid for Us: Escaping Resource Limits of MicroVM-based Containers",
+      "url": "https://www.usenix.org/conference/usenixsecurity26/presentation/wang-shiwen",
+      "introduction": "研究 MicroVM 容器中实际消耗与宿主资源记账之间的偏差，覆盖内存和存储路径，并在 Kata、Firecracker 等环境中评估绕过资源限制的可能性。",
+      "commentary": "硬件隔离并不会自动带来准确的资源归属。对云平台而言，客户机内的文件与内存操作如何映射到宿主记账同样重要；这里讨论的是资源控制边界，不应误写为 Hypervisor 代码执行逃逸。",
+      "relation": "直接关联", "topics": ["microVM", "Kata", "Firecracker", "资源隔离"],
+      "architectures": [], "evidence_level": "abstract",
+      "institutions": ["Institute of Information Engineering, Chinese Academy of Sciences", "University of Chinese Academy of Sciences"],
+      "affiliation_source": "usenix",
+      "affiliation_source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/wang-shiwen",
+      "affiliation_verified_at": "2026-09-05"
+    },
+    {
+      "id": "security26-aspbreaker", "year": 2026, "venue": "usenix-security",
+      "title": "Jailbreaking the AMD Secure Processor: Enabling Live Analysis of SEV-SNP's Undocumented Security Boundaries",
+      "url": "https://www.usenix.org/conference/usenixsecurity26/presentation/shen",
+      "introduction": "提出 ASPBreaker，用于动态分析 AMD 安全处理器中未充分公开的 SEV-SNP 固件边界，并研究旧固件被控制后如何影响后续固件的虚机内存保护与证明。",
+      "commentary": "机密虚机的可信基础不仅包括当下运行的 VMM，还涉及固件历史状态和更新路径。该研究适合用于理解固件升级后的安全连续性，不能仅凭摘要判断当前平台版本是否仍受影响。",
+      "relation": "直接关联", "topics": ["SEV-SNP", "机密虚机", "固件安全", "证明"],
+      "architectures": ["x86"], "evidence_level": "abstract",
+      "institutions": ["Institute of Software, Chinese Academy of Sciences", "University of Chinese Academy of Sciences"],
+      "affiliation_source": "usenix",
+      "affiliation_source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/shen",
+      "affiliation_verified_at": "2026-09-05"
+    },
+    {
+      "id": "security26-fabricked", "year": 2026, "venue": "usenix-security",
+      "title": "FABRICKED: Misconfiguring Infinity Fabric to Break AMD SEV-SNP",
+      "url": "https://www.usenix.org/conference/usenixsecurity26/presentation/schlueter-1",
+      "introduction": "研究软件对 Infinity Fabric 路由的配置如何误导安全处理器初始化，进而破坏 SEV-SNP 的机密性、完整性与证明。",
+      "commentary": "与 STALEUS 关注缓存一致性不同，这项研究强调互连路由与系统初始化。两者都提示需要把安全处理器外围的宿主可控路径纳入审计，但不能合并为同一个漏洞或推断相同修复方式。",
+      "relation": "直接关联", "topics": ["SEV-SNP", "机密虚机", "硬件互连", "安全漏洞"],
+      "architectures": ["x86"], "evidence_level": "abstract",
+      "institutions": ["ETH Zurich"], "affiliation_source": "usenix",
+      "affiliation_source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/schlueter-1",
+      "affiliation_verified_at": "2026-09-05"
+    },
+    {
+      "id": "security26-khost", "year": 2026, "venue": "usenix-security",
+      "title": "Khost: KVM-based Near Native MCU Firmware Rehosting",
+      "url": "https://www.usenix.org/conference/usenixsecurity26/presentation/wang-chunlin",
+      "introduction": "通过扩展 CPU、辅助页表和软件中断控制器改造 KVM，用于在高性能平台上重托管 MCU 固件，并提供 MMIO 监测和模糊测试支持。",
+      "commentary": "它展示了虚拟化机制在传统云虚机之外的用途：以执行与设备模型的适配换取固件分析效率。论文中的收益针对特定重托管基准，不能泛化为所有 QEMU 模拟场景的性能对比。",
+      "relation": "直接关联", "topics": ["KVM", "固件重托管", "设备模型", "模糊测试"],
+      "architectures": [], "evidence_level": "abstract",
+      "institutions": ["Fudan University"], "affiliation_source": "usenix",
+      "affiliation_source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/wang-chunlin",
+      "affiliation_verified_at": "2026-09-05"
+    },
+    {
+      "id": "sosp26-cpu-virtualization",
+      "year": 2026, "venue": "sosp",
+      "title": "You Can Always Get What You Want: CPU Virtualization Made Fast and Free",
+      "url": "https://sigops.org/s/conferences/sosp/2026/accepted.html",
+      "introduction": "SOSP 2026 官方录用名单中的 CPU 虚拟化论文，研究目标指向 CPU 虚拟化效率。当前来源只提供标题与单位，尚未公开足以说明机制的摘要。",
+      "commentary": "它值得作为 CPU 执行开销方向的新线索跟踪，但标题中的 Fast and Free 不能直接理解为零开销。待公开简介后，再核对其架构前提、实现方式及适用负载；当前不判断是否采用 KVM，也不推断性能数字。",
+      "relation": "直接关联", "topics": ["CPU 虚拟化", "性能"],
+      "architectures": [], "publication_status": "accepted", "evidence_level": "title",
+      "institutions": ["Shanghai Jiao Tong University", "Alibaba Cloud", "Alibaba Group"],
+      "affiliation_source": "official",
+      "affiliation_source_url": "https://sigops.org/s/conferences/sosp/2026/accepted.html",
+      "affiliation_verified_at": "2026-09-05"
+    },
+    {
+      "id": "security26-staleus",
+      "year": 2026, "venue": "usenix-security",
+      "title": "STALEUS: Breaking AMD SEV-SNP via Memory Incoherence",
+      "url": "https://www.usenix.org/conference/usenixsecurity26/presentation/schlueter-2",
+      "introduction": "研究恶意 Hypervisor 对硬件桥接配置的控制，如何使 AMD 平台安全处理器与 x86 缓存失去一致性，并破坏已通过证明的 SEV-SNP 机密虚机的内存保护。",
+      "commentary": "这项研究把可信边界延伸到安全处理器与主 CPU 的互连关系：加密与证明并不意味着所有宿主可控路径都已隔离。它适合与其他机密虚机攻击对照阅读，但不能据摘要推断所有 SEV-SNP 部署都受影响。",
+      "relation": "直接关联", "topics": ["SEV-SNP", "机密虚机", "内存一致性", "安全漏洞"],
+      "architectures": ["x86"], "evidence_level": "abstract",
+      "institutions": ["ETH Zurich"], "affiliation_source": "usenix",
+      "affiliation_source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/schlueter-2",
+      "affiliation_verified_at": "2026-09-05"
+    },
+    {
+      "id": "security26-ovs-side-channels",
+      "year": 2026, "venue": "usenix-security",
+      "title": "Side-Channel Attacks on Open vSwitch",
+      "url": "https://www.usenix.org/conference/usenixsecurity26/presentation/kim-daewoo",
+      "introduction": "分析 Open vSwitch 转发缓存形成的侧信道，展示隐蔽通信、包头信息恢复与远程包速率监测等攻击方式，涉及共享虚拟交换路径上的租户隔离。",
+      "commentary": "虚机隔离不只取决于 CPU 和内存；共享软件交换机中的性能优化也可能留下可观察状态。该研究补充网络侧的隔离视角，不是 QEMU/KVM 核心漏洞，也不应直接等同于所有 OVS 配置中的实际风险。",
+      "relation": "相关机制", "topics": ["虚拟网络", "Open vSwitch", "侧信道", "租户隔离"],
+      "architectures": [], "evidence_level": "abstract",
+      "institutions": ["University of Waterloo"], "affiliation_source": "usenix",
+      "affiliation_source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/kim-daewoo",
+      "affiliation_verified_at": "2026-09-05"
+    },
+    {
+      "id": "security25-tdxploit",
+      "year": 2025, "venue": "usenix-security",
+      "title": "TDXploit: Novel Techniques for Single-Stepping and Cache Attacks on Intel TDX",
+      "url": "https://www.usenix.org/conference/usenixsecurity25/presentation/rauscher",
+      "introduction": "研究 Intel TDX 单步执行缓解措施中的缺陷，并评估可信域中的缓存侧信道。论文结合受攻击者控制的可信域与共享硬件行为，展示已有防护仍可能被绕过。",
+      "commentary": "它说明保护客户机内存不等于消除执行时间与缓存状态泄漏。对机密虚机演进而言，隔离机制和抗侧信道措施需要分别验证；这是 2025 年研究的补录，不能据此判断当前 TDX 软件版本的修复状态。",
+      "relation": "直接关联", "topics": ["TDX", "机密虚机", "侧信道", "安全漏洞"],
+      "architectures": ["x86"], "evidence_level": "abstract",
+      "institutions": ["Graz University of Technology", "University of Lübeck"],
+      "affiliation_source": "usenix",
+      "affiliation_source_url": "https://www.usenix.org/conference/usenixsecurity25/presentation/rauscher",
+      "affiliation_verified_at": "2026-09-05"
+    },
     {
       "id": "osdi26-mwait-sched",
       "year": 2026,

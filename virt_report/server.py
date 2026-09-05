@@ -20,7 +20,7 @@ from virt_report.summarize import periods
 log = logging.getLogger(__name__)
 _REPORT_ROUTE = re.compile(r"^/(daily|weekly|monthly)/([^/]+?)(?:\.html)?$")
 _ARCHIVE_ROUTE = re.compile(r"^/(daily|weekly|monthly)(?:/|/index\.html)?$")
-_TOPIC_ROUTE = re.compile(r"^/topics/([a-z-]+)(?:/|\.html)?$")
+_TOPIC_ROUTE = re.compile(r"^/topics/([a-z-]+)(?:/(?:index\.html)?|\.html)?$")
 READINESS_MAX_AGE_HOURS = 12
 _REPORT_TYPE_NAMES = {"daily": "日报", "weekly": "周报", "monthly": "月报"}
 
