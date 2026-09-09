@@ -1,5 +1,6 @@
 """Release identity, official dates and offline snapshot regressions."""
 import json
+import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from types import SimpleNamespace
@@ -292,6 +293,54 @@ def test_version_checked_date_uses_site_timezone_without_changing_release_date(t
     assert f"最近检查：{expected}。" in page
     assert 'datetime="2026-08-11"' in page
     assert json.dumps(content, sort_keys=True) == original
+
+
+def test_reviewed_notes_cover_bundled_english_and_historical_milestones():
+    def unique_pairs(pairs):
+        result = {}
+        for key, value in pairs:
+            assert key not in result, f"duplicate manual version entry: {key}"
+            result[key] = value
+        return result
+
+    notes = json.loads((versions.CONTENT_DIR / "version_notes.json").read_text(),
+                       object_pairs_hook=unique_pairs)
+    bundled = json.loads((versions.CONTENT_DIR / "versions.json").read_text())
+    feature_ids = {f'{r["project"]}:{r["version"]}' for r in bundled["releases"]
+                   if r["kind"] == "feature"}
+    assert set(notes) <= feature_ids
+    for key, entry in notes.items():
+        assert 1 <= len(entry["highlights"]) <= 4, key
+        assert all(re.search(r"[\u4e00-\u9fff]", text) for text in entry["highlights"]), key
+        if entry.get("source_url"):
+            assert entry["source_url"].startswith("https://"), key
+    for row in bundled["releases"]:
+        if row["kind"] == "feature" and row.get("highlights"):
+            assert f'{row["project"]}:{row["version"]}' in notes
+    for key in ("qemu:1.0", "qemu:1.3.0", "qemu:2.11.0", "libvirt:0.9.0", "libvirt:2.4.0", "kvm:5.15"):
+        assert notes[key]["source_url"]
+    assert "默认关闭" in "".join(notes["kvm:5.10"]["highlights"])
+    assert "默认启用" in "".join(notes["kvm:5.15"]["highlights"])
+
+
+def test_manual_notes_override_runtime_highlights_without_changing_release_identity(tmp_path, monkeypatch):
+    config = Config(storage=Storage(db_path=tmp_path / "report.db"))
+    monkeypatch.setattr(versions, "CONTENT_DIR", tmp_path / "content")
+    versions._write_json(config.db_path.parent / "versions.json", {
+        "releases": [dict(record(), highlights=["New automatic English text"])],
+    })
+    versions._write_json(versions.CONTENT_DIR / "version_notes.json", {
+        "qemu:11.1.0": {"highlights": ["已核验的中文说明。"],
+                          "source_url": "https://wiki.qemu.org/ChangeLog/11.1"},
+    })
+    content = versions.load_content(config, today=date(2026, 9, 9))
+    row = content["releases"][0]
+    assert row["released_on"] == "2026-08-11"
+    assert row["source_url"] == record()["source_url"]
+    page = render.render_versions_html(config, content)
+    assert "已核验的中文说明。" in page
+    assert "New automatic English text" not in page
+    assert 'href="https://wiki.qemu.org/ChangeLog/11.1"' in page
 
 
 @pytest.mark.parametrize("auto_export,export,no_fetch", [

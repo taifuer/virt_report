@@ -149,6 +149,10 @@ KVM Forum 的会前预览独立保存在 `virt_report/content/kvm_forum_preview.
 `virt_report/content/versions.json` 提供可直接预览的公开基线；
 `version_notes.json` 保存根据官方材料人工整理的中文要点。后续尚未整理的要点
 保留官方原文或发布链接，不调用 AI 推断特性是否落入某个版本。
+中文说明优先于自动提取的原文，采集刷新不会覆盖人工内容。每个版本以 2—4 条
+实质变化为主，区分初步支持、正式支持和默认启用；KVM 仅归纳相关子系统变化。
+历史补充可引用官方 Wiki、合并记录或发布标签下的历史文档，使用 `source_url`
+记录要点依据，不改变版本本身的发布日期来源。缺少可靠依据时明确保留内容缺口。
 网页只读快照；来源失败保留原记录，独立刷新不会重建全站。
 默认 `schedule.auto_export: false` 时，定时刷新不写入 Git 跟踪的 `site/`；
 启用 `auto_export` 或显式传入 `--export` 才导出版本页，`index` 仍可导出完整站点。
