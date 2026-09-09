@@ -136,7 +136,7 @@ KVM Forum 的会前预览独立保存在 `virt_report/content/kvm_forum_preview.
 
 从关于页顶部“查看版本”进入版本时间线，主导航不增加“版本”项。
 默认精简视图按年展示 QEMU 的功能版本，不只保留整数大版本；可切换 KVM、Libvirt 或全部项目，并按年份筛选。
-“技术主题”提供热迁移、设备直通 / VFIO、虚拟 I/O / virtio 筛选，可与项目、年份和详细视图分页组合。
+“主题”依次提供设备直通 / VFIO、虚拟 I/O / virtio、热迁移筛选，可与项目、年份和详细视图分页组合。
 选择“全部项目”可跨项目查看技术演变，例如
 `versions.html?project=all&topic=vfio&view=detailed`。切换主题回到第一页；
 版本直达链接会清除阻挡该版本显示的筛选并展开对应年份。

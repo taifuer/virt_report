@@ -18,7 +18,7 @@
     <div class="version-controls" id="version-list">
       <label for="version-project">项目<select id="version-project" data-version-project><option value="">全部项目</option>{% for key, name in content.projects.items() %}<option value="{{ key }}"{% if key == content.default_project %} selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
       <label for="version-year">年份<select id="version-year" data-version-year><option value="">全部年份</option>{% for year in content.years %}<option value="{{ year }}">{{ year }}</option>{% endfor %}</select></label>
-      <label class="version-topic-filter" for="version-topic">技术主题<select id="version-topic" data-version-topic><option value="">全部主题</option>{% for key, topic in content.topics.items() %}<option value="{{ key }}">{{ topic.label }}</option>{% endfor %}</select></label>
+      <label class="version-topic-filter" for="version-topic">主题<select id="version-topic" data-version-topic><option value="">全部主题</option>{% for key, topic in content.topics.items() %}<option value="{{ key }}">{{ topic.label }}</option>{% endfor %}</select></label>
       <div class="version-view" role="group" aria-label="时间线视图"><button type="button" data-version-view="compact" aria-pressed="true">精简</button><button type="button" data-version-view="detailed" aria-pressed="false">详细</button></div>
       <span class="version-result-count" data-version-count role="status">{{ content.initial_count }} 个功能版本</span>
     </div>
@@ -36,7 +36,7 @@
             <div class="version-body">
               <div class="version-heading"><h3><span class="version-project">{{ item.project_label }}</span><span>{{ 'Linux ' if item.project == 'kvm' else '' }}{{ item.version }}</span></h3><a class="version-source" href="{{ item.source_url }}" target="_blank" rel="noopener noreferrer">{{ '发布标签' if item.date_source == 'release_tag' else '发布公告' }}</a></div>
               <div class="version-detail">
-                {% if item.topics %}<div class="version-topic-tags" aria-label="相关技术主题">{% for key in item.topics %}<span>{{ content.topics[key].label }}</span>{% endfor %}</div>{% endif %}
+                {% if item.topics %}<div class="version-topic-tags" aria-label="相关主题">{% for key in item.topics %}<span>{{ content.topics[key].label }}</span>{% endfor %}</div>{% endif %}
                 {% if item.notes %}<ul class="version-notes">{% for note in item.notes %}<li>{{ note }}</li>{% endfor %}</ul>{% elif item.highlights %}<ul class="version-notes version-original" lang="en" aria-label="官方要点原文">{% for note in item.highlights %}<li>{{ note }}</li>{% endfor %}</ul>{% else %}<p class="version-note-empty">暂缺经核验的更新要点。</p>{% endif %}
                 {% if item.commits or item.contributors or item.note_source_url != item.source_url %}<div class="version-meta">
                   {% if item.commits %}<span>{{ item.commits }}{{ '+' if item.commits_approximate else '' }} 次提交</span>{% endif %}{% if item.contributors %}<span>{{ item.contributors }} 位贡献者</span>{% endif %}

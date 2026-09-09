@@ -23,6 +23,9 @@ const base = process.argv[2] || 'http://127.0.0.1:8091/versions.html';
     };
 
     await go('?project=all&topic=migration&view=detailed');
+    assert.equal(await page.locator('label[for="version-topic"]').evaluate(label => label.firstChild.textContent.trim()), '主题');
+    assert.deepEqual(await page.locator('[data-version-topic] option').allTextContents(),
+      ['全部主题', '设备直通 / VFIO', '虚拟 I/O / virtio', '热迁移']);
     assert.equal(await visible().count(), 10);
     await assertVisible('migration');
     assert.equal(await page.locator('[data-version-count]').textContent(), `${await members('migration')} 个功能版本`);
