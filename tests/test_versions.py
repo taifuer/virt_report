@@ -378,10 +378,10 @@ def test_version_topics_only_include_reviewed_feature_releases(tmp_path, monkeyp
 def test_bundled_version_topic_membership_has_notes_sources_and_no_duplicates():
     content = versions.load_content(Config())
     rows = {f'{r["project"]}:{r["version"]}': r for r in content["releases"]}
-    assert set(content["topics"]) == {"vfio", "virtio"}
+    assert list(content["topics"]) == ["migration", "vfio", "virtio"]
     for key, topic in content["topics"].items():
         assert topic["label"] and topic["description"]
-        assert topic["source_url"].startswith("https://docs.kernel.org/")
+        assert topic["source_url"].startswith(("https://docs.kernel.org/", "https://www.qemu.org/"))
         assert len(topic["versions"]) == len(set(topic["versions"]))
         for release_id in topic["versions"]:
             row = rows[release_id]
@@ -389,9 +389,26 @@ def test_bundled_version_topic_membership_has_notes_sources_and_no_duplicates():
             assert key in row["topics"]
             assert row["note_source_url"].startswith("https://")
     assert rows["qemu:1.3.0"]["topics"] == ["vfio"]
-    assert rows["qemu:2.5.0"]["topics"] == ["virtio"]
-    assert rows["qemu:4.0.0"]["topics"] == ["vfio", "virtio"]
+    assert rows["qemu:2.5.0"]["topics"] == ["migration", "virtio"]
+    assert rows["qemu:4.0.0"]["topics"] == ["migration", "vfio", "virtio"]
     assert not rows["kvm:5.15"]["topics"]  # General MMU changes are not VFIO.
+
+
+def test_migration_theme_keeps_upgrade_and_generic_storage_changes_out():
+    content = versions.load_content(Config())
+    members = content["topics"]["migration"]["versions"]
+    assert {key.split(":")[0] for key in members} == {"qemu", "kvm", "libvirt"}
+    assert {"qemu:2.6.0", "qemu:5.2.0", "kvm:5.14", "libvirt:8.5.0"} <= set(members)
+    # A mention of migration is insufficient: these notes concern other work.
+    assert {"qemu:10.2.0", "qemu:9.0.0", "qemu:2.0.0", "qemu:1.3.0"}.isdisjoint(members)
+    page = render.render_versions_html(Config(), content)
+    assert '<option value="migration">热迁移</option>' in page
+    assert page.index('value="migration"') < page.index('value="vfio"')
+    assert 'for="version-topic">技术主题' in page
+    assert 'value="live-upgrade"' not in page
+    entries = [node for node in versions.Document(page).root.find("li")
+               if "data-version-item" in node.attrs]
+    assert len(entries) == len({node.attrs["id"] for node in entries})
 
 
 @pytest.mark.parametrize("auto_export,export,no_fetch", [

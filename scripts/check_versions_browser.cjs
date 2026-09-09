@@ -22,6 +22,28 @@ const base = process.argv[2] || 'http://127.0.0.1:8091/versions.html';
       if (year) assert(rows.every(row => row.year === year));
     };
 
+    await go('?project=all&topic=migration&view=detailed');
+    assert.equal(await visible().count(), 10);
+    await assertVisible('migration');
+    assert.equal(await page.locator('[data-version-count]').textContent(), `${await members('migration')} 个功能版本`);
+    assert.equal(await page.locator('[data-version-topic] option[value="live-upgrade"]').count(), 0);
+    await page.locator('[data-version-size]').selectOption('30');
+    assert.equal(await visible().count(), 30);
+    await page.locator('[data-version-next]').click();
+    await page.reload();
+    assert.equal(await visible().count(), Math.min(30, await members('migration') - 30));
+    await assertVisible('migration');
+    await page.locator('[data-version-project]').selectOption('kvm');
+    await page.locator('[data-version-year]').selectOption('2021');
+    await assertVisible('migration', 'kvm', '2021');
+    assert.equal(await visible().count(), 2);
+    await page.locator('[data-version-year]').selectOption('2020');
+    assert.equal(await visible().count(), 0);
+    assert(await page.locator('[data-version-empty]').isVisible());
+    await go('?topic=migration&view=detailed#release-qemu-10.2.0');
+    assert(await page.locator('[id="release-qemu-10.2.0"]').isVisible());
+    assert.equal(await page.locator('[data-version-topic]').inputValue(), '');
+
     await go('?project=all&topic=vfio&view=detailed');
     assert.equal(await visible().count(), 10);
     await assertVisible('vfio');
@@ -77,10 +99,12 @@ const base = process.argv[2] || 'http://127.0.0.1:8091/versions.html';
 
     for (const width of [320, 375, 390, 768, 1366]) {
       await page.setViewportSize({width, height: 900});
-      await go('?project=all&topic=vfio&view=detailed');
-      const dimensions = await page.evaluate(() => [innerWidth, document.documentElement.scrollWidth]);
-      assert.equal(dimensions[0], dimensions[1], `horizontal overflow at ${width}px`);
-      await assertVisible('vfio');
+      for (const topic of ['migration', 'vfio']) {
+        await go(`?project=all&topic=${topic}&view=detailed`);
+        const dimensions = await page.evaluate(() => [innerWidth, document.documentElement.scrollWidth]);
+        assert.equal(dimensions[0], dimensions[1], `horizontal overflow in ${topic} at ${width}px`);
+        await assertVisible(topic);
+      }
     }
     assert.deepEqual(errors, []);
     console.log('Version filters, pagination, deep links, empty states and five viewport widths passed.');
