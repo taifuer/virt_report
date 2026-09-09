@@ -136,6 +136,10 @@ KVM Forum 的会前预览独立保存在 `virt_report/content/kvm_forum_preview.
 
 从关于页顶部“查看版本”进入版本时间线，主导航不增加“版本”项。
 默认精简视图按年展示 QEMU 的功能版本，不只保留整数大版本；可切换 KVM、Libvirt 或全部项目，并按年份筛选。
+“技术主题”提供设备直通 / VFIO、虚拟 I/O / virtio 筛选，可与项目、年份和详细视图分页组合。
+选择“全部项目”可跨项目查看技术演变，例如
+`versions.html?project=all&topic=vfio&view=detailed`。切换主题回到第一页；
+版本直达链接会清除阻挡该版本显示的筛选并展开对应年份。
 各年份默认展开，精简视图可点击年份收起或展开；切换筛选或视图时重新展开，版本直达链接也会展开对应年份。
 详细视图提供发布要点、来源链接及官方提供的提交数、贡献者数，支持
 10／20／30 条分页，数量按功能版本计。两种视图均不列出维护补丁及 RC，
@@ -153,6 +157,12 @@ KVM Forum 的会前预览独立保存在 `virt_report/content/kvm_forum_preview.
 实质变化为主，区分初步支持、正式支持和默认启用；KVM 仅归纳相关子系统变化。
 历史补充可引用官方 Wiki、合并记录或发布标签下的历史文档，使用 `source_url`
 记录要点依据，不改变版本本身的发布日期来源。缺少可靠依据时明确保留内容缺口。
+`version_topics.json` 人工维护主题与版本的对应关系，只关联有中文要点及依据的功能版本，
+不按关键词自动扩展，不将 VFIO 或 virtio 虚构为独立软件版本。增加成员后运行版本测试；
+如需同时展示两个主题，可把同一版本加入两个列表，网页不会重复计数。
+安装 Playwright 与 Chromium 后，可在静态预览运行期间执行
+`node scripts/check_versions_browser.cjs http://127.0.0.1:8091/versions.html`，
+检查组合筛选、分页、直达链接与移动端宽度；`PLAYWRIGHT_MODULE` 可指定已有安装路径。
 网页只读快照；来源失败保留原记录，独立刷新不会重建全站。
 默认 `schedule.auto_export: false` 时，定时刷新不写入 Git 跟踪的 `site/`；
 启用 `auto_export` 或显式传入 `--export` 才导出版本页，`index` 仍可导出完整站点。

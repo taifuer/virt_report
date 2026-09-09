@@ -343,6 +343,57 @@ def test_manual_notes_override_runtime_highlights_without_changing_release_ident
     assert 'href="https://wiki.qemu.org/ChangeLog/11.1"' in page
 
 
+def test_version_topics_only_include_reviewed_feature_releases(tmp_path, monkeypatch):
+    config = Config(storage=Storage(db_path=tmp_path / "report.db"))
+    monkeypatch.setattr(versions, "CONTENT_DIR", tmp_path / "content")
+    versions._write_json(config.db_path.parent / "versions.json", {
+        "releases": [dict(record(), highlights=["VFIO and virtio"], topics=["untrusted"]),
+                     record(version="11.0.0"), record(version="11.1.1")],
+    })
+    versions._write_json(versions.CONTENT_DIR / "version_notes.json", {
+        "qemu:11.1.0": {"highlights": ["核验后的设备更新。"]},
+        "qemu:11.1.1": {"highlights": ["维护修复。"]},
+    })
+    versions._write_json(versions.CONTENT_DIR / "version_topics.json", {
+        "vfio": {"label": "设备直通 / VFIO", "description": "按所属项目版本展示。",
+                 "source_url": "https://docs.kernel.org/driver-api/vfio.html",
+                 "versions": ["qemu:11.1.0", "qemu:11.0.0", "qemu:11.1.1"]},
+    })
+    content = versions.load_content(config, today=date(2026, 9, 9))
+    by_version = {r["version"]: r for r in content["releases"]}
+    assert by_version["11.1.0"]["topics"] == ["vfio"]
+    assert not by_version["11.0.0"]["topics"]  # No manual notes.
+    assert not by_version["11.1.1"]["topics"]  # Maintenance release.
+    page = render.render_versions_html(config, content)
+    assert 'data-version-topic' in page
+    assert '<option value="vfio">设备直通 / VFIO</option>' in page
+    assert 'data-topics="vfio"' in page
+    assert 'data-version-topic-description="vfio" hidden' in page
+    assert "untrusted" not in page and 'value="virtio"' not in page
+    # Topic classification stays editorial, never part of automatically fetched data.
+    exported = json.loads(versions.export_public_snapshot(config).read_text())
+    assert all("topics" not in row for row in exported["releases"])
+
+
+def test_bundled_version_topic_membership_has_notes_sources_and_no_duplicates():
+    content = versions.load_content(Config())
+    rows = {f'{r["project"]}:{r["version"]}': r for r in content["releases"]}
+    assert set(content["topics"]) == {"vfio", "virtio"}
+    for key, topic in content["topics"].items():
+        assert topic["label"] and topic["description"]
+        assert topic["source_url"].startswith("https://docs.kernel.org/")
+        assert len(topic["versions"]) == len(set(topic["versions"]))
+        for release_id in topic["versions"]:
+            row = rows[release_id]
+            assert row["kind"] == "feature" and row["notes"]
+            assert key in row["topics"]
+            assert row["note_source_url"].startswith("https://")
+    assert rows["qemu:1.3.0"]["topics"] == ["vfio"]
+    assert rows["qemu:2.5.0"]["topics"] == ["virtio"]
+    assert rows["qemu:4.0.0"]["topics"] == ["vfio", "virtio"]
+    assert not rows["kvm:5.15"]["topics"]  # General MMU changes are not VFIO.
+
+
 @pytest.mark.parametrize("auto_export,export,no_fetch", [
     (False, False, False), (False, False, True),
     (True, False, False), (False, True, True), (False, True, False),

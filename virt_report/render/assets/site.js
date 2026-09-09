@@ -145,15 +145,17 @@ document.querySelectorAll('[data-conference-browser]').forEach(root=>{
 });
 document.querySelectorAll('[data-version-browser]').forEach(root=>{
   const items=[...root.querySelectorAll('[data-version-item]')],groups=[...root.querySelectorAll('[data-version-group]')],project=root.querySelector('[data-version-project]'),year=root.querySelector('[data-version-year]'),sizeSelect=root.querySelector('[data-version-size]'),prev=root.querySelector('[data-version-prev]'),next=root.querySelector('[data-version-next]'),status=root.querySelector('[data-version-status]'),controls=root.querySelector('[data-version-controls]'),viewButtons=[...root.querySelectorAll('[data-version-view]')];
+  const topic=root.querySelector('[data-version-topic]');
   const params=new URLSearchParams(location.search);
   const defaultProject=root.dataset.defaultProject||'qemu';
   let {page,size}=readPageState(),view=params.get('view')==='detailed'?'detailed':'compact';
   project.value=defaultProject;
-  [['project',project],['year',year]].forEach(([key,select])=>{const value=key==='project'&&params.get(key)==='all'?'':params.get(key);if([...select.options].some(option=>option.value===value))select.value=value});
+  [['project',project],['year',year],['topic',topic]].forEach(([key,select])=>{const value=key==='project'&&params.get(key)==='all'?'':params.get(key);if([...select.options].some(option=>option.value===value))select.value=value});
   sizeSelect.value=String(size);
   const expandYears=()=>groups.forEach(group=>group.querySelector('[data-version-disclosure]').open=true);
   groups.forEach(group=>group.querySelector('summary').addEventListener('click',event=>{if(view==='detailed')event.preventDefault()}));
-  const matchingItems=()=>items.filter(item=>(!project.value||item.dataset.project===project.value)&&(!year.value||item.dataset.year===year.value));
+  const matchesTopic=item=>!topic.value||(item.dataset.topics||'').split(',').includes(topic.value);
+  const matchingItems=()=>items.filter(item=>(!project.value||item.dataset.project===project.value)&&(!year.value||item.dataset.year===year.value)&&matchesTopic(item));
   const draw=(hash)=>{
     const matching=matchingItems(),pages=Math.max(1,Math.ceil(matching.length/size));
     page=view==='compact'?0:Math.max(0,Math.min(page,pages-1));
@@ -171,11 +173,12 @@ document.querySelectorAll('[data-version-browser]').forEach(root=>{
     controls.hidden=view==='compact'||!matching.length;
     root.querySelector('[data-version-count]').textContent=`${matching.length} 个功能版本`;
     root.querySelector('[data-version-empty]').hidden=matching.length>0;
+    root.querySelectorAll('[data-version-topic-description]').forEach(note=>note.hidden=note.dataset.versionTopicDescription!==topic.value);
     root.querySelector('[data-version-help]').textContent=view==='compact'?'精简显示所选范围内全部功能版本；切换详细视图可查看发布要点与相关统计。':'详细显示发布要点与相关统计，每页按功能版本计数。';
     status.textContent=`${page+1} / ${pages}`;prev.disabled=page===0;next.disabled=page===pages-1;
-    writeListState({project:project.value===defaultProject?'':(project.value||'all'),year:year.value,view,page:page+1,per_page:size},hash);
+    writeListState({project:project.value===defaultProject?'':(project.value||'all'),year:year.value,topic:topic.value,view,page:page+1,per_page:size},hash);
   };
-  [project,year].forEach(select=>select.addEventListener('change',()=>{page=0;expandYears();draw('')}));
+  [project,year,topic].forEach(select=>select.addEventListener('change',()=>{page=0;expandYears();draw('')}));
   viewButtons.forEach(button=>button.addEventListener('click',()=>{view=button.dataset.versionView;page=0;expandYears();draw('')}));
   sizeSelect.addEventListener('change',()=>{size=Number(sizeSelect.value);page=0;draw('');scrollList(root.querySelector('.version-controls'))});
   const move=delta=>{page+=delta;draw('');scrollList(root.querySelector('.version-controls'))};
@@ -184,10 +187,11 @@ document.querySelectorAll('[data-version-browser]').forEach(root=>{
     let id;try{id=decodeURIComponent(location.hash.slice(1))}catch{return}
     const target=document.getElementById(id);if(!target||!root.contains(target))return;
     let entry=target.closest('[data-version-item]');
-    if(!entry&&target.matches('[data-version-group]'))entry=[...target.querySelectorAll('[data-version-item]')].find(item=>!project.value||item.dataset.project===project.value)||target.querySelector('[data-version-item]');
+    if(!entry&&target.matches('[data-version-group]'))entry=[...target.querySelectorAll('[data-version-item]')].find(item=>(!project.value||item.dataset.project===project.value)&&matchesTopic(item))||target.querySelector('[data-version-item]');
     if(!entry)return;
     if(project.value&&project.value!==entry.dataset.project)project.value='';
     if(year.value&&year.value!==entry.dataset.year)year.value='';
+    if(!matchesTopic(entry))topic.value='';
     entry.closest('[data-version-disclosure]').open=true;
     page=Math.floor(matchingItems().indexOf(entry)/size);draw();
     requestAnimationFrame(()=>scrollList(target));

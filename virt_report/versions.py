@@ -594,17 +594,24 @@ def load_content(config: Config, *, today: date | None = None) -> dict:
             if isinstance(row, dict) and _valid(row, today):
                 rows[(row["project"], row["version"])] = row
     notes = _read_json(CONTENT_DIR / "version_notes.json", {})
+    topics = _read_json(CONTENT_DIR / "version_topics.json", {})
+    topic_members = {key: set(value.get("versions", [])) for key, value in topics.items()}
     releases = []
     for row in rows.values():
         entry = dict(row, project_label=PROJECTS[row["project"]],
                      year=row["released_on"][:4])
-        reviewed = notes.get(f'{row["project"]}:{row["version"]}', {})
+        release_id = f'{row["project"]}:{row["version"]}'
+        reviewed = notes.get(release_id, {})
         entry["notes"] = reviewed.get("highlights", [])
+        # Only manually reviewed release entries can join a curated theme.
+        # Runtime metadata and keyword matches cannot add theme membership.
+        entry["topics"] = [key for key, members in topic_members.items()
+                           if entry["notes"] and row["kind"] == "feature" and release_id in members]
         entry["note_source_url"] = reviewed.get("source_url") or row.get("notes_url") or row["source_url"]
         releases.append(entry)
     releases.sort(key=lambda row: (row["released_on"], row["project"],
                                    tuple(map(int, row["version"].split(".")))), reverse=True)
-    return {"releases": releases, "projects": PROJECTS,
+    return {"releases": releases, "projects": PROJECTS, "topics": topics,
             "years": sorted({row["year"] for row in releases}, reverse=True),
             "default_year": str(today.year),
             "checked_at": local.get("checked_at") or bundled.get("checked_at", ""),
@@ -635,7 +642,7 @@ def refresh(config: Config, *, from_year: int = 2003,
     with process_lock(directory / "versions.lock"):
         previous = load_content(config, today=today)
         # Strip view-only fields when persisting source records.
-        fields = {"project_label", "year", "notes", "note_source_url"}
+        fields = {"project_label", "year", "notes", "note_source_url", "topics"}
         rows = {(row["project"], row["version"]):
                 {key: value for key, value in row.items() if key not in fields}
                 for row in previous["releases"]}
