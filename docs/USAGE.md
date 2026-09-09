@@ -126,8 +126,10 @@ KVM Forum 的会前预览独立保存在 `virt_report/content/kvm_forum_preview.
 ## 版本时间线
 
 ```bash
-# 核对官方发布记录，仅更新版本快照与 versions.html
+# 核对官方发布记录，默认仅更新 data/ 中的版本快照
 .venv/bin/virt-report versions-refresh --from-year 2003
+# 使用离线数据显式导出 site/versions.html，不影响其他页面
+.venv/bin/virt-report versions-refresh --no-fetch --export
 # 维护者审核后更新仓库内公开基线，不重新联网
 .venv/bin/virt-report versions-refresh --no-fetch --update-bundled
 ```
@@ -148,6 +150,9 @@ KVM Forum 的会前预览独立保存在 `virt_report/content/kvm_forum_preview.
 `version_notes.json` 保存根据官方材料人工整理的中文要点。后续尚未整理的要点
 保留官方原文或发布链接，不调用 AI 推断特性是否落入某个版本。
 网页只读快照；来源失败保留原记录，独立刷新不会重建全站。
+默认 `schedule.auto_export: false` 时，定时刷新不写入 Git 跟踪的 `site/`；
+启用 `auto_export` 或显式传入 `--export` 才导出版本页，`index` 仍可导出完整站点。
+检查时间以 UTC 保存、按站点时区显示；官方发布日期保持原样。
 
 ## 备份与恢复
 

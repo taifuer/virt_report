@@ -210,6 +210,7 @@ def render_search(config: Config, result: dict, filename: str = "search.html") -
 def render_versions_html(config: Config, content: dict) -> str:
     """Display feature releases only, without mutating the stored snapshot."""
     prepared = dict(content)
+    prepared["checked_date"] = _local_date(content.get("checked_at"), config.timezone)
     releases = [row for row in content["releases"] if row["kind"] == "feature"]
     releases.sort(key=lambda row: (row["released_on"], row["project"]), reverse=True)
     prepared["releases"] = releases

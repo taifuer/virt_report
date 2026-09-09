@@ -2,11 +2,13 @@
 import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from virt_report import versions, scheduler
+from virt_report.cli import cmd_versions_refresh
 from virt_report.config import Config, Storage
 from virt_report.render import render
 
@@ -276,6 +278,40 @@ def test_version_default_filter_with_no_qemu_releases():
     assert '<option value="qemu" selected>QEMU</option>' in page
     empty = next(node for node in document.find("p") if "data-version-empty" in node.attrs)
     assert "hidden" not in empty.attrs
+
+
+@pytest.mark.parametrize("timezone,expected", [
+    ("Asia/Shanghai", "2026-09-09"), ("UTC", "2026-09-08"),
+    ("America/Los_Angeles", "2026-09-08"),
+])
+def test_version_checked_date_uses_site_timezone_without_changing_release_date(timezone, expected):
+    content = versions.load_content(Config())
+    content["checked_at"] = "2026-09-08T19:35:03+00:00"
+    original = json.dumps(content, sort_keys=True)
+    page = render.render_versions_html(Config(timezone=timezone), content)
+    assert f"最近检查：{expected}。" in page
+    assert 'datetime="2026-08-11"' in page
+    assert json.dumps(content, sort_keys=True) == original
+
+
+@pytest.mark.parametrize("auto_export,export,no_fetch", [
+    (False, False, False), (False, False, True),
+    (True, False, False), (False, True, True), (False, True, False),
+])
+def test_version_refresh_respects_static_export_policy(tmp_path, monkeypatch, auto_export, export, no_fetch):
+    config = Config()
+    config.render.output_dir = tmp_path
+    config.schedule.auto_export = auto_export
+    snapshot = {"releases": [record()], "sources": {}}
+    calls = []
+    monkeypatch.setattr(versions, "refresh", lambda *_a, **_k: calls.append("fetch") or snapshot)
+    monkeypatch.setattr(versions, "load_content", lambda *_a: snapshot)
+    monkeypatch.setattr(render, "render_versions", lambda *_a: calls.append("export"))
+    cmd_versions_refresh(SimpleNamespace(no_fetch=no_fetch, from_year=2003,
+                                        update_bundled=False, export=export), config)
+    assert ("fetch" in calls) is not no_fetch
+    assert ("export" in calls) == (auto_export or export)
+    assert not list(tmp_path.iterdir())
 
 
 def test_report_toc_follows_hero_before_body():

@@ -44,7 +44,7 @@ Use concise imperative commits such as `Fix GitLab activity windows` or `Add Hyp
 Append this exact trailer only when Codex materially contributed to the commit; omit it from work completed without Codex assistance:
 
 ```text
-Co-Authored-By: Codex (GPT-5.6 Sol) <noreply@openai.com>
+Co-Authored-By: Codex (GPT‑6 Astra) <noreply@openai.com>
 ```
 
 Pull requests should explain the user-visible effect, data migration implications, verification commands, and any API cost or network behavior. Include screenshots for template or responsive-layout changes and link relevant issues when available.

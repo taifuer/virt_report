@@ -328,12 +328,13 @@ def cmd_topics_refresh(args, config: Config) -> None:
 
 
 def cmd_versions_refresh(args, config: Config) -> None:
-    """Fetch official release metadata and rebuild only its offline page."""
+    """Refresh runtime metadata; export HTML only when explicitly enabled."""
     from virt_report import versions
     snapshot = (versions.load_content(config) if args.no_fetch else
                 versions.refresh(config, from_year=args.from_year))
     content = versions.load_content(config)
-    render.render_versions(config, content)
+    if config.schedule.auto_export or args.export:
+        print(f"版本页面已导出：{render.render_versions(config, content)}")
     count = sum(row["kind"] == "feature" for row in content["releases"])
     print(f"版本快照已更新：{count} 个正式功能版本")
     if args.update_bundled:
@@ -559,7 +560,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("topics-refresh", help="离线重建专题数据快照")
     p_versions = sub.add_parser("versions-refresh", help="更新官方版本记录与时间线快照")
     p_versions.add_argument("--from-year", type=int, default=2003, help="起始年份（默认 2003）")
-    p_versions.add_argument("--no-fetch", action="store_true", help="仅用离线版本数据重新渲染")
+    p_versions.add_argument("--no-fetch", action="store_true", help="仅使用已有离线版本数据，不联网")
+    p_versions.add_argument("--export", action="store_true", help="显式导出版本页（不受 auto_export 限制）")
     p_versions.add_argument("--update-bundled", action="store_true", help="维护者手动更新仓库内公开版本基线")
     sub.add_parser("search-refresh", help="离线重建社区议题搜索索引")
     sub.add_parser("status", help="显示数据源覆盖与最近采集健康状态")
