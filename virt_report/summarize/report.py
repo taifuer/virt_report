@@ -20,7 +20,7 @@ from virt_report.processing.architecture import (
 )
 from virt_report.processing.category import category_label, classify_change
 from virt_report.processing.topics import topic_links_for_item
-from . import llm_provider, periods, prompts
+from . import billing, llm_provider, periods, prompts
 
 log = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ TOP_N = {"daily": None, "weekly": 60, "monthly": 100}  # daily 用 config.llm.da
 # 日报在 high reasoning 下被 12K 提前截断，同时保留明确的成本边界。
 MAX_TOKENS = {"daily": 32768, "weekly": 49152, "monthly": 65536}
 MAX_RETRY_TOKENS = 98304
-# 思考强度 (high/max); 高强度更慢，high 已足够且快约一倍
+# 保持 high；按本项目报告质量和耗时评估，避免随模型升级直接提高强度。
 REASONING_EFFORT = {"daily": "high", "weekly": "high", "monthly": "high"}
 # 采集层单段证据上限为 600 字；V4 Flash 的 1M 上下文足以让长周期报告保留
 # 完整的 opening/latest/review 证据，不再为月报额外截成 250 字。
@@ -865,6 +865,12 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
         raw_period_analysis if not fallback else [], threads_data, period
     )
     used_model = "fallback" if fallback else model
+    calls = [billing.snapshot_call(call, config.llm)
+             for call in getattr(provider, "call_history", [])]
+    if calls:
+        aggregate_usage = {}
+        for call in calls:
+            _merge_usage(aggregate_usage, call.get("usage") or {})
     item_count = sum(len(s.get("items", [])) for s in sections)
     content = {
         "period": period, "period_key": period_key,
@@ -876,6 +882,11 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
         "top_threads": threads_data, "model": used_model, "fallback": fallback,
         "generated_at": db.now_utc_iso(),
         "llm_usage": aggregate_usage,
+        "llm_requested_model": model,
+        "llm_response_models": list(dict.fromkeys(
+            call["response_model"] for call in calls if call.get("response_model")
+        )),
+        "llm_calls": calls,
         "llm_attempts": llm_attempts,
         "llm_finish_reason": getattr(provider, "last_finish_reason", None) if provider else None,
         "reasoning_chars": aggregate_reasoning_chars,

@@ -17,11 +17,21 @@
 
 ## AI 点评与发布
 
-新报告使用 `config.yaml` 配置的 `deepseek-v4-flash`，通过 [DeepSeek API](https://api-docs.deepseek.com/zh-cn/) 的 OpenAI 兼容端点调用思考模式和 JSON Output。提示词使用不可变证据编号，模型返回后再由程序回填真实 URL，避免模型编造链接。
+新报告使用 `config.yaml` 配置的 `deepseek-flash`，当前对应 DeepSeek-V4.1-Flash，通过 [DeepSeek API](https://api-docs.deepseek.com/zh-cn/) 的 OpenAI 兼容端点调用思考模式（`high`）和 JSON Output。提示词使用不可变证据编号，模型返回后再由程序回填真实 URL，避免模型编造链接。接口模型名可能随官方路由更新，不等同于固定版本。
 
-输出预算目前为日报 32K、周报 48K、月报 64K；JSON 截断时可重试到 96K。每次调用的模型、token usage 和估算成本会写入数据库。价格只用于趋势观察，应按 [DeepSeek 官方定价](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)变化更新 `config.yaml`。
+输出预算保持日报 32K、周报 48K、月报 64K；JSON 截断时可重试到 96K，不随模型升级自动扩大。
+
+新报告的 `llm_calls` 保存每次 HTTP 请求的开始/结束时间、请求模型名、接口返回模型名、usage、结束原因、费率及估算费用；包含网络和 JSON 重试。接口未返回模型名时留空，不推断实际版本。不存储密钥、请求头或思考正文。模型分组沿用请求名称，返回名称供核查。
+
+`pricing_schedule_cny` 配置新请求的峰谷价格。按北京时间周一至周五 9:00–12:00、14:00–18:00 为高峰，其余为空闲时段；跨时段请求按开始时间估算。2026-09-10 的 Flash 空闲单价为缓存命中 0.02、未命中 1、输出 4 元/百万 tokens，高峰翻倍。兼容别名 `deepseek-v4-flash` 和 `deepseek-v4-flash-vision-exp` 的新调用也使用此费率。公告未给出日内切换时刻，按发布日期作为估算边界。以 [DeepSeek 官方定价](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)和实际账单为准。
+
+已有费率快照不随配置变化重新定价；无快照的历史报告继续使用保留的 `pricing_cny` 估算，不能据其旧模型名称确认后台版本。缺少价格或 usage 的请求显示“未计价”，总额为已计价部分。未发布失败任务、未返回 usage 的请求及账单调整可能不在统计内，此功能不是完整账务系统。历史报告正文和模型记录均不迁移、不重写。
 
 自动任务使用 `--require-ai`：报告在点评成功并通过结构校验后才原子发布。生成中、等待重试和最终失败使用独立状态，不会让模板摘要短暂进入首页、RSS 或专题。历史报告保留生成时的模型和内容。
+
+### 本地模型检查
+
+`.venv/bin/python scripts/check_model_reports.py --live --period daily --period weekly` 会付费生成本地已存最新日报、周报各一份。不传 `--period` 时也仅检查这两个周期；月报需显式指定 `--period monthly`。源数据库只读，每份报告在独立内存副本生成；JSON、HTML 和校验摘要放入未跟踪的 `data/model-checks/<时间>/`，不更新 `site/` 或已发布报告。自动检查 JSON、证据链接和历史数据未变后，仍需人工抽查中文点评与原始证据是否一致。旧名称也会路由到新版，不适合用来做新旧模型 A/B 测试。
 
 ## 专题
 

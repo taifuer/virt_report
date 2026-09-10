@@ -11,7 +11,7 @@ from urllib.request import Request, urlopen
 
 from virt_report import __version__
 from virt_report.config import Config
-from virt_report.summarize import llm_provider
+from virt_report.summarize import billing, llm_provider
 
 log = logging.getLogger(__name__)
 CONTENT_DIR = Path(__file__).parent / "content"
@@ -264,6 +264,8 @@ def analyze(config: Config, editions: list[dict]) -> dict:
         "method": "仅依据各年度官方议程页的议题名称进行 AI 辅助归纳，不读取 PPT 或视频；结论不代表演讲全文内容。",
         "usage": getattr(provider, "last_usage", {}),
     })
+    result["llm_calls"] = [billing.snapshot_call(call, config.llm)
+                           for call in getattr(provider, "call_history", [])]
     ANALYSIS_PATH.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result
 

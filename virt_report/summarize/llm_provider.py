@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 import requests
@@ -40,6 +41,7 @@ class OpenAICompatibleProvider(LLMProvider):
         self.last_usage: dict[str, int] = {}
         self.last_finish_reason: str | None = None
         self.last_reasoning_chars: int = 0
+        self.call_history: list[dict] = []
 
     def complete(self, prompt: str, *, system: str | None = None,
                  model: str | None = None, temperature: float = 0.4,
@@ -49,12 +51,15 @@ class OpenAICompatibleProvider(LLMProvider):
                  retries: int = 3) -> str:
         """调用 /chat/completions。
 
-        thinking: "enabled"/"disabled"/None。DeepSeek v4 思考模式开关；思考模式不支持 temperature。
-        reasoning_effort: "low"/"high"/"max"。DeepSeek V4 思考强度。
+        thinking: "enabled"/"disabled"/None。思考模式开关；开启时不支持 temperature。
+        reasoning_effort: "low"/"high"/"max"。DeepSeek 思考强度。
         对 429/5xx 与网络异常做退避重试。
         """
         if not self.api_key:
             raise RuntimeError(f"{self.name} API key not set")
+        self.last_usage = {}
+        self.last_finish_reason = None
+        self.last_reasoning_chars = 0
         messages: list[dict[str, str]] = []
         if system:
             messages.append({"role": "system", "content": system})
@@ -82,9 +87,15 @@ class OpenAICompatibleProvider(LLMProvider):
         url = self.base_url + "/chat/completions"
         last_exc: Exception | None = None
         for attempt in range(retries):
+            call = {
+                "requested_model": body["model"], "response_model": None,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "usage": {}, "status": "error",
+            }
             try:
                 # DeepSeek 可能先排队并通过空行保活；读取超时按官方最长等待窗口放宽。
                 resp = requests.post(url, headers=headers, json=body, timeout=(30, 660))
+                call["http_status"] = resp.status_code
                 if resp.status_code in (429, 500, 502, 503, 504):
                     last_exc = RuntimeError(f"HTTP {resp.status_code}")
                     if attempt < retries - 1:
@@ -96,11 +107,14 @@ class OpenAICompatibleProvider(LLMProvider):
                     resp.raise_for_status()
                     raise RuntimeError(f"HTTP {resp.status_code}: {detail}")
                 data = resp.json()
+                call.update(response_model=data.get("model"), response_id=data.get("id"),
+                            usage=data.get("usage") or {})
                 choice = data["choices"][0]
                 message = choice["message"]
                 self.last_usage = data.get("usage") or {}
                 self.last_finish_reason = choice.get("finish_reason")
                 self.last_reasoning_chars = len(message.get("reasoning_content") or "")
+                call.update(status="success", finish_reason=self.last_finish_reason)
                 log.info("LLM %s/%s: finish=%s usage=%s reasoning_chars=%d",
                          self.name, body["model"], self.last_finish_reason,
                          self.last_usage, self.last_reasoning_chars)
@@ -114,6 +128,9 @@ class OpenAICompatibleProvider(LLMProvider):
                     time.sleep(min(2 ** attempt, 8))
                     continue
                 break
+            finally:
+                call["finished_at"] = datetime.now(timezone.utc).isoformat()
+                self.call_history.append(call)
         raise last_exc if last_exc else RuntimeError("LLM 调用失败")
 
 

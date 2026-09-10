@@ -37,18 +37,28 @@ llm:
   provider: deepseek
   base_url: https://api.deepseek.com
   api_key_env: DEEPSEEK_API_KEY
-  # 2026-08-01 起，新生成的日/周/月报统一使用 V4 Flash 正式版
-  daily_model: deepseek-v4-flash
-  weekly_model: deepseek-v4-flash
-  monthly_model: deepseek-v4-flash
-  # 单次喂给模型的线程数上限 (DeepSeek V4 上下文 1M；仍需控制噪声与成本)
+  # 新生成的日/周/月报使用官方模型名，当前对应 DeepSeek-V4.1-Flash
+  daily_model: deepseek-flash
+  weekly_model: deepseek-flash
+  monthly_model: deepseek-flash
+  # 单次喂给模型的线程数上限 (上下文 1M；仍需控制噪声与成本)
   daily_top_n: 50
-  # 人民币/百万 tokens；仅用于运行页估算，价格变化时按官方价格页调整
+  # 人民币/百万 tokens；保留未记录费率快照的历史报告估算口径
   # https://api-docs.deepseek.com/zh-cn/quick_start/pricing
   pricing_cny:
     deepseek-v4-flash: {cache_hit: 0.02, cache_miss: 1.0, output: 2.0}
     # 保留历史模型单价，用于估算切换前报告的调用成本
     deepseek-v4-pro: {cache_hit: 0.025, cache_miss: 3.0, output: 6.0}
+  # 新请求按开始时间估算峰谷费率并随调用保存；不等同于官方账单。
+  # 公告仅提供发布日期，生效边界按北京时间当天估算。
+  pricing_schedule_cny:
+    deepseek-flash:
+      effective_from: "2026-09-10T00:00:00+08:00"
+      timezone: Asia/Shanghai
+      peak_weekdays: [0, 1, 2, 3, 4]  # 周一至周五
+      peak_hours: [[9, 12], [14, 18]]
+      off_peak: {cache_hit: 0.02, cache_miss: 1.0, output: 4.0}
+      peak: {cache_hit: 0.04, cache_miss: 2.0, output: 8.0}
 
 render:
   output_dir: site

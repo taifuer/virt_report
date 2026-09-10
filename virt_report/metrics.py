@@ -7,27 +7,16 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 from virt_report.config import Config
+from virt_report.summarize import billing
 
 
 def _usage_cost(model: str, usage: dict, config: Config) -> dict:
-    rates = config.llm.pricing_cny.get(model) or {}
-    prompt = int(usage.get("prompt_tokens") or 0)
-    details = usage.get("prompt_tokens_details") or {}
-    cache_hit = int(usage.get("prompt_cache_hit_tokens") or
-                    details.get("cached_tokens") or 0)
-    cache_miss = int(usage.get("prompt_cache_miss_tokens") or max(0, prompt - cache_hit))
-    output = int(usage.get("completion_tokens") or 0)
-    cost = (
-        cache_hit * float(rates.get("cache_hit", 0)) +
-        cache_miss * float(rates.get("cache_miss", 0)) +
-        output * float(rates.get("output", 0))
-    ) / 1_000_000
-    return {
-        "prompt_tokens": prompt, "cache_hit_tokens": cache_hit,
-        "cache_miss_tokens": cache_miss, "output_tokens": output,
-        "total_tokens": int(usage.get("total_tokens") or prompt + output),
-        "estimated_cost_cny": round(cost, 6), "rates": rates,
-    }
+    """Legacy estimates deliberately do not apply new time-of-day schedules."""
+    cost = billing.estimate(usage, config.llm.pricing_cny.get(model) or {})
+    if cost["estimated_cost_cny"] is not None:
+        cost["estimated_cost_cny"] = round(cost["estimated_cost_cny"], 6)
+    return {**cost, "unpriced_calls": int(bool(usage) and cost["estimated_cost_cny"] is None),
+            "pricing_basis": "legacy"}
 
 
 def build_metrics(conn: sqlite3.Connection, config: Config) -> dict:
@@ -76,18 +65,23 @@ def build_metrics(conn: sqlite3.Connection, config: Config) -> dict:
     model_totals: dict[str, dict] = defaultdict(lambda: {
         "calls": 0, "reports": 0, "total_tokens": 0, "cache_hit_tokens": 0,
         "cache_miss_tokens": 0, "output_tokens": 0, "estimated_cost_cny": 0.0,
+        "unpriced_calls": 0,
     })
 
     def add_usage(model: str, usage: dict, *, report_call: bool = False,
-                  calls: int = 1) -> dict:
-        cost = _usage_cost(model, usage, config)
+                  calls: int = 1, snapshots: list[dict] | None = None) -> dict:
+        cost = (billing.summarize_calls(snapshots) if snapshots
+                else _usage_cost(model, usage, config))
+        if not snapshots and cost["unpriced_calls"]:
+            cost["unpriced_calls"] = calls
         totals = model_totals[model or "unknown"]
-        totals["calls"] += calls
+        totals["calls"] += len(snapshots) if snapshots else calls
         totals["reports"] += int(report_call)
         for field in ("total_tokens", "cache_hit_tokens", "cache_miss_tokens",
                       "output_tokens"):
             totals[field] += cost[field]
-        totals["estimated_cost_cny"] += cost["estimated_cost_cny"]
+        totals["estimated_cost_cny"] += cost["estimated_cost_cny"] or 0
+        totals["unpriced_calls"] += cost["unpriced_calls"]
         return cost
 
     fallback_count = 0
@@ -105,14 +99,18 @@ def build_metrics(conn: sqlite3.Connection, config: Config) -> dict:
         if not fallback:
             report_counts[row["period"]] += 1
         usage = content.get("llm_usage") or {}
+        snapshots = content.get("llm_calls") or []
+        request_model = content.get("llm_requested_model") or row["model"] or ""
         cost = (add_usage(
-                    row["model"] or "", usage, report_call=True,
+                    request_model, usage, report_call=True,
                     calls=max(1, int(content.get("llm_attempts") or 1)),
+                    snapshots=snapshots,
                 )
-                if usage else _usage_cost(row["model"] or "", usage, config))
+                if usage or snapshots else _usage_cost(request_model, usage, config))
         entry = {"period": row["period"], "period_key": row["period_key"],
                  "generated_at": row["generated_at"], "model": row["model"],
-                 "fallback": fallback, **cost}
+                 "fallback": fallback, "requested_model": request_model,
+                 "response_models": content.get("llm_response_models") or [], **cost}
         report_rows.append(entry)
     analyses = []
     try:
@@ -121,7 +119,7 @@ def build_metrics(conn: sqlite3.Connection, config: Config) -> dict:
         usage = analysis.get("usage") or {}
         if usage:
             model = analysis.get("model") or config.llm.weekly_model
-            cost = add_usage(model, usage)
+            cost = add_usage(model, usage, snapshots=analysis.get("llm_calls"))
             analyses.append({"name": "KVM Forum 2010—2025", "model": model, **cost})
     except (FileNotFoundError, TypeError, ValueError):
         pass
@@ -137,5 +135,7 @@ def build_metrics(conn: sqlite3.Connection, config: Config) -> dict:
         "estimated_cost_cny": round(sum(
             model["estimated_cost_cny"] for model in model_totals.values()
         ), 4),
-        "pricing_note": "依据 config.yaml 中人民币/百万 tokens 单价估算，不等同于账单。",
+        "unpriced_calls": sum(model["unpriced_calls"] for model in model_totals.values()),
+        "pricing_note": ("新请求按请求开始时间保存峰谷费率，历史报告保留原估算口径。"
+                         "费用仅统计已记录且可计价的用量；缺少价格或用量的请求单独标注，不等同于账单。"),
     }

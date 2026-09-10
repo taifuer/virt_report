@@ -408,7 +408,7 @@ def test_enrich_report_completes_or_drops_empty_watchlist_reasons():
 def test_about_page_and_architecture_badge_render():
     config = Config()
     assert {config.llm.daily_model, config.llm.weekly_model,
-            config.llm.monthly_model} == {"deepseek-v4-flash"}
+            config.llm.monthly_model} == {"deepseek-flash"}
     about = html_render.render_about_html(config)
     assert "<title>关于 - virt-report</title>" in about
     assert "KVM Forum" in about
@@ -426,13 +426,21 @@ def test_about_page_and_architecture_badge_render():
     assert about.index('class="about-contact"') < about.index('class="about-actions"') < about.index('class="about-sections"')
     assert "<h2>版本记录</h2>" not in about
     assert "会议内容与检索" not in about
+    assert '<details class="about-updates">' in about
+    assert '<summary><h2>更新记录</h2></summary>' in about
+    updates = about.split('<details class="about-updates">', 1)[1].split("</details>", 1)[0]
+    assert updates.count('<li class="update-item">') == 5
+    assert "RSS 订阅" not in updates and "数据来源" not in updates
     latest_update = about.split('<li class="update-item">', 1)[1].split("</li>", 1)[0]
-    assert "<span>版本时间线</span>" in latest_update
-    assert "历史功能版本、发布时间与发布要点" in latest_update
-    assert "报告目录" not in latest_update and "<a " not in latest_update
+    assert "<span>AI 模型更新</span>" in latest_update
+    assert 'datetime="2026-09-10"' in latest_update
+    assert "DeepSeek-V4.1-Flash" in latest_update and "deepseek-flash" in latest_update
+    assert "历史报告保留原有内容和模型记录" in latest_update
+    assert "<span>版本时间线</span>" in about
+    assert "历史功能版本、发布时间与发布要点" in about
     assert "收录会议" in about and "USENIX Security" in about
     assert "关注会议" not in about
-    assert about.index("会议内容扩展") < about.index("AI 模型更新")
+    assert about.index("会议内容扩展") < about.rindex("AI 模型更新")
     assert "学术会议内容覆盖 2010—2026 年" in about
     assert "RSS 订阅" in about
     assert 'href="feed.xml"><span>全部报告</span><small>三类报告 · 最近 50 份</small>' in about

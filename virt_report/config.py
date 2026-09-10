@@ -45,13 +45,24 @@ class LLMConfig:
     provider: str = "deepseek"
     base_url: str = "https://api.deepseek.com"
     api_key_env: str = "DEEPSEEK_API_KEY"
-    daily_model: str = "deepseek-v4-flash"
-    weekly_model: str = "deepseek-v4-flash"
-    monthly_model: str = "deepseek-v4-flash"
+    daily_model: str = "deepseek-flash"
+    weekly_model: str = "deepseek-flash"
+    monthly_model: str = "deepseek-flash"
     daily_top_n: int = 30
     pricing_cny: dict[str, dict[str, float]] = field(default_factory=lambda: {
         "deepseek-v4-flash": {"cache_hit": 0.02, "cache_miss": 1.0, "output": 2.0},
         "deepseek-v4-pro": {"cache_hit": 0.025, "cache_miss": 3.0, "output": 6.0},
+    })
+    # New requests snapshot these rates; legacy reports keep pricing_cny estimates.
+    pricing_schedule_cny: dict[str, dict] = field(default_factory=lambda: {
+        "deepseek-flash": {
+            "effective_from": "2026-09-10T00:00:00+08:00",
+            "timezone": "Asia/Shanghai",
+            "peak_weekdays": [0, 1, 2, 3, 4],
+            "peak_hours": [[9, 12], [14, 18]],
+            "off_peak": {"cache_hit": 0.02, "cache_miss": 1.0, "output": 4.0},
+            "peak": {"cache_hit": 0.04, "cache_miss": 2.0, "output": 8.0},
+        },
     })
 
     @property
