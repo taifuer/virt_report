@@ -1,0 +1,41 @@
+<div class="mobile-archive-head"><span>报告归档</span><span data-mobile-archive-label>日报</span></div>
+<div class="cal archive-browser" id="home-archive" data-report-calendar>
+  <div class="archive-tabs" role="tablist" aria-label="报告日历类型">
+    {% for type, short, name in [('daily','日','日报'),('weekly','周','周报'),('monthly','月','月报')] %}
+    <button type="button"{% if loop.first %} class="active"{% endif %} role="tab" id="calendar-tab-{{ type }}" aria-controls="calendar-panel-{{ type }}" aria-label="{{ name }}日历" aria-selected="{{ 'true' if loop.first else 'false' }}" tabindex="{{ '0' if loop.first else '-1' }}" data-archive-tab="{{ type }}">{{ short }}</button>
+    {% endfor %}
+  </div>
+  {% for type, name, unit in [('daily','日报','日期'),('weekly','周报','周'),('monthly','月报','月份')] %}
+  {% set view = ctx.archive_views[type] %}
+  <section class="archive-panel" role="tabpanel" id="calendar-panel-{{ type }}" aria-labelledby="calendar-tab-{{ type }}" data-archive-panel="{{ type }}"{% if not loop.first %} hidden{% endif %}>
+    <div class="cal-head">
+      <button type="button" class="cal-nav" data-calendar-shift="-1" aria-label="{{ '上一年' if type == 'monthly' else '上个月' }}" disabled><span aria-hidden="true">←</span></button>
+      <span class="m" data-calendar-label aria-live="polite" aria-atomic="true">{{ view.label }}</span>
+      <button type="button" class="cal-nav" data-calendar-shift="1" aria-label="{{ '下一年' if type == 'monthly' else '下个月' }}" disabled><span aria-hidden="true">→</span></button>
+    </div>
+    {% if type != 'monthly' %}<div class="cal-weekdays" aria-hidden="true">{% for dow in ['一','二','三','四','五','六','日'] %}<span>{{ dow }}</span>{% endfor %}</div>{% endif %}
+    <div class="{{ 'cal-grid' if type == 'daily' else 'cal-week-grid' if type == 'weekly' else 'cal-month-grid' }}" data-calendar-body>
+      {% if type == 'daily' %}
+        {% for week in view.weeks %}{% for cell in week %}
+        {% if cell.href %}<a class="cal-day in has{% if cell.today %} cal-today{% endif %}" href="{{ cell.href }}" aria-label="{{ cell.date }} 日报"{% if cell.today %} aria-current="date"{% endif %}>{{ cell.day }}</a>
+        {% else %}<span class="cal-day{% if cell.in_month %} in{% endif %}{% if cell.today %} cal-today{% endif %}" aria-label="{{ cell.date }}，{{ '暂无日报' if cell.in_month else '相邻月份' }}"{% if cell.today %} aria-current="date"{% endif %}>{{ cell.day }}</span>{% endif %}
+        {% endfor %}{% endfor %}
+      {% elif type == 'weekly' %}
+        {% for week in view.weeks %}
+        {% if week.href %}<a class="cal-week has" href="{{ week.href }}" aria-label="{{ week.label }}" title="{{ week.label }}">{% else %}<div class="cal-week" aria-label="{{ week.start }}—{{ week.end }}，暂无周报">{% endif %}
+          {% for cell in week.days %}<span class="cal-week-day{% if not cell.in_month %} outside{% endif %}{% if cell.today %} cal-today{% endif %}"{% if cell.today %} aria-current="date"{% endif %}>{{ cell.day }}</span>{% endfor %}
+        {% if week.href %}</a>{% else %}</div>{% endif %}
+        {% endfor %}
+      {% else %}
+        {% for cell in view.months %}
+        {% if cell.href %}<a class="cal-month has{% if cell.current %} cal-today{% endif %}" href="{{ cell.href }}" aria-label="{{ cell.key }} 月报"{% if cell.current %} aria-current="date"{% endif %}>{{ cell.month }} 月</a>
+        {% else %}<span class="cal-month{% if cell.current %} cal-today{% endif %}" aria-label="{{ cell.key }}，暂无月报"{% if cell.current %} aria-current="date"{% endif %}>{{ cell.month }} 月</span>{% endif %}
+        {% endfor %}
+      {% endif %}
+    </div>
+    <div class="cal-footer"><span class="cal-legend"><i aria-hidden="true"></i>{% if ctx.archive[type] %}高亮{{ unit }}已有{{ name }}{% else %}暂无已发布{{ name }}{% endif %}</span><a class="cal-all" href="{{ type }}/index.html">全部{{ name }}</a></div>
+  </section>
+  {% endfor %}
+  <noscript><p class="cal-no-script">历史归档：<a href="daily/index.html">日报</a> · <a href="weekly/index.html">周报</a> · <a href="monthly/index.html">月报</a></p></noscript>
+</div>
+<script id="report-calendar-index" type="application/json">{{ ctx.archive|tojson }}</script>

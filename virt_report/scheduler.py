@@ -53,6 +53,11 @@ def cron_matches(expression: str, now: datetime) -> bool:
 
 def scheduled_commands(config: Config, now: datetime) -> list[tuple[str, list[str]]]:
     """返回当前分钟应执行的命令，报告键均指向刚结束的周期。"""
+    backup_retention = []
+    if config.schedule.backup_keep_count > 0:
+        backup_retention = ["--keep-count", str(config.schedule.backup_keep_count)]
+    elif config.schedule.backup_keep_days > 0:
+        backup_retention = ["--keep-days", str(config.schedule.backup_keep_days)]
     jobs: list[tuple[str, str, list[str]]] = [
         ("fetch", config.schedule.fetch_cron,
          ["fetch", "--since-days", "4", "--max-pages", "8"]),
@@ -74,7 +79,7 @@ def scheduled_commands(config: Config, now: datetime) -> list[tuple[str, list[st
             "backup", str(
                 config.db_path.parent / "backups" / f"auto-{now:%Y-%m-%d}.db.gz"
             ),
-            "--keep-days", str(config.schedule.backup_keep_days),
+            *backup_retention,
         ]),
     ]
     return [(name, command) for name, expression, command in jobs

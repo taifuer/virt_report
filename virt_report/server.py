@@ -101,30 +101,15 @@ def _list_reports(conn, period: str) -> list[dict]:
 
 
 def _index_context(conn, timezone: str = "Asia/Shanghai") -> dict:
-    daily = _list_reports(conn, "daily")
-    daily_keys = {row["period_key"] for row in daily}
-    months = sorted({key[:7] for key in daily_keys})
-    if not months:
-        from datetime import datetime
-        months = [datetime.now().strftime("%Y-%m")]
-    calendars = [render.build_calendar(month, daily_keys) for month in months]
-    weekly = _list_reports(conn, "weekly")
-    weekly = [dict(item, period_range=render._period_range(
-        "weekly", item["period_key"], timezone
-    )) for item in weekly]
-    return {
-        "cal": calendars[-1],
-        "calendars": calendars,
-        "daily": render.limit_home_reports("daily", daily),
-        "weekly": render.limit_home_reports("weekly", weekly),
-        "monthly": render.limit_home_reports(
-            "monthly", _list_reports(conn, "monthly")
-        ),
-        "generation_states": {
-            period: _generation_states(conn, period)[:1]
-            for period in ("daily", "weekly", "monthly")
-        },
+    context = render.build_home_context(
+        _list_reports(conn, "daily"), _list_reports(conn, "weekly"),
+        _list_reports(conn, "monthly"), timezone,
+    )
+    context["generation_states"] = {
+        period: _generation_states(conn, period)[:1]
+        for period in ("daily", "weekly", "monthly")
     }
+    return context
 
 
 def _nav(conn, period: str, key: str) -> dict:

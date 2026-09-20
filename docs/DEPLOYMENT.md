@@ -54,7 +54,7 @@ docker compose logs -f scheduler
 | 日报 | 每天 00:15 | 生成前一个完整自然日 |
 | 周报 | 周一 00:25 | 生成上一个完整自然周 |
 | 月报 | 每月 1 日 00:35 | 生成上一个完整自然月 |
-| 自动备份 | 每天 01:05 | 创建一致性快照，保留 7 天 |
+| 自动备份 | 每天 01:05 | 创建一致性快照，只保留最新一份 |
 | 版本记录 | 每天 03:35 | 检查正式版本与维护更新；默认只更新运行数据，启用 auto_export 才导出版本页 |
 
 周期报告固定使用 `--no-fetch --require-ai`，不会与定时采集重复下载，也不会发布降级内容。单个任务默认超时 1 小时，最多重试 3 次，间隔 15 分钟。状态持久化在 SQLite，容器重启后可继续；进程锁会阻止重复容器或重叠 cron 并行写库。
@@ -82,7 +82,10 @@ docker compose logs --tail=100 scheduler
 
 ## 备份与恢复
 
-调度器每天生成 `data/backups/auto-YYYY-MM-DD.db.gz`，只清理过期的 `auto-*` 文件，不删除手工备份。手工创建快照：
+调度器每天生成 `data/backups/auto-YYYY-MM-DD.db.gz`，默认 `schedule.backup_keep_count: 1`。
+新快照通过数据库完整性检查并成功写入后，才清理较旧的自动备份；失败时保留原有备份。
+自动清理不处理手工备份。只保留一份适合节省空间，但无法回溯更早的数据状态。
+手工创建快照：
 
 ```bash
 docker compose exec scheduler virt-report --config /app/config.yaml \

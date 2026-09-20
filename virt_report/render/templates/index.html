@@ -7,14 +7,10 @@
   </a>{% endfor %}</div>{% endif %}
 {%- endmacro %}
 {% block content %}
-<section class="home-hero">
-  <h1>Libvirt/QEMU/KVM 虚拟化社区动态</h1>
-  <p>汇总 QEMU、KVM、Libvirt 邮件列表与 GitLab 中的补丁、RFC、缺陷和设计讨论，生成中文日报、周报和月报。</p>
-</section>
 <div class="home-report-tabs" role="tablist" aria-label="首页报告类型">
-  <button type="button" class="active" role="tab" aria-selected="true" data-home-report-tab="daily">日报</button>
-  <button type="button" role="tab" aria-selected="false" data-home-report-tab="weekly">周报</button>
-  <button type="button" role="tab" aria-selected="false" data-home-report-tab="monthly">月报</button>
+  <button type="button" class="active" role="tab" id="home-report-tab-daily" aria-controls="daily calendar-panel-daily" aria-selected="true" data-home-report-tab="daily">日报</button>
+  <button type="button" role="tab" id="home-report-tab-weekly" aria-controls="weekly calendar-panel-weekly" aria-selected="false" tabindex="-1" data-home-report-tab="weekly">周报</button>
+  <button type="button" role="tab" id="home-report-tab-monthly" aria-controls="monthly calendar-panel-monthly" aria-selected="false" tabindex="-1" data-home-report-tab="monthly">月报</button>
 </div>
 <div class="home-grid">
   <div>
@@ -46,59 +42,38 @@
       </div><a class="home-more" href="monthly/index.html">查看全部月报</a>{% else %}<p class="empty-note">暂无月报，运行 <code>virt-report monthly</code>。</p>{% endif %}
     </section>
   </div>
-  <aside>{% if ctx and ctx.cal %}<div class="mobile-archive-head"><span>报告归档</span><span data-mobile-archive-label>日报</span></div><div class="cal archive-browser" id="home-archive">
-    <div class="archive-tabs" role="tablist" aria-label="报告类型">
-      <button type="button" class="active" role="tab" aria-selected="true" data-archive-tab="daily">日</button>
-      <button type="button" role="tab" aria-selected="false" data-archive-tab="weekly">周</button>
-      <button type="button" role="tab" aria-selected="false" data-archive-tab="monthly">月</button>
-    </div>
-    <div class="archive-panel" data-archive-panel="daily">
-      {% for cal in ctx.calendars|default([ctx.cal]) %}<div class="calendar-month" data-calendar-month="{{ cal.month_key }}"{% if not loop.last %} hidden{% endif %}>
-        <div class="cal-head">
-          <button type="button" class="cal-nav{% if loop.first %} dim{% endif %}" data-cal-shift="-1"{% if loop.first %} disabled{% endif %}>←</button>
-          <span class="m">{{ cal.label }}</span>
-          <button type="button" class="cal-nav{% if loop.last %} dim{% endif %}" data-cal-shift="1"{% if loop.last %} disabled{% endif %}>→</button>
-        </div>
-        <div class="cal-grid">{% for dow in ['一','二','三','四','五','六','日'] %}<div class="cal-dow">{{ dow }}</div>{% endfor %}{% for week in cal.weeks %}{% for cell in week %}<div class="cal-day{% if cell %} in{% endif %}{% if cell and cell.key %} has{% endif %}">{% if cell and cell.key %}<a href="daily/{{ cell.key }}.html">{{ cell.day }}</a>{% elif cell %}{{ cell.day }}{% endif %}</div>{% endfor %}{% endfor %}</div>
-        <div class="cal-legend"><i></i>高亮日期已有日报</div>
-      </div>{% endfor %}
-    </div>
-    <div class="archive-panel" data-archive-panel="weekly" hidden>
-      <div class="archive-title">周报</div><div class="archive-links">{% for r in ctx.weekly %}<a href="weekly/{{ r.period_key }}.html"><span>{{ r.period_key }} · {{ r.period_range.short }}</span><small>{{ r.item_count }} 条</small></a>{% else %}<span class="archive-empty">暂无周报</span>{% endfor %}</div>
-    </div>
-    <div class="archive-panel" data-archive-panel="monthly" hidden>
-      <div class="archive-title">月报</div><div class="archive-links">{% for r in ctx.monthly %}<a href="monthly/{{ r.period_key }}.html"><span>{{ r.period_key }}</span><small>{{ r.item_count }} 条</small></a>{% else %}<span class="archive-empty">暂无月报</span>{% endfor %}</div>
-    </div>
-  </div>{% endif %}</aside>
+  <aside>{% include '_archive_calendar.html' %}</aside>
 </div>
 {% endblock %}
 {% block scripts %}<script>
 const archiveTabs=[...document.querySelectorAll('[data-archive-tab]')];
 const archivePanels=[...document.querySelectorAll('[data-archive-panel]')];
 const reportLabels={daily:'日报',weekly:'周报',monthly:'月报'};
+{% include '_archive_calendar_script.html' %}
 function selectArchive(type){
-  archiveTabs.forEach(tab=>{const on=tab.dataset.archiveTab===type;tab.classList.toggle('active',on);tab.setAttribute('aria-selected',String(on))});
-  archivePanels.forEach(panel=>panel.hidden=panel.dataset.archivePanel!==type);
+  archiveTabs.forEach(tab=>{const on=tab.dataset.archiveTab===type;tab.classList.toggle('active',on);tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1});
+  const labelPrefix=window.matchMedia('(max-width:620px)').matches?'home-report-tab-':'calendar-tab-';
+  archivePanels.forEach(panel=>{panel.hidden=panel.dataset.archivePanel!==type;panel.setAttribute('aria-labelledby',labelPrefix+panel.dataset.archivePanel)});
   const label=document.querySelector('[data-mobile-archive-label]');if(label)label.textContent=reportLabels[type]||'';
 }
 archiveTabs.forEach(button=>button.addEventListener('click',()=>selectArchive(button.dataset.archiveTab)));
-document.querySelectorAll('[data-cal-shift]').forEach(button=>button.addEventListener('click',()=>{
-  const months=[...document.querySelectorAll('[data-calendar-month]')];
-  const current=months.findIndex(month=>!month.hidden);
-  const target=months[current+Number(button.dataset.calShift)];
-  if(target){months[current].hidden=true;target.hidden=false}
-}));
+function calendarTabKeys(tabs,select){tabs.forEach((tab,index)=>tab.addEventListener('keydown',event=>{
+  const target=event.key==='ArrowRight'?(index+1)%tabs.length:event.key==='ArrowLeft'?(index+tabs.length-1)%tabs.length:event.key==='Home'?0:event.key==='End'?tabs.length-1:-1;
+  if(target<0)return;event.preventDefault();select(tabs[target]);tabs[target].focus();
+}))}
+calendarTabKeys(archiveTabs,tab=>selectArchive(tab.dataset.archiveTab));
 const reportTabs=[...document.querySelectorAll('[data-home-report-tab]')];
 const mobileReports=window.matchMedia('(max-width:620px)');
 const reportTabStorageKey='virt-report:home-report-tab';
 function savedReportTab(){try{return sessionStorage.getItem(reportTabStorageKey)}catch(error){return null}}
 function rememberReportTab(type){try{sessionStorage.setItem(reportTabStorageKey,type)}catch(error){}}
 function selectReportTab(button){
-  reportTabs.forEach(tab=>{const on=tab===button;tab.classList.toggle('active',on);tab.setAttribute('aria-selected',String(on))});
+  reportTabs.forEach(tab=>{const on=tab===button;tab.classList.toggle('active',on);tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1});
   document.querySelectorAll('[data-home-report-panel]').forEach(panel=>{const on=panel.dataset.homeReportPanel===button.dataset.homeReportTab;panel.classList.toggle('mobile-active',on);panel.hidden=mobileReports.matches&&!on});
   if(mobileReports.matches)selectArchive(button.dataset.homeReportTab);
 }
 reportTabs.forEach(button=>button.addEventListener('click',()=>{selectReportTab(button);rememberReportTab(button.dataset.homeReportTab)}));
-function syncReportPanels(){if(mobileReports.matches){const saved=savedReportTab();selectReportTab(reportTabs.find(tab=>tab.dataset.homeReportTab===saved)||reportTabs.find(tab=>tab.classList.contains('active'))||reportTabs[0])}else document.querySelectorAll('[data-home-report-panel]').forEach(panel=>panel.hidden=false)}
+calendarTabKeys(reportTabs,tab=>{selectReportTab(tab);rememberReportTab(tab.dataset.homeReportTab)});
+function syncReportPanels(){if(mobileReports.matches){const saved=savedReportTab();selectReportTab(reportTabs.find(tab=>tab.dataset.homeReportTab===saved)||reportTabs.find(tab=>tab.classList.contains('active'))||reportTabs[0])}else{document.querySelectorAll('[data-home-report-panel]').forEach(panel=>panel.hidden=false);selectArchive(archiveTabs.find(tab=>tab.classList.contains('active'))?.dataset.archiveTab||'daily')}}
 if(mobileReports.addEventListener)mobileReports.addEventListener('change',syncReportPanels);else if(mobileReports.addListener)mobileReports.addListener(syncReportPanels);syncReportPanels();
 </script>{% endblock %}

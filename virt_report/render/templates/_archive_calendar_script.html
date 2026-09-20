@@ -1,0 +1,89 @@
+// Only published period keys are embedded; browsing never makes a request.
+const calendarIndex=JSON.parse(document.getElementById('report-calendar-index').textContent);
+const calendarDates=new Set(calendarIndex.daily);
+const calendarMonths=new Set(calendarIndex.monthly);
+const calendarWeeks=new Map(calendarIndex.weekly.map(week=>[week.start,week]));
+const calendarPages=Object.fromEntries(Object.entries(calendarIndex.views).map(([type,view])=>[type,view.initial]));
+const calendarStorageKey='virt-report:calendar-pages';
+let calendarToday=calendarIndex.today;
+try{
+  const parts=new Intl.DateTimeFormat('en',{timeZone:calendarIndex.timezone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+  const part=type=>parts.find(item=>item.type===type).value;
+  calendarToday=`${part('year')}-${part('month')}-${part('day')}`;
+}catch(error){}
+try{
+  const saved=JSON.parse(sessionStorage.getItem(calendarStorageKey)||'{}');
+  for(const type of Object.keys(calendarPages)){
+    const value=saved?.[type],bounds=calendarIndex.views[type];
+    if(typeof value==='string'&&value>=bounds.first&&value<=bounds.last&&
+      (type==='monthly'?/^\d{4}$/:/^\d{4}-(0[1-9]|1[0-2])$/).test(value))calendarPages[type]=value;
+  }
+}catch(error){}
+const calendarISO=date=>date.toISOString().slice(0,10);
+const calendarMonthDates=key=>{
+  const first=new Date(`${key}-01T00:00:00Z`),end=new Date(first);
+  end.setUTCMonth(end.getUTCMonth()+1);end.setUTCDate(0);
+  first.setUTCDate(1-(first.getUTCDay()+6)%7);
+  end.setUTCDate(end.getUTCDate()+(7-end.getUTCDay())%7);
+  const days=[];
+  for(const date=new Date(first);date<=end;date.setUTCDate(date.getUTCDate()+1))days.push(calendarISO(date));
+  return days;
+};
+const calendarCell=(tag,classes,text,label)=>{
+  const cell=document.createElement(tag);cell.className=classes;cell.textContent=text;
+  if(label)cell.setAttribute('aria-label',label);
+  return cell;
+};
+const markCalendarToday=(cell,current)=>{
+  if(current){cell.classList.add('cal-today');cell.setAttribute('aria-current','date')}
+};
+function drawCalendar(type){
+  const panel=archivePanels.find(item=>item.dataset.archivePanel===type);
+  const key=calendarPages[type],bounds=calendarIndex.views[type];
+  panel.querySelector('[data-calendar-label]').textContent=type==='monthly'?`${Number(key)} 年`:`${Number(key.slice(0,4))} 年 ${Number(key.slice(5))} 月`;
+  panel.querySelector('[data-calendar-shift="-1"]').disabled=key<=bounds.first;
+  panel.querySelector('[data-calendar-shift="1"]').disabled=key>=bounds.last;
+  const body=panel.querySelector('[data-calendar-body]'),fragment=document.createDocumentFragment();
+  if(type==='monthly'){
+    for(let month=1;month<=12;month++){
+      const date=`${key}-${String(month).padStart(2,'0')}`,available=calendarMonths.has(date);
+      const cell=calendarCell(available?'a':'span',`cal-month${available?' has':''}`,`${month} 月`,`${date}${available?' 月报':'，暂无月报'}`);
+      if(available)cell.href=`monthly/${date}.html`;
+      markCalendarToday(cell,date===calendarToday.slice(0,7));fragment.append(cell);
+    }
+  }else{
+    const dates=calendarMonthDates(key);
+    if(type==='daily'){
+      for(const date of dates){
+        const inside=date.slice(0,7)===key,available=inside&&calendarDates.has(date);
+        const label=`${date}${available?' 日报':inside?'，暂无日报':'，相邻月份'}`;
+        const cell=calendarCell(available?'a':'span',`cal-day${inside?' in':''}${available?' has':''}`,Number(date.slice(8)),label);
+        if(available)cell.href=`daily/${date}.html`;
+        markCalendarToday(cell,date===calendarToday);fragment.append(cell);
+      }
+    }else{
+      for(let offset=0;offset<dates.length;offset+=7){
+        const days=dates.slice(offset,offset+7),week=calendarWeeks.get(days[0]);
+        const label=`${days[0]}—${days[6]}${week?' 周报':'，暂无周报'}`;
+        const row=calendarCell(week?'a':'div',`cal-week${week?' has':''}`,'',label);
+        if(week){row.href=`weekly/${week.key}.html`;row.title=label}
+        for(const date of days){
+          const cell=calendarCell('span',`cal-week-day${date.slice(0,7)===key?'':' outside'}`,Number(date.slice(8)));
+          markCalendarToday(cell,date===calendarToday);row.append(cell);
+        }
+        fragment.append(row);
+      }
+    }
+  }
+  body.replaceChildren(fragment);
+}
+document.querySelectorAll('[data-calendar-shift]').forEach(button=>button.addEventListener('click',()=>{
+  const type=button.closest('[data-archive-panel]').dataset.archivePanel,step=Number(button.dataset.calendarShift);
+  let next;
+  if(type==='monthly')next=String(Number(calendarPages[type])+step).padStart(4,'0');
+  else{const date=new Date(`${calendarPages[type]}-01T00:00:00Z`);date.setUTCMonth(date.getUTCMonth()+step);next=calendarISO(date).slice(0,7)}
+  const bounds=calendarIndex.views[type];if(next<bounds.first||next>bounds.last)return;
+  calendarPages[type]=next;drawCalendar(type);
+  try{sessionStorage.setItem(calendarStorageKey,JSON.stringify(calendarPages))}catch(error){}
+}));
+Object.keys(calendarPages).forEach(drawCalendar);

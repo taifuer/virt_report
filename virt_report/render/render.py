@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from virt_report.config import Config
+from virt_report.render.calendar import build_archive_index, build_archive_views
 from virt_report.summarize import periods, report as report_builder
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -48,6 +49,33 @@ def export_brand_assets(output_dir: Path) -> None:
 def limit_home_reports(period: str, reports: list[dict]) -> list[dict]:
     """Return the recent reports shown on the home page."""
     return reports[:HOME_REPORT_LIMITS[period]]
+
+
+def build_home_context(daily: list[dict], weekly: list[dict], monthly: list[dict],
+                       timezone: str = "Asia/Shanghai") -> dict:
+    """Keep complete calendar indexes separate from the recent report cards."""
+    archive = build_archive_index(
+        [item["period_key"] for item in daily],
+        [item["period_key"] for item in weekly],
+        [item["period_key"] for item in monthly], timezone,
+    )
+    accepted = {"daily": set(archive["daily"]),
+                "weekly": {item["key"] for item in archive["weekly"]},
+                "monthly": set(archive["monthly"])}
+    cards = {
+        period: limit_home_reports(period, [
+            item for item in rows if item["period_key"] in accepted[period]
+        ]) for period, rows in (("daily", daily), ("weekly", weekly),
+                                ("monthly", monthly))
+    }
+    return {
+        "archive": archive,
+        "daily": cards["daily"],
+        "weekly": [dict(item, period_range=_period_range(
+            "weekly", item["period_key"], timezone,
+        )) for item in cards["weekly"]],
+        "monthly": cards["monthly"],
+    }
 
 
 def _local_date(value: str | None, timezone: str) -> str:
@@ -156,10 +184,7 @@ def _period_range(period: str, period_key: str, timezone: str) -> dict:
 
 
 def render_index(config: Config, ctx: dict, filename: str = "index.html") -> Path:
-    """渲染首页/月份页。
-
-    ctx: {'cal': calendar_dict, 'weekly': [...], 'monthly': [...], 'cur_month': 'YYYY-MM'}
-    """
+    """Export the home page with recent cards and a complete report calendar."""
     html = render_index_html(config, ctx)
     out = Path(config.output_dir) / filename
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -172,6 +197,13 @@ def render_index_html(config: Config, ctx: dict) -> str:
     env = _env()
     tpl = env.get_template("index.html")
     prepared = dict(ctx)
+    if "archive" not in prepared:
+        prepared["archive"] = build_archive_index(
+            *([item["period_key"] for item in ctx.get(period, [])]
+              for period in ("daily", "weekly", "monthly")),
+            timezone=config.timezone,
+        )
+    prepared["archive_views"] = build_archive_views(prepared["archive"])
     prepared.setdefault("generation_states", {
         "daily": [], "weekly": [], "monthly": [],
     })

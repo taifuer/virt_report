@@ -84,7 +84,8 @@ class Schedule:
     monthly_cron: str = "35 0 1 * *"
     backup_cron: str = "5 1 * * *"
     versions_cron: str = "35 3 * * *"
-    backup_keep_days: int = 7
+    backup_keep_count: int = 1
+    backup_keep_days: int = 0  # Compatibility for explicitly configured legacy policies.
     job_timeout_seconds: int = 3600
     retry_limit: int = 3
     retry_delay_seconds: int = 900
@@ -171,6 +172,9 @@ def load_config(path: str | Path | None = None) -> Config:
         site_url=render_raw.get("site_url", ""),
     )
 
+    schedule_raw = dict(raw.get("schedule", {}))
+    if "backup_keep_days" in schedule_raw and "backup_keep_count" not in schedule_raw:
+        schedule_raw["backup_keep_count"] = 0
     proj = raw.get("project", {})
     config = Config(
         name=proj.get("name", "virt-report"),
@@ -179,7 +183,7 @@ def load_config(path: str | Path | None = None) -> Config:
         storage=storage,
         llm=LLMConfig(**raw.get("llm", {})),
         render=render,
-        schedule=Schedule(**raw.get("schedule", {})),
+        schedule=Schedule(**schedule_raw),
         metrics_access=MetricsAccess(**raw.get("metrics_access", {})),
     )
     # 确保 DB 目录存在

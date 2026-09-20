@@ -591,7 +591,7 @@ def test_index_context_applies_home_report_limits(tmp_db):
         for period, key in (
             ("daily", f"2026-07-{index:02d}"),
             ("weekly", f"2026-W{index:02d}"),
-            ("monthly", f"2026-{index:02d}"),
+            ("monthly", f"{2025 + (index - 1) // 12}-{(index - 1) % 12 + 1:02d}"),
         ):
             db.save_report(tmp_db, period, key, {"period": period, "period_key": key},
                            "Asia/Shanghai", item_count=1, model="test")
@@ -601,8 +601,11 @@ def test_index_context_applies_home_report_limits(tmp_db):
     assert len(context["monthly"]) == 6
     assert context["daily"][0]["period_key"] == "2026-07-20"
     assert context["weekly"][-1]["period_key"] == "2026-W12"
-    assert context["monthly"][-1]["period_key"] == "2026-15"
-    assert [cal["month_key"] for cal in context["calendars"]] == ["2026-07"]
+    assert context["monthly"][-1]["period_key"] == "2026-03"
+    assert context["archive"]["views"]["daily"]["initial"] == "2026-07"
+    assert len(context["archive"]["daily"]) == 20
+    assert len(context["archive"]["weekly"]) == 20
+    assert len(context["archive"]["monthly"]) == 20
 
 
 def test_readiness_reports_missing_and_fresh_sources(tmp_db):
@@ -1392,8 +1395,9 @@ def test_scheduler_uses_just_finished_periods():
     )
     assert {name for name, _command, _at in caught_up} == {"fetch", "daily", "weekly"}
     backup_now = datetime(2026, 7, 20, 1, 5, tzinfo=tz)
-    assert Config().schedule.backup_keep_days == 7
-    assert any(name == "backup" and command[-2:] == ["--keep-days", "7"]
+    assert Config().schedule.backup_keep_count == 1
+    assert Config().schedule.backup_keep_days == 0
+    assert any(name == "backup" and command[-2:] == ["--keep-count", "1"]
                for name, command in scheduler.scheduled_commands(Config(), backup_now))
 
 

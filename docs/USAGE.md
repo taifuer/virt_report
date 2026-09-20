@@ -176,15 +176,17 @@ KVM Forum 的会前预览独立保存在 `virt_report/content/kvm_forum_preview.
 # 创建一致性的 gzip 快照并输出 SHA-256
 .venv/bin/virt-report backup data/backups/virt-report.db.gz
 
-# 创建默认路径快照，并清理 7 天前的 auto-*.db.gz
-.venv/bin/virt-report backup --keep-days 7
+# 创建自动快照，成功后只保留这一份（日期改为当天）
+.venv/bin/virt-report backup data/backups/auto-2026-09-20.db.gz --keep-count 1
 
 # 停止 Web 和调度器后恢复；原数据库会先自动备份
 .venv/bin/virt-report restore data/backups/virt-report.db.gz \
   --sha256 <摘要> --force
 ```
 
-不要直接复制正在写入的 SQLite 文件。生产部署的完整操作见[部署与运维](DEPLOYMENT.md)。
+不要直接复制正在写入的 SQLite 文件。默认每天自动备份，仅保留最新一份已校验快照；
+手工备份不参与自动清理。`--keep-days` 仍可用于旧的按天保留方式，不能与 `--keep-count` 同用。
+生产部署的完整操作见[部署与运维](DEPLOYMENT.md)。
 
 ## 开发检查
 

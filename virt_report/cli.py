@@ -103,23 +103,11 @@ def _list_reports(conn, period: str) -> list[dict]:
 
 
 def _render_index(config: Config, conn) -> None:
-    from virt_report.render.render import build_calendar
-
     render.export_brand_assets(config.output_dir)
-    daily_rows = _list_reports(conn, "daily")
-    daily_keys = {r["period_key"] for r in daily_rows}
-    months = sorted({k[:7] for k in daily_keys})  # YYYY-MM
-    if not months:
-        now = datetime.now(ZoneInfo(config.timezone))
-        months = [now.strftime("%Y-%m")]
-
-    weekly = _list_reports(conn, "weekly")
-    weekly = [dict(item, period_range=render._period_range(
-        "weekly", item["period_key"], config.timezone
-    )) for item in weekly]
-    monthly = render.limit_home_reports("monthly", _list_reports(conn, "monthly"))
-    daily = render.limit_home_reports("daily", _list_reports(conn, "daily"))
-    weekly = render.limit_home_reports("weekly", weekly)
+    ctx = render.build_home_context(
+        _list_reports(conn, "daily"), _list_reports(conn, "weekly"),
+        _list_reports(conn, "monthly"), config.timezone,
+    )
     source_health = []
     for source, project, label in (
         ("ml", "qemu-devel", "QEMU 邮件"), ("ml", "kvm", "KVM 邮件"),
@@ -137,9 +125,7 @@ def _render_index(config: Config, conn) -> None:
             "error": row["error"] if row else "尚无采集记录",
         })
 
-    calendars = [build_calendar(month, daily_keys) for month in months]
-    ctx = {"cal": calendars[-1], "calendars": calendars, "weekly": weekly,
-           "monthly": monthly, "daily": daily, "source_health": source_health}
+    ctx["source_health"] = source_health
     render.render_index(config, ctx, filename="index.html")
     # 单页日历在浏览器内切换月份，不再保留按月份复制的 index 文件。
     for stale in config.output_dir.glob("index-????-??.html"):
@@ -503,14 +489,50 @@ def cmd_conference_catalog(args, config: Config) -> None:
 
 def cmd_backup(args, config: Config) -> None:
     """生成可迁移的一致性数据库压缩快照。"""
-    from virt_report.maintenance import backup_database, prune_backups
-    target = Path(args.output).resolve() if args.output else None
-    path, digest = backup_database(config.db_path, target)
-    print(f"数据库备份完成: {path}")
-    print(f"SHA256: {digest}")
-    if args.keep_days:
-        removed = prune_backups(path.parent, args.keep_days)
-        print(f"已清理过期自动备份: {len(removed)} 个")
+    from virt_report.maintenance import (
+        backup_database, is_automatic_backup_path, prune_backups,
+        prune_backups_by_count,
+    )
+    target = Path(args.output).absolute() if args.output else None
+    keep_count = getattr(args, "keep_count", None)
+    keep_days = getattr(args, "keep_days", 0)
+    if keep_count is not None:
+        if isinstance(keep_count, bool) or not isinstance(keep_count, int) or keep_count < 1:
+            raise ValueError("--keep-count 必须是正整数")
+        if keep_days:
+            raise ValueError("--keep-count 与 --keep-days 不能同时使用")
+        if target is None or not is_automatic_backup_path(target):
+            raise ValueError("--keep-count 必须指定 auto-YYYY-MM-DD.db.gz 自动备份输出路径")
+        if target.parent.resolve() != target.parent:
+            raise ValueError("--keep-count 的备份目录不能经过符号链接")
+    lock_path = config.db_path.parent / "backup.lock"
+    if lock_path.is_symlink() or (lock_path.exists() and not lock_path.is_file()):
+        raise ValueError("备份锁必须是普通文件，不能是符号链接或目录")
+
+    def aliases(first: Path, second: Path) -> bool:
+        return (first.resolve() == second.resolve()
+                or (first.exists() and second.exists() and first.samefile(second)))
+
+    source_path = config.db_path.resolve()
+    if any(aliases(lock_path, Path(str(source_path) + suffix))
+           for suffix in ("", "-wal", "-shm", "-journal")):
+        raise ValueError("备份锁不能覆盖源数据库或其日志文件")
+    if target is not None and aliases(target, lock_path):
+        raise ValueError("备份目标不能覆盖备份锁文件")
+    with process_lock(lock_path):
+        path, digest = backup_database(config.db_path, target)
+        print(f"数据库备份完成: {path}")
+        print(f"SHA256: {digest}")
+        if keep_count is not None:
+            removed = prune_backups_by_count(
+                path.parent, keep_count, protected=path, exclude=(config.db_path,),
+            )
+            print(f"已按数量清理自动备份: {len(removed)} 个，保留 {keep_count} 个")
+        elif keep_days:
+            removed = prune_backups(
+                path.parent, keep_days, protected=path, exclude=(config.db_path,),
+            )
+            print(f"已清理过期自动备份: {len(removed)} 个")
 
 
 def cmd_restore(args, config: Config) -> None:
@@ -606,8 +628,23 @@ def main(argv: list[str] | None = None) -> int:
                            help="将已核验论文单位同步到公开会议快照")
     p_backup = sub.add_parser("backup", help="导出一致性的 gzip 数据库快照")
     p_backup.add_argument("output", nargs="?", help="输出 .db.gz 路径")
-    p_backup.add_argument("--keep-days", type=int, default=0,
-                          help="清理超过指定天数的 auto-*.db.gz")
+
+    def positive_backup_count(value: str) -> int:
+        try:
+            count = int(value)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError("备份保留数量必须是正整数") from exc
+        if count < 1:
+            raise argparse.ArgumentTypeError("备份保留数量必须是正整数")
+        return count
+
+    backup_retention = p_backup.add_mutually_exclusive_group()
+    backup_retention.add_argument("--keep-days", type=int, default=0,
+                                  help="清理超过指定天数的 auto-*.db.gz")
+    backup_retention.add_argument(
+        "--keep-count", type=positive_backup_count,
+        help="仅保留指定数量的 auto-YYYY-MM-DD.db.gz（必须指定自动备份输出路径）",
+    )
     p_restore = sub.add_parser("restore", help="从 gzip 快照恢复数据库")
     p_restore.add_argument("archive", help="备份 .db.gz 路径")
     p_restore.add_argument("--sha256", help="预期 SHA-256")

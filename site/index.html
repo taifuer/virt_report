@@ -7,14 +7,14 @@
   <title>virt-report - 虚拟化社区动态</title>
   <meta name="description" content="聚合 QEMU、KVM、Libvirt 邮件列表与 GitLab 动态的中文技术简报。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="feed.xml">
-  <link rel="shortcut icon" href="favicon.ico?v=293c56d9c19f">
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=293c56d9c19f">
-  <link rel="stylesheet" href="assets/site.css?v=293c56d9c19f">
+  <link rel="shortcut icon" href="favicon.ico?v=3ec761824b5c">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=3ec761824b5c">
+  <link rel="stylesheet" href="assets/site.css?v=3ec761824b5c">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="index.html"><img class="brand-mark" src="assets/brand-mark.png?v=293c56d9c19f" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="index.html"><img class="brand-mark" src="assets/brand-mark.png?v=3ec761824b5c" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <a href="search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
     <div class="head-actions">
       <nav class="main-nav" aria-label="主导航">
@@ -22,14 +22,11 @@
       </nav>
     </div>
   </div></header>
-  <main id="main"><div class="wrap"><section class="home-hero">
-  <h1>Libvirt/QEMU/KVM 虚拟化社区动态</h1>
-  <p>汇总 QEMU、KVM、Libvirt 邮件列表与 GitLab 中的补丁、RFC、缺陷和设计讨论，生成中文日报、周报和月报。</p>
-</section>
+  <main id="main"><div class="wrap">
 <div class="home-report-tabs" role="tablist" aria-label="首页报告类型">
-  <button type="button" class="active" role="tab" aria-selected="true" data-home-report-tab="daily">日报</button>
-  <button type="button" role="tab" aria-selected="false" data-home-report-tab="weekly">周报</button>
-  <button type="button" role="tab" aria-selected="false" data-home-report-tab="monthly">月报</button>
+  <button type="button" class="active" role="tab" id="home-report-tab-daily" aria-controls="daily calendar-panel-daily" aria-selected="true" data-home-report-tab="daily">日报</button>
+  <button type="button" role="tab" id="home-report-tab-weekly" aria-controls="weekly calendar-panel-weekly" aria-selected="false" tabindex="-1" data-home-report-tab="weekly">周报</button>
+  <button type="button" role="tab" id="home-report-tab-monthly" aria-controls="monthly calendar-panel-monthly" aria-selected="false" tabindex="-1" data-home-report-tab="monthly">月报</button>
 </div>
 <div class="home-grid">
   <div>
@@ -109,78 +106,177 @@
           <div class="report-card-top"><div class="r-title">2026-03</div><span class="type">月报</span></div><div class="r-summary">ARM GICv5 虚拟化与 SMMUv3 加速持续推进，TDX 模块更新与机密计算重置方案迭代接近完成</div><div class="r-meta">34 条动态 · 2026-07-16 生成</div>
         </a>      </div><a class="home-more" href="monthly/index.html">查看全部月报</a>    </section>
   </div>
-  <aside><div class="mobile-archive-head"><span>报告归档</span><span data-mobile-archive-label>日报</span></div><div class="cal archive-browser" id="home-archive">
-    <div class="archive-tabs" role="tablist" aria-label="报告类型">
-      <button type="button" class="active" role="tab" aria-selected="true" data-archive-tab="daily">日</button>
-      <button type="button" role="tab" aria-selected="false" data-archive-tab="weekly">周</button>
-      <button type="button" role="tab" aria-selected="false" data-archive-tab="monthly">月</button>
+  <aside><div class="mobile-archive-head"><span>报告归档</span><span data-mobile-archive-label>日报</span></div>
+<div class="cal archive-browser" id="home-archive" data-report-calendar>
+  <div class="archive-tabs" role="tablist" aria-label="报告日历类型">
+    <button type="button" class="active" role="tab" id="calendar-tab-daily" aria-controls="calendar-panel-daily" aria-label="日报日历" aria-selected="true" tabindex="0" data-archive-tab="daily">日</button>
+    <button type="button" role="tab" id="calendar-tab-weekly" aria-controls="calendar-panel-weekly" aria-label="周报日历" aria-selected="false" tabindex="-1" data-archive-tab="weekly">周</button>
+    <button type="button" role="tab" id="calendar-tab-monthly" aria-controls="calendar-panel-monthly" aria-label="月报日历" aria-selected="false" tabindex="-1" data-archive-tab="monthly">月</button>
+  </div>
+  <section class="archive-panel" role="tabpanel" id="calendar-panel-daily" aria-labelledby="calendar-tab-daily" data-archive-panel="daily">
+    <div class="cal-head">
+      <button type="button" class="cal-nav" data-calendar-shift="-1" aria-label="上个月" disabled><span aria-hidden="true">←</span></button>
+      <span class="m" data-calendar-label aria-live="polite" aria-atomic="true">2026 年 9 月</span>
+      <button type="button" class="cal-nav" data-calendar-shift="1" aria-label="下个月" disabled><span aria-hidden="true">→</span></button>
     </div>
-    <div class="archive-panel" data-archive-panel="daily">
-<div class="calendar-month" data-calendar-month="2026-07" hidden>
-        <div class="cal-head">
-          <button type="button" class="cal-nav dim" data-cal-shift="-1" disabled>←</button>
-          <span class="m">2026 年 7 月</span>
-          <button type="button" class="cal-nav" data-cal-shift="1">→</button>
-        </div>
-        <div class="cal-grid"><div class="cal-dow">一</div><div class="cal-dow">二</div><div class="cal-dow">三</div><div class="cal-dow">四</div><div class="cal-dow">五</div><div class="cal-dow">六</div><div class="cal-dow">日</div><div class="cal-day"></div><div class="cal-day"></div><div class="cal-day in has"><a href="daily/2026-07-01.html">1</a></div><div class="cal-day in has"><a href="daily/2026-07-02.html">2</a></div><div class="cal-day in has"><a href="daily/2026-07-03.html">3</a></div><div class="cal-day in has"><a href="daily/2026-07-04.html">4</a></div><div class="cal-day in has"><a href="daily/2026-07-05.html">5</a></div><div class="cal-day in has"><a href="daily/2026-07-06.html">6</a></div><div class="cal-day in has"><a href="daily/2026-07-07.html">7</a></div><div class="cal-day in has"><a href="daily/2026-07-08.html">8</a></div><div class="cal-day in has"><a href="daily/2026-07-09.html">9</a></div><div class="cal-day in has"><a href="daily/2026-07-10.html">10</a></div><div class="cal-day in has"><a href="daily/2026-07-11.html">11</a></div><div class="cal-day in has"><a href="daily/2026-07-12.html">12</a></div><div class="cal-day in has"><a href="daily/2026-07-13.html">13</a></div><div class="cal-day in has"><a href="daily/2026-07-14.html">14</a></div><div class="cal-day in has"><a href="daily/2026-07-15.html">15</a></div><div class="cal-day in has"><a href="daily/2026-07-16.html">16</a></div><div class="cal-day in has"><a href="daily/2026-07-17.html">17</a></div><div class="cal-day in has"><a href="daily/2026-07-18.html">18</a></div><div class="cal-day in has"><a href="daily/2026-07-19.html">19</a></div><div class="cal-day in has"><a href="daily/2026-07-20.html">20</a></div><div class="cal-day in has"><a href="daily/2026-07-21.html">21</a></div><div class="cal-day in has"><a href="daily/2026-07-22.html">22</a></div><div class="cal-day in has"><a href="daily/2026-07-23.html">23</a></div><div class="cal-day in has"><a href="daily/2026-07-24.html">24</a></div><div class="cal-day in has"><a href="daily/2026-07-25.html">25</a></div><div class="cal-day in has"><a href="daily/2026-07-26.html">26</a></div><div class="cal-day in has"><a href="daily/2026-07-27.html">27</a></div><div class="cal-day in has"><a href="daily/2026-07-28.html">28</a></div><div class="cal-day in has"><a href="daily/2026-07-29.html">29</a></div><div class="cal-day in has"><a href="daily/2026-07-30.html">30</a></div><div class="cal-day in has"><a href="daily/2026-07-31.html">31</a></div><div class="cal-day"></div><div class="cal-day"></div></div>
-        <div class="cal-legend"><i></i>高亮日期已有日报</div>
-      </div><div class="calendar-month" data-calendar-month="2026-08" hidden>
-        <div class="cal-head">
-          <button type="button" class="cal-nav" data-cal-shift="-1">←</button>
-          <span class="m">2026 年 8 月</span>
-          <button type="button" class="cal-nav" data-cal-shift="1">→</button>
-        </div>
-        <div class="cal-grid"><div class="cal-dow">一</div><div class="cal-dow">二</div><div class="cal-dow">三</div><div class="cal-dow">四</div><div class="cal-dow">五</div><div class="cal-dow">六</div><div class="cal-dow">日</div><div class="cal-day"></div><div class="cal-day"></div><div class="cal-day"></div><div class="cal-day"></div><div class="cal-day"></div><div class="cal-day in has"><a href="daily/2026-08-01.html">1</a></div><div class="cal-day in has"><a href="daily/2026-08-02.html">2</a></div><div class="cal-day in has"><a href="daily/2026-08-03.html">3</a></div><div class="cal-day in has"><a href="daily/2026-08-04.html">4</a></div><div class="cal-day in has"><a href="daily/2026-08-05.html">5</a></div><div class="cal-day in has"><a href="daily/2026-08-06.html">6</a></div><div class="cal-day in has"><a href="daily/2026-08-07.html">7</a></div><div class="cal-day in has"><a href="daily/2026-08-08.html">8</a></div><div class="cal-day in has"><a href="daily/2026-08-09.html">9</a></div><div class="cal-day in has"><a href="daily/2026-08-10.html">10</a></div><div class="cal-day in has"><a href="daily/2026-08-11.html">11</a></div><div class="cal-day in has"><a href="daily/2026-08-12.html">12</a></div><div class="cal-day in has"><a href="daily/2026-08-13.html">13</a></div><div class="cal-day in has"><a href="daily/2026-08-14.html">14</a></div><div class="cal-day in has"><a href="daily/2026-08-15.html">15</a></div><div class="cal-day in has"><a href="daily/2026-08-16.html">16</a></div><div class="cal-day in has"><a href="daily/2026-08-17.html">17</a></div><div class="cal-day in has"><a href="daily/2026-08-18.html">18</a></div><div class="cal-day in has"><a href="daily/2026-08-19.html">19</a></div><div class="cal-day in has"><a href="daily/2026-08-20.html">20</a></div><div class="cal-day in has"><a href="daily/2026-08-21.html">21</a></div><div class="cal-day in has"><a href="daily/2026-08-22.html">22</a></div><div class="cal-day in has"><a href="daily/2026-08-23.html">23</a></div><div class="cal-day in has"><a href="daily/2026-08-24.html">24</a></div><div class="cal-day in has"><a href="daily/2026-08-25.html">25</a></div><div class="cal-day in has"><a href="daily/2026-08-26.html">26</a></div><div class="cal-day in has"><a href="daily/2026-08-27.html">27</a></div><div class="cal-day in has"><a href="daily/2026-08-28.html">28</a></div><div class="cal-day in has"><a href="daily/2026-08-29.html">29</a></div><div class="cal-day in has"><a href="daily/2026-08-30.html">30</a></div><div class="cal-day in has"><a href="daily/2026-08-31.html">31</a></div><div class="cal-day"></div><div class="cal-day"></div><div class="cal-day"></div><div class="cal-day"></div><div class="cal-day"></div><div class="cal-day"></div></div>
-        <div class="cal-legend"><i></i>高亮日期已有日报</div>
-      </div><div class="calendar-month" data-calendar-month="2026-09">
-        <div class="cal-head">
-          <button type="button" class="cal-nav" data-cal-shift="-1">←</button>
-          <span class="m">2026 年 9 月</span>
-          <button type="button" class="cal-nav dim" data-cal-shift="1" disabled>→</button>
-        </div>
-        <div class="cal-grid"><div class="cal-dow">一</div><div class="cal-dow">二</div><div class="cal-dow">三</div><div class="cal-dow">四</div><div class="cal-dow">五</div><div class="cal-dow">六</div><div class="cal-dow">日</div><div class="cal-day"></div><div class="cal-day in has"><a href="daily/2026-09-01.html">1</a></div><div class="cal-day in">2</div><div class="cal-day in">3</div><div class="cal-day in">4</div><div class="cal-day in">5</div><div class="cal-day in">6</div><div class="cal-day in">7</div><div class="cal-day in">8</div><div class="cal-day in">9</div><div class="cal-day in">10</div><div class="cal-day in">11</div><div class="cal-day in">12</div><div class="cal-day in">13</div><div class="cal-day in">14</div><div class="cal-day in">15</div><div class="cal-day in">16</div><div class="cal-day in">17</div><div class="cal-day in">18</div><div class="cal-day in">19</div><div class="cal-day in">20</div><div class="cal-day in">21</div><div class="cal-day in">22</div><div class="cal-day in">23</div><div class="cal-day in">24</div><div class="cal-day in">25</div><div class="cal-day in">26</div><div class="cal-day in">27</div><div class="cal-day in">28</div><div class="cal-day in">29</div><div class="cal-day in">30</div><div class="cal-day"></div><div class="cal-day"></div><div class="cal-day"></div><div class="cal-day"></div></div>
-        <div class="cal-legend"><i></i>高亮日期已有日报</div>
-      </div>    </div>
-    <div class="archive-panel" data-archive-panel="weekly" hidden>
-      <div class="archive-title">周报</div><div class="archive-links"><a href="weekly/2026-W35.html"><span>2026-W35 · 8.24–8.30</span><small>27 条</small></a><a href="weekly/2026-W34.html"><span>2026-W34 · 8.17–8.23</span><small>24 条</small></a><a href="weekly/2026-W33.html"><span>2026-W33 · 8.10–8.16</span><small>25 条</small></a><a href="weekly/2026-W32.html"><span>2026-W32 · 8.3–8.9</span><small>26 条</small></a><a href="weekly/2026-W31.html"><span>2026-W31 · 7.27–8.2</span><small>27 条</small></a><a href="weekly/2026-W30.html"><span>2026-W30 · 7.20–7.26</span><small>25 条</small></a><a href="weekly/2026-W29.html"><span>2026-W29 · 7.13–7.19</span><small>27 条</small></a><a href="weekly/2026-W28.html"><span>2026-W28 · 7.6–7.12</span><small>24 条</small></a><a href="weekly/2026-W27.html"><span>2026-W27 · 6.29–7.5</span><small>23 条</small></a></div>
+<div class="cal-weekdays" aria-hidden="true"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>    <div class="cal-grid" data-calendar-body>
+<span class="cal-day" aria-label="2026-08-31，相邻月份">31</span><a class="cal-day in has" href="daily/2026-09-01.html" aria-label="2026-09-01 日报">1</a>
+<span class="cal-day in" aria-label="2026-09-02，暂无日报">2</span><span class="cal-day in" aria-label="2026-09-03，暂无日报">3</span><span class="cal-day in" aria-label="2026-09-04，暂无日报">4</span><span class="cal-day in" aria-label="2026-09-05，暂无日报">5</span><span class="cal-day in" aria-label="2026-09-06，暂无日报">6</span><span class="cal-day in" aria-label="2026-09-07，暂无日报">7</span><span class="cal-day in" aria-label="2026-09-08，暂无日报">8</span><span class="cal-day in" aria-label="2026-09-09，暂无日报">9</span><span class="cal-day in" aria-label="2026-09-10，暂无日报">10</span><span class="cal-day in" aria-label="2026-09-11，暂无日报">11</span><span class="cal-day in" aria-label="2026-09-12，暂无日报">12</span><span class="cal-day in" aria-label="2026-09-13，暂无日报">13</span><span class="cal-day in" aria-label="2026-09-14，暂无日报">14</span><span class="cal-day in" aria-label="2026-09-15，暂无日报">15</span><span class="cal-day in" aria-label="2026-09-16，暂无日报">16</span><span class="cal-day in" aria-label="2026-09-17，暂无日报">17</span><span class="cal-day in" aria-label="2026-09-18，暂无日报">18</span><span class="cal-day in" aria-label="2026-09-19，暂无日报">19</span><span class="cal-day in cal-today" aria-label="2026-09-20，暂无日报" aria-current="date">20</span><span class="cal-day in" aria-label="2026-09-21，暂无日报">21</span><span class="cal-day in" aria-label="2026-09-22，暂无日报">22</span><span class="cal-day in" aria-label="2026-09-23，暂无日报">23</span><span class="cal-day in" aria-label="2026-09-24，暂无日报">24</span><span class="cal-day in" aria-label="2026-09-25，暂无日报">25</span><span class="cal-day in" aria-label="2026-09-26，暂无日报">26</span><span class="cal-day in" aria-label="2026-09-27，暂无日报">27</span><span class="cal-day in" aria-label="2026-09-28，暂无日报">28</span><span class="cal-day in" aria-label="2026-09-29，暂无日报">29</span><span class="cal-day in" aria-label="2026-09-30，暂无日报">30</span><span class="cal-day" aria-label="2026-10-01，相邻月份">1</span><span class="cal-day" aria-label="2026-10-02，相邻月份">2</span><span class="cal-day" aria-label="2026-10-03，相邻月份">3</span><span class="cal-day" aria-label="2026-10-04，相邻月份">4</span>    </div>
+    <div class="cal-footer"><span class="cal-legend"><i aria-hidden="true"></i>高亮日期已有日报</span><a class="cal-all" href="daily/index.html">全部日报</a></div>
+  </section>
+  <section class="archive-panel" role="tabpanel" id="calendar-panel-weekly" aria-labelledby="calendar-tab-weekly" data-archive-panel="weekly" hidden>
+    <div class="cal-head">
+      <button type="button" class="cal-nav" data-calendar-shift="-1" aria-label="上个月" disabled><span aria-hidden="true">←</span></button>
+      <span class="m" data-calendar-label aria-live="polite" aria-atomic="true">2026 年 8 月</span>
+      <button type="button" class="cal-nav" data-calendar-shift="1" aria-label="下个月" disabled><span aria-hidden="true">→</span></button>
     </div>
-    <div class="archive-panel" data-archive-panel="monthly" hidden>
-      <div class="archive-title">月报</div><div class="archive-links"><a href="monthly/2026-08.html"><span>2026-08</span><small>31 条</small></a><a href="monthly/2026-07.html"><span>2026-07</span><small>35 条</small></a><a href="monthly/2026-06.html"><span>2026-06</span><small>36 条</small></a><a href="monthly/2026-05.html"><span>2026-05</span><small>32 条</small></a><a href="monthly/2026-04.html"><span>2026-04</span><small>34 条</small></a><a href="monthly/2026-03.html"><span>2026-03</span><small>34 条</small></a></div>
+<div class="cal-weekdays" aria-hidden="true"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>    <div class="cal-week-grid" data-calendar-body>
+<a class="cal-week has" href="weekly/2026-W31.html" aria-label="2026-07-27—2026-08-02 周报" title="2026-07-27—2026-08-02 周报"><span class="cal-week-day outside">27</span><span class="cal-week-day outside">28</span><span class="cal-week-day outside">29</span><span class="cal-week-day outside">30</span><span class="cal-week-day outside">31</span><span class="cal-week-day">1</span><span class="cal-week-day">2</span></a><a class="cal-week has" href="weekly/2026-W32.html" aria-label="2026-08-03—2026-08-09 周报" title="2026-08-03—2026-08-09 周报"><span class="cal-week-day">3</span><span class="cal-week-day">4</span><span class="cal-week-day">5</span><span class="cal-week-day">6</span><span class="cal-week-day">7</span><span class="cal-week-day">8</span><span class="cal-week-day">9</span></a><a class="cal-week has" href="weekly/2026-W33.html" aria-label="2026-08-10—2026-08-16 周报" title="2026-08-10—2026-08-16 周报"><span class="cal-week-day">10</span><span class="cal-week-day">11</span><span class="cal-week-day">12</span><span class="cal-week-day">13</span><span class="cal-week-day">14</span><span class="cal-week-day">15</span><span class="cal-week-day">16</span></a><a class="cal-week has" href="weekly/2026-W34.html" aria-label="2026-08-17—2026-08-23 周报" title="2026-08-17—2026-08-23 周报"><span class="cal-week-day">17</span><span class="cal-week-day">18</span><span class="cal-week-day">19</span><span class="cal-week-day">20</span><span class="cal-week-day">21</span><span class="cal-week-day">22</span><span class="cal-week-day">23</span></a><a class="cal-week has" href="weekly/2026-W35.html" aria-label="2026-08-24—2026-08-30 周报" title="2026-08-24—2026-08-30 周报"><span class="cal-week-day">24</span><span class="cal-week-day">25</span><span class="cal-week-day">26</span><span class="cal-week-day">27</span><span class="cal-week-day">28</span><span class="cal-week-day">29</span><span class="cal-week-day">30</span></a><div class="cal-week" aria-label="2026-08-31—2026-09-06，暂无周报"><span class="cal-week-day">31</span><span class="cal-week-day outside">1</span><span class="cal-week-day outside">2</span><span class="cal-week-day outside">3</span><span class="cal-week-day outside">4</span><span class="cal-week-day outside">5</span><span class="cal-week-day outside">6</span></div>    </div>
+    <div class="cal-footer"><span class="cal-legend"><i aria-hidden="true"></i>高亮周已有周报</span><a class="cal-all" href="weekly/index.html">全部周报</a></div>
+  </section>
+  <section class="archive-panel" role="tabpanel" id="calendar-panel-monthly" aria-labelledby="calendar-tab-monthly" data-archive-panel="monthly" hidden>
+    <div class="cal-head">
+      <button type="button" class="cal-nav" data-calendar-shift="-1" aria-label="上一年" disabled><span aria-hidden="true">←</span></button>
+      <span class="m" data-calendar-label aria-live="polite" aria-atomic="true">2026 年</span>
+      <button type="button" class="cal-nav" data-calendar-shift="1" aria-label="下一年" disabled><span aria-hidden="true">→</span></button>
     </div>
-  </div></aside>
+    <div class="cal-month-grid" data-calendar-body>
+<a class="cal-month has" href="monthly/2026-01.html" aria-label="2026-01 月报">1 月</a>
+<a class="cal-month has" href="monthly/2026-02.html" aria-label="2026-02 月报">2 月</a>
+<a class="cal-month has" href="monthly/2026-03.html" aria-label="2026-03 月报">3 月</a>
+<a class="cal-month has" href="monthly/2026-04.html" aria-label="2026-04 月报">4 月</a>
+<a class="cal-month has" href="monthly/2026-05.html" aria-label="2026-05 月报">5 月</a>
+<a class="cal-month has" href="monthly/2026-06.html" aria-label="2026-06 月报">6 月</a>
+<a class="cal-month has" href="monthly/2026-07.html" aria-label="2026-07 月报">7 月</a>
+<a class="cal-month has" href="monthly/2026-08.html" aria-label="2026-08 月报">8 月</a>
+<span class="cal-month cal-today" aria-label="2026-09，暂无月报" aria-current="date">9 月</span><span class="cal-month" aria-label="2026-10，暂无月报">10 月</span><span class="cal-month" aria-label="2026-11，暂无月报">11 月</span><span class="cal-month" aria-label="2026-12，暂无月报">12 月</span>    </div>
+    <div class="cal-footer"><span class="cal-legend"><i aria-hidden="true"></i>高亮月份已有月报</span><a class="cal-all" href="monthly/index.html">全部月报</a></div>
+  </section>
+  <noscript><p class="cal-no-script">历史归档：<a href="daily/index.html">日报</a> · <a href="weekly/index.html">周报</a> · <a href="monthly/index.html">月报</a></p></noscript>
+</div>
+<script id="report-calendar-index" type="application/json">{"daily": ["2026-07-01", "2026-07-02", "2026-07-03", "2026-07-04", "2026-07-05", "2026-07-06", "2026-07-07", "2026-07-08", "2026-07-09", "2026-07-10", "2026-07-11", "2026-07-12", "2026-07-13", "2026-07-14", "2026-07-15", "2026-07-16", "2026-07-17", "2026-07-18", "2026-07-19", "2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23", "2026-07-24", "2026-07-25", "2026-07-26", "2026-07-27", "2026-07-28", "2026-07-29", "2026-07-30", "2026-07-31", "2026-08-01", "2026-08-02", "2026-08-03", "2026-08-04", "2026-08-05", "2026-08-06", "2026-08-07", "2026-08-08", "2026-08-09", "2026-08-10", "2026-08-11", "2026-08-12", "2026-08-13", "2026-08-14", "2026-08-15", "2026-08-16", "2026-08-17", "2026-08-18", "2026-08-19", "2026-08-20", "2026-08-21", "2026-08-22", "2026-08-23", "2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28", "2026-08-29", "2026-08-30", "2026-08-31", "2026-09-01"], "monthly": ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08"], "timezone": "Asia/Shanghai", "today": "2026-09-20", "views": {"daily": {"first": "2026-07", "initial": "2026-09", "last": "2026-09"}, "monthly": {"first": "2026", "initial": "2026", "last": "2026"}, "weekly": {"first": "2026-06", "initial": "2026-08", "last": "2026-08"}}, "weekly": [{"end": "2026-06-07", "key": "2026-W23", "start": "2026-06-01"}, {"end": "2026-06-14", "key": "2026-W24", "start": "2026-06-08"}, {"end": "2026-06-21", "key": "2026-W25", "start": "2026-06-15"}, {"end": "2026-06-28", "key": "2026-W26", "start": "2026-06-22"}, {"end": "2026-07-05", "key": "2026-W27", "start": "2026-06-29"}, {"end": "2026-07-12", "key": "2026-W28", "start": "2026-07-06"}, {"end": "2026-07-19", "key": "2026-W29", "start": "2026-07-13"}, {"end": "2026-07-26", "key": "2026-W30", "start": "2026-07-20"}, {"end": "2026-08-02", "key": "2026-W31", "start": "2026-07-27"}, {"end": "2026-08-09", "key": "2026-W32", "start": "2026-08-03"}, {"end": "2026-08-16", "key": "2026-W33", "start": "2026-08-10"}, {"end": "2026-08-23", "key": "2026-W34", "start": "2026-08-17"}, {"end": "2026-08-30", "key": "2026-W35", "start": "2026-08-24"}]}</script></aside>
 </div>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span>© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态。数据来自社区，分析仅供参考。<a href="metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="assets/site.js?v=293c56d9c19f"></script>
+  <script src="assets/site.js?v=3ec761824b5c"></script>
 <script>
 const archiveTabs=[...document.querySelectorAll('[data-archive-tab]')];
 const archivePanels=[...document.querySelectorAll('[data-archive-panel]')];
 const reportLabels={daily:'日报',weekly:'周报',monthly:'月报'};
-function selectArchive(type){
-  archiveTabs.forEach(tab=>{const on=tab.dataset.archiveTab===type;tab.classList.toggle('active',on);tab.setAttribute('aria-selected',String(on))});
-  archivePanels.forEach(panel=>panel.hidden=panel.dataset.archivePanel!==type);
+// Only published period keys are embedded; browsing never makes a request.
+const calendarIndex=JSON.parse(document.getElementById('report-calendar-index').textContent);
+const calendarDates=new Set(calendarIndex.daily);
+const calendarMonths=new Set(calendarIndex.monthly);
+const calendarWeeks=new Map(calendarIndex.weekly.map(week=>[week.start,week]));
+const calendarPages=Object.fromEntries(Object.entries(calendarIndex.views).map(([type,view])=>[type,view.initial]));
+const calendarStorageKey='virt-report:calendar-pages';
+let calendarToday=calendarIndex.today;
+try{
+  const parts=new Intl.DateTimeFormat('en',{timeZone:calendarIndex.timezone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+  const part=type=>parts.find(item=>item.type===type).value;
+  calendarToday=`${part('year')}-${part('month')}-${part('day')}`;
+}catch(error){}
+try{
+  const saved=JSON.parse(sessionStorage.getItem(calendarStorageKey)||'{}');
+  for(const type of Object.keys(calendarPages)){
+    const value=saved?.[type],bounds=calendarIndex.views[type];
+    if(typeof value==='string'&&value>=bounds.first&&value<=bounds.last&&
+      (type==='monthly'?/^\d{4}$/:/^\d{4}-(0[1-9]|1[0-2])$/).test(value))calendarPages[type]=value;
+  }
+}catch(error){}
+const calendarISO=date=>date.toISOString().slice(0,10);
+const calendarMonthDates=key=>{
+  const first=new Date(`${key}-01T00:00:00Z`),end=new Date(first);
+  end.setUTCMonth(end.getUTCMonth()+1);end.setUTCDate(0);
+  first.setUTCDate(1-(first.getUTCDay()+6)%7);
+  end.setUTCDate(end.getUTCDate()+(7-end.getUTCDay())%7);
+  const days=[];
+  for(const date=new Date(first);date<=end;date.setUTCDate(date.getUTCDate()+1))days.push(calendarISO(date));
+  return days;
+};
+const calendarCell=(tag,classes,text,label)=>{
+  const cell=document.createElement(tag);cell.className=classes;cell.textContent=text;
+  if(label)cell.setAttribute('aria-label',label);
+  return cell;
+};
+const markCalendarToday=(cell,current)=>{
+  if(current){cell.classList.add('cal-today');cell.setAttribute('aria-current','date')}
+};
+function drawCalendar(type){
+  const panel=archivePanels.find(item=>item.dataset.archivePanel===type);
+  const key=calendarPages[type],bounds=calendarIndex.views[type];
+  panel.querySelector('[data-calendar-label]').textContent=type==='monthly'?`${Number(key)} 年`:`${Number(key.slice(0,4))} 年 ${Number(key.slice(5))} 月`;
+  panel.querySelector('[data-calendar-shift="-1"]').disabled=key<=bounds.first;
+  panel.querySelector('[data-calendar-shift="1"]').disabled=key>=bounds.last;
+  const body=panel.querySelector('[data-calendar-body]'),fragment=document.createDocumentFragment();
+  if(type==='monthly'){
+    for(let month=1;month<=12;month++){
+      const date=`${key}-${String(month).padStart(2,'0')}`,available=calendarMonths.has(date);
+      const cell=calendarCell(available?'a':'span',`cal-month${available?' has':''}`,`${month} 月`,`${date}${available?' 月报':'，暂无月报'}`);
+      if(available)cell.href=`monthly/${date}.html`;
+      markCalendarToday(cell,date===calendarToday.slice(0,7));fragment.append(cell);
+    }
+  }else{
+    const dates=calendarMonthDates(key);
+    if(type==='daily'){
+      for(const date of dates){
+        const inside=date.slice(0,7)===key,available=inside&&calendarDates.has(date);
+        const label=`${date}${available?' 日报':inside?'，暂无日报':'，相邻月份'}`;
+        const cell=calendarCell(available?'a':'span',`cal-day${inside?' in':''}${available?' has':''}`,Number(date.slice(8)),label);
+        if(available)cell.href=`daily/${date}.html`;
+        markCalendarToday(cell,date===calendarToday);fragment.append(cell);
+      }
+    }else{
+      for(let offset=0;offset<dates.length;offset+=7){
+        const days=dates.slice(offset,offset+7),week=calendarWeeks.get(days[0]);
+        const label=`${days[0]}—${days[6]}${week?' 周报':'，暂无周报'}`;
+        const row=calendarCell(week?'a':'div',`cal-week${week?' has':''}`,'',label);
+        if(week){row.href=`weekly/${week.key}.html`;row.title=label}
+        for(const date of days){
+          const cell=calendarCell('span',`cal-week-day${date.slice(0,7)===key?'':' outside'}`,Number(date.slice(8)));
+          markCalendarToday(cell,date===calendarToday);row.append(cell);
+        }
+        fragment.append(row);
+      }
+    }
+  }
+  body.replaceChildren(fragment);
+}
+document.querySelectorAll('[data-calendar-shift]').forEach(button=>button.addEventListener('click',()=>{
+  const type=button.closest('[data-archive-panel]').dataset.archivePanel,step=Number(button.dataset.calendarShift);
+  let next;
+  if(type==='monthly')next=String(Number(calendarPages[type])+step).padStart(4,'0');
+  else{const date=new Date(`${calendarPages[type]}-01T00:00:00Z`);date.setUTCMonth(date.getUTCMonth()+step);next=calendarISO(date).slice(0,7)}
+  const bounds=calendarIndex.views[type];if(next<bounds.first||next>bounds.last)return;
+  calendarPages[type]=next;drawCalendar(type);
+  try{sessionStorage.setItem(calendarStorageKey,JSON.stringify(calendarPages))}catch(error){}
+}));
+Object.keys(calendarPages).forEach(drawCalendar);function selectArchive(type){
+  archiveTabs.forEach(tab=>{const on=tab.dataset.archiveTab===type;tab.classList.toggle('active',on);tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1});
+  const labelPrefix=window.matchMedia('(max-width:620px)').matches?'home-report-tab-':'calendar-tab-';
+  archivePanels.forEach(panel=>{panel.hidden=panel.dataset.archivePanel!==type;panel.setAttribute('aria-labelledby',labelPrefix+panel.dataset.archivePanel)});
   const label=document.querySelector('[data-mobile-archive-label]');if(label)label.textContent=reportLabels[type]||'';
 }
 archiveTabs.forEach(button=>button.addEventListener('click',()=>selectArchive(button.dataset.archiveTab)));
-document.querySelectorAll('[data-cal-shift]').forEach(button=>button.addEventListener('click',()=>{
-  const months=[...document.querySelectorAll('[data-calendar-month]')];
-  const current=months.findIndex(month=>!month.hidden);
-  const target=months[current+Number(button.dataset.calShift)];
-  if(target){months[current].hidden=true;target.hidden=false}
-}));
+function calendarTabKeys(tabs,select){tabs.forEach((tab,index)=>tab.addEventListener('keydown',event=>{
+  const target=event.key==='ArrowRight'?(index+1)%tabs.length:event.key==='ArrowLeft'?(index+tabs.length-1)%tabs.length:event.key==='Home'?0:event.key==='End'?tabs.length-1:-1;
+  if(target<0)return;event.preventDefault();select(tabs[target]);tabs[target].focus();
+}))}
+calendarTabKeys(archiveTabs,tab=>selectArchive(tab.dataset.archiveTab));
 const reportTabs=[...document.querySelectorAll('[data-home-report-tab]')];
 const mobileReports=window.matchMedia('(max-width:620px)');
 const reportTabStorageKey='virt-report:home-report-tab';
 function savedReportTab(){try{return sessionStorage.getItem(reportTabStorageKey)}catch(error){return null}}
 function rememberReportTab(type){try{sessionStorage.setItem(reportTabStorageKey,type)}catch(error){}}
 function selectReportTab(button){
-  reportTabs.forEach(tab=>{const on=tab===button;tab.classList.toggle('active',on);tab.setAttribute('aria-selected',String(on))});
+  reportTabs.forEach(tab=>{const on=tab===button;tab.classList.toggle('active',on);tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1});
   document.querySelectorAll('[data-home-report-panel]').forEach(panel=>{const on=panel.dataset.homeReportPanel===button.dataset.homeReportTab;panel.classList.toggle('mobile-active',on);panel.hidden=mobileReports.matches&&!on});
   if(mobileReports.matches)selectArchive(button.dataset.homeReportTab);
 }
 reportTabs.forEach(button=>button.addEventListener('click',()=>{selectReportTab(button);rememberReportTab(button.dataset.homeReportTab)}));
-function syncReportPanels(){if(mobileReports.matches){const saved=savedReportTab();selectReportTab(reportTabs.find(tab=>tab.dataset.homeReportTab===saved)||reportTabs.find(tab=>tab.classList.contains('active'))||reportTabs[0])}else document.querySelectorAll('[data-home-report-panel]').forEach(panel=>panel.hidden=false)}
+calendarTabKeys(reportTabs,tab=>{selectReportTab(tab);rememberReportTab(tab.dataset.homeReportTab)});
+function syncReportPanels(){if(mobileReports.matches){const saved=savedReportTab();selectReportTab(reportTabs.find(tab=>tab.dataset.homeReportTab===saved)||reportTabs.find(tab=>tab.classList.contains('active'))||reportTabs[0])}else{document.querySelectorAll('[data-home-report-panel]').forEach(panel=>panel.hidden=false);selectArchive(archiveTabs.find(tab=>tab.classList.contains('active'))?.dataset.archiveTab||'daily')}}
 if(mobileReports.addEventListener)mobileReports.addEventListener('change',syncReportPanels);else if(mobileReports.addListener)mobileReports.addListener(syncReportPanels);syncReportPanels();
 </script></body>
 </html>
