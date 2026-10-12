@@ -34,7 +34,7 @@ virt-report 聚合 **QEMU / KVM / libvirt** 的邮件列表与 GitLab 动态，�
                            DeepSeek 点评 → Web / RSS / site/
 ```
 
-采集器保持幂等，数据库统一保存原始活动、线程、报告与运行状态。网页默认从 SQLite 动态渲染；`site/` 是可独立部署的静态快照。详细设计见[报告与内容模型](docs/REPORTING.md)。
+采集器保持幂等，数据库统一保存原始活动、线程、报告与运行状态。网页默认从 SQLite 动态渲染；`site/` 是可独立浏览的静态快照，搜索需要动态服务。详细设计见[报告与内容模型](docs/REPORTING.md)。
 
 ## 快速开始
 

@@ -57,7 +57,7 @@ def _compute_ml_roots(conn: sqlite3.Connection) -> dict[tuple[str, str], str]:
     """
     rows = conn.execute(
         "SELECT project, native_id, message_id, in_reply_to, thread_root, subject, author, created_at, raw_json "
-        "FROM items WHERE source='ml'"
+        "FROM items WHERE source='ml' ORDER BY created_at,native_id"
     ).fetchall()
     preset: dict[tuple[str, str], str] = {}
     for r in rows:

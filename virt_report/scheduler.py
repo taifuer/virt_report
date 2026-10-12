@@ -199,6 +199,42 @@ def _restore_report_retries(
     return restored, exhausted
 
 
+def _restore_fetch_retry(config: Config, timezone: ZoneInfo, now: datetime) -> tuple[dict, set]:
+    """Resume only the newest recent collection batch, without restarting its successes."""
+    conn = db.connect(config.db_path)
+    try:
+        row = conn.execute(
+            "SELECT * FROM scheduler_runs WHERE job_name='fetch' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if not row or row["status"] == "success":
+            return {}, set()
+        scheduled_at = _parse_state_time(row["scheduled_at"], timezone, now)
+        if scheduled_at < now - timedelta(days=1):
+            return {}, set()
+        attempt = int(row["attempt"] or 0)
+        if attempt >= config.schedule.retry_limit:
+            return {}, {row["identity"]}
+        finished = _parse_state_time(row["finished_at"], timezone, now)
+        retry_at = finished + timedelta(seconds=config.schedule.retry_delay_seconds)
+        command = ["fetch", "--since-days", "4", "--max-pages", "8"]
+        return {row["identity"]: ("fetch", command, scheduled_at, attempt, retry_at)}, set()
+    finally:
+        conn.close()
+
+
+def _attempt_command(config: Config, name: str, command: list[str], identity: str,
+                     attempt: int) -> list[str]:
+    """Add retry controls without changing the report identity or its AI inputs."""
+    result = list(command)
+    if name == "fetch":
+        result.extend(["--batch-key", identity])
+    elif name in REPORT_JOBS and attempt < config.schedule.retry_limit:
+        # Wait before making any paid call; the last bounded attempt may publish
+        # with an explicit incomplete-data notice instead of waiting forever.
+        result.append("--wait-for-coverage")
+    return result
+
+
 def _run_loop(config: Config, config_path: str | None, timezone: ZoneInfo,
               state_path: Path, completed: set[str], last_check: datetime) -> None:
     log.info("自动调度已启动 (%s, catchup=%s)", config.timezone,
@@ -206,6 +242,9 @@ def _run_loop(config: Config, config_path: str | None, timezone: ZoneInfo,
     pending, exhausted = _restore_report_retries(
         config, timezone, datetime.now(timezone).replace(second=0, microsecond=0)
     )
+    fetch_pending, fetch_exhausted = _restore_fetch_retry(config, timezone, datetime.now(timezone))
+    pending.update(fetch_pending)
+    exhausted.update(fetch_exhausted)
     if exhausted:
         completed.update(exhausted)
         _save_state(state_path, completed)
@@ -246,8 +285,8 @@ def _run_loop(config: Config, config_path: str | None, timezone: ZoneInfo,
             argv = [sys.executable, "-m", "virt_report.cli"]
             if config_path:
                 argv.extend(["--config", config_path])
-            argv.extend(command)
             attempt = pending.get(identity, (None, None, None, 0, None))[3] + 1
+            argv.extend(_attempt_command(config, name, command, identity, attempt))
             log.info("执行自动任务 %s (attempt=%d): %s", name, attempt,
                      " ".join(command))
             conn = db.connect(config.db_path)
@@ -273,9 +312,9 @@ def _run_loop(config: Config, config_path: str | None, timezone: ZoneInfo,
                     name not in REPORT_JOBS or
                     _report_exists(config, name, command)
                 )
-                status = "success" if healthy else (
-                    "fallback" if result.returncode == 0 else "failed"
-                )
+                status = ("success" if healthy else "partial" if name == "fetch" and result.returncode == 3
+                          else "coverage_wait" if name in REPORT_JOBS and result.returncode == 4
+                          else "fallback" if result.returncode == 0 else "failed")
             except subprocess.TimeoutExpired:
                 healthy = False
                 status = "timeout"

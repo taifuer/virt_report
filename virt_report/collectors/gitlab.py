@@ -44,8 +44,7 @@ def _fetch_paginated(base_url: str, params: dict, max_pages: int) -> tuple[list[
                              headers=_token_headers())
         data = resp.json()
         if not isinstance(data, list):
-            log.warning("gitlab: unexpected response: %s", str(data)[:200])
-            break
+            raise ValueError("GitLab pagination returned a non-list response")
         items.extend(data)
         page += 1
         # Link 头里的 next 已含分页参数

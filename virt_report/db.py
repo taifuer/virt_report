@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from contextlib import contextmanager
@@ -256,14 +257,99 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON;")
     conn.executescript(SCHEMA)
     _migrate_items_v2(conn)
+    _migrate_activity_history(conn)
     _migrate_conference_metadata(conn)
     conn.executescript("""
         CREATE INDEX IF NOT EXISTS idx_items_created ON items(created_at);
         CREATE INDEX IF NOT EXISTS idx_items_activity ON items(activity_at);
         CREATE INDEX IF NOT EXISTS idx_items_thread  ON items(thread_root);
         CREATE INDEX IF NOT EXISTS idx_items_project ON items(project);
+        CREATE INDEX IF NOT EXISTS idx_items_thread_context
+            ON items(source, project, COALESCE(thread_root,native_id), created_at);
+        CREATE INDEX IF NOT EXISTS idx_items_project_created
+            ON items(project, created_at);
     """)
     return conn
+
+
+def _migrate_activity_history(conn: sqlite3.Connection) -> None:
+    """Keep GitLab observations without inventing the missing historical state.
+
+    Legacy ``updated_at`` and ``created_at`` prove activity, not what the title,
+    description or issue state used to be. Their initial migration records are
+    explicitly untrusted for historical content. Future collector observations
+    are immutable snapshots at the source's last-update timestamp.
+    """
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS item_activity_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+            activity_at TEXT NOT NULL,
+            observed_at TEXT NOT NULL,
+            event_kind TEXT NOT NULL,
+            provenance TEXT NOT NULL,
+            snapshot_known INTEGER NOT NULL,
+            payload_json TEXT NOT NULL,
+            fingerprint TEXT NOT NULL,
+            UNIQUE(item_id, activity_at, event_kind, fingerprint)
+        );
+        CREATE INDEX IF NOT EXISTS idx_item_activity_window
+            ON item_activity_history(activity_at, item_id);
+        CREATE INDEX IF NOT EXISTS idx_item_activity_object
+            ON item_activity_history(item_id, activity_at, id);
+    """)
+    missing = conn.execute(
+        "SELECT * FROM items WHERE source='gitlab' AND NOT EXISTS "
+        "(SELECT 1 FROM item_activity_history h WHERE h.item_id=items.id)"
+    ).fetchall()
+    if missing:
+        with transaction(conn):
+            for row in missing:
+                _record_item_activity(conn, dict(row), known=False,
+                                      provenance="legacy")
+
+
+def _record_item_activity(conn: sqlite3.Connection, item: dict[str, Any], *,
+                          known: bool, provenance: str) -> None:
+    """Append idempotent observations inside the caller's item transaction."""
+    payload = json.dumps(item, ensure_ascii=False, sort_keys=True)
+    fingerprint = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    observed_at = now_utc_iso()
+    conn.execute(
+        "INSERT OR IGNORE INTO item_activity_history "
+        "(item_id,activity_at,observed_at,event_kind,provenance,snapshot_known,"
+        "payload_json,fingerprint) VALUES (?,?,?,?,?,?,?,?)",
+        (item["id"], item["activity_at"], observed_at, "snapshot", provenance,
+         int(known), payload, fingerprint + (":known" if known else ":unknown")),
+    )
+    # Creation is an independently known event, but a later description/state
+    # cannot be attributed to creation. One such fact per object suffices.
+    if item["created_at"] < item["activity_at"]:
+        conn.execute(
+            "INSERT OR IGNORE INTO item_activity_history "
+            "(item_id,activity_at,observed_at,event_kind,provenance,snapshot_known,"
+            "payload_json,fingerprint) VALUES (?,?,?,?,?,?,?,?)",
+            (item["id"], item["created_at"], observed_at, "creation", provenance,
+             0, payload, "creation"),
+        )
+
+
+def _activity_snapshot(row: sqlite3.Row) -> dict[str, Any]:
+    """Decode a saved observation; strip mutable content when history is unknown."""
+    item = json.loads(row["payload_json"])
+    item["activity_at"] = row["activity_at"]
+    item["history_known"] = bool(row["snapshot_known"])
+    item["history_note"] = ""
+    item["history_provenance"] = row["provenance"]
+    if not item["history_known"]:
+        item.update({
+            "subject": f"GitLab {item['native_id']}（历史内容未保存）",
+            "kind": "mr" if item["native_id"].startswith("mr:") else "issue",
+            "body_excerpt": "", "raw_json": "{}", "labels": "[]", "author": None,
+            "updated_at": row["activity_at"],
+            "history_note": "该时间点仅有活动时间记录，历史标题、正文和状态未保存。",
+        })
+    return item
 
 
 def _migrate_conference_metadata(conn: sqlite3.Connection) -> None:
@@ -507,9 +593,24 @@ def upsert_item(conn: sqlite3.Connection, item: dict[str, Any]) -> bool:
                 body_excerpt = COALESCE(NULLIF(excluded.body_excerpt, ''), items.body_excerpt),
                 raw_json = COALESCE(excluded.raw_json, items.raw_json),
                 labels = excluded.labels
+            WHERE items.source != 'gitlab' OR excluded.activity_at >= items.activity_at
             """,
             params,
         )
+        if params["source"] == "gitlab":
+            stored = conn.execute(
+                "SELECT * FROM items WHERE source=? AND project=? AND native_id=?",
+                (params["source"], params["project"], params["native_id"]),
+            ).fetchone()
+            # Archive the observation itself, not a COALESCE-merged current
+            # object: a cleared description is meaningful, and older fetches
+            # must never inherit newer labels/body/state.
+            snapshot = {
+                **params, "id": stored["id"],
+                "first_fetched_at": stored["first_fetched_at"],
+                "thread_root": params["thread_root"] or params["native_id"],
+            }
+            _record_item_activity(conn, snapshot, known=True, provenance="collector")
     return not existed
 
 
@@ -546,13 +647,74 @@ def get_activity_items_in_window(
     conn: sqlite3.Connection,
     start_utc: str,
     end_utc: str,
-) -> list[sqlite3.Row]:
-    """取时间窗内发生过活动的条目；ML 活动即发信，GitLab 活动即最近更新。"""
-    return conn.execute(
-        "SELECT * FROM items WHERE activity_at >= ? AND activity_at < ? "
-        "ORDER BY activity_at ASC",
-        (start_utc, end_utc),
+) -> list[dict[str, Any]]:
+    """Return distinct active objects in [start, end), never their future state.
+
+    Mail is immutable and selected by send time. GitLab updates are observations,
+    not individual comments: each issue/MR counts once per window, using its
+    latest recorded snapshot within that window. Missing legacy history remains
+    explicitly unknown instead of borrowing the current object's state.
+    """
+    return _activity_items_in_window(conn, start_utc, end_utc)
+
+
+def _activity_items_in_window(
+    conn: sqlite3.Connection, start_utc: str, end_utc: str,
+    projects: tuple[str, ...] | None = None,
+) -> list[dict[str, Any]]:
+    project_sql = ""
+    params: list[Any] = [start_utc, end_utc]
+    if projects is not None:
+        if not projects:
+            return []
+        project_sql = " AND i.project IN (" + ",".join("?" for _ in projects) + ")"
+        params.extend(projects)
+    rows = conn.execute(
+        "SELECT i.* FROM items i WHERE i.source!='gitlab' "
+        "AND i.created_at>=? AND i.created_at<?" + project_sql,
+        params,
     ).fetchall()
+    items = [{**dict(row), "activity_at": row["created_at"],
+              "history_known": True, "history_note": ""} for row in rows]
+    snapshots = conn.execute(
+        "SELECT h.* FROM item_activity_history h JOIN items i ON i.id=h.item_id "
+        "WHERE h.activity_at>=? AND h.activity_at<?" + project_sql +
+        " ORDER BY h.activity_at,h.snapshot_known,h.id", params,
+    ).fetchall()
+    latest = {row["item_id"]: row for row in snapshots}
+    items.extend(_activity_snapshot(row) for row in latest.values())
+    return sorted(items, key=lambda item: (item["activity_at"], item["id"]))
+
+
+def get_thread_items_as_of(
+    conn: sqlite3.Connection, row: Any, end_utc: str,
+) -> list[dict[str, Any]]:
+    """Read root/background and replies strictly before a report's end.
+
+    The root may predate the reporting period. GitLab returns the latest saved
+    state as of that end, including an explicit unknown-history marker for a
+    legacy/creation-only observation. It never falls back to the current object.
+    """
+    root = row["thread_key"].split(":", 2)[-1]
+    if row["source"] != "gitlab":
+        return [
+            {**dict(item), "history_known": True, "history_note": ""}
+            for item in conn.execute(
+                "SELECT * FROM items WHERE source=? AND project=? "
+                "AND COALESCE(thread_root,native_id)=? AND created_at<? "
+                "ORDER BY created_at,id",
+                (row["source"], row["project"], root, end_utc),
+            )
+        ]
+    snapshots = conn.execute(
+        "SELECT h.* FROM item_activity_history h JOIN items i ON i.id=h.item_id "
+        "WHERE i.source=? AND i.project=? AND COALESCE(i.thread_root,i.native_id)=? "
+        "AND h.activity_at<? ORDER BY h.activity_at,h.snapshot_known,h.id",
+        (row["source"], row["project"], root, end_utc),
+    ).fetchall()
+    latest = {item["item_id"]: item for item in snapshots}
+    return sorted((_activity_snapshot(item) for item in latest.values()),
+                  key=lambda item: (item["activity_at"], item["id"]))
 
 
 def upsert_thread(conn: sqlite3.Connection, t: dict[str, Any]) -> None:
@@ -604,36 +766,79 @@ def get_top_threads(
     start_utc: str,
     end_utc: str,
     limit: int = 30,
-) -> list[sqlite3.Row]:
-    """取时间窗内 salience 最高的线程 (按 last_seen 落在窗内)。"""
-    rows = conn.execute(
-        """
-        SELECT * FROM threads
-        WHERE last_seen >= ? AND last_seen < ?
-        ORDER BY salience_score DESC, message_count DESC
-        LIMIT ?
-        """,
-        (start_utc, end_utc, limit),
-    ).fetchall()
-    return rows
+) -> list[dict[str, Any]]:
+    """Rank threads with activity in the window using only window-local signals."""
+    return _top_threads_in_window(conn, start_utc, end_utc, None, limit)
 
 
 def get_top_threads_for_projects(
     conn: sqlite3.Connection, start_utc: str, end_utc: str,
     projects: tuple[str, ...], limit: int,
-) -> list[sqlite3.Row]:
+) -> list[dict[str, Any]]:
     """按项目组独立取 Top 线程，避免高流量项目挤掉其他项目。"""
-    placeholders = ",".join("?" for _ in projects)
-    return conn.execute(
-        f"""
-        SELECT * FROM threads
-        WHERE last_seen >= ? AND last_seen < ?
-          AND project IN ({placeholders})
-        ORDER BY salience_score DESC, message_count DESC
-        LIMIT ?
-        """,
-        (start_utc, end_utc, *projects, limit),
-    ).fetchall()
+    return _top_threads_in_window(conn, start_utc, end_utc, projects, limit)
+
+
+def _top_threads_in_window(
+    conn: sqlite3.Connection, start_utc: str, end_utc: str,
+    projects: tuple[str, ...] | None, limit: int,
+) -> list[dict[str, Any]]:
+    # Local import keeps the storage/processing module dependency acyclic.
+    from .processing import classify, rank
+
+    if limit == 0:
+        return []
+    grouped: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for item in _activity_items_in_window(conn, start_utc, end_utc, projects):
+        if item["source"] == "gitlab" and not item.get("history_known", True):
+            # Retain timestamp facts for statistics, but do not spend scarce
+            # report candidate slots on objects without historical evidence.
+            continue
+        key = (item["source"], item["project"], item["thread_root"] or item["native_id"])
+        grouped.setdefault(key, []).append(item)
+    ranked = []
+    for (source, project, root), active in grouped.items():
+        thread = {"thread_key": f"{source}:{project}:{root}",
+                  "source": source, "project": project}
+        context = get_thread_items_as_of(conn, thread, end_utc)
+        # Actual root first, then the earliest available message (HyperKitty's
+        # hash is not a message ID). Future reply subjects cannot rename it.
+        root_item = next(
+            (item for item in context if item["native_id"] == root
+             or item.get("message_id") == root),
+            context[0] if context else active[0],
+        )
+        subject = root_item["subject"] or ""
+        thread.update({
+            "subject": subject,
+            "kind": classify.thread_kind([root_item["kind"],
+                                          *(item["kind"] for item in active)]),
+            "message_count": len(active),
+            "participant_count": len({item["author"] for item in active
+                                      if item["author"]}),
+            "patch_count": sum(item["kind"] == "patch" for item in active),
+            "first_seen": min(item["created_at"] for item in context or active),
+            "last_seen": max(item["activity_at"] for item in active),
+            "topic_tag": classify.extract_topic(subject),
+            "summary_cached": None,
+            "url": root_item["url"],
+        })
+        score_items = active
+        if source == "gitlab":
+            # API note/upvote counters are lifetime totals, not this window's
+            # comments or participants. Keep as-of state, discard these ranking
+            # bonuses rather than pretending we fetched individual notes.
+            score_items = []
+            for item in active:
+                raw = json.loads(item["raw_json"] or "{}")
+                raw.pop("user_notes_count", None)
+                raw.pop("upvotes", None)
+                score_items.append({**item, "raw_json": json.dumps(raw)})
+        thread["salience_score"] = rank.score(thread, score_items)
+        ranked.append(thread)
+    ranked.sort(key=lambda row: (-row["salience_score"], -row["message_count"],
+                                row["first_seen"], row["thread_key"]))
+    return ranked if limit < 0 else ranked[:limit]
 
 
 def save_report(

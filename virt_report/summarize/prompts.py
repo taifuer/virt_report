@@ -68,6 +68,9 @@ _SYSTEM = """你是资深虚拟化内核与云平台技术编辑，熟悉 QEMU�
 7. 周期措辞必须与报告一致：日报只能写“当日/当天”，周报写“本周”，月报写“本月”，不得混用。
 8. 对 closed/已关闭事项，不得再写“待修复/需尽快修复”；只能说明其历史影响，并提示以原始 issue 的关闭结论为准。关闭不自动等于已修复。
 9. evidence 中 novelty=updated 表示该线程曾进入近期日报。必须结合 PREVIOUS_SUMMARY 与 LATEST 说明“这次新增了什么”，不得原样重复旧结论；novelty=new 才是首次出现。
+10. messages/participants 是本期活动量；OPENING 可作期初以前的背景，LATEST/REVIEW 均不晚于期末。旧提案收到本期回复不等于本期首次提出，不得把早期评审说成本期新获评审。
+11. active_version 是本期活跃系列，latest_known_version 是截至期末已知最新系列；两者不同时写“旧版本有新评审”，不得写“推进到旧版本”。没有目标发行版证据时不得猜测何时可用；评审中的收益必须表述为合入且满足条件后的预期效果。
+12. 严格区分代码/实现边界和内核/用户态边界。例如 guest_memfd 的其他 provider 表示现有 KVM 内置实现之外的实现，不等于内核之外或用户态实现；外部管理内存也不等于内核外代码。
 
 只输出一个合法 JSON 对象，不要 Markdown 围栏或解释。JSON 结构示例：
 {
@@ -126,6 +129,20 @@ def build_prompt(period: str, period_key: str, threads_data: list[dict]) -> str:
             f"novelty={t.get('novelty', 'new')}"
         )
         lines.append(f"SUBJECT: {t['subject']}")
+        if t.get("series_version"):
+            lines.append(
+                f"SERIES: active_version=v{t['series_version']} "
+                f"latest_known_version=v{t.get('latest_known_version', t['series_version'])}"
+            )
+        if t.get("series_note"):
+            lines.append(f"SERIES_NOTE: {t['series_note']}")
+        if t.get("evidence_note"):
+            lines.append(f"EVIDENCE_LIMIT: {t['evidence_note']}")
+        if t.get("opening_at"):
+            lines.append(
+                f"EVIDENCE_TIMES_UTC: opening={t['opening_at']} "
+                f"latest={t.get('latest_at') or '-'} review={t.get('review_at') or '-'}"
+            )
         if t.get("excerpt"):
             lines.append(f"OPENING: {t['excerpt']}")
         if t.get("latest_excerpt"):

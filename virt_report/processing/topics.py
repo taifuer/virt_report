@@ -10,13 +10,16 @@ from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 
 from virt_report import db
+from virt_report.report_links import (
+    report_item_anchor, report_item_href, selected_item_source, visible_report_anchors,
+)
 from . import architecture, category
 
 
-RULE_VERSION = 8
+RULE_VERSION = 9
 TOPIC_RULES = (
     ("migration", "热迁移", "迁移链路、停机窗口、脏页收敛与跨主机兼容性", (
-        "热迁移", "migration", "migrate", "multifd", "postcopy", "precopy",
+        "热迁移", "migration", "migrate", "multifd", "postcopy", "precopy", "post-copy", "pre-copy",
         "switchover", "dirty page", "live-migration",
     )),
     ("live-upgrade", "热升级", "运行中软件更新、在线维护与服务连续性", (
@@ -95,7 +98,20 @@ _NON_VM_MIGRATION_RE = re.compile(
     r"\bdecodetree migrations?\b|"
     r"\bmigrations?\s+(?:to|from)\s+(?:meson|cmake|decodetree|sphinx)\b|"
     r"\bmigrat(?:e|ing)\b.{0,80}\b(?:to|from)\s+"
-    r"(?:meson|cmake|decodetree|sphinx)\b",
+    r"(?:meson|cmake|decodetree|sphinx|python|hmp|qmp)\b|"
+    r"\bmigrat(?:e|ing|ion)\b.{0,60}\b(?:away from|to|from)\s+"
+    r"(?:python|hmp|qmp|meson|cmake|decodetree|sphinx)\b",
+    re.IGNORECASE,
+)
+_VM_MIGRATION_RE = re.compile(
+    r"热迁移|虚机迁移|虚拟机迁移|迁移链路|迁移停机|脏页收敛|"
+    r"\bmigration(?:/|:)|"
+    r"\b(?:multifd|post-?copy|pre-?copy|vmstate|savevm|loadvm|migrate_set|"
+    r"live[- ]migration|incoming[- ]migration)\b|"
+    r"\b(?:migration|migrat(?:e|ing))\b.{0,70}\b(?:vm|vms|guest|domain|qemu|kvm|libvirt|"
+    r"virtual machine|downtime|dirty page|snapshot|rdma|ram|tls|switchover|block)\b|"
+    r"\b(?:vm|vms|guest|domain|qemu|kvm|libvirt|virtual machine|downtime|dirty page|snapshot|"
+    r"rdma|ram|tls|switchover|block)\b.{0,70}\b(?:migration|migrat(?:e|ing))\b",
     re.IGNORECASE,
 )
 _LOW_INFORMATION_SUMMARY_RE = re.compile(
@@ -129,11 +145,14 @@ def classify_item(item: dict) -> list[str]:
     if item.get("security_type"):
         keys.append("security")
     for key, _name, _description, words in TOPIC_RULES:
-        if key == "security" or not any(word in text for word in words):
+        if key == "security":
             continue
         # “decodetree migrations”“migrate to meson”等是源码或构建系统迁移，
         # 与虚机状态迁移无关，不能仅凭裸 migration 关键词进入热迁移专题。
-        if key == "migration" and _NON_VM_MIGRATION_RE.search(text):
+        if key == "migration" and (
+                _NON_VM_MIGRATION_RE.search(text) or not _VM_MIGRATION_RE.search(text)):
+            continue
+        if key != "migration" and not any(word in text for word in words):
             continue
         # 裸机板卡/SoC 固件启动不等同于虚机启动与生命周期。
         if (key == "lifecycle" and _BOARD_BOOT_RE.search(text)
@@ -318,15 +337,22 @@ def _report_mentions(conn: sqlite3.Connection) -> dict[str, list[dict]]:
             continue
         if content.get("fallback"):
             continue
+        evidence = {item.get("ref"): item for item in content.get("top_threads", [])
+                    if isinstance(item, dict) and item.get("ref")}
+        visible_anchors = visible_report_anchors(content)
         for section in content.get("sections", []):
             for item in section.get("items", []):
-                url = item.get("url")
+                item_project, url = selected_item_source(item, section, evidence)
                 if not url:
                     continue
+                href = report_item_href(row["period"], row["period_key"], item_project, url)
+                if report_item_anchor(item_project, url) not in visible_anchors:
+                    href = href.partition("#")[0]
                 mentions[url].append({
                     "period": row["period"], "period_key": row["period_key"],
                     "generated_at": row["generated_at"],
                     "url": url,
+                    "href": href,
                     "summary": item.get("summary", "") or "",
                     "impact": item.get("impact", "") or "",
                 })
@@ -419,6 +445,16 @@ def _apply_report_evidence(item: dict, name: str, mentions: list[dict]) -> None:
     item["summary_source"] = preferred["period"] if preferred else "rule"
     item["summary"] = preferred["summary"] if preferred else _fallback_summary(item, name)
     item["impact"] = preferred.get("impact", "") if preferred else ""
+    item["report_refs"] = []
+    seen_reports = set()
+    for mention in curated or daily:
+        identity = (mention["period"], mention["period_key"])
+        if identity in seen_reports or not mention.get("href"):
+            continue
+        seen_reports.add(identity)
+        item["report_refs"].append({"period_key": mention["period_key"], "href": mention["href"]})
+        if len(item["report_refs"]) == 3:
+            break
     if curated:
         periods = {mention["period"] for mention in curated}
         item["scope"] = "curated"
@@ -622,7 +658,7 @@ def _partition_items(items: list[dict], topic_key: str) -> tuple[list[dict], lis
 _PUBLIC_ITEM_FIELDS = {
     "thread_key", "project", "source", "title", "url", "summary", "impact",
     "activity_at", "category", "architectures", "cve_ids", "security_type",
-    "status", "security_label", "category_label", "time", "report_keys",
+    "status", "security_label", "category_label", "time", "report_keys", "report_refs",
     "scope", "scope_label", "series_count", "series_version", "priority_score",
 }
 

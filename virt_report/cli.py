@@ -15,8 +15,9 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from uuid import uuid4
 
-from virt_report import __version__, db, search as search_index
+from virt_report import __version__, coverage, db, search as search_index
 from virt_report.collectors import lore, lore_git, gitlab, hyperkitty, mailarchive, mbox
 from virt_report.config import Config, load_config
 from virt_report.processing import threads
@@ -32,36 +33,60 @@ def _today_local(tz_name: str) -> str:
     return datetime.now(ZoneInfo(tz_name)).strftime("%Y-%m-%d")
 
 
-def _fetch_all(conn, config: Config, since: datetime, max_pages: int = 8) -> None:
+def _fetch_all(conn, config: Config, since: datetime, max_pages: int = 8,
+               batch_key: str | None = None) -> dict:
     """采集所有源 (since 为 UTC datetime)。"""
     lock_path = config.db_path.parent / "fetch.lock"
     with process_lock(lock_path):
-        _fetch_all_locked(conn, config, since, max_pages)
+        return _fetch_all_locked(conn, config, since, max_pages, batch_key)
 
 
 def _fetch_all_locked(conn, config: Config, since: datetime,
-                      max_pages: int = 8) -> None:
+                      max_pages: int = 8, batch_key: str | None = None) -> dict:
     """在调用方已取得 fetch.lock 后执行全部采集器。"""
-    since_iso = since.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    batch_key = batch_key or str(uuid4())
+    batch = coverage.start_batch(conn, batch_key, since, datetime.now(timezone.utc))
+    since_iso = batch["requested_start"]
+    outcomes = []
 
     def run(source_kind: str, project: str, collector, source) -> None:
+        skip, requested_since, page_limit = coverage.source_retry(
+            conn, batch_key, source_kind, project, since_iso, max_pages,
+        )
+        if skip:
+            outcomes.append({"source": source_kind, "project": project,
+                             "status": "complete", "skipped": True})
+            return
         started = db.now_utc_iso()
+        error = None
         try:
-            count = collector.fetch(conn, source, since=since, max_pages=max_pages)
+            count = collector.fetch(
+                conn, source, since=datetime.fromisoformat(requested_since.replace("Z", "+00:00")),
+                max_pages=page_limit,
+            )
             state = db.get_fetch_state(conn, source_kind, project)
-            complete = state.get("last_seen_id") != "partial"
+            complete = state.get("last_seen_id") == "complete"
+            status = "complete" if complete else "partial"
             db.record_fetch_run(
                 conn, source=source_kind, project=project, started_at=started,
                 success=True, complete=complete, new_count=count,
-                requested_since=since_iso,
+                requested_since=requested_since,
             )
         except Exception as exc:
+            status = "failed"
+            error = str(exc)[:1000]
             log.exception("采集失败，继续其他数据源: %s/%s", source_kind, project)
             db.record_fetch_run(
                 conn, source=source_kind, project=project, started_at=started,
                 success=False, complete=False, new_count=0,
-                requested_since=since_iso, error=str(exc)[:1000],
+                requested_since=requested_since, error=error,
             )
+        coverage.record_scan(
+            conn, key=batch_key, source=source_kind, project=project,
+            start=requested_since, end=batch["requested_end"], started_at=started,
+            status=status, page_limit=page_limit, error=error,
+        )
+        outcomes.append({"source": source_kind, "project": project, "status": status})
 
     for ml in config.sources.mailing_lists:
         if ml.type == "mbox":
@@ -79,6 +104,11 @@ def _fetch_all_locked(conn, config: Config, since: datetime,
     threads.rebuild_threads(conn)
     topics.refresh_topic_snapshots(conn)
     search_index.refresh_index(conn)
+    status = ("success" if all(item["status"] == "complete" for item in outcomes)
+              else "failed" if all(item["status"] == "failed" for item in outcomes) else "partial")
+    coverage.finish_batch(conn, batch_key, status)
+    return {"batch_key": batch_key, "status": status, "sources": outcomes,
+            "exit_code": {"success": 0, "partial": 3, "failed": 1}[status]}
 
 
 def _list_reports(conn, period: str) -> list[dict]:
@@ -188,7 +218,7 @@ def _render_index(config: Config, conn) -> None:
         )
 
 
-def cmd_fetch(args, config: Config) -> None:
+def cmd_fetch(args, config: Config) -> int:
     conn = db.connect(config.db_path)
     try:
         if args.since:
@@ -197,7 +227,10 @@ def cmd_fetch(args, config: Config) -> None:
             ).astimezone(timezone.utc)
         else:
             since = datetime.now(timezone.utc) - timedelta(days=args.since_days)
-        _fetch_all(conn, config, since=since, max_pages=args.max_pages)
+        outcome = _fetch_all(conn, config, since=since, max_pages=args.max_pages,
+                             batch_key=getattr(args, "batch_key", None))
+        print(f"采集结果: {outcome['status']} (batch={outcome['batch_key']})")
+        return outcome["exit_code"]
     finally:
         conn.close()
 
@@ -243,7 +276,7 @@ def _nav(conn, period: str, key: str) -> dict:
     return {"prev": item(prev), "next": item(nxt)}
 
 
-def _run_period(args, config: Config, period: str) -> None:
+def _run_period(args, config: Config, period: str) -> int:
     key = _period_key(args, config, period)
     conn = db.connect(config.db_path)
     try:
@@ -253,13 +286,22 @@ def _run_period(args, config: Config, period: str) -> None:
             since = period_start - timedelta(days=7)
             _fetch_all(conn, config, since=since, max_pages=args.max_pages)
         # `fetch` 已负责重建线程；--no-fetch 用于批量回填报告时避免重复全量重建。
+        if getattr(args, "wait_for_coverage", False):
+            start, end = periods.window(period, key, config.timezone)
+            state = coverage.report_coverage(conn, config, start, end)
+            if state["wait_recommended"]:
+                print(f"{period}报等待目标周期数据补齐: {', '.join(state['missing_sources'])}")
+                return 4
         content = report.generate(
             conn, config, period, key,
             publish_fallback=not args.require_ai,
         )
+        if content.get("published") is False:
+            print(f"{period}报暂未发布，保留已有报告: /{period}/{key}.html")
+            return 1
         if content.get("fallback") and args.require_ai:
             print(f"{period}报 AI 点评尚未完成，降级内容未发布: /{period}/{key}.html")
-            return
+            return 1
         topics.refresh_topic_snapshots(conn)
         search_index.refresh_index(conn)
         print(f"{period}报已生成并保存到数据库: /{period}/{key}.html")
@@ -272,20 +314,21 @@ def _run_period(args, config: Config, period: str) -> None:
             print(f"  总览 {len(content.get('overview', []))} / "
                   f"项目 {len(content.get('sections', []))} / 动态 {ic} / "
                   f"模型 {content['model']} (降级={content['fallback']})")
+        return 0
     finally:
         conn.close()
 
 
-def cmd_daily(args, config: Config) -> None:
-    _run_period(args, config, "daily")
+def cmd_daily(args, config: Config) -> int:
+    return _run_period(args, config, "daily")
 
 
-def cmd_weekly(args, config: Config) -> None:
-    _run_period(args, config, "weekly")
+def cmd_weekly(args, config: Config) -> int:
+    return _run_period(args, config, "weekly")
 
 
-def cmd_monthly(args, config: Config) -> None:
-    _run_period(args, config, "monthly")
+def cmd_monthly(args, config: Config) -> int:
+    return _run_period(args, config, "monthly")
 
 
 def cmd_index(args, config: Config) -> None:
@@ -560,12 +603,14 @@ def main(argv: list[str] | None = None) -> int:
     p_fetch.add_argument("--since-days", type=int, default=3)
     p_fetch.add_argument("--since", help="按本地日期回填，如 2026-04-01")
     p_fetch.add_argument("--max-pages", type=int, default=8)
+    p_fetch.add_argument("--batch-key", help="复用采集批次，仅重试尚未完整的来源")
 
     def _add_period_opts(p, key_help):
         p.add_argument("key", nargs="?", help=key_help)
         p.add_argument("--since-days", type=int, default=3)
         p.add_argument("--max-pages", type=int, default=8)
         p.add_argument("--no-fetch", action="store_true", help="跳过采集，仅用已存数据")
+        p.add_argument("--wait-for-coverage", action="store_true", help=argparse.SUPPRESS)
         p.add_argument(
             "--require-ai", action="store_true",
             help="仅在 AI 点评成功时发布；失败时保留生成状态供自动重试",
@@ -672,11 +717,11 @@ def main(argv: list[str] | None = None) -> int:
                 "conference-check": cmd_conference_check,
                 "backup": cmd_backup, "restore": cmd_restore}
     try:
-        dispatch[args.cmd](args, config)
+        result = dispatch[args.cmd](args, config)
     except Exception as e:
         log.error("命令 %s 失败: %s", args.cmd, e, exc_info=args.verbose)
         return 1
-    return 0
+    return result if isinstance(result, int) else 0
 
 
 if __name__ == "__main__":

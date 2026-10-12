@@ -189,6 +189,7 @@ def fetch(conn: sqlite3.Connection, source, *, since: datetime | None = None,
             mb = mailbox.mbox(str(dest))
         except Exception as e:
             log.warning("mbox %s: 解析失败: %s", dest.name, e)
+            incomplete = True
             continue
 
         month_new = 0

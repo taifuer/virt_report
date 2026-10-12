@@ -20,7 +20,7 @@ from virt_report.processing.architecture import (
 )
 from virt_report.processing.category import category_label, classify_change
 from virt_report.processing.topics import topic_links_for_item
-from . import billing, llm_provider, periods, prompts
+from . import billing, evidence as evidence_rules, llm_provider, periods, prompts
 
 log = logging.getLogger(__name__)
 
@@ -230,7 +230,7 @@ def _merge_usage(total: dict, current: dict) -> None:
 
 def _complete_llm_json(parsed: dict | None, finish_reason: str | None) -> bool:
     """即使 JSON 可解析，length 也代表响应被上限截断，不能正式发布。"""
-    return bool(parsed) and finish_reason != "length"
+    return isinstance(parsed, dict) and bool(parsed) and finish_reason != "length"
 
 
 
@@ -243,20 +243,16 @@ def _parse_root(thread_key: str) -> str:
     return parts[2] if len(parts) == 3 else thread_key
 
 
-def _thread_context(conn: sqlite3.Connection, row) -> dict[str, str]:
-    root = _parse_root(row["thread_key"])
-    items = conn.execute(
-        "SELECT body_excerpt, raw_json FROM items "
-        "WHERE source=? AND project=? AND thread_root=? ORDER BY activity_at ASC",
-        (row["source"], row["project"], root),
-    ).fetchall()
+def _thread_context(conn: sqlite3.Connection, row,
+                    end_iso: str | None = None) -> dict:
+    items = db.get_thread_items_as_of(conn, row, end_iso or db.now_utc_iso())
     if not items:
         return {"excerpt": "", "latest_excerpt": "", "review_excerpt": "",
                 "state": ""}
     excerpts = [(it["body_excerpt"] or "") for it in items]
-    review = next((e for e in reversed(excerpts)
-                   if "reviewed-by:" in e.lower() or "acked-by:" in e.lower()
-                   or "tested-by:" in e.lower()), "")
+    review_item = next((item for item in reversed(items)
+                        if any(signal in (item["body_excerpt"] or "").lower()
+                               for signal in ("reviewed-by:", "acked-by:", "tested-by:"))), None)
     try:
         raw = json.loads(items[-1]["raw_json"] or "{}")
     except (TypeError, ValueError):
@@ -264,8 +260,14 @@ def _thread_context(conn: sqlite3.Connection, row) -> dict[str, str]:
     return {
         "excerpt": excerpts[0],
         "latest_excerpt": excerpts[-1] if len(excerpts) > 1 else "",
-        "review_excerpt": review,
-        "state": raw.get("state", "") or "",
+        "review_excerpt": (review_item["body_excerpt"] or "") if review_item else "",
+        "opening_at": items[0].get("activity_at") or items[0]["created_at"],
+        "latest_at": items[-1].get("activity_at") or items[-1]["created_at"],
+        "review_at": (review_item.get("activity_at") or review_item["created_at"]) if review_item else "",
+        "state": (raw.get("state", "") or "") if items[-1].get("history_known", True) else "",
+        "author": items[0].get("author") or "",
+        "history_known": items[-1].get("history_known", True),
+        "evidence_note": items[-1].get("history_note") or "",
     }
 
 
@@ -322,16 +324,22 @@ def _limit_continuing_threads(rows: list, history: dict[str, dict],
 
 
 def _build_threads_data(conn: sqlite3.Connection, rows, excerpt_len: int = 300,
-                        history: dict[str, dict] | None = None) -> list[dict]:
+                        history: dict[str, dict] | None = None,
+                        end_iso: str | None = None) -> list[dict]:
     data = []
     for i, r in enumerate(rows, 1):
-        context = _thread_context(conn, r)
+        context = _thread_context(conn, r, end_iso)
+        if not context.get("history_known", True):
+            # A timestamp alone is not enough evidence for a technical summary.
+            continue
         architectures = detect_architectures((r["subject"], r["topic_tag"]))
         previous = (history or {}).get(r["url"])
         data.append({
             "ref": f"T{i:03d}",
             "rank": i,
             "project": r["project"],
+            "source": r["source"],
+            "author": context.get("author", ""),
             "kind": r["kind"],
             "category": classify_change(r["kind"], r["subject"]),
             "msg_count": r["message_count"],
@@ -341,13 +349,19 @@ def _build_threads_data(conn: sqlite3.Connection, rows, excerpt_len: int = 300,
             "excerpt": context["excerpt"][:excerpt_len],
             "latest_excerpt": context["latest_excerpt"][:excerpt_len],
             "review_excerpt": context["review_excerpt"][:excerpt_len],
+            "opening_at": context.get("opening_at", ""),
+            "latest_at": context.get("latest_at", ""),
+            "review_at": context.get("review_at", ""),
             "state": context["state"],
+            "history_known": context.get("history_known", True),
+            "evidence_note": context.get("evidence_note", ""),
             "architectures": architectures,
             "url": r["url"],
             "time": (r["last_seen"] or "")[:10],
             "novelty": "updated" if previous else "new",
             "previous_report": previous or {},
         })
+    evidence_rules.enrich_series(conn, data, end_iso or db.now_utc_iso())
     return data
 
 
@@ -372,18 +386,12 @@ def _stats(conn: sqlite3.Connection, start_iso: str, end_iso: str) -> dict:
             elif it["kind"] == "rfc":
                 ml_rfc += 1
         else:
-            rj = json.loads(it["raw_json"] or "{}")
-            if rj.get("type") == "issue" and start_iso <= it["created_at"] < end_iso:
+            if (it["kind"] == "issue" or it["native_id"].startswith("issue:")) and start_iso <= it["created_at"] < end_iso:
                 gl_issues_opened += 1
-    mrs = conn.execute(
-        "SELECT raw_json FROM items WHERE source='gitlab' AND kind='mr' "
-        "AND updated_at>=? AND updated_at<?", (start_iso, end_iso),
-    ).fetchall()
+    mrs = [item for item in items if item["source"] == "gitlab" and item["kind"] == "mr"]
     gl_mrs_merged = sum(1 for r in mrs if json.loads(r["raw_json"] or "{}").get("merged"))
-    total_threads = conn.execute(
-        "SELECT COUNT(*) c FROM threads WHERE last_seen>=? AND last_seen<?",
-        (start_iso, end_iso),
-    ).fetchone()["c"]
+    total_threads = len({(item["source"], item["project"],
+                         item["thread_root"] or item["native_id"]) for item in items})
     return {
         "total_items": len(items),
         "total_threads": total_threads,
@@ -487,8 +495,9 @@ def _sanitize(overview: list, sections: list,
               threads_data: list[dict] | None = None) -> tuple[list[dict], list[dict]]:
     """校验结构，并用 ref 回填可信来源字段，阻断模型伪造 URL/项目归属。"""
     ov_map: dict[str, dict] = {}
-    for o in overview or []:
-        if isinstance(o, dict):
+    for o in overview if isinstance(overview, list) else []:
+        if (isinstance(o, dict) and isinstance(o.get("project", ""), str)
+                and isinstance(o.get("summary", ""), str)):
             project = o.get("project", "") or ""
             ov_map[project.lower()] = {"project": project,
                                        "summary": o.get("summary", "") or ""}
@@ -501,20 +510,22 @@ def _sanitize(overview: list, sections: list,
     if evidence:
         buckets = {key: [] for key, _name, _members in _PROJECT_GROUPS}
         seen: set[str] = set()
-        for section in sections or []:
+        for section in sections if isinstance(sections, list) else []:
             if not isinstance(section, dict) or not isinstance(section.get("items"), list):
                 continue
             for it in section["items"]:
                 if not isinstance(it, dict):
                     continue
                 ref = it.get("ref", "")
+                if not isinstance(ref, str):
+                    continue
                 source = evidence.get(ref)
                 if not source or ref in seen:
                     continue
                 seen.add(ref)
                 project_key, _ = _project_of(source)
                 canonical_state = (source.get("state") or "").lower()
-                canonical_status = {"open": "开放", "closed": "已关闭",
+                canonical_status = {"open": "开放", "opened": "开放", "closed": "已关闭",
                                     "merged": "已合并", "reopened": "重新开放"}.get(canonical_state)
                 impact = it.get("impact", "") or ""
                 if canonical_state == "closed" and any(
@@ -538,6 +549,11 @@ def _sanitize(overview: list, sections: list,
                     "novelty_label": ("有新进展" if source.get("novelty") == "updated"
                                       else "首次出现"),
                     "previous_report": source.get("previous_report", {}),
+                    "series_version": source.get("series_version"),
+                    "latest_known_version": source.get("latest_known_version"),
+                    "latest_version_url": source.get("latest_version_url", ""),
+                    "series_note": source.get("series_note", ""),
+                    "evidence_note": source.get("evidence_note", ""),
                 })
         for items in buckets.values():
             items.sort(key=lambda item: (
@@ -550,7 +566,7 @@ def _sanitize(overview: list, sections: list,
         ]
 
     secs: list[dict] = []
-    for s in sections or []:
+    for s in sections if isinstance(sections, list) else []:
         if not isinstance(s, dict):
             continue
         raw = s.get("items")
@@ -579,6 +595,49 @@ def _sanitize(overview: list, sections: list,
         secs.append({"key": s.get("key", "") or "", "name": s.get("name", "") or "",
                      "items": items})
     return ov, secs
+
+
+def _validated_response(parsed: object, threads_data: list[dict]) -> tuple[dict | None, str]:
+    """Validate after removing unknown references, before any publication decision."""
+    if not isinstance(parsed, dict):
+        return None, "invalid_object"
+    if (not isinstance(parsed.get("sections"), list)
+            or not isinstance(parsed.get("overview", []), list)
+            or not isinstance(parsed.get("headline", ""), str)):
+        return None, "invalid_structure"
+    sources = {card["ref"]: card for card in threads_data}
+    sections = []
+    removed = 0
+    for section in parsed["sections"]:
+        if not isinstance(section, dict) or not isinstance(section.get("items"), list):
+            continue
+        items = []
+        for item in section["items"]:
+            if not isinstance(item, dict):
+                removed += 1
+                continue
+            ref = item.get("ref")
+            if not isinstance(ref, str) or ref not in sources:
+                removed += 1
+                continue
+            if (not all(isinstance(item.get(key, ""), str) for key in
+                        ("title", "summary", "impact", "status", "tag", "subsystem"))
+                    or not item.get("summary", "").strip()):
+                removed += 1
+                continue
+            contradiction = evidence_rules.consistency_error(item, sources[ref])
+            if contradiction:
+                return None, contradiction
+            items.append(item)
+        sections.append({**section, "items": items})
+    overview, sections = _sanitize(parsed.get("overview", []), sections, threads_data)
+    valid_count = sum(len(section["items"]) for section in sections)
+    if threads_data and not valid_count:
+        return None, "no_valid_evidence_items"
+    return {**parsed, "overview": overview, "sections": sections,
+            "evidence_validation": {"candidate_count": len(threads_data),
+                                    "valid_item_count": valid_count,
+                                    "discarded_item_count": removed}}, ""
 
 
 def _limit_sections(sections: list[dict], limit: int) -> list[dict]:
@@ -791,7 +850,9 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
     history = _daily_report_history(conn, period_key) if period == "daily" else {}
     if period == "daily" and history:
         rows = _limit_continuing_threads(rows, history)
-    threads_data = _build_threads_data(conn, rows, EXCERPT_LEN[period], history)
+    threads_data = _build_threads_data(conn, rows, EXCERPT_LEN[period], history, end_iso)
+    from virt_report.coverage import report_coverage
+    data_coverage = report_coverage(conn, config, start_iso, end_iso)
 
     provider = llm_provider.get_provider(config.llm)
     model = {"daily": config.llm.daily_model, "weekly": config.llm.weekly_model,
@@ -800,20 +861,29 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
     aggregate_usage: dict = {}
     aggregate_reasoning_chars = 0
     llm_attempts = 0
+    validation_error = ""
 
     parsed = None
     if provider and threads_data:
         user = prompts.build_prompt(period, period_key, threads_data)
         for attempt in range(2):
             try:
-                max_tokens = (MAX_TOKENS[period] if attempt == 0 else
+                max_tokens = (MAX_TOKENS[period] if attempt == 0 or validation_error else
                               min(MAX_TOKENS[period] * 2, MAX_RETRY_TOKENS))
                 attempt_user = user
                 if attempt:
-                    attempt_user += (
-                        "\n\n上一次响应未形成完整合法 JSON。请减少铺陈，严格遵守字段"
-                        "和条目数量限制，确保在输出上限内闭合整个 JSON 对象。"
-                    )
+                    if validation_error:
+                        attempt_user += (
+                            f"\n\n上一次输出未通过证据校验（{validation_error}）。"
+                            "仅使用输入 ref，summary 必须是非空字符串；无明确合入/发布"
+                            "证据不得写已合入、已发布或可直接使用。区分本期活跃版本和"
+                            "期末已知最新版本。请重新输出有有效证据的完整 JSON。"
+                        )
+                    else:
+                        attempt_user += (
+                            "\n\n上一次响应未形成完整合法 JSON。请减少铺陈，严格遵守字段"
+                            "和条目数量限制，确保在输出上限内闭合整个 JSON 对象。"
+                        )
                 text = provider.complete(
                     attempt_user, system=prompts.system_prompt(period, period_key), model=model,
                     max_tokens=max_tokens, json_mode=True,
@@ -825,7 +895,12 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
                 parsed = llm_provider.extract_json(text)
                 finish_reason = getattr(provider, "last_finish_reason", None)
                 if _complete_llm_json(parsed, finish_reason):
-                    break
+                    parsed, validation_error = _validated_response(parsed, threads_data)
+                    if parsed:
+                        break
+                    log.warning("LLM 证据校验失败 (%s), %s", validation_error,
+                                "纠正重试一次" if attempt == 0 else "不发布")
+                    continue
                 parsed = None
                 log.warning(
                     "LLM 返回空或不可解析 (len=%d, finish=%s, max_tokens=%d), %s",
@@ -838,6 +913,8 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
                 break  # provider 内部已退避重试, 不再 report 层重试
 
     stats = _stats(conn, start_iso, end_iso)
+    no_activity = (not threads_data and not stats["total_items"]
+                   and data_coverage["status"] == "complete")
     overview, sections = [], []
     headline = ""
     watchlist: list[dict] = []
@@ -854,7 +931,12 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
                 "reason": w.get("reason", "") or "",
             } for w in raw_watchlist if isinstance(w, dict)][:4]
         raw_period_analysis = parsed.get("period_analysis", [])
-    if not parsed or (not overview and not sections):
+    if no_activity:
+        overview = [{"project": name, "summary": "本期未采集到新的社区活动。"}
+                    for _key, name, _members in _PROJECT_GROUPS]
+        sections = []
+        headline = "本期无新增社区动态"
+    elif not parsed or (not overview and not sections):
         fallback = True
         overview, sections = _fallback(threads_data, period, period_key, config.llm.api_key_env)
         headline = f"{period_key} 虚拟化社区活跃动态（模板摘要）"
@@ -864,7 +946,7 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
     period_analysis = _sanitize_period_analysis(
         raw_period_analysis if not fallback else [], threads_data, period
     )
-    used_model = "fallback" if fallback else model
+    used_model = "none" if no_activity else ("fallback" if fallback else model)
     calls = [billing.snapshot_call(call, config.llm)
              for call in getattr(provider, "call_history", [])]
     if calls:
@@ -882,7 +964,7 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
         "top_threads": threads_data, "model": used_model, "fallback": fallback,
         "generated_at": db.now_utc_iso(),
         "llm_usage": aggregate_usage,
-        "llm_requested_model": model,
+        "llm_requested_model": None if no_activity else model,
         "llm_response_models": list(dict.fromkeys(
             call["response_model"] for call in calls if call.get("response_model")
         )),
@@ -890,8 +972,25 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
         "llm_attempts": llm_attempts,
         "llm_finish_reason": getattr(provider, "last_finish_reason", None) if provider else None,
         "reasoning_chars": aggregate_reasoning_chars,
+        "data_coverage": data_coverage,
+        "generation_status": ("no_activity" if no_activity else
+                              "failed_validation" if validation_error and not parsed else
+                              "data_unavailable" if not threads_data else
+                              "failed_ai" if fallback else "ready"),
+        "validation_error": validation_error if not parsed else "",
+        "evidence_validation": parsed.get("evidence_validation", {}) if parsed else {},
     }
     published = not fallback or publish_fallback
+    if validation_error and not parsed:
+        published = False
+    previous = db.get_report(conn, period, period_key)
+    if fallback and previous:
+        try:
+            if not json.loads(previous["content_json"]).get("fallback"):
+                published = False
+        except (TypeError, ValueError):
+            published = False
+    content["published"] = published
     if published:
         db.save_report(conn, period, period_key, content, config.timezone,
                        item_count=item_count, model=used_model)

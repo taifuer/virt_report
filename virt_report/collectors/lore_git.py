@@ -162,7 +162,7 @@ def fetch(conn, source, *, since: datetime | None = None, max_pages: int = 8) ->
     # 只有 Git 同步和解析全部成功后才推进水位。
     db.set_fetch_state(
         conn, "ml", project, last_fetch_at=base.to_utc_iso(now),
-        last_seen_id=newest or oldest or "empty",
+        last_seen_id="complete",
     )
     log.info("lore-git %s: fetched %d new (%s..%s)", project, new_count,
              oldest, newest)

@@ -30,6 +30,8 @@ cp .env.example .env
 
 较长回填建议分段执行并在每段后检查 `status`。qemu-devel 首次触及新月份时可能下载完整 mbox，KVM 历史回填也可能产生较大网络流量。
 
+采集退出码为 `0`（完整成功）、`3`（部分成功或分页未完）和 `1`（失败）。调度器会重试尚未完成的来源；手动续跑同一批任务可重复使用 `--batch-key <唯一批次名>`。不要在不同回填窗口重复使用同一个批次名。
+
 ## 生成报告
 
 ```bash
@@ -48,9 +50,12 @@ cp .env.example .env
 
 # AI 失败时不发布正式报告，适合自动任务
 .venv/bin/virt-report daily --no-fetch --require-ai
+
+# 来源明确有缺口时暂不调用 AI，退出码为 4，供任务稍后重试
+.venv/bin/virt-report daily --no-fetch --require-ai --wait-for-coverage
 ```
 
-不带 `--require-ai` 的手工命令可生成模板内容用于排查。自动调度始终要求有效 AI 结果。
+不带 `--require-ai` 的手工命令可生成模板内容用于排查，但不会覆盖正常报告，也不能绕过证据校验失败。自动调度要求有效 AI 结果；采集完整且确实没有活动时，不调用模型，发布明确的零活动说明。
 
 ## Web、专题与静态快照
 
@@ -70,6 +75,10 @@ cp .env.example .env
 ```
 
 动态服务直接读取 SQLite，不要求每次报告生成后全量导出。只有执行 `index`，或设置 `schedule.auto_export: true`，才会刷新完整 `site/` 快照。
+
+纯静态预览不支持内容搜索，搜索页会明确提示。升级专题分类或条目链接规则后，执行一次 `topics-refresh` 和 `search-refresh` 更新派生索引；不需要重新调用 AI。导出前确认数据库含有要保留的全部报告，不要用较旧的本地数据库覆盖较新的静态快照。
+
+若本地数据库较旧，仅需给现有快照补充条目锚点、报告回链和新版静态资源，可执行 `.venv/bin/python scripts/refresh_static_presentation.py site`。此脚本不读取数据库、不改报告正文，也不代替完整数据导出或专题分类重建。
 
 ## 会议内容维护
 

@@ -651,9 +651,10 @@ def test_archive_and_topic_pages_render(tmp_db):
         "model": "deepseek-v4-flash", "generated_at": "2026-07-14T00:00:00Z",
     }])
     assert "2026-07-13.html" in archive
-    _insert(tmp_db, "topic-1", subject="Improve migration performance")
+    _insert(tmp_db, "topic-1", subject="Improve live migration performance",
+            url="https://example.org/topic-1")
     threads.rebuild_threads(tmp_db)
-    _save_report_mentions(tmp_db, "weekly", "2026-W28", ["u"])
+    _save_report_mentions(tmp_db, "weekly", "2026-W28", ["https://example.org/topic-1"])
     groups = topics.build_topic_groups(tmp_db)
     page = html_render.render_topics_html(Config(), groups)
     assert "<title>专题 - virt-report</title>" in page
@@ -672,13 +673,16 @@ def test_archive_and_topic_pages_render(tmp_db):
                 'data-topic-group-content>' in page)
     assert "热迁移" in page
     assert "虚机性能" in page
-    assert page.count('href="u"') == 2
+    assert page.count('href="https://example.org/topic-1"') == 2
 
 
 def test_topic_snapshot_serves_overview_and_detail_without_recompute(tmp_db, monkeypatch):
-    _insert(tmp_db, "snapshot-topic", subject="Improve migration performance")
+    _insert(tmp_db, "snapshot-topic", subject="Improve live migration performance",
+            url="https://example.org/snapshot-topic")
     threads.rebuild_threads(tmp_db)
-    _save_report_mentions(tmp_db, "weekly", "2026-W28", ["u"])
+    _save_report_mentions(tmp_db, "weekly", "2026-W28", [
+        "https://example.org/snapshot-topic",
+    ])
     counts = topics.refresh_topic_snapshots(tmp_db)
     assert counts["migration"] == 1
     assert tmp_db.execute("SELECT COUNT(*) FROM topic_snapshots").fetchone()[0] == len(
@@ -697,7 +701,7 @@ def test_topic_snapshot_serves_overview_and_detail_without_recompute(tmp_db, mon
         tmp_db, "migration", page=1, per_page=10, allow_rebuild=False,
     )
     assert detail["total"] == 1
-    assert detail["items"][0]["url"] == "u"
+    assert detail["items"][0]["url"] == "https://example.org/snapshot-topic"
 
 
 def test_topic_request_does_not_rebuild_when_snapshot_is_missing(tmp_db, monkeypatch):
@@ -845,9 +849,12 @@ def test_archive_and_topic_detail_offer_pagination_over_ten_items(tmp_db):
     assert '<option value="30">30</option>' in archive
 
     for index in range(11):
-        _insert(tmp_db, f"migration-{index}", subject=f"migration {index}")
+        _insert(tmp_db, f"migration-{index}", subject=f"migration: {index}",
+                url=f"https://example.org/migration/{index}")
     threads.rebuild_threads(tmp_db)
-    _save_report_mentions(tmp_db, "weekly", "2026-W28", ["u"])
+    _save_report_mentions(tmp_db, "weekly", "2026-W28", [
+        f"https://example.org/migration/{index}" for index in range(11)
+    ])
     groups = topics.build_topic_groups(tmp_db)
     page = html_render.render_topics_html(Config(), groups)
     migration = next(group for group in groups if group["key"] == "migration")
@@ -880,11 +887,17 @@ def test_archive_and_topic_detail_offer_pagination_over_ten_items(tmp_db):
 
 
 def test_security_topic_requires_raw_evidence_and_strict_cve(tmp_db):
-    _insert(tmp_db, "cve", subject="KVM: fix CVE-2026-46113 use-after-free")
-    _insert(tmp_db, "placeholder", subject="QEMU: CVE-2026-XXXX placeholder")
-    _insert(tmp_db, "cca", subject="KVM: arm64: add Arm CCA support")
+    _insert(tmp_db, "cve", subject="KVM: fix CVE-2026-46113 use-after-free",
+            url="https://example.org/cve")
+    _insert(tmp_db, "placeholder", subject="QEMU: CVE-2026-XXXX placeholder",
+            url="https://example.org/placeholder")
+    _insert(tmp_db, "cca", subject="KVM: arm64: add Arm CCA support",
+            url="https://example.org/cca")
     threads.rebuild_threads(tmp_db)
-    _save_report_mentions(tmp_db, "weekly", "2026-W28", ["u"])
+    _save_report_mentions(tmp_db, "weekly", "2026-W28", [
+        "https://example.org/cve", "https://example.org/placeholder",
+        "https://example.org/cca",
+    ])
     assert topics.sync_topic_index(tmp_db) == 3
     assert topics.sync_topic_index(tmp_db) == 0
     security = next(group for group in topics.build_topic_groups(tmp_db)
@@ -981,11 +994,11 @@ def test_home_mobile_uses_one_report_switch_and_visible_archive():
 
 
 def test_topic_public_layers_use_curated_and_recent_report_evidence(tmp_db):
-    _insert(tmp_db, "curated", subject="migration curated", url="https://e/c",
+    _insert(tmp_db, "curated", subject="migration: curated", url="https://e/c",
             created="2026-06-01T00:00:00Z")
-    _insert(tmp_db, "recent", subject="migration recent", url="https://e/r",
+    _insert(tmp_db, "recent", subject="migration: recent", url="https://e/r",
             created="2026-07-20T00:00:00Z")
-    _insert(tmp_db, "stale", subject="migration stale", url="https://e/s",
+    _insert(tmp_db, "stale", subject="migration: stale", url="https://e/s",
             created="2026-06-01T00:00:00Z")
     threads.rebuild_threads(tmp_db)
     _save_report_mentions(tmp_db, "weekly", "2026-W22", ["https://e/c"])

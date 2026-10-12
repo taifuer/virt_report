@@ -111,6 +111,7 @@ def fetch(conn: sqlite3.Connection, source, *, since: datetime | None = None,
         emails = response.json()
         if not isinstance(emails, list):
             log.warning("hyperkitty %s: thread %s 返回非列表", project, thread_id)
+            complete = False
             continue
         fetched_any_thread = True
         hash_to_mid = {
@@ -128,7 +129,11 @@ def fetch(conn: sqlite3.Connection, source, *, since: datetime | None = None,
             message_hash = meta.get("message_id_hash")
             if not message_id or not message_hash:
                 continue
-            if db.item_exists(conn, "ml", project, message_id):
+            existing = conn.execute(
+                "SELECT body_excerpt FROM items WHERE source='ml' AND project=? AND native_id=?",
+                (project, message_id),
+            ).fetchone()
+            if existing and existing["body_excerpt"]:
                 continue
 
             detail_url = f"{api_list}/email/{message_hash}/?format=json"
@@ -151,18 +156,19 @@ def fetch(conn: sqlite3.Connection, source, *, since: datetime | None = None,
             pending.append((item, detail_url))
 
     # 正文详情彼此独立，受控并发显著缩短月度回填；SQLite 写入仍在主线程串行完成。
-    def load_detail(pair: tuple[dict, str]) -> tuple[dict, str]:
+    def load_detail(pair: tuple[dict, str]) -> tuple[dict, str, bool]:
         item, detail_url = pair
         try:
             detail = base.http_get(detail_url).json()
-            return item, base.extract_excerpt(detail.get("content", ""))
+            return item, base.extract_excerpt(detail.get("content", "")), True
         except Exception as exc:
             log.warning("hyperkitty %s: 邮件详情失败 %s: %s",
                         project, detail_url, exc)
-            return item, ""
+            return item, "", False
 
     with ThreadPoolExecutor(max_workers=6, thread_name_prefix="hyperkitty") as pool:
-        for item, excerpt in pool.map(load_detail, pending):
+        for item, excerpt, detail_ok in pool.map(load_detail, pending):
+            complete = complete and detail_ok
             item["body_excerpt"] = excerpt
             if db.upsert_item(conn, item):
                 new_count += 1
@@ -174,10 +180,10 @@ def fetch(conn: sqlite3.Connection, source, *, since: datetime | None = None,
                 "DELETE FROM items WHERE source='ml' AND project=? "
                 "AND native_id LIKE 'ma:%' AND created_at>=?", (project, since_iso)
             )
-        db.set_fetch_state(
-            conn, "ml", project, last_fetch_at=base.to_utc_iso(now),
-            last_seen_id="complete" if complete else "partial",
-        )
+    db.set_fetch_state(
+        conn, "ml", project, last_fetch_at=base.to_utc_iso(now),
+        last_seen_id="complete" if complete else "partial",
+    )
     log.info("hyperkitty %s: fetched %d new (threads=%d, complete=%s)",
              project, new_count, len(thread_ids), complete)
     return new_count

@@ -27,18 +27,46 @@ if(reportToc){
   };
   const requestTocDraw=()=>{if(!frame)frame=requestAnimationFrame(drawToc)};
   const applyFilters=()=>{
+    let matched=0,total=0;
     document.querySelectorAll('.project-section').forEach(section=>{
       const projectMatch=projectFilter==='all'||section.dataset.project===projectFilter;let visible=0;
       section.querySelectorAll('.dyn').forEach(item=>{const match=itemFilter==='all'||item.dataset.category===itemFilter||(item.dataset.architectures||'').split(',').includes(itemFilter);item.hidden=!projectMatch||!match;if(!item.hidden)visible++});
       section.hidden=visible===0;
+      matched+=visible;total+=section.querySelectorAll('.dyn').length;
       const count=reportToc.querySelector(`a[href="#${section.id}"] .count`);if(count)count.textContent=visible;
     });
+    const status=document.querySelector('[data-report-filter-status]'),empty=document.querySelector('[data-report-filter-empty]');
+    if(status)status.textContent=`显示 ${matched} / ${total} 条精选`;
+    if(empty)empty.hidden=matched>0;
+    document.querySelectorAll('[data-project-filter]').forEach(button=>{const active=button.dataset.projectFilter===projectFilter;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active))});
+    document.querySelectorAll('[data-item-filter]').forEach(button=>{const active=button.dataset.itemFilter===itemFilter;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active))});
     requestTocDraw();
   };
-  document.querySelectorAll('[data-project-filter]').forEach(button=>button.addEventListener('click',()=>{projectFilter=button.dataset.projectFilter;document.querySelectorAll('[data-project-filter]').forEach(x=>x.classList.toggle('active',x===button));applyFilters()}));
-  document.querySelectorAll('[data-item-filter]').forEach(button=>button.addEventListener('click',()=>{itemFilter=button.dataset.itemFilter;document.querySelectorAll('[data-item-filter]').forEach(x=>x.classList.toggle('active',x===button));applyFilters()}));
-  window.addEventListener('scroll',requestTocDraw,{passive:true});window.addEventListener('resize',requestTocDraw);window.addEventListener('hashchange',requestTocDraw);drawToc();
+  const resetFilters=()=>{projectFilter='all';itemFilter='all';applyFilters()};
+  const revealReportItem=()=>{
+    let id;try{id=decodeURIComponent(location.hash.slice(1))}catch{return}
+    const target=document.getElementById(id);
+    if(!target?.matches('.dyn'))return;
+    if(target.hidden||target.closest('.project-section')?.hidden)resetFilters();
+    requestAnimationFrame(()=>target.scrollIntoView({block:'start',behavior:'instant'}));
+  };
+  document.querySelectorAll('[data-project-filter]').forEach(button=>button.addEventListener('click',()=>{projectFilter=button.dataset.projectFilter;applyFilters()}));
+  document.querySelectorAll('[data-item-filter]').forEach(button=>button.addEventListener('click',()=>{itemFilter=button.dataset.itemFilter;applyFilters()}));
+  document.querySelector('[data-report-filter-reset]')?.addEventListener('click',resetFilters);
+  document.querySelectorAll('a[href^="#item-"]').forEach(link=>link.addEventListener('click',()=>{if(link.hash===location.hash)revealReportItem()}));
+  window.addEventListener('scroll',requestTocDraw,{passive:true});window.addEventListener('resize',requestTocDraw);window.addEventListener('hashchange',()=>{revealReportItem();requestTocDraw()});applyFilters();revealReportItem();drawToc();
 }
+document.querySelectorAll('[data-copy-report-link]').forEach(link=>link.addEventListener('click',async event=>{
+  if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey||event.button!==0)return;
+  // Keep the native fragment-link fallback on HTTP/file previews or denied clipboard access.
+  const status=link.parentElement.querySelector('[data-copy-status]');
+  try{
+    if(!navigator.clipboard?.writeText)throw new Error('clipboard unavailable');
+    await navigator.clipboard.writeText(link.href);
+    link.textContent='已复制';if(status)status.textContent='条目链接已复制';
+  }catch{if(status)status.textContent='已定位条目，可复制浏览器地址分享'}
+  window.setTimeout(()=>{link.textContent='分享';if(status)status.textContent=''},2200);
+}));
 // Shared pagination state; server-rendered lists keep real navigation links.
 const readPageState=()=>{
   const params=new URLSearchParams(location.search);

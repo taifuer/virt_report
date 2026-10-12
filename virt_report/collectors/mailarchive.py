@@ -36,13 +36,14 @@ def fetch(conn: sqlite3.Connection, source, *, since: datetime | None = None,
         resp = base.http_get(feed_url)
     except Exception as e:
         log.warning("mailarchive %s: feed 获取失败: %s", project, e)
-        return 0
+        raise
     parsed = feedparser.parse(resp.content)
     if parsed.bozo and not parsed.entries:
         log.warning("mailarchive %s: feed 解析错误: %s", project, parsed.bozo_exception)
-        return 0
+        raise ValueError(f"mailarchive {project}: feed parse error")
 
     new_count = 0
+    complete = False
     for entry in parsed.entries:
         link = entry.get("link", "")
         msg_num = _msg_num_from_link(link)
@@ -53,6 +54,7 @@ def fetch(conn: sqlite3.Connection, source, *, since: datetime | None = None,
         published = base.parse_dt(entry.get("published")) or datetime.now(timezone.utc)
         created_iso = base.to_utc_iso(published)
         if since_iso and created_iso < since_iso:
+            complete = True
             break  # RSS 最新优先
 
         if db.item_exists(conn, "ml", project, native_id):
@@ -84,6 +86,7 @@ def fetch(conn: sqlite3.Connection, source, *, since: datetime | None = None,
             new_count += 1
 
     db.set_fetch_state(conn, "ml", project,
-                       last_fetch_at=base.to_utc_iso(datetime.now(timezone.utc)))
+                       last_fetch_at=base.to_utc_iso(datetime.now(timezone.utc)),
+                       last_seen_id="complete" if complete else "partial")
     log.info("mailarchive %s: fetched %d new", project, new_count)
     return new_count

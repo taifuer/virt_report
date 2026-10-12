@@ -10,6 +10,9 @@ from typing import Any
 
 from virt_report import db
 from virt_report.processing import architecture, category
+from virt_report.report_links import (
+    report_item_anchor, report_item_href, selected_item_source, visible_report_anchors,
+)
 
 
 PROJECTS = (
@@ -171,6 +174,9 @@ def _parse_reports(conn: sqlite3.Connection, documents: dict[str, dict],
             continue
         if content.get("fallback"):
             continue
+        evidence = {item.get("ref"): item for item in content.get("top_threads", [])
+                    if isinstance(item, dict) and item.get("ref")}
+        visible_anchors = visible_report_anchors(content)
         report_ref = {
             "period": row["period"],
             "period_label": _PERIOD_LABELS.get(row["period"], row["period"]),
@@ -181,7 +187,7 @@ def _parse_reports(conn: sqlite3.Connection, documents: dict[str, dict],
         for section in content.get("sections", []):
             section_project = section.get("key") or section.get("name")
             for item in section.get("items", []):
-                url = _clean(item.get("url"))
+                item_project, url = selected_item_source(item, section, evidence)
                 original = _clean(item.get("original_title") or item.get("title"))
                 if not original:
                     continue
@@ -219,7 +225,12 @@ def _parse_reports(conn: sqlite3.Connection, documents: dict[str, dict],
                     ref for ref in document["report_refs"]
                     if (ref["period"], ref["period_key"]) != identity
                 ]
-                document["report_refs"].append(dict(report_ref))
+                href = report_item_href(
+                    row["period"], row["period_key"], item_project, url,
+                )
+                if report_item_anchor(item_project, url) not in visible_anchors:
+                    href = href.partition("#")[0]
+                document["report_refs"].append(dict(report_ref, href=href))
                 document["curated"] = 1
 
 

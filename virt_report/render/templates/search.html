@@ -14,7 +14,9 @@
     <p>检索已进入日报、周报、月报或专题的中文点评与原始英文标题。</p>
   </header>
 
-  <form class="search-form" action="{{ root }}search.html" method="get" role="search" data-search-form>
+  {% if static_mode %}<p class="search-message" role="note">此页面是静态导出，搜索需要运行 virt-report Web 服务。可先浏览<a href="{{ root }}daily/index.html">日报</a>、<a href="{{ root }}weekly/index.html">周报</a>、<a href="{{ root }}monthly/index.html">月报</a>和<a href="{{ root }}topics.html">专题</a>。</p>{% endif %}
+  <form class="search-form" action="{{ root }}search.html" method="get" role="search"{% if not static_mode %} data-search-form{% endif %}>
+    <fieldset class="search-fieldset"{% if static_mode %} disabled aria-label="静态页面不提供搜索"{% endif %}>
     <input type="hidden" name="per_page" value="{{ result.per_page }}">
     <div class="search-query-row">
       <label class="sr-only" for="search-query">搜索关键词</label>
@@ -24,7 +26,7 @@
       </div>
       <button type="submit">搜索</button>
     </div>
-    {% if not result.query %}
+    {% if not result.query and not static_mode %}
     <div class="search-examples" role="group" aria-label="搜索建议"><a href="search.html?q=热迁移">热迁移</a><a href="search.html?q=VFIO">VFIO</a><a href="search.html?q=virtio">virtio</a></div>
     {% endif %}
     <div class="search-filters">
@@ -32,11 +34,13 @@
       <label><span>类型</span><select name="category"><option value="">全部</option>{% for key,label in result.categories %}<option value="{{ key }}"{% if result.category == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
       <label><span>架构</span><select name="architecture"><option value="">全部</option>{% for key,label in result.architectures %}<option value="{{ key }}"{% if result.architecture == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
       <label><span>排序</span><select name="sort">{% for key,label in result.sorts %}<option value="{{ key }}"{% if result.sort == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-      {% if result.query or result.project or result.category or result.architecture or result.sort != 'relevance' %}<a class="search-reset" href="{{ root }}search.html">清除</a>{% endif %}
+      {% if not static_mode and (result.query or result.project or result.category or result.architecture or result.sort != 'relevance') %}<a class="search-reset" href="{{ root }}search.html">清除</a>{% endif %}
     </div>
+    </fieldset>
   </form>
 
-  {% if result.error %}<div class="search-message error" role="alert">{{ result.error }}</div>
+  {% if static_mode %}
+  {% elif result.error %}<div class="search-message error" role="alert">{{ result.error }}</div>
   {% elif result.query %}
     <div class="search-result-head paginated-list" id="search-results">
       <div><strong>{{ result.total }}</strong> 个相关议题</div>

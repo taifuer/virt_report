@@ -52,6 +52,9 @@ def _generation_state_view(row) -> dict:
             "本期报告尚未发布，请稍后再来查看。",
         ),
     }.get(status, ("AI 点评准备中", "本期报告尚未发布。"))
+    if dict(row).get("error") == "coverage_wait":
+        title = "等待数据补齐"
+        description = "本期来源数据尚未齐全，系统将按计划重试后再生成点评。"
     period = row["period"]
     return {
         "period": period,

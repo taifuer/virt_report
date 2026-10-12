@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from virt_report.config import Config
+from virt_report.report_links import prepare_report_links
 from virt_report.render.calendar import build_archive_index, build_archive_views
 from virt_report.summarize import periods, report as report_builder
 
@@ -144,7 +145,7 @@ def render_report_html(config: Config, content: dict, nav: dict | None = None) -
     """将报告渲染为 HTML 字符串，供静态导出和后端路由共用。"""
     env = _env()
     tpl = env.get_template("report.html")
-    prepared = dict(content)
+    prepared = prepare_report_links(content)
     stats = dict(content.get("stats") or {})
     source_rows = report_builder.project_source_rows(stats)
     stats["by_project_source"] = source_rows
@@ -232,7 +233,7 @@ def render_about_html(config: Config) -> str:
 
 def render_search(config: Config, result: dict, filename: str = "search.html") -> Path:
     """导出搜索入口；带查询参数的结果由动态服务返回。"""
-    html = render_search_html(config, result)
+    html = render_search_html(config, result, static_mode=True)
     out = Path(config.output_dir) / filename
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")
@@ -279,7 +280,7 @@ def render_versions(config: Config, content: dict) -> Path:
     return out
 
 
-def render_search_html(config: Config, result: dict) -> str:
+def render_search_html(config: Config, result: dict, *, static_mode: bool = False) -> str:
     """渲染社区议题搜索页。"""
     from urllib.parse import urlencode
 
@@ -309,7 +310,7 @@ def render_search_html(config: Config, result: dict) -> str:
         page_url(prepared["page"] + 1)
         if prepared.get("page", 1) < prepared.get("pages", 0) else ""
     )
-    return tpl.render(result=prepared, root="", site_name=config.name)
+    return tpl.render(result=prepared, static_mode=static_mode, root="", site_name=config.name)
 
 
 def render_archive(config: Config, period: str, reports: list[dict]) -> Path:

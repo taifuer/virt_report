@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from datetime import datetime, timezone
+from urllib.parse import urljoin, urlsplit
 
 import feedparser
 
@@ -92,16 +93,17 @@ def fetch(conn: sqlite3.Connection, source, *, since: datetime | None = None,
     project = source.name
     feed_url = source.url.rstrip("/") + "/new.atom"
     since_iso = base.to_utc_iso(since) if since else None
-
     new_count = 0
+    # Revisit the head on every attempt. A saved older page cannot establish
+    # coverage through a newer batch's end: new replies may have arrived above it.
     url: str | None = feed_url
     pages = 0
+    complete = False
     while url and pages < max_pages:
         resp = base.http_get(url)
         parsed = feedparser.parse(resp.content)
         if parsed.bozo and not parsed.entries:
-            log.warning("lore %s: feed parse error: %s", project, parsed.bozo_exception)
-            break
+            raise ValueError(f"lore {project}: feed parse error: {parsed.bozo_exception}")
 
         stop = False
         for entry in parsed.entries:
@@ -117,10 +119,20 @@ def fetch(conn: sqlite3.Connection, source, *, since: datetime | None = None,
 
         pages += 1
         if stop:
+            complete = True
             break
-        url = _next_link(parsed)
+        next_url = _next_link(parsed)
+        if not next_url:
+            # /new.atom is a bounded recent feed, not an exhaustive archive.
+            # No next link does not prove that the requested start was reached.
+            break
+        next_url = urljoin(url, next_url)
+        if urlsplit(next_url).netloc != urlsplit(feed_url).netloc or next_url == url:
+            raise ValueError(f"lore {project}: invalid pagination link")
+        url = next_url
 
     db.set_fetch_state(conn, "ml", project,
-                       last_fetch_at=base.to_utc_iso(datetime.now(timezone.utc)))
+                       last_fetch_at=base.to_utc_iso(datetime.now(timezone.utc)),
+                       last_seen_id="complete" if complete else "partial")
     log.info("lore %s: fetched %d new (pages=%d)", project, new_count, pages)
     return new_count
