@@ -129,14 +129,14 @@ def test_reviewed_additions_keep_years_evidence_and_institutions():
     by_id = {item["id"]: item for item in content["papers"]}
     assert content["paper_count"] >= 90
     assert by_id["security25-tdxploit"]["year"] == 2025
-    accepted = by_id["sosp26-cpu-virtualization"]
-    assert accepted["publication_status"] == "accepted"
-    assert accepted["evidence_level"] == "title" and accepted["architectures"] == []
+    published = by_id["sosp26-cpu-virtualization"]
+    assert published["publication_status"] == "published"
+    assert published["evidence_level"] == "title" and published["architectures"] == []
     assert all(p["institutions"] for p in by_id.values())
     page = render.render_conference_papers_html(Config(), content)
     assert "data-conference-query" in page and "data-paper-topic" in page
     assert 'id="paper-security25-tdxploit"' in page
-    assert "仅有公开标题，待摘要补充" in page
+    assert "目前仅核实标题，待摘要补充" in page
     assert 'href="topics/migration/index.html"' in page
     # The search index uses rendered text, not another copy of paper prose.
     assert 'data-search-text=' not in page

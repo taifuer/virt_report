@@ -323,6 +323,33 @@ def test_reviewed_notes_cover_bundled_english_and_historical_milestones():
     assert "默认启用" in "".join(notes["kvm:5.15"]["highlights"])
 
 
+def test_october_public_snapshot_has_reviewed_feature_notes_without_showing_patches(tmp_path):
+    bundled = json.loads((versions.CONTENT_DIR / "versions.json").read_text())
+    assert set(bundled) == {"schema_version", "checked_at", "releases"}
+    records = {(row["project"], row["version"]): row for row in bundled["releases"]}
+    assert len(records) == len(bundled["releases"])
+    for key in (("libvirt", "12.8.0"), ("qemu", "11.1.2"), ("kvm", "7.2.10")):
+        assert key in records
+    public_fields = {"project", "version", "released_on", "released_at", "kind",
+                     "source_url", "date_source", "highlights", "notes_url",
+                     "commits", "commits_approximate", "contributors"}
+    assert all(set(row) <= public_fields for row in records.values())
+
+    config = Config(storage=Storage(db_path=tmp_path / "report.db"))
+    content = versions.load_content(config, today=date(2026, 10, 12))
+    release = next(row for row in content["releases"]
+                   if row["project"] == "libvirt" and row["version"] == "12.8.0")
+    assert release["released_on"] == "2026-10-01"
+    assert release["note_source_url"] == "https://libvirt.org/news.html#v12-8-0-2026-10-01"
+    assert len(release["notes"]) == 3
+    assert "默认 0 仍不限制" in "".join(release["notes"])
+    page = render.render_versions_html(config, content)
+    assert 'id="release-libvirt-12.8.0"' in page
+    assert 'id="release-qemu-11.1.2"' not in page
+    assert 'id="release-kvm-7.2.10"' not in page
+    assert "auto_dump_max_size" in page
+
+
 def test_manual_notes_override_runtime_highlights_without_changing_release_identity(tmp_path, monkeypatch):
     config = Config(storage=Storage(db_path=tmp_path / "report.db"))
     monkeypatch.setattr(versions, "CONTENT_DIR", tmp_path / "content")
