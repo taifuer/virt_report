@@ -1,0 +1,58 @@
+{
+  "topics": [
+    {
+      "slug": "migration",
+      "title": "热迁移",
+      "summary": "从内存迭代、停机控制到迁移流格式与状态恢复，分析运行中虚拟机在两台宿主机之间迁移的实现机制。"
+    }
+  ],
+  "articles": [
+    {
+      "slug": "qemu-memory-migration",
+      "topic": "migration",
+      "title": "QEMU 预拷贝迁移的内存迭代与停机控制",
+      "summary": "分析脏页跟踪、内存重传和切换判据，理解传输带宽、写入负载与停机时间之间的关系，以及相关优化的收益与代价。",
+      "reviewed_on": "2026-10-13",
+      "template": "_migration_article.html",
+      "stylesheet": "precopy-lab.css",
+      "script": "mechanisms.js",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "前言"},
+        {"id": "principle", "title": "基本原理"},
+        {"id": "iteration", "title": "脏页跟踪与内存迭代"},
+        {"id": "convergence", "title": "收敛与切换条件"},
+        {"id": "downtime", "title": "停机时间与观测指标"},
+        {"id": "implementation", "title": "关键源码"},
+        {"id": "optimization", "title": "优化机制与代价"},
+        {"id": "sources", "title": "参考资料"}
+      ]
+    },
+    {
+      "slug": "qemu-migration-stream",
+      "topic": "migration",
+      "title": "QEMU 迁移流格式与状态恢复",
+      "summary": "从流头、内存页记录到 vCPU 与设备状态，逐层解析迁移流的字段、分段和结束标记，说明目的端如何恢复虚拟机状态。",
+      "reviewed_on": "2026-10-13",
+      "template": "_migration_stream_article.html",
+      "stylesheet": "migration-stream.css",
+      "script": "migration-stream.js",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "前言"},
+        {"id": "structure", "title": "整体结构"},
+        {"id": "headers", "title": "流头、分段与边界"},
+        {"id": "ram-records", "title": "内存记录的编码"},
+        {"id": "device-state", "title": "处理器与设备状态"},
+        {"id": "loading", "title": "接收解析与恢复执行"},
+        {"id": "evolution", "title": "格式的演进与兼容"},
+        {"id": "sources", "title": "参考资料"}
+      ]
+    }
+  ]
+}

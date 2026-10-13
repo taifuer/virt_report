@@ -1,6 +1,8 @@
 """Presentation refresh must preserve exports newer than the local database."""
+from pathlib import Path
+
 from scripts.refresh_static_presentation import (
-    Document, protected_report_parts, refresh_report_html, refresh_topic_html,
+    Document, protected_report_parts, refresh_page_chrome, refresh_report_html, refresh_topic_html,
 )
 from virt_report.report_links import report_item_anchor
 
@@ -43,3 +45,33 @@ def test_document_preserves_offsets_for_entities_comments_svg_and_scripts():
     assert html[paragraph.start:paragraph.end] == "<p>QEMU &amp; KVM</p>"
     assert doc.text(paragraph) == "QEMU & KVM"
     assert next(node for node in doc.nodes if node.tag == "script").end > paragraph.end
+
+
+def test_snapshot_chrome_uses_shared_navigation_without_touching_article():
+    body = '<main id="main"><p>较新的历史点评 &amp; 日期：2026-10-12</p></main>'
+    html = '<header class="site-head">old</header>' + body + '<footer class="site-foot">old</footer>'
+    result = refresh_page_chrome(html, "daily/2026-10-12.html", "virt-report")
+    assert body in result
+    assert 'href="../mechanisms.html"' in result
+    assert 'href="../versions.html"' in result
+    assert 'href="../daily/index.html" class="on" aria-current="page"' in result
+    assert '<summary class="on">报告' in result
+    assert 'data-site-menu-toggle' in result
+    assert 'href="../metrics.html"' in result
+    assert refresh_page_chrome(result, "daily/2026-10-12.html", "virt-report") == result
+
+
+def test_snapshot_chrome_tracks_principle_and_version_routes():
+    html = '<header class="site-head"></header>'
+    for path, target in (("mechanisms/qemu-memory-migration.html", "../mechanisms.html"),
+                         ("versions.html", "versions.html")):
+        result = refresh_page_chrome(html, path, "virt-report")
+        assert f'href="{target}" class="on" aria-current="page"' in result
+
+
+def test_topic_and_conference_snapshots_use_current_shared_header():
+    site = Path(__file__).resolve().parents[1] / "site"
+    for relative in ("topics.html", "topics/migration/index.html", "conferences.html",
+                     "academic-conferences.html", "conference-papers.html", "kvm-forum.html"):
+        html = (site / relative).read_text(encoding="utf-8")
+        assert refresh_page_chrome(html, relative, "virt-report") == html, relative

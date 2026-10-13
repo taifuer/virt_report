@@ -161,6 +161,7 @@ def _render_index(config: Config, conn) -> None:
     for stale in config.output_dir.glob("index-????-??.html"):
         stale.unlink()
     render.render_about(config)
+    render.render_mechanisms(config)
     from virt_report import versions
     render.render_versions(config, versions.load_content(config))
     render.render_search(config, search_index.search(conn, ""))

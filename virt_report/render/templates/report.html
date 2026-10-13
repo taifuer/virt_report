@@ -3,6 +3,10 @@
 {% block title %}{{ report.label }}{% if report.period=="daily" %} 日报{% elif report.period=="weekly" %}周报{% else %}月报{% endif %} - virt-report{% endblock %}
 {% block description %}{{ report.label }} Libvirt、QEMU、KVM 社区技术动态与补丁讨论摘要。{% endblock %}
 {% block nav_home %}{% endblock %}
+{% block nav_reports %}on{% endblock %}
+{% block nav_daily %}{% if report.period == 'daily' %}on{% endif %}{% endblock %}
+{% block nav_weekly %}{% if report.period == 'weekly' %}on{% endif %}{% endblock %}
+{% block nav_monthly %}{% if report.period == 'monthly' %}on{% endif %}{% endblock %}
 {% block content %}
 {% if nav %}<nav class="period-nav" aria-label="报告翻页">{% if nav.prev %}<a href="{{ root }}{{ nav.prev.url }}">← {{ nav.prev.label }}</a>{% else %}<span class="dim">← 无更早</span>{% endif %}<span>{{ "日报" if report.period=="daily" else ("周报" if report.period=="weekly" else "月报") }}</span>{% if nav.next %}<a href="{{ root }}{{ nav.next.url }}">{{ nav.next.label }} →</a>{% else %}<span class="dim">暂无更新 →</span>{% endif %}</nav>{% endif %}
 <div class="report-layout">

@@ -157,8 +157,9 @@ def test_search_page_renders_results_filters_and_safe_highlights(search_db):
     html = render.render_search_html(Config(), result)
 
     assert "<title>搜索 - virt-report</title>" in html
-    assert ('href="about.html" class="">关于</a><a href="search.html" '
-            'class="nav-search-icon on" aria-label="搜索"') in html
+    assert 'href="about.html" class="">关于</a>' in html
+    assert ('href="search.html" class="nav-search-icon on" '
+            'aria-label="搜索" title="搜索" aria-current="page"') in html
     assert 'class="mobile-search-icon on" aria-label="搜索"' in html
     assert '<mark>VFIO</mark>' in html
     assert "<script>alert(1)</script>" not in html

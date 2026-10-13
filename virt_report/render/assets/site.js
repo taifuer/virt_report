@@ -1,4 +1,83 @@
 const siteHeader=document.querySelector('.site-head');
+// Progressive disclosure: without JavaScript the mobile navigation stays visible.
+const siteMenuToggle=siteHeader?.querySelector('[data-site-menu-toggle]');
+const siteNavigation=siteHeader?.querySelector('#site-navigation');
+const reportMenu=siteHeader?.querySelector('[data-report-menu]');
+if(siteMenuToggle&&siteNavigation){
+  const mobileNavigation=window.matchMedia('(max-width:860px)');
+  const hoverNavigation=window.matchMedia('(hover:hover) and (pointer:fine)');
+  let reportLeaveTimer=0,reportPointerInside=false,reportOpenedByHover=false;
+  const cancelReportLeave=()=>{window.clearTimeout(reportLeaveTimer);reportLeaveTimer=0};
+  const canHoverReports=()=>hoverNavigation.matches&&!mobileNavigation.matches;
+  const closeReportMenu=(restoreFocus=false)=>{
+    cancelReportLeave();
+    reportOpenedByHover=false;
+    if(!reportMenu?.open)return;
+    reportMenu.open=false;
+    if(restoreFocus)reportMenu.querySelector('summary').focus();
+  };
+  if(reportMenu){
+    reportMenu.addEventListener('pointerenter',event=>{
+      if(!canHoverReports()||event.pointerType==='touch')return;
+      cancelReportLeave();
+      reportPointerInside=true;
+      if(!reportMenu.open){reportMenu.open=true;reportOpenedByHover=true}
+    });
+    reportMenu.addEventListener('pointerleave',()=>{
+      reportPointerInside=false;
+      cancelReportLeave();
+      if(!canHoverReports())return;
+      // Allow crossing the gap to the popup without flickering or stealing keyboard focus.
+      reportLeaveTimer=window.setTimeout(()=>{
+        reportLeaveTimer=0;
+        if(!reportPointerInside&&!reportMenu.contains(document.activeElement))closeReportMenu();
+      },180);
+    });
+    reportMenu.querySelector('summary').addEventListener('click',event=>{
+      // Hover already opened the menu: the first mouse click should keep it available.
+      if(canHoverReports()&&event.detail>0&&reportOpenedByHover&&reportMenu.open)event.preventDefault();
+      reportOpenedByHover=false;
+      cancelReportLeave();
+    });
+    hoverNavigation.addEventListener('change',()=>{reportPointerInside=false;closeReportMenu()});
+  }
+  const setSiteMenu=(expanded,restoreFocus=false)=>{
+    siteNavigation.classList.toggle('is-open',expanded);
+    siteMenuToggle.setAttribute('aria-expanded',String(expanded));
+    siteMenuToggle.setAttribute('aria-label',expanded?'收起主菜单':'展开主菜单');
+    if(expanded&&reportMenu?.querySelector('summary.on'))reportMenu.open=true;
+    if(!expanded)closeReportMenu();
+    if(restoreFocus)siteMenuToggle.focus();
+  };
+  siteMenuToggle.hidden=false;
+  siteHeader.classList.add('menu-ready');
+  siteMenuToggle.addEventListener('click',()=>setSiteMenu(siteMenuToggle.getAttribute('aria-expanded')!=='true'));
+  document.addEventListener('click',event=>{
+    if(!reportMenu?.contains(event.target)&&!siteMenuToggle.contains(event.target))closeReportMenu();
+    if(mobileNavigation.matches&&!siteHeader.contains(event.target))setSiteMenu(false);
+  });
+  document.addEventListener('keydown',event=>{
+    if(event.key!=='Escape')return;
+    if(reportMenu?.open){event.preventDefault();closeReportMenu(true)}
+    else if(mobileNavigation.matches&&siteNavigation.classList.contains('is-open')){event.preventDefault();setSiteMenu(false,true)}
+  });
+  siteNavigation.addEventListener('click',event=>{
+    if(event.target.closest('a'))setSiteMenu(false);
+  });
+  siteHeader.addEventListener('focusout',()=>{
+    window.requestAnimationFrame(()=>{
+      if(!reportMenu?.contains(document.activeElement)&&!(canHoverReports()&&reportPointerInside))closeReportMenu();
+      if(mobileNavigation.matches&&!siteHeader.contains(document.activeElement))setSiteMenu(false);
+    });
+  });
+  mobileNavigation.addEventListener('change',()=>{
+    const focused=document.activeElement;
+    reportPointerInside=false;
+    setSiteMenu(false);
+    if(mobileNavigation.matches&&siteNavigation.contains(focused))siteMenuToggle.focus();
+    else if(!mobileNavigation.matches&&focused===siteMenuToggle)siteNavigation.querySelector('a.on,a')?.focus();
+  });
+}
 const reportToc=document.querySelector('[data-report-toc]');
 const syncStickyOffsets=()=>{
   if(siteHeader)document.documentElement.style.setProperty('--site-header-height',`${Math.ceil(siteHeader.getBoundingClientRect().height)}px`);
@@ -236,9 +315,6 @@ document.querySelectorAll('[data-topic-group]').forEach(root=>{
 const expandTopicHash=hash=>{const draw=topicDrawers.get(hash.replace(/^#/,''));if(draw)draw(true)};
 document.querySelectorAll('[data-topic-nav] a[href^="#"]').forEach(link=>link.addEventListener('click',()=>expandTopicHash(link.hash)));
 window.addEventListener('hashchange',()=>expandTopicHash(window.location.hash));expandTopicHash(window.location.hash);
-if(window.matchMedia('(max-width:620px)').matches){
-  const currentNav=document.querySelector('.main-nav a.on');if(currentNav)currentNav.scrollIntoView({block:'nearest',inline:'center'});
-}
 const backToTop=document.querySelector('[data-back-to-top]');
 if(backToTop){
   let backToTopFrame=0;const siteFooter=document.querySelector('.site-foot');

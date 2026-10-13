@@ -1,0 +1,250 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1580" height="1640" viewBox="0 0 1580 1640" role="img" aria-labelledby="wire-title wire-desc">
+  <!--
+    Hand-maintained SVG, not Mermaid output. Edit this asset directly.
+    Source: QEMU v10.2.0, 698104725efad4b29079d857dfdebbd804e34c99.
+    migration/savevm.h: type constants, magic and format version.
+    migration/savevm.c: save_section_header(), save_section_footer(),
+      vmstate_configuration, qemu_savevm_state_header(),
+      qemu_savevm_command_send(),
+      qemu_savevm_state_complete_precopy_non_iterable().
+    migration/ram.h: RAM_SAVE_FLAG_*.
+    migration/ram.c: ram_save_setup(), ram_save_iterate(),
+      ram_save_complete(), save_page_header(), ram_load().
+    migration/migration.c: migration_completion_precopy().
+    Common single-stream precopy PAGE path; default configuration/footer/
+    switchover notification enabled. Not a capture of a complete real VM.
+    Field widths are not proportional to byte widths. Big-endian integers.
+    Local source pause and CPU synchronization are not wire records.
+    No libvirt save-file prefix belongs before the native QEMU stream magic.
+  -->
+  <title id="wire-title">QEMU 10.2.0 预拷贝迁移流：完整顺序与字段布局</title>
+  <desc id="wire-desc">左侧按写入顺序排列流头、配置、RAM START、重复的 RAM PART、切换命令、RAM END、CPU 与设备 FULL、EOF 和可选 VM Description。右侧展开连续字段，标明字节数、内存记录、RAM EOS 与 section footer；下方展开一条 RAM 页记录。源端暂停及 CPU 状态同步是本地操作，不是流中的 section。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7" fill="none" stroke="#7a9692" stroke-width="1.2"/></marker>
+    <style>
+      text{font-family:Arial,'Noto Sans CJK SC','Microsoft YaHei',sans-serif;fill:#263f42;font-size:18px}
+      .title{font-size:27px;font-weight:700}.sub{font-size:17px;fill:#63767b}
+      .label{font-size:19px;font-weight:650}.hint{font-size:16px;fill:#63767b}
+      .mono{font-family:Consolas,'Liberation Mono',monospace;font-size:17px}
+      .small{font-size:15px}.center{text-anchor:middle}.bold{font-weight:650}
+      .struct{fill:#e0efeb;stroke:#9ebdb5;stroke-width:1}
+      .ram{fill:#e6f0f8;stroke:#abc4d5;stroke-width:1}
+      .device{fill:#eeeaf5;stroke:#bcb0ce;stroke-width:1}
+      .mark{fill:#fff0db;stroke:#d8b789;stroke-width:1}
+      .optional{fill:#f4f6f5;stroke:#bbc6c3;stroke-width:1;stroke-dasharray:5 4}
+      .link{fill:none;stroke:#7a9692;stroke-width:1.5;marker-end:url(#arrow)}
+      .separator{stroke:#dce4e2;stroke-width:1;stroke-dasharray:4 5}
+    </style>
+  </defs>
+  <rect width="1580" height="1640" fill="#fdfefd"/>
+  <text x="54" y="45" class="title">预拷贝迁移流：从流头到状态恢复</text>
+  <text x="54" y="78" class="sub">QEMU 10.2.0 · 普通单流、未压缩 PAGE 路径 · 多字节整数使用大端序（BE）</text>
+  <path d="M55 117 H1516" stroke="#dce4e2"/>
+  <text x="55" y="107" class="label">源端：依次写入</text>
+  <text x="366" y="107" class="label">连续字节流：每行从左到右；换行继续</text>
+  <text x="1516" y="107" class="label" text-anchor="end">目的端：按格式解析</text>
+  <text x="55" y="149" class="hint">整体顺序 ↓</text>
+  <text x="366" y="149" class="hint">字段名 / 示例值；下方为字段长度。图中宽度不按字节数等比。</text>
+
+  <!-- The left strip is one continuous stream, not a collection of cards. -->
+  <path d="M29 180 V1315" class="link"/>
+  <g id="flow-header">
+    <rect x="55" y="170" width="225" height="76" class="struct"/>
+    <text x="167.5" y="200" class="label center">流头</text>
+    <text x="167.5" y="225" class="mono center">Magic + version</text>
+    <path d="M280 208 H352" class="link"/>
+    <rect x="366" y="180" width="575" height="62" class="struct"/>
+    <rect x="941" y="180" width="575" height="62" class="struct"/>
+    <text x="653.5" y="205" class="mono center">Magic = 0x5145564d（QEVM）</text>
+    <text x="653.5" y="229" class="hint center">BE32 · 4 B</text>
+    <text x="1228.5" y="205" class="mono center">version = 3</text>
+    <text x="1228.5" y="229" class="hint center">BE32 · 4 B</text>
+  </g>
+
+  <g id="flow-configuration">
+    <rect x="55" y="246" width="225" height="110" class="struct"/>
+    <text x="167.5" y="288" class="label center">配置</text>
+    <text x="167.5" y="314" class="mono center">CONFIGURATION</text>
+    <path d="M280 301 H327 V314 H352" class="link"/>
+    <rect x="366" y="283" width="90" height="62" class="struct"/>
+    <rect x="456" y="283" width="180" height="62" class="struct"/>
+    <rect x="636" y="283" width="500" height="62" class="struct"/>
+    <rect x="1136" y="283" width="380" height="62" class="optional"/>
+    <text x="411" y="308" class="mono center">0x07</text><text x="411" y="332" class="hint center">1 B</text>
+    <text x="546" y="308" class="mono center">len = 11</text><text x="546" y="332" class="hint center">BE32 · 4 B</text>
+    <text x="886" y="308" class="mono center">machine name = pc-q35-10.2</text><text x="886" y="332" class="hint center">len B · 不含结尾 NUL</text>
+    <text x="1326" y="308" class="center">可选配置子段</text><text x="1326" y="332" class="hint center">依机器 / 能力配置决定</text>
+  </g>
+
+  <g id="flow-start">
+    <rect x="55" y="356" width="225" height="180" class="ram"/>
+    <text x="167.5" y="426" class="label center">RAM START</text>
+    <text x="167.5" y="453" class="center">注册 RAM 处理器</text>
+    <text x="167.5" y="480" class="hint center">传 RAMBlock 布局</text>
+    <path d="M280 446 H328 V416 H352" class="link"/>
+    <rect x="366" y="385" width="90" height="62" class="struct"/>
+    <rect x="456" y="385" width="140" height="62" class="struct"/>
+    <rect x="596" y="385" width="70" height="62" class="struct"/>
+    <rect x="666" y="385" width="345" height="62" class="struct"/>
+    <rect x="1011" y="385" width="235" height="62" class="struct"/>
+    <rect x="1246" y="385" width="270" height="62" class="struct"/>
+    <text x="411" y="410" class="mono center">0x01</text><text x="411" y="434" class="hint center">1 B</text>
+    <text x="526" y="410" class="mono center">section_id</text><text x="526" y="434" class="hint center">BE32 · 4 B</text>
+    <text x="631" y="410" class="mono center">len</text><text x="631" y="434" class="hint center">1 B</text>
+    <text x="838.5" y="410" class="mono center">idstr = "ram"</text><text x="838.5" y="434" class="hint center">len B = 3 B</text>
+    <text x="1128.5" y="410" class="mono center">instance_id = 0</text><text x="1128.5" y="434" class="hint center">BE32 · 4 B</text>
+    <text x="1381" y="410" class="mono center">version_id = 4</text><text x="1381" y="434" class="hint center">BE32 · 4 B</text>
+    <rect x="366" y="447" width="230" height="62" class="ram"/>
+    <rect x="596" y="447" width="65" height="62" class="ram"/>
+    <rect x="661" y="447" width="195" height="62" class="ram"/>
+    <rect x="856" y="447" width="190" height="62" class="ram"/>
+    <rect x="1046" y="447" width="150" height="62" class="mark"/>
+    <rect x="1196" y="447" width="90" height="62" class="mark"/>
+    <rect x="1286" y="447" width="230" height="62" class="mark"/>
+    <text x="481" y="472" class="mono center">total | MEM_SIZE</text><text x="481" y="496" class="hint center">BE64 · 8 B</text>
+    <text x="628.5" y="472" class="mono center">len</text><text x="628.5" y="496" class="hint center">1 B</text>
+    <text x="758.5" y="472" class="mono center">block = "pc.ram"</text><text x="758.5" y="496" class="hint center">len B = 6 B</text>
+    <text x="951" y="472" class="mono center">used_length</text><text x="951" y="496" class="hint center">BE64 · 8 B</text>
+    <text x="1121" y="472" class="mono center">EOS = 0x10</text><text x="1121" y="496" class="hint center">BE64 · 8 B</text>
+    <text x="1241" y="472" class="mono center">0x7e</text><text x="1241" y="496" class="hint center">1 B</text>
+    <text x="1401" y="472" class="mono center">section_id</text><text x="1401" y="496" class="hint center">BE32 · 4 B</text>
+    <text x="366" y="529" class="hint">示例仅有 pc.ram：16 MiB；多个 RAMBlock 依次重复「len + block name + used_length」。</text>
+  </g>
+
+  <g id="flow-part">
+    <rect x="55" y="536" width="225" height="200" class="ram"/>
+    <text x="167.5" y="603" class="label center">RAM PART</text>
+    <text x="167.5" y="631" class="center">页记录 → 页记录 → …</text>
+    <text x="167.5" y="659" class="hint center">按需发送多个 PART</text>
+    <text x="167.5" y="687" class="hint center">源端客户机继续运行</text>
+    <path d="M280 636 H328 V602 H352" class="link"/>
+    <rect x="366" y="570" width="90" height="62" class="struct"/>
+    <rect x="456" y="570" width="140" height="62" class="struct"/>
+    <rect x="596" y="570" width="270" height="62" class="ram"/>
+    <rect x="866" y="570" width="330" height="62" class="ram"/>
+    <rect x="1196" y="570" width="320" height="62" class="ram"/>
+    <text x="411" y="595" class="mono center">0x02</text><text x="411" y="619" class="hint center">1 B</text>
+    <text x="526" y="595" class="mono center">section_id</text><text x="526" y="619" class="hint center">BE32 · 4 B</text>
+    <text x="731" y="595" class="mono center">page header</text><text x="731" y="619" class="hint center">8 B + 可选 block name</text>
+    <text x="1031" y="595" class="center">页内容</text><text x="1031" y="619" class="hint center">TARGET_PAGE_SIZE B</text>
+    <text x="1356" y="595" class="center">下一条 page header + 内容</text><text x="1356" y="619" class="hint center">可有多条；并非全量内存一轮</text>
+    <rect x="366" y="632" width="680" height="62" class="ram"/>
+    <rect x="1046" y="632" width="150" height="62" class="mark"/>
+    <rect x="1196" y="632" width="90" height="62" class="mark"/>
+    <rect x="1286" y="632" width="230" height="62" class="mark"/>
+    <text x="706" y="657" class="center">……后续页记录</text><text x="706" y="681" class="hint center">继续顺序解析，直到遇到 RAM EOS</text>
+    <text x="1121" y="657" class="mono center">EOS = 0x10</text><text x="1121" y="681" class="hint center">BE64 · 8 B</text>
+    <text x="1241" y="657" class="mono center">0x7e</text><text x="1241" y="681" class="hint center">1 B</text>
+    <text x="1401" y="657" class="mono center">section_id</text><text x="1401" y="681" class="hint center">BE32 · 4 B</text>
+    <text x="366" y="721" class="hint">PART 只有 type + section_id 短头；目的端沿用 START 注册的处理器。页头详见下方展开。</text>
+  </g>
+
+  <g id="flow-command">
+    <rect x="55" y="736" width="225" height="84" class="struct"/>
+    <text x="167.5" y="769" class="label center">切换通知</text>
+    <text x="167.5" y="796" class="mono center">COMMAND</text>
+    <path d="M280 778 H352" class="link"/>
+    <rect x="366" y="748" width="90" height="62" class="struct"/>
+    <rect x="456" y="748" width="580" height="62" class="struct"/>
+    <rect x="1036" y="748" width="200" height="62" class="struct"/>
+    <rect x="1236" y="748" width="280" height="62" class="struct"/>
+    <text x="411" y="773" class="mono center">0x08</text><text x="411" y="797" class="hint center">1 B</text>
+    <text x="746" y="773" class="mono center">MIG_CMD_SWITCHOVER_START = 0x000b</text><text x="746" y="797" class="hint center">command · BE16 · 2 B</text>
+    <text x="1136" y="773" class="mono center">len = 0</text><text x="1136" y="797" class="hint center">BE16 · 2 B</text>
+    <text x="1376" y="773" class="center">无命令载荷</text><text x="1376" y="797" class="hint center">0 B · 无 section footer</text>
+  </g>
+
+  <g id="flow-end">
+    <rect x="55" y="820" width="225" height="150" class="ram"/>
+    <text x="167.5" y="875" class="label center">RAM END</text>
+    <text x="167.5" y="904" class="center">最后的内存页</text>
+    <text x="167.5" y="933" class="hint center">源端客户机已经暂停</text>
+    <path d="M280 895 H328 V876 H352" class="link"/>
+    <rect x="366" y="845" width="90" height="62" class="struct"/>
+    <rect x="456" y="845" width="140" height="62" class="struct"/>
+    <rect x="596" y="845" width="450" height="62" class="ram"/>
+    <rect x="1046" y="845" width="150" height="62" class="mark"/>
+    <rect x="1196" y="845" width="90" height="62" class="mark"/>
+    <rect x="1286" y="845" width="230" height="62" class="mark"/>
+    <text x="411" y="870" class="mono center">0x03</text><text x="411" y="894" class="hint center">1 B</text>
+    <text x="526" y="870" class="mono center">section_id</text><text x="526" y="894" class="hint center">BE32 · 4 B</text>
+    <text x="821" y="870" class="center">page header + 页内容，重复至完成</text><text x="821" y="894" class="hint center">可没有剩余页；记录格式与 PART 相同</text>
+    <text x="1121" y="870" class="mono center">EOS = 0x10</text><text x="1121" y="894" class="hint center">BE64 · 8 B</text>
+    <text x="1241" y="870" class="mono center">0x7e</text><text x="1241" y="894" class="hint center">1 B</text>
+    <text x="1401" y="870" class="mono center">section_id</text><text x="1401" y="894" class="hint center">BE32 · 4 B</text>
+    <text x="366" y="938" class="hint">源端暂停发生在切换通知前；cpu_synchronize_all_states() 在 RAM END 后、非迭代状态保存前执行。</text>
+    <text x="366" y="960" class="hint">这些是源端本地动作，不是额外的迁移流字段。</text>
+  </g>
+
+  <g id="flow-full">
+    <rect x="55" y="970" width="225" height="184" class="device"/>
+    <text x="167.5" y="1028" class="label center">CPU / 设备 FULL</text>
+    <text x="167.5" y="1057" class="center">各自的状态格式</text>
+    <text x="167.5" y="1086" class="hint center">一个处理器一个 section</text>
+    <text x="167.5" y="1115" class="hint center">可连续出现多个 FULL</text>
+    <path d="M280 1062 H328 V1031 H352" class="link"/>
+    <rect x="366" y="1000" width="90" height="62" class="struct"/>
+    <rect x="456" y="1000" width="140" height="62" class="struct"/>
+    <rect x="596" y="1000" width="70" height="62" class="struct"/>
+    <rect x="666" y="1000" width="345" height="62" class="struct"/>
+    <rect x="1011" y="1000" width="235" height="62" class="struct"/>
+    <rect x="1246" y="1000" width="270" height="62" class="struct"/>
+    <text x="411" y="1025" class="mono center">0x04</text><text x="411" y="1049" class="hint center">1 B</text>
+    <text x="526" y="1025" class="mono center">section_id</text><text x="526" y="1049" class="hint center">BE32 · 4 B</text>
+    <text x="631" y="1025" class="mono center">len</text><text x="631" y="1049" class="hint center">1 B</text>
+    <text x="838.5" y="1025" class="mono center">idstr（如 "cpu"）</text><text x="838.5" y="1049" class="hint center">len B</text>
+    <text x="1128.5" y="1025" class="mono center">instance_id</text><text x="1128.5" y="1049" class="hint center">BE32 · 4 B</text>
+    <text x="1381" y="1025" class="mono center">version_id</text><text x="1381" y="1049" class="hint center">BE32 · 4 B</text>
+    <rect x="366" y="1062" width="830" height="62" class="device"/>
+    <rect x="1196" y="1062" width="90" height="62" class="mark"/>
+    <rect x="1286" y="1062" width="230" height="62" class="mark"/>
+    <text x="781" y="1087" class="center">VMState 字段 / 子段，或该设备自定义的状态载荷</text>
+    <text x="781" y="1111" class="hint center">由对应 load_state / VMStateDescription 消费；没有统一的 payload length 字段</text>
+    <text x="1241" y="1087" class="mono center">0x7e</text><text x="1241" y="1111" class="hint center">1 B</text>
+    <text x="1401" y="1087" class="mono center">section_id</text><text x="1401" y="1111" class="hint center">BE32 · 4 B</text>
+    <text x="366" y="1145" class="hint">同一 section 的头尾 ID 必须一致。RAM EOS 只属于 RAM 格式，不能套用于 CPU / 设备载荷。</text>
+  </g>
+
+  <g id="flow-eof">
+    <rect x="55" y="1154" width="225" height="68" class="mark"/>
+    <text x="167.5" y="1183" class="label center">EOF</text>
+    <text x="167.5" y="1208" class="hint center">状态主流结束</text>
+    <path d="M280 1188 H352" class="link"/>
+    <rect x="366" y="1166" width="90" height="44" class="mark"/>
+    <text x="411" y="1193" class="mono center">0x00</text>
+    <text x="480" y="1193" class="hint">1 B；终止顶层 section 读取循环，不等于 RAM EOS，也不等于 socket 关闭。</text>
+  </g>
+
+  <g id="flow-description">
+    <rect x="55" y="1222" width="225" height="110" class="optional"/>
+    <text x="167.5" y="1261" class="label center">VM DESCRIPTION</text>
+    <text x="167.5" y="1290" class="hint center">可选的格式描述</text>
+    <path d="M280 1277 H352" class="link"/>
+    <rect x="366" y="1244" width="90" height="62" class="optional"/>
+    <rect x="456" y="1244" width="240" height="62" class="optional"/>
+    <rect x="696" y="1244" width="820" height="62" class="optional"/>
+    <text x="411" y="1269" class="mono center">0x06</text><text x="411" y="1293" class="hint center">1 B</text>
+    <text x="576" y="1269" class="mono center">JSON length</text><text x="576" y="1293" class="hint center">BE32 · 4 B</text>
+    <text x="1106" y="1269" class="center">JSON 描述内容</text><text x="1106" y="1293" class="hint center">length B · 位于 EOF 之后，不是客户机执行状态</text>
+  </g>
+
+  <!-- Enlarged RAM record: no universal length prefix and no host-page claim. -->
+  <path d="M55 1360 H1516" stroke="#dce4e2"/>
+  <text x="55" y="1393" class="label">一条普通 RAM 页记录展开</text>
+  <text x="1516" y="1393" class="hint" text-anchor="end">示例 TARGET_PAGE_SIZE = 4096 B</text>
+  <rect x="55" y="1412" width="450" height="62" class="ram"/>
+  <rect x="505" y="1412" width="490" height="62" class="optional"/>
+  <rect x="995" y="1412" width="521" height="62" class="ram"/>
+  <text x="280" y="1437" class="mono center">offset | flags</text><text x="280" y="1461" class="hint center">BE64 · 8 B</text>
+  <text x="750" y="1437" class="mono center">name_len（1 B）+ block name（len B）</text><text x="750" y="1461" class="hint center">仅在 CONTINUE 未置位时出现</text>
+  <text x="1255.5" y="1437" class="center">原始页内容</text><text x="1255.5" y="1461" class="hint center">TARGET_PAGE_SIZE B · 不是固定的 host page</text>
+  <text x="55" y="1504" class="hint">例如：同一 RAMBlock 中 offset = 0x2000，PAGE = 0x08，CONTINUE = 0x20 → 页头 0x0000000000002028。</text>
+  <text x="55" y="1530" class="hint">EOS 是独立的 8 字节 0x0000000000000010；footer 是 1 字节 0x7e + 4 字节 section_id，用于边界与 ID 检查。</text>
+
+  <rect x="55" y="1560" width="17" height="17" class="struct"/><text x="82" y="1575" class="hint">结构字段</text>
+  <rect x="204" y="1560" width="17" height="17" class="ram"/><text x="231" y="1575" class="hint">内存载荷</text>
+  <rect x="353" y="1560" width="17" height="17" class="device"/><text x="380" y="1575" class="hint">CPU / 设备载荷</text>
+  <rect x="566" y="1560" width="17" height="17" class="mark"/><text x="593" y="1575" class="hint">边界标记</text>
+  <rect x="722" y="1560" width="17" height="17" class="optional"/><text x="749" y="1575" class="hint">条件字段</text>
+  <text x="55" y="1606" class="hint">默认开启 configuration、section footer 与切换通知；可有 early-setup FULL 等其他处理器记录穿插。Libvirt 保存文件头不属于此原生 QEMU 流。</text>
+</svg>

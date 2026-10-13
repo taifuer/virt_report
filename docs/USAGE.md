@@ -71,14 +71,49 @@ cp .env.example .env
 .venv/bin/virt-report index
 
 # 预览 Git 中的静态快照
-.venv/bin/python -m http.server 8091 --directory site
+.venv/bin/python scripts/preview_site.py
 ```
 
 动态服务直接读取 SQLite，不要求每次报告生成后全量导出。只有执行 `index`，或设置 `schedule.auto_export: true`，才会刷新完整 `site/` 快照。
 
 纯静态预览不支持内容搜索，搜索页会明确提示。升级专题分类或条目链接规则后，执行一次 `topics-refresh` 和 `search-refresh` 更新派生索引；不需要重新调用 AI。导出前确认数据库含有要保留的全部报告，不要用较旧的本地数据库覆盖较新的静态快照。
 
-若本地数据库较旧，仅需给现有快照补充条目锚点、报告回链和新版静态资源，可执行 `.venv/bin/python scripts/refresh_static_presentation.py site`。此脚本不读取数据库、不改报告正文，也不代替完整数据导出或专题分类重建。
+预览脚本默认监听 `127.0.0.1:8091`，禁用浏览器缓存，避免修改公共导航后仍显示旧 HTML；可用 `--port` 指定其他端口。它不启动采集或调用 AI。
+
+若本地数据库较旧，仅需给现有快照更新共享导航、页脚、条目锚点、报告回链和静态资源，可执行 `.venv/bin/python scripts/refresh_static_presentation.py site`。此脚本不读取数据库、不改报告正文，也不代替完整数据导出或专题分类重建。
+
+## 原理文章维护
+
+`mechanisms.html` 按专题组织源码解读，当前“热迁移”专题（`#migration`）包括：
+
+- `mechanisms/qemu-memory-migration.html`：预拷贝内存迭代、收敛与停机控制。
+- `mechanisms/qemu-migration-stream.html`：迁移流字段、分段与状态恢复。
+
+文章元数据在 `virt_report/content/mechanisms.json`，正文和交互模板在 `render/templates/`，
+共用阅读样式为 `mechanisms.css`，每篇的交互脚本与样式由元数据指定。元数据 `topics` 定义专题，文章 `topic` 引用专题 slug；不展示空专题。内容绑定源码版本与提交，不随日报生成，不调用模型。
+
+核验实现时读取指定 tag/commit，不切换或覆盖已有源码工作区。交互是明确标注假设的教学模型，不是实际迁移跟踪或性能预测。
+内存迭代演示采用带单位的轮次近似，停机附加开销为明示的示例值，不等同于 QMP 测量结果；
+两种演示都显示源端、传输通道与目的端；传输动画到达后才更新接收状态，支持暂停、后退和重置。
+右上角可打开全屏演示窗口，退出保留已完成步骤。内存默认 8 GiB，可选 4 / 8 / 16 GiB；带宽、脏页速率与停机目标可调，修改参数后从初始状态重新计算。
+迁移流演示用具体 RAMBlock、页偏移和 section ID 展示字段编码，省略的数据明示为省略，不作为可导入快照或真实抓包。
+`migration-wire-layout.svg` 是手工维护的字段布局图，与 Mermaid 时序图分开管理；修改标志或字段时需同时核对对应固定版本源码和回归测试。
+字段布局图在正文内完整等比显示，点击后可适应窗口、适应宽度或手动缩放；公共查看器为 `mechanism-viewer.js` / `.css`，无 JavaScript 时仍可查看完整图与原始 SVG。
+更新后运行 `pytest`；安装 Node 时会同时执行两个交互模型测试，也可单独运行
+`node --test tests/test_migration_model.cjs tests/test_migration_stream.cjs`。
+仅导出原理页面及其资源，不重建历史报告：
+
+```bash
+.venv/bin/python -c 'from virt_report.config import load_config; from virt_report.render.render import render_mechanisms; render_mechanisms(load_config())'
+```
+
+完整 `index` 导出会一并包含原理页面。动态服务只读取已审核内容，不访问源码仓库或在线分析。
+
+Mermaid 图源保存在 `virt_report/content/diagrams/*.mmd`，已生成的 SVG 随项目分发，
+访问页面不加载外部 CDN，也不需要 Node。修改图源时使用 Mermaid CLI 11.12.0 运行
+`.venv/bin/python scripts/render_mechanism_diagrams.py`，再导出原理页面。
+脚本支持 `--mmdc` 指定工具路径、`--puppeteer-config` 指定本地浏览器；这些只是编辑工具，不是部署依赖。
+正文附有图源和大图入口，窄屏图表在自身区域滚动，不撑宽页面。
 
 ## 会议内容维护
 

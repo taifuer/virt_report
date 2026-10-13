@@ -1,0 +1,95 @@
+<section class="migration-lab precopy-lab" data-migration-lab data-mechanism-view="lab" aria-labelledby="migration-lab-title">
+  <div class="mechanism-view-heading">
+    <h3 id="migration-lab-title">内存迭代与停机时间</h3>
+    <button type="button" data-mechanism-expand hidden aria-label="全屏显示内存迭代与停机时间演示">全屏显示</button>
+  </div>
+  <p>调整传输带宽、脏页速率或停机目标，观察剩余内存何时达到切换条件，以及减少迭代会怎样改变停机阶段的工作量。</p>
+  <ol class="migration-static">
+    <li class="migration-static-step"><strong>首次复制</strong><span>8192 MiB（8 GiB）内存，以 1000 MiB/s 传输需 8.192 秒；期间以 256 MiB/s 产生约 2097.152 MiB 待重传脏页。</span></li>
+    <li class="migration-static-step"><strong>迭代重传</strong><span>继续重传，待传量约按 2097.152 → 536.871 → 137.439 → 35.184 MiB 下降；完成 4 轮运行中复制后，低于 100 MiB 的切换阈值。</span></li>
+    <li class="migration-static-step"><strong>暂停并完成</strong><span>最终内存传输约需 35.184 毫秒，加上示例中的状态保存传输与恢复共 40 毫秒，模型停机时间约为 75.184 毫秒。</span></li>
+  </ol>
+  <div class="migration-interactive" data-migration-interactive hidden>
+    <fieldset class="precopy-presets">
+      <legend>示例场景</legend>
+      <div class="precopy-preset-buttons">
+        <button type="button" data-precopy-preset="easy" aria-pressed="true">容易收敛</button>
+        <button type="button" data-precopy-preset="slow" aria-pressed="false">收敛缓慢</button>
+        <button type="button" data-precopy-preset="hard" aria-pressed="false">难以收敛</button>
+      </div>
+    </fieldset>
+    <p class="precopy-error" id="precopy-parameter-error" data-precopy-error role="alert" hidden></p>
+    <div class="precopy-toolbar">
+    <div class="migration-playback" role="group" aria-label="内存迭代演示控制">
+      <button type="button" data-migration-back>上一步</button>
+      <button type="button" data-migration-next>下一步</button>
+      <button type="button" data-migration-play aria-pressed="false">播放</button>
+      <button type="button" data-migration-reset>重置</button>
+    </div>
+    <p class="migration-lab-status" data-migration-status role="status" aria-live="polite" aria-atomic="true"></p>
+    </div>
+    <div data-precopy-output>
+      <p class="precopy-description" data-precopy-description></p>
+      <div class="precopy-scene" data-precopy-scene role="group" aria-label="源端 QEMU 向目的端 QEMU 传输内存和执行状态">
+        <section class="precopy-host precopy-host--source" aria-label="源端 QEMU">
+          <h4>源端 QEMU</h4>
+          <p class="precopy-vm-state" data-precopy-source-vm>虚拟机运行中</p>
+          <div class="precopy-ram-title"><strong>源端内存</strong><span data-precopy-write-state>持续写入</span></div>
+          <div class="precopy-memory" data-precopy-source-memory></div>
+          <p class="precopy-copy-status" data-precopy-source-copy></p>
+          <div class="precopy-machine-state" data-precopy-source-cpu><strong>vCPU</strong><span data-precopy-source-cpu-text>运行中</span></div>
+          <div class="precopy-machine-state" data-precopy-source-device><strong>设备</strong><span data-precopy-source-device-text>运行中</span></div>
+        </section>
+        <div class="precopy-channel" aria-hidden="true"><span>传输</span><span class="precopy-channel-arrow">→</span><span data-precopy-channel-kind>RAM</span></div>
+        <section class="precopy-host precopy-host--destination" aria-label="目的端 QEMU">
+          <h4>目的端 QEMU</h4>
+          <p class="precopy-vm-state" data-precopy-destination-vm>虚拟机尚未运行</p>
+          <div class="precopy-ram-title"><strong>内存副本</strong><span data-precopy-receive-state>等待接收</span></div>
+          <div class="precopy-memory" data-precopy-destination-memory></div>
+          <p class="precopy-copy-status" data-precopy-destination-copy></p>
+          <div class="precopy-machine-state" data-precopy-destination-cpu><strong>vCPU</strong><span data-precopy-destination-cpu-text>待接收</span></div>
+          <div class="precopy-machine-state" data-precopy-destination-device><strong>设备</strong><span data-precopy-destination-device-text>待接收</span></div>
+        </section>
+        <div class="precopy-flights" data-precopy-flights aria-hidden="true"></div>
+      </div>
+      <p class="precopy-transfer-message" data-precopy-transfer-message role="status" aria-live="polite"></p>
+      <div class="precopy-memory-legend"><span><i class="is-clean"></i>当前 / 同步</span><span><i class="is-dirty"></i>脏 / 旧副本</span><span><i class="is-empty"></i>未收到</span></div>
+      <p class="precopy-scene-note">A–L 为 12 个等容量的聚合内存区域，不是 12 个物理页；着色比例表示需同步的数据占比，实际大小以下方参数和 MiB 数值为准。数据块到达后目的端才更新副本，下方统计在每步完成后结算。</p>
+    </div>
+    <div class="precopy-parameters">
+      <label for="precopy-memory">初始内存<select id="precopy-memory" data-precopy-parameter="memoryMiB" aria-describedby="precopy-parameter-error"><option value="4096">4 GiB</option><option value="8192" selected>8 GiB</option><option value="16384">16 GiB</option></select></label>
+      <div class="precopy-bandwidth-control">
+        <label for="precopy-bandwidth">有效传输带宽 <span>MiB/s</span><input id="precopy-bandwidth" type="number" inputmode="decimal" min="1" max="1048576" step="any" value="1000" data-precopy-parameter="bandwidthMiBps" aria-describedby="precopy-parameter-error"></label>
+        <div class="precopy-bandwidth-shortcuts" role="group" aria-label="有效传输带宽快捷选择">
+          <button type="button" data-precopy-bandwidth="100" aria-pressed="false" aria-label="设置有效传输带宽为每秒 100 MiB">100 MiB/s</button>
+          <button type="button" data-precopy-bandwidth="1000" aria-pressed="true" aria-label="设置有效传输带宽为每秒 1000 MiB">1000 MiB/s</button>
+        </div>
+      </div>
+      <label for="precopy-dirty">去重脏页速率 <span>MiB/s</span><input id="precopy-dirty" type="number" inputmode="decimal" min="0" max="1048576" step="any" value="256" data-precopy-parameter="dirtyMiBps" aria-describedby="precopy-parameter-error"></label>
+      <label for="precopy-target">目标停机时间 <span>ms</span><input id="precopy-target" type="number" inputmode="decimal" min="1" max="10000" step="any" value="100" data-precopy-parameter="downtimeMs" aria-describedby="precopy-parameter-error"></label>
+    </div>
+    <div data-precopy-details>
+      <figure class="precopy-chart">
+        <svg viewBox="0 0 620 250" role="img" aria-labelledby="precopy-chart-title precopy-chart-description">
+          <title id="precopy-chart-title">每轮结束后的待传内存量</title>
+          <desc id="precopy-chart-description" data-precopy-chart-description>尚未开始，待传内存 8192 MiB。</desc>
+          <g data-precopy-chart-content></g>
+        </svg>
+        <figcaption><span class="precopy-chart-key">实线：待传内存</span><span class="precopy-chart-key precopy-chart-key--threshold" data-precopy-threshold-key>虚线：切换阈值</span></figcaption>
+      </figure>
+      <dl class="precopy-statistics">
+        <div><dt>待传内存</dt><dd data-precopy-stat="remaining">8192 MiB</dd></div>
+        <div><dt>本步 RAM / 传输用时</dt><dd data-precopy-stat="step">尚未传输</dd></div>
+        <div><dt>累计 RAM 流量</dt><dd data-precopy-stat="transferred">0 MiB</dd></div>
+        <div><dt>模型累计用时</dt><dd data-precopy-stat="elapsed">0 ms</dd></div>
+      </dl>
+      <div class="precopy-timing">
+        <h4 data-precopy-timing-title>若现在暂停，停机时间估算</h4>
+        <p class="precopy-timing-equation"><span data-precopy-tail-time>8192 ms</span><span>最终 RAM</span><b aria-hidden="true">＋</b><span>20 ms</span><span>状态保存与传输</span><b aria-hidden="true">＋</b><span>20 ms</span><span>目的端恢复</span><b aria-hidden="true">＝</b><strong data-precopy-downtime>8232 ms</strong></p>
+        <p data-precopy-threshold></p>
+        <p class="precopy-overhead-note">后两项各 20 ms 是固定示例开销，不是实测值，也不计入上方的 RAM 切换阈值。</p>
+      </div>
+    </div>
+  </div>
+  <p class="migration-model-note">模型先完成首次复制，再按完整教学轮次评估切换：本轮耗时＝待传量 ÷ 有效带宽；下一轮脏页量＝min（初始内存，脏页速率 × 本轮耗时）。同轮重复写入同一页只计一页，脏页速率不是应用写入字节数。一个教学轮次不等于 QEMU 的一个 SECTION_PART。模型使用固定速率，不含压缩与并行通道；播放速度不代表真实时间，估算也不等于 QMP 实测 downtime 或业务中断时间。</p>
+</section>

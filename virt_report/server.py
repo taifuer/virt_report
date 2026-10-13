@@ -7,6 +7,7 @@ import re
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
@@ -21,6 +22,7 @@ log = logging.getLogger(__name__)
 _REPORT_ROUTE = re.compile(r"^/(daily|weekly|monthly)/([^/]+?)(?:\.html)?$")
 _ARCHIVE_ROUTE = re.compile(r"^/(daily|weekly|monthly)(?:/|/index\.html)?$")
 _TOPIC_ROUTE = re.compile(r"^/topics/([a-z-]+)(?:/(?:index\.html)?|\.html)?$")
+_MECHANISM_ROUTE = re.compile(r"^/mechanisms/([a-z0-9-]+)\.html$")
 READINESS_MAX_AGE_HOURS = 12
 _REPORT_TYPE_NAMES = {"daily": "日报", "weekly": "周报", "monthly": "月报"}
 
@@ -312,13 +314,18 @@ def make_handler(config: Config):
                 "/assets/brand-mark.png": ("brand-mark.png", "image/png"),
                 "/assets/site.css": ("site.css", "text/css; charset=utf-8"),
                 "/assets/site.js": ("site.js", "text/javascript; charset=utf-8"),
+                **{f"/assets/{name}": (name, {
+                    ".css": "text/css; charset=utf-8",
+                    ".js": "text/javascript; charset=utf-8",
+                    ".svg": "image/svg+xml",
+                }[Path(name).suffix]) for name in render.MECHANISM_ASSET_NAMES},
             }
             if path in brand_assets:
                 filename, content_type = brand_assets[path]
                 body = (render.ASSETS_DIR / filename).read_bytes()
                 cache_control = (
                     "public, max-age=31536000, immutable"
-                    if filename in {"site.css", "site.js"}
+                    if filename in {"site.css", "site.js", *render.MECHANISM_ASSET_NAMES}
                     else "public, max-age=3600"
                 )
                 self._send(
@@ -376,6 +383,12 @@ def make_handler(config: Config):
                 return
             if path in ("/about", "/about/", "/about.html"):
                 self._send(200, render.render_about_html(config), head_only)
+                return
+            mechanism_match = _MECHANISM_ROUTE.fullmatch(path)
+            if path == "/mechanisms.html" or mechanism_match:
+                slug = mechanism_match.group(1) if mechanism_match else None
+                html = render.render_mechanisms_html(config, slug)
+                self._send(200 if html else 404, html or "Not found", head_only)
                 return
             if path in ("/versions", "/versions/", "/versions.html"):
                 from virt_report.versions import load_content

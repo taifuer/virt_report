@@ -642,7 +642,8 @@ def test_home_has_daily_weekly_monthly_archive_tabs():
     assert "topics.html" in page
     assert page.count("data-home-report-tab=") == 3
     assert "home-version-link" not in page
-    assert 'href="versions.html"' not in page
+    assert 'href="versions.html"' in page.split('</header>', 1)[0]
+    assert 'href="versions.html"' not in page.split('<main', 1)[1]
 
 
 def test_archive_and_topic_pages_render(tmp_db):
@@ -751,16 +752,17 @@ def test_report_generated_date_uses_site_timezone():
     assert ".brand-sub{display:none}" not in css
     assert "@media(max-width:620px)" in css
     assert ".brand-mark{width:28px;height:28px}" in css
-    assert ".mobile-search-icon{display:none}" in css
+    assert ".mobile-head-tools,.mobile-search-icon,.site-menu-toggle{display:none}" in css
     assert (".main-nav .nav-search-icon{display:grid;width:34px;height:34px;"
             "place-items:center;padding:0;margin-left:1px;"
             "border:1px solid var(--line-soft);background:var(--surface-2)" in css)
-    assert (".mobile-search-icon{display:flex;flex:0 0 36px;width:36px;height:36px;"
-            "margin-left:auto;align-items:center;justify-content:center;"
-            "border:1px solid var(--line-soft);border-radius:8px;"
+    assert (".mobile-search-icon,.site-menu-toggle{display:flex;flex:0 0 40px;"
+            "width:40px;height:40px;align-items:center;justify-content:center;"
+            "border:1px solid var(--line-soft);border-radius:9px;"
             "background:var(--surface-2)" in css)
-    assert "padding-top:6px;column-gap:0;justify-content:space-between" in css
-    assert "@media(max-width:699px)" in css
+    assert '.site-head.menu-ready .head-actions:not(.is-open){display:none}' in css
+    assert 'data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false"' in home
+    assert '.main-nav{order:3' not in css
     assert ".main-nav .nav-search-icon{display:none}" in css
     assert "select:not([multiple]){-webkit-appearance:none;appearance:none" in css
     assert "background-position:right 11px center" in css
@@ -845,7 +847,8 @@ def test_archive_and_topic_detail_offer_pagination_over_ten_items(tmp_db):
     assert 'class="pagination"' in archive
     assert archive.count("data-page-item href") == 11
     assert archive.count("data-page-item href=\"2026-07-") == 11
-    assert archive.count(" hidden") == 1
+    archive_rows = archive.split('class="archive-table">', 1)[1].split('</div>', 1)[0]
+    assert archive_rows.count(" hidden") == 1
     assert '<option value="30">30</option>' in archive
 
     for index in range(11):
@@ -1249,7 +1252,7 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert "重点" not in page and "待严格筛选" not in page
     assert "data-conference-browser" not in page
     assert "不调用 DeepSeek 自动生成" in page
-    assert 'href="conferences.html" class="on">会议</a>' in page
+    assert 'href="conferences.html" class="on" aria-current="page">会议</a>' in page
     assert ".guide-range{display:block" in _site_css()
 
     timeline = html_render.render_academic_conferences_html(Config(), content)
@@ -1353,7 +1356,7 @@ def test_kvm_forum_uses_conference_navigation():
     analysis = {"headline": "H", "overview": "O", "model": "M",
                 "method": "标题分析。", "eras": []}
     page = html_render.render_kvm_forum_html(Config(), editions, analysis)
-    assert 'href="conferences.html" class="on">会议</a>' in page
+    assert 'href="conferences.html" class="on" aria-current="page">会议</a>' in page
     assert ">KVM Forum</a>" not in page.split("</nav>", 1)[0]
     assert "会议</a> · KVM Forum Review" in page
     assert "会议</a> · Conference Archive" not in page

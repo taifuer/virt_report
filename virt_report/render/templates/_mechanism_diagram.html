@@ -1,0 +1,10 @@
+{% macro diagram(name, title, description) -%}
+{% set item = mechanism_diagrams[name] %}
+<figure class="mechanism-diagram" data-diagram="{{ name }}">
+  <div class="mechanism-diagram-scroll" tabindex="0" role="region" aria-label="{{ title }}，窄屏可横向滚动">
+    <img src="{{ root }}assets/{{ name }}.svg?v={{ mechanism_asset_version }}" alt="{{ description }}" loading="lazy">
+  </div>
+  <figcaption><span class="mechanism-diagram-hint">图表可左右滑动。</span>{{ title }}。{{ description }} <a href="{{ root }}assets/{{ name }}.svg?v={{ mechanism_asset_version }}" target="_blank" rel="noopener">打开大图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>{{ item.source }}</code></pre></details>
+</figure>
+{%- endmacro %}

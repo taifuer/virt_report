@@ -1,0 +1,28 @@
+sequenceDiagram
+    accTitle: QEMU 预拷贝迁移的主要时序
+    accDescr: 先发送流头及 RAM 布局，再在源端运行时迭代传页；暂停后传最后脏页和 CPU、设备状态。目标端加载完成后才启动。
+    participant S as 源端 QEMU
+    participant K as 源端 KVM
+    participant D as 目标端 QEMU
+    Note over S,D: 目标虚机已创建；目标 vCPU 尚未执行
+    S->>D: Magic + version + 可选配置校验信息
+    S->>K: 启用脏页记录
+    S->>D: SECTION_START：RAM 布局等
+    loop 源端客户机继续运行
+        S->>D: SECTION_PART：待发内存页
+        K-->>S: 同步执行期间的脏页记录
+        Note over S: 继续发送并评估剩余量
+    end
+    rect rgb(248, 239, 221)
+        Note over S,D: 停机窗口：两端客户机均未执行
+        S->>K: 停止源端 vCPU
+        S->>S: 静止相关设备 I/O
+        K-->>S: 最终脏页同步
+        S->>D: SECTION_END：剩余 RAM
+        K-->>S: 同步 vCPU 执行状态
+        S->>D: SECTION_FULL：vCPU 与设备状态
+        S->>D: EOF + 可选 VMDESCRIPTION
+        D->>D: 完成装载、状态同步及设备恢复
+    end
+    D->>D: 允许启动后，恢复目标客户机
+    Note over S,D: 源端不能同时恢复运行

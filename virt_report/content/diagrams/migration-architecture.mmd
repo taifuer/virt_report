@@ -1,0 +1,19 @@
+flowchart TB
+    accTitle: 原生 TCP 预拷贝迁移的控制与数据路径
+    accDescr: libvirt 负责准备目标端与编排迁移。QMP 是控制路径；客户机内存、CPU 与设备状态由两端 QEMU 之间的迁移通道传送，KVM 提供执行状态与脏页信息。
+    L[libvirt：准备目标虚机、编排迁移]
+    S["源端 QEMU<br/>迁移线程 · SaveVM / VMState"]
+    D["目标端 QEMU<br/>已创建兼容的虚机与设备"]
+    SK["源端 KVM<br/>vCPU 执行与脏页记录"]
+    DK["目标端 KVM<br/>装载执行状态后运行"]
+    L -. QMP：发起迁移 .-> S
+    L -. QMP：准备 incoming .-> D
+    SK -->|读取执行状态与脏页| S
+    S ==>|QEMUFile / 原生 TCP：迁移数据| D
+    D -->|恢复 vCPU 状态| DK
+    classDef control fill:#eef3f2,stroke:#738b87,color:#263c38
+    classDef qemu fill:#e4f1ec,stroke:#438575,color:#173e34
+    classDef kernel fill:#f5f4f1,stroke:#a6aaa7,color:#3c4542
+    class L control
+    class S,D qemu
+    class SK,DK kernel

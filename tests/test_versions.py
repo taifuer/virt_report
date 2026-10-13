@@ -255,7 +255,8 @@ def test_version_page_preserves_features_and_excludes_maintenance_from_html():
     assert 'data-version-controls hidden' in page
     assert page.index('id="year-2026"') < page.index('id="year-2015"')
     nav = next(node for node in document.find("nav") if node.attrs.get("class") == "main-nav")
-    assert not any("versions.html" in node.attrs.get("href", "") for node in nav.find("a"))
+    current = [node for node in nav.find("a") if node.attrs.get("aria-current") == "page"]
+    assert len(current) == 1 and current[0].attrs["href"] == "versions.html"
     assert 'id="release-libvirt-1.2.21"' in page  # Historical micro number is a feature.
     assert "version-maintenance" not in page and "维护更新" not in page
     assert "改进迁移状态检查。" in page and "120 次提交" in page and "17 位贡献者" in page

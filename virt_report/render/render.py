@@ -5,6 +5,7 @@ import calendar as _pycal
 import hashlib
 import shutil
 from datetime import datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -20,6 +21,13 @@ ASSETS_DIR = Path(__file__).parent / "assets"
 HOME_REPORT_LIMITS = {"daily": 15, "weekly": 9, "monthly": 6}
 STATIC_ASSET_NAMES = ("brand-mark.png", "site.css", "site.js")
 FAVICON_ASSET_NAMES = ("favicon-32.png", "favicon.ico")
+MECHANISM_DIAGRAM_NAMES = ("migration-architecture", "migration-precopy-sequence")
+MECHANISM_LAYOUT_NAMES = ("migration-wire-layout",)
+MECHANISM_ASSET_NAMES = ("mechanisms.css", "mechanisms.js", "precopy-lab.css",
+                         "mechanism-viewer.css", "mechanism-viewer.js",
+                         "migration-stream.css", "migration-stream.js", *(
+    f"{name}.svg" for name in (*MECHANISM_DIAGRAM_NAMES, *MECHANISM_LAYOUT_NAMES)
+))
 
 
 def _asset_version() -> str:
@@ -270,6 +278,50 @@ def render_versions_html(config: Config, content: dict) -> str:
     return _env().get_template("versions.html").render(
         content=prepared, root="", site_name=config.name,
     )
+
+
+@lru_cache(maxsize=16)
+def _render_mechanism_page(site_name: str, slug: str | None) -> str | None:
+    """Render immutable editorial pages once; no database or network work."""
+    from virt_report import mechanisms
+
+    article = mechanisms.get_article(slug) if slug is not None else None
+    if slug is not None and article is None:
+        return None
+    digest = hashlib.sha256()
+    for filename in MECHANISM_ASSET_NAMES:
+        digest.update((ASSETS_DIR / filename).read_bytes())
+    return _env().get_template("mechanism.html" if article else "mechanisms.html").render(
+        article=article, articles=mechanisms.articles(), topics=mechanisms.topics(),
+        topic=mechanisms.get_topic(article["topic"]) if article else None,
+        root="../" if article else "",
+        site_name=site_name, mechanism_asset_version=digest.hexdigest()[:12],
+        mechanism_diagrams={name: {"source": (
+            ASSETS_DIR.parents[1] / "content" / "diagrams" / f"{name}.mmd"
+        ).read_text(encoding="utf-8")} for name in MECHANISM_DIAGRAM_NAMES} if article else {},
+    )
+
+
+def render_mechanisms_html(config: Config, slug: str | None = None) -> str | None:
+    """Return the catalogue or an allowlisted article, or None for unknown slugs."""
+    return _render_mechanism_page(config.name, slug)
+
+
+def render_mechanisms(config: Config) -> list[Path]:
+    """Export explanations independently of historical reports and runtime data."""
+    from virt_report import mechanisms
+
+    assets = config.output_dir / "assets"
+    assets.mkdir(parents=True, exist_ok=True)
+    for filename in MECHANISM_ASSET_NAMES:
+        shutil.copyfile(ASSETS_DIR / filename, assets / filename)
+    paths = []
+    for slug in (None, *(article["slug"] for article in mechanisms.articles())):
+        path = config.output_dir / (f"mechanisms/{slug}.html" if slug else "mechanisms.html")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(render_mechanisms_html(config, slug), encoding="utf-8")
+        paths.append(path)
+    return paths
 
 
 def render_versions(config: Config, content: dict) -> Path:

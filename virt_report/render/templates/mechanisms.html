@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}原理 - virt-report{% endblock %}
+{% block description %}结合固定版本源码、图解与交互，分析 QEMU、KVM 和 libvirt 的实现机制与设计演进。{% endblock %}
+{% block nav_home %}{% endblock %}
+{% block nav_mechanisms %}on{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="{{ root }}assets/mechanisms.css?v={{ mechanism_asset_version }}">{% endblock %}
+{% block content %}
+<article class="mechanisms-index">
+  <header class="mechanism-header"><div class="kicker">Virtualization Internals</div><h1>原理</h1><p>结合源码与图解，分析虚拟化机制的设计、实现和演进。</p></header>
+  {% for topic in topics %}
+  <section class="mechanism-topic" id="{{ topic.slug }}" aria-labelledby="mechanism-topic-{{ topic.slug }}">
+    <header class="mechanism-topic-header"><h2 id="mechanism-topic-{{ topic.slug }}">{{ topic.title }}</h2><p>{{ topic.summary }}</p></header>
+    <div class="mechanism-list">
+      {% for article in topic.articles %}<article class="mechanism-list-item">
+        <h3><a href="mechanisms/{{ article.slug }}.html">{{ article.title }}</a></h3>
+        <p>{{ article.summary }}</p>
+      </article>{% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+</article>
+{% endblock %}

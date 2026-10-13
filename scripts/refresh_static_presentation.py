@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from functools import lru_cache
 from html import escape, unescape
 from html.parser import HTMLParser
 import json
@@ -212,6 +213,45 @@ def refresh_asset_urls(html: str) -> str:
                   lambda match: match[1] + render.ASSET_VERSION, html)
 
 
+@lru_cache(maxsize=64)
+def _page_chrome(relative: str, site_name: str) -> dict[str, str]:
+    """Use the actual shared template, without regenerating stored report text."""
+    root = "../" * len(Path(relative).parts[:-1])
+    active = set()
+    period = relative.split("/", 1)[0]
+    if relative == "index.html":
+        active.add("home")
+    elif period in {"daily", "weekly", "monthly"}:
+        active.update(("reports", period))
+    elif relative == "topics.html" or period == "topics":
+        active.add("topics")
+    elif relative in {"conferences.html", "kvm-forum.html", "academic-conferences.html", "conference-papers.html"}:
+        active.add("conferences")
+    elif relative == "mechanisms.html" or period == "mechanisms":
+        active.add("mechanisms")
+    elif relative in {"about.html", "versions.html"}:
+        active.add(relative.removesuffix(".html"))
+    elif relative == "search.html":
+        active.update(("search", "search_mobile"))
+    blocks = ["{% extends 'base.html' %}", "{% block nav_home %}",
+              "on" if "home" in active else "", "{% endblock %}"]
+    for name in sorted(active - {"home"}):
+        blocks.append("{% block nav_" + name + " %}on{% endblock %}")
+    page = render._env().from_string("".join(blocks)).render(root=root, site_name=site_name)
+    doc = Document(page)
+    return {name: page[node.start:node.end] for node in doc.nodes
+            for name in ("site-head", "site-foot") if node.has_class(name)}
+
+
+def refresh_page_chrome(html: str, relative: str, site_name: str) -> str:
+    """Update only the shared header/footer; keep main content byte-for-byte."""
+    doc = Document(html)
+    chrome = _page_chrome(relative, site_name)
+    edits = [(node.start, node.end, chrome[name]) for node in doc.nodes
+             for name in chrome if node.has_class(name)]
+    return apply_edits(html, edits)
+
+
 def refresh_snapshot(site: Path) -> dict:
     files = sorted(site.rglob("*.html"))
     originals = {path: path.read_text(encoding="utf-8") for path in files}
@@ -239,7 +279,9 @@ def refresh_snapshot(site: Path) -> dict:
     changes[site / "search.html"] = render.render_search_html(config, result, static_mode=True)
     render.export_brand_assets(site)
     for path, html in changes.items():
-        updated = refresh_asset_urls(html)
+        updated = refresh_asset_urls(refresh_page_chrome(
+            html, path.relative_to(site).as_posix(), config.name,
+        ))
         if updated != originals.get(path):
             path.write_text(updated, encoding="utf-8")
     return {"reports": len(reports), "report_items": sum(len(items) for items in reports.values()),
