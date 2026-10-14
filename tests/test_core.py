@@ -754,7 +754,8 @@ def test_report_generated_date_uses_site_timezone():
     assert ".report-card .type{flex:0 0 auto;padding-top:1px;color:var(--brand);font-size:12px" in css
     assert ".brand-sub{display:none}" not in css
     assert "@media(max-width:620px)" in css
-    assert ".brand-mark{width:28px;height:28px}" in css
+    assert (".brand-mark{position:absolute;left:0;top:50%;"
+            "transform:translateY(-50%);width:28px;height:28px}" in css)
     assert ".mobile-head-tools,.mobile-search-icon,.site-menu-toggle{display:none}" in css
     assert (".main-nav .nav-search-icon{display:grid;width:34px;height:34px;"
             "place-items:center;padding:0;margin-left:1px;"

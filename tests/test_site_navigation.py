@@ -31,6 +31,23 @@ def test_navigation_groups_reports_and_exposes_reference_pages():
     assert 'class="brand-sub">虚拟化社区动态' in page
 
 
+def test_mobile_brand_keeps_subtitle_outside_the_home_link():
+    page = render.render_index_html(Config(), render.build_home_context([], [], []))
+    document = Document(page).root
+    lockup = next(node for node in document.find("div")
+                  if node.attrs.get("class") == "brand-lockup")
+    links = lockup.find("a")
+    assert len(links) == 1
+    assert links[0].text() == "virt-report"
+    assert links[0].attrs["href"] == "index.html"
+    assert links[0].find("img")[0].attrs["class"] == "brand-mark"
+    assert any(getattr(child, "attrs", {}).get("class") == "brand-sub"
+               for child in lockup.children)
+    css = (render.ASSETS_DIR / "site.css").read_text(encoding="utf-8")
+    assert ".brand-lockup{position:relative;min-width:0;flex:1 1 auto;display:grid;gap:0}" in css
+    assert ".brand{width:fit-content;padding-left:37px}" in css
+
+
 @pytest.mark.parametrize("period", ["daily", "weekly", "monthly"])
 def test_report_archive_selects_both_parent_and_period(period):
     nav = navigation(render.render_archive_html(Config(), period, []))
