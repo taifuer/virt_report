@@ -272,6 +272,20 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     return conn
 
 
+def connect_readonly(db_path: str | Path) -> sqlite3.Connection:
+    """Open an existing database without schema work or a write transaction.
+
+    Server startup initializes the schema through ``connect``. Request readers
+    use a fresh connection so commits from the collector remain immediately
+    visible, while WAL permits reads during an unrelated write transaction.
+    """
+    uri = Path(db_path).resolve().as_uri() + "?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON;")
+    return conn
+
+
 def _migrate_activity_history(conn: sqlite3.Connection) -> None:
     """Keep GitLab observations without inventing the missing historical state.
 

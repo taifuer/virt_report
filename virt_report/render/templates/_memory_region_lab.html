@@ -1,0 +1,27 @@
+<section class="memory-map-lab" data-memory-map-lab data-mechanism-view="lab" aria-labelledby="memory-map-title">
+  <div class="mechanism-view-heading"><h3 id="memory-map-title">别名窗口与地址查找</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>切换设备窗口和映射偏移，再选择地址，观察区域图怎样展开为可见区间。</p>
+  <div class="memory-map-controls" data-memory-map-controls hidden>
+    <label>设备窗口<select data-memory-map-enabled><option value="on">启用</option><option value="off">关闭</option></select></label>
+    <label>window 优先级<select data-memory-map-priority><option value="2">2 · 高于 RAM</option><option value="-1">−1 · 低于 RAM</option></select></label>
+    <label>alias_offset<select data-memory-map-offset><option value="0">0x0000</option><option value="4096" selected>0x1000</option><option value="8192">0x2000</option></select></label>
+  </div>
+  <form class="memory-map-query" data-memory-map-query hidden>
+    <label>system 地址<input type="text" inputmode="text" data-memory-map-address value="0x2004" autocomplete="off" spellcheck="false" aria-describedby="memory-map-address-note memory-map-error"></label>
+    <label>访问方向<select data-memory-map-operation><option value="read">读取 4 字节</option><option value="write">写入 4 字节</option></select></label>
+    <button type="submit">查找地址</button><button type="button" data-memory-map-reset>重置</button>
+    <small id="memory-map-address-note">输入 0x 开头的十六进制或十进制地址，范围 0—0xfffc，需 4 字节对齐。</small>
+    <p id="memory-map-error" class="memory-map-error" data-memory-map-error role="alert" hidden></p>
+  </form>
+  <div data-memory-map-scene hidden>
+    <div class="memory-map-topology"><h4>当前区域关系</h4><pre data-memory-map-tree></pre></div>
+    <h4>system 可见布局</h4>
+    <div class="memory-map-strip" data-memory-map-strip role="group" aria-label="选择地址，每格 4 KiB"></div>
+    <p class="memory-map-legend">每格 4 KiB，点击查看格内偏移 4 的位置。RAM、A、B 分别表示 ram、regs-a、regs-b；空表示未映射。</p>
+    <div class="memory-map-table-wrap"><table><caption>当前 FlatRange（不包含未映射区）</caption><thead><tr><th scope="col">system 范围</th><th scope="col">目标区域</th><th scope="col">起始偏移</th></tr></thead><tbody data-memory-map-ranges></tbody></table></div>
+    <p class="memory-map-status" data-memory-map-status role="status" aria-live="polite" aria-atomic="true"></p>
+    <ol class="memory-map-trace" data-memory-map-trace aria-label="本次地址查找"></ol>
+  </div>
+  <div data-memory-map-fallback><p>默认配置下，0x2004 经 window 映射到 bus 的 0x1004，命中 regs-a 的偏移 4。0x3004 对应 bus 空洞，回落到 ram 的偏移 0x3004。关闭窗口后，这两个地址都由 ram 处理。启用 JavaScript 后可切换布局和查询地址。</p></div>
+  <p class="memory-map-note">这是固定布局的地址计算模型，不执行真实设备读写。可见区间按本例 4 KiB 边界计算；完整 QEMU 实现还支持更细的区域、访问拆分、权限和 IOMMU 转换。关闭窗口不会清除被遮盖的 RAM。</p>
+</section>

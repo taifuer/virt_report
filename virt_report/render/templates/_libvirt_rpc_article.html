@@ -1,0 +1,84 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+{% set libvirt_source = 'https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/' %}
+
+<section id="preface" class="mechanism-section">
+  <h2>前言</h2>
+  <p>应用程序调用 Libvirt API 时，连接 URI 决定请求交给哪个驱动。对于常见的 <code>qemu:///system</code> 连接，客户端通过 RPC 访问管理守护进程，再由服务端 QEMU 驱动处理虚拟机对象。应用拿到的 <code>virDomainPtr</code> 是本进程中的句柄，跨进程传输的是对象标识与参数。</p>
+  <p>本文跟踪一次 <code>virDomainGetInfo()</code>：查询已有虚拟机的状态、内存、vCPU 数和 CPU 时间。连接建立与认证已完成；传输采用本机 UNIX socket，服务端可以是 <code>libvirtd</code> 或模块化的 <code>virtqemud</code>。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+
+<section id="layers" class="mechanism-section">
+  <h2>从 API 到远程过程</h2>
+  <p><a href="{{ libvirt_source }}src/libvirt-domain.c#L2722-L2750"><code>virDomainGetInfo()</code></a> 校验参数后调用 <code>conn-&gt;driver-&gt;domainGetInfo</code>。客户端连接绑定 remote 驱动时，这个函数指针指向 <code>remoteDomainGetInfo()</code>；服务端的本地 QEMU 连接则指向 <code>qemuDomainGetInfo()</code>。相同的公开 API 可以在两端出现，实际执行者由连接对象上的驱动表决定。</p>
+  <p>过程号、参数结构和返回结构在 <code>remote_protocol.x</code> 中定义，构建时生成 XDR 编解码与两端样板代码。查询操作的过程号是 <code>REMOTE_PROC_DOMAIN_GET_INFO = 16</code>；通用 remote program 为 <code>0x20008086</code>，协议版本为 1。这里的 version 是 RPC 协议版本，不是 Libvirt 软件版本。<a href="{{ libvirt_source }}src/remote/remote_protocol.x#L4014-L4015">程序与版本号</a>、<a href="{{ libvirt_source }}src/remote/remote_protocol.x#L4170-L4174">过程定义</a></p>
+  <table><thead><tr><th scope="col">对象</th><th scope="col">所在位置</th><th scope="col">保存的内容</th></tr></thead><tbody>
+    <tr><td><code>virDomainPtr</code></td><td>调用者进程</td><td>所属连接、名称、UUID 和运行时 ID；不包含 QEMU 进程的完整状态</td></tr>
+    <tr><td><code>remote_nonnull_domain</code></td><td>RPC 参数</td><td><code>name</code>、16 字节 <code>uuid</code>、32 位 <code>id</code>，不传指针</td></tr>
+    <tr><td><code>virNetMessage</code></td><td>两端 RPC 层</td><td>解码后的头、字节缓冲区、长度与当前位置，负责消息读写</td></tr>
+    <tr><td><code>virDomainObj</code></td><td>服务端 QEMU 驱动</td><td>定义、运行状态、进程 PID、作业与驱动私有数据；由驱动按 UUID 查找</td></tr>
+  </tbody></table>
+</section>
+
+<section id="framing" class="mechanism-section">
+  <h2>报文头与 XDR 编码</h2>
+  <p>UNIX stream socket 和 TCP 都提供字节流，单次读取可能只得到半条消息，也可能带来多条消息的数据。Libvirt 先读取 4 字节长度，再按长度接收其余部分。长度包含自身，后接固定 24 字节头与过程专用载荷；接收端检查长度边界后才扩展缓冲区。<a href="{{ libvirt_source }}src/rpc/virnetprotocol.x#L65-L118">线格式</a>、<a href="{{ libvirt_source }}src/rpc/virnetmessage.c#L133-L176">长度解码</a></p>
+  <table><thead><tr><th scope="col">字节偏移</th><th scope="col">字段</th><th scope="col">本次 CALL 的值</th><th scope="col">含义</th></tr></thead><tbody>
+    <tr><td>0–3</td><td><code>length</code></td><td>56</td><td>完整消息长度，含前面的 4 字节</td></tr>
+    <tr><td>4–7</td><td><code>prog</code></td><td><code>0x20008086</code></td><td>选择 RPC 程序</td></tr>
+    <tr><td>8–11</td><td><code>vers</code></td><td>1</td><td>程序的协议版本</td></tr>
+    <tr><td>12–15</td><td><code>proc</code></td><td>16</td><td>查询虚拟机信息</td></tr>
+    <tr><td>16–19</td><td><code>type</code></td><td>0，CALL</td><td>区分调用、响应、事件和流数据</td></tr>
+    <tr><td>20–23</td><td><code>serial</code></td><td>42</td><td>本次调用的序号，响应必须保留</td></tr>
+    <tr><td>24–27</td><td><code>status</code></td><td>0，OK</td><td>CALL 固定为 OK；响应可携带错误状态</td></tr>
+  </tbody></table>
+  <p>XDR 按大端序编码整数，并以 4 字节为基本对齐单位。C 结构中的 <code>char</code> 和 <code>short</code> 在 XDR 中也占 4 字节，<code>hyper</code> 占 8 字节；字符串由长度和内容构成，必要时补齐到 4 字节边界，不传结尾 NUL。因此报文不能用 C 结构的 <code>sizeof</code> 或本机内存布局解释。</p>
+  <p>公共长度回答“还要接收多少字节”，载荷里的字符串或数组长度回答“如何解释这些字节”，两者分别检查。协议对消息、字符串和各类数组设置上限，解码器按具体过程的结构处理。这样可避免对端声明一个巨大长度后，接收进程直接按该值无限分配内存；结构解码成功也不等于业务参数有效，驱动仍要验证实际操作。</p>
+  {{ diagram('libvirt-rpc-framing', 'Libvirt RPC 的报文组成', '长度与六个头字段构成 28 字节公共部分；type 和 status 决定后面的载荷类型。正常响应沿用请求的 program、version、procedure 和 serial。') }}
+  <p>以名称 <code>demo</code> 为例，请求载荷为 <code>name 长度 4 B + 名称 4 B + UUID 16 B + id 4 B = 28 B</code>，加公共部分共 56 B。若名称是 <code>vm1</code>，3 字节内容后补 1 字节，长度仍是 56 B。UUID 是固定长度 opaque，不额外增加长度字段。<a href="{{ libvirt_source }}src/remote/remote_protocol.x#L296-L304">对象标识</a></p>
+  <pre><code>请求：length=56，CALL / OK，serial=42
+      payload = name("demo") | UUID[16] | id
+
+响应：length=60，REPLY / OK，serial=42
+      payload = state[4] | maxMem[8] | memory[8]
+              | nrVirtCpu[4] | cpuTime[8]
+
+示例：state=RUNNING，maxMem=8388608 KiB，memory=8388608 KiB
+      nrVirtCpu=4，cpuTime=2500000000 ns</code></pre>
+  <p>返回载荷共 32 字节，完整响应是 60 字节。<code>maxMem</code> 与 <code>memory</code> 的单位是 KiB，<code>cpuTime</code> 的单位是纳秒。实际值由驱动查询得出，上例只展示编码关系。<a href="{{ libvirt_source }}src/remote/remote_protocol.x#L962-L972">返回结构</a></p>
+</section>
+
+<section id="dispatch" class="mechanism-section">
+  <h2>服务端分发与对象查询</h2>
+  <p>客户端 <code>callFull()</code> 递增连接上的计数器，取得本次 serial，再由 <code>virNetClientProgramCall()</code> 填充头、编码参数并等待响应。等待期间释放 remote 驱动锁，使事件与流数据的处理不被这把锁阻塞。<a href="{{ libvirt_source }}src/remote/remote_driver.c#L6117-L6157">调用入口</a></p>
+  {{ diagram('libvirt-rpc-dispatch', '一次 virDomainGetInfo 调用的往返', '客户端和服务端分别绑定 remote 与 QEMU 驱动。UUID 用于定位服务端对象，响应通过同一连接上的 program、version、serial 匹配等待者。') }}
+  <p>服务端按 program/version 找程序，按 proc 找 <code>virNetServerProgramProc</code>。该表项包含处理函数、参数与返回结构大小、XDR 过滤函数和认证要求。通用分发器检查认证，解码参数，设置当前客户端身份，再调用过程处理函数；QEMU 驱动随后执行对象级 ACL 检查。认证通过只说明客户端身份可被接受，仍需判断它能否读取目标虚拟机。<a href="{{ libvirt_source }}src/rpc/virnetserverprogram.c#L360-L423">通用分发</a></p>
+  <p>生成的 <code>remoteDispatchDomainGetInfo()</code> 从客户端上下文取得服务端连接，把 <code>name/uuid/id</code> 转成本地句柄，再调用公开 API。QEMU 驱动通过 UUID 查找并锁住 <code>virDomainObj</code>，从对象读取状态、内存和 vCPU 信息；对运行中的虚拟机，还读取 QEMU 进程的 CPU 时间。该查询没有“一条 RPC 必须对应一条 QMP 命令”的关系。<a href="{{ libvirt_source }}src/qemu/qemu_domain.c#L427-L453">对象查找</a>、<a href="{{ libvirt_source }}src/qemu/qemu_driver.c#L2438-L2490">GetInfo 实现</a></p>
+  <p>名称便于展示，运行时 ID 随实例启动而分配，UUID 则用于这里的对象定位。客户端持有旧句柄时，服务端对象可能已经删除或状态改变，因此发送一个曾经有效的 ID 不能跳过查找与权限检查。获得句柄和执行查询属于不同时间点，对象锁只保护本次访问的一致性。</p>
+  <p>返回值填入 <code>remote_domain_get_info_ret</code>，RPC 层复用请求头，只把 type 改为 REPLY、status 改为 OK，再编码载荷并加入发送队列。两端样板代码由<a href="{{ libvirt_source }}src/rpc/gendispatch.pl">协议生成器</a>维护，修改接口时仍需同步考虑协议兼容、长度限制和整数转换。</p>
+</section>
+
+<section id="responses" class="mechanism-section">
+  <h2>响应匹配、事件与错误</h2>
+  <p>多个线程可以使用同一连接发出调用。客户端收到响应后，以 <code>prog + vers + serial</code> 查找等待记录，将报文交给相应调用；上层还检查 proc、type 和 serial，再使用该过程的返回过滤函数解码。不能用“第一个收到的响应对应第一个发出的请求”来匹配。<a href="{{ libvirt_source }}src/rpc/virnetclient.c#L1130-L1164">等待队列匹配</a>、<a href="{{ libvirt_source }}src/rpc/virnetclientprogram.c#L318-L379">响应检查</a></p>
+  <p>生命周期等异步事件使用 MESSAGE 类型，经事件分发路径处理，不会当作普通 API 返回值。协议还定义了 STREAM、带文件描述符的调用和响应等类型；流控制与 FD 传递有各自规则，不能直接套用本例的固定载荷布局。</p>
+  <p>目标 UUID 不存在、ACL 拒绝或驱动查询失败时，服务端返回 <code>REPLY / ERROR</code>，载荷改为 <code>virNetMessageError</code>，包含错误域、错误码、级别及文本等信息。客户端恢复本地错误对象，API 返回 -1。连接断开和解码失败则可能直接终止等待，连一条完整的错误响应都收不到。<a href="{{ libvirt_source }}src/rpc/virnetprotocol.x#L234-L246">错误结构</a></p>
+  <p>serial 负责本连接内的响应关联，不是服务端的持久化去重键。尤其对于启动、修改配置等写操作，断线时请求可能已经执行，只是响应尚未抵达；应用应先查询实际状态，再决定是否重试。启动过程见<a href="libvirt-domain-start.html">Libvirt 虚拟机启动的进程与状态管理</a>。</p>
+</section>
+
+<section id="evolution" class="mechanism-section">
+  <h2>守护进程拆分与接口兼容</h2>
+  <p>传统部署由单个 <code>libvirtd</code> 加载 QEMU、网络、存储等驱动。模块化架构把有状态驱动分到 <code>virtqemud</code>、<code>virtnetworkd</code>、<code>virtstoraged</code> 等进程，降低不同驱动共享一个进程的耦合；代价是服务、socket、配置与跨服务连接的管理更复杂。</p>
+  <p><code>virtproxyd</code> 可以提供兼容入口与远程访问，再把请求转发到对应驱动守护进程。应用仍使用原有 API 和连接 URI，底层到达的进程与中转层可能改变。socket activation 允许连接到来时再启动服务，也使“socket 已监听”和“驱动已初始化完成”成为不同阶段。<a href="https://libvirt.org/daemons.html">Libvirt 守护进程架构</a></p>
+  <p>这个演进保留了 API 与 RPC 的边界：上层应用不需要把每一种进程拆分映射为新的调用接口。协议过程号、消息头和错误语义仍需兼容既有客户端；新功能通过新增过程或扩展参数表达。分析一次调用变慢时，可分别观察连接建立、RPC 等待、服务端作业等待与驱动执行，单看网络往返时间不足以解释整个延迟。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="{{ libvirt_source }}src/rpc/virnetprotocol.x">Libvirt 12.0.0：RPC 公共协议</a>、<a href="{{ libvirt_source }}src/remote/remote_protocol.x">remote 接口定义</a></li>
+    <li><a href="{{ libvirt_source }}src/rpc/virnetmessage.c">消息长度、头与载荷编解码</a>、<a href="{{ libvirt_source }}src/rpc/virnetclientprogram.c#L261-L393">客户端调用与错误处理</a></li>
+    <li><a href="{{ libvirt_source }}src/rpc/virnetserverprogram.c#L350-L483">服务端分发与响应</a>、<a href="{{ libvirt_source }}src/qemu/qemu_driver.c#L2438-L2490">QEMU 驱动查询实现</a></li>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc4506">RFC 4506：XDR 编码</a>、<a href="https://libvirt.org/kbase/internals/rpc.html">Libvirt RPC 内部设计</a></li>
+  </ul>
+</section>

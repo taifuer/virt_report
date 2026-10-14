@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>KVM 脏页日志：位图与 Dirty Ring - virt-report</title>
+  <meta name="description" content="脏页记录的产生、收割与重置，以及重新保护、发布迁移位图和读取页面之间的顺序。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=7b86b63d1fd5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=7b86b63d1fd5">
+  <link rel="stylesheet" href="../assets/site.css?v=7b86b63d1fd5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c084ccad2981">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c084ccad2981">
+<link rel="stylesheet" href="../assets/dirty-ring.css?v=c084ccad2981"></head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=7b86b63d1fd5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#memory-virtualization">内存虚拟化</a></div>
+    <h1>KVM 脏页日志：位图与 Dirty Ring</h1>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">前言</a></li><li><a href="#principle">脏页记录的交接</a></li><li><a href="#bitmap">按页索引的位图</a></li><li><a href="#ring">每个 vCPU 的 Dirty Ring</a></li><li><a href="#ordering">收割、重置与并发写入</a></li><li><a href="#implementation">关键源码</a></li><li><a href="#evolution">接口演进与代价</a></li><li><a href="#sources">参考资料</a></li></ol></nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+  <h2>前言</h2>
+  <p>预拷贝迁移需要反复收集客户机修改过的内存页。KVM 负责记录客户机执行期间产生的脏页，QEMU 将这些记录汇入迁移位图，随后读取和传输相应页面。记录的交接顺序决定了并发写入能否在下一轮被发现。</p>
+  <p>本文分析 KVM 位图接口和 Dirty Ring 的记录、收割与重新保护过程，重点跟踪一页内存在客户机写入和迁移读取之间的状态变化。硬件缓冲以 x86 PML 为例，并说明 ARM 对内存顺序及补充位图的要求。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p>  <p>内存迭代和停机切换见<a href="qemu-memory-migration.html">《QEMU 预拷贝迁移的内存迭代与停机控制》</a>。</p>
+</section>
+
+<section id="principle" class="mechanism-section">
+  <h2>脏页记录的交接</h2>
+  <p>写脏跟踪围绕客户机物理页进行。KVM 内存槽（memslot）定义一段客户机物理内存及其宿主映射，注册与建图过程见<a href="kvm-ept-fault.html#structures">内存映射与 EPT 缺页处理</a>。启用 <code>KVM_MEM_LOG_DIRTY_PAGES</code> 后，KVM 为该内存区域记录写入。一个脏页标记只表达“此页需要重新读取”，不携带页内容，也不记录客户机写过哪些字节。</p>
+  <p>一个页面可以被连续修改许多次。采用写保护跟踪时，首次写入触发记录并放行后续写入；采用硬件脏位或 PML 时，记录的产生还受硬件脏状态影响。迁移关心当前页内容，因此重复记录可以合并。重新保护或重置硬件脏状态后，下一次写入需要再次进入脏页日志。</p>
+  <ol class="mechanism-flow">
+    <li><strong>客户机写入</strong><span>KVM 记录内存槽和页偏移，客户机页内容发生变化。</span></li>
+    <li><strong>QEMU 收割</strong><span>收取地址记录，暂存在对应 KVMSlot 的位图中。</span></li>
+    <li><strong>重新保护</strong><span>KVM 完成重置，使后续写入能够再次被记录。</span></li>
+    <li><strong>迁移读取</strong><span>合并到迁移待发送集合，读取页内容并传输。</span></li>
+  </ol>
+  <p>重新保护必须先于迁移读取。这样，读页之前发生的写入可以被本次读取覆盖；读页之后发生的写入则会留下新记录，供后续迭代处理。运行中的客户机仍可能在读页过程中修改内存，最终一致性由后续迭代和停机阶段共同完成。</p>
+</section>
+
+<section id="bitmap" class="mechanism-section">
+  <h2>按页索引的位图</h2>
+  <p><code>KVM_GET_DIRTY_LOG</code> 按 memslot 返回位图，每个比特对应一个页偏移。例如槽中 P1、P3、P6 被修改，位图按 P0 至 P7 展示为 <code>0 1 0 1 0 0 1 0</code>。它可以直接合并同页的重复写入，也方便按内存地址扫描。</p>
+  <p>位图长度由内存槽大小决定。以 1 TiB 内存、4 KiB 页为例，一份位图为 32 MiB；即使本次只修改少数页面，传统接口仍需交接对应槽的位图。内存规模大、写入较稀疏时，处理整张位图的开销会更加明显。这只是单份位图的大小，QEMU 与内核还可能维护其他用途的位图。</p>
+  <h3>收取与清除的两种方式</h3>
+  <p>传统 <code>KVM_GET_DIRTY_LOG</code> 路径在返回前清除所收取的脏位，并完成相应的跟踪重置。启用 <code>KVM_CAP_MANUAL_DIRTY_LOG_PROTECT2</code> 后，收取和重新保护分开：用户态先获得位图，再通过 <code>KVM_CLEAR_DIRTY_LOG</code> 处理选定范围。QEMU 可以据此安排清除与读页，减少过早重新保护造成的重复记录。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst#L7997-L8036">手动保护接口</a></p>
+  <p>两种方式都需要维护“重新保护在前、读取页面在后”的顺序。Dirty Ring 改变了内核向用户态交付地址记录的形式，这条顺序仍然适用。</p>
+</section>
+
+<section id="ring" class="mechanism-section">
+  <h2>每个 vCPU 的 Dirty Ring</h2>
+  <p>Dirty Ring 为每个 vCPU 分配一个可映射到用户态的环形数组。KVM 依次写入脏页地址，QEMU 顺序消费已经发布的条目。条目由 <code>flags</code>、<code>slot</code> 和 <code>offset</code> 组成：slot 标识地址空间及内存槽，offset 是槽内页偏移。</p>
+  <table><thead><tr><th scope="col">kvm_dirty_gfn 字段</th><th scope="col">宽度</th><th scope="col">内容与更新者</th></tr></thead><tbody><tr><td><code>flags</code></td><td>32 位</td><td>KVM 发布 DIRTY，QEMU 收割后写 RESET，KVM 回收为 0</td></tr><tr><td><code>slot</code></td><td>32 位</td><td>KVM 写入地址空间 ID 与 memslot ID；它与环数组下标无关</td></tr><tr><td><code>offset</code></td><td>64 位</td><td>KVM 写入槽内页偏移，单位是页，不是字节</td></tr></tbody></table>
+  <p>例如环位 0 中的 <code>{flags: DIRTY, slot: 0, offset: 3}</code>表示内存槽 0 的第 3 页。若槽起始 GPA 为 0、页大小为 4 KiB，对应 GPA 为 <code>0x3000</code>。条目仅记录地址，页面内容由迁移线程之后读取。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/uapi/linux/kvm.h#L1452-L1493">共享条目定义</a></p>
+  <div class="dirty-ring-state-flow" role="group" aria-label="Dirty Ring 条目状态转换">
+    <div><strong>空闲 · 00</strong><span>KVM 可以填入 slot 和 offset</span></div><span aria-hidden="true">→</span>
+    <div><strong>DIRTY · 01</strong><span>地址记录已发布，等待收割</span></div><span aria-hidden="true">→</span>
+    <div><strong>RESET · 1X</strong><span>QEMU 已收割，等待内核重置</span></div><span aria-hidden="true">→</span>
+    <div><strong>空闲 · 00</strong><span>条目回收；读页仍须等重置调用返回</span></div>
+  </div>
+  <p>QEMU 的 <code>kvm_fetch_index</code> 跟踪消费位置，KVM 的 <code>dirty_index</code> 与 <code>reset_index</code> 分别跟踪生产和回收位置。下标递增后按环容量取模，物理槽位可以循环使用。QEMU 必须连续收割，不能跳过前面的 DIRTY 条目；置为 RESET 只表示用户态已处理该地址，尚未完成页的重新保护。</p>
+  <p>下面先观察单页写入，再逐步执行收割、重置和迁移读取。可以在任意两步之间再次写页，检查新内容由本次读取覆盖，还是进入后续脏页记录。</p>
+<section class="dirty-ring-lab" data-dirty-ring-lab data-mechanism-view="lab" aria-labelledby="dirty-ring-lab-title">
+  <div class="mechanism-view-heading"><h3 id="dirty-ring-lab-title">脏页记录与重新保护</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>两个 vCPU 共用 8 页内存，第一轮复制已完成。写入后依次收割、重置、发布并读取页面，观察源端与目的端内容版本。</p>
+  <div class="dirty-ring-controls" data-dirty-ring-controls hidden>
+    <label>演示可用槽位<select data-dirty-ring-capacity><option value="2">每环 2 个</option><option value="4" selected>每环 4 个</option><option value="8">每环 8 个</option></select></label>
+    <label>写入的 vCPU<select data-dirty-ring-cpu><option value="0">vCPU 0</option><option value="1">vCPU 1</option></select></label>
+    <label>操作页面<select data-dirty-ring-page><option value="0">P0</option><option value="1">P1</option><option value="2">P2</option><option value="3" selected>P3</option><option value="4">P4</option><option value="5">P5</option><option value="6">P6</option><option value="7">P7</option></select></label>
+    <div class="dirty-ring-actions" role="group" aria-label="脏页交接操作">
+      <button type="button" data-dirty-ring-write>客户机写页</button>
+      <button type="button" data-dirty-ring-harvest>1 · 收割记录</button>
+      <button type="button" data-dirty-ring-reprotect>2 · 重置并保护</button>
+      <button type="button" data-dirty-ring-publish>3 · 发布待发送位</button>
+      <button type="button" data-dirty-ring-read>4 · 读页并传送</button>
+    </div>
+    <div class="dirty-ring-actions dirty-ring-demo" role="group" aria-label="演示与重置"><button type="button" data-dirty-ring-demo>示例下一步</button><button type="button" data-dirty-ring-reset>重新开始</button></div>
+  </div>
+  <p class="dirty-ring-status" data-dirty-ring-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <div class="dirty-ring-scene" data-dirty-ring-scene hidden>
+    <div class="dirty-ring-boundary"><strong>源端 · KVM</strong><span>每个 vCPU 独立生产记录</span></div>
+    <div class="dirty-ring-rings" data-dirty-ring-rings></div>
+    <p class="dirty-ring-legend">D：DIRTY，待收割 · R：RESET，待重置 · —：空闲</p>
+    <div class="dirty-ring-boundary"><strong>源端 · QEMU</strong><span>收割 → 重置返回 → 发布 → 读页</span></div>
+    <div class="dirty-ring-bitmaps">
+      <div><h4>KVMSlot 暂存位图</h4><div data-dirty-ring-pending></div><small data-dirty-ring-pending-note></small></div>
+      <div><h4>迁移待发送位图</h4><div data-dirty-ring-migration></div><small>1：下一次读取需处理该页</small></div>
+    </div>
+    <div class="dirty-ring-memories">
+      <div><h4>源端客户机内存</h4><div data-dirty-ring-source></div></div>
+      <div><h4>目的端已接收内容</h4><div data-dirty-ring-destination></div></div>
+    </div>
+    <p class="dirty-ring-counters" data-dirty-ring-counters></p>
+    <ol class="dirty-ring-events" data-dirty-ring-events aria-label="最近发生的操作"></ol>
+  </div>
+  <div class="dirty-ring-fallback" data-dirty-ring-fallback>
+    <ol><li>vCPU 0 写 P3，KVM 向它的环中发布 <code>slot = 0, offset = 3, DIRTY</code>。</li><li>QEMU 收割该记录，设置 KVMSlot 位图中的 P3，并将环条目标记为 RESET。</li><li><code>KVM_RESET_DIRTY_RINGS</code> 完成重新保护，条目可回收。</li><li>QEMU 合并迁移待发送位图，随后读取并传送 P3。</li><li>重新保护后的再次写入会产生新记录，后续同步仍能发现该页。</li></ol>
+    <p>启用 JavaScript 后可交错执行客户机写入与收割过程，也可按“示例下一步”观察完整顺序。</p>
+  </div>
+  <p class="dirty-ring-model-note">示例每页使用一个共享映射，已放行写入在重新保护前不再产生新条目。重置调用按完成的一步展示，发布操作合并 QEMU 全局位图与 RAMBlock 位图同步。硬件缓存及其预留槽位未展开，2 / 4 / 8 个槽位仅用于观察环的回绕和等待，不是实际配置值。页内容版本表示写入次数，逻辑步骤不代表耗时。</p>
+</section>  <h3>环满时的处理</h3>
+  <p>环容量有限，未回收的条目不能被覆盖。Linux 使用 soft limit 提前触发 <code>KVM_EXIT_DIRTY_RING_FULL</code>，预留部分槽位接收硬件缓冲中的剩余记录。对应 vCPU 返回用户态，QEMU 收割并重置后才能继续运行。增大环容量可以减少满环退出，但会增加每个 vCPU 的共享内存占用，也需要及时处理累积记录。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/dirty_ring.c#L218-L259">写入与满环退出</a></p>
+  <p>QEMU 还有周期性收割线程，并在全局脏页同步时主动收割。后台收割、满环处理和迁移同步可能从不同上下文进入，因此它们需要共同遵守锁和内存顺序约束。</p>
+</section>
+
+<section id="ordering" class="mechanism-section">
+  <h2>收割、重置与并发写入</h2>
+  <h3>为什么要先重置，再交给迁移线程</h3>
+  <p>假设 P3 已被记录并允许继续写入。QEMU 收割 P3 后，如果立即让迁移线程读到内容 v1，然后客户机把它改成 v2，直到最后才重新保护，那么 v2 发生在尚未重新保护的间隙，可能不会留下新记录。本轮已发送 v1，下一轮又没有 P3，更新就会遗漏。</p>
+  <figure class="mechanism-diagram" data-diagram="dirty-ring-handoff" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>Dirty Ring 条目与脏页的交接顺序</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看Dirty Ring 条目与脏页的交接顺序" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="Dirty Ring 条目与脏页的交接顺序">
+    <img src="../assets/dirty-ring-handoff.svg?v=c084ccad2981" alt="flags 归零表示环位可回收；重新保护完成由 RESET ioctl 返回确定。QEMU 在这条边界之后才把页交给迁移读取路径。" loading="lazy">
+  </div>
+  <figcaption>flags 归零表示环位可回收；重新保护完成由 RESET ioctl 返回确定。QEMU 在这条边界之后才把页交给迁移读取路径。 <a href="../assets/dirty-ring-handoff.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
+    accTitle: Dirty Ring 条目与脏页的交接顺序
+    accDescr: KVM 先写入 slot 和 offset，再发布 DIRTY。QEMU 持有 slots 锁收割地址、设置槽位图和 RESET。内核回收环位并完成页跟踪重置，ioctl 返回后 QEMU 才允许迁移路径读取所收割的页面。
+    participant K as KVM
+    participant Q as QEMU 收割路径
+    participant M as 迁移读取路径
+    Note over K,Q: flags、slot、offset 通过共享环交接
+    K-&gt;&gt;K: 空闲环位 flags = 0&lt;br/&gt;写 slot、offset
+    K-&gt;&gt;K: 发布 flags = DIRTY
+    Q-&gt;&gt;Q: 获取 slots 锁
+    Q-&gt;&gt;K: acquire 读取 DIRTY，取得地址
+    Q-&gt;&gt;Q: 设置 KVMSlot.dirty_bmap
+    Q-&gt;&gt;K: release 写 flags = RESET
+    Note over Q,M: 锁内暂存记录；尚不允许读页
+    Q-&gt;&gt;K: KVM_RESET_DIRTY_RINGS
+    K-&gt;&gt;K: acquire 读取 RESET&lt;br/&gt;回收环位 flags = 0
+    Note over K: 环位归零时，整批重置可能仍未结束
+    K-&gt;&gt;K: 完成整批页跟踪重置&lt;br/&gt;及相应 MMU 处理
+    K--&gt;&gt;Q: ioctl 返回
+    Q-&gt;&gt;Q: 释放 slots 锁
+    Q--&gt;&gt;M: 后续同步汇入迁移待发送位图
+    M-&gt;&gt;M: 读取页内容并发送
+    Note over K,M: 重置后再写该页会产生新记录&lt;br/&gt;本次读取未覆盖的写入由后续迭代处理
+</code></pre></details>
+</figure>
+  <p><code>kvm_dirty_ring_reap()</code> 持有 slots 锁，先将记录合并到 <code>KVMSlot.dirty_bmap</code>，再调用 <code>KVM_RESET_DIRTY_RINGS</code>。锁保护了这段临时状态，防止其他线程在重置完成前通过位图读取页面。实际边界是重置 ioctl 返回；观察到某个环槽的 flags 已归零，还不足以判断整批重新保护完成。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L919-L976">QEMU 收割与重置</a></p>
+  <h3>条目发布的内存顺序</h3>
+  <p>KVM 先填入 slot、offset，再用内存屏障保证它们先于 DIRTY 标记可见。QEMU 以 acquire 语义读取 flags，确认条目有效后才读取地址；收割完成后以 release 语义发布 RESET。内核处理重置时再以 acquire 语义读取该标记。这个交接避免了“看见新状态，却读到旧地址”的重排问题。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L848-L875">QEMU acquire / release</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/dirty_ring.c#L218-L235">KVM 发布记录</a></p>
+  <h3>硬件缓冲与全局同步</h3>
+  <p>环已经读空时，硬件中仍可能留有尚未提交的记录，例如 x86 PML 缓冲。因此，QEMU 的 <code>kvm_dirty_ring_flush()</code> 先同步 kick 所有 vCPU，保证它们至少退出到用户态一次，让硬件记录进入环，然后再收割。单纯扫描一次用户态可见的环，无法替代这次完整同步。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L979-L1021">同步退出与 flush</a></p>
+  <p>全局同步也没有冻结客户机未来的写入。同步之后产生的新脏页继续进入日志；停机阶段则在 vCPU 和相关设备停止产生修改后完成最后的状态汇总。</p>
+</section>
+
+<section id="implementation" class="mechanism-section">
+  <h2>关键源码</h2>
+  <table><thead><tr><th>环节</th><th>入口与作用</th></tr></thead><tbody>
+    <tr><td>记录脏页</td><td><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L3520-L3541"><code>mark_page_dirty_in_slot()</code></a>：根据运行中的 vCPU 和能力选择环或补充位图。</td></tr>
+    <tr><td>发布环条目</td><td><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/dirty_ring.c#L218-L240"><code>kvm_dirty_ring_push()</code></a>：写入地址、发布 DIRTY、推进生产位置并检查 soft limit。</td></tr>
+    <tr><td>收割记录</td><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L882-L915"><code>kvm_dirty_ring_reap_one()</code></a>：按序读地址、设置槽位图、标记 RESET。</td></tr>
+    <tr><td>重新保护</td><td><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/dirty_ring.c#L105-L215"><code>kvm_dirty_ring_reset()</code></a>：按页范围合并重置操作，调用架构相关 MMU 处理。</td></tr>
+    <tr><td>汇入 QEMU 位图</td><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L1841-L1870"><code>kvm_log_sync_global()</code></a>：flush 后同步槽位图，按阶段补收 backup bitmap。</td></tr>
+    <tr><td>合并迁移集合</td><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c#L1144-L1167"><code>migration_bitmap_sync()</code></a>：同步脏页来源，再合并进 RAMBlock 待发送位图。</td></tr>
+  </tbody></table>
+  <p>启用 Dirty Ring 后，QEMU 仍使用位图。<code>KVMSlot.dirty_bmap</code> 用来合并环中的地址记录，QEMU 全局脏页位图承接各来源的修改，<code>RAMBlock.bmap</code> 则维护迁移待发送集合。同一页在不同收割周期再次出现时，位图可以去重；它们分别承担内核交接、统一汇总和迁移调度的职责。</p>
+  <p>设备模拟、vhost 和直通设备也可能修改客户机内存，需要各自的脏页记录与同步路径。仅收取 vCPU 的 Dirty Ring，不能覆盖整台虚拟机的全部写入。</p>
+</section>
+
+<section id="evolution" class="mechanism-section">
+  <h2>接口演进与代价</h2>
+  <h3>从整槽位图到地址记录</h3>
+  <p>位图适合按页索引和集合运算；Dirty Ring 让内核与用户态可以按新增地址记录交接，并将生产位置分散到各 vCPU。QEMU 在 2021 年加入 Dirty Ring 支持。对于大内存、稀疏写入负载，这种接口减少了反复交接整张内核位图的需求；它同时引入满环退出、周期收割和重置同步。QEMU 的迁移扫描及内部位图处理仍然存在，不能据此推断整个迁移过程都只与本轮脏页数成正比。<a href="https://github.com/qemu/qemu/commit/b4420f198dd8eab53cf6062c1871d0e5f5601e86">Dirty Ring 支持提交</a></p>
+  <h3>内存顺序与 ARM 支持</h3>
+  <p>QEMU 在 2022 年补充 flags 读取的内存屏障，保证地址字段不会先于有效标记读取。2023 年的 ARM 支持使用 <code>KVM_CAP_DIRTY_LOG_RING_ACQ_REL</code>，并处理 <code>KVM_CAP_DIRTY_LOG_RING_WITH_BITMAP</code>。后者允许在缺少 vCPU 环上下文时仍通过内核位图记录修改，例如保存 GIC / ITS 状态时写入客户机内存。<a href="https://github.com/qemu/qemu/commit/4802bf910eee98312c4a9777ac2567e6a0445c46">读取屏障修正</a>、<a href="https://github.com/qemu/qemu/commit/856e23a0fb92b0949eace7f43a521e0214246735">ARM 支持提交</a></p>
+  <p>补充位图要在最后相关状态写入完成后收取。QEMU 通过全局同步的 <code>last_stage</code> 参数安排这一步，避免在收取之后又产生未覆盖的修改。是否启用这些能力需要在运行时探测，不能只依据客户机架构或版本号判断。</p>
+  <h3>如何观察开销</h3>
+  <p>评估时可同时记录 <code>kvm_dirty_ring_full</code>、<code>kvm_dirty_ring_reap</code> 和 <code>kvm_dirty_ring_flush</code> trace，观察满环退出次数、收割条目数与耗时，再结合 vCPU 利用率、迁移脏页速率和总时长。环更大、收割更频繁各有资源成本；高写脏速率也可能让迁移难以收敛，这需要另外的带宽或写脏控制，单独更换日志接口无法消除。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst#L8451-L8574">Linux 6.18：Dirty Ring API 与补充位图</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/dirty_ring.c">Linux 6.18：环条目发布、回收与满环处理</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c">QEMU 10.2.0：KVM 脏页收割与全局同步</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c">QEMU 10.2.0：迁移位图同步与页发送</a></li>
+    <li><a href="https://docs.kernel.org/virt/kvm/api.html">KVM API 文档</a></li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#memory-virtualization">内存虚拟化原理</a><a href="../mechanisms.html#migration">热迁移原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=7b86b63d1fd5"></script>
+<script src="../assets/mechanism-viewer.js?v=c084ccad2981" defer></script>
+<script src="../assets/dirty-ring.js?v=c084ccad2981" defer></script></body>
+</html>

@@ -1,0 +1,75 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+{% set linux_source = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
+{% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
+
+<section id="preface" class="mechanism-section">
+  <h2>前言</h2>
+  <p>客户机没有工作可做时，空闲循环可以执行 HLT，等待中断。宿主却仍需决定：继续占用当前 CPU，短暂等待即将到来的事件，还是把承载 vCPU 的线程交给调度器休眠？前者消耗 CPU 时间，后者可能增加再次运行的等待。KVM 的 halt polling 就放在这个交界处。</p>
+  <p>本文跟踪 x86、内核 LAPIC、HLT 被截获后的常见路径；硬件直接处理 HLT、posted interrupt、客户机内部的 haltpoll 驱动不在演示范围内。vCPU“等待事件”、宿主线程“可运行”和“正在物理 CPU 上执行”是三个不同层次的状态，不意味着整台虚拟机暂停。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+
+<section id="structures" class="mechanism-section">
+  <h2>vCPU 与宿主线程的状态</h2>
+  <table><thead><tr><th scope="col">对象与字段</th><th scope="col">用途</th></tr></thead><tbody>
+    <tr><td><code>kvm_vcpu.arch.mp_state</code></td><td>客户机的活动状态，如 HALTED、RUNNABLE；不等同于宿主任务状态</td></tr>
+    <tr><td><code>kvm_vcpu.halt_poll_ns</code></td><td>这个 vCPU 当前学习到的轮询预算，单位纳秒</td></tr>
+    <tr><td><code>kvm_vcpu.wait</code>（<code>rcuwait</code>）</td><td>发布等待者任务指针，供唤醒端找到正在阻塞的线程</td></tr>
+    <tr><td><code>kvm_vcpu.requests</code></td><td>KVM 内部请求位图；EVENT、UNBLOCK 等请求有各自语义</td></tr>
+    <tr><td><code>kvm.max_halt_poll_ns</code>、<code>override_halt_poll_ns</code></td><td>虚拟机显式覆盖的轮询上限；否则采用模块参数</td></tr>
+  </tbody></table>
+  <p>通用字段见 <a href="{{ linux_source }}include/linux/kvm_host.h#L326-L353">kvm_vcpu</a>，架构字段见 <a href="{{ linux_source }}arch/x86/include/asm/kvm_host.h#L807-L812">LAPIC 与 mp_state</a>；上限选择见 <a href="{{ linux_source }}virt/kvm/kvm_main.c#L3703-L3719">kvm_vcpu_max_halt_poll_ns()</a>。中断向量由 LAPIC 的待处理中断状态保存；requests 只表达需要处理的工作，不能把它当成中断向量队列。</p>
+</section>
+
+<section id="halt" class="mechanism-section">
+  <h2>从 HLT 到宿主轮询</h2>
+  <p>VMX 的 HLT 退出处理调用 <code>kvm_emulate_halt()</code>，跳过已模拟的指令。内核管理 LAPIC 时，<code>__kvm_emulate_halt()</code> 检查已有事件：已经可以继续运行，就保留 RUNNABLE；否则记录 HALTED。运行循环随后进入 <code>vcpu_block()</code>，由它调用通用的 <code>kvm_vcpu_halt()</code>。<a href="{{ linux_source }}arch/x86/kvm/vmx/vmx.c#L6119-L6128">VMX 分发表</a>、<a href="{{ linux_source }}arch/x86/kvm/x86.c#L11646-L11680">HLT 模拟</a></p>
+  <p>这条路径通常不退出到 QEMU。若 LAPIC 由用户态管理，KVM 才以 <code>KVM_EXIT_HLT</code> 返回，把等待事件交给用户态；QEMU 的 x86 退出处理会进入 <code>kvm_handle_halt()</code>。因此不能看到一次 HLT 就推断发生了一次用户态往返。<a href="{{ qemu_source }}target/i386/kvm/kvm.c#L6102-L6108">QEMU 的 HLT 分支</a></p>
+  <p>轮询期间反复执行 <code>kvm_vcpu_check_block()</code>：检查架构可运行条件、待处理定时器、宿主信号与 UNBLOCK 请求。<code>cpu_relax()</code> 之间还检查期限、<code>need_resched()</code> 和当前 CPU 是否只有一个可运行任务；有调度需要便提前结束轮询。预算为零时直接进入阻塞流程。<a href="{{ linux_source }}virt/kvm/kvm_main.c#L3624-L3642">事件检查</a>、<a href="{{ linux_source }}virt/kvm/kvm_main.c#L3727-L3755">轮询循环</a>、<a href="{{ linux_source }}include/linux/kvm_host.h#L311-L314">轮询继续条件</a></p>
+</section>
+
+<section id="wakeup" class="mechanism-section">
+  <h2>阻塞后由谁唤醒</h2>
+  {{ diagram('kvm-halt-wakeup', 'HLT、轮询与事件唤醒', '内核 LAPIC 路径：HLT 后先检查已有事件，再短暂轮询；轮询结束后发布等待者并再次检查，仍无事件才休眠。事件发布后唤醒宿主线程，线程取得 CPU 后继续处理客户机事件。') }}
+  <p><code>kvm_vcpu_block()</code> 先发布 rcuwait 等待者，把当前任务设为 TASK_INTERRUPTIBLE，再检查一次阻塞条件。只有条件仍不满足才调用 <code>schedule()</code>；返回后循环复查，最后撤销等待者。一次唤醒可能只是宿主信号或维护请求，x86 路径还会判断 vCPU 是否真正可运行，不能无条件把 mp_state 改回 RUNNABLE。<a href="{{ linux_source }}virt/kvm/kvm_main.c#L3644-L3678">阻塞循环</a>、<a href="{{ linux_source }}arch/x86/kvm/x86.c#L11527-L11592">架构侧复查</a></p>
+  <p>以 VMX 的普通中断软件回退路径为例，<code>vmx_deliver_interrupt()</code> 先记录 LAPIC IRR，再设置 EVENT 请求并调用 <code>kvm_vcpu_kick()</code>。已经睡眠的线程经 rcuwait 唤醒；正在客户机模式执行的 vCPU 则可能需要 IPI 促使其退出。线程得到唤醒后只具备被调度的条件，何时取得 CPU 还受宿主负载影响。<a href="{{ linux_source }}arch/x86/kvm/vmx/vmx.c#L4242-L4255">中断交付</a>、<a href="{{ linux_source }}virt/kvm/kvm_main.c#L3800-L3856">wake 与 kick</a></p>
+  <p>待处理的可屏蔽中断还要满足架构允许条件；“有中断记录”不保证立即注入。定时器也有独立入口：常规软件 LAPIC 定时器增加 pending 并请求 UNBLOCK。x86 在阻塞前把仅在客户机运行时计时的硬件定时器切换为软件定时器，避免退出客户机模式后失去唤醒来源。<a href="{{ linux_source }}arch/x86/kvm/x86.c#L11472-L11541">事件资格与定时器切换</a>、<a href="{{ linux_source }}arch/x86/kvm/lapic.c#L2008-L2011">定时器到期</a></p>
+</section>
+
+<section id="race" class="mechanism-section">
+  <h2>事件恰好出现在入睡之前</h2>
+  <p>如果只在轮询结束时检查一次，然后直接睡眠，事件可能在两步之间到达：发送方没有看到等待者，接收方又错过事件，造成丢失唤醒。KVM 的等待顺序是“发布等待者 → 设置任务状态 → 再检查条件 → schedule”。事件先到达，复查会阻止休眠；事件较晚到达，唤醒端能找到已发布的任务。</p>
+  <p>这个顺序还需要内存屏障。<code>set_current_state()</code> 与 <code>rcuwait_wake_up()</code> 中的屏障配合，约束等待者发布与事件条件观察的次序。若事件发生在最终检查之后、schedule 之前，唤醒会把任务恢复为可运行状态，后续调度不会让它因为这次等待永久睡下。它仍可能因其他任务而让出 CPU。<a href="{{ linux_source }}include/linux/rcuwait.h#L34-L52">等待端</a>、<a href="{{ linux_source }}kernel/exit.c#L315-L342">唤醒端与屏障配对说明</a></p>
+  <p>源码统计也保留了这一区别：轮询循环已经结束，但在阻塞前复查命中事件、没有调用 schedule，仍可计为成功轮询。因此分析 trace 时，应同时看 poll、wait 和唤醒事件，不能仅凭一次成功计数推断事件一定在预算内到达。<a href="{{ linux_source }}virt/kvm/kvm_main.c#L3762-L3772">成功条件</a></p>
+</section>
+
+<section id="polling" class="mechanism-section">
+  <h2>轮询窗口怎样调整</h2>
+  <p>轮询预算按 vCPU 保存，上限默认取 <code>halt_poll_ns</code>；用户态可用 <code>KVM_CAP_HALT_POLL</code> 为整台虚拟机覆盖上限。一次 halt 返回后，KVM 用包含轮询、阻塞和重新调度在内的总耗时调整下一轮预算。它观察过去的等待，不能预知下一次中断。</p>
+  <p>在允许轮询的 x86 路径中，总耗时未超过当前预算就保持不变；超过上限且当前预算非零则缩小；当前预算和总耗时都小于上限，且没有命中前述保持条件时才增长。总耗时恰等于上限时，不触发这两个严格不等式分支。通用代码还为支持无效唤醒分类的架构保留单独的缩小分支，本文 x86 基线的 <code>vcpu_valid_wakeup()</code> 恒为 true。<a href="{{ linux_source }}virt/kvm/kvm_main.c#L3774-L3794">调整条件</a>、<a href="{{ linux_source }}include/linux/kvm_host.h#L2416-L2428">有效唤醒分类</a></p>
+  <p>6.18 的增长系数与缩小除数默认均为 2，增长起点为 10000 ns。增长取“乘积与起点中的较大值”；缩小后低于起点便归零，除数为零也直接归零。增长结果可以暂时超过上限，下一次进入 halt 时再裁剪。长期空闲与密集短等待交替时，预算会反复调整；需要结合负载观测，不能把更大的窗口当成通用优化。<a href="{{ linux_source }}virt/kvm/kvm_main.c#L77-L95">默认参数</a>、<a href="{{ linux_source }}virt/kvm/kvm_main.c#L3586-L3622">增长与缩小</a></p>
+  <p>实际排查可把成功轮询次数、失败轮询耗时和阻塞耗时放在一起看。成功比例高但占用大量 CPU，未必符合部署目标；失败轮询耗时持续增加，则说明预算经常没有覆盖有效事件。还需结合宿主调度轨迹区分“事件迟到”和“事件已到、线程尚未取得 CPU”。KVM 的 <code>halt_poll_success_ns</code>、<code>halt_poll_fail_ns</code>、<code>halt_wait_ns</code> 及对应直方图提供了不同侧面的观测，单个计数无法代替业务延迟。<a href="{{ linux_source }}include/linux/kvm_host.h#L2038-L2051">统计字段</a></p>
+</section>
+
+<section id="experiment" class="mechanism-section">
+  <h2>移动事件，观察等待路径</h2>
+  {% include '_halt_lab.html' %}
+</section>
+
+<section id="evolution" class="mechanism-section">
+  <h2>从固定轮询到按负载调整</h2>
+  <p><a href="https://github.com/torvalds/linux/commit/f7819512996361280b86259222456fcf15aad926">2015 年引入 halt_poll_ns 的提交</a>针对短等待后的调度往返，在休眠前增加可配置轮询。空闲 vCPU 同样会消耗这段时间，后来采用每 vCPU 的自适应预算；当前算法把短等待留下的经验用于下一轮，又对长等待缩小窗口。</p>
+  <p><a href="https://github.com/torvalds/linux/commit/acd05785e48c01edb2c4f4d014d28478b5f19fb5">2020 年增加的 KVM_CAP_HALT_POLL</a>允许不同虚拟机选择不同上限；随后<a href="https://github.com/torvalds/linux/commit/aeb1b22a3ac8e94c791f06f16e921384794771fa">启用默认缩小除数的提交</a>把缩小行为从直接清零改为默认减半，仍保留低于增长起点时归零。参数选择始终涉及延迟、宿主 CPU 占用及功耗的取舍。</p>
+  <p>如今 <code>kvm_vcpu_halt()</code> 负责轮询与预算调整，<code>kvm_vcpu_block()</code> 单独负责等待循环。两者共用事件检查，轮询结束后仍会在入睡前重查条件。<a href="{{ linux_source }}virt/kvm/kvm_main.c#L3644-L3798">两个入口的实现</a></p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="{{ linux_source }}virt/kvm/kvm_main.c#L3586-L3798">Linux 6.18：轮询、阻塞与自适应预算完整实现</a></li>
+    <li><a href="{{ linux_source }}arch/x86/kvm/x86.c#L11466-L11682">x86 活动状态、事件检查与 HLT 处理</a></li>
+    <li><a href="https://docs.kernel.org/virt/kvm/vcpu-requests.html">KVM VCPU Requests：请求位、内存顺序与 kick</a></li>
+    <li><a href="https://docs.kernel.org/virt/kvm/halt-polling.html">KVM halt polling：机制与调参说明</a></li>
+    <li><a href="https://docs.kernel.org/virt/kvm/api.html#kvm-cap-halt-poll">KVM_CAP_HALT_POLL API</a>、<a href="{{ linux_source }}Documentation/virt/kvm/halt-polling.rst">基线版本 halt polling 文档</a></li>
+  </ul>
+</section>

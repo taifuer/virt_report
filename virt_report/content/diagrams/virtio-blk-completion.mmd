@@ -1,0 +1,24 @@
+sequenceDiagram
+  accTitle: virtio-blk 的写完成与刷新完成
+  accDescr: 在 writeback 模式下，普通写的完成让客户机回收数据缓冲区。客户机等待写完成后另发 FLUSH，后端刷新成功后才满足该写入的持久化要求。
+  participant G as 客户机驱动
+  participant Q as QEMU virtio-blk
+  participant B as 块层与文件后端
+  participant S as 宿主存储
+  G->>Q: 发布 OUT 链头 5，按需 kick
+  Q->>B: blk_aio_pwritev，offset = 1 MiB
+  B->>S: 写入 4096 B
+  S-->>B: 本次写操作完成
+  Note over B,S: writeback：数据仍可能位于易失缓存
+  B-->>Q: virtio_blk_rw_complete(ret = 0)
+  Q->>Q: status = OK；used {id:5, len:1}；更新 idx
+  Q-->>G: 按条件发送完成通知
+  G->>G: 读取 used 和 status，回收写请求缓冲区
+  G->>Q: 写完成后提交独立 FLUSH 请求
+  Q->>B: blk_aio_flush
+  B->>S: 按存储层次刷新数据与必要元数据
+  S-->>B: 持久化要求已满足
+  B-->>Q: virtio_blk_flush_complete(ret = 0)
+  Q->>Q: FLUSH status = OK，发布它的 used 项
+  Q-->>G: 按条件通知 FLUSH 完成
+  Note over G,S: 前提：未启用 no-flush，存储链正确履行刷新语义

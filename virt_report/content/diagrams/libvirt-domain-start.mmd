@@ -1,0 +1,28 @@
+sequenceDiagram
+  accTitle: Libvirt 冷启动的进程交接
+  accDescr: Libvirt 准备定义和资源后创建子进程。子进程在 exec 前等待父进程配置隔离与权限；放行后 QEMU 初始化并通过 -S 保持客户机 CPU 暂停，完成 QMP 配置后 cont 才允许客户机执行。
+  participant A as virsh 与 RPC
+  participant L as Libvirt QEMU 驱动
+  participant P as 子进程与 QEMU
+  A->>L: start → Create API
+  L->>L: ACL、START 作业、确认未运行
+  L->>L: Init → PrepareDomain → PrepareHost
+  L->>L: BuildCommandLine，包含 -S
+  L->>P: 创建子进程，执行 pre-exec 初始化
+  P-->>L: 握手就绪，等待父进程确认
+  Note over L,P: 第一屏障：尚未 exec QEMU
+  L->>L: namespace、cgroup、亲和性、资源标签
+  L->>P: HandshakeNotify：允许 exec
+  P->>P: exec QEMU；创建机器、设备、vCPU 线程
+  Note over L,P: 第二屏障：QEMU 已运行，-S 暂停客户机 CPU
+  P-->>L: QMP greeting
+  L->>P: qmp_capabilities
+  P-->>L: 协商完成
+  L->>P: 查询线程与设备；设置运行参数
+  L->>L: 启用网络、恢复锁状态
+  L->>P: cont
+  P-->>L: cont 处理结果
+  L->>L: 保存状态、STARTED 事件、结束作业
+  L-->>A: API 成功
+  Note over L,P: RESUME 事件独立更新 RUNNING；与命令响应及 API 返回的先后不固定
+  Note over A,P: API 成功不代表客户机操作系统或业务已就绪

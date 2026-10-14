@@ -1,0 +1,25 @@
+<section class="postcopy-lab" data-postcopy-lab data-mechanism-view="lab" aria-labelledby="postcopy-lab-title">
+  <div class="mechanism-view-heading"><h3 id="postcopy-lab-title">缺页请求与页面交付</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>先按“下一步”完成切换，再选择页面读写。可以让后台先发一页，在它到达前访问同一页，观察请求与传输的交错。</p>
+  <div class="postcopy-controls" data-postcopy-controls hidden>
+    <label>操作页面<select data-postcopy-page><option value="0">P0 · 预拷贝有效页</option><option value="1">P1 · 预拷贝有效页</option><option value="2" selected>P2 · 预拷贝旧页</option><option value="3">P3 · 未发送页</option><option value="4">P4 · 预拷贝有效页</option><option value="5">P5 · 预拷贝旧页</option><option value="6">P6 · 未发送页</option><option value="7">P7 · 未发送页</option></select></label>
+    <div class="postcopy-actions" role="group" aria-label="页面访问与传输"><button type="button" data-postcopy-access>客户机读页</button><button type="button" data-postcopy-write>客户机写页</button><button type="button" data-postcopy-background>后台发送一页</button></div>
+    <div class="postcopy-actions"><button type="button" data-postcopy-next>下一步</button><button type="button" data-postcopy-demo>示例下一步</button><button type="button" data-postcopy-reset>重新开始</button></div>
+  </div>
+  <p class="postcopy-status" data-postcopy-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <div class="postcopy-scene" data-postcopy-scene hidden>
+    <ol class="postcopy-phases" data-postcopy-phases aria-label="切换阶段"></ol>
+    <div class="postcopy-hosts">
+      <section class="postcopy-host"><h4>源端 QEMU / KVM</h4><p class="postcopy-cpu" data-postcopy-source-cpu></p><div class="postcopy-pages" data-postcopy-source></div><h5>RAMBlock.bmap</h5><div class="postcopy-bitmap" data-postcopy-pending></div><small>1：还需发送 · 0：已安排传输或无需重传</small></section>
+      <div class="postcopy-links"><div class="postcopy-link"><strong>请求 · 目的端 → 源端</strong><span data-postcopy-request-path></span></div><div class="postcopy-link"><strong>页内容 · 源端 → 目的端</strong><span data-postcopy-data-path></span></div><div class="postcopy-buffer"><strong>目的端接收缓冲</strong><span data-postcopy-buffer></span></div></div>
+      <section class="postcopy-host"><h4>目的端 QEMU / KVM</h4><p class="postcopy-cpu" data-postcopy-destination-cpu></p><div class="postcopy-pages" data-postcopy-destination></div><h5>RAMBlock.receivedmap</h5><div class="postcopy-bitmap" data-postcopy-received></div><small>1：已安装 · 0：尚不可访问</small></section>
+    </div>
+    <div class="postcopy-records">
+      <section><h4>最近一次缺页 · 内核 → QEMU</h4><dl data-postcopy-fault-record></dl></section>
+      <section><h4>最近一次请求 · 返回通道</h4><dl data-postcopy-request-record></dl></section>
+    </div>
+    <p class="postcopy-counters" data-postcopy-counters></p><ol class="postcopy-events" data-postcopy-events aria-label="最近操作"></ol>
+  </div>
+  <div class="postcopy-fallback" data-postcopy-fallback><ol><li>源端停机并同步脏页。目的端丢弃 P2、P5 的旧副本，以及 P3、P6、P7 的未传范围。</li><li>LISTEN 建立缺页与接收路径，加载 CPU / 设备状态；RUN 恢复目的端执行。</li><li>vCPU 访问缺失的 P2，产生 userfaultfd 事件并等待。QEMU 将宿主地址转为 pc.ram 中的偏移 0x2000。</li><li>返回通道请求 start = 0x2000、len = 4096。源端检查发送位图，优先发送 P2。</li><li>目的端收齐 P2，通过 UFFDIO_COPY 原子安装并唤醒；更新接收位图，访问继续。</li><li>后台补齐其他页。目的端对已交付页面的新写入不再被源端旧副本覆盖。</li></ol><p>启用 JavaScript 后可逐步观察页面、位图和请求字段。</p></div>
+  <p class="postcopy-model-note">示例只取一个 RAMBlock 的 8 个 4 KiB 普通页，源端版本在切换后固定。一次“下一步”表示逻辑处理阶段；接收位图记账与内核唤醒合并显示。单 vCPU、单页面通道，不展开 preempt、大页、外部共享内存访问和故障恢复。版本号表示页内容变化，不表示耗时或带宽。</p>
+</section>

@@ -452,13 +452,16 @@ def test_about_page_and_architecture_badge_render():
     assert "漏洞告警源" not in about
     footer = about.split('<footer class="site-foot">', 1)[1].split("</footer>", 1)[0]
     assert ">RSS</a>" not in footer
-    assert "虚拟化社区动态。数据来自社区，分析仅供参考。" in footer
-    assert ('© 2026 <a href="https://github.com/taifuer/virt_report" '
+    assert ('<span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" '
             'target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - '
-            '虚拟化社区动态。') in footer
-    assert '分析仅供参考。<a href="metrics.html">运行状态</a>' in footer
-    assert footer.count("<span") == 1
+            '虚拟化社区动态</span>') in footer
+    assert ('<span class="foot-note">数据来自社区，分析仅供参考。'
+            '<a href="metrics.html">运行状态</a></span>') in footer
+    assert "虚拟化社区动态。" not in footer
+    assert footer.count("<span") == 2
+    assert ".foot-row>span{min-width:0;max-width:100%;line-height:1.7}" in _site_css()
     assert ".foot-row a{white-space:nowrap}" in _site_css()
+    assert "@media(max-width:620px){.foot-row{flex-direction:column;gap:4px}}" in _site_css()
     assert ".about-hero header>p+p{margin-top:6px}" in _site_css()
     assert ".about-hero header>.about-contact{margin-top" not in _site_css()
     content = {
@@ -480,7 +483,7 @@ def test_about_page_and_architecture_badge_render():
     assert "<title>2026-07-12 日报 - virt-report</title>" in page
     assert ('© 2026 <a href="https://github.com/taifuer/virt_report" '
             'target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - '
-            '虚拟化社区动态。') in page
+            '虚拟化社区动态</span>') in page
     assert 'class="dyn focus-arch"' in page
     assert 'class="tag arch focus">x86' in page
     assert '<div class="d-actions"><span class="tag kind-other">' in page

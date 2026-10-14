@@ -1,0 +1,23 @@
+sequenceDiagram
+    accTitle: EPT 缺页与宿主物理页替换的并发处理
+    accDescr: 缺页线程保存序号并取得旧 PFN。宿主内存管理通过 MMU notifier 撤销旧 EPT 项并推进序号。缺页线程持 MMU 读锁检查发现结果过期，释放旧页引用后重新查询，最终安装新 PFN。
+    participant V as vCPU / KVM 缺页线程
+    participant M as 宿主内存管理
+    participant E as KVM EPT 与失效状态
+    V->>E: 保存 mmu_seq = 7
+    V->>M: HVA 0x7f0000003000 取页
+    M-->>V: 旧 PFN = 0x21000
+    M->>E: invalidate_range_start(HVA 范围)
+    E->>E: MMU 写锁：记录失效范围，撤销 SPTE
+    E->>E: 完成所需的远端 TLB 失效
+    M->>M: 替换宿主后备页
+    M->>E: invalidate_range_end
+    E->>E: mmu_invalidate_seq = 8，结束失效
+    V->>E: MMU 读锁：检查范围、序号与根
+    E-->>V: 7 ≠ 8，结果过期
+    V->>V: 释放旧页引用，重试
+    V->>E: 保存 mmu_seq = 8
+    V->>M: 再次查询相同 HVA
+    M-->>V: 新 PFN = 0x31000
+    V->>E: MMU 读锁内复核通过，原子安装新 SPTE
+    V->>V: 重新进入客户机，重试原访存

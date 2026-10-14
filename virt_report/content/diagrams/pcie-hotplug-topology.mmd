@@ -1,0 +1,9 @@
+flowchart TB
+    accTitle: PCIe 热插拔的端口、端点与网络后端
+    accDescr: Q35 根总线连接预先创建的 rp1 端口，下游总线连接热插入的 net1 网卡。端口插槽寄存器向客户机热插拔驱动报告变化，网卡经独立的 n1 网络后端处理数据。
+    ROOT["q35 · pcie.0 根总线"] --> RP["rp1 · PCIe Root Port<br/>启动时预留"]
+    RP --> BUS["rp1 下游总线<br/>总线号与桥窗口"]
+    BUS --> NIC["net1 · virtio-net-pci<br/>运行时添加的端点"]
+    RP -. 插槽寄存器与事件中断 .-> HP["客户机热插拔驱动<br/>枚举 / 配置 / 停用"]
+    HP -. 配置与驱动绑定 .-> NIC
+    NIC --> NET["n1 · netdev 后端<br/>独立创建与清理"]

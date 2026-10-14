@@ -1,0 +1,119 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+{% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
+
+<section id="preface" class="mechanism-section">
+  <h2>前言</h2>
+  <p>TCG（Tiny Code Generator）把客户机指令转换为宿主机能够执行的代码，并缓存翻译结果。客户机再次运行到同一段程序时，QEMU 可以复用这些代码；循环、函数调用和分支因此不必每次重新译码。缓存的有效性取决于指令内容、执行模式和地址映射，代码改写或运行环境变化时需要重新检查。</p>
+  <p>本文以 QEMU 10.2.0、x86 系统模拟和 x86-64 宿主为例，跟踪一个翻译块从生成、执行到失效的过程。TCG 在用户态实现客户机 CPU 的指令语义、特权状态和访存检查；KVM 的硬件执行路径可对照<a href="kvm-vcpu-run.html">KVM vCPU 的执行循环与退出处理</a>。两种加速器共享许多机器与设备模型，CPU 的执行机制各有不同。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+
+<section id="pipeline" class="mechanism-section">
+  <h2>从客户机指令到宿主代码</h2>
+  <p>翻译分为三个阶段。客户机前端理解指令编码和体系结构语义，把操作表示为 TCG 中间表示（IR）；公共代码优化 IR、分析临时变量的生命周期并分配宿主寄存器；宿主后端输出可执行机器码。<code>target/i386/tcg/</code> 是 x86 客户机前端，<code>tcg/i386/</code> 是 x86 宿主后端，目录名相似但职责不同。</p>
+  {{ diagram('tcg-translation-pipeline', 'TCG 的翻译与运行路径', '译码、IR 优化和代码生成发生在缓存未命中时；生成的宿主代码可多次执行，并按需要访问 CPU 状态、客户机内存和 helper。') }}
+  <p><code>x86_translate_code()</code> 进入公共 <code>translator_loop()</code>，后者逐条调用 x86 译码回调。遇到改变控制流的指令、页边界、调试限制或翻译预算限制时结束本块。TB 通常覆盖一段顺序执行的客户机指令，但不要求恰好等于编译器定义的完整基本块；例如单步调试可以让一个 TB 只有一条指令。</p>
+  <p>下面用一个先读内存、再加一、最后跳转的小块说明三个层次。IR 和宿主序列均为语义示意，省略寄存器分配、标志位和访存慢路径细节，不是某次 QEMU 运行的反汇编：</p>
+  <table><thead><tr><th scope="col">客户机 x86-64 指令</th><th scope="col">TCG IR 表达的操作</th><th scope="col">宿主 x86-64 代码承担的工作</th></tr></thead><tbody>
+    <tr><td><code>mov eax, [rbx]</code></td><td><code>qemu_ld</code> 读取客户机地址，写入 RAX 的低 32 位并清零高位。</td><td>检查软件 TLB，命中普通 RAM 后使用宿主 load；否则进入访存 helper。</td></tr>
+    <tr><td><code>add eax, 1</code></td><td>32 位加法、结果扩展，以及后续计算条件码所需的信息。</td><td>执行算术并保存必要结果；宿主寄存器由分配器决定，不要求使用宿主 EAX。</td></tr>
+    <tr><td><code>jmp next</code></td><td>同页且满足条件时生成 <code>goto_tb</code> 跳转槽及未链接时的退出路径。</td><td>先跳到块尾的退出代码；建立链接后，跳转槽指向 next 对应的宿主代码。</td></tr>
+  </tbody></table>
+  <p>同一条客户机指令可以展开为多条 IR 和多条宿主指令；复杂指令还可能调用 C helper。反过来，常量传播、无用操作删除等优化也会消除部分 IR。<code>tcg_gen_code()</code> 中依次执行优化、可达性与活跃性分析，再进行寄存器分配和代码生成，因此三层之间没有固定的一对一关系。</p>
+</section>
+
+<section id="structures" class="mechanism-section">
+  <h2>翻译块与运行状态</h2>
+  <table><thead><tr><th scope="col">结构</th><th scope="col">关键内容</th><th scope="col">职责</th></tr></thead><tbody>
+    <tr><td><code>CPUArchState / CPUX86State</code></td><td><code>regs[] / eip / hflags / cc_op / cc_dst</code></td><td>某个 vCPU 的客户机寄存器、执行模式和延迟条件码状态。</td></tr>
+    <tr><td><code>TCGContext</code></td><td><code>ops / temps / gen_tb / code_gen_ptr</code></td><td>当前翻译过程的 IR、临时变量、目标 TB 与代码输出位置。</td></tr>
+    <tr><td><code>TCGOp</code></td><td><code>opc / args[] / life / link</code></td><td>一条 IR 的操作码、参数、生命周期信息及操作链表连接。</td></tr>
+    <tr><td><code>TranslationBlock</code></td><td><code>pc / cs_base / flags / cflags / page_addr[]</code></td><td>记录生成代码所依据的执行环境及 RAM 代码页；绝对 pc 字段用于非 CF_PCREL 路径。</td></tr>
+    <tr><td><code>TranslationBlock.tc</code></td><td><code>ptr / size</code></td><td>已生成宿主代码的入口与长度；TB 的 <code>size / icount</code> 则记录客户机代码长度和指令数。</td></tr>
+    <tr><td>TB 跳转与恢复信息</td><td><code>jmp_dest[2] / jmp_list_head / jmp_reset_offset[2]</code></td><td>最多两个可修补出口、所有入链及原始目标；宿主代码后另存指令位置恢复数据。</td></tr>
+  </tbody></table>
+  <p>TB 缓存代码，CPUArchState 保存每个 vCPU 的运行值。例如前端把客户机通用寄存器定义为相对于 <code>tcg_env</code> 的全局变量；生成代码通过当前 env 访问它们。只要代码与执行上下文匹配，不同 vCPU 可以执行同一个 TB，各自修改自己的寄存器状态。</p>
+  <p>相同 PC 不一定能复用同一个 TB。x86 的 <code>x86_get_tb_cpu_state()</code> 提取线性 PC、CS 基址，以及由 hflags 和部分 EFLAGS 组成的 flags。32/64 位模式、特权级、单步等状态会影响译码与生成逻辑；cflags 还包含并行执行、指令数限制和链接控制等翻译条件。普通通用寄存器的运行值则不会整体塞进缓存键。</p>
+  <p>每个 vCPU 先查自己的 <code>tb_jmp_cache</code>，其中记录当前虚拟 PC 和执行条件；未命中再查全局 QHT。本文版本的 x86 系统模拟默认启用 <code>CF_PCREL</code>，TB 生成相对 PC 代码，全局查询比较代码的 RAM 地址、CS 基址、flags 和 cflags，必要时检查第二代码页，不要求绝对虚拟 PC 相同。未启用 CF_PCREL 的路径则还要比较 TB.pc。这里的 <code>ram_addr_t</code> 是 QEMU RAM 地址空间内的位置，并非宿主物理地址。</p>
+  <p>相对 PC 允许同一段 RAM 代码在符合条件的其他虚拟映射下复用。执行时的客户机 PC 仍需正确维护：x86 的 <code>gen_jmp_rel()</code> 会在 goto_tb 前按相对位移更新 eip，所以不能把直链解释成“省略所有 PC 更新”。它主要省去目标查找和主循环往返。</p>
+</section>
+
+<section id="cache" class="mechanism-section">
+  <h2>查找、复用与直接链接</h2>
+  <p><code>cpu_exec_loop()</code> 处理待决事件后构造 TB 查询条件。缓存未命中时，<code>tb_gen_code()</code> 分配 TB 和代码空间，锁定涉及的代码页，调用前端与后端，再登记恢复索引、页关联和全局查询表。<code>cpu_tb_exec()</code> 最终通过 <code>tcg_qemu_tb_exec()</code> 进入宿主代码。返回值中包含最后退出的 TB 和出口编号；如果中途经过了链接块，这个 TB 可能已经不是最初进入的那个。</p>
+  {{ diagram('tcg-tb-lifecycle', 'TB 的查找、生成、链接与失效', '已缓存但尚未链接的代码仍需查找；直接链接省去目标查找。代码写入触发失效时，同时清理查询结构和跳转关系。') }}
+  <p>同页静态分支预留 <code>goto_tb</code> 槽。第一次经过该出口时，槽仍指向本块的原始退出路径，执行流回到主循环。主循环找到目标 TB 后，<code>tb_add_jump()</code> 将槽修补到目标的宿主代码入口，并把来源挂到目标的入链表。下一次经过相同出口便可直接进入目标块，省去主循环和目标查询。</p>
+  <p><code>translator_use_goto_tb()</code> 要求分支目标与当前 TB 的起始 PC 位于同一客户机虚拟页，且没有禁止链接；系统模拟主循环还拒绝将该直链指向跨两个代码页的 TB。跨页映射可以独立变化，未经重新查询就保留跳转容易运行到旧代码。断点、单步和需要重新检查中断的状态变化也会限制链接。</p>
+  <p>跨页或间接跳转仍有另一条快路径：<code>lookup_and_goto_ptr</code> 调用 <code>helper_lookup_tb_ptr()</code>，按新的 CPU 状态查询目标。命中就返回目标代码入口，由生成的 <code>goto_ptr</code> 继续执行；未命中才回到主循环生成代码。因此应区分三种成本：翻译新块、查询已有块、沿已修补链接直接跳转。缓存命中不等于已经建立直链，跨页也不等于每次重新翻译。</p>
+  <p>下面固定执行模式和地址映射，用 A、B、C 三个块观察这些路径。A 与 B 在同一页，C 位于另一页；“改写 A/B 指令”修改与这两个块相交的代码范围，C 保持有效。演示一次推进一个 TB，真实执行会连续运行，直到退出请求、异常或其他条件需要返回调度循环。</p>
+  {% include '_tcg_lab.html' %}
+  <p>直链循环仍需响应退出请求。普通 TB 的入口代码检查退出标记，主循环再处理相应中断或工作；开启 icount 时还有指令预算。TB 长度、链接策略与这些检查共同影响调度开销，不能单凭“链接越长”判断运行速度。</p>
+</section>
+
+<section id="memory" class="mechanism-section">
+  <h2>访存与设备访问</h2>
+  <p>生成代码中存在两类不同的内存操作。访问 env 中的寄存器状态是 QEMU 自身的宿主内存访问；客户机的 <code>[rbx]</code> 访存使用 <code>qemu_ld / qemu_st</code>，携带客户机地址、访问宽度、字节序和 MMU 索引等信息，需要遵守客户机权限及地址转换规则。</p>
+  <p>系统模拟的软件 TLB 缓存客户机虚拟页到 RAM 宿主映射及访问属性。普通 RAM 命中时，生成代码可快速计算宿主地址并完成 load/store；缺页、权限不符、跨页、监视点、代码写保护或 MMIO 等情况进入相应慢路径。软件 TLB 未命中会调用客户机架构的地址翻译逻辑；确实触发客户机页故障时，才交付客户机异常。</p>
+  <p>MMIO 最终到达 QEMU 的 MemoryRegion 和设备回调，仍需满足设备的锁与执行上下文约束。TCG 执行大量普通 RAM 访问时不需要每次进入设备模型；访问设备寄存器也不能直接当作普通宿主内存读取。地址空间、RAM 与 MMIO 的对应关系可继续阅读<a href="qemu-memory-region.html">QEMU MemoryRegion 的地址映射与访问分发</a>。</p>
+  <p>翻译缓存和软件 TLB 是两个层次：前者复用指令的宿主代码，后者缓存每次访存所需的地址转换。客户机更改页表并完成必要的 TLB 维护后，代码查询必须基于新的映射；映射回原来的 RAM 代码且上下文匹配时，尚未失效的 TB 仍可能被复用。</p>
+</section>
+
+<section id="invalidation" class="mechanism-section">
+  <h2>代码改写与翻译失效</h2>
+  <p>客户机内核打补丁、JIT 生成代码或普通程序修改可执行区域后，缓存的宿主代码可能已经过期。系统模拟通过软件 TLB 的慢写路径跟踪代码页写入；<code>notdirty_write()</code> 检查代码脏标志，必要时调用 <code>tb_invalidate_phys_range_fast()</code>。</p>
+  <p>PageDesc 连接着涉及该 RAM 页的 TB。失效代码按写入范围检查 TB 覆盖的指令字节，处理相交的块。小范围写入不必无条件使同页所有 TB 失效，某些较宽的失效入口则可以覆盖更大的范围。上述交互同时改写 A、B，是因为写入范围与两者都相交。</p>
+  <ol>
+    <li>在跳转锁保护下设置 <code>CF_INVALID</code>，阻止新的入链连接到旧 TB。</li>
+    <li>从全局 QHT、页关联及各 vCPU 的跳转缓存中移除对应记录。</li>
+    <li>解除旧 TB 的出链，并遍历它的入链表，将来源跳转槽恢复到原始退出路径。</li>
+    <li>下次执行相关客户机地址时重新查找，必要时根据新字节翻译。</li>
+  </ol>
+  <p>如果一个 x86 TB 正在改写自己覆盖的代码，QEMU 还要避免继续执行块内已经翻译好的旧指令。精确自修改代码路径利用宿主返回地址恢复当前位置，退出当前 TB，并请求下一次以一条指令的 TB 重新执行。这与只删除哈希表记录不同：正在运行的控制流也需要妥善退出。</p>
+  <p>单个 TB 失效主要撤销复用和链接资格，不立即把所有宿主代码空间重新分配出去。代码缓冲区耗尽时，QEMU 使用安全工作机制协调全局 flush，清空翻译缓存并重置代码区域。增大 <code>tb-size</code> 可能减少容量导致的重新翻译，但会增加内存占用，也无法避免真正的代码改写失效。</p>
+</section>
+
+<section id="exceptions" class="mechanism-section">
+  <h2>异常位置与状态恢复</h2>
+  <p>假设示例块中的第一条 load 触发客户机页故障，客户机必须看到故障指令的 PC，且不能看到尚未执行的 add 结果。与此同时，生成代码为减少内存访问，可能把部分状态留在宿主寄存器中，或延迟物化 x86 条件码；不能直接把 TB 起始地址当成所有异常的位置。</p>
+  <p>前端在每条指令开始时生成 <code>insn_start</code> 记录。x86 保存当前客户机 PC 信息及 cc_op；代码生成阶段再关联实现该指令的宿主代码边界。<code>encode_search()</code> 把这些信息压缩存放在宿主代码之后。异常 helper 通过宿主返回地址找到 TB，再沿恢复表确定故障对应的客户机指令。</p>
+  <p><code>cpu_restore_state_from_tb()</code> 解码恢复数据，调用 x86 的 <code>restore_state_to_opc()</code> 设置 eip，必要时恢复条件码操作类型；随后异常退出路径回到预先建立的 setjmp 边界，由执行循环处理异常。这个表保存的是重建准确位置所需的信息，不是每条指令执行前的完整寄存器快照。通用寄存器及内存更新的正确时序，仍由翻译器、寄存器分配和 helper 的异常约定共同保证。</p>
+</section>
+
+<section id="parallel" class="mechanism-section">
+  <h2>多 vCPU 的并行执行</h2>
+  <p>MTTCG 为每个 vCPU 创建宿主线程，线程拥有自己的 CPU 状态、跳转缓存和翻译上下文。运行普通翻译代码时释放 BQL；进入需要全局串行化的设备或控制路径时，再按相应规则同步。QEMU 10.2 的 x86 前端声明支持 MTTCG，默认自动模式会在未启用 icount 时选择它；显式 <code>thread=single</code> 则保留轮转执行方式。</p>
+  <p>全局 TB 查询表和已生成代码仍可共享。并行翻译使用各线程的上下文与代码区域，同时通过代码页锁、QHT 插入和跳转锁保证发布与失效安全。如果两条线程生成了等价 TB，发布阶段可以保留已有结果、丢弃重复翻译。增加 vCPU 线程后，代码改写、跨 vCPU TLB 操作和全局 flush 的协调成本也随之增加。</p>
+  <p>客户机 CPU 的并行还要求保持它的内存模型。x86 前端声明允许普通 Store→Load 重排，而其他规定的顺序要维持；<code>tcg_gen_req_mo()</code> 比较客户机要求与宿主默认保证，生成缺少的屏障。带 LOCK 的原子读改写不能拆成让其他 vCPU 任意插入的普通 load/store。遇到后端无法直接支持的原子操作，QEMU 可通过 <code>EXCP_ATOMIC</code> 退出，在排他执行区内用单指令 TB 完成，再恢复并行执行。</p>
+  <p>每个 TB 有多个客户机指令，不代表整个 TB 是一笔原子事务。并行 vCPU 可以观察到客户机内存模型允许的中间状态；QEMU 内部的页锁和跳转锁保护翻译元数据，也不代替客户机程序自己的锁与屏障。</p>
+</section>
+
+<section id="evolution" class="mechanism-section">
+  <h2>从 dyngen 到多线程 TCG</h2>
+  <p><a href="https://lists.gnu.org/archive/html/qemu-devel/2008-02/msg00011.html">2008 年引入 TCG</a>时，Fabrice Bellard 明确提出要减少不同 GCC 版本带来的问题，并改善代码生成。早期 dyngen 依赖预先编译的微操作片段；TCG 逐步改为由公共 IR 和宿主后端直接组织代码，使优化与寄存器分配拥有更明确的接口。代价是每种宿主后端都要实现、验证指令编码及相关约束。</p>
+  <p>TB 缓存和直接链接减少了热代码的重复工作，但引入了代码页追踪、跳转撤销和精确异常恢复。较大的块可以摊薄入口开销，也会增大生成成本和失效时的重做范围；复杂优化若明显拖慢首次翻译，对短生命周期程序未必划算。这些取舍解释了 TCG 为什么围绕有界 TB 持续优化，而不简单追求把整段程序提前编译完。</p>
+  <p><a href="https://lists.gnu.org/archive/html/qemu-devel/2017-02/msg05682.html">2017 年的 MTTCG 设计</a>进一步把系统模拟从单线程轮转推向每 vCPU 一线程。旧模型天然串行化了许多共享访问；并行后，原子指令、内存屏障、TB 发布与清理都要获得明确的同步规则。当前实现支持并行翻译和细粒度锁，但设备共享状态、代码改写频率及客户机锁竞争仍会限制扩展性。</p>
+  <p>排查性能时可先区分冷启动翻译、热代码执行、软件 TLB 慢路径及设备访问。对短小测试程序，可以在原有启动参数后添加以下日志选项，比较输入指令、优化前后 IR 和宿主代码；这些日志会影响执行速度，不宜当作性能测量结果：</p>
+  <pre><code>-accel tcg,thread=single \
+-d in_asm,op,op_opt,out_asm \
+-D /tmp/qemu-tcg.log</code></pre>
+  <p>对较大工作负载，<code>-perfmap</code> 或 <code>-jitdump</code> 能帮助宿主 perf 识别 JIT 代码。分析时还应查看 helper 和设备路径的采样，避免把所有耗时都归因于翻译器。TCG 的优势是跨架构执行、软件可观测性和 CPU 语义模拟；需要同架构生产负载吞吐时，应结合硬件虚拟化路径比较。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="{{ qemu_source }}accel/tcg/translator.c#L111-L225">公共翻译循环与同页链接条件</a>、<a href="{{ qemu_source }}target/i386/tcg/translate.c#L3807-L3932">x86 前端回调</a></li>
+    <li><a href="{{ qemu_source }}include/exec/translation-block.h#L44-L147">TranslationBlock 与跳转链表</a>、<a href="{{ qemu_source }}include/tcg/tcg.h#L323-L453">TCGOp 与 TCGContext</a></li>
+    <li><a href="{{ qemu_source }}target/i386/cpu.h#L1846-L1875">CPUX86State</a>、<a href="{{ qemu_source }}target/i386/tcg/translate.c#L3714-L3727">客户机寄存器对应的 TCG 全局变量</a></li>
+    <li><a href="{{ qemu_source }}target/i386/cpu.c#L9266-L9278">x86 系统模拟默认启用 CF_PCREL</a>、<a href="{{ qemu_source }}target/i386/tcg/tcg-cpu.c#L51-L115">x86 查询状态与异常状态恢复</a>、<a href="{{ qemu_source }}accel/tcg/cpu-exec.c#L152-L263">TB 缓存键和两级查询</a></li>
+    <li><a href="{{ qemu_source }}accel/tcg/translate-all.c#L261-L325">TB 分配与翻译</a>、<a href="{{ qemu_source }}accel/tcg/translate-all.c#L479-L541">代码发布与重复 TB 处理</a>、<a href="{{ qemu_source }}tcg/tcg.c#L6845-L6933">优化、活跃性分析与寄存器分配</a></li>
+    <li><a href="{{ qemu_source }}accel/tcg/cpu-exec.c#L366-L450">helper 查询与进入宿主代码</a>、<a href="{{ qemu_source }}accel/tcg/cpu-exec.c#L616-L651">跳转槽修补</a>、<a href="{{ qemu_source }}accel/tcg/cpu-exec.c#L934-L1018">执行循环</a></li>
+    <li><a href="{{ qemu_source }}target/i386/tcg/translate.c#L2284-L2380">x86 块尾、goto_ptr 与 goto_tb</a>、<a href="{{ qemu_source }}accel/tcg/translator.c#L43-L103">TB 入口退出请求检查</a></li>
+    <li><a href="{{ qemu_source }}tcg/i386/tcg-target.c.inc#L2424-L2459">宿主 x86 后端的 qemu_ld</a>、<a href="{{ qemu_source }}accel/tcg/cputlb.c#L1335-L1357">代码页慢写入口</a></li>
+    <li><a href="{{ qemu_source }}accel/tcg/tb-maint.c#L870-L959">失效标记、缓存清理与撤链</a>、<a href="{{ qemu_source }}accel/tcg/tb-maint.c#L1112-L1227">写入范围检查与精确自修改代码处理</a></li>
+    <li><a href="{{ qemu_source }}accel/tcg/translate-all.c#L88-L215">恢复表编码及宿主 PC 定位</a>、<a href="{{ qemu_source }}accel/tcg/tb-maint.c#L770-L808">安全的全局 TB flush</a></li>
+    <li><a href="{{ qemu_source }}accel/tcg/tcg-accel-ops-mttcg.c#L58-L135">MTTCG 线程循环</a>、<a href="{{ qemu_source }}accel/tcg/tcg-all.c#L104-L154">默认线程模式选择</a></li>
+    <li><a href="{{ qemu_source }}target/i386/tcg/tcg-cpu.c#L160-L171">x86 客户机内存模型</a>、<a href="{{ qemu_source }}tcg/tcg-op-ldst.c#L129-L136">补充访存屏障</a>、<a href="{{ qemu_source }}accel/tcg/cpu-exec.c#L549-L598">原子操作的排他执行回退</a></li>
+    <li><a href="{{ qemu_source }}docs/devel/tcg.rst">翻译器内部机制</a>、<a href="{{ qemu_source }}docs/devel/tcg-ops.rst">TCG IR 与操作语义</a>、<a href="{{ qemu_source }}docs/devel/multi-thread-tcg.rst">多线程 TCG 设计</a></li>
+  </ul>
+</section>

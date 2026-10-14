@@ -1,0 +1,18 @@
+<section class="virtio-mem-lab" data-virtio-mem-lab data-mechanism-view="lab" aria-labelledby="virtio-mem-lab-title">
+  <div class="mechanism-view-heading"><h3 id="virtio-mem-lab-title">目标容量、客户机上线与回收</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>一个容量为 8 GiB 的设备，初始提供 4 GiB。修改目标后逐步处理；点击已上线的区域，可设置或解除客户机回收阻塞。</p>
+  <div class="virtio-mem-controls" data-virtio-mem-controls hidden>
+    <label>设备目标容量<select data-virtio-mem-target><option value="0">0 GiB</option><option value="512">0.5 GiB</option><option value="1024">1 GiB</option><option value="2048">2 GiB</option><option value="4096" selected>4 GiB</option><option value="6144">6 GiB</option><option value="8192">8 GiB</option></select></label>
+    <label class="virtio-mem-check"><input type="checkbox" data-virtio-mem-busy>QEMU 暂忙，返回 BUSY</label>
+    <div class="virtio-mem-actions" role="group" aria-label="内存调整操作"><button type="button" data-virtio-mem-step>处理下一步</button><button type="button" data-virtio-mem-back disabled>上一步</button><button type="button" data-virtio-mem-reset>重新开始</button></div>
+  </div>
+  <p class="virtio-mem-status" data-virtio-mem-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <div data-virtio-mem-scene hidden>
+    <dl class="virtio-mem-metrics"><div><dt>管理端目标</dt><dd data-virtio-mem-requested>4 GiB</dd></div><div><dt>设备实际提供</dt><dd data-virtio-mem-plugged>4 GiB</dd></div><div><dt>客户机管理容量</dt><dd data-virtio-mem-online>4 GiB</dd></div><div><dt>可用地址范围</dt><dd data-virtio-mem-usable>4.25 GiB</dd></div></dl>
+    <div class="virtio-mem-grid" data-virtio-mem-grid role="group" aria-label="设备地址范围，已上线区域可切换回收阻塞"></div>
+    <p class="virtio-mem-legend">客户机管理容量包含已使用与空闲页；它不等同于 Linux memory block 的 online 状态。已交客户机：由分配器管理 · 等待上线：设备已提供 · 已隔离：暂离分配器 · 回收受阻：各子块仍有不可迁移页 · 未提供：客户机不可使用</p>
+    <ol class="virtio-mem-events" data-virtio-mem-events aria-label="最近处理步骤"></ol>
+  </div>
+  <div data-virtio-mem-fallback><ol><li>目标从 4 GiB 调到 6 GiB，设备通知客户机；实际提供量暂时不变。</li><li>客户机请求 PLUG。QEMU 返回 ACK 后，实际提供量增加；客户机完成添加与上线后，才能用于普通分配。</li><li>目标调低时，客户机先迁出可迁移页并隔离范围，再发送 UNPLUG；QEMU 完成 discard 后确认。</li><li>不可迁移页会阻止客户机隔离。QEMU 返回 BUSY 时，驱动归还已隔离页并稍后重试。</li></ol><p>启用 JavaScript 后可修改目标、设置回收阻塞，并逐步观察容量差异。</p></div>
+  <p class="virtio-mem-note">每格汇总 512 MiB，相当于 256 个 2 MiB 设备块；它既不是一个真实设备块，也不是一个 Linux memory block。每步汇总一组块的处理。阻塞选项表示该格每个回收子块都有暂不可迁移页；实际驱动会尝试回收其中能够迁出的子块。这里合并展示添加与上线、discard 与应答；隔离期间目标更新时，合并展示取消请求、归还页和重读配置。不计算宿主 RSS、耗时或页面迁移目标。可用地址范围按 x86 的 256 MiB 余量更新；普通缩容不使它缩小。</p>
+</section>

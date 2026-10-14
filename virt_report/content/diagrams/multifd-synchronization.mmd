@@ -1,0 +1,25 @@
+sequenceDiagram
+    accTitle: MultiFD 主流与数据通道的同步时序
+    accDescr: 源端主线程提交剩余批次，各发送线程完成页面写入并排入 SYNC 后报告本地完成。主线程发送 FLUSH；目的端等待所有通道装载前序页面并读到 SYNC，然后放行接收线程。示例选择 FLUSH 先到的时序。
+    participant S as 源端主线程
+    participant W as 源端发送线程
+    participant R as 目的端接收线程
+    participant D as 目的端主线程
+    Note over W,R: 每个数据通道各有一对线程；通道内有序
+    S->>W: 提交残留批次 pending_job
+    S->>W: 设置 pending_sync = ALL，唤醒
+    W->>W: 完成已有页面任务的通道写入
+    W->>W: 在同一通道写入 SYNC 包
+    W-->>S: sem_sync：本地写入完成
+    Note over S,W: 等全部发送线程；无须远端逐轮确认
+    S-)D: 主迁移流：MULTIFD_FLUSH
+    Note over S: 可以继续分发下一轮任务
+    Note over W,R: 图示 FLUSH 先到；页面和 SYNC 仍可能在途
+    W-)R: 各数据通道：前序页面 → SYNC
+    R->>R: 装载前序页面，再读到 SYNC
+    R->>D: 公共 sem_sync：本通道到达
+    Note over R: 阻塞于本线程 sem_sync
+    D->>D: 收齐全部通道的到达通知
+    D->>R: 释放各线程 sem_sync
+    R->>R: 才可装载后续轮次页面
+    Note over R,D: SYNC 先到时也在同一屏障等待 FLUSH

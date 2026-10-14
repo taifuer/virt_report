@@ -1,0 +1,31 @@
+flowchart TB
+    accTitle: 四个 virtqueue 映射到两个 IOThread
+    accDescr: 队列 0 和 2 由 IOThread io0 处理，队列 1 和 3 由 io1 处理。它们共享块后端，aio=threads 请求进入各自上下文的线程池，完成 BH 返回原上下文。
+    subgraph guest[客户机：四个请求队列]
+        direction LR
+        q0[队列 0]
+        q2[队列 2]
+        q1[队列 1]
+        q3[队列 3]
+    end
+    subgraph host[QEMU：两个独立的事件循环]
+        direction LR
+        a["IOThread io0 / AioContext A<br/>队列解析、协程、完成回调"]
+        b["IOThread io1 / AioContext B<br/>队列解析、协程、完成回调"]
+    end
+    q0 -->|ioeventfd| a
+    q2 --> a
+    q1 -->|ioeventfd| b
+    q3 --> b
+    a --> block["共享 BlockBackend 与块图<br/>I/O API、图锁及对象级同步"]
+    b --> block
+    block -->|来自 A 的 aio=threads 请求| wa["A 的线程池<br/>阻塞文件操作"]
+    block -->|来自 B 的 aio=threads 请求| wb["B 的线程池<br/>阻塞文件操作"]
+    wa --> ca["完成 BH A<br/>回到原 AioContext A<br/>恢复协程与设备完成回调"]
+    wb --> cb["完成 BH B<br/>回到原 AioContext B<br/>恢复协程与设备完成回调"]
+    classDef queue fill:#e6f1f8,stroke:#7b9db5,color:#253e4b
+    classDef loop fill:#e1f0eb,stroke:#6d9a8a,color:#24413a
+    classDef backend fill:#f5f0e5,stroke:#b7a57d,color:#4f4635
+    class q0,q1,q2,q3 queue
+    class a,b,ca,cb loop
+    class block,wa,wb backend

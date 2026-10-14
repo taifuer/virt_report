@@ -1,0 +1,81 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+{% set linux_source = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
+{% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
+
+<section id="preface" class="mechanism-section">
+  <h2>前言</h2>
+  <p>同一段虚拟机内存可以由一个 2 MiB EPT 叶子项覆盖，也可以由 512 个 4 KiB 叶子项覆盖。大页减少第二级页表遍历层数和表项数量；细粒度映射则允许 KVM 分别控制子页的写权限与脏状态。迁移开始和结束时，这两种需求会推动映射粒度转换。</p>
+  <p>本文以 x86、Intel EPT、KVM TDP MMU 和普通 HVA 后备 RAM 为例，跟踪大页建立、脏页记录期间的拆分，以及关闭记录后的恢复。地址转换和首次缺页的完整路径见<a href="kvm-ept-fault.html">内存映射与 EPT 缺页处理</a>。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+
+<section id="layers" class="mechanism-section">
+  <h2>三个层面的页大小</h2>
+  <table><thead><tr><th scope="col">层面</th><th scope="col">管理者与映射</th><th scope="col">与 EPT 大页的关系</th></tr></thead><tbody>
+    <tr><td>客户机页表</td><td>客户机内核管理 GVA → GPA</td><td>客户机使用 4 KiB 页，EPT 仍可用 2 MiB 叶子覆盖连续 GPA；客户机使用大页也不能保证 EPT 使用大页。</td></tr>
+    <tr><td>宿主后备映射</td><td>宿主内核管理 QEMU 的 HVA → HPA；可能使用 hugetlb 或透明大页</td><td>提供当前可用的物理连续范围和宿主页表级别，限制 KVM 能建立的映射。</td></tr>
+    <tr><td>EPT 叶子项</td><td>KVM 管理 GPA → HPA</td><td>2 MiB 叶子位于第 2 级；4 KiB 叶子位于第 1 级，分别覆盖不同大小的客户机物理范围。</td></tr>
+  </tbody></table>
+  <p>拆分 EPT 会增加一个下级页表页，并使原叶子变成指向它的非叶子项。宿主的 2 MiB 后备页可以继续存在，客户机页表也无需改动；映射转换本身不复制客户机数据。若宿主随后拆分或迁移后备内存，则由宿主内存管理和 MMU notifier 另行维护一致性。</p>
+</section>
+
+<section id="eligibility" class="mechanism-section">
+  <h2>何时可以建立大页</h2>
+  <p>一个 2 MiB 叶子必须描述完整、按 2 MiB 对齐的 GPA 和 HPA 区间，并以一组属性覆盖整个范围。KVM 还要求该范围落在允许大页的内存槽中，GPA 与 HVA 在对应页级别具有相同偏移。槽首尾未覆盖完整大页、地址偏移不匹配、页跟踪或混合内存属性，都可能限制可用级别。<a href="{{ linux_source }}arch/x86/kvm/x86.c#L13379-L13407">槽边界与相对对齐检查</a></p>
+  <p><code>host_pfn_mapping_level()</code> 遍历宿主页表，识别 PMD / PUD 叶子。<code>kvm_mmu_max_mapping_level()</code> 再结合硬件上限和槽的大页限制，返回可用级别。因此，HVA 连续，甚至恰好连续的若干物理页，都不足以单独保证本路径建立大页；还需符合宿主映射级别与 KVM 的检查。<a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L3228-L3409">级别选择</a></p>
+  <p>宿主可写性、槽属性和执行限制共同约束最终权限。例如 iTLB multihit 缓解可使大页不可执行，并让执行访问使用较小映射。脏页记录开启时，<code>kvm_mmu_hugepage_adjust()</code> 保持缺页目标为 4 KiB，以便逐页记录；后备页仍然可以是 2 MiB。</p>
+</section>
+
+<section id="structures" class="mechanism-section">
+  <h2>页级别、表项与地址</h2>
+  <table><thead><tr><th scope="col">对象</th><th scope="col">字段或操作</th></tr></thead><tbody>
+    <tr><td><code>kvm_page_fault</code></td><td><code>max_level</code> 给出本次缺页上限；<code>req_level</code> 结合后备条件；<code>goal_level</code> 加入限制后决定实际安装级别。</td></tr>
+    <tr><td><code>kvm_lpage_info</code></td><td><code>disallow_lpage</code> 记录某个候选大页范围的限制，供级别选择使用。</td></tr>
+    <tr><td><code>kvm_mmu_page</code> 与 SPTE</td><td><code>spt</code> 指向页表页；每页 512 个 64 位 SPTE。叶子保存后备 PFN、权限及状态，非叶子保存下级页表地址。</td></tr>
+  </tbody></table>
+  <p>设 GPA <code>0x00400000–0x005fffff</code> 对应 HPA <code>0x80000000–0x801fffff</code>。第 <var>i</var> 个子页的 GFN 为 <code>0x400 + i</code>，PFN 为 <code>0x80000 + i</code>。拆分后第 3 项仍将 <code>GPA 0x00403000</code> 映射到 <code>HPA 0x80003000</code>；变化是索引层级和独立权限的数量。</p>
+  <p><code>make_small_spte()</code> 从大页项继承状态，加上子页偏移，并在生成 4 KiB 项时清除大页标志。512 个新项写入尚未连接的页表后，KVM 才发布父项的替换。<a href="{{ linux_source }}arch/x86/kvm/mmu/spte.c#L330-L364">子项构造</a>、<a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1522-L1558">页表连接</a></p>
+</section>
+
+<section id="split" class="mechanism-section">
+  <h2>脏页记录如何推动拆分</h2>
+  <p>QEMU 的内存监听器通过槽标志开启 <code>KVM_MEM_LOG_DIRTY_PAGES</code>。在启用 eager splitting、未使用 initially-all-set 的路径中，KVM 尝试预先将大页拆到 4 KiB，再设置跟踪所需的写保护或脏位状态。提前拆分把页表分配工作移出首次写入路径；分配失败时仍可先保护大页，随后由缺页路径处理。<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L657-L753">QEMU 标志更新</a>、<a href="{{ linux_source }}arch/x86/kvm/x86.c#L13530-L13556">KVM 启停处理</a></p>
+  <p>下面选择软件写保护式记录：没有 PML，eager splitting 成功，未启用 initially-all-set，宿主页允许写入且不启用 NX 大页缓解。开启操作完成后，512 个子项均为 W=0。写 P3 时产生写保护缺页，KVM 记录 P3 并恢复该项的 W；P4 仍可保持 W=0。显示的 dirty 是逐页日志标记，与 EPT 硬件 D 位分开。</p>
+  {% include '_hugepage_lab.html' %}
+  <p>拆分步骤本身保留原写权限和脏状态，地址转换也保持等价，因此这一步无需单独立即刷新 TLB。随后的跟踪初始化改变权限或脏位，启用 ioctl 返回前完成相应刷新，确保旧可写转换不会越过交接边界。<a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L7141-L7169">拆分与刷新顺序</a></p>
+  <p>PML 路径会对小页清除脏位，不能套用上述“每页首次写入都退出”的步骤。启用 <code>KVM_DIRTY_LOG_INITIALLY_SET</code> 时，全部页面先被视为脏页，拆分和保护可延后到清除所选范围时；QEMU 会探测并使用这些能力。<a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L1423-L1456">按范围拆分</a>、<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L2564-L2603">QEMU 能力选择</a>。日志交接和重新保护详见<a href="kvm-dirty-ring.html">Dirty Ring 专题</a>。</p>
+</section>
+
+<section id="recovery" class="mechanism-section">
+  <h2>关闭记录后的恢复</h2>
+  <p>迁移取消后，源虚拟机可能继续运行。关闭槽的脏页记录会调用 <code>kvm_mmu_recover_huge_pages()</code>。Linux 6.18 的 TDP 分支遍历候选非叶子项，重新检查槽和宿主允许的映射级别，找到已有叶子项后构造大页项，原子替换父项并完成所需的 TLB 刷新。后备条件仍不满足的范围保持小页映射。</p>
+  {{ diagram('kvm-hugepage-lifecycle', 'EPT 大页的拆分与原位恢复', '示例采用预先拆分和软件写保护。2 MiB 叶子拆成 512 个 4 KiB 叶子，关闭跟踪后核验条件并原位恢复。宿主后备范围与子页 PFN 始终不变。') }}
+  <p>恢复函数从已有子项构造新叶子，保留其权限；它没有逐一要求 512 个子项的临时 W 位相同。关闭跟踪后，这些临时差异可以消失。若取到的子项 W=0，新大页暂时仍不可写，后续写缺页可在允许写入的前提下恢复权限。示例保留 P0 的 W=0，便于观察这一阶段。<a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1773-L1878">TDP 原位恢复</a>、<a href="{{ linux_source }}arch/x86/kvm/mmu/spte.c#L366-L384">构造大页项</a></p>
+  <p>恢复 EPT 的过程不会整理物理页或把分散后备页复制成大页。宿主透明大页的合并、回收和页迁移属于另一层生命周期。评估迁移影响时，应同时观察后备内存状态、EPT 页级别和缺页次数。</p>
+</section>
+
+<section id="implementation" class="mechanism-section">
+  <h2>关键源码</h2>
+  <table><thead><tr><th scope="col">问题</th><th scope="col">固定版本入口</th></tr></thead><tbody>
+    <tr><td>缺页为何选择这个级别</td><td><a href="{{ linux_source }}arch/x86/kvm/mmu/mmu_internal.h#L254-L276"><code>max_level / req_level / goal_level</code></a>；<a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L3342-L3409"><code>kvm_mmu_hugepage_adjust()</code></a></td></tr>
+    <tr><td>如何生成并发布 512 个子项</td><td><a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1522-L1558"><code>tdp_mmu_split_huge_page()</code></a>；<a href="{{ linux_source }}arch/x86/kvm/mmu/spte.c#L330-L364"><code>make_small_spte()</code></a></td></tr>
+    <tr><td>何时开始或停止细粒度跟踪</td><td><a href="{{ linux_source }}arch/x86/kvm/x86.c#L13490-L13556"><code>kvm_mmu_slot_apply_flags()</code></a>；<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L2564-L2603">QEMU 手动保护能力选择</a></td></tr>
+    <tr><td>如何恢复大页及写权限</td><td><a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1799-L1878"><code>recover_huge_pages_range()</code></a>；<a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L3720-L3761">快速写权限修复</a></td></tr>
+  </tbody></table>
+</section>
+
+<section id="evolution" class="mechanism-section">
+  <h2>从按需拆分到原位恢复</h2>
+  <p>2022 年的 <a href="https://github.com/torvalds/linux/commit/a3fe5dbda0a4bb7759dcd5a0ad713d347e020401">TDP eager splitting 提交</a>将拆分提前到启用脏页记录时，减少客户机首次写入时承担的页表处理。它采取尽力而为策略，未完成的拆分仍可通过保护和缺页保证正确性。</p>
+  <p>Linux 6.13 的 <a href="https://github.com/torvalds/linux/commit/c59de1413391868057cfe70b45dbce66de643064">KVM MMU 更新</a>加入 TDP 大页原位恢复，避免先撤销下级映射、等待再次访问才重建大页。本文基线已包含这一路径。预先拆分与原位恢复分别减少进入和退出细粒度跟踪时的 vCPU 扰动，但仍需分配页表、同步 TLB，并受宿主后备条件约束。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="{{ linux_source }}Documentation/virt/kvm/x86/mmu.rst">Linux 6.18：KVM x86 MMU 结构与页级别</a></li>
+    <li><a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L3342-L3409">Linux 6.18：后备级别与大页选择</a></li>
+    <li><a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1522-L1659">Linux 6.18：TDP 大页拆分</a>、<a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1773-L1878">大页恢复</a></li>
+    <li><a href="{{ qemu_source }}accel/kvm/kvm-all.c#L657-L753">QEMU 10.2.0：槽脏页记录标志</a></li>
+  </ul>
+</section>

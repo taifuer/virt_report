@@ -1,0 +1,25 @@
+flowchart TB
+  accTitle: virtio-blk 的 4 KiB 写请求
+  accDescr: 客户机把三个描述符链接为请求头、4096 字节写入数据和一个状态字节。QEMU 读取命令和数据，经 BlockBackend 写入磁盘偏移一兆字节处，完成后写状态。
+  subgraph RAM[客户机 RAM · 描述符和数据缓冲区]
+    A["available 项：链头 = 5<br/>发布 avail.idx：12 → 13"]
+    H["desc 5 · 设备可读 · 16 B<br/>type = OUT；reserved = 0<br/>sector = 2048"]
+    D["desc 9 · 设备可读 · 4096 B<br/>本次写入数据"]
+    S["desc 12 · 设备可写 · 1 B<br/>status：等待设备完成"]
+    A --> H
+    H -->|NEXT = 9| D
+    D -->|NEXT = 12| S
+  end
+  H --> P["QEMU 解析请求头<br/>磁盘偏移 = 2048 × 512 = 1 MiB"]
+  D --> I["QEMUIOVector<br/>仅包含数据区域"]
+  P --> B["blk_aio_pwritev<br/>BlockBackend → raw → file"]
+  I --> B
+  B --> F["宿主文件 I/O<br/>写入区间：[1 MiB, 1 MiB + 4096 B)"]
+  F --> C["后端完成回调"]
+  C -. 写回状态 .-> S
+  classDef memory fill:#edf3f8,stroke:#7591ac,color:#233b50;
+  classDef process fill:#e4f2ef,stroke:#5e8f87,color:#203e3b;
+  classDef result fill:#fbf0e6,stroke:#b58a60,color:#5f432b;
+  class A,H,D memory;
+  class P,I,B,F process;
+  class S,C result;

@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>QEMU MemoryRegion 的地址映射与访问分发 - virt-report</title>
+  <meta name="description" content="从别名窗口和重叠区域出发，分析 FlatView 的生成、RAM 与 MMIO 分发，以及布局变更时的 KVM 内存槽更新。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=7b86b63d1fd5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=7b86b63d1fd5">
+  <link rel="stylesheet" href="../assets/site.css?v=7b86b63d1fd5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c084ccad2981">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c084ccad2981">
+<link rel="stylesheet" href="../assets/memory-map.css?v=c084ccad2981"></head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=7b86b63d1fd5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#qemu-internals">QEMU 内部机制</a></div>
+    <h1>QEMU MemoryRegion 的地址映射与访问分发</h1>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">前言</a></li><li><a href="#structures">区域、地址空间与平坦视图</a></li><li><a href="#topology">别名窗口与优先级</a></li><li><a href="#lookup">地址映射交互</a></li><li><a href="#flatten">从拓扑到访问分发</a></li><li><a href="#mmio">MMIO 的宽度与访问条件</a></li><li><a href="#updates">布局更新与 KVM 内存槽</a></li><li><a href="#evolution">内存模型的演进</a></li><li><a href="#sources">参考资料</a></li></ol></nav>
+    <div class="mechanism-prose">
+<section id="preface" class="mechanism-section">
+  <h2>前言</h2>
+  <p>一台虚拟机的物理地址空间中既有 RAM，也有设备寄存器、ROM 和未映射区。客户机改写 PCI BAR 或内存控制器配置后，同一个地址还可能指向另一块设备。QEMU 用 MemoryRegion 描述这些区域及其连接关系，再为每个 AddressSpace 生成当前可见的映射。</p>
+  <p>本文从一段带设备窗口的 RAM 出发，分析别名、优先级、FlatView 和访问分发，最后跟踪一次映射更新怎样通知 KVM。文中的小地址空间用于展示地址计算；客户机页表与 EPT 的两级转换见<a href="kvm-ept-fault.html">KVM 内存映射与 EPT 缺页处理</a>。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p></section>
+
+<section id="structures" class="mechanism-section">
+  <h2>区域、地址空间与平坦视图</h2>
+  <p>MemoryRegion 表达局部布局：区域有自己的大小，挂到容器后才取得相对于容器的地址。AddressSpace 选择一个根，表示 CPU 或设备从这个入口看到的空间。RAMBlock 保存 RAM 后端的宿主存储信息；一块 RAM 可以通过多个别名出现在不同地址，不需要复制其内容。</p>
+  <table><thead><tr><th scope="col">结构</th><th scope="col">关键字段</th><th scope="col">职责</th></tr></thead><tbody>
+    <tr><td><code>MemoryRegion</code></td><td><code>addr</code>、<code>size</code>、<code>container</code>、<code>subregions</code>、<code>priority</code></td><td>区域在局部拓扑中的位置、范围与遮盖关系</td></tr>
+    <tr><td>RAM / MMIO 区域</td><td><code>ram_block</code> 或 <code>ops</code>、<code>opaque</code></td><td>RAM 后端存储，或设备读写回调及其状态</td></tr>
+    <tr><td>别名区域</td><td><code>alias</code>、<code>alias_offset</code></td><td>把目标区域的一段暴露在新的位置</td></tr>
+    <tr><td><code>AddressSpace</code></td><td><code>root</code>、<code>current_map</code>、<code>listeners</code></td><td>确定访问入口，持有当前 FlatView 和更新监听器</td></tr>
+    <tr><td><code>FlatView</code></td><td><code>ranges</code>、<code>nr</code>、<code>dispatch</code>、<code>ref</code></td><td>保存展开后的不重叠区间、查找结构和生命周期信息</td></tr>
+    <tr><td><code>FlatRange</code></td><td><code>addr</code>、<code>mr</code>、<code>offset_in_region</code>、<code>readonly</code></td><td>把地址空间中的一段映射到叶子区域的指定偏移</td></tr>
+  </tbody></table>
+  <p>定义见 <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/system/memory.h#L823-L876">MemoryRegion</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/system/memory.h#L1160-L1210">AddressSpace 与 FlatView</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/memory.c#L222-L250">FlatRange 与 MemoryRegionSection</a>。这些对象与 QOM 的所有权树也有区别：<code>owner</code> 负责生命周期，<code>container</code> 描述映射位置。一个区域的所属设备不会因为映射地址改变而更换。</p>
+</section>
+
+<section id="topology" class="mechanism-section">
+  <h2>别名窗口与优先级</h2>
+  <p>下面建立一个 64 KiB 地址空间，低 32 KiB 为 RAM；在 0x2000 处放置长度为 16 KiB 的别名 window，指向独立设备总线 bus 的一段。bus 的两个叶子区域都是 4 KiB MMIO，分别位于 0x1000 和 0x3000，其余位置是纯容器留下的空洞。</p>
+  <pre><code>system：容器，大小 0x10000
+  ram：RAM，addr = 0，size = 0x8000，priority = 0
+  window：别名，addr = 0x2000，size = 0x4000，priority = 2
+           alias = bus，alias_offset = 0x1000
+
+bus：独立容器，大小 0x8000
+  regs-a：MMIO，addr = 0x1000，size = 0x1000
+  regs-b：MMIO，addr = 0x3000，size = 0x1000</code></pre>
+  <p>对 0x2004 的访问进入 window 后，先扣除窗口起点，再加上 alias_offset，得到 bus 地址 0x1004；regs-a 的局部偏移就是 4。两个设备之外的空洞没有终止区域承接，查找会回到外层，继续使用被窗口覆盖的 RAM。例如 0x3004 对应 bus 的 0x2004，这里没有设备，最终命中 ram 的偏移 0x3004。</p>
+  <p>优先级只在同一容器的子区域之间比较。window 的 priority = 2 让其可见叶子遮住 priority = 0 的 ram；regs-a 自己的优先级不会拿去与外层 ram 比较。关闭 window 后，原位置重新显露 RAM，RAM 内容仍在原来的后端。别名也会裁剪目标范围，窗口之外的设备不会自动出现在 system 中。</p>
+  <p><code>memory_region_add_subregion_overlap()</code> 保存优先级，子区域链表按优先级排序。启用状态、区域边界、别名偏移与嵌套裁剪都在拓扑展开时参与计算。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/memory.c#L2655-L2713">挂接与排序</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/memory.c#L595-L646">别名和子区域展开</a></p>
+</section>
+
+<section id="lookup" class="mechanism-section">
+  <h2>地址映射交互</h2>
+<section class="memory-map-lab" data-memory-map-lab data-mechanism-view="lab" aria-labelledby="memory-map-title">
+  <div class="mechanism-view-heading"><h3 id="memory-map-title">别名窗口与地址查找</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>切换设备窗口和映射偏移，再选择地址，观察区域图怎样展开为可见区间。</p>
+  <div class="memory-map-controls" data-memory-map-controls hidden>
+    <label>设备窗口<select data-memory-map-enabled><option value="on">启用</option><option value="off">关闭</option></select></label>
+    <label>window 优先级<select data-memory-map-priority><option value="2">2 · 高于 RAM</option><option value="-1">−1 · 低于 RAM</option></select></label>
+    <label>alias_offset<select data-memory-map-offset><option value="0">0x0000</option><option value="4096" selected>0x1000</option><option value="8192">0x2000</option></select></label>
+  </div>
+  <form class="memory-map-query" data-memory-map-query hidden>
+    <label>system 地址<input type="text" inputmode="text" data-memory-map-address value="0x2004" autocomplete="off" spellcheck="false" aria-describedby="memory-map-address-note memory-map-error"></label>
+    <label>访问方向<select data-memory-map-operation><option value="read">读取 4 字节</option><option value="write">写入 4 字节</option></select></label>
+    <button type="submit">查找地址</button><button type="button" data-memory-map-reset>重置</button>
+    <small id="memory-map-address-note">输入 0x 开头的十六进制或十进制地址，范围 0—0xfffc，需 4 字节对齐。</small>
+    <p id="memory-map-error" class="memory-map-error" data-memory-map-error role="alert" hidden></p>
+  </form>
+  <div data-memory-map-scene hidden>
+    <div class="memory-map-topology"><h4>当前区域关系</h4><pre data-memory-map-tree></pre></div>
+    <h4>system 可见布局</h4>
+    <div class="memory-map-strip" data-memory-map-strip role="group" aria-label="选择地址，每格 4 KiB"></div>
+    <p class="memory-map-legend">每格 4 KiB，点击查看格内偏移 4 的位置。RAM、A、B 分别表示 ram、regs-a、regs-b；空表示未映射。</p>
+    <div class="memory-map-table-wrap"><table><caption>当前 FlatRange（不包含未映射区）</caption><thead><tr><th scope="col">system 范围</th><th scope="col">目标区域</th><th scope="col">起始偏移</th></tr></thead><tbody data-memory-map-ranges></tbody></table></div>
+    <p class="memory-map-status" data-memory-map-status role="status" aria-live="polite" aria-atomic="true"></p>
+    <ol class="memory-map-trace" data-memory-map-trace aria-label="本次地址查找"></ol>
+  </div>
+  <div data-memory-map-fallback><p>默认配置下，0x2004 经 window 映射到 bus 的 0x1004，命中 regs-a 的偏移 4。0x3004 对应 bus 空洞，回落到 ram 的偏移 0x3004。关闭窗口后，这两个地址都由 ram 处理。启用 JavaScript 后可切换布局和查询地址。</p></div>
+  <p class="memory-map-note">这是固定布局的地址计算模型，不执行真实设备读写。可见区间按本例 4 KiB 边界计算；完整 QEMU 实现还支持更细的区域、访问拆分、权限和 IOMMU 转换。关闭窗口不会清除被遮盖的 RAM。</p>
+</section>  <p>演示中的布局每次变更后立即生成新视图，再查询选定地址。默认布局的主要 FlatRange 如下；没有映射的尾部不会成为普通 RAM 或 MMIO 的 FlatRange。</p>
+  <table><thead><tr><th scope="col">system 地址范围</th><th scope="col">目标区域</th><th scope="col">起始区域偏移</th></tr></thead><tbody>
+    <tr><td>0x0000—0x1fff</td><td>ram</td><td>0x0000</td></tr>
+    <tr><td>0x2000—0x2fff</td><td>regs-a</td><td>0x0000</td></tr>
+    <tr><td>0x3000—0x3fff</td><td>ram</td><td>0x3000</td></tr>
+    <tr><td>0x4000—0x4fff</td><td>regs-b</td><td>0x0000</td></tr>
+    <tr><td>0x5000—0x7fff</td><td>ram</td><td>0x5000</td></tr>
+  </tbody></table>
+  <p>这里 ram 被切成三个区间，但仍是同一个 MemoryRegion 和同一份后端内存。FlatRange 的切分描述可见性，不会把 RAMBlock 复制成三份；迁移也需要按实际 RAMBlock 识别内存。</p>
+</section>
+
+<section id="flatten" class="mechanism-section">
+  <h2>从拓扑到访问分发</h2>
+  <p><code>render_memory_region()</code> 先展开高优先级子区域，再由当前终止区域填充剩余空洞。纯容器的 <code>terminates</code> 为 false，只有已展开的子区域会进入结果。别名先修正 base 并递归到目标；只读等属性随路径向下传递。生成结果经过相邻区间合并，再建立 AddressSpaceDispatch。</p>
+  <p>QEMU 用户态实际访问时读取 <code>AddressSpace.current_map</code>，由 dispatch 查找 MemoryRegionSection。地址换算为：</p>
+  <pre><code>区域内偏移 = 访问地址
+           - section.offset_within_address_space
+           + section.offset_within_region
+
+默认布局读取 0x3004：
+  section 起点 = 0x3000，区域起始偏移 = 0x3000
+  区域内偏移 = 0x3004 - 0x3000 + 0x3000 = 0x3004</code></pre>
+  <p>访问路径不必每次重新遍历设备拓扑。<code>address_space_lookup_region()</code> 先检查最近使用的 section，未命中再查分发结构，并处理小于页面的 subpage 分段。具有相同有效根的多个 AddressSpace 还可以共享一套 FlatView；这与直接在原始区域图中逐层查找有不同的执行成本。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/memory.c#L747-L772">生成视图和 dispatch</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/physmem.c#L346-L397">section 查找与偏移转换</a></p>
+  <p>普通 RAM 读写取得 <code>RAMBlock</code> 对应的宿主指针，进行复制；写入还需维护脏页等状态。MMIO 则进入 <code>memory_region_dispatch_read/write()</code>，检查访问条件并调用设备的 MemoryRegionOps。回调收到的是区域内偏移，通常不需要自行减掉 PCI BAR 的客户机地址。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/physmem.c#L3238-L3285">写入分支</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/physmem.c#L3334-L3379">读取分支</a></p>
+</section>
+
+<section id="mmio" class="mechanism-section">
+  <h2>MMIO 的宽度与访问条件</h2>
+  <p>MemoryRegionOps 除了读写函数，还区分设备允许的访问和实现支持的访问宽度。<code>valid</code> 描述客户机可执行的操作，<code>impl</code> 描述回调能够处理的宽度。两者混用可能使非法操作被拆分后错误接受，或让合法操作无法进入设备。</p>
+  <table><thead><tr><th scope="col">字段</th><th scope="col">含义</th></tr></thead><tbody>
+    <tr><td><code>valid.min_access_size / max_access_size</code></td><td>设备接受的宽度范围；与对齐、accepts 回调一起做访问校验</td></tr>
+    <tr><td><code>impl.min_access_size / max_access_size</code></td><td>实现处理的宽度范围；内存框架可据此调整或拆分调用</td></tr>
+    <tr><td><code>endianness</code></td><td>设备寄存器的字节序，参与访问值转换</td></tr>
+    <tr><td><code>read_with_attrs / write_with_attrs</code></td><td>接收 MemTxAttrs，并返回 MemTxResult，表达成功或访问错误</td></tr>
+  </tbody></table>
+  <p>例如设备允许 4 字节读取，回调只实现 1 字节宽度，框架可分成四次调用。带有“读取后清零”等副作用的寄存器必须按设备语义设置这些字段，不能为了适配回调任意拆分。本文交互固定为 4 字节对齐访问，两块示例设备均接受该宽度，不展示跨区域请求拆分。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/system/memory.h#L293-L353">MemoryRegionOps</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/memory.c#L1443-L1487">校验与读取分发</a></p>
+</section>
+
+<section id="updates" class="mechanism-section">
+  <h2>布局更新与 KVM 内存槽</h2>
+  <figure class="mechanism-diagram" data-diagram="memory-region-publication" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>区域修改、视图发布与 KVM 更新</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看区域修改、视图发布与 KVM 更新" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="区域修改、视图发布与 KVM 更新">
+    <img src="../assets/memory-region-publication.svg?v=c084ccad2981" alt="外层事务提交时生成新视图，比较区间并通知监听器。KVM 在监听器提交阶段处理内存槽增删；旧视图通过引用计数与 RCU 延迟回收。" loading="lazy">
+  </div>
+  <figcaption>外层事务提交时生成新视图，比较区间并通知监听器。KVM 在监听器提交阶段处理内存槽增删；旧视图通过引用计数与 RCU 延迟回收。 <a href="../assets/memory-region-publication.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+  accTitle: 区域修改、视图发布与 KVM 更新
+  accDescr: 持有 BQL 时在内存事务中修改区域，最外层提交生成 FlatView 和 dispatch。框架比较新旧区间，通知监听器并发布 current_map，随后监听器 commit 更新 KVM 内存槽。读者通过 RCU 使用视图，旧视图在不再使用后回收。
+  subgraph CONFIG[&#34;配置更新 · 持有 BQL&#34;]
+    edit[&#34;调整区域、别名或启用状态&#34;] --&gt; commit[&#34;最外层 transaction_commit&#34;]
+    commit --&gt; build[&#34;展开可见区间&lt;br/&gt;生成 FlatView 与 dispatch&#34;]
+    build --&gt; diff[&#34;比较新旧区间&lt;br/&gt;region_del / region_add 等通知&#34;]
+    diff --&gt; publish[&#34;发布 AddressSpace.current_map&#34;]
+  end
+  diff -.-&gt; pending[&#34;KVM listener&lt;br/&gt;缓存删除和新增项&#34;]
+  publish --&gt; listeners[&#34;监听器 commit&#34;]
+  pending --&gt; listeners
+  listeners --&gt; slots[&#34;KVM：先移除旧槽，再加入新槽&lt;br/&gt;必要时协调加速器访问&#34;]
+  subgraph ACCESS[&#34;运行时访问&#34;]
+    reader[&#34;进入 RCU 读侧临界区&#34;] --&gt; view[&#34;读取 current_map&lt;br/&gt;按 dispatch 查找 section&#34;]
+    view --&gt; access[&#34;RAM 访问或 MMIO 回调&#34;]
+    access --&gt; leave[&#34;退出 RCU 临界区&#34;]
+  end
+  publish -.-&gt; view
+  publish --&gt; old[&#34;旧视图引用释放&lt;br/&gt;经 RCU 延迟销毁&#34;]
+  classDef layout fill:#e4f1ec,stroke:#438575,color:#173e34;
+  classDef backend fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef lifecycle fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class edit,commit,build,diff,publish layout;
+  class pending,listeners,slots,reader,view,access,leave backend;
+  class old lifecycle;
+</code></pre></details>
+</figure>
+  <p>调整多个区域时，设备可用 <code>memory_region_transaction_begin()</code> 与 <code>memory_region_transaction_commit()</code> 合并修改。事务允许嵌套，最外层提交才处理待更新布局；提交要求持有 BQL。它合并内存拓扑的发布，并不提供数据库式的任意错误回滚。</p>
+  <p>框架比较旧、新 FlatView，先发出删除通知，再处理新增、保持不变和日志状态变化。<code>address_space_set_flatview()</code> 发布新的 current_map；全局监听器 commit 随后执行。KVM 的 region_add / region_del 先把更新排队，在 <code>kvm_region_commit()</code> 中先移除旧槽、再加入新槽，对需要保护的重叠变化协调加速器访问。不能把用户态视图指针的替换理解为所有内核状态同时完成切换。</p>
+  <p>普通 RAM 区间可注册为 KVM 内存槽，提供客户机物理地址到宿主用户地址的对应关系。客户机在 KVM 中访问已建立映射的 RAM 时不会逐次经过 QEMU 的 memcpy。需要用户态模拟的 MMIO 退出则由 <code>KVM_EXIT_MMIO</code> 分支调用 <code>address_space_rw()</code>，回到上述分发路径。内核处理的设备或 ioeventfd 等加速路径有各自的处理入口。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L1505-L1540">内存槽准备</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L1736-L1830">KVM 更新事务</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L3246-L3254">MMIO 退出处理</a></p>
+  <p>并发读取还需要保证旧视图和区域存活。访问端进入 RCU 读侧临界区，FlatView 引用归零后用 <code>call_rcu()</code> 延后销毁。RCU 保护这里的视图生命周期，设备寄存器的并发读写仍须由设备及其执行环境同步。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/memory.c#L293-L324">视图回收</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/physmem.c#L3424-L3453">读侧访问</a></p>
+</section>
+
+<section id="evolution" class="mechanism-section">
+  <h2>内存模型的演进</h2>
+  <p>设备配置会改变可见布局，KVM、软件访存和后端又都需要了解变化。QEMU 逐步把局部区域描述、全局可见映射和观察者通知分离：<a href="https://github.com/qemu/qemu/commit/4ef4db860362ce9852c20b343e9813897ecdefce">2011 年的内存事务接口</a>允许组合布局变更；同年的<a href="https://github.com/qemu/qemu/commit/7664e80c84700d8b7e88ae854d1d74806c63f013">内存映射观察接口</a>把变化通知交给监听器。这使设备模型可以描述自身映射，不必各自直接维护所有使用方的状态。</p>
+  <p><a href="https://github.com/qemu/qemu/commit/ac1970fbe8ad5a70174f462109ac0f6c7bf1bc43">2012 年的 per-AddressSpace dispatch</a>让不同访问入口拥有相应的查找结构。随后多个地址空间可能引用同一个有效根，重复维护视图与分发树又带来额外成本；<a href="https://github.com/qemu/qemu/commit/967dc9b1194a9281124b2e1ce67b6c3359a2138f">2017 年的 FlatView 共享</a>使经别名等关系归一后根指针相同的地址空间可以复用结果。</p>
+  <p>预先展开减少了运行时反复解释拓扑的工作，但映射变更需要重建、比较和发布视图，并协调监听器及旧对象的生命周期。看待这一设计，需要同时区分配置更新路径与频繁访问路径：热插拔、BAR 重定位走前者，普通 MMIO 和用户态 DMA 查找使用后者。<code>info mtree</code> 可检查区域关系，<code>info mtree -f</code> 可进一步检查展开后的可见区间。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/memory.rst">QEMU 10.2.0：内存模型、别名和访问约束</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/system/memory.h#L823-L876">MemoryRegion</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/system/memory.h#L1160-L1210">AddressSpace 与 FlatView</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/memory.c#L595-L685">区域展开</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/memory.c#L1080-L1175">视图发布与事务提交</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/physmem.c#L346-L397">分发查找与偏移转换</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/physmem.c#L3238-L3453">RAM 与 MMIO 的读写分支</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L1736-L1830">KVM 内存监听器与槽位更新</a></li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#qemu-internals">QEMU 内部机制原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=7b86b63d1fd5"></script>
+<script src="../assets/mechanism-viewer.js?v=c084ccad2981" defer></script>
+<script src="../assets/memory-map.js?v=c084ccad2981" defer></script></body>
+</html>

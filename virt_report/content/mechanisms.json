@@ -1,9 +1,74 @@
 {
+  "groups": [
+    {"slug": "foundations", "title": "虚拟化基础"},
+    {"slug": "operations", "title": "关键操作"},
+    {"slug": "internals", "title": "内部机制"}
+  ],
   "topics": [
     {
+      "slug": "cpu-virtualization",
+      "group": "foundations",
+      "title": "CPU 虚拟化",
+      "summary": "客户机执行、硬件退出与内核处理，以及 TCG 指令翻译、代码缓存和执行交接。"
+    },
+    {
+      "slug": "memory-virtualization",
+      "group": "foundations",
+      "title": "内存虚拟化",
+      "summary": "客户机内存的地址转换、映射与脏页跟踪。",
+      "related": [{"label": "热迁移原理", "path": "mechanisms.html#migration"}]
+    },
+    {
+      "slug": "device-virtualization",
+      "aliases": ["io-virtualization"],
+      "group": "foundations",
+      "title": "设备与 I/O 虚拟化",
+      "summary": "从设备模拟和 virtqueue 到 vhost 后端、DMA 地址转换与设备直通。",
+      "related_articles": ["kvm-virtio-interrupt"]
+    },
+    {
+      "slug": "interrupt-virtualization",
+      "group": "foundations",
+      "title": "中断虚拟化",
+      "summary": "从设备完成事件到客户机中断处理，分析路由、注入与硬件加速。"
+    },
+    {
+      "slug": "vm-startup",
+      "group": "operations",
+      "title": "虚拟机启动",
+      "summary": "从 Libvirt 请求到 QEMU 创建机器、KVM 初始化和客户机开始执行。"
+    },
+    {
       "slug": "migration",
+      "group": "operations",
       "title": "热迁移",
-      "summary": "从内存迭代、停机控制到迁移流格式与状态恢复，分析运行中虚拟机在两台宿主机之间迁移的实现机制。"
+      "summary": "内存迭代、停机控制、迁移流格式、多通道同步与后拷贝缺页处理。",
+      "related": [{"label": "热迁移动态", "path": "topics/migration/index.html"}],
+      "related_articles": ["kvm-dirty-ring"]
+    },
+    {
+      "slug": "hotplug",
+      "group": "operations",
+      "title": "热插拔",
+      "summary": "设备与内存的在线增删、客户机通知和资源回收。"
+    },
+    {
+      "slug": "live-upgrade",
+      "group": "operations",
+      "title": "热升级",
+      "summary": "QEMU 或后端进程替换时的状态交接、连接保持与恢复。"
+    },
+    {
+      "slug": "qemu-internals",
+      "group": "internals",
+      "title": "QEMU 内部机制",
+      "summary": "进程初始化、QOM / qdev、内存模型、QMP 和事件循环。"
+    },
+    {
+      "slug": "libvirt-internals",
+      "group": "internals",
+      "title": "Libvirt 内部机制",
+      "summary": "守护进程启动、连接与驱动选择、RPC 编解码和调用分发。"
     }
   ],
   "articles": [
@@ -11,8 +76,8 @@
       "slug": "qemu-memory-migration",
       "topic": "migration",
       "title": "QEMU 预拷贝迁移的内存迭代与停机控制",
-      "summary": "分析脏页跟踪、内存重传和切换判据，理解传输带宽、写入负载与停机时间之间的关系，以及相关优化的收益与代价。",
-      "reviewed_on": "2026-10-13",
+      "summary": "脏页跟踪、内存重传与切换条件，以及带宽、写入负载和停机时间之间的关系。",
+      "reviewed_on": "2026-10-14",
       "template": "_migration_article.html",
       "stylesheet": "precopy-lab.css",
       "script": "mechanisms.js",
@@ -36,7 +101,7 @@
       "topic": "migration",
       "title": "QEMU 迁移流格式与状态恢复",
       "summary": "从流头、内存页记录到 vCPU 与设备状态，逐层解析迁移流的字段、分段和结束标记，说明目的端如何恢复虚拟机状态。",
-      "reviewed_on": "2026-10-13",
+      "reviewed_on": "2026-10-14",
       "template": "_migration_stream_article.html",
       "stylesheet": "migration-stream.css",
       "script": "migration-stream.js",
@@ -51,6 +116,870 @@
         {"id": "device-state", "title": "处理器与设备状态"},
         {"id": "loading", "title": "接收解析与恢复执行"},
         {"id": "evolution", "title": "格式的演进与兼容"},
+        {"id": "sources", "title": "参考资料"}
+      ]
+    },
+    {
+      "slug": "qemu-multifd",
+      "topic": "migration",
+      "title": "QEMU MultiFD 的任务分发与跨通道同步",
+      "summary": "内存页批次的并行发送、主通道与数据通道的同步，以及慢通道对接收进度的影响。",
+      "reviewed_on": "2026-10-14",
+      "template": "_multifd_article.html",
+      "stylesheet": "multifd.css",
+      "script": "multifd.js",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "前言"},
+        {"id": "principle", "title": "基本原理"},
+        {"id": "flow", "title": "任务分发与传输过程"},
+        {"id": "synchronization", "title": "跨通道同步"},
+        {"id": "implementation", "title": "关键源码"},
+        {"id": "evolution", "title": "实现演进与性能取舍"},
+        {"id": "sources", "title": "参考资料"}
+      ]
+    },
+    {
+      "slug": "qemu-network-tx",
+      "topic": "device-virtualization",
+      "title": "QEMU 网卡模拟与 virtio-net 的发包路径",
+      "summary": "以相同的 TAP 后端对比 e1000 与 virtio-net，追踪描述符提交、队列通知、数据发送和完成处理。",
+      "reviewed_on": "2026-10-14",
+      "template": "_device_tx_article.html",
+      "stylesheet": "device-tx.css",
+      "script": "device-tx.js",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "前言"},
+        {"id": "interfaces", "title": "设备接口与队列"},
+        {"id": "virtqueue", "title": "virtqueue 的数据结构与操作"},
+        {"id": "flow", "title": "一次发包的处理过程"},
+        {"id": "notification", "title": "通知与完成"},
+        {"id": "implementation", "title": "关键源码"},
+        {"id": "evolution", "title": "接口演进与后端分工"},
+        {"id": "sources", "title": "参考资料"}
+      ]
+    },
+    {
+      "slug": "qemu-vhost-net",
+      "topic": "device-virtualization",
+      "title": "virtio-net 的后端处理：vhost-net 与 vhost-user",
+      "summary": "对比 QEMU、内核 vhost-net 和独立用户态后端，分析队列初始化、kick/call 通知与报文处理路径。",
+      "reviewed_on": "2026-10-14",
+      "template": "_vhost_article.html",
+      "stylesheet": "vhost-path.css",
+      "script": "vhost-path.js",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "前言"},
+        {"id": "architecture", "title": "后端分工与共享队列"},
+        {"id": "flow", "title": "初始化与一次发包"},
+        {"id": "notification", "title": "通知与完成"},
+        {"id": "implementation", "title": "关键源码"},
+        {"id": "evolution", "title": "数据路径的演进"},
+        {"id": "sources", "title": "参考资料"}
+      ]
+    },
+    {
+      "slug": "spdk-vhost-user-blk",
+      "topic": "device-virtualization",
+      "title": "SPDK vhost-user-blk 的请求处理路径",
+      "summary": "沿一次 4 KiB 写入，分析共享队列、控制器线程、bdev 和 NVMe 的请求交接，以及完成通知与资源释放。",
+      "reviewed_on": "2026-10-14",
+      "template": "_spdk_article.html",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
+        {"project": "SPDK", "version": "25.09", "commit": "a2f2a0b2794366fe1e42b97061782aae25119457", "url": "https://github.com/spdk/spdk/tree/a2f2a0b2794366fe1e42b97061782aae25119457"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "前言"},
+        {"id": "architecture", "title": "控制连接与存储数据路径"},
+        {"id": "structures", "title": "会话、队列与请求结构"},
+        {"id": "threads", "title": "请求在哪个线程执行"},
+        {"id": "write", "title": "一次 4 KiB 写入"},
+        {"id": "completion", "title": "从 NVMe 完成到客户机回收"},
+        {"id": "notifications", "title": "轮询、通知与资源释放"},
+        {"id": "evolution", "title": "后端独立与线程模型的演进"},
+        {"id": "sources", "title": "参考资料"}
+      ]
+    },
+    {
+      "slug": "kvm-ept-fault",
+      "topic": "memory-virtualization",
+      "title": "KVM 内存映射与 EPT 缺页处理",
+      "summary": "从内存槽注册和一页 RAM 的首次访问出发，分析 EPT 建图、权限处理、宿主页失效及 TDP MMU 的演进。",
+      "reviewed_on": "2026-10-14",
+      "template": "_ept_article.html",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "前言"},
+        {"id": "addresses", "title": "两级转换与宿主映射"},
+        {"id": "structures", "title": "内存注册与关键结构"},
+        {"id": "first-access", "title": "一页 RAM 的首次访问"},
+        {"id": "fault-types", "title": "缺页、写保护与 MMIO"},
+        {"id": "invalidation", "title": "宿主页变化与映射失效"},
+        {"id": "implementation", "title": "关键源码"},
+        {"id": "evolution", "title": "从影子页表到 TDP MMU"},
+        {"id": "sources", "title": "参考资料"}
+      ]
+    },
+    {
+      "slug": "kvm-hugepages",
+      "topic": "memory-virtualization",
+      "title": "KVM 大页映射的建立、拆分与恢复",
+      "summary": "区分客户机、宿主与 EPT 的页大小，跟踪 2 MiB 映射的建立、逐页脏日志期间的拆分，以及关闭跟踪后的原位恢复。",
+      "reviewed_on": "2026-10-14",
+      "template": "_hugepage_article.html",
+      "stylesheet": "hugepage-map.css",
+      "script": "hugepage-map.js",
+      "baselines": [
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"},
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "前言"},
+        {"id": "layers", "title": "三个层面的页大小"},
+        {"id": "eligibility", "title": "何时可以建立大页"},
+        {"id": "structures", "title": "页级别、表项与地址"},
+        {"id": "split", "title": "脏页记录如何推动拆分"},
+        {"id": "recovery", "title": "关闭记录后的恢复"},
+        {"id": "implementation", "title": "关键源码"},
+        {"id": "evolution", "title": "从按需拆分到原位恢复"},
+        {"id": "sources", "title": "参考资料"}
+      ]
+    },
+    {
+      "slug": "kvm-dirty-ring",
+      "topic": "memory-virtualization",
+      "title": "KVM 脏页日志：位图与 Dirty Ring",
+      "summary": "脏页记录的产生、收割与重置，以及重新保护、发布迁移位图和读取页面之间的顺序。",
+      "reviewed_on": "2026-10-14",
+      "template": "_dirty_ring_article.html",
+      "stylesheet": "dirty-ring.css",
+      "script": "dirty-ring.js",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "前言"},
+        {"id": "principle", "title": "脏页记录的交接"},
+        {"id": "bitmap", "title": "按页索引的位图"},
+        {"id": "ring", "title": "每个 vCPU 的 Dirty Ring"},
+        {"id": "ordering", "title": "收割、重置与并发写入"},
+        {"id": "implementation", "title": "关键源码"},
+        {"id": "evolution", "title": "接口演进与代价"},
+        {"id": "sources", "title": "参考资料"}
+      ]
+    },
+    {
+      "slug": "qemu-postcopy",
+      "topic": "migration",
+      "title": "QEMU 后拷贝迁移的缺页处理与页面传输",
+      "summary": "目的端接管执行后，如何请求尚未收到的内存页，以及页面安装、线程唤醒与后台传输的配合。",
+      "reviewed_on": "2026-10-14",
+      "template": "_postcopy_article.html",
+      "stylesheet": "postcopy.css",
+      "script": "postcopy.js",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "前言"},
+        {"id": "principle", "title": "执行位置与内存归属"},
+        {"id": "switch", "title": "切换与旧页面丢弃"},
+        {"id": "fault", "title": "一次缺页的往返"},
+        {"id": "implementation", "title": "关键源码"},
+        {"id": "tradeoffs", "title": "延迟、粒度与故障恢复"},
+        {"id": "evolution", "title": "后拷贝路径的演进"},
+        {"id": "sources", "title": "参考资料"}
+      ]
+    },
+    {
+      "slug": "qemu-vfio-dma",
+      "topic": "device-virtualization",
+      "title": "VFIO 设备直通的 DMA 地址转换与隔离",
+      "summary": "从客户机缓冲区到宿主物理页，分析 DMA 映射、IOMMU 权限检查，以及 VFIO Container 与 IOMMUFD 的分工。",
+      "reviewed_on": "2026-10-14",
+      "template": "_vfio_article.html",
+      "stylesheet": "vfio-dma.css",
+      "script": "vfio-dma.js",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "前言"},
+        {"id": "addresses", "title": "四种地址与两条转换路径"},
+        {"id": "flow", "title": "一次 DMA 请求"},
+        {"id": "isolation", "title": "隔离与映射生命周期"},
+        {"id": "implementation", "title": "关键源码"},
+        {"id": "evolution", "title": "从 VFIO Container 到 IOMMUFD"},
+        {"id": "sources", "title": "参考资料"}
+      ]
+    },
+    {
+      "slug": "kvm-virtio-interrupt",
+      "topic": "interrupt-virtualization",
+      "title": "virtio 完成通知与 KVM 中断注入",
+      "summary": "从 used ring 的完成发布出发，分析通知抑制、MSI-X 消息、LAPIC 状态及 irqfd 替代路径。",
+      "reviewed_on": "2026-10-14",
+      "template": "_interrupt_article.html",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "前言"},
+        {"id": "structures", "title": "完成记录与中断路由"},
+        {"id": "notification", "title": "发布 used 与判定通知"},
+        {"id": "msix", "title": "MSI-X 消息与屏蔽状态"},
+        {"id": "delivery", "title": "从 LAPIC 待处理中断到驱动回调"},
+        {"id": "irqfd", "title": "irqfd 的替代通知路径"},
+        {"id": "implementation", "title": "关键源码"},
+        {"id": "evolution", "title": "通知路径的演进"},
+        {"id": "sources", "title": "参考资料"}
+      ]
+    },
+    {
+      "slug": "qemu-pcie-hotplug",
+      "topic": "hotplug",
+      "title": "QEMU PCIe 设备热插拔与异步移除",
+      "summary": "从端口拓扑、插槽事件到客户机停用与对象回收，分析设备添加、异步删除和管理程序的完成判断。",
+      "reviewed_on": "2026-10-14",
+      "template": "_pcie_hotplug_article.html",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "前言"
+        },
+        {
+          "id": "topology",
+          "title": "插槽拓扑与资源预留"
+        },
+        {
+          "id": "structures",
+          "title": "对象状态与插槽寄存器"
+        },
+        {
+          "id": "addition",
+          "title": "添加网卡的处理过程"
+        },
+        {
+          "id": "removal",
+          "title": "异步移除与完成事件"
+        },
+        {
+          "id": "failure",
+          "title": "未完成操作的判断"
+        },
+        {
+          "id": "implementation",
+          "title": "关键源码"
+        },
+        {
+          "id": "evolution",
+          "title": "控制方式与管理接口的演进"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
+      "slug": "libvirt-rpc",
+      "topic": "libvirt-internals",
+      "title": "Libvirt RPC 的编码与调用分发",
+      "summary": "以一次虚拟机信息查询为例，解析 RPC 报文、XDR 编码、服务端分发与响应匹配，并说明守护进程拆分后的调用边界。",
+      "reviewed_on": "2026-10-14",
+      "template": "_libvirt_rpc_article.html",
+      "baselines": [
+        {
+          "project": "Libvirt",
+          "version": "12.0.0",
+          "commit": "4d937284669ecf180abea087d0b3ad67d9476349",
+          "url": "https://github.com/libvirt/libvirt/tree/4d937284669ecf180abea087d0b3ad67d9476349"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "前言"
+        },
+        {
+          "id": "layers",
+          "title": "从 API 到远程过程"
+        },
+        {
+          "id": "framing",
+          "title": "报文头与 XDR 编码"
+        },
+        {
+          "id": "dispatch",
+          "title": "服务端分发与对象查询"
+        },
+        {
+          "id": "responses",
+          "title": "响应匹配、事件与错误"
+        },
+        {
+          "id": "evolution",
+          "title": "守护进程拆分与接口兼容"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
+      "slug": "qemu-qom-device",
+      "topic": "qemu-internals",
+      "title": "QEMU 对象模型与设备初始化",
+      "summary": "从 virtio-net-pci 的创建过程出发，分析 QOM 类型、对象组合、属性配置与设备生命周期。",
+      "reviewed_on": "2026-10-14",
+      "template": "_qom_article.html",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "前言"
+        },
+        {
+          "id": "structures",
+          "title": "类型、类与实例"
+        },
+        {
+          "id": "type-init",
+          "title": "注册与类初始化"
+        },
+        {
+          "id": "composition",
+          "title": "继承、组合与总线"
+        },
+        {
+          "id": "properties",
+          "title": "属性如何进入设备状态"
+        },
+        {
+          "id": "realize",
+          "title": "从对象到可用设备"
+        },
+        {
+          "id": "cleanup",
+          "title": "失败回滚与对象释放"
+        },
+        {
+          "id": "evolution",
+          "title": "从 qdev 到统一对象模型"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
+      "slug": "libvirt-domain-start",
+      "topic": "vm-startup",
+      "title": "Libvirt 虚拟机启动的进程与状态管理",
+      "summary": "沿 virsh start 的冷启动路径，分析定义与作业、exec 前握手、QMP 配置、运行状态转换和失败清理。",
+      "reviewed_on": "2026-10-14",
+      "template": "_libvirt_start_article.html",
+      "baselines": [
+        {
+          "project": "Libvirt",
+          "version": "12.0.0",
+          "commit": "4d937284669ecf180abea087d0b3ad67d9476349",
+          "url": "https://github.com/libvirt/libvirt/tree/4d937284669ecf180abea087d0b3ad67d9476349"
+        },
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "前言"
+        },
+        {
+          "id": "objects",
+          "title": "定义、进程与作业"
+        },
+        {
+          "id": "preparation",
+          "title": "启动前的资源准备"
+        },
+        {
+          "id": "launch",
+          "title": "fork、exec 与两道启动屏障"
+        },
+        {
+          "id": "state",
+          "title": "cont、运行状态与生命周期事件"
+        },
+        {
+          "id": "failure",
+          "title": "失败清理与管理连接恢复"
+        },
+        {
+          "id": "evolution",
+          "title": "从进程启动到状态协调"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
+      "slug": "qemu-vm-startup",
+      "topic": "vm-startup",
+      "title": "QEMU 虚拟机启动与 vCPU 初始化",
+      "summary": "从 Q35 冷启动跟踪机器创建、KVM 接口、内存布局与 vCPU 线程，说明暂停启动、复位和固件执行之间的边界。",
+      "reviewed_on": "2026-10-14",
+      "template": "_qemu_start_article.html",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "前言"
+        },
+        {
+          "id": "example",
+          "title": "一个暂停启动的配置"
+        },
+        {
+          "id": "objects",
+          "title": "机器、执行后端与处理器对象"
+        },
+        {
+          "id": "phases",
+          "title": "从参数解析到板级初始化"
+        },
+        {
+          "id": "vcpu",
+          "title": "vCPU 线程与内核接口的建立"
+        },
+        {
+          "id": "first-run",
+          "title": "复位、继续执行与固件入口"
+        },
+        {
+          "id": "evolution",
+          "title": "启动阶段拆分与配置边界"
+        },
+        {
+          "id": "implementation",
+          "title": "关键源码"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
+      "slug": "qemu-cpr-transfer",
+      "topic": "live-upgrade",
+      "title": "QEMU 同机更新的内存与文件描述符交接",
+      "summary": "分析 cpr-transfer 如何保留共享 RAM、传递宿主资源并恢复 CPU 和设备状态，区分资源准备、停机与执行接管。",
+      "reviewed_on": "2026-10-14",
+      "template": "_cpr_article.html",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "前言"
+        },
+        {
+          "id": "principle",
+          "title": "保留内容与重建对象"
+        },
+        {
+          "id": "structures",
+          "title": "描述符清单与共享内存"
+        },
+        {
+          "id": "channels",
+          "title": "两条通道与先后顺序"
+        },
+        {
+          "id": "handoff",
+          "title": "从资源准备到执行接管"
+        },
+        {
+          "id": "boundaries",
+          "title": "兼容性、停机时间与失败边界"
+        },
+        {
+          "id": "evolution",
+          "title": "从保存重启到进程间交接"
+        },
+        {
+          "id": "implementation",
+          "title": "关键源码与资料"
+        }
+      ]
+    },
+    {
+      "slug": "qemu-memory-region",
+      "topic": "qemu-internals",
+      "title": "QEMU MemoryRegion 的地址映射与访问分发",
+      "summary": "从别名窗口和重叠区域出发，分析 FlatView 的生成、RAM 与 MMIO 分发，以及布局变更时的 KVM 内存槽更新。",
+      "reviewed_on": "2026-10-14",
+      "template": "_memory_region_article.html",
+      "stylesheet": "memory-map.css",
+      "script": "memory-map.js",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "前言"
+        },
+        {
+          "id": "structures",
+          "title": "区域、地址空间与平坦视图"
+        },
+        {
+          "id": "topology",
+          "title": "别名窗口与优先级"
+        },
+        {
+          "id": "lookup",
+          "title": "地址映射交互"
+        },
+        {
+          "id": "flatten",
+          "title": "从拓扑到访问分发"
+        },
+        {
+          "id": "mmio",
+          "title": "MMIO 的宽度与访问条件"
+        },
+        {
+          "id": "updates",
+          "title": "布局更新与 KVM 内存槽"
+        },
+        {
+          "id": "evolution",
+          "title": "内存模型的演进"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
+      "slug": "qemu-virtio-blk",
+      "topic": "device-virtualization",
+      "title": "virtio-blk 的请求处理与写入完成",
+      "summary": "从一次 4 KiB 写入跟踪描述符链、块后端和完成回调，说明请求合并、缓存刷新与持久化之间的关系。",
+      "reviewed_on": "2026-10-14",
+      "template": "_virtio_blk_article.html",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "前言"
+        },
+        {
+          "id": "request",
+          "title": "一次 4 KiB 写入的描述符链"
+        },
+        {
+          "id": "objects",
+          "title": "QEMU 如何表示请求"
+        },
+        {
+          "id": "submission",
+          "title": "从 virtqueue 到块后端"
+        },
+        {
+          "id": "completion",
+          "title": "状态、used 项与完成通知"
+        },
+        {
+          "id": "durability",
+          "title": "写入完成与持久化"
+        },
+        {
+          "id": "errors",
+          "title": "错误处理与请求保留"
+        },
+        {
+          "id": "evolution",
+          "title": "从单队列到多线程处理"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
+      "slug": "qemu-aio-iothread",
+      "topic": "qemu-internals",
+      "title": "QEMU AioContext、协程与 IOThread",
+      "summary": "沿一次文件写请求，分析事件分发、协程挂起与恢复、队列到 IOThread 的映射，以及多线程块层的同步边界。",
+      "reviewed_on": "2026-10-14",
+      "template": "_aio_article.html",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "前言"
+        },
+        {
+          "id": "structures",
+          "title": "线程、事件循环与协程"
+        },
+        {
+          "id": "request",
+          "title": "一次写请求的挂起与恢复"
+        },
+        {
+          "id": "dispatch",
+          "title": "BH 与跨线程调度"
+        },
+        {
+          "id": "mapping",
+          "title": "多队列如何分配到 IOThread"
+        },
+        {
+          "id": "synchronization",
+          "title": "数据面并行与管理操作"
+        },
+        {
+          "id": "evolution",
+          "title": "从单一事件循环到队列级并行"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
+      "slug": "qemu-qcow2",
+      "topic": "qemu-internals",
+      "title": "QEMU qcow2 的地址映射与写时复制",
+      "summary": "从 L1/L2 和引用计数跟踪一次 4 KiB 写入，分析共享簇、backing file、元数据更新顺序与子簇映射。",
+      "reviewed_on": "2026-10-14",
+      "template": "_qcow2_article.html",
+      "stylesheet": "qcow2-map.css",
+      "script": "qcow2-map.js",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "前言"},
+        {"id": "mapping", "title": "簇映射与引用计数"},
+        {"id": "lookup", "title": "沿地址观察一次读写"},
+        {"id": "reads", "title": "本层数据、未分配与显式零"},
+        {"id": "writes", "title": "4 KiB 写入怎样保留其余 60 KiB"},
+        {"id": "evolution", "title": "子簇映射与写入粒度"},
+        {"id": "sources", "title": "参考资料"}
+      ]
+    },
+    {
+      "slug": "qemu-virtio-mem",
+      "topic": "hotplug",
+      "title": "virtio-mem 的内存添加与回收",
+      "summary": "从目标容量到客户机页面隔离，分析 virtio-mem 的块协议、Linux 内存上线与异步回收，并观察扩缩容阻塞与重试。",
+      "reviewed_on": "2026-10-14",
+      "template": "_virtio_mem_article.html",
+      "stylesheet": "virtio-mem.css",
+      "script": "virtio-mem.js",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        },
+        {
+          "project": "Linux",
+          "version": "6.18",
+          "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+          "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "前言"
+        },
+        {
+          "id": "capacity",
+          "title": "同一个设备的几种容量"
+        },
+        {
+          "id": "structures",
+          "title": "设备块、Linux 内存块与请求格式"
+        },
+        {
+          "id": "growth",
+          "title": "从目标变化到可用内存"
+        },
+        {
+          "id": "reclaim",
+          "title": "缩容中的页面迁移与交接"
+        },
+        {
+          "id": "interaction",
+          "title": "交互：扩容、缩容与阻塞"
+        },
+        {
+          "id": "limits",
+          "title": "目标为何可能无法达到"
+        },
+        {
+          "id": "evolution",
+          "title": "粒度、资源开销与设计演进"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
+      "slug": "kvm-vcpu-run",
+      "topic": "cpu-virtualization",
+      "title": "KVM vCPU 的执行循环与退出处理",
+      "summary": "沿 CPUID 与设备寄存器读取，分析 KVM_RUN、硬件退出、kvm_run 数据交接，以及暂停前的 I/O 完成顺序。",
+      "reviewed_on": "2026-10-14",
+      "template": "_kvm_run_article.html",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "前言"},
+        {"id": "principle", "title": "执行循环与两层退出"},
+        {"id": "structures", "title": "共享接口与内核状态"},
+        {"id": "paths", "title": "CPUID 与设备读取的处理路径"},
+        {"id": "completion", "title": "I/O 完成与暂停边界"},
+        {"id": "implementation", "title": "关键源码"},
+        {"id": "evolution", "title": "从寄存器模拟到事件通知"},
+        {"id": "sources", "title": "参考资料"}
+      ]
+    },
+    {
+      "slug": "kvm-vcpu-halt",
+      "topic": "cpu-virtualization",
+      "title": "KVM vCPU 的阻塞、轮询与唤醒",
+      "summary": "从 HLT 跟踪宿主轮询、等待者发布与中断唤醒，分析丢失唤醒的防护和轮询预算的自适应调整。",
+      "reviewed_on": "2026-10-14",
+      "template": "_halt_article.html",
+      "stylesheet": "halt-poll.css",
+      "script": "halt-poll.js",
+      "baselines": [
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"},
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "前言"},
+        {"id": "structures", "title": "vCPU 与宿主线程的状态"},
+        {"id": "halt", "title": "从 HLT 到宿主轮询"},
+        {"id": "wakeup", "title": "阻塞后由谁唤醒"},
+        {"id": "race", "title": "事件恰好出现在入睡之前"},
+        {"id": "polling", "title": "轮询窗口怎样调整"},
+        {"id": "experiment", "title": "移动事件，观察等待路径"},
+        {"id": "evolution", "title": "从固定轮询到按负载调整"},
+        {"id": "sources", "title": "参考资料"}
+      ]
+    },
+    {
+      "slug": "qemu-tcg",
+      "topic": "cpu-virtualization",
+      "title": "QEMU TCG 的翻译块与执行循环",
+      "summary": "从客户机指令到宿主代码，分析 TCG 中间表示、翻译块缓存、直接链接、代码失效与异常状态恢复。",
+      "reviewed_on": "2026-10-14",
+      "template": "_tcg_article.html",
+      "stylesheet": "tcg-tb.css",
+      "script": "tcg-tb.js",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "前言"},
+        {"id": "pipeline", "title": "从客户机指令到宿主代码"},
+        {"id": "structures", "title": "翻译块与运行状态"},
+        {"id": "cache", "title": "查找、复用与直接链接"},
+        {"id": "memory", "title": "访存与设备访问"},
+        {"id": "invalidation", "title": "代码改写与翻译失效"},
+        {"id": "exceptions", "title": "异常位置与状态恢复"},
+        {"id": "parallel", "title": "多 vCPU 的并行执行"},
+        {"id": "evolution", "title": "从 dyngen 到多线程 TCG"},
         {"id": "sources", "title": "参考资料"}
       ]
     }

@@ -1,0 +1,25 @@
+<section class="vhost-lab" data-vhost-lab data-mechanism-view="lab" aria-labelledby="vhost-lab-title">
+  <div class="mechanism-view-heading"><h3 id="vhost-lab-title">共享队列与三种后端</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>客户机提交同一个报文 P1。先建立后端关系，再观察谁接收 kick、读取报文和发布完成。</p>
+  <div class="vhost-controls" data-vhost-controls hidden>
+    <label for="vhost-backend">队列处理位置<select id="vhost-backend" data-vhost-backend><option value="qemu">QEMU 用户态</option><option value="kernel" selected>内核 vhost-net</option><option value="user">外部 vhost-user 后端</option></select></label>
+    <div class="vhost-actions" role="group" aria-label="后端路径演示控制"><button type="button" data-vhost-back>上一步</button><button type="button" data-vhost-next>下一步</button><button type="button" data-vhost-play aria-pressed="false">播放</button><button type="button" data-vhost-reset>重置</button></div>
+  </div>
+  <p class="vhost-status" data-vhost-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <div class="vhost-control-path" data-vhost-node="control"><strong>QEMU · 设备控制</strong><span data-vhost-control-path>设备特性、内存区域、队列地址、通知句柄 → 所选后端</span><small data-vhost-control-detail>QEMU 内部配置 / vhost ioctl / vhost-user Unix socket</small></div>
+  <div class="vhost-scene" role="group" aria-label="客户机内存、队列消费者及网络出口">
+    <section class="vhost-guest" data-vhost-node="guest"><h4>客户机</h4><p>virtio-net 驱动</p><div class="vhost-ram" data-vhost-node="ram"><strong>客户机 RAM</strong><div class="vhost-payload" data-vhost-node="payload"><b>P1</b><span data-vhost-payload>网络头与报文缓冲区</span></div><p data-vhost-desc>描述符链：地址、长度</p><dl><div><dt>avail.idx</dt><dd data-vhost-avail>提交位置</dd></div><div><dt>used.idx</dt><dd data-vhost-used>完成位置</dd></div></dl><p data-vhost-buffer>驱动提交后保持缓冲区有效，完成后回收</p></div></section>
+    <div class="vhost-exchange" aria-label="共享内存访问与双向通知">
+      <div class="vhost-edge vhost-edge--notification" data-vhost-edge="kick"><span aria-hidden="true">→</span><strong>kick</strong><small data-vhost-kick>客户机 → 队列消费者</small></div>
+      <div class="vhost-edge vhost-edge--data" data-vhost-edge="data"><span aria-hidden="true">→</span><strong>描述符与 P1</strong><small>后端读取客户机 RAM</small><i class="vhost-packet" aria-hidden="true">P1</i></div>
+      <div class="vhost-edge vhost-edge--completion" data-vhost-edge="used"><span aria-hidden="true">←</span><strong>used 完成记录</strong><small>后端写客户机 RAM</small></div>
+      <div class="vhost-edge vhost-edge--notification" data-vhost-edge="call"><span aria-hidden="true">←</span><strong>完成通知</strong><small data-vhost-call>后端 → 客户机</small></div>
+    </div>
+    <section class="vhost-workers"><h4>队列消费者</h4><div class="vhost-worker" data-vhost-worker="qemu"><strong>QEMU 用户态</strong><small>virtio-net 设备模型</small><span data-vhost-worker-status="qemu">读取队列 → 写 TAP</span></div><div class="vhost-worker" data-vhost-worker="kernel"><strong>宿主内核 vhost-net</strong><small>vhost 工作项</small><span data-vhost-worker-status="kernel">读取队列 → 后端 socket</span></div><div class="vhost-worker" data-vhost-worker="user"><strong>独立用户态进程</strong><small>vhost-user 后端</small><span data-vhost-worker-status="user">映射共享内存 → 网络数据面</span></div></section>
+    <section class="vhost-network" data-vhost-node="network"><h4>网络出口</h4><strong data-vhost-outlet>TAP / 外部后端网络</strong><p data-vhost-network-state>由选定后端提交报文</p><span class="vhost-delivered" data-vhost-delivered hidden>P1 已提交</span></section>
+  </div>
+  <div class="vhost-detail" data-vhost-detail hidden><strong data-vhost-step-title></strong><p data-vhost-step-detail></p></div>
+  <div class="vhost-legend"><span>虚线框：控制关系</span><span>橙色：通知</span><span>绿色：报文读取与发送</span><span>蓝色：完成回写</span></div>
+  <div class="vhost-fallback" data-vhost-fallback><ol><li>QEMU 配置设备；内核后端通过 ioctl，外部后端通过 Unix socket 获得内存、队列及通知信息。</li><li>客户机发布 available 项，按需 kick；选定消费者读取同一份描述符和报文。</li><li>QEMU 或 vhost-net 交给 TAP；外部后端使用自身的网络出口。</li><li>后端回写 used，按条件通知客户机，驱动随后回收缓冲区。</li></ol><p>启用 JavaScript 可切换处理位置，并逐步观察初始化与发送过程。</p></div>
+  <p class="vhost-model-note">本例采用 eventfd 通知，假定 kick 和完成通知均需要发送，后端发送成功；每步表示逻辑阶段。外部后端以协议职责表示，不限定其线程或网络实现。切换后端会重置过程。</p>
+</section>

@@ -84,7 +84,8 @@ def test_mobile_menu_has_progressive_disclosure_and_footer_is_compact():
     assert ".site-head.menu-ready .head-actions:not(.is-open){display:none}" in css
     assert ".site-head:not(.menu-ready){position:static}" in css
     assert "main{flex:1;min-height:0;padding:34px 0 28px}" in css
-    assert "justify-content:center;gap:12px;padding:12px 0;text-align:center" in css
+    assert "justify-content:center;gap:4px 12px;padding:12px 0;text-align:center" in css
+    assert "@media(max-width:620px){.foot-row{flex-direction:column;gap:4px}}" in css
     assert ".main-nav{order:3" not in css
 
 

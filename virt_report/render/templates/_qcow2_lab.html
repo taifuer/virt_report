@@ -1,0 +1,25 @@
+<section class="qcow2-map-lab" data-qcow2-map-lab data-mechanism-view="lab" aria-labelledby="qcow2-map-title">
+  <div class="mechanism-view-heading"><h3 id="qcow2-map-title">L1 / L2 映射与一次局部写入</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>输入客户机磁盘偏移，选择初态与读写方向，比较映射和两类引用计数。每次推演都从所选初态开始，不累计修改。</p>
+  <form class="qcow2-map-controls" data-qcow2-map-query hidden>
+    <label>客户机字节偏移<input data-qcow2-map-address value="0x20031000" type="text" autocomplete="off" spellcheck="false" aria-describedby="qcow2-map-address-note qcow2-map-error"></label>
+    <label>初始映射<select data-qcow2-map-scenario><option value="shared">仅数据共享 · L2=1 / 数据=2</option><option value="both">L2 与数据均共享 · 2 / 2</option><option value="private">本层数据独占 · 1 / 1</option><option value="unallocated">未分配 · 无本层数据簇</option><option value="zero">显式零 · 无本层数据簇</option></select></label>
+    <label>Backing file<select data-qcow2-map-backing><option value="on">存在，覆盖整个虚拟盘</option><option value="off">无 backing</option></select></label>
+    <label>请求<select data-qcow2-map-operation><option value="read">读取 4 KiB</option><option value="write">写入 4 KiB</option></select></label>
+    <div class="qcow2-map-actions"><button type="submit">推演请求</button><button type="button" data-qcow2-map-reset>重置</button></div>
+    <small id="qcow2-map-address-note">虚拟盘 1 GiB；输入十六进制或十进制地址，范围 0—0x3ffff000，按 4 KiB 对齐。</small>
+    <p id="qcow2-map-error" class="qcow2-map-error" data-qcow2-map-error role="alert" hidden></p>
+  </form>
+  <div data-qcow2-map-scene hidden>
+    <div class="qcow2-map-address"><h4>地址拆分</h4><p data-qcow2-map-indices></p><pre data-qcow2-map-path></pre></div>
+    <p class="qcow2-map-status" data-qcow2-map-status role="status" aria-live="polite" aria-atomic="true"></p>
+    <h4>当前客户机簇 · 每格 4 KiB</h4>
+    <div class="qcow2-map-strip" data-qcow2-map-strip role="group" aria-label="选择簇内的 4 KiB 区间"></div>
+    <p class="qcow2-map-legend">本：本层旧数据；底：backing 数据；零：逻辑零；新：本次写入。方框表示请求范围，格子表示操作完成后的可见内容。</p>
+    <div class="qcow2-map-table-wrap"><table><caption>本文件宿主簇的引用计数变化</caption><thead><tr><th scope="col">簇用途 / 文件偏移</th><th scope="col">之前</th><th scope="col">之后</th></tr></thead><tbody data-qcow2-map-refcounts></tbody></table></div>
+    <p class="qcow2-map-ref-index" data-qcow2-map-ref-index></p>
+    <ol class="qcow2-map-trace" data-qcow2-map-trace aria-label="本次请求的逻辑步骤"></ol>
+  </div>
+  <div data-qcow2-map-fallback><p>默认读取 0x20031000：L1 索引 1、L2 索引 3、簇内偏移 0x1000；数据簇在文件 0x90000，读取位置为 0x91000。若写入且该数据簇 refcount=2，新分配 0x110000，保留其余 60 KiB 后更新 L2；旧计数 2→1，新计数 0→1。独占普通数据簇可直接原位写入。启用 JavaScript 后可比较其他情形。</p></div>
+  <p class="qcow2-map-note">这是单请求、成功路径的计算模型，固定普通 L2、64 KiB 簇与 16 位 refcount。每个地址按所选初态重新构造相关表项；文件偏移为示例分配结果，格子不是 extended L2 子簇。未模拟真实 I/O、缓存命中、并发、错误回滚、短 backing、缺失 L2 表、压缩或 lazy refcounts，也不把逻辑步骤当作实际刷盘次数。</p>
+</section>

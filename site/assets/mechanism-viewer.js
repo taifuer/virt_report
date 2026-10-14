@@ -78,7 +78,7 @@
     const marker = document.createComment('expanded mechanism position');
     target.before(marker);
     active = {target, opener, marker, kind, x: window.scrollX, y: window.scrollY};
-    title.textContent = kind === 'diagram' ? '迁移流与字段布局' : (target.querySelector('h3')?.textContent || '交互演示');
+    title.textContent = target.querySelector('[data-mechanism-title], h3')?.textContent || (kind === 'diagram' ? '图解' : '交互演示');
     dialog.dataset.kind = kind;
     zoom.hidden = kind !== 'diagram';
     savedOverflow = document.documentElement.style.overflow;
@@ -86,19 +86,19 @@
     // Keep article typography without duplicating the interactive DOM or its IDs.
     parent.append(dialog);
     if (kind === 'diagram') {
-      scale = 1; mode = 'manual';
+      scale = 1; mode = 'fit';
       image = target.querySelector('img').cloneNode(false);
       image.removeAttribute('id'); image.removeAttribute('loading');
       image.className = 'mechanism-viewer-image'; image.draggable = false;
       stage.append(image);
       const openedImage = image;
-      image.addEventListener('load', () => { if (image === openedImage) resizeImage('manual', 1); }, {once: true});
+      image.addEventListener('load', () => { if (image === openedImage) resizeImage(mode, scale); }, {once: true});
     } else {
       target.classList.add('is-expanded'); stage.append(target);
     }
     dialog.showModal();
     viewport.scrollTop = 0; viewport.scrollLeft = 0;
-    if (image) resizeImage('manual', 1);
+    if (image) resizeImage('fit');
     pauseForLayout();
     close.focus({preventScroll: true});
   }

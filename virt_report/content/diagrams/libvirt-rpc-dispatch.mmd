@@ -1,0 +1,19 @@
+sequenceDiagram
+  accTitle: 一次 virDomainGetInfo 调用的往返
+  accDescr: 客户端公开 API 经 remote 驱动编码请求；服务端 RPC 分发到 QEMU 驱动，按 UUID 查找对象并读取信息；结果携带相同 serial 返回给对应等待调用。
+  participant A as 应用与客户端 API
+  participant C as remote 驱动与 RPC 客户端
+  participant S as 守护进程 RPC 分发
+  participant D as 服务端 QEMU 驱动
+  A->>C: virDomainGetInfo(domain, info)
+  C->>C: 编码 domain 标识，分配 serial=42
+  C->>S: CALL / proc=16 / serial=42
+  S->>S: 定位程序与过程，认证，XDR 解码
+  S->>D: 服务端 virDomainGetInfo → qemuDomainGetInfo
+  D->>D: 按 UUID 查找并锁住 virDomainObj
+  D->>D: 对象 ACL；读状态、内存、vCPU、进程 CPU 时间
+  D-->>S: 填充 virDomainInfo，释放对象引用与锁
+  S-->>C: REPLY / OK / serial=42 + XDR 返回值
+  C->>C: prog、vers、serial 匹配等待者，再检查 proc
+  C-->>A: 解码为本地 info，返回 0
+  Note over C,S: 异步 MESSAGE 经另一条分发路径处理，不占用普通 API 返回值

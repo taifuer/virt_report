@@ -1,0 +1,19 @@
+sequenceDiagram
+    accTitle: 运行中 PCIe 端点的异步热拔出
+    accDescr: 管理程序请求删除，QEMU 发出插槽注意按钮事件。客户机停用设备后关闭插槽，QEMU 执行 unrealize、unparent 与最终引用回收，发送设备删除完成事件。命令响应与最终完成分离。
+    participant M as 管理程序
+    participant Q as QEMU QMP / qdev
+    participant P as Root Port 插槽
+    participant G as 客户机热插拔与设备驱动
+    M->>Q: device_del net1
+    Q->>P: unplug_request，设置 pending
+    P-->>G: 注意按钮事件 / 插槽中断
+    Q-->>M: 请求受理，return {}
+    Note over M,G: 图示一种常见顺序；响应与完成事件先后不固定
+    G->>G: 停止设备使用，释放客户机资源
+    G->>P: 写 Slot Control：PCC / PIC 均 off
+    P->>Q: unplug → qdev_unrealize
+    Q->>Q: object_unparent，释放引用
+    Note over Q,P: 插槽不再有设备；最终回收时发事件
+    Q-->>M: DEVICE_DELETED，device = net1
+    M->>Q: netdev_del n1，清理独立后端

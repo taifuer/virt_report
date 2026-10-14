@@ -1,0 +1,26 @@
+flowchart TB
+  accTitle: 区域修改、视图发布与 KVM 更新
+  accDescr: 持有 BQL 时在内存事务中修改区域，最外层提交生成 FlatView 和 dispatch。框架比较新旧区间，通知监听器并发布 current_map，随后监听器 commit 更新 KVM 内存槽。读者通过 RCU 使用视图，旧视图在不再使用后回收。
+  subgraph CONFIG["配置更新 · 持有 BQL"]
+    edit["调整区域、别名或启用状态"] --> commit["最外层 transaction_commit"]
+    commit --> build["展开可见区间<br/>生成 FlatView 与 dispatch"]
+    build --> diff["比较新旧区间<br/>region_del / region_add 等通知"]
+    diff --> publish["发布 AddressSpace.current_map"]
+  end
+  diff -.-> pending["KVM listener<br/>缓存删除和新增项"]
+  publish --> listeners["监听器 commit"]
+  pending --> listeners
+  listeners --> slots["KVM：先移除旧槽，再加入新槽<br/>必要时协调加速器访问"]
+  subgraph ACCESS["运行时访问"]
+    reader["进入 RCU 读侧临界区"] --> view["读取 current_map<br/>按 dispatch 查找 section"]
+    view --> access["RAM 访问或 MMIO 回调"]
+    access --> leave["退出 RCU 临界区"]
+  end
+  publish -.-> view
+  publish --> old["旧视图引用释放<br/>经 RCU 延迟销毁"]
+  classDef layout fill:#e4f1ec,stroke:#438575,color:#173e34;
+  classDef backend fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef lifecycle fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class edit,commit,build,diff,publish layout;
+  class pending,listeners,slots,reader,view,access,leave backend;
+  class old lifecycle;

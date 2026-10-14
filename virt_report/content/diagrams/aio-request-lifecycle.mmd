@@ -1,0 +1,23 @@
+sequenceDiagram
+    accTitle: 写请求在 IOThread 与 worker 之间的往返
+    accDescr: IOThread 创建写协程并提交线程池任务，协程挂起后线程可处理其他事件。worker 执行阻塞写入，发布结果并调度完成 BH；原 IOThread 恢复协程，调用设备完成函数。
+    participant V as virtio-blk 队列
+    participant I as IOThread A<br/>事件循环与写协程
+    participant W as A 的线程池 worker
+    V->>I: 队列就绪，blk_aio_pwritev
+    activate I
+    I->>I: 创建协程，进入 raw_co_prw
+    I->>W: 入队 handle_aiocb_rw
+    I->>I: yield：保存请求栈，返回事件循环
+    deactivate I
+    Note over I: 可处理其他队列与完成事件
+    activate W
+    W->>W: pwrite：等待文件操作
+    W-->>I: 发布 ret / DONE，调度 completion_bh
+    deactivate W
+    activate I
+    I->>I: 完成 BH → aio_co_wake
+    I->>I: 从 yield 后恢复，返回块层结果
+    I-->>V: 完成回调：status、used、通知
+    deactivate I
+    Note over I,W: worker 不直接执行客户机完成回调

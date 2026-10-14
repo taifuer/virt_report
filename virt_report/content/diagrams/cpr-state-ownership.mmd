@@ -1,0 +1,31 @@
+flowchart TB
+  accTitle: CPR-transfer 的资源与状态交接
+  accDescr: 旧进程和新进程分别创建 QEMU 对象、KVM VM 和 vCPU。CPR 通道把 name 与 id 对应的 fd 交给新进程，两个不同的 fd 和 HVA 可以引用同一共享 RAM。主迁移通道恢复 CPU 和设备状态，客户机执行不能同时在两端进行。
+  subgraph OLD["旧 QEMU 进程"]
+    O["原 QEMU 对象与 KVM VM / vCPU"]
+    OF["ram0：fd 17<br/>HVA 0x7f1000000000"]
+    OS["CPU 寄存器与设备状态"]
+    O --> OF
+    O --> OS
+  end
+  subgraph NEW["新 QEMU 进程"]
+    N["重建 QEMU 对象与 KVM VM / vCPU"]
+    NF["ram0：fd 23<br/>HVA 0x7e2000000000"]
+    NS["加载原执行点的状态"]
+    N --> NF
+    NS --> N
+  end
+  R["同一宿主的共享 RAM 后端<br/>内存内容原地保留"]
+  OF -->|MAP_SHARED| R
+  NF -->|MAP_SHARED| R
+  OF -. "CPR 通道：name + id + SCM_RIGHTS" .-> NF
+  OS -->|main 通道：VMState| NS
+  W["资源引用可重叠<br/>客户机执行权只能属于一端"]
+  O -.-> W
+  N -.-> W
+  classDef process fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef shared fill:#e4f1ec,stroke:#438575,color:#173e34;
+  classDef guard fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class O,OF,OS,N,NF,NS process;
+  class R shared;
+  class W guard;

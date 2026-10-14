@@ -84,23 +84,67 @@ cp .env.example .env
 
 ## 原理文章维护
 
-`mechanisms.html` 按专题组织源码解读，当前“热迁移”专题（`#migration`）包括：
+原理内容按以下三组编排；`mechanisms.html` 在介绍下展示已有文章的专题入口，正文沿用相同顺序：
 
-- `mechanisms/qemu-memory-migration.html`：预拷贝内存迭代、收敛与停机控制。
-- `mechanisms/qemu-migration-stream.html`：迁移流字段、分段与状态恢复。
+| 分组 | 专题顺序 |
+| --- | --- |
+| 虚拟化基础 | CPU 虚拟化 → 内存虚拟化 → 设备与 I/O 虚拟化 → 中断虚拟化 |
+| 关键操作 | 虚拟机启动 → 热迁移 → 热插拔 → 热升级 |
+| 内部机制 | QEMU 内部机制 → Libvirt 内部机制 |
+
+目录只显示已有正文的专题及其主归属篇数，未发布的专题和分组不对读者展示。各文章 URL 保持稳定，跨专题内容使用“相关原理”关联，不重复计数。
+
+当前文章都位于 `mechanisms/`：
+
+- CPU（`#cpu-virtualization`）：`kvm-vcpu-run.html`、`kvm-vcpu-halt.html`、`qemu-tcg.html`，KVM_RUN、HLT 后的等待与唤醒，以及 TCG 指令翻译、TB 缓存与执行循环。
+- 内存（`#memory-virtualization`）：`kvm-ept-fault.html`、`kvm-hugepages.html`、`kvm-dirty-ring.html`，客户机地址映射、EPT 缺页与大页拆分恢复，以及脏页记录、收割与重置。
+- 设备与 I/O（`#device-virtualization`）：`qemu-network-tx.html`、`qemu-vhost-net.html`、`spdk-vhost-user-blk.html`、`qemu-vfio-dma.html`、`qemu-virtio-blk.html`，介绍网络队列、独立存储后端、DMA 转换与隔离，以及块请求和写入持久化。
+- 中断（`#interrupt-virtualization`）：`kvm-virtio-interrupt.html`，队列完成、通知判定、MSI-X 路由与 KVM 中断注入。
+- 启动（`#vm-startup`）：`libvirt-domain-start.html`、`qemu-vm-startup.html`，从管理请求、进程握手到 QEMU 机器初始化和 vCPU 执行。
+- 热迁移（`#migration`）：`qemu-memory-migration.html`、`qemu-migration-stream.html`、`qemu-multifd.html`、`qemu-postcopy.html`；另提供 Dirty Ring 的交叉阅读入口。
+- 热插拔（`#hotplug`）：`qemu-pcie-hotplug.html`、`qemu-virtio-mem.html`，PCIe 插槽与异步移除，以及内存目标容量、客户机上线与块回收。
+- 热升级（`#live-upgrade`）：`qemu-cpr-transfer.html`，同机更新中的共享 RAM、文件描述符与执行权交接。
+- QEMU 内部机制（`#qemu-internals`）：`qemu-qom-device.html`、`qemu-memory-region.html`、`qemu-aio-iothread.html`、`qemu-qcow2.html`，类型与设备生命周期、地址布局与访问分发、异步块处理，以及镜像映射与写时复制。
+- Libvirt 内部机制（`#libvirt-internals`）：`libvirt-rpc.html`，XDR 报文、服务端分发、响应匹配与守护进程边界。
+
+设备接口、后端和 DMA 属于同一条 I/O 路径，合并在一个专题内阅读。原 `#io-virtualization` 锚点仍定位到合并后的专题，文章 URL 不变。
+
+MemoryRegion 交互使用 64 KiB 示例布局，支持别名偏移、优先级、窗口启停和地址查询。virtio-mem 交互用 512 MiB 聚合格子展示目标、实际提供与客户机管理容量，支持回收阻塞、BUSY、回退与重置。两者均保留无 JavaScript 说明，全屏时移动原 DOM，退出后状态保持。
+
+新增交互：halt 时间线可调整事件、轮询预算和调度等待；大页模型展示 2 MiB EPT 叶子与 512 个小页叶子的转换；qcow2 模型比较 L1/L2 查找、两类引用计数、backing 回退和局部写入。SPDK 文章按 25.09 固定提交跟踪本地 NVMe 路径，采用离线架构图与时序图，不需要读者安装 SPDK 或访问外部图表服务。
+
+TCG 交互跟踪翻译块的生成、命中、跳转链接与代码改写后的失效；与 KVM 文章对照 CPU 执行路径。公共 Mermaid 图默认不超过原始尺寸，长图等比缩小；细节可在全屏查看器中缩放。
+
+后续选题按以下顺序补充；这是编排计划，不表示文章已发布：
+
+1. **基础机制**：虚拟时钟、Packed Virtqueue 与通知策略；ARM 选题暂缓。
+2. **存储与设备路径**：virtio-scsi 的请求取消与复位、vDPA 与 SR-IOV；在已有 virtio-blk、SPDK 和网络路径上延伸设备生命周期与硬件卸载。
+3. **在线操作**：CPU 热插拔、块设备在线扩容、快照和备份的一致性；避免重复已介绍的 PCIe 与 virtio-mem 流程。
+4. **内部机制**：Libvirt 守护进程启动及 job / 锁的具体竞争，块图修改与设备复位的同步边界。
+5. **迁移与更新约束**：进一步拆解直通设备状态、后端重连、状态版本兼容及失败恢复；不能从一种 CPR 路径推断任意设备或版本都支持无停机更新。
 
 文章元数据在 `virt_report/content/mechanisms.json`，正文和交互模板在 `render/templates/`，
-共用阅读样式为 `mechanisms.css`，每篇的交互脚本与样式由元数据指定。元数据 `topics` 定义专题，文章 `topic` 引用专题 slug；不展示空专题。内容绑定源码版本与提交，不随日报生成，不调用模型。
+共用阅读样式为 `mechanisms.css`，每篇的交互脚本与样式由元数据指定；纯正文与图表文章可省略 `script` / `stylesheet`，不加载空脚本。元数据 `groups` 定义分组，`topics[].group` 指定分组，文章 `topic` 指定主归属；`topics[].related_articles` 引用关联文章 slug。增加已审核文章后，会自动进入目录并显示篇数。内容绑定源码版本与提交，不随日报生成，不调用模型。
 
 核验实现时读取指定 tag/commit，不切换或覆盖已有源码工作区。交互是明确标注假设的教学模型，不是实际迁移跟踪或性能预测。
 内存迭代演示采用带单位的轮次近似，停机附加开销为明示的示例值，不等同于 QMP 测量结果；
-两种演示都显示源端、传输通道与目的端；传输动画到达后才更新接收状态，支持暂停、后退和重置。
+内存迭代与迁移流演示显示源端、传输通道与目的端；传输动画到达后才更新接收状态，支持暂停、后退和重置。
 右上角可打开全屏演示窗口，退出保留已完成步骤。内存默认 8 GiB，可选 4 / 8 / 16 GiB；带宽、脏页速率与停机目标可调，修改参数后从初始状态重新计算。
 迁移流演示用具体 RAMBlock、页偏移和 section ID 展示字段编码，省略的数据明示为省略，不作为可导入快照或真实抓包。
 `migration-wire-layout.svg` 是手工维护的字段布局图，与 Mermaid 时序图分开管理；修改标志或字段时需同时核对对应固定版本源码和回归测试。
 字段布局图在正文内完整等比显示，点击后可适应窗口、适应宽度或手动缩放；公共查看器为 `mechanism-viewer.js` / `.css`，无 JavaScript 时仍可查看完整图与原始 SVG。
-更新后运行 `pytest`；安装 Node 时会同时执行两个交互模型测试，也可单独运行
-`node --test tests/test_migration_model.cjs tests/test_migration_stream.cjs`。
+MultiFD 演示可改变通道数与慢通道，分别观察发送侧完成和目的端接收屏障；演示步数不表示实测时间。
+网卡演示固定 QEMU 后端，切换设备接口并逐步观察描述符、通知、数据和完成处理。
+virtio 模式显示 desc / avail / used、缓冲区地址及消费位置，可选择起始索引 0 / 3 / 65535 检查环槽与 16 位计数器回绕；完成后旧环项保留，缓冲区由驱动回收。
+vhost 演示切换后端，分别显示初始化控制、队列通知、报文数据与完成通知；Dirty Ring 演示允许逐页写入、收割和重置，检查重新保护与迁移读取的先后关系。
+VFIO 演示显示映射请求字段与硬件页表关系，缺失或只读映射下的非法 DMA 不产生成功完成；后拷贝演示区分缺页事件、请求、页面安装和线程唤醒。
+新增文章使用正式机制名称作为标题，版本信息放在前言；正文依次介绍原理、处理流程、关键源码与设计演进，避免对话式说明和未经实测的性能结论。
+每篇需展示解释机制所必需的数据结构：关键字段、读写角色、对象关联与操作前后的变化，并区分本地对象和线格式、地址与数据、共享状态和私有游标。结构表与交互应使用一致的示例值；已有文章也按这一要求检查。
+更新后运行 `pytest`；安装 Node 时会同时执行交互模型测试，也可单独运行：
+
+```bash
+node --test tests/test_migration_model.cjs tests/test_migration_stream.cjs tests/test_multifd.cjs tests/test_device_tx.cjs tests/test_vhost_path.cjs tests/test_dirty_ring.cjs tests/test_postcopy.cjs tests/test_vfio_dma.cjs tests/test_memory_map.cjs tests/test_virtio_mem.cjs tests/test_halt_poll.cjs tests/test_hugepage_map.cjs tests/test_qcow2_map.cjs
+```
 仅导出原理页面及其资源，不重建历史报告：
 
 ```bash
@@ -112,8 +156,9 @@ cp .env.example .env
 Mermaid 图源保存在 `virt_report/content/diagrams/*.mmd`，已生成的 SVG 随项目分发，
 访问页面不加载外部 CDN，也不需要 Node。修改图源时使用 Mermaid CLI 11.12.0 运行
 `.venv/bin/python scripts/render_mechanism_diagrams.py`，再导出原理页面。
-脚本支持 `--mmdc` 指定工具路径、`--puppeteer-config` 指定本地浏览器；这些只是编辑工具，不是部署依赖。
-正文附有图源和大图入口，窄屏图表在自身区域滚动，不撑宽页面。
+脚本支持 `--mmdc` 指定工具路径、`--puppeteer-config` 指定本地浏览器，以及 `--diagram 图名` 仅重建指定图；这些只是编辑工具，不是部署依赖。生成时检查可访问性说明与本地资源约束，并保存固有尺寸供缩放使用；渲染或校验失败不会覆盖原图。
+正文中的图表完整等比显示，点击“放大查看”后默认适应窗口，可切换适应宽度、100% 或逐级缩放；退出后回到原阅读位置。无 JavaScript 时仍能阅读图片、图源及打开原图。
+对象关联用结构图，跨线程协作用时序图，操作边界用流程图或状态表；不要求每篇都有动画。图表应补充文字难以直观表达的关系，沿用正文中的地址、字段与示例，不重复堆叠同一流程。每份 `.mmd` 需要 `accTitle` 和 `accDescr`，并登记到 `MECHANISM_DIAGRAM_NAMES`；交互演示继续负责可操作的状态变化。
 
 ## 会议内容维护
 

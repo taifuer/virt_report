@@ -7,16 +7,16 @@
   <title>QEMU 迁移流格式与状态恢复 - virt-report</title>
   <meta name="description" content="从流头、内存页记录到 vCPU 与设备状态，逐层解析迁移流的字段、分段和结束标记，说明目的端如何恢复虚拟机状态。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=d7c878e79674">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=d7c878e79674">
-  <link rel="stylesheet" href="../assets/site.css?v=d7c878e79674">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=145f19ec95c5">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=145f19ec95c5">
-<link rel="stylesheet" href="../assets/migration-stream.css?v=145f19ec95c5"></head>
+  <link rel="shortcut icon" href="../favicon.ico?v=7b86b63d1fd5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=7b86b63d1fd5">
+  <link rel="stylesheet" href="../assets/site.css?v=7b86b63d1fd5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c084ccad2981">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c084ccad2981">
+<link rel="stylesheet" href="../assets/migration-stream.css?v=c084ccad2981"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=d7c878e79674" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=7b86b63d1fd5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -50,8 +50,8 @@
     <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">前言</a></li><li><a href="#structure">整体结构</a></li><li><a href="#headers">流头、分段与边界</a></li><li><a href="#ram-records">内存记录的编码</a></li><li><a href="#device-state">处理器与设备状态</a></li><li><a href="#loading">接收解析与恢复执行</a></li><li><a href="#evolution">格式的演进与兼容</a></li><li><a href="#sources">参考资料</a></li></ol></nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
   <h2>前言</h2>
-  <p>QEMU 将内存、处理器和设备状态组织为迁移流，由目的端顺序解析和装载。外层记录标识状态处理器，内部载荷保存内存布局、页面或设备字段。理解这两层格式及各自的结束标记，才能把发送顺序、接收解析和最终恢复执行对应起来。</p>
-<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p>  <p>以下以 x86 / KVM、普通 RAM 的单流预拷贝为主，机器与设备已在目的端创建，存储另行准备。内存为什么反复传输、何时进入停机阶段，见<a href="qemu-memory-migration.html">《QEMU 预拷贝迁移的内存迭代与停机控制》</a>；这里沿一条流分析格式、解析与恢复。</p>
+  <p>QEMU 将内存、处理器和设备状态组织为迁移流，由目的端顺序解析和装载。外层记录标识状态处理器，内部载荷保存内存布局、页面或设备字段。本文按发送顺序介绍迁移流的分层格式、结束标记及目的端的状态恢复过程。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p>  <p>以下以 x86 / KVM、普通 RAM 的单流预拷贝为例，机器与设备已在目的端创建，存储另行准备。内存重传和停机切换条件见<a href="qemu-memory-migration.html">《QEMU 预拷贝迁移的内存迭代与停机控制》</a>。</p>
 </section>
 
 <section id="structure" class="mechanism-section">
@@ -59,17 +59,17 @@
   <p><code>QEMUFile</code>提供顺序读写接口；迁移框架在流中标识状态处理器，RAM、CPU 和设备各自负责载荷。左侧按发送顺序排列整条迁移流，右侧展开相应记录的字段。RAM 载荷内部的 EOS、section 尾部的 footer 和整条状态流的 EOF 属于不同层次。</p>
   <figure class="mechanism-wire-diagram" data-mechanism-view="diagram">
     <div class="mechanism-view-heading">
-      <span>迁移流与字段布局</span>
+      <span data-mechanism-title>迁移流与字段布局</span>
       <button type="button" data-mechanism-expand aria-label="放大查看 QEMU 迁移流与字段布局" hidden>放大查看</button>
     </div>
     <div class="mechanism-wire-scroll" role="region" aria-label="迁移流与字段布局全景图">
-      <img src="../assets/migration-wire-layout.svg?v=145f19ec95c5" alt="QEMU 迁移流全景：左侧从流头到 EOF 的连续记录，连线指向右侧配置、RAM、CPU 与设备状态的字段布局；RAM EOS 和 section footer 分层标注。" loading="lazy">
+      <img src="../assets/migration-wire-layout.svg?v=c084ccad2981" alt="QEMU 迁移流全景：左侧从流头到 EOF 的连续记录，连线指向右侧配置、RAM、CPU 与设备状态的字段布局；RAM EOS 和 section footer 分层标注。" loading="lazy">
     </div>
-    <figcaption>点击放大查看字段细节。字段宽度不按字节数等比绘制。<a href="../assets/migration-wire-layout.svg?v=145f19ec95c5" target="_blank" rel="noopener">打开原图</a></figcaption>
+    <figcaption>点击放大查看字段细节。字段宽度不按字节数等比绘制。<a href="../assets/migration-wire-layout.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
   </figure>
   <p>下面以 <code>pc.ram</code>及其中四个页面为例，观察同一组数据从源端编码、经过迁移通道，到目的端解析和更新的过程。字段条与十六进制内容对应当前记录；页面再次写入后，可比较两端版本的变化。</p>
 <section class="stream-lab" data-stream-lab data-mechanism-view="lab" aria-labelledby="stream-lab-title">
-  <div class="mechanism-view-heading"><h3 id="stream-lab-title">从源端写出，到目的端恢复</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <div class="mechanism-view-heading"><h3 id="stream-lab-title">迁移流的发送与装载</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
   <p>跟踪同一个 <code>pc.ram</code> 中的四页，观察页内容重传、最终同步和 CPU / 设备状态装载。点击“下一步”，记录沿通道到达后才更新目的端。</p>
   <div class="stream-controls" data-stream-controls hidden role="group" aria-label="迁移流演示控制"><button type="button" data-stream-back>上一步</button><button type="button" data-stream-next>下一步</button><button type="button" data-stream-play aria-pressed="false">播放</button><button type="button" data-stream-reset>重置</button></div>
   <p class="stream-status" data-stream-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
@@ -109,12 +109,12 @@
 <section class="stream-panel" data-stream-panel="header" aria-labelledby="stream-heading-header"><h4 id="stream-heading-header">01 · 流头<small>8 B · 无 section ID</small></h4>    <div class="stream-fields-scroll" tabindex="0" role="region" aria-label="按写入顺序排列的字段，可横向滚动"><div class="stream-fields"><span class="stream-field" data-kind="marker"><code>MAGIC</code><small>BE32 · 4 B</small></span><span class="stream-field" data-kind="header"><code>VERSION = 3</code><small>BE32 · 4 B</small></span></div></div>
     <pre class="stream-hex"><code>51 45 56 4d | 00 00 00 03
     QEVM   | 流格式版本 3</code></pre>
-    <p class="stream-process">源端 <code>qemu_savevm_state_header()</code> 写出；目的端 <code>qemu_loadvm_state_header()</code> 校验。版本 3 是流格式版本，不是 QEMU 发行版本。</p>
+    <p class="stream-process">源端 <code>qemu_savevm_state_header()</code> 写出；目的端 <code>qemu_loadvm_state_header()</code> 校验。版本 3 标识流格式，独立于 QEMU 发行版本。</p>
 </section><section class="stream-panel" data-stream-panel="configuration" aria-labelledby="stream-heading-configuration"><h4 id="stream-heading-configuration">02 · 配置摘要<small>pc-q35-10.2 · 名称 11 B</small></h4>    <div class="stream-fields-scroll" tabindex="0" role="region" aria-label="按写入顺序排列的字段，可横向滚动"><div class="stream-fields"><span class="stream-field" data-kind="marker"><code>CONFIG = 07</code><small>1 B</small></span><span class="stream-field" data-kind="header"><code>N = 11</code><small>BE32 · 4 B</small></span><span class="stream-field" data-kind="payload"><code>pc-q35-10.2</code><small>11 B</small></span></div></div>
     <pre class="stream-hex"><code>07 | 00 00 00 0b | 70 63 2d 71 33 35 2d 31 30 2e 32
 type | N = 11     | p  c  -  q  3  5  -  1  0  .  2</code></pre>
-    <p>这里选择不带条件子段的配置示例。它没有 section ID，也没有 section footer；若页大小、能力或 UUID 校验需要额外信息，会追加相应 VMState 子段。</p>
-    <p class="stream-process">源端序列化 <code>vmstate_configuration</code>；目的端核对已创建机器的类型与兼容性，而不是根据这一名称重新创建全部设备。</p>
+    <p>本例配置未使用条件子段，也没有 section ID 或 section footer；若页大小、能力或 UUID 校验需要额外信息，会追加相应 VMState 子段。</p>
+    <p class="stream-process">源端序列化 <code>vmstate_configuration</code>；目的端核对已创建机器的类型与兼容性，机器与设备对象已在迁入前准备。</p>
 </section><section class="stream-panel" data-stream-panel="ram-start" aria-labelledby="stream-heading-ram-start"><h4 id="stream-heading-ram-start">03 · RAM START<small>section ID = 1 · ram / instance 0 / version 4</small></h4>    <div class="stream-fields-scroll" tabindex="0" role="region" aria-label="按写入顺序排列的字段，可横向滚动"><div class="stream-fields"><span class="stream-field" data-kind="marker"><code>START = 01</code><small>1 B</small></span><span class="stream-field" data-kind="header"><code>ID = 1</code><small>BE32</small></span><span class="stream-field" data-kind="header"><code>ram</code><small>1 B 长度 + 3 B</small></span><span class="stream-field" data-kind="header"><code>0 / 4</code><small>实例 / 版本 · 各 BE32</small></span><span class="stream-field" data-kind="payload"><code>pc.ram 布局</code><small>总量、块名、块长度</small></span><span class="stream-field" data-kind="marker"><code>RAM EOS</code><small>BE64 · 0x10</small></span><span class="stream-field" data-kind="marker"><code>FOOTER + ID</code><small>7e + BE32(1)</small></span></div></div>
     <pre class="stream-hex"><code>01 | 00 00 00 01 | 03 72 61 6d | 00 00 00 00 | 00 00 00 04
      section ID 1   "ram"         instance 0    version 4
@@ -147,11 +147,11 @@ a2 a2 … [共 4096 B]           # 新内容 A2 覆盖目的端 A1
 7e 00 00 00 01                 # section footer</code></pre>
     <p>块名沿用上一批的 <code>pc.ram</code>。目的端把偏移 0 的 A1 替换为 A2，C2 仍未发送；源端随后又将 B1 写成 B2。流中没有单独的“第几轮”字段，也不会因为收到 PART 就运行客户机。</p>
 </section><section class="stream-panel" data-stream-panel="stop" aria-labelledby="stream-heading-stop"><h4 id="stream-heading-stop">06 · 暂停源端客户机<small>本地操作 · 没有对应的网络字节</small></h4>    <p><code>migration_stop_vm()</code> 停止源端执行。从这里开始计算停机阶段；源端不再产生本例中的 B、C 新版本，但目的端仍只有 B1 / C1，需要接收最终同步。</p>
-    <p class="stream-process">这不是一个 STOP section，也没有“暂停标记”写入迁移流。演示只改变源端执行状态，不发送记录块。</p>
+    <p class="stream-process">暂停在源端本地完成，迁移流中没有对应的 STOP section；这一步只改变执行状态。</p>
 </section><section class="stream-panel" data-stream-panel="switchover" aria-labelledby="stream-heading-switchover"><h4 id="stream-heading-switchover">07 · 切换阶段通知<small>COMMAND · 不带 section footer</small></h4>    <div class="stream-fields-scroll" tabindex="0" role="region" aria-label="按写入顺序排列的字段，可横向滚动"><div class="stream-fields"><span class="stream-field" data-kind="marker"><code>COMMAND = 08</code><small>1 B</small></span><span class="stream-field" data-kind="header"><code>SWITCHOVER_START = 11</code><small>BE16 · 2 B</small></span><span class="stream-field" data-kind="header"><code>长度 = 0</code><small>BE16 · 2 B</small></span></div></div>
     <pre class="stream-hex"><code>08 | 00 0b | 00 00
 type | 命令 11 | 载荷长度 0</code></pre>
-    <p><code>send-switchover-start</code> 在此版本默认开启。接收端分派切换回调；通知不替代最终内存与设备状态，也不是让目的端立即启动的命令。</p>
+    <p><code>send-switchover-start</code> 在此版本默认开启。接收端分派切换回调，随后继续装载最终内存与设备状态；启动检查在装载收尾阶段进行。</p>
 </section><section class="stream-panel" data-stream-panel="ram-end" aria-labelledby="stream-heading-ram-end"><h4 id="stream-heading-ram-end">08 · 最终内存同步<small>END · B2 / C2</small></h4>    <div class="stream-fields-scroll" tabindex="0" role="region" aria-label="按写入顺序排列的字段，可横向滚动"><div class="stream-fields"><span class="stream-field" data-kind="marker"><code>END + ID</code><small>03 + BE32(1)</small></span><span class="stream-field" data-kind="payload"><code>B2</code><small>offset / flags / 4096 B</small></span><span class="stream-field" data-kind="payload"><code>C2</code><small>offset / flags / 4096 B</small></span><span class="stream-field" data-kind="marker"><code>RAM EOS</code><small>BE64 · 0x10</small></span><span class="stream-field" data-kind="marker"><code>FOOTER + ID</code><small>7e + BE32(1)</small></span></div></div>
     <pre class="stream-hex"><code>03 00 00 00 01                # END 是外层记录开头，不在载荷末尾
 00 00 00 00 00 00 10 28        # B2: offset 0x1000 | PAGE | CONTINUE
@@ -160,8 +160,8 @@ b2 b2 … [共 4096 B]
 c2 c2 … [共 4096 B]
 00 00 00 00 00 00 00 10        # RAM EOS 结束本次 RAM 载荷
 7e 00 00 00 01                 # footer 校验 section ID</code></pre>
-    <p class="stream-process"><code>ram_save_complete()</code> 在最后一次脏页同步后发送余页。目的端现在得到 A2 / B2 / C2 / 0，但 CPU 与设备状态仍未装载，因此内存一致不等于可以运行。</p>
-</section><section class="stream-panel" data-stream-panel="cpu-sync" aria-labelledby="stream-heading-cpu-sync"><h4 id="stream-heading-cpu-sync">09 · 同步 vCPU 寄存器<small>源端本地操作 · 非迁移流记录</small></h4>    <p><code>cpu_synchronize_all_states()</code> 将暂停后的 KVM vCPU 状态同步到 QEMU CPU 对象。本例选取 <code>RAX = 0x2a</code>、<code>RIP = 0x1000</code>；这一步不是把寄存器发送到目的端，传输发生在后面的 FULL 中。</p>
+    <p class="stream-process"><code>ram_save_complete()</code> 在最后一次脏页同步后发送余页。目的端现在得到 A2 / B2 / C2 / 0，继续等待 CPU 与设备状态装载。</p>
+</section><section class="stream-panel" data-stream-panel="cpu-sync" aria-labelledby="stream-heading-cpu-sync"><h4 id="stream-heading-cpu-sync">09 · 同步 vCPU 寄存器<small>源端本地操作 · 非迁移流记录</small></h4>    <p><code>cpu_synchronize_all_states()</code> 将暂停后的 KVM vCPU 状态同步到 QEMU CPU 对象。本例选取 <code>RAX = 0x2a</code>、<code>RIP = 0x1000</code>；这些寄存器值随后随 CPU FULL 记录传输。</p>
 </section><section class="stream-panel" data-stream-panel="cpu-full" aria-labelledby="stream-heading-cpu-full"><h4 id="stream-heading-cpu-full">10 · CPU FULL<small>section ID = 2 · cpu / instance 0 / version 12</small></h4>    <div class="stream-fields-scroll" tabindex="0" role="region" aria-label="按写入顺序排列的字段，可横向滚动"><div class="stream-fields"><span class="stream-field" data-kind="marker"><code>FULL = 04</code><small>1 B</small></span><span class="stream-field" data-kind="header"><code>ID = 2</code><small>BE32</small></span><span class="stream-field" data-kind="header"><code>cpu</code><small>1 B 长度 + 3 B</small></span><span class="stream-field" data-kind="header"><code>0 / 12</code><small>实例 / 版本 · 各 BE32</small></span><span class="stream-field" data-kind="payload"><code>寄存器、段、FPU…</code><small>VMState 载荷</small></span><span class="stream-field" data-kind="marker"><code>FOOTER + ID</code><small>7e + BE32(2)</small></span></div></div>
     <pre class="stream-hex"><code>04 | 00 00 00 02 | 03 63 70 75 | 00 00 00 00 | 00 00 00 0c
      section ID 2   "cpu"         instance 0    version 12
@@ -170,7 +170,7 @@ c2 c2 … [共 4096 B]
 00 00 00 00 00 00 10 00        # env.eip / RIP = 0x1000
 … [eflags、FPU、段寄存器等剩余字段和条件子段]
 7e 00 00 00 02                 # section footer</code></pre>
-    <p><code>vmstate_x86_cpu</code> 规定字段顺序和长度，并非“寄存器名称 + 值”的自描述字典。目的端按相同版本的字段表装载 CPU 对象，此时仍不执行 vCPU。</p>
+    <p><code>vmstate_x86_cpu</code> 规定字段顺序和长度，流中只保存相应编码值。目的端按支持的状态版本与字段表装载 CPU 对象，此时仍不执行 vCPU。</p>
 </section><section class="stream-panel" data-stream-panel="device-full" aria-labelledby="stream-heading-device-full"><h4 id="stream-heading-device-full">11 · i8259 FULL<small>section ID = 3 · 主 PIC instance 0x20 / version 1</small></h4>    <div class="stream-fields-scroll" tabindex="0" role="region" aria-label="按写入顺序排列的字段，可横向滚动"><div class="stream-fields"><span class="stream-field" data-kind="marker"><code>FULL = 04</code><small>1 B</small></span><span class="stream-field" data-kind="header"><code>ID = 3</code><small>BE32</small></span><span class="stream-field" data-kind="header"><code>i8259</code><small>1 B 长度 + 5 B</small></span><span class="stream-field" data-kind="header"><code>0x20 / 1</code><small>实例 / 版本 · 各 BE32</small></span><span class="stream-field" data-kind="payload"><code>PIC 字段</code><small>16 × UINT8</small></span><span class="stream-field" data-kind="marker"><code>FOOTER + ID</code><small>7e + BE32(3)</small></span></div></div>
     <pre class="stream-hex"><code>04 | 00 00 00 03 | 05 69 38 32 35 39 | 00 00 00 20 | 00 00 00 01
      section ID 3   "i8259"             instance 0x20 version 1
@@ -179,19 +179,19 @@ c2 c2 … [共 4096 B]
 00 00 00 00                   # special_mask / init_state / auto_eoi / rotate_on_auto_eoi
 00 00 00 00                   # special_fully_nested_mode / init4 / single_mode / elcr
 7e 00 00 00 03                 # section footer（ltim 子段在本例不出现）</code></pre>
-    <p>字段依据 <code>vmstate_pic_common</code> 排列，各占 1 B。<code>IRR = 01</code> 表示存在待处理中断，不能只复制内存而丢弃设备执行状态。主 PIC 的 legacy instance ID 取 I/O 基址 <code>0x20</code>。</p>
-    <p>本例只展开一个 PIC。实际机器还有更多设备 FULL，CPU 与设备记录的先后取决于注册顺序，不能据此推断所有机器都先 CPU、后 PIC。</p>
+    <p>字段依据 <code>vmstate_pic_common</code> 排列，各占 1 B。<code>IRR = 01</code> 表示存在待处理中断，目的端通过该状态继续处理尚未完成的中断请求。主 PIC 的 legacy instance ID 取 I/O 基址 <code>0x20</code>。</p>
+    <p>本例只展开一个 PIC。实际机器还会保存其他设备 FULL，CPU 与设备记录的次序取决于处理器注册顺序。</p>
 </section><section class="stream-panel" data-stream-panel="eof" aria-labelledby="stream-heading-eof"><h4 id="stream-heading-eof">12 · 主状态流结束<small>EOF · 单字节 00</small></h4>    <div class="stream-fields-scroll" tabindex="0" role="region" aria-label="按写入顺序排列的字段，可横向滚动"><div class="stream-fields"><span class="stream-field" data-kind="marker"><code>EOF = 00</code><small>1 B</small></span></div></div>
     <pre class="stream-hex"><code>00                           # 退出外层状态记录循环</code></pre>
-    <p><code>qemu_loadvm_state_main()</code> 读到 EOF 后退出分发循环。它不是 TCP 关闭标记，也不是客户机启动指令；目的端还需完成装载收尾、运行状态与存储检查。</p>
+    <p><code>qemu_loadvm_state_main()</code> 读到 EOF 后退出分发循环，目的端继续完成装载收尾、运行状态与存储检查。连接关闭和客户机启动由各自的后续流程处理。</p>
 </section><section class="stream-panel" data-stream-panel="description" aria-labelledby="stream-heading-description"><h4 id="stream-heading-description">13 · VM Description<small>可选 · EOF 后的诊断描述</small></h4>    <div class="stream-fields-scroll" tabindex="0" role="region" aria-label="按写入顺序排列的字段，可横向滚动"><div class="stream-fields"><span class="stream-field" data-kind="marker"><code>VMDESC = 06</code><small>1 B</small></span><span class="stream-field" data-kind="header"><code>JSON 长度 N</code><small>BE32 · 4 B</small></span><span class="stream-field" data-kind="payload"><code>JSON</code><small>N B</small></span></div></div>
     <pre class="stream-hex"><code>06 | [N 的 4 B 大端编码] | 7b … 7d
 type | JSON 字节数        | { … }
 内容形如 {"page_size":4096,"devices":[…]}</code></pre>
-    <p>实际 N 由完整设备字段描述的 JSON 字节数决定，不能用这里的省略文本计算。接收端按长度读完诊断描述；JSON 不替代 CPU / 设备状态，也不参与重新创建整台机器。</p>
+    <p>实际 N 由完整设备字段描述的 JSON 字节数决定，上述省略文本只表示结构。接收端按长度读完诊断描述；CPU 与设备恢复使用前面已经装载的二进制状态。</p>
 </section><section class="stream-panel" data-stream-panel="restore" aria-labelledby="stream-heading-restore"><h4 id="stream-heading-restore">14 · 目的端恢复执行<small>装载成功且允许自动启动的分支</small></h4>    <p>恢复的 CPU 对象同步到 KVM，设备装载与存储激活检查通过，保存的运行状态和 <code>autostart</code> 允许执行后，目的端才调用 <code>vm_start()</code>。此时目的端使用 A2 / B2 / C2 / 0、RAX / RIP 及 PIC 状态继续运行。</p>
     <p>源端保持停止并进入迁移完成状态，不能与目的端同时执行同一虚拟机。若禁用自动启动或保存的是暂停状态，成功迁入也可以保持暂停。</p>
-</section>  <h4>同一条流，按字节顺序连起来</h4>
+</section>  <h4>完整迁移流的字段示例</h4>
   <p class="stream-note">下列各行依次相接；竖线与注释只用于分组，不属于传输字节。省略号所在处有实际载荷，不能跳过；暂停与 CPU 同步是本地操作，不插入额外标记。</p>
   <pre class="stream-hex" data-stream-complete-example><code>51 45 56 4d 00 00 00 03                                       # 流头
 07 00 00 00 0b 70 63 2d 71 33 35 2d 31 30 2e 32                # CONFIG
@@ -229,30 +229,30 @@ type | JSON 字节数        | { … }
 
 <section id="headers" class="mechanism-section">
   <h2>流头、分段与边界</h2>
-  <h3>流格式版本不等于设备状态版本</h3>
-  <p>流头是两个大端 32 位整数：<code>QEMU_VM_FILE_MAGIC = 0x5145564d</code>与<code>QEMU_VM_FILE_VERSION = 3</code>，完整字节为 <code>51 45 56 4d 00 00 00 03</code>。前者是 magic，后者是流格式版本。每个 CPU、RAM 或设备处理器还拥有自己的状态版本，解决各自字段演进的问题，两者不能混用。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.h#L17-L30">格式常量</a></p>
-  <p>默认随后写入 <code>CONFIGURATION 0x07</code>：机器名称长度为 BE32，名称本身按字节写入，不带终止 NUL；条件子段补充页大小、能力等兼容性信息。这不是虚拟机定义，目的端不能只凭它创建完整设备。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.c#L541-L560">配置字段</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.c#L1285-L1317">发送入口</a></p>
+  <h3>流头与配置摘要</h3>
+  <p>流头是两个大端 32 位整数：<code>QEMU_VM_FILE_MAGIC = 0x5145564d</code>与<code>QEMU_VM_FILE_VERSION = 3</code>，完整字节为 <code>51 45 56 4d 00 00 00 03</code>。前者是 magic，后者是流格式版本。各 CPU、RAM 或设备处理器另有独立的状态版本，用于管理各自字段的兼容性。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.h#L17-L30">格式常量</a></p>
+  <p>默认随后写入 <code>CONFIGURATION 0x07</code>：机器名称长度为 BE32，名称本身按字节写入，不带终止 NUL；条件子段补充页大小、能力等兼容性信息。目的端用这些字段检查已创建的机器，完整机器与设备配置仍需在迁入前准备。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.c#L541-L560">配置字段</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.c#L1285-L1317">发送入口</a></p>
   <h3>两种 section 头</h3>
   <p>外层类型常量以 <code>QEMU_VM_SECTION_</code>为前缀：<code>START</code>、<code>PART</code>、<code>END</code>、<code>FULL</code>分别为 <code>0x01</code>至 <code>0x04</code>；<code>QEMU_VM_SECTION_FOOTER</code>为 <code>0x7e</code>。图表使用简称，源码可按完整宏名查找。</p>
-  <table><thead><tr><th>记录</th><th>线上字段，按顺序</th></tr></thead><tbody>
+  <table><thead><tr><th>记录</th><th>流中的字段，按顺序</th></tr></thead><tbody>
     <tr><td>START / FULL</td><td>类型 1 B → section ID 4 B → 名称长度 1 B → 名称 N B → 实例 ID 4 B → 状态版本 4 B</td></tr>
     <tr><td>PART / END</td><td>类型 1 B → section ID 4 B</td></tr>
     <tr><td>Section Footer</td><td><code>0x7e</code> 1 B → section ID 4 B</td></tr>
   </tbody></table>
-  <p>这些 4 字节整数均为大端。<code>START</code>建立可迭代处理器的关联，<code>PART/END</code>只引用 section ID；<code>FULL</code>一次传输一个处理器的完整状态。名称和实例决定目的端匹配哪个已注册对象，section ID 则是本次流中的引用，不是设备永久编号。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.c#L1002-L1032">头与 footer 的实现</a></p>
+  <p>这些 4 字节整数均为大端。<code>START</code>建立可迭代处理器的关联，<code>PART/END</code>只引用 section ID；<code>FULL</code>一次传输一个处理器的完整状态。名称和实例用于匹配目的端已注册的对象，section ID 的引用范围限定在本次迁移流中。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.c#L1002-L1032">头与 footer 的实现</a></p>
   <p>例如假设 RAM 的 section ID 为 1，其 START 头为：</p>
   <pre><code>01                 # SECTION_START
 00 00 00 01        # section ID（本例取 1）
 03 72 61 6d        # 名称长度 3；"ram"
 00 00 00 00        # instance ID = 0
 00 00 00 04        # RAM 状态版本 = 4</code></pre>
-  <p>默认每次 START、PART、END、FULL 的载荷之后都有 5 字节 footer。它用于核对处理器是否准确消费载荷，<strong>不是可以扫描寻找的分隔符</strong>：页面内容本身也可能出现 <code>0x7e</code>。正确做法是先按处理器格式读完载荷，再校验 footer 的标记和 ID。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/options.c#L88-L99">默认设置</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.c#L2553-L2594">footer 校验</a></p>
+  <p>默认每次 START、PART、END、FULL 的载荷之后都有 5 字节 footer，用于核对处理器是否准确消费载荷。接收端按处理器格式读完载荷后，再校验 footer 的标记和 ID。由于页面内容本身也可能出现 <code>0x7e</code>，扫描该字节无法确定载荷边界。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/options.c#L88-L99">默认设置</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.c#L2553-L2594">footer 校验</a></p>
 </section>
 
 <section id="ram-records" class="mechanism-section">
   <h2>内存记录的编码</h2>
   <h3>布局先于页面</h3>
-  <p><code>ram_save_setup()</code>先写 BE64 的“总 RAM 字节数 OR <code>MEM_SIZE 0x004</code>”，随后逐块写名称长度（1 B）、名称、块长度（BE64）。目的端用块名寻找本机 RAMBlock，并按长度累计扣减总量，读完布局后遇到 RAM EOS。块名不是宿主进程地址，页面也通过“块＋块内偏移”定位。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c#L3114-L3158">布局发送</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c#L4265-L4291">布局接收</a></p>
+  <p><code>ram_save_setup()</code>先写 BE64 的“总 RAM 字节数 OR <code>MEM_SIZE 0x004</code>”，随后逐块写名称长度（1 B）、名称、块长度（BE64）。目的端用块名寻找本机 RAMBlock，并按长度累计扣减总量，读完布局后遇到 RAM EOS。后续页记录通过“块＋块内偏移”定位，使用目的端对应 RAMBlock 的本地映射。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c#L3114-L3158">布局发送</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c#L4265-L4291">布局接收</a></p>
   <h3>偏移与标志共用八字节</h3>
   <p>页记录的首个 BE64 保存块内页偏移，低位存放标志。普通页用 <code>PAGE 0x008</code>，零页用 <code>ZERO 0x002</code>。首次发送某块或切换 RAMBlock 时，还要发送名称长度和名称；同一块的后续记录可加 <code>CONTINUE 0x020</code>，复用上次块名。</p>
   <pre><code>普通页（4 KiB 页、同一 RAMBlock，偏移 0x2000）：
@@ -266,7 +266,7 @@ type | JSON 字节数        | { … }
 本批 RAM 载荷结束：
 00 00 00 00 00 00 00 10     # RAM_SAVE_FLAG_EOS
 7e [4 字节 section ID]      # 外层 footer，不属于 RAM 载荷</code></pre>
-  <p>普通页长度由目标页大小决定，并无逐页长度字段。零页在此版本只允许零填充，接收端会拒绝非零填充值。<code>CONTINUE</code>表示沿用块名，不表示延续上一页的数据，也不是“继续下一轮迁移”。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.h#L38-L68">标志定义</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c#L523-L542">页头</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c#L1229-L1305">零页与普通页</a></p>
+  <p>普通页长度由目标页大小决定，并无逐页长度字段。零页在此版本只允许零填充，接收端会拒绝非零填充值。<code>CONTINUE</code>只控制块名复用；每条页记录仍携带自己的偏移、编码标志和相应载荷。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.h#L38-L68">标志定义</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c#L523-L542">页头</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c#L1229-L1305">零页与普通页</a></p>
   <table><thead><tr><th>边界</th><th>具体含义</th></tr></thead><tbody>
     <tr><td>RAM EOS · BE64 <code>0x10</code></td><td>RAM 处理器结束本批载荷，返回外层解析器。</td></tr>
     <tr><td>SECTION_END · 类型 <code>0x03</code></td><td>本条外层记录是可迭代处理器的最终阶段，载荷仍在其后。</td></tr>
@@ -278,37 +278,62 @@ type | JSON 字节数        | { … }
 
 <section id="device-state" class="mechanism-section">
   <h2>处理器与设备状态</h2>
-  <p>源端暂停后，默认还会发送切换通知：<code>08 00 0b 00 00</code>，分别是 COMMAND、<code>SWITCHOVER_START = 11</code>和长度 0。接收端据此分派 <code>switchover_start</code>回调；它并不是命令目的端暂停或启动。COMMAND 的长度属于这种记录自身的格式，普通设备 section 仍没有统一载荷长度。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.c#L1075-L1097">命令编码</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/migration.c#L3000-L3031">发送时机</a></p>
+  <p>源端暂停后，默认还会发送切换通知：<code>08 00 0b 00 00</code>，分别是 COMMAND、<code>SWITCHOVER_START = 11</code>和长度 0。接收端据此分派 <code>switchover_start</code>回调，后续仍需完成内存与设备状态装载，才能进入运行状态检查。COMMAND 的长度属于这种记录自身的格式，普通设备 section 仍没有统一载荷长度。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.c#L1075-L1097">命令编码</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/migration.c#L3000-L3031">发送时机</a></p>
   <p>完成 RAM 后，<code>cpu_synchronize_all_states()</code>把 KVM 维护的寄存器状态同步进 QEMU 对象，再保存非迭代状态。CPU、设备及其他处理器按注册顺序写 FULL，不保证“全部 CPU 在前、全部设备在后”。标记 <code>early_setup</code>的状态还可以在初始化阶段提前保存。</p>
-  <p><code>VMStateDescription</code>规定要保存的字段、类型、版本条件以及保存前和装载后回调。x86 CPU 的状态表以这些字段开始：</p>
+  <p><code>VMStateDescription</code>规定要保存的字段、类型、版本条件以及保存前和装载后回调。它与状态处理器和字段定义共同完成序列化：</p>
+  <table><thead><tr><th scope="col">本地结构</th><th scope="col">关键字段</th><th scope="col">如何参与编码与装载</th></tr></thead><tbody>
+    <tr><td><code>SaveStateEntry</code></td><td><code>idstr / instance_id / version_id / section_id / load_section_id</code></td><td>关联状态处理器；接收 START / FULL 后记录源端 section ID，后续 PART / END 可据此找回处理器</td></tr>
+    <tr><td><code>VMStateDescription</code></td><td><code>name / version_id / minimum_version_id / fields / subsections</code></td><td>定义可接受版本、字段列表及条件子段，组织保存与装载回调</td></tr>
+    <tr><td><code>VMStateField</code></td><td><code>offset / size / num / info / flags / version_id</code></td><td>在本地对象中定位字段，由类型的 put / get 函数写入或读取线格式</td></tr>
+  </tbody></table>
+  <p>这些结构描述如何访问对象。<code>offset</code>是本地 C 对象中的字段偏移，不直接作为迁移流中的字段地址发送；接收端根据自己的状态描述找到对应成员。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.c#L237-L253">SaveStateEntry</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/migration/vmstate.h#L172-L232">VMState 字段与描述</a></p>
+  <p>x86 CPU 的状态表以这些字段开始：</p>
   <pre><code>VMSTATE_UINTTL_ARRAY(env.regs, X86CPU, CPU_NB_REGS),
 VMSTATE_UINTTL(env.eip, X86CPU),
 VMSTATE_UINTTL(env.eflags, X86CPU),</code></pre>
-  <p>在 x86-64 目标中，它们使用 64 位目标字宽；后面的 FPU、段寄存器、控制寄存器等继续按类型保存。序列化不是把 C 对象连同指针和填充直接复制出去。接收端必须理解对应状态版本及字段顺序。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/target/i386/machine.c#L1671-L1730">CPU 状态表</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/vmstate.c#L460-L547">字段遍历</a></p>
+  <p>在 x86-64 目标中，它们使用 64 位目标字宽；后面的 FPU、段寄存器、控制寄存器等继续按类型保存。VMState 按声明逐个序列化字段，编码独立于 C 对象中的指针和填充布局。接收端按对应状态版本及字段顺序装载。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/target/i386/machine.c#L1671-L1730">CPU 状态表</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/vmstate.c#L460-L547">字段遍历</a></p>
   <p>i8259 的 <code>irr</code>、<code>imr</code>、<code>isr</code>分别用 UINT8 保存中断请求、屏蔽和服务中状态。virtio 除客户机 RAM 中的队列描述符，还需要交接设备状态、协商特性、<code>last_avail_idx</code>等设备侧处理位置。否则 RAM 虽然一致，设备仍可能从错误位置继续工作。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/intc/i8259_common.c#L165-L195">i8259</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio.c#L3027-L3074">virtio</a></p>
-  <p>条件子段用 <code>SUBSECTION 0x05</code>＋名称长度（1 B）＋名称＋版本（BE32）＋子段载荷表达。它属于相应 VMState 的内部格式，不是另一条顶层 FULL，也不自带统一长度或 section footer。父处理器读取完字段与子段之后，才返回框架校验外层 footer。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/vmstate.c#L611-L712">子段保存与装载</a></p>
+  <p>条件子段用 <code>SUBSECTION 0x05</code>＋名称长度（1 B）＋名称＋版本（BE32）＋子段载荷表达。它嵌在相应 VMState 内部，没有统一长度或独立的 section footer。父处理器读取完字段与子段之后，返回框架校验外层 footer。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/vmstate.c#L611-L712">子段保存与装载</a></p>
 </section>
 
 <section id="loading" class="mechanism-section">
   <h2>接收解析与恢复执行</h2>
-  <p><code>qemu_loadvm_state_main()</code>先取一个外层类型字节。START/FULL 读取名称和实例，找到目的端处理器并检查版本；PART/END 复用之前建立的 section ID 关联。然后进入 RAM、VMState 或旧式设备的专用装载函数。找不到对象或无法理解版本，应当报错，而不是从流中猜出并创建一个设备。</p>
-  <pre><code>qemu_loadvm_state_header     校验流头、装载配置摘要
-qemu_loadvm_state_main       按外层类型分发
-  START/FULL                按名称和实例匹配处理器
-  PART/END                  按 section ID 找回处理器
-    ram_load / vmstate_load 消费其自身格式的载荷
-    check_section_footer    核对尾标记与 section ID
-  COMMAND                   按命令号执行协议处理
-  EOF                       离开主状态记录循环</code></pre>
-  <p>EOF 后可能跟随 <code>VMDESCRIPTION 0x06</code>＋JSON 字节长度（BE32）＋JSON。它供调试工具分析字段，不是恢复虚拟机所需的一份完整描述。普通预拷贝接收端按条件读完它，再完成装载收尾与 CPU 状态同步。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.c#L2597-L2697">处理器匹配</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.c#L3033-L3133">装载收尾</a></p>
+  <p><code>qemu_loadvm_state_main()</code>先取一个外层类型字节。START/FULL 读取名称和实例，找到目的端处理器并检查版本；PART/END 复用之前建立的 section ID 关联。然后进入 RAM、VMState 或旧式设备的专用装载函数。对象缺失或状态版本不受支持时，装载返回错误。</p>
+  <figure class="mechanism-diagram" data-diagram="migration-load-dispatch" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>接收端的处理器分发与恢复边界</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看接收端的处理器分发与恢复边界" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="接收端的处理器分发与恢复边界">
+    <img src="../assets/migration-load-dispatch.svg?v=c084ccad2981" alt="普通预拷贝主路径：处理器按自己的格式消费载荷，返回后检查外层 footer；错误会中断装载。EOF 结束记录循环，后续仍需完成状态同步与运行条件检查。" loading="lazy">
+  </div>
+  <figcaption>普通预拷贝主路径：处理器按自己的格式消费载荷，返回后检查外层 footer；错误会中断装载。EOF 结束记录循环，后续仍需完成状态同步与运行条件检查。 <a href="../assets/migration-load-dispatch.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TD
+    accTitle: 迁移流的处理器分发与恢复边界
+    accDescr: 接收端按外层记录匹配处理器，由处理器消费载荷，再校验 section footer。EOF 结束主记录循环，装载收尾与运行条件检查之后才允许客户机执行。
+    header[&#34;校验 Magic、版本与配置&#34;] --&gt; type{&#34;读取外层类型&#34;}
+    type --&gt;|START / FULL| first[&#34;按名称和实例匹配处理器\n检查版本，记录 load_section_id&#34;]
+    type --&gt;|PART / END| again[&#34;按 load_section_id 查找处理器&#34;]
+    first --&gt; load[&#34;vmstate_load\nRAM、设备回调或声明式字段装载&#34;]
+    again --&gt; load
+    load --&gt; footer[&#34;check_section_footer\n校验尾标记与 section ID&#34;]
+    footer --&gt; type
+    type --&gt;|COMMAND| command[&#34;按命令号处理\n正常继续时读取下一记录&#34;]
+    command --&gt; type
+    type --&gt;|EOF| finish[&#34;离开主记录循环\n读取可选描述，完成装载收尾&#34;]
+    finish --&gt; ready[&#34;同步 CPU 状态\n检查运行状态、autostart 与存储&#34;]
+    ready --&gt; run[&#34;满足条件后 vm_start&#34;]
+</code></pre></details>
+</figure>
+  <p>EOF 后可能跟随 <code>VMDESCRIPTION 0x06</code>＋JSON 字节长度（BE32）＋JSON，供调试工具分析状态字段；实际恢复使用前面已装载的二进制状态。普通预拷贝接收端按条件读完诊断描述，再完成装载收尾与 CPU 状态同步。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.c#L2597-L2697">处理器匹配</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.c#L3033-L3133">装载收尾</a></p>
   <p><code>cpu_synchronize_all_post_init()</code>使恢复的 CPU 对象状态同步到 KVM vCPU；真正开始执行还需要后续运行状态检查。<code>process_incoming_migration_bh()</code>考虑原运行状态、autostart 与存储激活，满足条件才调用 <code>vm_start()</code>。因此 EOF、装载完成和客户机恢复执行是三个不同的时刻。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/migration.c#L814-L866">目的端运行决策</a></p>
 </section>
 
 <section id="evolution" class="mechanism-section">
   <h2>格式的演进与兼容</h2>
   <p>早期设备分别手写保存与装载函数，字段顺序与条件容易在两端产生偏差。2009 年引入的<a href="https://github.com/qemu/qemu/commit/9ed7d6ae0fe7abb444c65caaadb5ef307df82c60">声明式 VMState</a>集中字段类型与读写逻辑，降低重复维护的成本，但旧式处理器仍然存在。已经发布的线格式也不会因此自动兼容：字段顺序、版本号与条件子段都必须谨慎设计。</p>
-  <p>二进制流本身没有为每个字段携带名称；离线分析通常需要对应设备代码。后来增加的<a href="https://github.com/qemu/qemu/commit/8118f0950fc77cce7873002a5021172dd6e040b5">VM Description</a>在 EOF 后附加诊断 JSON，改善可观察性，同时避免重写既有状态编码。它解决的是分析便利性，而非跨任意 QEMU 版本、机器类型和设备组合迁移的问题。</p>
-  <p>MultiFD、后拷贝与设备并行传输进一步改变通道与时序：部分页面不再经过这条主流，执行权交接和同步点也有所不同。但“框架识别处理器、处理器解释载荷、兼容性由两端实现保证”的分工仍然重要。阅读新分支时，应先识别哪些数据离开了主流，再分析新增的同步条件，而不是只在单流图中增加一个箭头。</p>
+  <p>二进制流本身没有为每个字段携带名称；离线分析通常需要对应设备代码。后来增加的<a href="https://github.com/qemu/qemu/commit/8118f0950fc77cce7873002a5021172dd6e040b5">VM Description</a>在 EOF 后附加诊断 JSON，便于工具还原字段含义，并保留已有二进制编码。跨版本迁移仍受机器类型、设备字段及双方能力约束。</p>
+  <p>MultiFD 将部分内存数据移到并行通道，后拷贝调整执行权交接与页面传输的先后顺序，设备并行传输也会引入独立通道。这些路径需要额外的同步协议，保证目的端恢复时各部分状态已经就绪。外层框架继续负责识别状态处理器，具体处理器负责解析载荷和检查版本兼容性。</p>
 </section>
 
 <section id="sources" class="mechanism-section">
@@ -324,9 +349,9 @@ qemu_loadvm_state_main       按外层类型分发
   <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#migration">热迁移原理</a><a href="../topics/migration/index.html">热迁移动态</a></nav>
 </article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span>© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态。数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=d7c878e79674"></script>
-<script src="../assets/mechanism-viewer.js?v=145f19ec95c5" defer></script>
-<script src="../assets/migration-stream.js?v=145f19ec95c5" defer></script></body>
+  <script src="../assets/site.js?v=7b86b63d1fd5"></script>
+<script src="../assets/mechanism-viewer.js?v=c084ccad2981" defer></script>
+<script src="../assets/migration-stream.js?v=c084ccad2981" defer></script></body>
 </html>

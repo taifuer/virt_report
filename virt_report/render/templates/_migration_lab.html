@@ -54,7 +54,7 @@
       </div>
       <p class="precopy-transfer-message" data-precopy-transfer-message role="status" aria-live="polite"></p>
       <div class="precopy-memory-legend"><span><i class="is-clean"></i>当前 / 同步</span><span><i class="is-dirty"></i>脏 / 旧副本</span><span><i class="is-empty"></i>未收到</span></div>
-      <p class="precopy-scene-note">A–L 为 12 个等容量的聚合内存区域，不是 12 个物理页；着色比例表示需同步的数据占比，实际大小以下方参数和 MiB 数值为准。数据块到达后目的端才更新副本，下方统计在每步完成后结算。</p>
+      <p class="precopy-scene-note">A–L 将全部内存等分为 12 个区域，每个区域包含多个页面；着色比例表示需同步的数据占比，实际大小以下方参数和 MiB 数值为准。数据块到达后目的端更新副本，下方统计在每步完成后结算。</p>
     </div>
     <div class="precopy-parameters">
       <label for="precopy-memory">初始内存<select id="precopy-memory" data-precopy-parameter="memoryMiB" aria-describedby="precopy-parameter-error"><option value="4096">4 GiB</option><option value="8192" selected>8 GiB</option><option value="16384">16 GiB</option></select></label>
@@ -87,9 +87,9 @@
         <h4 data-precopy-timing-title>若现在暂停，停机时间估算</h4>
         <p class="precopy-timing-equation"><span data-precopy-tail-time>8192 ms</span><span>最终 RAM</span><b aria-hidden="true">＋</b><span>20 ms</span><span>状态保存与传输</span><b aria-hidden="true">＋</b><span>20 ms</span><span>目的端恢复</span><b aria-hidden="true">＝</b><strong data-precopy-downtime>8232 ms</strong></p>
         <p data-precopy-threshold></p>
-        <p class="precopy-overhead-note">后两项各 20 ms 是固定示例开销，不是实测值，也不计入上方的 RAM 切换阈值。</p>
+        <p class="precopy-overhead-note">后两项各 20 ms 为模型设定的固定开销，未计入上方的 RAM 切换阈值；实际值取决于设备状态及两端的处理耗时。</p>
       </div>
     </div>
   </div>
-  <p class="migration-model-note">模型先完成首次复制，再按完整教学轮次评估切换：本轮耗时＝待传量 ÷ 有效带宽；下一轮脏页量＝min（初始内存，脏页速率 × 本轮耗时）。同轮重复写入同一页只计一页，脏页速率不是应用写入字节数。一个教学轮次不等于 QEMU 的一个 SECTION_PART。模型使用固定速率，不含压缩与并行通道；播放速度不代表真实时间，估算也不等于 QMP 实测 downtime 或业务中断时间。</p>
+  <p class="migration-model-note">模型先完成首次复制，再按完整轮次评估切换：本轮耗时＝待传量 ÷ 有效带宽；下一轮脏页量＝min（初始内存，脏页速率 × 本轮耗时）。脏页速率按页面去重，同轮重复写入同一页只计一页。模型的一轮扫描可对应 QEMU 中多个 SECTION_PART。计算使用固定速率，不含压缩与并行通道；播放速度独立于模拟用时，估算结果仅适用于上述模型，QMP downtime 与业务中断时间需实际测量。</p>
 </section>

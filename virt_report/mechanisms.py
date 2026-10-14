@@ -30,9 +30,32 @@ def topics() -> tuple[dict, ...]:
     return tuple(groups)
 
 
+def topic_groups() -> tuple[dict, ...]:
+    """Order editorial groups; public views use only their published topics."""
+    published = {topic["slug"]: topic for topic in topics()}
+    result = []
+    for group in _content().get("groups", ()):
+        members = []
+        for topic in _content()["topics"]:
+            if topic.get("group") != group["slug"]:
+                continue
+            item = {**published.get(topic["slug"], topic)}
+            item.setdefault("articles", ())
+            item["related_articles"] = tuple(
+                article for slug in topic.get("related_articles", ())
+                if (article := get_article(slug)) is not None
+            )
+            members.append(item)
+        if members:
+            result.append({**group, "topics": tuple(members),
+                           "published_topics": tuple(item for item in members if item["articles"])})
+    return tuple(result)
+
+
 def get_topic(slug: str) -> dict | None:
     """Resolve a published editorial topic, distinct from community topics."""
-    return next((topic for topic in topics() if topic["slug"] == slug), None)
+    return next((topic for topic in topics()
+                 if topic["slug"] == slug or slug in topic.get("aliases", ())), None)
 
 
 def get_article(slug: str) -> dict | None:

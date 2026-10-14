@@ -21,11 +21,36 @@ ASSETS_DIR = Path(__file__).parent / "assets"
 HOME_REPORT_LIMITS = {"daily": 15, "weekly": 9, "monthly": 6}
 STATIC_ASSET_NAMES = ("brand-mark.png", "site.css", "site.js")
 FAVICON_ASSET_NAMES = ("favicon-32.png", "favicon.ico")
-MECHANISM_DIAGRAM_NAMES = ("migration-architecture", "migration-precopy-sequence")
+MECHANISM_DIAGRAM_NAMES = (
+    "migration-architecture", "migration-precopy-sequence", "migration-load-dispatch",
+    "multifd-synchronization", "dirty-ring-handoff", "postcopy-page-fault",
+    "virtqueue-tx-layout", "vhost-user-control-data", "vfio-address-paths",
+    "kvm-run-objects", "kvm-run-exits",
+    "ept-address-mapping", "ept-fault-invalidation",
+    "interrupt-routing", "interrupt-completion",
+    "pcie-hotplug-topology", "pcie-hotplug-removal",
+    "libvirt-rpc-framing", "libvirt-rpc-dispatch",
+    "qom-types-objects", "qom-device-lifecycle",
+    "qemu-startup-phases", "qemu-startup-vcpu",
+    "libvirt-domain-start", "libvirt-domain-state",
+    "cpr-state-ownership", "cpr-transfer-sequence",
+    "memory-region-publication", "virtio-blk-request", "virtio-blk-completion",
+    "aio-request-lifecycle", "aio-queue-thread-mapping", "virtio-mem-resize",
+    "spdk-vhost-ownership", "spdk-vhost-completion",
+    "qcow2-mapping-cow",
+    "kvm-halt-wakeup", "kvm-hugepage-lifecycle",
+    "tcg-translation-pipeline", "tcg-tb-lifecycle",
+)
 MECHANISM_LAYOUT_NAMES = ("migration-wire-layout",)
 MECHANISM_ASSET_NAMES = ("mechanisms.css", "mechanisms.js", "precopy-lab.css",
                          "mechanism-viewer.css", "mechanism-viewer.js",
-                         "migration-stream.css", "migration-stream.js", *(
+                         "migration-stream.css", "migration-stream.js",
+                         "multifd.css", "multifd.js", "device-tx.css", "device-tx.js",
+                         "vhost-path.css", "vhost-path.js", "dirty-ring.css", "dirty-ring.js",
+                         "postcopy.css", "postcopy.js", "vfio-dma.css", "vfio-dma.js",
+                         "memory-map.css", "memory-map.js", "virtio-mem.css", "virtio-mem.js",
+                         "qcow2-map.css", "qcow2-map.js", "halt-poll.css", "halt-poll.js",
+                         "hugepage-map.css", "hugepage-map.js", "tcg-tb.css", "tcg-tb.js", *(
     f"{name}.svg" for name in (*MECHANISM_DIAGRAM_NAMES, *MECHANISM_LAYOUT_NAMES)
 ))
 
@@ -105,13 +130,20 @@ def _with_generated_dates(reports: list[dict], timezone: str) -> list[dict]:
 
 
 def _env() -> Environment:
+    """Reuse compiled templates; Jinja still checks edited files for changes."""
+    return _cached_env(str(TEMPLATES_DIR), ASSET_VERSION)
+
+
+@lru_cache(maxsize=4)
+def _cached_env(directory: str, asset_version: str) -> Environment:
     env = Environment(
-        loader=FileSystemLoader(str(TEMPLATES_DIR)),
+        loader=FileSystemLoader(directory),
         autoescape=select_autoescape(["html", "xml"]),
+        auto_reload=True,
         trim_blocks=True,
         lstrip_blocks=True,
     )
-    env.globals["asset_version"] = ASSET_VERSION
+    env.globals["asset_version"] = asset_version
     return env
 
 
@@ -293,6 +325,7 @@ def _render_mechanism_page(site_name: str, slug: str | None) -> str | None:
         digest.update((ASSETS_DIR / filename).read_bytes())
     return _env().get_template("mechanism.html" if article else "mechanisms.html").render(
         article=article, articles=mechanisms.articles(), topics=mechanisms.topics(),
+        topic_groups=mechanisms.topic_groups() if article is None else (),
         topic=mechanisms.get_topic(article["topic"]) if article else None,
         root="../" if article else "",
         site_name=site_name, mechanism_asset_version=digest.hexdigest()[:12],

@@ -1,0 +1,16 @@
+flowchart TB
+  accTitle: Libvirt RPC 的报文组成
+  accDescr: 一条 RPC 消息先有四字节总长度，再有二十四字节公共头，然后按消息类型和状态携带调用参数、返回值、错误或事件。GetInfo 示例请求五十六字节，响应六十字节。
+  L["长度字段 · 4 B<br/>包含长度字段自身"] --> H["公共头 · 24 B<br/>prog / vers / proc / type / serial / status<br/>六个 XDR 字段，每个 4 B"]
+  H --> C["CALL / OK<br/>GetInfo 参数 · 28 B<br/>name + UUID + id"]
+  H --> R["REPLY / OK<br/>GetInfo 结果 · 32 B<br/>状态、内存、vCPU 数、CPU 时间"]
+  H --> E["REPLY / ERROR<br/>virNetMessageError<br/>错误码、错误域、文本等"]
+  H --> A["MESSAGE / OK<br/>异步事件载荷<br/>按事件过程号解码"]
+  C --> CT["示例请求 · 56 B<br/>proc = 16，serial = 42"]
+  R --> RT["示例响应 · 60 B<br/>proc = 16，serial = 42"]
+  classDef frame fill:#e4f2ef,stroke:#5e8f87,color:#203e3b;
+  classDef payload fill:#edf3f8,stroke:#7591ac,color:#233b50;
+  classDef error fill:#fbf0e6,stroke:#b58a60,color:#5f432b;
+  class L,H frame;
+  class C,R,A,CT,RT payload;
+  class E error;

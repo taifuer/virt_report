@@ -1,0 +1,22 @@
+flowchart TB
+    accTitle: virtqueue 完成通知的编号与路由
+    accDescr: 队列 0 选择 MSI-X 表项 2，表项保存目的 APIC ID 1 与中断向量 0x51。直接通知提交 MSI 消息；irqfd 替代路径使用 GSI 37 关联同一消息，各种编号互不等同。
+    Q["客户机 virtqueue 0<br/>used.ring 与 used.idx"]
+    V["通知条件成立<br/>queue_msix_vector = 2"]
+    T["MSI-X table[2]<br/>address = 0xfee01000<br/>data = 0x51 · 未屏蔽"]
+    D["直接路径<br/>KVM_SIGNAL_MSI<br/>提交 address + data"]
+    E["替代路径：guest notifier<br/>eventfd → irqfd<br/>KVM GSI = 37"]
+    R["预先配置的 MSI 路由<br/>GSI 37 → address + data"]
+    K["KVM 解码并投递<br/>物理目的地 APIC ID 1<br/>fixed · edge · vector 0x51"]
+    L["目标虚拟 LAPIC<br/>IRR / ISR 对应向量 0x51"]
+    Q --> V --> T --> D --> K --> L
+    T -. 配置消息与屏蔽关系 .-> R
+    V -. 已绑定 notifier 的分支 .-> E
+    E -. 查路由 .-> R
+    R -. 注入 .-> K
+    classDef queue fill:#e4f1ec,stroke:#438575,color:#173e34
+    classDef routing fill:#eaf0f6,stroke:#8198ac,color:#263c4c
+    classDef alternate fill:#f5f4f1,stroke:#a6aaa7,color:#3c4542
+    class Q,V,L queue
+    class T,D,K routing
+    class E,R alternate

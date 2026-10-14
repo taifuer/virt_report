@@ -1,0 +1,102 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+{% set spdk_source = 'https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/' %}
+{% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
+
+<section id="preface" class="mechanism-section">
+  <h2>前言</h2>
+  <p>使用 QEMU virtio-blk 时，设备请求由 QEMU 解析，再交给块后端。换成 vhost-user-blk 后，客户机仍使用 virtio-blk 驱动，QEMU 负责 PCI 设备呈现与控制连接，独立的 SPDK 进程消费共享队列，并把请求提交给存储设备。</p>
+  <p>本文跟踪一次 4 KiB 写入：x86 / KVM 客户机、现代 virtio PCI 接口、split virtqueue、SPDK 轮询模式，以及直接连接本地 PCIe NVMe namespace 的 bdev。namespace 的逻辑块为 4 KiB，不叠加加密、压缩或其他虚拟 bdev。协议初始化可结合<a href="qemu-vhost-net.html">vhost-user 的共享内存与通知机制</a>阅读；这里重点分析 SPDK 内部的请求、线程和完成路径。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+
+<section id="architecture" class="mechanism-section">
+  <h2>控制连接与存储数据路径</h2>
+  <p>QEMU 与 SPDK 通过 Unix socket 协商特性、共享 RAM 文件描述符、配置队列地址及 kick / call 句柄。SPDK 使用 DPDK 的 rte_vhost 库处理连接与内存映射。队列和请求缓冲区位于两端都能访问的客户机 RAM 中，普通写入的数据不逐包经过这个 socket。</p>
+  {{ diagram('spdk-vhost-ownership', '从客户机 virtqueue 到 NVMe 队列', '虚线表示初始化与管理，实线表示请求或数据访问。virtqueue、bdev 请求和 NVMe SQ/CQ 属于三个层次，队列数量没有一一对应的要求。') }}
+  <p>QEMU 此时使用 <code>vhost-user-blk-pci</code>，不再沿前一篇中的 <code>virtio_blk_handle_vq → blk_aio_pwritev</code> 处理每次数据 I/O。SPDK 也不会把这条路径转换为宿主文件的 pwrite；本例的 bdev 后端调用 SPDK NVMe 驱动，在用户态组织硬件命令。</p>
+  <p>共享内存解决进程间的可见性，DMA 还需要合法的设备地址。描述符中的 GPA 先转换为 SPDK 进程地址；注册过的内存再由环境层提供 DMA 地址转换，用于构造 NVMe 的 PRP 或 SGL。硬件访问受宿主映射和 IOMMU 配置约束，客户机 GPA 不能直接当作 NVMe 的 DMA 地址。<a href="{{ spdk_source }}lib/vhost/rte_vhost_user.c#L611-L636">描述符转换</a>、<a href="{{ spdk_source }}lib/vhost/rte_vhost_user.c#L719-L752">内存注册</a></p>
+</section>
+
+<section id="structures" class="mechanism-section">
+  <h2>会话、队列与请求结构</h2>
+  <table><thead><tr><th scope="col">结构</th><th scope="col">关键字段</th><th scope="col">职责</th></tr></thead><tbody>
+    <tr><td><code>spdk_vhost_dev</code></td><td><code>thread / backend / virtio_features</code></td><td>控制器、所属 SPDK 线程和设备能力。</td></tr>
+    <tr><td><code>spdk_vhost_session</code></td><td><code>mem / virtqueue[] / task_cnt / negotiated_features</code></td><td>一次连接的内存表、队列、在途任务和已协商特性。</td></tr>
+    <tr><td><code>spdk_vhost_virtqueue</code></td><td><code>vring / last_avail_idx / last_used_idx / tasks</code></td><td>共享环地址、本地消费位置及请求对象池。</td></tr>
+    <tr><td><code>spdk_vhost_user_blk_task</code></td><td><code>blk_task / vq / req_idx / used</code></td><td>把块操作关联到原队列、描述符头和任务生命周期。</td></tr>
+    <tr><td><code>spdk_vhost_blk_task</code></td><td><code>iovs / iovcnt / status / used_len / bdev_io_wait</code></td><td>解析后的请求缓冲区、状态地址、完成长度和资源等待项。</td></tr>
+    <tr><td><code>spdk_bdev_io</code></td><td><code>type / u.bdev.offset_blocks / num_blocks / iovs</code></td><td>bdev 层的操作类型、块范围和数据向量，完成后由调用者释放。</td></tr>
+  </tbody></table>
+  <p>同一请求会同时具有 virtqueue 描述符头索引、SPDK task 和 NVMe command ID。它们由各层的上下文关联，数值无需相同。客户机在请求完成前保留描述符和数据缓冲区；后端也必须让 task、iovec 和会话映射存活到最后一次访问结束。</p>
+</section>
+
+<section id="threads" class="mechanism-section">
+  <h2>请求在哪个线程执行</h2>
+  <p><code>vhost_user_dev_init()</code> 为控制器创建一个 <code>spdk_thread</code>。它是由 reactor 执行的轻量事件上下文，不直接对应一次 pthread_create；同一个 SPDK 线程同一时刻只能由一条系统线程推进。其 poller 和消息回调串行执行，允许把常用状态保留在线程本地。<a href="{{ spdk_source }}lib/vhost/rte_vhost_user.c#L1772-L1810">控制器线程</a>、<a href="{{ spdk_source }}doc/concurrency.md#L60-L111">线程与通道模型</a></p>
+  <p>rte_vhost 的控制回调把启动操作发送给控制器线程。随后 <code>vhost_blk_start()</code> 获取当前线程的 bdev <code>io_channel</code>，注册周期为 0 的 <code>vdev_worker</code> poller。周期 0 表示持续轮询；每次调用遍历这个会话的 virtqueue，批量取出可用请求，并检查完成通知。</p>
+  <p>因此，客户机创建四个 virtqueue，不会自动让一个控制器使用四条 SPDK 数据线程。本版本的 <code>vdev_worker()</code> 在同一上下文遍历这些队列。bdev channel 再关联当前线程的 NVMe I/O 路径和队列资源，virtqueue 与 NVMe qpair 也不要求一一对应。多控制器、CPU 亲和性与 NUMA 布局需分别安排。</p>
+</section>
+
+<section id="write" class="mechanism-section">
+  <h2>一次 4 KiB 写入</h2>
+  <p>假设客户机写磁盘偏移 1 MiB。请求头使用 virtio 的 512 字节 sector 单位，NVMe namespace 则使用 4 KiB 逻辑块：</p>
+  <pre><code>描述符头 5 → 请求头 16 B（设备读）
+           → 数据 4096 B（设备读）
+           → status 1 B（设备写）
+
+virtio: type = OUT, sector = 2048
+bdev:   byte_offset = 2048 × 512 = 1048576
+        offset_blocks = 256, num_blocks = 1
+NVMe:   SLBA = 256, NLB = 0（命令字段按块数减一编码）</code></pre>
+  <ol>
+    <li><strong>取出队列项。</strong><code>vhost_vq_avail_ring_get()</code> 读取 avail.idx，经过读屏障后取环内的描述符头，推进 last_avail_idx。<code>process_blk_task()</code> 找到头索引对应的 task，标记占用并增加在途计数。</li>
+    <li><strong>建立 iovec。</strong><code>blk_iovs_split_queue_setup()</code> 遍历描述符链，检查索引、长度及环路。GPA 转换为 SPDK 虚拟地址；跨映射边界时，一个缓冲区可以拆成多个 iovec。正常请求的首项为请求头，末项为状态字节，中间是数据。</li>
+    <li><strong>提交 bdev。</strong><code>virtio_blk_process_request()</code> 把 16 字节头复制到栈上，取得类型和 sector，再调用 <code>spdk_bdev_writev()</code>。bdev 检查块对齐和范围，分配 spdk_bdev_io，保留数据向量和完成回调。</li>
+    <li><strong>构造硬件请求。</strong>NVMe bdev 的写分支进入 <code>bdev_nvme_writev()</code>。本例转换后只有一个数据 iovec，走 <code>spdk_nvme_ns_cmd_write_with_md()</code>；多段向量使用对应 writev 接口。PCIe transport 建立 PRP / SGL，把命令写入 SQ，并按提交策略更新 doorbell。</li>
+  </ol>
+  <p>这里复制了请求头和硬件命令；大块数据可以由 NVMe DMA 直接访问已映射的客户机缓冲区，前提是内存注册、对齐和后端能力满足要求。增加加密、压缩、其他 bdev 或不同内存域后，需要重新检查数据转换与复制路径，不能把这一个配置推广成所有 SPDK 设备都“零拷贝”。</p>
+  <p><code>spdk_bdev_writev()</code> 返回 0 表示异步请求已被接受，最终成功或失败通过完成回调交付。返回 <code>-ENOMEM</code> 时，vhost 注册 <code>spdk_bdev_io_wait_entry</code>，资源可用后由回调重新提交；等待期间不能提前写成功状态或回收客户机缓冲区。</p>
+</section>
+
+<section id="completion" class="mechanism-section">
+  <h2>从 NVMe 完成到客户机回收</h2>
+  {{ diagram('spdk-vhost-completion', '一次写入的提交与完成', '轮询发现硬件完成后，回调回到原请求；status、used 项与 used.idx 依次发布，再根据通知条件唤醒客户机。') }}
+  <p>NVMe 完成由同一 SPDK 线程中的 NVMe poll group 推进。<code>bdev_nvme_poll()</code> 调用驱动检查 CQ；PCIe 路径通过 phase bit 判断新完成，用 command ID 找到 tracker，再执行请求回调。virtqueue 的 last_used_idx 与 NVMe CQ 的 head / phase 是彼此独立的状态。</p>
+  <p>结果经 <code>bdev_nvme_writev_done()</code> 和 bdev 完成层，到达 <code>blk_request_complete_cb()</code>：释放 spdk_bdev_io，将结果转换为 virtio 状态，写回 status。随后 <code>vhost_vq_used_ring_enqueue()</code> 写 used 项的 id / len，经写屏障后推进 used.idx。本例成功写入的 used.len 为 <strong>1</strong>，对应后端写回的状态字节，不是 4096 字节的磁盘数据量。</p>
+  <p>发布完成后，task 的占用标记和会话在途计数被释放。客户机仍需观察 used ring，取回原描述符链并结束自己的块请求。NVMe 返回写完成也不自动等于断电后数据可靠保存；缓存与持久化要求仍需通过已协商的 FLUSH 等语义和设备能力满足。</p>
+</section>
+
+<section id="notifications" class="mechanism-section">
+  <h2>轮询、通知与资源释放</h2>
+  <p>本例初始化 split 队列时设置 <code>VRING_USED_F_NO_NOTIFY</code>，请求客户机抑制提交 kick。SPDK 持续检查 avail ring，因此减少了依赖提交事件唤醒的次数。完成方向仍单独判断客户机的通知抑制和后端合并策略；需要通知时，经 rte_vhost 的 vring call 接口触发 call eventfd，QEMU 配置的 irqfd 路径可把事件交给 KVM。</p>
+  <p>本版本禁用了 <code>VIRTIO_RING_F_EVENT_IDX</code>；split 路径检查 avail.flags 中的 <code>VRING_AVAIL_F_NO_INTERRUPT</code>，不使用 used_event 阈值。两种通知抑制方式的区别见<a href="kvm-virtio-interrupt.html">virtio 完成通知与 KVM 中断注入</a>。<a href="{{ spdk_source }}lib/vhost/vhost_internal.h#L60-L69">禁用特性</a>、<a href="{{ spdk_source }}lib/vhost/rte_vhost_user.c#L383-L398">完成通知条件</a></p>
+  <p>25.09 的 vhost 代码也具有 interrupt mode 分支：启用提交通知，读取 kickfd，并在模式切换时补发事件以避免漏掉待处理工作。因此“SPDK 永远不使用 kick”并不适用于全部运行方式。本文的连续轮询会占用 CPU；降低唤醒开销的收益，需要与低负载功耗、尾延迟及可分配核心数一起衡量。</p>
+  <p>停止会话时，<code>vhost_blk_stop()</code> 先撤下新请求 poller 和中断处理器，再用 stop poller 等待 task_cnt 清零。已有硬件请求仍需完成；成功收尾后才释放 io_channel 与任务池。等待超时会报告失败，不应把 socket 断开直接解释为所有 DMA 和回调都已结束。</p>
+  <table><thead><tr><th scope="col">观察到的现象</th><th scope="col">应检查的环节</th></tr></thead><tbody>
+    <tr><td>客户机队列增加，吞吐没有同步增长</td><td>控制器线程是否饱和、队列遍历成本，以及 bdev / NVMe 的剩余能力。</td></tr>
+    <tr><td>设备很快，尾延迟仍高</td><td>客户机提交、SPDK 调度、CQ 检查、完成合并和客户机回收各自的等待。</td></tr>
+    <tr><td>低 I/O 时宿主仍忙</td><td>连续轮询占用、线程 CPU 亲和性，以及当前后端能否使用合适的事件模式。</td></tr>
+    <tr><td>资源不足或关闭卡住</td><td>bdev I/O 等待项、在途 task、NVMe 错误与完成回调，不能只数 socket 连接。</td></tr>
+  </tbody></table>
+</section>
+
+<section id="evolution" class="mechanism-section">
+  <h2>后端独立与线程模型的演进</h2>
+  <p><a href="{{ spdk_source }}CHANGELOG.md#L4786-L4807">SPDK 17.07</a>在已有 vhost-scsi 基础上加入 vhost-blk，客户机可继续使用标准 virtio-blk 驱动，后端获得独立的数据处理与存储实现。独立进程便于安排 CPU 和后端资源，也引入共享内存生命周期、连接恢复及在途请求管理。</p>
+  <p><a href="{{ spdk_source }}CHANGELOG.md#L3549-L3563">19.07</a>默认转向上游 DPDK rte_vhost，使协议与队列基础设施可以跟随共同实现维护。<a href="{{ spdk_source }}CHANGELOG.md#L2875-L2877">20.04</a>把按会话组织的 poll group 改为每个 vhost 控制器的 SPDK 线程，控制器的工作归属更清楚；这也说明队列数、控制器数与工作线程数必须分别理解。</p>
+  <p>当前实现同时保留 split / packed 队列和事件模式相关分支。选择这些机制时，应先明确瓶颈：描述符访问、通知、CPU 调度或存储设备。固定请求大小、队列深度和数据后端，再比较吞吐、尾延迟及整机 CPU 消耗，才能判断路径变化是否真正受益。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="{{ qemu_source }}hw/block/vhost-user-blk.c">QEMU vhost-user-blk 前端</a>、<a href="{{ qemu_source }}docs/interop/vhost-user.rst">vhost-user 协议</a></li>
+    <li><a href="{{ spdk_source }}lib/vhost/vhost_internal.h#L78-L168">会话与队列</a>、<a href="{{ spdk_source }}lib/vhost/vhost_internal.h#L529-L548">块请求结构</a>、<a href="{{ spdk_source }}lib/vhost/vhost_blk.c#L40-L70">vhost-blk 对象</a></li>
+    <li><a href="{{ spdk_source }}lib/vhost/vhost_blk.c#L861-L955">队列轮询</a>、<a href="{{ spdk_source }}lib/vhost/vhost_blk.c#L198-L269">描述符链解析</a>、<a href="{{ spdk_source }}lib/vhost/vhost_blk.c#L464-L553">读写请求与资源等待</a></li>
+    <li><a href="{{ spdk_source }}lib/bdev/bdev.c#L6117-L6198">bdev 写入与块单位转换</a>、<a href="{{ spdk_source }}module/bdev/nvme/bdev_nvme.c#L8431-L8484">NVMe 写接口选择</a></li>
+    <li><a href="{{ spdk_source }}lib/nvme/nvme_pcie_common.c#L658-L707">PCIe 提交队列</a>、<a href="{{ spdk_source }}lib/nvme/nvme_pcie_common.c#L865-L983">CQ 与 phase 检查</a></li>
+    <li><a href="{{ spdk_source }}module/bdev/nvme/bdev_nvme.c#L1817-L1845">NVMe poll group</a>、<a href="{{ spdk_source }}lib/vhost/vhost_blk.c#L420-L462">完成与等待回调</a>、<a href="{{ spdk_source }}lib/vhost/rte_vhost_user.c#L400-L482">used 发布与通知</a></li>
+    <li><a href="{{ spdk_source }}lib/vhost/rte_vhost_user.c#L1096-L1111">提交通知配置</a>、<a href="{{ spdk_source }}lib/vhost/vhost_blk.c#L1334-L1447">poller 启动和停止</a></li>
+    <li><a href="https://spdk.io/doc/vhost.html">SPDK vhost 文档</a>、<a href="{{ spdk_source }}doc/concurrency.md">SPDK 消息传递与并发模型</a></li>
+  </ul>
+</section>

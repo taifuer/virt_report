@@ -8,6 +8,7 @@ from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Lock
 from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
@@ -25,6 +26,23 @@ _TOPIC_ROUTE = re.compile(r"^/topics/([a-z-]+)(?:/(?:index\.html)?|\.html)?$")
 _MECHANISM_ROUTE = re.compile(r"^/mechanisms/([a-z0-9-]+)\.html$")
 READINESS_MAX_AGE_HOURS = 12
 _REPORT_TYPE_NAMES = {"daily": "日报", "weekly": "周报", "monthly": "月报"}
+# Keep JSON parsing inside SQLite for archive/navigation queries. CASE guards
+# malformed/non-object documents; fallback follows Python's JSON truthiness.
+_PUBLISHED_REPORT_SQL = """
+CASE WHEN json_valid(content_json) THEN
+  CASE WHEN json_type(content_json) = 'object' THEN
+    CASE json_type(content_json, '$.fallback')
+      WHEN 'true' THEN 0
+      WHEN 'integer' THEN json_extract(content_json, '$.fallback') = 0
+      WHEN 'real' THEN json_extract(content_json, '$.fallback') = 0
+      WHEN 'text' THEN length(CAST(json_extract(content_json, '$.fallback') AS BLOB)) = 0
+      WHEN 'array' THEN NOT EXISTS (SELECT 1 FROM json_each(content_json, '$.fallback'))
+      WHEN 'object' THEN NOT EXISTS (SELECT 1 FROM json_each(content_json, '$.fallback'))
+      ELSE 1
+    END
+  ELSE 0 END
+ELSE 0 END
+"""
 
 
 def _published_content(row) -> dict | None:
@@ -35,7 +53,9 @@ def _published_content(row) -> dict | None:
         content = json.loads(row["content_json"])
     except (TypeError, ValueError):
         return None
-    return None if content.get("fallback") else content
+    if not isinstance(content, dict) or content.get("fallback"):
+        return None
+    return content
 
 
 def _generation_state_view(row) -> dict:
@@ -73,15 +93,21 @@ def _generation_state_view(row) -> dict:
     }
 
 
-def _generation_states(conn, period: str) -> list[dict]:
+def _generation_states(conn, period: str,
+                       published: list[dict] | None = None) -> list[dict]:
     """只显示比最新正稿更新的未完成状态，避免历史失败长期占据首页。"""
-    published = _list_reports(conn, period)
+    if published is None:
+        published = _list_reports(conn, period)
     latest_key = published[0]["period_key"] if published else ""
     result = []
     for row in db.list_report_generation_states(conn, period):
         if latest_key and row["period_key"] <= latest_key:
             continue
-        if _published_content(db.get_report(conn, period, row["period_key"])):
+        if conn.execute(
+            f"SELECT 1 FROM reports WHERE period=? AND period_key=? "
+            f"AND ({_PUBLISHED_REPORT_SQL})",
+            (period, row["period_key"]),
+        ).fetchone():
             continue
         result.append(_generation_state_view(row))
     return result
@@ -89,29 +115,30 @@ def _generation_states(conn, period: str) -> list[dict]:
 
 def _list_reports(conn, period: str) -> list[dict]:
     rows = conn.execute(
-        "SELECT period_key,generated_at,item_count,model,content_json FROM reports "
-        "WHERE period=? ORDER BY period_key DESC", (period,),
+        "SELECT period_key,generated_at,item_count,model,"
+        "CASE WHEN json_type(content_json, '$.headline') IS NULL THEN '\"\"' "
+        "ELSE json_quote(json_extract(content_json, '$.headline')) END AS headline_json "
+        f"FROM reports WHERE period=? AND ({_PUBLISHED_REPORT_SQL}) "
+        "ORDER BY period_key DESC", (period,),
     ).fetchall()
     result = []
     for row in rows:
-        content = _published_content(row)
-        if content is None:
-            continue
         item = {key: row[key] for key in (
             "period_key", "generated_at", "item_count", "model"
         )}
-        item["headline"] = content.get("headline", "")
+        item["headline"] = json.loads(row["headline_json"])
         result.append(item)
     return result
 
 
 def _index_context(conn, timezone: str = "Asia/Shanghai") -> dict:
+    reports = {period: _list_reports(conn, period)
+               for period in ("daily", "weekly", "monthly")}
     context = render.build_home_context(
-        _list_reports(conn, "daily"), _list_reports(conn, "weekly"),
-        _list_reports(conn, "monthly"), timezone,
+        reports["daily"], reports["weekly"], reports["monthly"], timezone,
     )
     context["generation_states"] = {
-        period: _generation_states(conn, period)[:1]
+        period: _generation_states(conn, period, reports[period])[:1]
         for period in ("daily", "weekly", "monthly")
     }
     return context
@@ -119,12 +146,12 @@ def _index_context(conn, timezone: str = "Asia/Shanghai") -> dict:
 
 def _nav(conn, period: str, key: str) -> dict:
     def adjacent(operator: str, direction: str):
-        rows = conn.execute(
-            f"SELECT period_key,content_json FROM reports WHERE period=? "
-            f"AND period_key{operator}? ORDER BY period_key {direction}",
+        return conn.execute(
+            f"SELECT period_key FROM reports WHERE period=? "
+            f"AND period_key{operator}? AND ({_PUBLISHED_REPORT_SQL}) "
+            f"ORDER BY period_key {direction} LIMIT 1",
             (period, key),
-        ).fetchall()
-        return next((row for row in rows if _published_content(row)), None)
+        ).fetchone()
 
     previous = adjacent("<", "DESC")
     following = adjacent(">", "ASC")
@@ -183,10 +210,7 @@ def _readiness(conn, config: Config) -> dict:
         ).fetchone()
         fallback = True
         if row:
-            try:
-                fallback = bool(json.loads(row["content_json"]).get("fallback"))
-            except (TypeError, ValueError):
-                fallback = True
+            fallback = _published_content(row) is None
         report_fresh = bool(row and row["period_key"] >= expected_keys[period] and not fallback)
         ready = ready and report_fresh
         reports[period] = ({
@@ -205,8 +229,22 @@ def _readiness(conn, config: Config) -> dict:
     }
 
 
-def make_handler(config: Config):
+def make_handler(config: Config, *, _database_initialized: bool = False):
     """创建绑定项目配置的请求处理器。"""
+    initialized = _database_initialized
+    initialization_lock = Lock()
+
+    def open_database():
+        # Direct make_handler users retain lazy initialization; editorial and
+        # asset requests never need it. serve() initializes before accepting GETs.
+        nonlocal initialized
+        if not initialized:
+            with initialization_lock:
+                if not initialized:
+                    with closing(db.connect(config.db_path)):
+                        pass
+                    initialized = True
+        return db.connect_readonly(config.db_path)
 
     class Handler(BaseHTTPRequestHandler):
         server_version = f"virt-report/{__version__}"
@@ -293,7 +331,7 @@ def make_handler(config: Config):
             query = parse_qs(parsed.query)
             if path == "/healthz":
                 try:
-                    with closing(db.connect(config.db_path)) as conn:
+                    with closing(open_database()) as conn:
                         conn.execute("SELECT 1").fetchone()
                     self._send(200, "ok\n", head_only, "text/plain; charset=utf-8")
                 except Exception:
@@ -301,7 +339,7 @@ def make_handler(config: Config):
                                "text/plain; charset=utf-8")
                 return
             if path == "/readyz":
-                with closing(db.connect(config.db_path)) as conn:
+                with closing(open_database()) as conn:
                     payload = _readiness(conn, config)
                 status = 200 if payload["status"] == "ok" else 503
                 public_payload = {key: payload[key] for key in ("status", "checked_at")}
@@ -340,13 +378,13 @@ def make_handler(config: Config):
                                {"WWW-Authenticate": "Bearer"})
                     return
                 if path == "/api/status":
-                    with closing(db.connect(config.db_path)) as conn:
+                    with closing(open_database()) as conn:
                         payload = _readiness(conn, config)
                     self._send(200, json.dumps(payload, ensure_ascii=False), head_only,
                                "application/json; charset=utf-8")
                     return
                 from virt_report.metrics import build_metrics
-                with closing(db.connect(config.db_path)) as conn:
+                with closing(open_database()) as conn:
                     payload = build_metrics(conn, config)
                 self._send(200, json.dumps(payload, ensure_ascii=False), head_only,
                            "application/json; charset=utf-8")
@@ -354,7 +392,7 @@ def make_handler(config: Config):
             if path in ("/feed.xml", "/daily/feed.xml", "/weekly/feed.xml",
                         "/monthly/feed.xml"):
                 from virt_report import rss
-                with closing(db.connect(config.db_path)) as conn:
+                with closing(open_database()) as conn:
                     period = path.split("/")[1] if path != "/feed.xml" else None
                     body = rss.report_feed(conn, config, period)
                 self._send_feed(body, head_only)
@@ -369,7 +407,7 @@ def make_handler(config: Config):
                     except (TypeError, ValueError):
                         return default
 
-                with closing(db.connect(config.db_path)) as conn:
+                with closing(open_database()) as conn:
                     result = search_index.search(
                         conn, search_value("q"),
                         project=search_value("project"),
@@ -417,7 +455,7 @@ def make_handler(config: Config):
                 ), head_only)
                 return
             if path in ("/topics", "/topics/", "/topics.html"):
-                with closing(db.connect(config.db_path)) as conn:
+                with closing(open_database()) as conn:
                     groups = topics.build_topic_groups(conn, allow_rebuild=False)
                 if groups is None:
                     static_path = config.output_dir / "topics.html"
@@ -436,7 +474,7 @@ def make_handler(config: Config):
                         return int(query.get(name, [default])[0])
                     except (TypeError, ValueError):
                         return default
-                with closing(db.connect(config.db_path)) as conn:
+                with closing(open_database()) as conn:
                     topic = topics.build_topic_detail(
                         conn, topic_match.group(1), page=number("page", 1),
                         per_page=number("per_page", 10),
@@ -468,7 +506,7 @@ def make_handler(config: Config):
                     self._send(status, html, head_only)
                     return
                 from virt_report.metrics import build_metrics
-                with closing(db.connect(config.db_path)) as conn:
+                with closing(open_database()) as conn:
                     html = render.render_metrics_html(config, build_metrics(conn, config))
                 self._send(200, html, head_only)
                 return
@@ -485,16 +523,17 @@ def make_handler(config: Config):
             archive_match = _ARCHIVE_ROUTE.fullmatch(path)
             if archive_match:
                 period = archive_match.group(1)
-                with closing(db.connect(config.db_path)) as conn:
+                with closing(open_database()) as conn:
+                    reports = _list_reports(conn, period)
                     html = render.render_archive_html(
-                        config, period, _list_reports(conn, period),
-                        _generation_states(conn, period)[:1],
+                        config, period, reports,
+                        _generation_states(conn, period, reports)[:1],
                     )
                 self._send(200, html, head_only)
                 return
 
             if path in ("/", "/index.html"):
-                with closing(db.connect(config.db_path)) as conn:
+                with closing(open_database()) as conn:
                     html = render.render_index_html(
                         config, _index_context(conn, config.timezone)
                     )
@@ -504,7 +543,7 @@ def make_handler(config: Config):
             report_match = _REPORT_ROUTE.fullmatch(path)
             if report_match:
                 period, key = report_match.groups()
-                with closing(db.connect(config.db_path)) as conn:
+                with closing(open_database()) as conn:
                     row = db.get_report(conn, period, key)
                     parsed = _published_content(row)
                     state = db.get_report_generation_state(conn, period, key)
@@ -545,7 +584,11 @@ def make_handler(config: Config):
 
 def serve(config: Config, host: str = "127.0.0.1", port: int = 8090) -> None:
     """启动阻塞式多线程 HTTP 服务。"""
-    server = ThreadingHTTPServer((host, port), make_handler(config))
+    with closing(db.connect(config.db_path)):
+        pass
+    server = ThreadingHTTPServer(
+        (host, port), make_handler(config, _database_initialized=True),
+    )
     log.info("virt-report 服务已启动: http://%s:%d", host, port)
     try:
         server.serve_forever()

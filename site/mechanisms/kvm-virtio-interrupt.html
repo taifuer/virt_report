@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>virtio 完成通知与 KVM 中断注入 - virt-report</title>
+  <meta name="description" content="从 used ring 的完成发布出发，分析通知抑制、MSI-X 消息、LAPIC 状态及 irqfd 替代路径。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=7b86b63d1fd5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=7b86b63d1fd5">
+  <link rel="stylesheet" href="../assets/site.css?v=7b86b63d1fd5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c084ccad2981">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c084ccad2981">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=7b86b63d1fd5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#interrupt-virtualization">中断虚拟化</a></div>
+    <h1>virtio 完成通知与 KVM 中断注入</h1>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">前言</a></li><li><a href="#structures">完成记录与中断路由</a></li><li><a href="#notification">发布 used 与判定通知</a></li><li><a href="#msix">MSI-X 消息与屏蔽状态</a></li><li><a href="#delivery">从 LAPIC 待处理中断到驱动回调</a></li><li><a href="#irqfd">irqfd 的替代通知路径</a></li><li><a href="#implementation">关键源码</a></li><li><a href="#evolution">通知路径的演进</a></li><li><a href="#sources">参考资料</a></li></ol></nav>
+    <div class="mechanism-prose">
+<section id="preface" class="mechanism-section">
+  <h2>前言</h2>
+  <p>virtio 后端完成请求后，把结果写入客户机内存中的 used ring，再根据通知条件向客户机发出中断。中间经过队列通知策略、PCI MSI-X 消息和虚拟 APIC；客户机驱动最终仍要读取队列，才能知道哪些请求已经完成。描述符提交与后端处理见<a href="qemu-network-tx.html#virtqueue">virtqueue 的数据结构与操作</a>。</p>
+  <p>本文跟踪现代 virtio-pci 设备的一个 split virtqueue，采用 x86、内核 irqchip、QEMU 用户态后端的普通通知路径。示例在非 IOThread 的设备处理上下文中直接发送 MSI-X；guest notifier 与 irqfd 是后文单独分析的替代路径。APIC 状态转换先按软件注入路径展开，再讨论硬件辅助。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
+
+<section id="structures" class="mechanism-section">
+  <h2>完成记录与中断路由</h2>
+  <p>同一个请求会经过几套编号。队列号选择设备的工作队列，MSI-X 表项索引选择一组消息配置，消息中的 APIC 向量选择客户机中断入口，irqfd 的 GSI 则选择 KVM 中断路由。它们之间由配置建立关联，数值无需相等。</p>
+  <table><thead><tr><th scope="col">对象</th><th scope="col">关键字段与示例</th><th scope="col">写入与使用者</th></tr></thead><tbody>
+    <tr><td>virtqueue 完成记录</td><td><code>used.ring[i].id</code>、<code>len</code> 各 32 位；<code>used.idx</code> 为 16 位</td><td>设备发布；客户机驱动按自己的 last_used_idx 消费</td></tr>
+    <tr><td>完成通知条件</td><td><code>avail.flags</code> 或 avail 区末尾的 <code>used_event</code>，均为 16 位</td><td>驱动填写；设备据此决定是否发出通知</td></tr>
+    <tr><td>队列 → MSI-X</td><td>队列 0 的 <code>queue_msix_vector = 2</code></td><td>客户机驱动选择表项；QEMU 的 <code>VirtQueue.vector</code> 保存该索引</td></tr>
+    <tr><td>MSI-X 表项 2</td><td>地址低 32 位、高 32 位、data 32 位、vector control 32 位，共 16 字节</td><td>客户机 PCI 子系统配置；QEMU 发送消息时读取</td></tr>
+    <tr><td>KVM MSI 路由</td><td><code>gsi = 37</code>，<code>type = KVM_IRQ_ROUTING_MSI</code>，<code>u.msi.address_lo / address_hi / data</code></td><td>QEMU 配置；irqfd 触发时 KVM 查找或使用缓存路由</td></tr>
+    <tr><td>目标 LAPIC</td><td>APIC ID 1，向量 <code>0x51</code>；IRR、ISR 各按向量记录状态</td><td>KVM 或 APIC 虚拟化硬件维护；客户机按中断架构处理</td></tr>
+  </tbody></table>
+  <p>客户机 Linux 还会为中断分配 Linux IRQ 号，用来查找处理函数；它同样不要求等于 0x51。MSI-X 表项索引可以被多个队列共用，驱动需要检查这些队列。消息本身不携带描述符 ID、完成字节数或报文内容。</p>
+  <figure class="mechanism-diagram" data-diagram="interrupt-routing" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>队列、MSI-X 消息与 KVM 路由</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看队列、MSI-X 消息与 KVM 路由" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="队列、MSI-X 消息与 KVM 路由">
+    <img src="../assets/interrupt-routing.svg?v=c084ccad2981" alt="实线为本文的直接注入路径；虚线为事先建立路由后的 irqfd 替代路径。队列号、表项索引、GSI 和 APIC 向量属于不同编号空间。" loading="lazy">
+  </div>
+  <figcaption>实线为本文的直接注入路径；虚线为事先建立路由后的 irqfd 替代路径。队列号、表项索引、GSI 和 APIC 向量属于不同编号空间。 <a href="../assets/interrupt-routing.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+    accTitle: virtqueue 完成通知的编号与路由
+    accDescr: 队列 0 选择 MSI-X 表项 2，表项保存目的 APIC ID 1 与中断向量 0x51。直接通知提交 MSI 消息；irqfd 替代路径使用 GSI 37 关联同一消息，各种编号互不等同。
+    Q[&#34;客户机 virtqueue 0&lt;br/&gt;used.ring 与 used.idx&#34;]
+    V[&#34;通知条件成立&lt;br/&gt;queue_msix_vector = 2&#34;]
+    T[&#34;MSI-X table[2]&lt;br/&gt;address = 0xfee01000&lt;br/&gt;data = 0x51 · 未屏蔽&#34;]
+    D[&#34;直接路径&lt;br/&gt;KVM_SIGNAL_MSI&lt;br/&gt;提交 address + data&#34;]
+    E[&#34;替代路径：guest notifier&lt;br/&gt;eventfd → irqfd&lt;br/&gt;KVM GSI = 37&#34;]
+    R[&#34;预先配置的 MSI 路由&lt;br/&gt;GSI 37 → address + data&#34;]
+    K[&#34;KVM 解码并投递&lt;br/&gt;物理目的地 APIC ID 1&lt;br/&gt;fixed · edge · vector 0x51&#34;]
+    L[&#34;目标虚拟 LAPIC&lt;br/&gt;IRR / ISR 对应向量 0x51&#34;]
+    Q --&gt; V --&gt; T --&gt; D --&gt; K --&gt; L
+    T -. 配置消息与屏蔽关系 .-&gt; R
+    V -. 已绑定 notifier 的分支 .-&gt; E
+    E -. 查路由 .-&gt; R
+    R -. 注入 .-&gt; K
+    classDef queue fill:#e4f1ec,stroke:#438575,color:#173e34
+    classDef routing fill:#eaf0f6,stroke:#8198ac,color:#263c4c
+    classDef alternate fill:#f5f4f1,stroke:#a6aaa7,color:#3c4542
+    class Q,V,L queue
+    class T,D,K routing
+    class E,R alternate
+</code></pre></details>
+</figure>
+</section>
+
+<section id="notification" class="mechanism-section">
+  <h2>发布 used 与判定通知</h2>
+  <p>设队列大小为 8，先前 <code>used.idx = 7</code>，本次完成的描述符链头为 3。QEMU 先写完成项，再推进索引。若设备向驱动可写缓冲区写入了 512 字节，本次记录如下：</p>
+  <pre><code>used.ring[7 % 8] = { id: 3, len: 512 }
+写屏障：先让完成数据与完成项可见
+used.idx = 8
+
+驱动读取：last_used_idx = 7 → 消费 ring[7] → last_used_idx = 8</code></pre>
+  <p><code>len</code> 表示设备写入缓冲区的字节数；纯发送请求可以为 0，不能把它统一当作报文长度。<code>virtqueue_split_flush()</code> 在更新 used.idx 前执行写屏障；<code>virtio_split_should_notify()</code> 在读取通知条件前执行内存屏障。发布完成和决定通知是两个动作。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio.c#L1059-L1076">完成发布</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio.c#L2583-L2610">通知判定</a></p>
+  <p>未协商 EVENT_IDX 时，设备查看驱动设置的 <code>VRING_AVAIL_F_NO_INTERRUPT</code>。协商后，驱动用 <code>used_event</code> 表示希望被通知的完成位置，设备按 16 位环绕运算判断本次推进是否越过阈值：</p>
+  <pre><code>need_event = (uint16_t)(new - event - 1) &lt; (uint16_t)(new - old)
+
+old = 7, new = 8, event = 7 → 0 &lt; 1，发出通知
+old = 7, new = 8, event = 8 → 65535 &lt; 1 为假，暂不通知</code></pre>
+  <p>这里假定 QEMU 已有有效的先前通知判定位置；首次尚未建立该记录时，代码会允许通知。通知抑制保留全部 used 记录，供驱动批量消费或轮询。驱动准备停止轮询时，需要重新启用通知并再次检查队列，处理“设备恰好在重新启用期间完成请求”的竞争。单纯打开中断后立即睡眠，可能错过已经发布的工作。</p>
+  <p>调大批处理范围可以减少通知与唤醒，但请求可能等到下一次轮询或通知才被消费。完成延迟因此同时受后端处理、通知策略和客户机调度影响。只统计中断次数，不能判断 I/O 是否更快。</p>
+</section>
+
+<section id="msix" class="mechanism-section">
+  <h2>MSI-X 消息与屏蔽状态</h2>
+  <p>通知被允许后，<code>virtio_pci_notify()</code> 用队列配置的表项索引调用 <code>msix_notify()</code>。假设表项 2 已分配、MSI-X 已启用、功能级和表项级屏蔽均关闭，使用传统 xAPIC 消息格式、物理目的地、fixed delivery、edge trigger，向 APIC ID 1 发送向量 0x51：</p>
+  <pre><code>MSI-X table[2]：
+  address_lo     = 0xfee01000  // 0xfee00000 | (APIC ID 1 &lt;&lt; 12)
+  address_hi     = 0x00000000
+  data           = 0x00000051 // vector = 0x51，fixed、edge
+  vector_control = 0x00000000 // bit 0：表项屏蔽位，当前为 0</code></pre>
+  <p>地址选择中断目的地，data 编码向量和投递属性。这次写入针对客户机的中断消息地址空间，不会把 0x51 写入一页普通客户机 RAM。x2APIC 扩展目的地、逻辑目的地或中断重映射使用不同的编码与转换，不能直接套用这个数值示例。</p>
+  <p>QEMU 从表项组装 <code>MSIMessage { address, data }</code>，经 PCI 地址空间写入进入 KVM APIC 的 MSI 区域，最终用 <code>KVM_SIGNAL_MSI</code> 提交 <code>struct kvm_msi</code>。此直接路径携带消息本身，不需要先为它分配示例中的 GSI 37。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/pci/msix.c#L540-L558">MSI-X 发送</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/kvm/apic.c#L186-L216">KVM APIC 消息入口</a></p>
+  <p>若表项被屏蔽，QEMU 设置 Pending Bit Array 中该表项的 pending 位，暂不发送。取消屏蔽时发现 pending，会清除该位并补发通知。一个 pending 位可以合并多个完成事件；准确完成数仍在 used.idx 与 used ring 中。PBA 既不保存请求列表，也不能替代完成队列。</p>
+  <p>这个屏蔽与 virtqueue 的通知抑制处于不同层。前者已有一次待发送的 MSI-X 通知，后者可能根本没有产生该次通知；LAPIC 接收后暂不能投递，又是第三种等待状态。排查“完成了但客户机没处理”时，需要分别查看。</p>
+</section>
+
+<section id="delivery" class="mechanism-section">
+  <h2>从 LAPIC 待处理中断到驱动回调</h2>
+  <p>KVM 把 MSI 地址和 data 解码为目的 APIC、向量、投递方式等字段，再送到目标虚拟 LAPIC。以未启用 APICv 的 Intel VMX 路径为例，<code>vmx_deliver_interrupt()</code> 设置 <code>IRR[0x51]</code>，请求事件处理并 kick 目标 vCPU。kick 用于促使 vCPU 及时检查状态，不保证客户机立即执行中断处理函数。</p>
+  <table><thead><tr><th scope="col">状态</th><th scope="col">关键变化</th><th scope="col">仍需满足的条件</th></tr></thead><tbody>
+    <tr><td>收到中断</td><td><code>IRR[0x51] = 1</code>，记录待处理向量</td><td>vCPU 获得执行机会，APIC 启用，优先级允许</td></tr>
+    <tr><td>可以接受</td><td>软件注入路径清 IRR 对应位，设置 <code>ISR[0x51]</code>，安排 VM Entry 中断注入</td><td>客户机 IF 与 interrupt shadow 等状态允许接受可屏蔽中断</td></tr>
+    <tr><td>客户机处理中断</td><td>通过客户机 IDT 和操作系统 IRQ 分派找到回调；驱动检查 used</td><td>具体设备可以在硬中断中消费，也可以调度后续处理</td></tr>
+    <tr><td>APIC EOI</td><td>清除最高优先级的 in-service 位，重新计算优先级</td><td>只完成 APIC 层面的应答；不修改 used.idx 或回收描述符</td></tr>
+  </tbody></table>
+  <p>此处的 ISR 是 LAPIC 的 In-Service Register。virtio-pci 另有名为 ISR 的设备状态字节，两者没有同一含义。MSI-X 模式下，驱动可依据分配的中断关联找到队列；无需把读取 virtio ISR 字节当作所有 MSI-X 完成处理的必经步骤。</p>
+  <figure class="mechanism-diagram" data-diagram="interrupt-completion" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>一次完成通知与客户机处理</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看一次完成通知与客户机处理" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="一次完成通知与客户机处理">
+    <img src="../assets/interrupt-completion.svg?v=c084ccad2981" alt="队列完成先发布，再通知。图中 EOI 与队列消费分别表示 APIC 应答和请求完成，两者没有“每次必须先消费完队列再 EOI”的固定约束。" loading="lazy">
+  </div>
+  <figcaption>队列完成先发布，再通知。图中 EOI 与队列消费分别表示 APIC 应答和请求完成，两者没有“每次必须先消费完队列再 EOI”的固定约束。 <a href="../assets/interrupt-completion.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
+    accTitle: virtio 完成发布、MSI-X 通知与客户机处理
+    accDescr: QEMU 先写 used 项并发布索引，通知条件满足后发送 MSI。KVM 记录 LAPIC 待处理状态，客户机能够接受中断时进入 IRQ 流程。APIC EOI 与驱动读取完成队列分属两个层次，EOI 不回收描述符。
+    participant D as QEMU 设备后端
+    participant M as 客户机内存中的队列
+    participant P as PCI MSI-X / KVM
+    participant A as 虚拟 LAPIC / vCPU
+    participant G as 客户机 IRQ 与驱动
+    D-&gt;&gt;M: 写 used.ring[7] = id 3, len 512
+    D-&gt;&gt;M: 写屏障后发布 used.idx = 8
+    D-&gt;&gt;M: 屏障后读取 used_event = 7
+    Note over D,M: old 7 → new 8，跨过通知位置
+    D-&gt;&gt;P: 表项 2 未屏蔽，发送 MSI address + data
+    P-&gt;&gt;A: APIC ID 1，向量 0x51
+    A-&gt;&gt;A: 软件路径设置 IRR，促使 vCPU 检查
+    Note over A,G: 等待 IF、优先级、执行机会等条件
+    A-&gt;&gt;G: 接受中断：IRR → ISR，进入客户机 IRQ
+    Note over A,G: Linux 边沿 IRQ 可在通用应答阶段提前 EOI
+    G-&gt;&gt;A: EOI，结束 APIC in-service 状态
+    G-&gt;&gt;M: 回调或后续处理读取 used.idx 与 ring[7]
+    G-&gt;&gt;G: 找回请求、处理结果、回收描述符链
+    Note over M,G: EOI 不改变 used；消费队列不等于 APIC 应答
+</code></pre></details>
+</figure>
+  <p>Linux 的边沿中断处理可以在通用 IRQ 流程的应答阶段提前 EOI，随后执行设备回调。<code>handle_edge_irq()</code> 先调用 <code>irq_ack</code>，再执行 <code>handle_irq_event()</code>；x86 LAPIC 的 <code>apic_ack_edge()</code> 经 <code>apic_ack_irq()</code> 发出 EOI。网络设备还可能把队列处理交给 NAPI。因而“进入中断”“发出 EOI”“消费 used”需要分别观察。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/irq/chip.c#L770-L812">通用边沿处理</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kernel/apic/vector.c#L948-L960">APIC 应答</a></p>
+  <p>virtio 的 <code>vring_interrupt()</code> 检查队列是否有新完成，再调用该队列的回调。实际消费发生在 <code>virtqueue_get_buf_ctx_split()</code> 等路径：读取 used.idx、执行读屏障、获取 id / len、解除描述符链的占用，再推进驱动私有的 last_used_idx。used 项与描述符不会因 EOI 自动清零，后续环绕复用时才被覆盖。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_ring.c#L768-L819">完成消费</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_ring.c#L2534-L2560">中断回调</a></p>
+</section>
+
+<section id="irqfd" class="mechanism-section">
+  <h2>irqfd 的替代通知路径</h2>
+  <p>QEMU 为 guest notifier 配置 irqfd 时，先通过 <code>KVM_SET_GSI_ROUTING</code> 建立 GSI 37 到 MSI 地址及 data 的路由，再通过 <code>KVM_IRQFD</code> 绑定 eventfd 与 GSI 37。<code>struct kvm_irqfd</code> 的 <code>fd</code>、<code>gsi</code>、<code>flags</code> 和 <code>resamplefd</code> 均为 32 位字段；本例边沿 MSI 路径不使用电平中断的 resamplefd 应答协议。</p>
+  <p>后端发出 eventfd 事件后，KVM 的 <code>irqfd_wakeup()</code> 读取事件并尝试用缓存路由直接投递；当前上下文无法完成时，再安排工作队列。这样可以省去“用户态监听完成事件，再调用 MSI 注入接口”的中转。eventfd 计数不等于客户机应收到同样次数的中断，请求完成仍以队列为准。</p>
+  <p>QEMU 10.2 的 <code>virtio_irq()</code> 在 IOThread 中使用 guest notifier；非 IOThread 的普通路径调用 <code>virtio_notify_vector()</code>。<a href="qemu-vhost-net.html#notification">vhost 的完成通知</a>也可以接到 eventfd，但其后端执行者已经不同。irqfd 路径必须随 MSI-X 路由修改、屏蔽、解除绑定同步更新，不能绕开这些设备语义。</p>
+  <p>irqfd 描述的是 eventfd 到虚拟中断的内核接口。硬件 posted interrupt 则属于后续的中断投递优化；是否启用还受处理器能力、虚拟机配置及 KVM 当前状态限制。使用 irqfd 并不自动意味着完全绕过宿主软件，更不保证没有 VM Exit。</p>
+</section>
+
+<section id="implementation" class="mechanism-section">
+  <h2>关键源码</h2>
+  <table><thead><tr><th scope="col">阶段</th><th scope="col">函数与检查重点</th></tr></thead><tbody>
+    <tr><td>完成与抑制</td><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio.c#L1059-L1076"><code>virtqueue_split_flush()</code></a> 先屏障后推进索引；<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio.c#L2583-L2610"><code>virtio_split_should_notify()</code></a> 判定 flags 或 used_event。</td></tr>
+    <tr><td>选择通知路径</td><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio.c#L2670-L2710"><code>virtio_irq()</code></a> 区分 IOThread notifier 与直接 vector 通知；<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-pci.c#L73-L85"><code>virtio_pci_notify()</code></a> 分派 MSI-X 或 INTx。</td></tr>
+    <tr><td>消息与 pending</td><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/pci/msix.c#L540-L558"><code>msix_notify()</code></a> 先检查分配与屏蔽；<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/pci/msix.c#L128-L146">屏蔽状态更新</a> 在解除屏蔽后补发 pending。</td></tr>
+    <tr><td>直接注入</td><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L2189-L2200"><code>kvm_irqchip_send_msi()</code></a> 提交 KVM_SIGNAL_MSI；<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/irq.c#L198-L238"><code>kvm_msi_to_lapic_irq()</code></a> 解码消息并选择 LAPIC。</td></tr>
+    <tr><td>LAPIC 状态</td><td><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L4217-L4256"><code>vmx_deliver_interrupt()</code></a> 选择 posted interrupt 或 IRR 路径；<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L3083-L3124"><code>kvm_apic_ack_interrupt()</code></a> 更新 IRR / ISR；<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L1535-L1560"><code>apic_set_eoi()</code></a> 清 ISR 并更新优先级。</td></tr>
+    <tr><td>irqfd</td><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-pci.c#L865-L899">路由与 notifier 绑定</a> 区分表项索引和 GSI；<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/eventfd.c#L195-L231"><code>irqfd_wakeup()</code></a> 消费 eventfd 并发起内核投递。</td></tr>
+  </tbody></table>
+</section>
+
+<section id="evolution" class="mechanism-section">
+  <h2>通知路径的演进</h2>
+  <p>INTx 以中断引脚和电平状态表达设备事件。共享中断需要驱动确认来源，设备还要维护拉高与撤销的状态。MSI-X 改用消息，并允许各表项独立配置目的地和屏蔽状态，更适合多队列分散到不同 CPU；同时增加了表项、pending 和亲和性配置的管理成本。</p>
+  <p>virtqueue 的批量完成与 EVENT_IDX 减少通知频率，irqfd 缩短宿主侧通知交接，APICv / posted interrupt 减少部分 APIC 模拟及投递开销。它们作用于不同阶段，可以组合，但不能相互替代。</p>
+  <table><thead><tr><th scope="col">机制</th><th scope="col">改善的位置</th><th scope="col">需要处理的约束</th></tr></thead><tbody>
+    <tr><td>MSI-X</td><td>设备与队列的中断分配，减少共享源检查</td><td>向量资源、CPU 亲和性、表项屏蔽与 pending 一致性</td></tr>
+    <tr><td>通知抑制与批处理</td><td>单位请求的通知、唤醒和中断次数</td><td>批量与尾延迟权衡，重新启用时检查竞争</td></tr>
+    <tr><td>irqfd</td><td>完成事件到 KVM 中断注入的用户态中转</td><td>eventfd 生命周期、路由更新及屏蔽处理</td></tr>
+    <tr><td>APICv / posted interrupt</td><td>APIC 操作模拟及部分中断交付</td><td>硬件支持，vCPU 运行、阻塞与迁移状态的同步；不可用时回退</td></tr>
+  </tbody></table>
+  <p>Linux 的 <a href="https://github.com/torvalds/linux/commit/721eecbf4fe995ca94a9edec0c9843b1cc0eaaf3">irqfd 引入提交</a>记录了用 eventfd 连接中断注入的设计。当前 VMX 源码则同时保留 posted interrupt 和软件 IRR 两条路径：目标 vCPU 正在运行时可以借硬件同步待处理中断，未运行时仍需要唤醒或等待下一次进入。客户机的中断屏蔽、优先级与队列消费规则保持有效。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">Virtio 1.2 规范：Split Virtqueues、Used Buffer Notification Suppression、PCI 中断配置</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/standard-headers/linux/virtio_ring.h#L215-L229">QEMU：vring_need_event 的环绕判定</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/uapi/linux/kvm.h#L972-L1047">Linux 6.18：KVM MSI 路由与 irqfd ABI</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst">KVM API：KVM_SIGNAL_MSI、KVM_SET_GSI_ROUTING、KVM_IRQFD</a></li>
+    <li><a href="https://docs.kernel.org/PCI/msi-howto.html">Linux PCI 文档：MSI 与 MSI-X 的配置及处理</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_ring.c">Linux virtio 驱动：完成消费、中断回调及重新启用通知</a></li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#interrupt-virtualization">中断虚拟化原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=7b86b63d1fd5"></script>
+<script src="../assets/mechanism-viewer.js?v=c084ccad2981" defer></script>
+</body>
+</html>

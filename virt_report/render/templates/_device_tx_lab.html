@@ -1,0 +1,79 @@
+<section class="device-tx-lab" data-device-tx-lab data-mechanism-view="lab" aria-labelledby="device-tx-title">
+  <div class="mechanism-view-heading">
+    <h3 id="device-tx-title">一次发包的提交与完成</h3>
+    <button type="button" data-mechanism-expand hidden aria-label="全屏显示网卡发包过程">全屏显示</button>
+  </div>
+  <p>两种网卡都由 QEMU 处理报文，再写入同一个 TAP 后端。切换接口后，观察客户机内存中的队列、通知路径和完成记录。</p>
+  <div class="device-tx-controls" data-tx-controls hidden>
+    <div class="device-tx-options">
+      <label for="device-tx-interface">客户机网卡<select id="device-tx-interface" data-tx-interface><option value="e1000">e1000 · 设备模拟</option><option value="virtio">virtio-net · QEMU 后端</option></select></label>
+      <label for="device-tx-notification">提交通知<select id="device-tx-notification" data-tx-notification disabled><option value="ioeventfd">KVM ioeventfd</option><option value="mmio" selected>QEMU MMIO 回调</option><option value="suppressed">后端处理中，抑制 kick</option></select></label>
+      <label for="device-tx-queue-start">virtqueue 起始索引<select id="device-tx-queue-start" data-tx-queue-start disabled><option value="0">0 · 普通提交</option><option value="3">3 · 跨过最后一个环槽</option><option value="65535">65535 · 16 位索引回绕</option></select></label>
+    </div>
+    <p class="device-tx-option-note" data-tx-option-note>e1000 通过写 TDT 寄存器提交；通知选项用于 virtio-net。</p>
+    <div class="device-tx-playback" role="group" aria-label="网卡发包演示控制">
+      <button type="button" data-tx-back>上一步</button><button type="button" data-tx-next>下一步</button><button type="button" data-tx-play aria-pressed="false">播放</button><button type="button" data-tx-reset>重置</button>
+    </div>
+    <p class="device-tx-status" data-tx-status role="status" aria-live="polite" aria-atomic="true"></p>
+  </div>
+  <div class="device-tx-scene" role="group" aria-label="客户机内存、QEMU 网卡模型与宿主 TAP 的请求及完成路径">
+    <div class="device-tx-zone device-tx-guest" data-tx-node="guest">
+      <h4>客户机</h4><p class="device-tx-zone-label">驱动与客户机 RAM</p>
+      <div class="device-tx-driver" data-tx-node="driver"><strong data-tx-driver>e1000 驱动</strong><span data-tx-driver-state>准备报文，提交发送队列</span></div>
+      <div class="device-tx-memory" data-tx-node="memory">
+        <h5>客户机 RAM</h5>
+        <div class="device-tx-payload" data-tx-node="payload"><span class="device-tx-packet-mark" aria-hidden="true">P1</span><span data-tx-payload>报文缓冲区</span></div>
+        <div class="device-tx-descriptor" data-tx-node="descriptor"><strong data-tx-queue-title>TX 描述符环</strong><code data-tx-descriptor>buffer_addr · length · EOP · RS</code></div>
+        <div class="device-tx-completion" data-tx-node="completion"><strong>完成记录</strong><code data-tx-completion>DD 状态位</code></div>
+      </div>
+      <dl class="device-tx-registers"><div><dt data-tx-head-label>TDH</dt><dd data-tx-head>消费位置</dd></div><div><dt data-tx-tail-label>TDT</dt><dd data-tx-tail>提交位置</dd></div></dl>
+    </div>
+    <div class="device-tx-links device-tx-links--guest" aria-label="客户机与 QEMU 之间的路径">
+      <div class="device-tx-link device-tx-link--notification" data-tx-edge="notify"><span class="device-tx-arrow" aria-hidden="true">→</span><span data-tx-notify-label>TDT 写入</span></div>
+      <div class="device-tx-link device-tx-link--metadata" data-tx-edge="descriptor"><span class="device-tx-arrow" aria-hidden="true">→</span><span>描述符</span></div>
+      <div class="device-tx-link device-tx-link--data" data-tx-edge="payload"><span class="device-tx-arrow" aria-hidden="true">→</span><span>报文数据</span><i class="device-tx-flight" aria-hidden="true"></i></div>
+      <div class="device-tx-link device-tx-link--return" data-tx-edge="completion"><span class="device-tx-arrow" aria-hidden="true">←</span><span>完成回写</span></div>
+      <div class="device-tx-link device-tx-link--interrupt" data-tx-edge="interrupt"><span class="device-tx-arrow" aria-hidden="true">←</span><span>完成通知</span></div>
+    </div>
+    <div class="device-tx-zone device-tx-qemu" data-tx-node="qemu">
+      <h4>QEMU</h4><p class="device-tx-zone-label">宿主用户态</p>
+      <div class="device-tx-notifier" data-tx-node="notifier"><strong>通知入口</strong><span data-tx-notifier>MMIO 寄存器回调</span></div>
+      <div class="device-tx-worker" data-tx-node="worker"><strong data-tx-worker>e1000 网卡模型</strong><span data-tx-worker-state>读取描述符与报文，处理发送</span></div>
+      <div class="device-tx-net"><strong>网络后端接口</strong><code data-tx-send-function>qemu_send_packet</code><span>同一 TAP，vhost=off</span></div>
+    </div>
+    <div class="device-tx-links device-tx-links--tap" aria-label="QEMU 写入 TAP">
+      <div class="device-tx-link device-tx-link--data" data-tx-edge="tap"><span class="device-tx-arrow" aria-hidden="true">→</span><span>writev</span><i class="device-tx-flight" aria-hidden="true"></i></div>
+    </div>
+    <div class="device-tx-zone device-tx-tap" data-tx-node="tap">
+      <h4>TAP</h4><p class="device-tx-zone-label">宿主内核</p><div class="device-tx-tap-packet" data-tx-tap-state>接收以太网帧</div><p>后续进入网桥、路由或其他宿主网络配置。</p><p class="device-tx-remote-note">远端接收结果不在本次队列完成状态中。</p>
+    </div>
+  </div>
+  <div class="device-tx-split-layout" data-tx-split-layout role="group" aria-labelledby="device-tx-split-title">
+    <h4 id="device-tx-split-title">Split virtqueue · 客户机共享内存</h4>
+    <p data-tx-queue-ownership>示例：链 0 → 2 已发布，设备尚未回写完成。</p>
+    <div class="device-tx-desc-heading"><strong>描述符表 · desc[4]</strong><span data-tx-queue-free>2 / 4 个描述符可分配</span></div>
+    <table class="device-tx-desc-table">
+      <thead><tr><th scope="col">编号</th><th scope="col">addr</th><th scope="col">len</th><th scope="col">flags</th><th scope="col">next</th></tr></thead>
+      <tbody>
+        <tr data-tx-desc-index="0"><th scope="row">0</th><td data-tx-desc-field="addr">0x1000</td><td data-tx-desc-field="len">12</td><td data-tx-desc-field="flags">NEXT (1)</td><td data-tx-desc-field="next">2</td></tr>
+        <tr data-tx-desc-index="2"><th scope="row">2</th><td data-tx-desc-field="addr">0x2000</td><td data-tx-desc-field="len">60</td><td data-tx-desc-field="flags">0</td><td data-tx-desc-field="next">—</td></tr>
+      </tbody>
+    </table>
+    <p class="device-tx-queue-note">编号 1、3 未用于本次请求。NEXT 指向描述符编号，addr 指向数据缓冲区；两者相互独立。</p>
+    <div class="device-tx-buffer-map"><div><strong>0x1000 · 网络头 · 12 B</strong><span>desc[0].addr → virtio-net header</span></div><div><strong>0x2000 · P1 · 60 B</strong><span>desc[2].addr → 以太网帧</span></div></div>
+    <div class="device-tx-ring-pair">
+      <div><h5>Available ring · 驱动写，设备读</h5><p><code>avail.idx = <b data-tx-queue-avail>1</b></code></p><div class="device-tx-ring-slots" data-tx-queue-available-slots><div class="device-tx-ring-slot"><small>ring[0]</small><strong>head=0</strong></div><div class="device-tx-ring-slot"><small>ring[1]</small><strong>—</strong></div><div class="device-tx-ring-slot"><small>ring[2]</small><strong>—</strong></div><div class="device-tx-ring-slot"><small>ring[3]</small><strong>—</strong></div></div><p>设备私有消费位置：<code>last_avail_idx = <b data-tx-queue-consumed>0</b></code></p></div>
+      <div><h5>Used ring · 设备写，驱动读</h5><p><code>used.idx = <b data-tx-queue-used>0</b></code></p><div class="device-tx-ring-slots" data-tx-queue-used-slots><div class="device-tx-ring-slot"><small>ring[0]</small><strong>—</strong></div><div class="device-tx-ring-slot"><small>ring[1]</small><strong>—</strong></div><div class="device-tx-ring-slot"><small>ring[2]</small><strong>—</strong></div><div class="device-tx-ring-slot"><small>ring[3]</small><strong>—</strong></div></div><p>驱动私有回收位置：<code>last_used_idx = <b data-tx-queue-reclaimed>0</b></code></p></div>
+    </div>
+    <p class="device-tx-queue-note" data-tx-queue-slot>本次环槽 = 0 % 4 = 0；链首为 desc[0]</p>
+    <p class="device-tx-queue-note">本例没有 INDIRECT，TX 描述符均无 WRITE；一条链只占一个 available 项和一个 used 项。idx 按 16 位回绕，槽号按队列长度取模；回收后旧字段保留，是否有新项由索引判断。</p>
+  </div>
+  <p class="device-tx-description" data-tx-description>客户机写好报文和描述符后提交队列；QEMU 读取客户机内存并发送到 TAP，随后写回完成状态，客户机驱动回收缓冲区。</p>
+  <p class="device-tx-source" data-tx-source hidden></p>
+  <ol class="device-tx-static">
+    <li><strong>提交：</strong>e1000 驱动填写 TX 描述符并写 TDT；virtio-net 驱动发布描述符链和 avail 项，按通知条件发送 kick。</li>
+    <li><strong>发送：</strong>QEMU 消费队列，读取报文，经网络后端写入 TAP。</li>
+    <li><strong>回收：</strong>e1000 按 RS 写回 DD；virtio-net 写入 used 项。驱动读取完成记录后回收本地缓冲区。</li>
+  </ol>
+  <p class="device-tx-model-note">示例使用一个正常发送的报文、可写的 TAP 和允许的完成中断；e1000 描述符设置 EOP 与 RS，virtio-net 使用 split virtqueue。步骤拆分用于观察状态，播放速度不表示执行耗时。实际驱动常以批处理或轮询减少通知。</p>
+</section>

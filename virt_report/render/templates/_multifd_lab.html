@@ -1,0 +1,25 @@
+<section class="multifd-lab" data-multifd-lab data-mechanism-view="lab" aria-labelledby="multifd-lab-title">
+  <div class="mechanism-view-heading"><h3 id="multifd-lab-title">并行页传输与同步屏障</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>源端分发页面，数据通道并行接收，主迁移流在 FLUSH 处等待全部通道完成。P00—P15 为页编号，v1 / v2 为内容版本。</p>
+  <div class="multifd-controls" data-multifd-controls hidden>
+    <label>数据通道<select data-multifd-channels><option value="2">2 条</option><option value="4" selected>4 条</option><option value="8">8 条</option></select></label>
+    <label>通道 1 接收延迟<select data-multifd-delay><option value="0">无额外延迟</option><option value="3" selected>增加 3 步</option><option value="6">增加 6 步</option></select></label>
+    <div class="multifd-actions" role="group" aria-label="MultiFD 交互控制"><button type="button" data-multifd-step>下一步</button><button type="button" data-multifd-play aria-pressed="false">播放</button><button type="button" data-multifd-reset>重置</button></div>
+  </div>
+  <p class="multifd-status" data-multifd-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <div class="multifd-scene" data-multifd-scene hidden>
+    <div class="multifd-endpoints"><strong>源端 QEMU<small>扫描与分发 · 发送线程</small></strong><span aria-hidden="true">→</span><strong>目的端 QEMU<small>接收线程 · 写入 RAM</small></strong></div>
+    <div class="multifd-main"><strong>主迁移流</strong><div class="multifd-track"><span data-multifd-main-packet></span></div><span data-multifd-main-status>等待同步点</span></div>
+    <div class="multifd-lanes" data-multifd-lanes></div>
+    <div class="multifd-barrier"><div><span>源端线程</span><strong data-multifd-local>任务未完成</strong></div><div><span>目的端屏障</span><strong data-multifd-remote>等待各通道 SYNC</strong></div></div>
+    <div class="multifd-memory"><section><h4>源端页内容</h4><div data-multifd-source-pages></div></section><section><h4>目的端页内容</h4><div data-multifd-destination-pages></div></section></div>
+    <p class="multifd-counters" data-multifd-counters></p>
+    <ol class="multifd-events" data-multifd-events aria-label="最近发生的事件"></ol>
+  </div>
+  <div class="multifd-fallback" data-multifd-fallback>
+    <div class="multifd-static-path"><strong>源端 QEMU</strong><span>页面批次 → 多条有序数据通道 → 页面装载</span><strong>目的端 QEMU</strong></div>
+    <ol><li>源端为各通道分派同一 RAMBlock 的页面批次。</li><li>各发送线程处理完任务后，在本通道写入 SYNC；主线程等本地线程完成后写出主流 FLUSH。</li><li>目的端数据通道依次装载页面，收到 SYNC 后等待。</li><li>目的端主流收到 FLUSH，并收齐全部通道的 SYNC，随后释放接收线程。</li></ol>
+    <p>启用 JavaScript 后，可逐步观察页面版本、通道延迟和两端的同步状态。</p>
+  </div>
+  <p class="multifd-model-note">每步为逻辑时刻，不代表毫秒或带宽；每批用两页代表实际批次。延迟施加在通道 1 的接收端，通道内仍严格有序。示例只推进两组 RAM 传输，不包含 CPU / 设备状态保存与客户机启动；切换参数会重置过程。</p>
+</section>

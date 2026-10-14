@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>virtio-mem 的内存添加与回收 - virt-report</title>
+  <meta name="description" content="从目标容量到客户机页面隔离，分析 virtio-mem 的块协议、Linux 内存上线与异步回收，并观察扩缩容阻塞与重试。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=7b86b63d1fd5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=7b86b63d1fd5">
+  <link rel="stylesheet" href="../assets/site.css?v=7b86b63d1fd5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c084ccad2981">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c084ccad2981">
+<link rel="stylesheet" href="../assets/virtio-mem.css?v=c084ccad2981"></head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=7b86b63d1fd5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#hotplug">热插拔</a></div>
+    <h1>virtio-mem 的内存添加与回收</h1>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">前言</a></li><li><a href="#capacity">同一个设备的几种容量</a></li><li><a href="#structures">设备块、Linux 内存块与请求格式</a></li><li><a href="#growth">从目标变化到可用内存</a></li><li><a href="#reclaim">缩容中的页面迁移与交接</a></li><li><a href="#interaction">交互：扩容、缩容与阻塞</a></li><li><a href="#limits">目标为何可能无法达到</a></li><li><a href="#evolution">粒度、资源开销与设计演进</a></li><li><a href="#sources">参考资料</a></li></ol></nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+  <h2>前言</h2>
+  <p>虚拟机运行期间，负载需要的内存会改变。virtio-mem 在预先划定的客户机物理地址范围内，按小块提供和收回内存。管理程序设置目标容量，客户机驱动决定哪些块可以加入内存管理、哪些块能够安全回收，再通过 virtqueue 与 QEMU 完成交接。</p>
+  <p>本文沿 x86 Linux 客户机的扩容和缩容过程，分析容量字段、设备协议与页面回收。重点采用 Sub Block Mode（SBM）；较大设备块的 Big Block Mode（BBM）另作对照。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
+
+<section id="capacity" class="mechanism-section">
+  <h2>同一个设备的几种容量</h2>
+  <p>一个 virtio-mem 设备关联一个 memory backend，并管理从 <code>addr</code> 开始的一段 GPA。后端大小决定容量上限；实际向客户机提供多少内存，由块状态决定。初始内存与这个设备的容量分别计数。</p>
+  <table><thead><tr><th scope="col">字段</th><th scope="col">含义</th><th scope="col">谁改变它</th></tr></thead><tbody>
+    <tr><td><code>region_size</code></td><td>后端覆盖的最大范围，QMP 中为 <code>max-size</code></td><td>创建设备时确定</td></tr>
+    <tr><td><code>usable_region_size</code></td><td>客户机当前可选择 PLUG / UNPLUG 地址的范围</td><td>QEMU 随目标增长而扩展</td></tr>
+    <tr><td><code>requested_size</code></td><td>管理程序要求设备提供的目标容量</td><td>运行时设置 <code>requested-size</code></td></tr>
+    <tr><td><code>plugged_size</code></td><td>已成功 PLUG 的总量，QEMU 对象属性为 <code>size</code></td><td>PLUG / UNPLUG 成功后更新</td></tr>
+    <tr><td>客户机可分配范围</td><td>已纳入 Linux 分配器、未被驱动隔离的页</td><td>客户机添加、上线、隔离与移除操作</td></tr>
+  </tbody></table>
+  <p>例如后端容量 8 GiB，目标 4 GiB，实际提供 4 GiB。将目标改为 2 GiB 后，<code>size</code> 可以暂时仍为 4 GiB；客户机逐步回收后才会下降。反向扩容时，PLUG 已获确认的内存，也可能尚未上线。客户机的空闲内存和宿主 QEMU 的 RSS 又是不同指标。</p>
+  <p>下面的配置片段为客户机保留 4 GiB 初始内存，另建一个上限 8 GiB 的可调区域，目标先设为 4 GiB。两个部分都可用后，客户机获得的内存总量约为 8 GiB，而设备的 <code>size</code> 只计其中可调的 4 GiB：</p>
+  <pre><code>-m 4G,maxmem=12G \
+-object memory-backend-ram,id=vmem0,size=8G,reserve=off \
+-device virtio-mem-pci,id=vm0,memdev=vmem0,block-size=2M,requested-size=4G</code></pre>
+  <p>后端地址空间可以预留到上限，但无需预先填满所有页面。若使用需要预分配的后端，virtio-mem 设备的 <code>prealloc</code> 控制每次 PLUG 的内存准备；直接预分配整个后端会提前承担上限容量的开销。容量调整只作用于这个设备，初始内存不会随 <code>requested-size</code> 一起缩减。</p>
+  <p>可用范围给驱动留下选择空间。QEMU 10.2 的 x86 实现增加 256 MiB 余量，并受后端上限和块对齐约束。运行时调低目标不会立即缩小这个范围；<code>UNPLUG_ALL</code> 等允许重置范围的路径才会重新计算。它不能解释为已插入容量或当前物理占用。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-mem.c#L712-L759">范围调整实现</a></p>
+</section>
+
+<section id="structures" class="mechanism-section">
+  <h2>设备块、Linux 内存块与请求格式</h2>
+  <p>设备的 <code>block_size</code> 定义协议的最小操作单位，可以是 2 MiB。Linux 的 memory block 是内存热插拔管理对象，大小应读取 <code>/sys/devices/system/memory/block_size_bytes</code>，不能与设备块混用。</p>
+  <p>驱动根据设备块与内核 pageblock 等粒度计算 subblock。若它小于 Linux memory block，就采用 SBM：一个 memory block 包含多个 subblock，可处于部分提供状态。例如 Linux 块为 128 MiB、subblock 为 2 MiB 时，一个管理对象包含 64 个可独立处理的子块。更大的设备块采用 BBM，操作范围覆盖一个或多个 Linux memory block。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_mem.c#L2535-L2619">模式与粒度选择</a></p>
+  <table><thead><tr><th scope="col">结构</th><th scope="col">关键内容</th></tr></thead><tbody>
+    <tr><td>QEMU <code>VirtIOMEM</code></td><td><code>size</code>、<code>requested_size</code>、<code>block_size</code> 与按设备块索引的 bitmap</td></tr>
+    <tr><td>Linux <code>struct virtio_mem</code></td><td>容量副本、workqueue、virtqueue 与重试定时器；SBM 用 <code>mb_states</code> 记录 Linux 块状态、<code>sb_states</code> 位图记录子块状态</td></tr>
+    <tr><td><code>virtio_mem_req</code></td><td><code>type</code>、地址 <code>addr</code>、设备块数量 <code>nb_blocks</code>；完整请求为 24 字节</td></tr>
+    <tr><td><code>virtio_mem_resp</code></td><td>10 字节响应，<code>type</code> 为 ACK、NACK、BUSY 或 ERROR；STATE 查询还返回块状态</td></tr>
+  </tbody></table>
+  <p>驱动向 virtqueue 提交一个设备可读的请求缓冲区和一个设备可写的响应缓冲区。PLUG / UNPLUG 携带 GPA 与块数，不携带内存页内容。<code>addr = A + 4 MiB, nb_blocks = 2</code> 在设备块为 2 MiB 时表示处理从该地址开始的 4 MiB。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_mem.c#L1389-L1488">请求提交与响应处理</a></p>
+</section>
+
+<section id="growth" class="mechanism-section">
+  <h2>从目标变化到可用内存</h2>
+  <p>管理程序通过 QOM 属性提出请求：</p>
+  <pre><code>{"execute":"qom-set","arguments":{
+  "path":"/machine/peripheral/vm0",
+  "property":"requested-size","value":6442450944
+}}</code></pre>
+  <p>这里将名为 <code>vm0</code> 的设备目标设为 6 GiB。QEMU 检查块对齐和容量上限，更新属性，发送配置变化通知。QMP 成功表示属性设置成功；完成扩容需要继续观察 <code>query-memory-devices</code> 的 <code>size</code> 和客户机上线情况。</p>
+  <ol class="mechanism-flow">
+    <li><strong>配置变化</strong><span>客户机设置 <code>config_changed</code> 并调度工作队列，重读目标和可用范围。</span></li>
+    <li><strong>请求 PLUG</strong><span>驱动选择未提供的子块。QEMU 检查地址、原状态及容量限制，准备宿主内存并通知相关内存监听者。</span></li>
+    <li><strong>收到 ACK</strong><span>设备块位图与实际提供量更新；客户机记录成功提供的范围。</span></li>
+    <li><strong>加入客户机分配器</strong><span>新 Linux 块先添加，再由上线策略上线；已在线块内的新子块通过 fake-online 释放给分配器。</span></li>
+  </ol>
+  <p>Linux 的 <code>virtio_mem_sbm_plug_and_add_mb()</code> 先 PLUG，再添加管理对象，以便上线时识别哪些子块可用。若添加失败，会尝试 UNPLUG 回滚。长期没有上线的块也受驱动阈值限制，避免只积累管理开销而没有可用内存。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_mem.c#L1663-L1757">添加与局部上线路径</a></p>
+</section>
+
+<section id="reclaim" class="mechanism-section">
+  <h2>缩容中的页面迁移与交接</h2>
+  <p>降低目标后，客户机首先要使待回收页退出分配和使用。对于已在线 Linux 块中的子块，<code>virtio_mem_fake_offline()</code> 使用 <code>alloc_contig_range()</code> 隔离指定范围，迁出可迁移页，并由驱动持有这些页。它还通过 <code>adjust_managed_page_count()</code> 减少分配器管理的页数；同一 Linux memory block 的其他子块仍可在线使用。</p>
+  <p>以一个包含 64 个子块的 128 MiB Linux memory block 为例，回收第 63 个 2 MiB 子块，只需使该子块退出使用。成功后，驱动的子块位图从全 1 变为 63 个 1 和 1 个 0，Linux 块转入部分提供状态，QEMU 的设备容量减少 2 MiB。其余 126 MiB 可以继续服务客户机。最后一个子块也回收后，才有条件清理整个 Linux 块。</p>
+  <p>隔离成功后才发送 UNPLUG。QEMU 执行 <code>ram_block_discard_range()</code>，通知 <code>RamDiscardManager</code> 监听者，清除块位图，再减少 <code>size</code> 并返回 ACK。启用动态 memslot 时，完全不再含已提供块的 memslot 可以停用。discard 的底层行为取决于匿名内存、文件或大页后端，设备容量下降不等于进程 RSS 按同一数值立即下降。</p>
+  <figure class="mechanism-diagram" data-diagram="virtio-mem-resize" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>一个在线子块的回收交接</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看一个在线子块的回收交接" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="一个在线子块的回收交接">
+    <img src="../assets/virtio-mem-resize.svg?v=c084ccad2981" alt="Linux SBM 先隔离子块，再向 QEMU 请求 UNPLUG。客户机隔离失败与设备返回 BUSY 发生在不同阶段；BUSY 路径会归还已隔离页。" loading="lazy">
+  </div>
+  <figcaption>Linux SBM 先隔离子块，再向 QEMU 请求 UNPLUG。客户机隔离失败与设备返回 BUSY 发生在不同阶段；BUSY 路径会归还已隔离页。 <a href="../assets/virtio-mem-resize.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
+    accTitle: virtio-mem 在线子块的回收交接
+    accDescr: 管理程序调低目标后，Linux 客户机先隔离子块，再向 QEMU 请求回收；隔离失败时跳过该子块，设备 BUSY 时归还已隔离页，成功时减少设备容量。
+    participant M as 管理程序
+    participant Q as QEMU virtio-mem
+    participant V as 客户机 virtio-mem 驱动
+    participant L as Linux 内存管理
+    M-&gt;&gt;Q: 降低 requested-size
+    Q--&gt;&gt;M: 属性更新成功
+    Q--&gt;&gt;V: 配置变化通知
+    V-&gt;&gt;Q: 读取 requested / plugged / usable
+    Q--&gt;&gt;V: 当前容量与地址范围
+    V-&gt;&gt;L: alloc_contig_range 隔离在线子块
+    alt 页暂时不能迁出
+        L--&gt;&gt;V: -EBUSY，未完成隔离
+        Note over V,L: 跳过该子块，尝试其他范围并安排重试
+    else 隔离成功
+        L--&gt;&gt;V: 页由驱动持有，暂不再分配
+        V-&gt;&gt;Q: UNPLUG(addr, nb_blocks)
+        alt QEMU 暂不能完成
+            Q--&gt;&gt;V: BUSY
+            V-&gt;&gt;L: fake-online，归还已隔离页
+        else 回收成功
+            Note over Q: discard、通知监听者、清位图、减少 size
+            Q--&gt;&gt;V: ACK
+            Note over V,L: 全部子块回收后，再尝试移除 Linux 内存块
+        end
+    end
+</code></pre></details>
+</figure>
+  <p>成功回收一个子块不要求先 offline 整个 Linux memory block。全部子块都已回收后，驱动再尝试 offline 并移除这个管理对象，释放对应管理资源；这一步失败时，设备块已经回收的事实仍然成立，清理会重试。BBM 则先隔离、offline 并移除覆盖的 Linux 内存块，再请求 UNPLUG，其状态机与 SBM 不同。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_mem.c#L1972-L2065">SBM 在线子块回收</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_mem.c#L2158-L2220">BBM 回收路径</a></p>
+</section>
+
+<section id="interaction" class="mechanism-section">
+  <h2>交互：扩容、缩容与阻塞</h2>
+<section class="virtio-mem-lab" data-virtio-mem-lab data-mechanism-view="lab" aria-labelledby="virtio-mem-lab-title">
+  <div class="mechanism-view-heading"><h3 id="virtio-mem-lab-title">目标容量、客户机上线与回收</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>一个容量为 8 GiB 的设备，初始提供 4 GiB。修改目标后逐步处理；点击已上线的区域，可设置或解除客户机回收阻塞。</p>
+  <div class="virtio-mem-controls" data-virtio-mem-controls hidden>
+    <label>设备目标容量<select data-virtio-mem-target><option value="0">0 GiB</option><option value="512">0.5 GiB</option><option value="1024">1 GiB</option><option value="2048">2 GiB</option><option value="4096" selected>4 GiB</option><option value="6144">6 GiB</option><option value="8192">8 GiB</option></select></label>
+    <label class="virtio-mem-check"><input type="checkbox" data-virtio-mem-busy>QEMU 暂忙，返回 BUSY</label>
+    <div class="virtio-mem-actions" role="group" aria-label="内存调整操作"><button type="button" data-virtio-mem-step>处理下一步</button><button type="button" data-virtio-mem-back disabled>上一步</button><button type="button" data-virtio-mem-reset>重新开始</button></div>
+  </div>
+  <p class="virtio-mem-status" data-virtio-mem-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <div data-virtio-mem-scene hidden>
+    <dl class="virtio-mem-metrics"><div><dt>管理端目标</dt><dd data-virtio-mem-requested>4 GiB</dd></div><div><dt>设备实际提供</dt><dd data-virtio-mem-plugged>4 GiB</dd></div><div><dt>客户机管理容量</dt><dd data-virtio-mem-online>4 GiB</dd></div><div><dt>可用地址范围</dt><dd data-virtio-mem-usable>4.25 GiB</dd></div></dl>
+    <div class="virtio-mem-grid" data-virtio-mem-grid role="group" aria-label="设备地址范围，已上线区域可切换回收阻塞"></div>
+    <p class="virtio-mem-legend">客户机管理容量包含已使用与空闲页；它不等同于 Linux memory block 的 online 状态。已交客户机：由分配器管理 · 等待上线：设备已提供 · 已隔离：暂离分配器 · 回收受阻：各子块仍有不可迁移页 · 未提供：客户机不可使用</p>
+    <ol class="virtio-mem-events" data-virtio-mem-events aria-label="最近处理步骤"></ol>
+  </div>
+  <div data-virtio-mem-fallback><ol><li>目标从 4 GiB 调到 6 GiB，设备通知客户机；实际提供量暂时不变。</li><li>客户机请求 PLUG。QEMU 返回 ACK 后，实际提供量增加；客户机完成添加与上线后，才能用于普通分配。</li><li>目标调低时，客户机先迁出可迁移页并隔离范围，再发送 UNPLUG；QEMU 完成 discard 后确认。</li><li>不可迁移页会阻止客户机隔离。QEMU 返回 BUSY 时，驱动归还已隔离页并稍后重试。</li></ol><p>启用 JavaScript 后可修改目标、设置回收阻塞，并逐步观察容量差异。</p></div>
+  <p class="virtio-mem-note">每格汇总 512 MiB，相当于 256 个 2 MiB 设备块；它既不是一个真实设备块，也不是一个 Linux memory block。每步汇总一组块的处理。阻塞选项表示该格每个回收子块都有暂不可迁移页；实际驱动会尝试回收其中能够迁出的子块。这里合并展示添加与上线、discard 与应答；隔离期间目标更新时，合并展示取消请求、归还页和重读配置。不计算宿主 RSS、耗时或页面迁移目标。可用地址范围按 x86 的 256 MiB 余量更新；普通缩容不使它缩小。</p>
+</section></section>
+
+<section id="limits" class="mechanism-section">
+  <h2>目标为何可能无法达到</h2>
+  <p>不可迁移的内核分配、暂时固定的页或迁移目标页不足，都可能使隔离失败。驱动会跳过暂忙子块，尝试其他范围；部分子块成功时，实际容量可以停在初始值与目标之间。ZONE_MOVABLE 能减少不可迁移分配带来的干扰，但仍需要处理临时引用和内存压力。</p>
+  <p>设备侧 BUSY 是另一个原因。QEMU 在迁移期间限制块状态变化；预分配失败、discard 失败或监听者无法建立映射，也可能使请求暂不能完成。在线 SBM 子块的 UNPLUG 失败后，驱动会 fake-online，将已经隔离的页归还分配器，再安排重试。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-mem.c#L578-L684">QEMU 状态改变</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_mem.c#L2415-L2499">工作队列与重试</a></p>
+  <p>NACK 表示 PLUG 超过当前目标，例如目标在处理期间变化；驱动重读配置。ERROR 表示地址、对齐或块状态等请求条件错误，不能与 BUSY 混同。管理程序应同时记录目标、实际提供量及变化时间，再检查客户机内存块状态和驱动日志，避免把一次 QMP 返回当作扩缩容完成。</p>
+  <p>判断停在哪一层，可以依次看三个现象：目标已变而设备容量未变，检查驱动是否运行、是否持续收到 BUSY；设备容量已增加而客户机可用量未增加，检查内存上线策略；设备容量只降了一部分，则查看余下子块的页面引用和可迁移性。重复设置相同目标能重新触发配置通知，但不能强制释放仍被客户机使用的页面。</p>
+</section>
+
+<section id="evolution" class="mechanism-section">
+  <h2>粒度、资源开销与设计演进</h2>
+  <p>DIMM 热插拔以设备为单位管理容量，客户机 balloon 在已有内存中交还页面，virtio-mem 则在设备预留范围内改变已提供的块。三者对客户机支持、容量边界和管理对象的要求不同，适用条件也不同。</p>
+  <p><a href="https://github.com/qemu/qemu/commit/910b25766b336a94d69f5f6e1b55c10b3aeb4326">2020 年的 QEMU 初始实现</a>已经采用目标容量、块位图与客户机协作。这让较小粒度的持续调整不必反复添加大量 DIMM，但引入了协议驱动和回收状态机，无法绕过客户机页面是否可迁移的限制。</p>
+  <p><a href="https://github.com/qemu/qemu/commit/2044969f0b27fa67f2b69bc710eaef45998cb6fb">2021 年引入的 RamDiscardManager 接口</a>把块变化通知给相关使用者，为直通设备等映射同步提供机制。失败需要回滚，容量可调同时也增加了 DMA 映射协调要求。</p>
+  <p><a href="https://github.com/qemu/qemu/commit/177f9b1ee4643626faa0caac20f06d77ae443fe8">2023 年加入的动态 memslot</a>解决另一项成本：后端上限很大、实际只使用少量内存时，单个巨大 memslot 仍可能带来内核元数据开销。按需映射多个槽可以降低这种浪费，但需要权衡槽位上限、粒度和外部后端支持。设备块、Linux 内存块和 KVM memslot 是三种不同边界，设计和排查时应分别观察。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-mem.c">QEMU 10.2.0：配置、请求处理与 RamDiscardManager</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/standard-headers/linux/virtio_mem.h">virtio-mem 协议字段与响应码</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_mem.c">Linux 6.18：SBM / BBM、内存上线与回收状态机</a></li>
+    <li><a href="https://virtio-mem.gitlab.io/user-guide/user-guide-qemu.html">virtio-mem 项目：QEMU 使用与配置</a></li>
+    <li><a href="https://docs.kernel.org/admin-guide/mm/memory-hotplug.html">Linux 内存热插拔：内存块、上线策略与回收限制</a></li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#hotplug">热插拔原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=7b86b63d1fd5"></script>
+<script src="../assets/mechanism-viewer.js?v=c084ccad2981" defer></script>
+<script src="../assets/virtio-mem.js?v=c084ccad2981" defer></script></body>
+</html>

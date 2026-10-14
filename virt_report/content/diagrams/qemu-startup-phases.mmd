@@ -1,0 +1,28 @@
+flowchart TD
+  accTitle: Q35 冷启动的初始化阶段
+  accDescr: QEMU 先建立机器与 KVM 容器，注册内存监听器，再准备 RAM 后端并执行板级初始化。Q35 先创建暂停的 CPU 线程，再布置内存和固件并创建设备。复位和继续执行属于后续阶段。
+  A["qemu_init：解析参数<br/>初始化主循环基础设施"] --> B["创建 MachineState<br/>设置机器属性与兼容属性"]
+  B --> C["配置 KVM accelerator<br/>打开 /dev/kvm，KVM_CREATE_VM"]
+  C --> D["注册 KVM 内存监听器<br/>准备后端、CPU 型号与 NUMA"]
+  D --> E["machine_run_board_init<br/>准备 RAM 后端"]
+  subgraph BOARD["pc_q35_init：板级初始化"]
+    direction TB
+    F["计算 RAM 布局<br/>x86_cpus_init：创建暂停的 vCPU 线程"]
+    G["pc_memory_init：映射 RAM 与固件<br/>监听器登记 KVM 内存槽"]
+    H["创建 PCIe 根总线、ICH9 等板级设备"]
+    F --> G --> H
+  end
+  E --> F
+  H --> I["创建命令行附加设备<br/>同步 CPU 状态，初始化完成通知"]
+  I --> J["登记 ROM 复位处理<br/>整机复位与寄存器同步"]
+  J --> K{"-S 是否暂停自动执行？"}
+  K -->|是| L["prelaunch<br/>等待 QMP cont"]
+  K -->|否| M["自动 cont"]
+  L --> N["vm_start / resume_all_vcpus<br/>允许客户机执行"]
+  M --> N
+  classDef setup fill:#e4f1ed,stroke:#78a399,color:#163c38;
+  classDef board fill:#edf3fa,stroke:#7897b3,color:#243d53;
+  classDef run fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class A,B,C,D,E setup;
+  class F,G,H,I,J board;
+  class K,L,M,N run;

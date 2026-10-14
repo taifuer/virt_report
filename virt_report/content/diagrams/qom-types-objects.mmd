@@ -1,0 +1,29 @@
+flowchart TB
+    accTitle: QOM 类型继承、对象组合与总线连接
+    accDescr: TypeInfo 注册为 TypeImpl，后者关联一份按需初始化的类对象。virtio-net-pci 实例继承 PCI 传输层并组合一个 virtio-net-device 子对象；外层接 PCI 总线，内部设备接 virtio 总线。组合树所有权与总线拓扑互相区分。
+    subgraph types[类型：每种类型共享类对象]
+        info["TypeInfo<br/>name · parent · sizes · callbacks"]
+        impl["TypeImpl<br/>parent_type · class"]
+        klass["virtio-net-pci 的类对象<br/>继承 virtio-net-pci-base → virtio-pci<br/>→ pci-device → device → object"]
+        info -->|注册到类型表| impl
+        impl -->|按需初始化| klass
+    end
+    subgraph objects[实例：每块网卡分别保存状态]
+        outer["外层 VirtIONetPCI<br/>parent_obj：VirtIOPCIProxy<br/>Object.class · ref · parent"]
+        inner["嵌入的 VirtIONet vdev<br/>独立 Object 与类指针<br/>类型 virtio-net-device"]
+        bus["外层创建的 virtio 总线<br/>VirtIOPCIProxy.bus"]
+        outer -->|child 属性 virtio-backend：强引用| inner
+        outer -->|创建并拥有子总线| bus
+        inner -. parent_bus .-> bus
+    end
+    container["机器对象树的容器<br/>例如 peripheral"]
+    pci["PCI 总线<br/>管理 PCI 连接与地址"]
+    outer -.->|"Object.class"| klass
+    container -->|child 所有权| outer
+    outer -. parent_bus .-> pci
+    classDef type fill:#eaf0f6,stroke:#8198ac,color:#263c4c
+    classDef instance fill:#e4f1ec,stroke:#438575,color:#173e34
+    classDef topology fill:#f5f4f1,stroke:#a6aaa7,color:#3c4542
+    class info,impl,klass type
+    class outer,inner instance
+    class bus,pci,container topology

@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>QEMU AioContext、协程与 IOThread - virt-report</title>
+  <meta name="description" content="沿一次文件写请求，分析事件分发、协程挂起与恢复、队列到 IOThread 的映射，以及多线程块层的同步边界。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=7b86b63d1fd5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=7b86b63d1fd5">
+  <link rel="stylesheet" href="../assets/site.css?v=7b86b63d1fd5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c084ccad2981">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c084ccad2981">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=7b86b63d1fd5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#qemu-internals">QEMU 内部机制</a></div>
+    <h1>QEMU AioContext、协程与 IOThread</h1>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">前言</a></li><li><a href="#structures">线程、事件循环与协程</a></li><li><a href="#request">一次写请求的挂起与恢复</a></li><li><a href="#dispatch">BH 与跨线程调度</a></li><li><a href="#mapping">多队列如何分配到 IOThread</a></li><li><a href="#synchronization">数据面并行与管理操作</a></li><li><a href="#evolution">从单一事件循环到队列级并行</a></li><li><a href="#sources">参考资料</a></li></ol></nav>
+    <div class="mechanism-prose">
+<section id="preface" class="mechanism-section">
+  <h2>前言</h2>
+  <p>磁盘请求的大部分时间可能花在等待上。QEMU 需要让等待中的请求保留进度，同时继续处理其他队列、完成通知和管理事件。AioContext 组织事件分发，协程保存请求的执行过程，IOThread 提供独立的事件循环线程；三者共同决定 I/O 在何处运行、何时恢复。</p>
+  <p>本文沿 Linux 宿主上的 virtio-blk 写请求，跟踪 raw 文件后端的 <code>aio=threads</code> 路径，再讨论多队列映射、同步与调优。客户机描述符和完成通知的格式见<a href="qemu-virtio-blk.html">virtio-blk 的请求处理与写入完成</a>。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p></section>
+
+<section id="structures" class="mechanism-section">
+  <h2>线程、事件循环与协程</h2>
+  <table><thead><tr><th scope="col">结构</th><th scope="col">关键字段</th><th scope="col">含义</th></tr></thead><tbody>
+    <tr><td><code>IOThread</code></td><td><code>thread / ctx / running / thread_id</code></td><td>一个宿主线程及其 AioContext，负责执行事件循环。</td></tr>
+    <tr><td><code>AioContext</code></td><td><code>aio_handlers / bh_list / notifier / tlg</code></td><td>文件描述符处理器、延迟回调、跨线程唤醒和定时器。</td></tr>
+    <tr><td><code>Coroutine</code></td><td><code>entry / caller / ctx / scheduled</code></td><td>协程入口、调用关系、挂起时所属上下文与调度标记。</td></tr>
+    <tr><td><code>QEMUBH</code></td><td><code>ctx / cb / opaque / flags</code></td><td>在指定上下文执行的延迟回调，保存函数、参数和调度状态。</td></tr>
+    <tr><td><code>ThreadPoolAio</code></td><td><code>ctx / request_list / completion_bh / lock</code></td><td>某个 AioContext 的阻塞工作队列及完成回调；worker 数量独立于 IOThread 数量。</td></tr>
+  </tbody></table>
+  <p><code>iothread_run()</code> 设置当前线程的 AioContext，随后反复执行 <code>aio_poll(ctx, true)</code>。一次循环检查待处理事件，必要时等待，再分发 BH、就绪的文件描述符和定时器。Linux 上的等待实现可以使用 io_uring、epoll 或 poll；这层事件监控与磁盘的 <code>aio=threads/native/io_uring</code> 参数是两个不同的选择。</p>
+  <p>同一个 AioContext 的事件分发不能由两个线程并发执行。一个 IOThread 内可以交错推进许多请求，但同一时刻只执行其中一段代码。协程在 yield 时保存调用栈，恢复后从原位置继续；<code>coroutine_fn</code> 标记函数需要在协程中调用，本身不会创建线程或自动把阻塞调用异步化。</p>
+</section>
+
+<section id="request" class="mechanism-section">
+  <h2>一次写请求的挂起与恢复</h2>
+  <p>假设队列 0 已映射到 IOThread A，客户机提交一个 4 KiB 写请求，数据经映射得到一个连续 iovec，后端使用 raw 普通文件、writeback 缓存和 aio=threads。请求到达后，IOThread A 处理队列，调用 <code>blk_aio_pwritev()</code>。</p>
+  <figure class="mechanism-diagram" data-diagram="aio-request-lifecycle" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>写请求在 IOThread 与 worker 之间的往返</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看写请求在 IOThread 与 worker 之间的往返" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="写请求在 IOThread 与 worker 之间的往返">
+    <img src="../assets/aio-request-lifecycle.svg?v=c084ccad2981" alt="协程在 IOThread 中提交并挂起，worker 执行阻塞文件操作；完成结果通过 BH 返回原上下文，再恢复协程和设备回调。" loading="lazy">
+  </div>
+  <figcaption>协程在 IOThread 中提交并挂起，worker 执行阻塞文件操作；完成结果通过 BH 返回原上下文，再恢复协程和设备回调。 <a href="../assets/aio-request-lifecycle.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
+    accTitle: 写请求在 IOThread 与 worker 之间的往返
+    accDescr: IOThread 创建写协程并提交线程池任务，协程挂起后线程可处理其他事件。worker 执行阻塞写入，发布结果并调度完成 BH；原 IOThread 恢复协程，调用设备完成函数。
+    participant V as virtio-blk 队列
+    participant I as IOThread A&lt;br/&gt;事件循环与写协程
+    participant W as A 的线程池 worker
+    V-&gt;&gt;I: 队列就绪，blk_aio_pwritev
+    activate I
+    I-&gt;&gt;I: 创建协程，进入 raw_co_prw
+    I-&gt;&gt;W: 入队 handle_aiocb_rw
+    I-&gt;&gt;I: yield：保存请求栈，返回事件循环
+    deactivate I
+    Note over I: 可处理其他队列与完成事件
+    activate W
+    W-&gt;&gt;W: pwrite：等待文件操作
+    W--&gt;&gt;I: 发布 ret / DONE，调度 completion_bh
+    deactivate W
+    activate I
+    I-&gt;&gt;I: 完成 BH → aio_co_wake
+    I-&gt;&gt;I: 从 yield 后恢复，返回块层结果
+    I--&gt;&gt;V: 完成回调：status、used、通知
+    deactivate I
+    Note over I,W: worker 不直接执行客户机完成回调
+</code></pre></details>
+</figure>
+  <p><code>blk_aio_prwv()</code> 创建 <code>BlkAioEmAIOCB</code>，保存偏移、向量、完成函数等信息，再创建并进入写协程。协程沿块图下行到 <code>raw_co_prw()</code>，构造栈上的 <code>RawPosixAIOData</code>，交给线程池：</p>
+  <pre><code>RawPosixAIOData
+  aio_fildes = 文件 fd
+  aio_offset = 本次写入的字节偏移
+  aio_nbytes = 4096
+  io.iov     = 映射后的客户机数据向量
+  io.niov    = 1
+
+ThreadPoolElementAio
+  func = handle_aiocb_rw
+  arg  = &amp;RawPosixAIOData
+  state: THREAD_QUEUED → THREAD_ACTIVE → THREAD_DONE</code></pre>
+  <p><code>thread_pool_submit_co()</code> 记录当前 Coroutine，将任务加入当前 AioContext 的线程池，然后执行 <code>qemu_coroutine_yield()</code>。协程栈仍然存在，因此栈上的请求参数保持有效；提交端也必须让 iovec 和数据缓冲区存活到完成。IOThread 返回事件循环，继续处理其他请求。</p>
+  <p>worker 从队列取出任务，执行 <code>handle_aiocb_rw()</code>。本例只有一个 iovec，进入 pwrite 循环；多个合适的 iovec 才尝试 pwritev。worker 返回后先保存结果，再发布 THREAD_DONE，通过 <code>qemu_bh_schedule(completion_bh)</code> 通知所属事件循环。它不直接修改客户机 used ring。</p>
+  <p>IOThread A 执行 <code>thread_pool_completion_bh()</code>，找到完成任务，调用 <code>thread_pool_co_cb()</code>。该函数保存返回值并通过 <code>aio_co_wake()</code> 恢复协程。原来的 submit_co 从 yield 后返回，结果沿块层回到 <code>blk_aio_complete()</code>，最后调用 virtio-blk 的完成函数，写状态、更新 used ring，并按通知规则告知客户机。</p>
+  <p>即使某条块路径立即完成，异步接口也不能在提交函数返回前提前调用外部完成函数。<code>has_returned</code> 配合完成 BH 保证这一点。上述 raw 写入成功只表示该次文件操作成功；writeback 下数据可能仍在宿主页缓存，持久化还取决于后续 flush、存储设备及其保证。</p>
+  <p>例如请求 A 先提交后挂起，请求 B 随后进入另一 worker 并先完成。IOThread 可以先恢复 B，再恢复 A。每个请求拥有自己的参数、协程和返回值，完成顺序不必等于提交顺序；应用需要的写入先后关系必须由客户机块层、协议中的 flush 等约束建立。增加 IOThread 不会替应用推导依赖关系。</p>
+</section>
+
+<section id="dispatch" class="mechanism-section">
+  <h2>BH 与跨线程调度</h2>
+  <p>BH 是用户态的延迟回调。调度操作设置标志并把它加入所属 AioContext 的待处理链表，必要时通过 EventNotifier 唤醒事件循环。回调在目标线程运行，不在调用 qemu_bh_schedule 的线程内执行。线程池中的锁保护工作队列，结果发布与读取还使用内存屏障，避免看到 DONE 却读到旧结果。</p>
+  <p><code>aio_co_enter()</code> 根据调用位置选择恢复方式：目标上下文不同，先把协程放入 <code>scheduled_coroutines</code> 并调度 <code>co_schedule_bh</code>；同上下文且当前不在协程中，可以直接进入；当前也在协程中，则加入唤醒队列，在安全的切换点处理。一个协程不能同时在两条线程上运行，也不能被重复入队。</p>
+  <p>跨线程执行普通函数通常用 <code>aio_bh_schedule_oneshot(ctx, cb, opaque)</code>。但把指针交给 BH 不会自动延长对象寿命，调用者仍需安排引用、完成等待和删除顺序。虚拟机关闭、设备移除及后端切换时，遗漏这些约束就可能使回调访问已释放的状态。</p>
+  <p>通知只表示有工作需要处理，实际结果存放在任务结构中。线程池共用一个 completion_bh，多次调度可以合并，回调扫描完成任务后逐一交付。因此不能把一次唤醒当成一个请求，也不能从通知次数推算吞吐量。取消同样有边界：尚在队列中的任务可以移除并返回取消错误，已经执行的阻塞文件操作则不能靠删除 BH 强行终止。</p>
+</section>
+
+<section id="mapping" class="mechanism-section">
+  <h2>多队列如何分配到 IOThread</h2>
+  <p>创建多个 virtqueue，只提供多个提交入口。若它们都映射到同一个 AioContext，请求解析和完成处理仍由同一条事件循环线程推进。下面的磁盘配置片段将四个队列分给两个 IOThread；disk.raw 需已存在：</p>
+  <pre><code>-object iothread,id=io0 \
+-object iothread,id=io1 \
+-drive if=none,id=disk0,file=disk.raw,format=raw,aio=threads,cache=writeback \
+-device '{"driver":"virtio-blk-pci","drive":"disk0","num-queues":4,"iothread-vq-mapping":[{"iothread":"io0","vqs":[0,2]},{"iothread":"io1","vqs":[1,3]}]}'</code></pre>
+  <figure class="mechanism-diagram" data-diagram="aio-queue-thread-mapping" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>四个 virtqueue、两个 IOThread 与一个磁盘后端</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看四个 virtqueue、两个 IOThread 与一个磁盘后端" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="四个 virtqueue、两个 IOThread 与一个磁盘后端">
+    <img src="../assets/aio-queue-thread-mapping.svg?v=c084ccad2981" alt="队列入口和完成处理按 vq_aio_context 分配；两个线程共享块后端，各自在需要时使用所属 AioContext 的线程池。" loading="lazy">
+  </div>
+  <figcaption>队列入口和完成处理按 vq_aio_context 分配；两个线程共享块后端，各自在需要时使用所属 AioContext 的线程池。 <a href="../assets/aio-queue-thread-mapping.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+    accTitle: 四个 virtqueue 映射到两个 IOThread
+    accDescr: 队列 0 和 2 由 IOThread io0 处理，队列 1 和 3 由 io1 处理。它们共享块后端，aio=threads 请求进入各自上下文的线程池，完成 BH 返回原上下文。
+    subgraph guest[客户机：四个请求队列]
+        direction LR
+        q0[队列 0]
+        q2[队列 2]
+        q1[队列 1]
+        q3[队列 3]
+    end
+    subgraph host[QEMU：两个独立的事件循环]
+        direction LR
+        a[&#34;IOThread io0 / AioContext A&lt;br/&gt;队列解析、协程、完成回调&#34;]
+        b[&#34;IOThread io1 / AioContext B&lt;br/&gt;队列解析、协程、完成回调&#34;]
+    end
+    q0 --&gt;|ioeventfd| a
+    q2 --&gt; a
+    q1 --&gt;|ioeventfd| b
+    q3 --&gt; b
+    a --&gt; block[&#34;共享 BlockBackend 与块图&lt;br/&gt;I/O API、图锁及对象级同步&#34;]
+    b --&gt; block
+    block --&gt;|来自 A 的 aio=threads 请求| wa[&#34;A 的线程池&lt;br/&gt;阻塞文件操作&#34;]
+    block --&gt;|来自 B 的 aio=threads 请求| wb[&#34;B 的线程池&lt;br/&gt;阻塞文件操作&#34;]
+    wa --&gt; ca[&#34;完成 BH A&lt;br/&gt;回到原 AioContext A&lt;br/&gt;恢复协程与设备完成回调&#34;]
+    wb --&gt; cb[&#34;完成 BH B&lt;br/&gt;回到原 AioContext B&lt;br/&gt;恢复协程与设备完成回调&#34;]
+    classDef queue fill:#e6f1f8,stroke:#7b9db5,color:#253e4b
+    classDef loop fill:#e1f0eb,stroke:#6d9a8a,color:#24413a
+    classDef backend fill:#f5f0e5,stroke:#b7a57d,color:#4f4635
+    class q0,q1,q2,q3 queue
+    class a,b,ca,cb loop
+    class block,wa,wb backend
+</code></pre></details>
+</figure>
+  <p><code>vq_aio_context[i]</code> 保存队列 i 的映射，队列的 host notifier 挂到相应事件循环。显式映射要求队列全部覆盖、没有重复、索引合法；所有条目都省略 vqs 时则轮询分配。<code>iothread</code> 和 <code>iothread-vq-mapping</code> 不能同时设置，transport 还必须支持所需通知接口与 ioeventfd。</p>
+  <p>每个 IOThread 可以服务多个队列或磁盘；一个磁盘也可以由多个 IOThread 处理。aio=threads 的 worker 承担阻塞调用，不消费 virtqueue、不代替 IOThread 的事件分发。换成内核异步后端会改变请求提交与完成机制，也不会自动增加队列处理线程。</p>
+</section>
+
+<section id="synchronization" class="mechanism-section">
+  <h2>数据面并行与管理操作</h2>
+  <p>IOThread 的数据路径通常不持有 BQL。设备配置、复位和管理操作仍有各自的同步要求。块层的 I/O API 可以跨线程调用，块图的修改需要图锁与相应的全局状态上下文；设备的共享请求链表等状态则由自己的锁保护。多条线程能够遍历同一块图，不意味着可以同时任意更改节点关系。</p>
+  <p>管理侧需要停止接收并等待已有请求完成时使用 drain。virtio-blk 的 drained_begin 会暂时摘下各队列的 host notifier，drained_end 再挂回。已有请求仍需由事件循环推进到完成，不能简单把 IOThread 停住再等它完成工作。drain 也不等于磁盘 flush，两者分别处理活动请求与持久化语义。</p>
+  <p>容量变更提供了一个具体的跨线程例子：<code>virtio_blk_resize()</code> 用 BH 把配置通知安排到主 AioContext，后者调用 <code>virtio_notify_config()</code>。把需要 BQL 的控制操作直接塞进普通 IOThread 回调，会破坏既有锁和上下文约束。</p>
+</section>
+
+<section id="evolution" class="mechanism-section">
+  <h2>从单一事件循环到队列级并行</h2>
+  <p>2014 年引入的 <a href="https://github.com/qemu/qemu/commit/be8d8537668c9be7a8dee6aed94b2b3f9fcd4a9f">IOThread 对象</a>让事件循环可以独立配置，减少数据路径与主循环、BQL 的竞争。协程让异步等待仍能保持顺序代码的结构；线程池为阻塞文件接口提供执行位置，但线程切换、排队和缓存局部性也随之成为成本。</p>
+  <p>2023 年末，块层<a href="https://github.com/qemu/qemu/commit/b49f4755c7fa35ea6e17e5b52c1cdaef6b4aa21c">移除了广泛使用的 AioContext acquire/release 锁定</a>，改由明确的 API 分类、块图锁和对象级同步承担职责。本文版本仍有 AioContext.lock 字段，不能据此沿用旧式块层锁模型，也不能把这次改动解读成所有路径都无锁。</p>
+  <p><a href="https://www.qemu.org/2024/04/23/qemu-9-0-0/">QEMU 9.0</a>加入同一 virtio-blk 磁盘的队列到多 IOThread 映射，使单盘请求解析与完成处理能够使用多核。收益取决于客户机是否真正使用多个队列、宿主 CPU 余量以及后端并行能力；对低队列深度负载，增加线程可能只增加调度和跨核通信。</p>
+  <table><thead><tr><th scope="col">现象</th><th scope="col">优先观察</th><th scope="col">调整的代价</th></tr></thead><tbody>
+    <tr><td>IOThread 单核忙，后端尚有余量</td><td>客户机队列分布、映射和请求解析开销</td><td>增加 IOThread 会增加共享状态竞争与 CPU 占用。</td></tr>
+    <tr><td>线程池排队时间长</td><td>worker 数量、阻塞调用耗时、文件系统与存储队列</td><td>放宽线程池可能只把拥塞推向下游。</td></tr>
+    <tr><td>低负载尾延迟偏高</td><td>事件唤醒、线程调度、CPU 亲和性与 NUMA</td><td>增大 poll-max-ns 可减少部分睡眠唤醒，但会消耗更多 CPU。</td></tr>
+  </tbody></table>
+  <p>测量时至少分开客户机提交、队列处理、后端服务和完成回送，并同时记录吞吐、尾延迟与 CPU 使用率。IOThread 数量、worker 数量、virtqueue 数量和磁盘硬件队列数量分别控制不同层次，不能按一个统一比例机械配置。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/iothread.c#L39-L77">IOThread 事件循环</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/util/aio-posix.c#L630-L728">aio_poll 的线程约束与分发</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/block/aio.h#L223-L359">AioContext</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/qemu/coroutine_int.h#L44-L70">Coroutine</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/block-backend.c#L1552-L1634">块层异步接口、协程与 has_returned</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/file-posix.c#L2571-L2633">raw_co_prw</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/file-posix.c#L1797-L1893">pwrite 与 pwritev 分支</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/util/thread-pool.c#L77-L120">worker 执行与完成发布</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/util/thread-pool.c#L174-L290">完成 BH 与协程恢复</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/util/async.c#L62-L140">BH 入队与跨线程通知</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/util/async.c#L626-L709">协程调度与上下文切换</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/iothread-vq-mapping.c#L13-L119">队列映射校验与分配</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c#L1424-L1479">virtio-blk 映射初始化</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c#L1358-L1422">配置通知与 drain 回调</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/graph-lock.c#L120-L161">块图修改的同步</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/multiple-iothreads.rst">QEMU IOThread 开发文档</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/block/block-io.h#L32-L42">块层 I/O API 的线程约定</a></li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#qemu-internals">QEMU 内部机制原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=7b86b63d1fd5"></script>
+<script src="../assets/mechanism-viewer.js?v=c084ccad2981" defer></script>
+</body>
+</html>

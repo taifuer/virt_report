@@ -1,0 +1,24 @@
+<section class="tcg-tb-lab" data-tcg-tb-lab data-mechanism-view="lab" aria-labelledby="tcg-tb-title">
+  <div class="mechanism-view-heading"><h3 id="tcg-tb-title">跟随 PC，观察 TB 查找与链接</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>A、B 位于同一代码页，C 位于下一页。每次推进执行一个 TB；先沿 A → B → A 建立链接，再比较跨页分支和代码改写。</p>
+  <div class="tcg-tb-controls" data-tcg-tb-controls hidden>
+    <label>B 的分支方向<select data-tcg-tb-branch aria-describedby="tcg-tb-branch-note tcg-tb-error"><option value="A">成立 → A · 同页</option><option value="C">不成立 → C · 跨页</option></select></label>
+    <small id="tcg-tb-branch-note">B 位于页末，条件分支成立时跳向 A，否则顺序进入下一页的 C。选择只改变分支结果，不改写代码；A 和 C 均固定跳向 B。</small>
+    <div class="tcg-tb-actions"><button type="button" data-tcg-tb-step>执行一步</button><button type="button" data-tcg-tb-reenter>从 A 重新进入</button><button type="button" data-tcg-tb-invalidate>改写 A/B 指令</button><button type="button" data-tcg-tb-reset>重置</button></div>
+    <p class="tcg-tb-error" data-tcg-tb-error id="tcg-tb-error" role="alert" hidden></p>
+  </div>
+  <div data-tcg-tb-scene hidden>
+    <p class="tcg-tb-status" data-tcg-tb-status role="status" aria-live="polite" aria-atomic="true"></p>
+    <p class="tcg-tb-key" data-tcg-tb-key></p>
+    <div class="tcg-tb-pages" aria-label="客户机代码页与翻译块">
+      <section class="tcg-tb-page"><h4>代码页 0x1000</h4><div class="tcg-tb-blocks" data-tcg-tb-page-one></div></section>
+      <section class="tcg-tb-page"><h4>代码页 0x2000</h4><div class="tcg-tb-blocks" data-tcg-tb-page-two></div></section>
+    </div>
+    <h4>已建立的直接链接</h4><div class="tcg-tb-links" data-tcg-tb-links aria-label="有效 TB 的直接跳转关系"></div>
+    <p class="tcg-tb-key">B → C、C → B 跨越代码页，使用查找路径，不建立这里的直接链接。</p>
+    <div class="tcg-tb-stages" data-tcg-tb-stages aria-label="最近一次执行的处理路径"></div>
+    <h4>操作记录</h4><ol class="tcg-tb-trace" data-tcg-tb-trace aria-label="最近八次操作，最新在前"></ol>
+  </div>
+  <div data-tcg-tb-fallback><p>首次执行 A、B 时，查找未命中并生成对应 TB，同时建立 A → B 的直接链接。再次进入 A 可命中已生成的 TB，并建立 B → A；后续同页跳转可沿链接执行。B 的指令位于 0x1fe0—0x1fff，条件不成立时顺序进入 0x2000 的 C。改写 0x1000—0x1fff 的代码页会使 A、B 失效并解除链接；C 保留。启用 JavaScript 可逐步观察。</p></div>
+  <p class="tcg-tb-note">示例采用 x86 系统模拟、4 KiB 代码页，两页分别映射到不同的 RAM 后备页，映射与翻译上下文固定；每个 TB 的指令范围为 32 字节，F0/C0 表示固定的 flags/cflags。每一步只展示入口选择和下一 PC，不执行真实指令，也不以步数衡量性能。代码改写发生在两次执行之间；失效项保留在图中便于比较，实际查找不会返回它们。</p>
+</section>

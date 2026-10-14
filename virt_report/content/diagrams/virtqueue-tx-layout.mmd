@@ -1,0 +1,20 @@
+flowchart TB
+    accTitle: Split virtqueue 中的一条发送链
+    accDescr: 长度为四的队列中，可用环编号为三的槽保存链首编号零，描述符零通过 next 指向描述符二。两个描述符分别指向网络头和以太网帧；完成环以 id 零归还整条链，报文数据不存放在两个环中。
+    A["可用环：驱动写、设备读<br/>avail.ring[3] = 0<br/>avail.idx = 4"]
+    D0["desc[0]<br/>addr = 0x1000 · len = 12<br/>flags = NEXT · next = 2"]
+    D2["desc[2]<br/>addr = 0x2000 · len = 60<br/>flags = 0 · 链结束"]
+    H["客户机缓冲区 0x1000<br/>virtio-net 网络头 · 12 B"]
+    P["客户机缓冲区 0x2000<br/>以太网帧 P1 · 60 B"]
+    U["已用环：设备写、驱动读<br/>used.ring[3] = {id: 0, len: 0}<br/>used.idx = 4"]
+    A -->|链首编号 0| D0
+    D0 -->|next = 2| D2
+    D0 -->|addr 指向数据| H
+    D2 -->|addr 指向数据| P
+    U -. id = 0：归还链首 .-> D0
+    classDef ring fill:#e4f1ec,stroke:#438575,color:#173e34
+    classDef desc fill:#eaf0f6,stroke:#8198ac,color:#263c4c
+    classDef data fill:#f5f4f1,stroke:#a6aaa7,color:#3c4542
+    class A,U ring
+    class D0,D2 desc
+    class H,P data

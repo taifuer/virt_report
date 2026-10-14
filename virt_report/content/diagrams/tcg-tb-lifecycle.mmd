@@ -1,0 +1,24 @@
+flowchart TD
+    accTitle: TB 的查找、生成、链接与失效
+    accDescr: 主循环查询每 vCPU 跳转缓存与全局 QHT。未命中时翻译并发布 TB，命中则执行缓存代码。同页静态分支可修补为直接链接，其他合适分支通过 helper 查询。代码改写使相交 TB 失效，同时清理缓存并撤销入链与出链。
+    L[主循环<br/>处理事件与构造查询条件] --> Q{跳转缓存 / QHT<br/>存在匹配的 TB？}
+    Q -->|未命中| T[译码与代码生成<br/>发布恢复索引、页关联和 TB]
+    Q -->|命中| E[执行宿主代码]
+    T --> E
+    E --> B{块尾路径}
+    B -->|已有同页静态链接| E
+    B -->|同页出口首次返回| P[主循环找到目标 TB<br/>修补跳转槽并登记入链]
+    P --> E
+    B -->|跨页 / 间接分支快路径| H{helper 查询目标}
+    H -->|命中 / goto_ptr| E
+    H -->|未命中| L
+    B -->|退出请求 / 事件| L
+    W[写入覆盖客户机代码] --> X[标记相交 TB 失效<br/>移出查询结构与页关联]
+    X --> U[撤销入链与出链<br/>来源跳转恢复原始出口]
+    U -.-> Q
+    classDef active fill:#e9f4ef,stroke:#3b7c65,color:#203d31
+    classDef lookup fill:#eaf0f9,stroke:#6684ab,color:#263c56
+    classDef stale fill:#f5efe2,stroke:#9d8152,color:#514328
+    class T,E,P active
+    class L,Q,B,H lookup
+    class W,X,U stale

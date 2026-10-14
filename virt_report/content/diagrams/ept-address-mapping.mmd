@@ -1,0 +1,19 @@
+flowchart TB
+    accTitle: EPT 硬件地址转换与 KVM 软件建图
+    accDescr: 客户机 GVA 经客户机页表转换为 GPA，再经 EPT 转成 HPA。KVM 按 GPA 查 memslot 得到 QEMU HVA，查询宿主内存得到 PFN，配置 EPT；HVA 不属于硬件客户机访存路径。
+    subgraph hardware[客户机访存：处理器执行]
+        direction LR
+        gva["GVA<br/>0x0000000040203080"] -->|客户机页表| gpa["GPA<br/>0x00403080"]
+        gpa -->|EPT| hpa["HPA<br/>0x21000080"]
+    end
+    subgraph software[KVM 建图：缺页时的软件路径]
+        direction LR
+        slot["memslot 0<br/>base_gfn = 0x400<br/>npages = 512"]
+        hva["QEMU 后备页 HVA<br/>0x7f0000003000"]
+        pfn["宿主物理页<br/>PFN = 0x21000"]
+        spte["EPT 叶子 SPTE<br/>页基址 0x21000000<br/>读 / 写 / 执行权限"]
+        slot -.->|槽内第 3 页| hva
+        hva -.->|宿主取页| pfn
+        pfn -.->|安装页表项| spte
+    end
+    hardware -.->|缺页时按 GPA 查槽：GFN = 0x403| software

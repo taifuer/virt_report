@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>SPDK vhost-user-blk 的请求处理路径 - virt-report</title>
+  <meta name="description" content="沿一次 4 KiB 写入，分析共享队列、控制器线程、bdev 和 NVMe 的请求交接，以及完成通知与资源释放。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=7b86b63d1fd5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=7b86b63d1fd5">
+  <link rel="stylesheet" href="../assets/site.css?v=7b86b63d1fd5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c084ccad2981">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c084ccad2981">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=7b86b63d1fd5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#device-virtualization">设备与 I/O 虚拟化</a></div>
+    <h1>SPDK vhost-user-blk 的请求处理路径</h1>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">前言</a></li><li><a href="#architecture">控制连接与存储数据路径</a></li><li><a href="#structures">会话、队列与请求结构</a></li><li><a href="#threads">请求在哪个线程执行</a></li><li><a href="#write">一次 4 KiB 写入</a></li><li><a href="#completion">从 NVMe 完成到客户机回收</a></li><li><a href="#notifications">轮询、通知与资源释放</a></li><li><a href="#evolution">后端独立与线程模型的演进</a></li><li><a href="#sources">参考资料</a></li></ol></nav>
+    <div class="mechanism-prose">
+<section id="preface" class="mechanism-section">
+  <h2>前言</h2>
+  <p>使用 QEMU virtio-blk 时，设备请求由 QEMU 解析，再交给块后端。换成 vhost-user-blk 后，客户机仍使用 virtio-blk 驱动，QEMU 负责 PCI 设备呈现与控制连接，独立的 SPDK 进程消费共享队列，并把请求提交给存储设备。</p>
+  <p>本文跟踪一次 4 KiB 写入：x86 / KVM 客户机、现代 virtio PCI 接口、split virtqueue、SPDK 轮询模式，以及直接连接本地 PCIe NVMe namespace 的 bdev。namespace 的逻辑块为 4 KiB，不叠加加密、压缩或其他虚拟 bdev。协议初始化可结合<a href="qemu-vhost-net.html">vhost-user 的共享内存与通知机制</a>阅读；这里重点分析 SPDK 内部的请求、线程和完成路径。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/spdk/spdk/tree/a2f2a0b2794366fe1e42b97061782aae25119457" target="_blank" rel="noopener noreferrer" title="commit a2f2a0b2794366fe1e42b97061782aae25119457">SPDK 25.09</a>。</p></section>
+
+<section id="architecture" class="mechanism-section">
+  <h2>控制连接与存储数据路径</h2>
+  <p>QEMU 与 SPDK 通过 Unix socket 协商特性、共享 RAM 文件描述符、配置队列地址及 kick / call 句柄。SPDK 使用 DPDK 的 rte_vhost 库处理连接与内存映射。队列和请求缓冲区位于两端都能访问的客户机 RAM 中，普通写入的数据不逐包经过这个 socket。</p>
+  <figure class="mechanism-diagram" data-diagram="spdk-vhost-ownership" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>从客户机 virtqueue 到 NVMe 队列</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看从客户机 virtqueue 到 NVMe 队列" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="从客户机 virtqueue 到 NVMe 队列">
+    <img src="../assets/spdk-vhost-ownership.svg?v=c084ccad2981" alt="虚线表示初始化与管理，实线表示请求或数据访问。virtqueue、bdev 请求和 NVMe SQ/CQ 属于三个层次，队列数量没有一一对应的要求。" loading="lazy">
+  </div>
+  <figcaption>虚线表示初始化与管理，实线表示请求或数据访问。virtqueue、bdev 请求和 NVMe SQ/CQ 属于三个层次，队列数量没有一一对应的要求。 <a href="../assets/spdk-vhost-ownership.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+    accTitle: SPDK vhost-user-blk 的控制连接与数据路径
+    accDescr: QEMU 配置设备和共享内存，SPDK 控制器线程从共享 virtqueue 取得请求，经 bdev 和用户态 NVMe 驱动提交硬件。客户机 RAM 可由硬件 DMA 访问。
+    guest[&#34;客户机 virtio-blk 驱动&lt;br/&gt;提交描述符，回收完成&#34;]
+    shared[&#34;共享客户机 RAM&lt;br/&gt;virtqueue + 头 / 数据 / 状态&#34;]
+    qemu[&#34;QEMU vhost-user-blk-pci&lt;br/&gt;PCI 配置、共享 RAM、通知路由&#34;]
+    subgraph process[SPDK 后端进程]
+        direction TB
+        control[&#34;rte_vhost 控制连接&lt;br/&gt;内存表、队列、kick / call&#34;]
+        task[&#34;控制器 spdk_thread&lt;br/&gt;vdev_worker → vhost task&#34;]
+        bdev[&#34;当前线程的 bdev io_channel&lt;br/&gt;spdk_bdev_io&#34;]
+        nvme[&#34;NVMe 驱动与 poll group&lt;br/&gt;SQ / CQ、DMA 地址、完成回调&#34;]
+        control -.-&gt;|启动消息| task
+        task --&gt; bdev --&gt; nvme
+    end
+    device[&#34;PCIe NVMe 控制器 / namespace&lt;br/&gt;控制器执行命令并写 CQ&#34;]
+    guest --&gt; shared
+    qemu -.-&gt;|Unix socket + FD| control
+    shared --&gt;|队列和缓冲区访问| task
+    nvme &lt;--&gt;|命令与完成| device
+    shared --&gt;|写入数据：由 NVMe DMA 读取| device
+    classDef sharedmem fill:#e6f1f8,stroke:#7b9db5,color:#253e4b
+    classDef context fill:#e1f0eb,stroke:#6d9a8a,color:#24413a
+    classDef storage fill:#f5f0e5,stroke:#b7a57d,color:#4f4635
+    class shared sharedmem
+    class control,task,bdev context
+    class nvme,device storage
+</code></pre></details>
+</figure>
+  <p>QEMU 此时使用 <code>vhost-user-blk-pci</code>，不再沿前一篇中的 <code>virtio_blk_handle_vq → blk_aio_pwritev</code> 处理每次数据 I/O。SPDK 也不会把这条路径转换为宿主文件的 pwrite；本例的 bdev 后端调用 SPDK NVMe 驱动，在用户态组织硬件命令。</p>
+  <p>共享内存解决进程间的可见性，DMA 还需要合法的设备地址。描述符中的 GPA 先转换为 SPDK 进程地址；注册过的内存再由环境层提供 DMA 地址转换，用于构造 NVMe 的 PRP 或 SGL。硬件访问受宿主映射和 IOMMU 配置约束，客户机 GPA 不能直接当作 NVMe 的 DMA 地址。<a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/rte_vhost_user.c#L611-L636">描述符转换</a>、<a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/rte_vhost_user.c#L719-L752">内存注册</a></p>
+</section>
+
+<section id="structures" class="mechanism-section">
+  <h2>会话、队列与请求结构</h2>
+  <table><thead><tr><th scope="col">结构</th><th scope="col">关键字段</th><th scope="col">职责</th></tr></thead><tbody>
+    <tr><td><code>spdk_vhost_dev</code></td><td><code>thread / backend / virtio_features</code></td><td>控制器、所属 SPDK 线程和设备能力。</td></tr>
+    <tr><td><code>spdk_vhost_session</code></td><td><code>mem / virtqueue[] / task_cnt / negotiated_features</code></td><td>一次连接的内存表、队列、在途任务和已协商特性。</td></tr>
+    <tr><td><code>spdk_vhost_virtqueue</code></td><td><code>vring / last_avail_idx / last_used_idx / tasks</code></td><td>共享环地址、本地消费位置及请求对象池。</td></tr>
+    <tr><td><code>spdk_vhost_user_blk_task</code></td><td><code>blk_task / vq / req_idx / used</code></td><td>把块操作关联到原队列、描述符头和任务生命周期。</td></tr>
+    <tr><td><code>spdk_vhost_blk_task</code></td><td><code>iovs / iovcnt / status / used_len / bdev_io_wait</code></td><td>解析后的请求缓冲区、状态地址、完成长度和资源等待项。</td></tr>
+    <tr><td><code>spdk_bdev_io</code></td><td><code>type / u.bdev.offset_blocks / num_blocks / iovs</code></td><td>bdev 层的操作类型、块范围和数据向量，完成后由调用者释放。</td></tr>
+  </tbody></table>
+  <p>同一请求会同时具有 virtqueue 描述符头索引、SPDK task 和 NVMe command ID。它们由各层的上下文关联，数值无需相同。客户机在请求完成前保留描述符和数据缓冲区；后端也必须让 task、iovec 和会话映射存活到最后一次访问结束。</p>
+</section>
+
+<section id="threads" class="mechanism-section">
+  <h2>请求在哪个线程执行</h2>
+  <p><code>vhost_user_dev_init()</code> 为控制器创建一个 <code>spdk_thread</code>。它是由 reactor 执行的轻量事件上下文，不直接对应一次 pthread_create；同一个 SPDK 线程同一时刻只能由一条系统线程推进。其 poller 和消息回调串行执行，允许把常用状态保留在线程本地。<a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/rte_vhost_user.c#L1772-L1810">控制器线程</a>、<a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/doc/concurrency.md#L60-L111">线程与通道模型</a></p>
+  <p>rte_vhost 的控制回调把启动操作发送给控制器线程。随后 <code>vhost_blk_start()</code> 获取当前线程的 bdev <code>io_channel</code>，注册周期为 0 的 <code>vdev_worker</code> poller。周期 0 表示持续轮询；每次调用遍历这个会话的 virtqueue，批量取出可用请求，并检查完成通知。</p>
+  <p>因此，客户机创建四个 virtqueue，不会自动让一个控制器使用四条 SPDK 数据线程。本版本的 <code>vdev_worker()</code> 在同一上下文遍历这些队列。bdev channel 再关联当前线程的 NVMe I/O 路径和队列资源，virtqueue 与 NVMe qpair 也不要求一一对应。多控制器、CPU 亲和性与 NUMA 布局需分别安排。</p>
+</section>
+
+<section id="write" class="mechanism-section">
+  <h2>一次 4 KiB 写入</h2>
+  <p>假设客户机写磁盘偏移 1 MiB。请求头使用 virtio 的 512 字节 sector 单位，NVMe namespace 则使用 4 KiB 逻辑块：</p>
+  <pre><code>描述符头 5 → 请求头 16 B（设备读）
+           → 数据 4096 B（设备读）
+           → status 1 B（设备写）
+
+virtio: type = OUT, sector = 2048
+bdev:   byte_offset = 2048 × 512 = 1048576
+        offset_blocks = 256, num_blocks = 1
+NVMe:   SLBA = 256, NLB = 0（命令字段按块数减一编码）</code></pre>
+  <ol>
+    <li><strong>取出队列项。</strong><code>vhost_vq_avail_ring_get()</code> 读取 avail.idx，经过读屏障后取环内的描述符头，推进 last_avail_idx。<code>process_blk_task()</code> 找到头索引对应的 task，标记占用并增加在途计数。</li>
+    <li><strong>建立 iovec。</strong><code>blk_iovs_split_queue_setup()</code> 遍历描述符链，检查索引、长度及环路。GPA 转换为 SPDK 虚拟地址；跨映射边界时，一个缓冲区可以拆成多个 iovec。正常请求的首项为请求头，末项为状态字节，中间是数据。</li>
+    <li><strong>提交 bdev。</strong><code>virtio_blk_process_request()</code> 把 16 字节头复制到栈上，取得类型和 sector，再调用 <code>spdk_bdev_writev()</code>。bdev 检查块对齐和范围，分配 spdk_bdev_io，保留数据向量和完成回调。</li>
+    <li><strong>构造硬件请求。</strong>NVMe bdev 的写分支进入 <code>bdev_nvme_writev()</code>。本例转换后只有一个数据 iovec，走 <code>spdk_nvme_ns_cmd_write_with_md()</code>；多段向量使用对应 writev 接口。PCIe transport 建立 PRP / SGL，把命令写入 SQ，并按提交策略更新 doorbell。</li>
+  </ol>
+  <p>这里复制了请求头和硬件命令；大块数据可以由 NVMe DMA 直接访问已映射的客户机缓冲区，前提是内存注册、对齐和后端能力满足要求。增加加密、压缩、其他 bdev 或不同内存域后，需要重新检查数据转换与复制路径，不能把这一个配置推广成所有 SPDK 设备都“零拷贝”。</p>
+  <p><code>spdk_bdev_writev()</code> 返回 0 表示异步请求已被接受，最终成功或失败通过完成回调交付。返回 <code>-ENOMEM</code> 时，vhost 注册 <code>spdk_bdev_io_wait_entry</code>，资源可用后由回调重新提交；等待期间不能提前写成功状态或回收客户机缓冲区。</p>
+</section>
+
+<section id="completion" class="mechanism-section">
+  <h2>从 NVMe 完成到客户机回收</h2>
+  <figure class="mechanism-diagram" data-diagram="spdk-vhost-completion" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>一次写入的提交与完成</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看一次写入的提交与完成" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="一次写入的提交与完成">
+    <img src="../assets/spdk-vhost-completion.svg?v=c084ccad2981" alt="轮询发现硬件完成后，回调回到原请求；status、used 项与 used.idx 依次发布，再根据通知条件唤醒客户机。" loading="lazy">
+  </div>
+  <figcaption>轮询发现硬件完成后，回调回到原请求；status、used 项与 used.idx 依次发布，再根据通知条件唤醒客户机。 <a href="../assets/spdk-vhost-completion.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
+    accTitle: SPDK vhost-user-blk 写请求的提交与完成
+    accDescr: 客户机发布写请求，SPDK 轮询解析并提交 NVMe。硬件完成后，SPDK 回调写状态并发布 used，条件通知后客户机回收描述符。
+    participant G as 客户机驱动
+    participant V as SPDK vhost
+    participant B as bdev / NVMe 驱动
+    participant N as NVMe 控制器
+    G-&gt;&gt;G: 填头和数据，发布 avail.idx
+    Note over V,B: 同一个 SPDK 线程，独立 poller
+    V-&gt;&gt;V: 轮询 avail，解析描述符和 iovec
+    V-&gt;&gt;B: writev：偏移 1 MiB，长度 4 KiB
+    B-&gt;&gt;N: SQ 命令 + DMA 地址，提交 doorbell
+    Note over V,B: 提交后继续处理其他工作
+    N-&gt;&gt;N: DMA 读取数据，执行写入
+    N--&gt;&gt;B: 在 CQ 中发布完成
+    B-&gt;&gt;B: poll group 检查 CQ phase / command ID
+    B--&gt;&gt;V: 完成回调：成功或错误
+    V-&gt;&gt;V: 写 status → used id/len → 屏障 → used.idx
+    V-&gt;&gt;V: 释放 task 占用与在途计数
+    opt 客户机需要通知，且满足合并条件
+        V--&gt;&gt;G: call eventfd → KVM 中断路径
+    end
+    G-&gt;&gt;G: 读取 used，回收描述符，结束块请求
+</code></pre></details>
+</figure>
+  <p>NVMe 完成由同一 SPDK 线程中的 NVMe poll group 推进。<code>bdev_nvme_poll()</code> 调用驱动检查 CQ；PCIe 路径通过 phase bit 判断新完成，用 command ID 找到 tracker，再执行请求回调。virtqueue 的 last_used_idx 与 NVMe CQ 的 head / phase 是彼此独立的状态。</p>
+  <p>结果经 <code>bdev_nvme_writev_done()</code> 和 bdev 完成层，到达 <code>blk_request_complete_cb()</code>：释放 spdk_bdev_io，将结果转换为 virtio 状态，写回 status。随后 <code>vhost_vq_used_ring_enqueue()</code> 写 used 项的 id / len，经写屏障后推进 used.idx。本例成功写入的 used.len 为 <strong>1</strong>，对应后端写回的状态字节，不是 4096 字节的磁盘数据量。</p>
+  <p>发布完成后，task 的占用标记和会话在途计数被释放。客户机仍需观察 used ring，取回原描述符链并结束自己的块请求。NVMe 返回写完成也不自动等于断电后数据可靠保存；缓存与持久化要求仍需通过已协商的 FLUSH 等语义和设备能力满足。</p>
+</section>
+
+<section id="notifications" class="mechanism-section">
+  <h2>轮询、通知与资源释放</h2>
+  <p>本例初始化 split 队列时设置 <code>VRING_USED_F_NO_NOTIFY</code>，请求客户机抑制提交 kick。SPDK 持续检查 avail ring，因此减少了依赖提交事件唤醒的次数。完成方向仍单独判断客户机的通知抑制和后端合并策略；需要通知时，经 rte_vhost 的 vring call 接口触发 call eventfd，QEMU 配置的 irqfd 路径可把事件交给 KVM。</p>
+  <p>本版本禁用了 <code>VIRTIO_RING_F_EVENT_IDX</code>；split 路径检查 avail.flags 中的 <code>VRING_AVAIL_F_NO_INTERRUPT</code>，不使用 used_event 阈值。两种通知抑制方式的区别见<a href="kvm-virtio-interrupt.html">virtio 完成通知与 KVM 中断注入</a>。<a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_internal.h#L60-L69">禁用特性</a>、<a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/rte_vhost_user.c#L383-L398">完成通知条件</a></p>
+  <p>25.09 的 vhost 代码也具有 interrupt mode 分支：启用提交通知，读取 kickfd，并在模式切换时补发事件以避免漏掉待处理工作。因此“SPDK 永远不使用 kick”并不适用于全部运行方式。本文的连续轮询会占用 CPU；降低唤醒开销的收益，需要与低负载功耗、尾延迟及可分配核心数一起衡量。</p>
+  <p>停止会话时，<code>vhost_blk_stop()</code> 先撤下新请求 poller 和中断处理器，再用 stop poller 等待 task_cnt 清零。已有硬件请求仍需完成；成功收尾后才释放 io_channel 与任务池。等待超时会报告失败，不应把 socket 断开直接解释为所有 DMA 和回调都已结束。</p>
+  <table><thead><tr><th scope="col">观察到的现象</th><th scope="col">应检查的环节</th></tr></thead><tbody>
+    <tr><td>客户机队列增加，吞吐没有同步增长</td><td>控制器线程是否饱和、队列遍历成本，以及 bdev / NVMe 的剩余能力。</td></tr>
+    <tr><td>设备很快，尾延迟仍高</td><td>客户机提交、SPDK 调度、CQ 检查、完成合并和客户机回收各自的等待。</td></tr>
+    <tr><td>低 I/O 时宿主仍忙</td><td>连续轮询占用、线程 CPU 亲和性，以及当前后端能否使用合适的事件模式。</td></tr>
+    <tr><td>资源不足或关闭卡住</td><td>bdev I/O 等待项、在途 task、NVMe 错误与完成回调，不能只数 socket 连接。</td></tr>
+  </tbody></table>
+</section>
+
+<section id="evolution" class="mechanism-section">
+  <h2>后端独立与线程模型的演进</h2>
+  <p><a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/CHANGELOG.md#L4786-L4807">SPDK 17.07</a>在已有 vhost-scsi 基础上加入 vhost-blk，客户机可继续使用标准 virtio-blk 驱动，后端获得独立的数据处理与存储实现。独立进程便于安排 CPU 和后端资源，也引入共享内存生命周期、连接恢复及在途请求管理。</p>
+  <p><a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/CHANGELOG.md#L3549-L3563">19.07</a>默认转向上游 DPDK rte_vhost，使协议与队列基础设施可以跟随共同实现维护。<a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/CHANGELOG.md#L2875-L2877">20.04</a>把按会话组织的 poll group 改为每个 vhost 控制器的 SPDK 线程，控制器的工作归属更清楚；这也说明队列数、控制器数与工作线程数必须分别理解。</p>
+  <p>当前实现同时保留 split / packed 队列和事件模式相关分支。选择这些机制时，应先明确瓶颈：描述符访问、通知、CPU 调度或存储设备。固定请求大小、队列深度和数据后端，再比较吞吐、尾延迟及整机 CPU 消耗，才能判断路径变化是否真正受益。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/vhost-user-blk.c">QEMU vhost-user-blk 前端</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/vhost-user.rst">vhost-user 协议</a></li>
+    <li><a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_internal.h#L78-L168">会话与队列</a>、<a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_internal.h#L529-L548">块请求结构</a>、<a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L40-L70">vhost-blk 对象</a></li>
+    <li><a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L861-L955">队列轮询</a>、<a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L198-L269">描述符链解析</a>、<a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L464-L553">读写请求与资源等待</a></li>
+    <li><a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/bdev/bdev.c#L6117-L6198">bdev 写入与块单位转换</a>、<a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/module/bdev/nvme/bdev_nvme.c#L8431-L8484">NVMe 写接口选择</a></li>
+    <li><a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/nvme/nvme_pcie_common.c#L658-L707">PCIe 提交队列</a>、<a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/nvme/nvme_pcie_common.c#L865-L983">CQ 与 phase 检查</a></li>
+    <li><a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/module/bdev/nvme/bdev_nvme.c#L1817-L1845">NVMe poll group</a>、<a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L420-L462">完成与等待回调</a>、<a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/rte_vhost_user.c#L400-L482">used 发布与通知</a></li>
+    <li><a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/rte_vhost_user.c#L1096-L1111">提交通知配置</a>、<a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L1334-L1447">poller 启动和停止</a></li>
+    <li><a href="https://spdk.io/doc/vhost.html">SPDK vhost 文档</a>、<a href="https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/doc/concurrency.md">SPDK 消息传递与并发模型</a></li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#device-virtualization">设备与 I/O 虚拟化原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=7b86b63d1fd5"></script>
+<script src="../assets/mechanism-viewer.js?v=c084ccad2981" defer></script>
+</body>
+</html>

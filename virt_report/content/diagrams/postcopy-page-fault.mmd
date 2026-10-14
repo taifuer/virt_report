@@ -1,0 +1,26 @@
+sequenceDiagram
+    accTitle: 后拷贝缺页处理的线程协作
+    accDescr: 目的端访问缺页后由内核阻塞，缺页线程将宿主地址转换为 RAMBlock 与页偏移并请求源端。源端在单流路径优先处理未发送的请求页；目的端接收线程收齐宿主页后通过 UFFDIO_COPY 安装，内核唤醒访问线程，QEMU 随后更新接收位图并删除请求记录。
+    participant V as 目的端访问线程
+    participant K as 目的端内核
+    participant F as 目的端缺页线程
+    participant S as 源端 QEMU
+    participant R as 目的端接收线程
+    Note over V,R: 后拷贝已开始；源端 vCPU 停止，目的端运行
+    V->>K: 访问缺失页 P2
+    Note over V: 访问被阻塞
+    K-->>F: userfaultfd：PAGEFAULT 与宿主地址
+    F->>F: 转换为 RAMBlock 与对齐偏移<br/>检查 receivedmap，登记 page_requested
+    F->>S: 返回通道 REQ_PAGES_ID<br/>pc.ram，start = 0x2000，len = 4096
+    S->>S: 请求入队，优先选择 bmap 中未发页<br/>已由后台安排发送的页不重复发送
+    S-)R: 页面传输通道：P2 的页内容
+    Note over F,R: 请求与页面接收由不同线程推进
+    R->>R: 收齐完整宿主页
+    R->>K: UFFDIO_COPY<br/>完整页原子安装，未设置 DONTWAKE
+    K-->>V: 唤醒等待访问
+    K-->>R: ioctl 成功返回
+    par 访问线程获调度
+        V->>V: 继续读写已安装页面
+    and 接收线程完成记账
+        R->>R: receivedmap 置位<br/>删除 page_requested，结算阻塞时间
+    end

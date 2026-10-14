@@ -1,0 +1,23 @@
+sequenceDiagram
+    accTitle: SPDK vhost-user-blk 写请求的提交与完成
+    accDescr: 客户机发布写请求，SPDK 轮询解析并提交 NVMe。硬件完成后，SPDK 回调写状态并发布 used，条件通知后客户机回收描述符。
+    participant G as 客户机驱动
+    participant V as SPDK vhost
+    participant B as bdev / NVMe 驱动
+    participant N as NVMe 控制器
+    G->>G: 填头和数据，发布 avail.idx
+    Note over V,B: 同一个 SPDK 线程，独立 poller
+    V->>V: 轮询 avail，解析描述符和 iovec
+    V->>B: writev：偏移 1 MiB，长度 4 KiB
+    B->>N: SQ 命令 + DMA 地址，提交 doorbell
+    Note over V,B: 提交后继续处理其他工作
+    N->>N: DMA 读取数据，执行写入
+    N-->>B: 在 CQ 中发布完成
+    B->>B: poll group 检查 CQ phase / command ID
+    B-->>V: 完成回调：成功或错误
+    V->>V: 写 status → used id/len → 屏障 → used.idx
+    V->>V: 释放 task 占用与在途计数
+    opt 客户机需要通知，且满足合并条件
+        V-->>G: call eventfd → KVM 中断路径
+    end
+    G->>G: 读取 used，回收描述符，结束块请求

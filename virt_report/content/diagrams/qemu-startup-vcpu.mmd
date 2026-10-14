@@ -1,0 +1,31 @@
+sequenceDiagram
+  accTitle: vCPU 创建握手与首次执行
+  accDescr: 主线程创建 CPU 对象并等待 vCPU 线程建立内核接口。线程完成 KVM_CREATE_VCPU 与 kvm_run 映射后报告 created，保持 stopped。机器初始化、复位和寄存器同步完成，cont 才允许执行；BSP 执行固件，AP 等待 INIT 和 SIPI。
+  participant Q as QEMU 主线程
+  participant V as vCPU 线程
+  participant K as KVM 内核接口
+  participant G as 客户机
+  Q->>Q: x86_cpu_new / qdev_realize
+  Q->>Q: qemu_init_vcpu：stopped = true
+  Q->>V: 创建线程
+  Note over Q,V: 主线程等待 created 时释放 BQL
+  V->>K: KVM_CREATE_VCPU(APIC ID)
+  K-->>V: vCPU fd
+  V->>K: 查询共享区大小，mmap(vCPU fd)
+  K-->>V: kvm_run 共享区
+  V->>V: kvm_arch_init_vcpu
+  V-->>Q: created = true，唤醒主线程
+  Note over V,G: 线程已建立，客户机尚未执行
+  Q->>Q: 完成 RAM 布局、板级与附加设备
+  Q->>V: 初始化同步与整机复位后的同步
+  V->>K: 写入寄存器与多处理器状态
+  Note over Q,V: -S：保持 prelaunch，等待管理侧 cont
+  Q->>Q: qmp_cont → vm_start
+  Q->>V: 运行状态更新，stopped = false，kick
+  V->>K: cpu_can_run → kvm_cpu_exec → KVM_RUN
+  alt BSP：RUNNABLE
+    K->>G: 从复位取指地址 0xfffffff0 执行
+  else AP：UNINITIALIZED
+    Note over K,G: 等待客户机 INIT / SIPI 启动序列
+    K->>G: 收到启动事件后从指定入口执行
+  end

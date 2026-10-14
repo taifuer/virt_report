@@ -1,0 +1,22 @@
+flowchart TD
+    accTitle: KVM vCPU 的 HLT、轮询与事件唤醒
+    accDescr: x86 内核 LAPIC 路径。HLT 模拟先检查已有事件。没有事件时可短暂轮询，然后发布 rcuwait 等待者、设置任务状态并重新检查。仍无事件才休眠。事件发布与唤醒配合，避免轮询到休眠之间丢失唤醒。线程重新取得 CPU 后继续检查并处理客户机事件。
+    H[HLT 被截获<br/>kvm_emulate_halt] --> E{已有可运行事件？}
+    E -->|是| R[返回架构运行循环<br/>复查事件与 mp_state]
+    E -->|否| P[记录 HALTED<br/>kvm_vcpu_halt 短暂轮询]
+    P -->|观察到事件| R
+    P -->|预算耗尽或需调度| W[发布 rcuwait 等待者<br/>设置 TASK_INTERRUPTIBLE]
+    W --> C{再次检查<br/>可以停止等待？}
+    C -->|是| R
+    C -->|否| S[schedule<br/>宿主线程休眠]
+    I[中断或定时器事件<br/>先发布 pending / request] --> K[kvm_vcpu_kick<br/>唤醒等待者]
+    I -.-> C
+    K --> Q[线程可运行<br/>等待宿主调度]
+    S --> Q
+    Q --> C
+    classDef active fill:#e9f4ef,stroke:#3b7c65,color:#203d31
+    classDef wait fill:#f5efe2,stroke:#9d8152,color:#514328
+    classDef event fill:#eaf0f9,stroke:#6684ab,color:#263c56
+    class H,P,R active
+    class W,C,S,Q wait
+    class I,K event

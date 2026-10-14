@@ -1,0 +1,22 @@
+sequenceDiagram
+    accTitle: virtio 完成发布、MSI-X 通知与客户机处理
+    accDescr: QEMU 先写 used 项并发布索引，通知条件满足后发送 MSI。KVM 记录 LAPIC 待处理状态，客户机能够接受中断时进入 IRQ 流程。APIC EOI 与驱动读取完成队列分属两个层次，EOI 不回收描述符。
+    participant D as QEMU 设备后端
+    participant M as 客户机内存中的队列
+    participant P as PCI MSI-X / KVM
+    participant A as 虚拟 LAPIC / vCPU
+    participant G as 客户机 IRQ 与驱动
+    D->>M: 写 used.ring[7] = id 3, len 512
+    D->>M: 写屏障后发布 used.idx = 8
+    D->>M: 屏障后读取 used_event = 7
+    Note over D,M: old 7 → new 8，跨过通知位置
+    D->>P: 表项 2 未屏蔽，发送 MSI address + data
+    P->>A: APIC ID 1，向量 0x51
+    A->>A: 软件路径设置 IRR，促使 vCPU 检查
+    Note over A,G: 等待 IF、优先级、执行机会等条件
+    A->>G: 接受中断：IRR → ISR，进入客户机 IRQ
+    Note over A,G: Linux 边沿 IRQ 可在通用应答阶段提前 EOI
+    G->>A: EOI，结束 APIC in-service 状态
+    G->>M: 回调或后续处理读取 used.idx 与 ring[7]
+    G->>G: 找回请求、处理结果、回收描述符链
+    Note over M,G: EOI 不改变 used；消费队列不等于 APIC 应答

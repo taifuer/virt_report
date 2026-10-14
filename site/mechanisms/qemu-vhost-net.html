@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>virtio-net 的后端处理：vhost-net 与 vhost-user - virt-report</title>
+  <meta name="description" content="对比 QEMU、内核 vhost-net 和独立用户态后端，分析队列初始化、kick/call 通知与报文处理路径。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=7b86b63d1fd5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=7b86b63d1fd5">
+  <link rel="stylesheet" href="../assets/site.css?v=7b86b63d1fd5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c084ccad2981">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c084ccad2981">
+<link rel="stylesheet" href="../assets/vhost-path.css?v=c084ccad2981"></head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=7b86b63d1fd5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#device-virtualization">设备与 I/O 虚拟化</a></div>
+    <h1>virtio-net 的后端处理：vhost-net 与 vhost-user</h1>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">前言</a></li><li><a href="#architecture">后端分工与共享队列</a></li><li><a href="#flow">初始化与一次发包</a></li><li><a href="#notification">通知与完成</a></li><li><a href="#implementation">关键源码</a></li><li><a href="#evolution">数据路径的演进</a></li><li><a href="#sources">参考资料</a></li></ol></nav>
+    <div class="mechanism-prose">
+<section id="preface" class="mechanism-section">
+  <h2>前言</h2>
+  <p>virtio-net 驱动通过 virtqueue 提交网络请求。同一套客户机接口，可以由 QEMU 处理，也可以连接宿主内核中的 vhost-net 或独立进程中的 vhost-user 后端。后端位置改变后，队列地址、内存访问权限和通知通道需要重新安排，设备初始化和报文处理也由不同组件承担。</p>
+  <p>本文沿用 <a href="qemu-network-tx.html">网卡模拟与 virtio-net 发包路径</a>中的 split virtqueue，分析 x86 / KVM 下单个发送请求。QEMU 和 vhost-net 路径使用 TAP；vhost-user 部分分析协议定义的共享内存和 eventfd 路径，网络出口由外部后端实现。示例不配置客户机 IOMMU，也不展开分段卸载、多队列和异常重试。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
+
+<section id="architecture" class="mechanism-section">
+  <h2>后端分工与共享队列</h2>
+  <p>一个 TX virtqueue 包含描述符表、available ring 和 used ring。客户机驱动把网络头与报文放在客户机 RAM 中，发布描述符链；后端读取链上的数据，处理完成后写回 used ring。队列位于客户机内存，处理它的代码可以运行在不同的宿主执行环境中。</p>
+  <table>
+    <thead><tr><th scope="col">处理方式</th><th scope="col">消费 TX 队列</th><th scope="col">建立处理关系</th><th scope="col">本例网络出口</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">QEMU</th><td>QEMU 的 virtio-net 设备模型</td><td>进程内的设备与网络后端配置</td><td>QEMU 写 TAP</td></tr>
+      <tr><th scope="row">vhost-net</th><td>宿主内核 vhost 工作项</td><td>QEMU 对 /dev/vhost-net 发出 ioctl</td><td>内核访问 TAP 对应 socket</td></tr>
+      <tr><th scope="row">vhost-user</th><td>独立用户态后端</td><td>Unix socket 控制消息及文件描述符传递</td><td>由后端连接软件交换机、物理端口等</td></tr>
+    </tbody>
+  </table>
+  <p>QEMU 始终负责向客户机呈现 virtio PCI 设备，并参与设备特性、状态和队列配置。启用 vhost 后，正常报文处理由选定后端接管，QEMU 无需逐包执行 <code>virtio_net_flush_tx()</code>。停止设备、更新内存映射或迁移虚拟机时，QEMU 仍需与后端协调。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/vhost_net.c#L325-L361">vhost-net 启动与 TAP 交接</a></p>
+  <h3>内存如何被后端访问</h3>
+  <p>vhost-net 接收内存区域表和队列地址，内核据此访问客户机的描述符及数据缓冲区。vhost-user 还需要跨进程建立映射：QEMU 发送区域描述和可共享内存的文件描述符，外部后端执行映射，并建立客户机地址、QEMU 地址与自身映射地址之间的对应关系。双方映射同一份内存，虚拟地址可以不同。共享映射的建立不会把全部客户机 RAM 复制一遍。</p>
+  <p>vhost-user 的内存消息描述客户机地址、区域长度、QEMU 用户地址和文件偏移；队列地址则用于定位描述符表与索引。后端必须验证访问范围。配置客户机 IOMMU 后，还需要处理 IOTLB 映射及失效，不能直接套用本例的地址转换。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/vhost-user.rst#L665-L709">地址转换与 IOTLB</a></p>
+  <h3>后端启动需要哪些结构</h3>
+  <table><thead><tr><th scope="col">配置对象</th><th scope="col">主要字段或资源</th><th scope="col">后端操作</th></tr></thead><tbody>
+    <tr><td>内存区域</td><td><code>guest_phys_addr / memory_size / userspace_addr</code>；vhost-user 另有 <code>mmap_offset</code> 与内存 FD</td><td>建立客户机地址到可访问宿主内存的对应关系</td></tr>
+    <tr><td>队列大小与位置</td><td><code>index / num</code>，以及 <code>desc_user_addr / avail_user_addr / used_user_addr</code></td><td>定位三个共享区域，检查队列长度与访问范围</td></tr>
+    <tr><td>消费进度</td><td><code>SET_VRING_BASE</code> 的队列 index 与消费位置</td><td>从正确的 available 项继续处理，停机交接时取回进度</td></tr>
+    <tr><td>通知句柄</td><td>按队列配置的 kick FD 与 call FD</td><td>kick 唤醒消费者；call 在完成通知条件满足时通知客户机</td></tr>
+  </tbody></table>
+  <p>vhost-user 消息头的 <code>request / flags / size</code>决定本次配置操作、消息状态和载荷长度；内存 FD 与 eventfd 通过 socket 附带传递。后端获得这些关系后，根据 available 定位描述符链，读取缓冲区，并把完成记录写回 used。队列的数据结构与索引变化见<a href="qemu-network-tx.html#virtqueue">virtqueue 的数据结构与操作</a>。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/vhost-user.c#L121-L207">控制消息及内存区域结构</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/standard-headers/linux/vhost_types.h">队列配置结构</a></p>
+</section>
+
+<section id="flow" class="mechanism-section">
+  <h2>初始化与一次发包</h2>
+  <p>下面把初始化和发送过程分开推进。切换后端后，客户机仍使用同一个 TX 队列结构；控制通道、队列消费者和报文出口随之变化。</p>
+<section class="vhost-lab" data-vhost-lab data-mechanism-view="lab" aria-labelledby="vhost-lab-title">
+  <div class="mechanism-view-heading"><h3 id="vhost-lab-title">共享队列与三种后端</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>客户机提交同一个报文 P1。先建立后端关系，再观察谁接收 kick、读取报文和发布完成。</p>
+  <div class="vhost-controls" data-vhost-controls hidden>
+    <label for="vhost-backend">队列处理位置<select id="vhost-backend" data-vhost-backend><option value="qemu">QEMU 用户态</option><option value="kernel" selected>内核 vhost-net</option><option value="user">外部 vhost-user 后端</option></select></label>
+    <div class="vhost-actions" role="group" aria-label="后端路径演示控制"><button type="button" data-vhost-back>上一步</button><button type="button" data-vhost-next>下一步</button><button type="button" data-vhost-play aria-pressed="false">播放</button><button type="button" data-vhost-reset>重置</button></div>
+  </div>
+  <p class="vhost-status" data-vhost-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <div class="vhost-control-path" data-vhost-node="control"><strong>QEMU · 设备控制</strong><span data-vhost-control-path>设备特性、内存区域、队列地址、通知句柄 → 所选后端</span><small data-vhost-control-detail>QEMU 内部配置 / vhost ioctl / vhost-user Unix socket</small></div>
+  <div class="vhost-scene" role="group" aria-label="客户机内存、队列消费者及网络出口">
+    <section class="vhost-guest" data-vhost-node="guest"><h4>客户机</h4><p>virtio-net 驱动</p><div class="vhost-ram" data-vhost-node="ram"><strong>客户机 RAM</strong><div class="vhost-payload" data-vhost-node="payload"><b>P1</b><span data-vhost-payload>网络头与报文缓冲区</span></div><p data-vhost-desc>描述符链：地址、长度</p><dl><div><dt>avail.idx</dt><dd data-vhost-avail>提交位置</dd></div><div><dt>used.idx</dt><dd data-vhost-used>完成位置</dd></div></dl><p data-vhost-buffer>驱动提交后保持缓冲区有效，完成后回收</p></div></section>
+    <div class="vhost-exchange" aria-label="共享内存访问与双向通知">
+      <div class="vhost-edge vhost-edge--notification" data-vhost-edge="kick"><span aria-hidden="true">→</span><strong>kick</strong><small data-vhost-kick>客户机 → 队列消费者</small></div>
+      <div class="vhost-edge vhost-edge--data" data-vhost-edge="data"><span aria-hidden="true">→</span><strong>描述符与 P1</strong><small>后端读取客户机 RAM</small><i class="vhost-packet" aria-hidden="true">P1</i></div>
+      <div class="vhost-edge vhost-edge--completion" data-vhost-edge="used"><span aria-hidden="true">←</span><strong>used 完成记录</strong><small>后端写客户机 RAM</small></div>
+      <div class="vhost-edge vhost-edge--notification" data-vhost-edge="call"><span aria-hidden="true">←</span><strong>完成通知</strong><small data-vhost-call>后端 → 客户机</small></div>
+    </div>
+    <section class="vhost-workers"><h4>队列消费者</h4><div class="vhost-worker" data-vhost-worker="qemu"><strong>QEMU 用户态</strong><small>virtio-net 设备模型</small><span data-vhost-worker-status="qemu">读取队列 → 写 TAP</span></div><div class="vhost-worker" data-vhost-worker="kernel"><strong>宿主内核 vhost-net</strong><small>vhost 工作项</small><span data-vhost-worker-status="kernel">读取队列 → 后端 socket</span></div><div class="vhost-worker" data-vhost-worker="user"><strong>独立用户态进程</strong><small>vhost-user 后端</small><span data-vhost-worker-status="user">映射共享内存 → 网络数据面</span></div></section>
+    <section class="vhost-network" data-vhost-node="network"><h4>网络出口</h4><strong data-vhost-outlet>TAP / 外部后端网络</strong><p data-vhost-network-state>由选定后端提交报文</p><span class="vhost-delivered" data-vhost-delivered hidden>P1 已提交</span></section>
+  </div>
+  <div class="vhost-detail" data-vhost-detail hidden><strong data-vhost-step-title></strong><p data-vhost-step-detail></p></div>
+  <div class="vhost-legend"><span>虚线框：控制关系</span><span>橙色：通知</span><span>绿色：报文读取与发送</span><span>蓝色：完成回写</span></div>
+  <div class="vhost-fallback" data-vhost-fallback><ol><li>QEMU 配置设备；内核后端通过 ioctl，外部后端通过 Unix socket 获得内存、队列及通知信息。</li><li>客户机发布 available 项，按需 kick；选定消费者读取同一份描述符和报文。</li><li>QEMU 或 vhost-net 交给 TAP；外部后端使用自身的网络出口。</li><li>后端回写 used，按条件通知客户机，驱动随后回收缓冲区。</li></ol><p>启用 JavaScript 可切换处理位置，并逐步观察初始化与发送过程。</p></div>
+  <p class="vhost-model-note">本例采用 eventfd 通知，假定 kick 和完成通知均需要发送，后端发送成功；每步表示逻辑阶段。外部后端以协议职责表示，不限定其线程或网络实现。切换后端会重置过程。</p>
+</section>  <h3>初始化：把队列交给后端</h3>
+  <ol>
+    <li><strong>协商能力。</strong>QEMU 查询后端支持的 virtio 特性，再结合设备配置与客户机协商结果设置生效特性。vhost-user 另有协议特性，用于协商多队列、内存管理等控制能力。</li>
+    <li><strong>配置内存。</strong>内核路径使用 <code>VHOST_SET_MEM_TABLE</code>；外部路径可通过 <code>VHOST_USER_SET_MEM_TABLE</code>传递区域表与内存文件描述符。后续内存变化也需要同步。</li>
+    <li><strong>配置队列。</strong>设置队列大小、描述符和 available / used 的地址，以及恢复消费所需的索引。队列编号使后端能够区分 RX、TX 及不同队列对。</li>
+    <li><strong>连接通知。</strong>设置 kick 与 call 文件描述符，分别用于提交唤醒和完成通知。QEMU 关联客户机通知地址、KVM ioeventfd 和中断路由。</li>
+    <li><strong>允许处理。</strong>在设备与队列状态满足条件后启用数据处理。内核网络路径还要绑定 TAP 对应的后端文件描述符；vhost-user 按协商结果管理队列启停。</li>
+  </ol>
+  <p>图中按职责归纳初始化阶段，实际调用会因功能协商、队列就绪顺序和中断屏蔽状态交错执行。正常发包时，这些关系已经建立，无需每发一包重新发送整套配置。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/vhost.c#L1256-L1367">队列配置</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/vhost.c#L2052-L2126">设备启动</a></p>
+  <h3>数据处理：读取同一份描述符链</h3>
+  <ol>
+    <li>客户机准备 P1 的网络头和报文缓冲区，填写描述符链；完成内存顺序操作后更新 available ring。</li>
+    <li>需要唤醒时，驱动写队列通知地址。启用 ioeventfd 的路径由 KVM 触发 kick eventfd，对应的队列消费者获得处理机会。</li>
+    <li>后端读取 available 项、验证描述符并定位 P1。QEMU 构造自己的队列元素，vhost-net 由内核解析，外部后端则访问已映射的共享内存。</li>
+    <li>QEMU 将 P1 写入 TAP；vhost-net 将数据交给 TAP 对应的内核 socket；外部后端按其网络实现进行转发。</li>
+    <li>当本次请求的缓冲区可以归还时，后端发布 used 项，并按通知条件告知客户机。驱动检查完成记录后回收描述符和缓冲区。</li>
+  </ol>
+  <p>used 的含义是本地请求完成和缓冲区可以回收，远端应用是否收到报文需要由网络协议确认。下层拥塞、异步发送和零拷贝会影响归还时刻，后端不能在仍有引用时提前让客户机复用缓冲区。</p>
+</section>
+
+<section id="notification" class="mechanism-section">
+  <h2>通知与完成</h2>
+  <h3>控制消息、kick 与报文数据</h3>
+  <p>vhost-user 的 Unix socket 承载控制消息，并通过 <code>SCM_RIGHTS</code>传递内存、kick 和 call 等文件描述符。常规 eventfd 模式下，kick 提示后端检查队列，报文内容通过共享内存访问；socket 中的 <code>payload</code>是控制消息体，例如内存区域描述，并不表示以太网报文。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/vhost-user.rst#L19-L39">协议职责</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/vhost-user.rst#L397-L425">文件描述符传递</a></p>
+  <figure class="mechanism-diagram" data-diagram="vhost-user-control-data" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>vhost-user 的控制面与数据面</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看vhost-user 的控制面与数据面" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="vhost-user 的控制面与数据面">
+    <img src="../assets/vhost-user-control-data.svg?v=c084ccad2981" alt="QEMU 建立内存、队列和通知关系，后端按映射访问客户机 RAM。图示 SET_MEM_TABLE 与 eventfd 路径；正常收发不需要把报文经控制 socket 再传一遍。" loading="lazy">
+  </div>
+  <figcaption>QEMU 建立内存、队列和通知关系，后端按映射访问客户机 RAM。图示 SET_MEM_TABLE 与 eventfd 路径；正常收发不需要把报文经控制 socket 再传一遍。 <a href="../assets/vhost-user-control-data.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
+    accTitle: vhost-user 的控制配置与共享内存数据路径
+    accDescr: QEMU 通过 Unix socket 传递能力、内存区域、队列配置以及文件描述符。初始化完成后，客户机驱动与外部后端通过同一份 RAM 交换描述符和报文，kick 与 call eventfd 分别承担提交和完成通知。
+    participant Q as QEMU
+    participant G as 客户机驱动
+    participant M as 共享客户机 RAM
+    participant B as vhost-user 后端
+    rect rgb(239, 244, 241)
+        Note over Q,B: 控制面：Unix socket 消息，FD 通过 SCM_RIGHTS 附带传递
+        Q-&gt;&gt;B: 协商 virtio 与协议特性
+        Q-&gt;&gt;B: SET_MEM_TABLE：区域表与内存 FD
+        B-&gt;&gt;M: mmap：建立本进程的共享内存映射
+        Q-&gt;&gt;B: SET_VRING_NUM / ADDR / BASE
+        Q-&gt;&gt;B: SET_VRING_KICK / CALL：eventfd
+        Note over Q,B: 设备与队列就绪后允许处理；图中按配置职责归纳
+    end
+    rect rgb(245, 245, 241)
+        Note over G,B: 数据面：描述符与报文留在共享内存中
+        G-&gt;&gt;M: 准备数据与 desc，发布 avail
+        opt 需要提交唤醒
+            G--&gt;&gt;B: 队列通知 → KVM ioeventfd → kick
+        end
+        B-&gt;&gt;M: 读取 avail、desc 和报文缓冲区
+        B-&gt;&gt;B: 按后端网络实现发送报文
+        B-&gt;&gt;M: 缓冲区可归还时发布 used
+        opt 需要完成通知，且使用 irqfd 路由
+            B--&gt;&gt;G: call eventfd → KVM irqfd → 客户机中断
+        end
+        G-&gt;&gt;M: 检查 used，回收描述符和缓冲区
+    end
+</code></pre></details>
+</figure>
+  <p>部分后端持续轮询队列，或通过通知抑制减少唤醒。协议也定义了协商后使用的带内通知扩展。因此检查实际配置时，需要区分 eventfd、轮询与带内通知；改变通知方式仍不会让普通报文自动经控制 socket 逐包传输。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/vhost-user.rst#L1014-L1026">带内通知</a></p>
+  <p>存储后端的具体实现见<a href="spdk-vhost-user-blk.html">SPDK vhost-user-blk 的请求处理路径</a>，其中继续跟踪共享队列、控制器线程、bdev 和 NVMe 完成回调。</p>
+  <h3>完成记录先于完成通知</h3>
+  <p>后端先写 used 项，再更新 used 索引，最后判断是否需要通知。vhost-net 的 <code>vhost_add_used_n()</code>和 <code>vhost_signal()</code>分别承担发布和通知检查；call eventfd 可连接 KVM irqfd，形成宿主后端到客户机中断的路径。中断屏蔽、路由能力和回退配置会影响具体实现，详见<a href="kvm-virtio-interrupt.html#irqfd">irqfd 的通知路径</a>。</p>
+  <p>kick 与 call 的方向相反：kick 面向后端，call 面向客户机。批量请求可合并通知，驱动也可主动检查 used ring，故报文数、kick 数和中断数应分别统计。ioeventfd 减少通知 MMIO 返回 QEMU 处理的往返，CPU 进入 KVM 的硬件 VM-exit 仍可能发生。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst">KVM_IOEVENTFD 与 KVM_IRQFD</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vhost/vhost.c#L2929-L3021">完成发布与条件通知</a></p>
+</section>
+
+<section id="implementation" class="mechanism-section">
+  <h2>关键源码</h2>
+  <h3>QEMU 建立后端关系</h3>
+  <pre><code>vhost_net_start_one()
+  vhost_dev_start()
+    vhost_set_mem_table()
+    vhost_virtqueue_start()
+      设置队列大小、消费索引及地址
+      vhost_set_vring_kick()
+      配置完成通知与中断屏蔽关系
+  内核 / TAP 路径：vhost_net_set_backend(tap_fd)
+
+vhost_ops 分派
+  内核：VHOST_* ioctl
+  外部：vhost_user_* → vhost_user_write()
+        Unix socket 控制消息 + 必要的文件描述符</code></pre>
+  <p><code>vhost_ops</code>使公共队列管理代码可以调用不同的后端操作。vhost-user 的 <code>vhost_user_set_mem_table()</code>整理内存信息，<code>vhost_user_set_vring_kick()</code>和 <code>vhost_user_set_vring_call()</code>传递相应通知句柄。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/vhost-user.c#L1002-L1058">内存表发送</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/vhost-user.c#L1370-L1405">通知和队列地址</a></p>
+  <h3>Linux vhost-net 消费发送队列</h3>
+  <pre><code>TX kick / 后端可写事件
+  vhost 工作项 → handle_tx()
+    handle_tx_copy()                 # 普通复制路径
+      get_tx_bufs()
+        vhost_net_tx_get_vq_desc()
+          vhost_get_vq_desc_n()
+      组织数据并向后端 socket 提交
+        单包：sock-&gt;ops-&gt;sendmsg()
+        批处理：vhost_tx_batch()
+      vhost_tx_batch()              # 排空批次并发布完成
+        vhost_net_signal_used()
+          vhost_add_used_and_signal_n()
+            发布 used → 检查条件 → call eventfd</code></pre>
+  <p>内核还有独立的零拷贝发送分支，是否选择它取决于模块配置和后端能力；普通路径也包含批处理。发送遇到暂不可写时，会恢复相应消费位置并等待后端条件变化。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vhost/net.c#L707-L929">vhost-net 发送实现</a></p>
+  <p>外部 vhost-user 后端的事件循环、线程数量和网络出口由实现决定。协议提供队列共享及通知约定，无法据此推导某个 DPDK 应用的精确函数链，也无法保证一条队列固定对应一个 CPU。排查时应先确认后端进程与队列绑定，再跟踪该实现的收发函数。</p>
+</section>
+
+<section id="evolution" class="mechanism-section">
+  <h2>数据路径的演进</h2>
+  <h3>从 QEMU 报文处理到内核 vhost-net</h3>
+  <p>QEMU 用户态模型把设备逻辑、队列处理和网络后端连接起来，便于统一管理。高报文率场景中，队列通知、用户态调度及向 TAP 提交等环节会积累开销。vhost-net 将网络队列处理放到宿主内核，保留客户机 virtio 接口，并由 QEMU 配置运行所需的资源。</p>
+  <p>处理路径缩短后，宿主仍需执行队列检查、内存访问和网络转发。性能会受到 vhost 工作项调度、CPU 亲和性、NUMA、批量大小和网络栈的影响。Linux 的发送实现同时保留复制与零拷贝分支，说明“启用 vhost”本身不足以判断复制次数。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vhost/net.c#L320-L337">零拷贝条件</a></p>
+  <h3>从内核接口到外部用户态后端</h3>
+  <p>用户态交换机等组件需要直接处理 virtqueue 时，vhost-user 把内核 ioctl 的控制职责扩展为跨进程协议。QEMU 在 <a href="https://github.com/qemu/qemu/commit/5f6f6664bf24dc53f4bf98ba812d55ca93684cd5">2014 年引入 vhost-user 后端</a>，通过控制消息对应 vhost 操作，并传递共享资源的文件描述符。QEMU 提供设备配置、队列位置和共享内存，外部进程可以使用自己的调度与网络数据面，例如接入 DPDK 构建的用户态交换机。</p>
+  <p>独立进程便于分离设备控制与数据处理，也增加了内存映射、文件描述符生命周期、协议兼容及后端失联处理。迁移时还要跟踪后端对客户机内存的写入，并协调队列停止与状态恢复。QEMU 10.2 的协议包含脏页日志和后端状态迁移约定，各后端的可用能力需要通过协商确认。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/vhost-user.rst#L529-L663">迁移与后端状态</a></p>
+  <p>三种处理方式仍各有适用场景。比较时应固定客户机队列、报文大小、卸载配置及出口，再观察 CPU 消耗、延迟、吞吐和部署复杂度。轮询可减少等待唤醒的延迟，但会持续消耗 CPU；拆分进程可独立安排数据面资源，也需要额外维护状态交接和故障处理。</p>
+  <p>物理设备执行 DMA 时的映射与隔离见<a href="qemu-vfio-dma.html">《VFIO 设备直通的 DMA 地址转换与隔离》</a>。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul class="mechanism-sources">
+    <li>QEMU 10.2.0：<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/vhost_net.c">vhost_net.c</a>，网络后端初始化、启动与 TAP 交接；<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/vhost.c">vhost.c</a>，内存、队列与通知配置。</li>
+    <li>QEMU 10.2.0：<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/vhost-user.c">vhost-user.c</a>，控制消息、共享内存和文件描述符发送；<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/vhost-user.rst">Vhost-user Protocol</a>，地址转换、队列状态与迁移约定。</li>
+    <li>Linux 6.18：<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vhost/net.c">drivers/vhost/net.c</a>，TX 队列处理、复制与零拷贝分支；<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vhost/vhost.c">drivers/vhost/vhost.c</a>，描述符解析、完成发布与通知检查。</li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst">Linux 6.18 KVM API</a>：KVM_IOEVENTFD、KVM_IRQFD 的方向与用途。</li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#device-virtualization">设备与 I/O 虚拟化原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=7b86b63d1fd5"></script>
+<script src="../assets/mechanism-viewer.js?v=c084ccad2981" defer></script>
+<script src="../assets/vhost-path.js?v=c084ccad2981" defer></script></body>
+</html>

@@ -1,0 +1,30 @@
+sequenceDiagram
+    accTitle: vhost-user 的控制配置与共享内存数据路径
+    accDescr: QEMU 通过 Unix socket 传递能力、内存区域、队列配置以及文件描述符。初始化完成后，客户机驱动与外部后端通过同一份 RAM 交换描述符和报文，kick 与 call eventfd 分别承担提交和完成通知。
+    participant Q as QEMU
+    participant G as 客户机驱动
+    participant M as 共享客户机 RAM
+    participant B as vhost-user 后端
+    rect rgb(239, 244, 241)
+        Note over Q,B: 控制面：Unix socket 消息，FD 通过 SCM_RIGHTS 附带传递
+        Q->>B: 协商 virtio 与协议特性
+        Q->>B: SET_MEM_TABLE：区域表与内存 FD
+        B->>M: mmap：建立本进程的共享内存映射
+        Q->>B: SET_VRING_NUM / ADDR / BASE
+        Q->>B: SET_VRING_KICK / CALL：eventfd
+        Note over Q,B: 设备与队列就绪后允许处理；图中按配置职责归纳
+    end
+    rect rgb(245, 245, 241)
+        Note over G,B: 数据面：描述符与报文留在共享内存中
+        G->>M: 准备数据与 desc，发布 avail
+        opt 需要提交唤醒
+            G-->>B: 队列通知 → KVM ioeventfd → kick
+        end
+        B->>M: 读取 avail、desc 和报文缓冲区
+        B->>B: 按后端网络实现发送报文
+        B->>M: 缓冲区可归还时发布 used
+        opt 需要完成通知，且使用 irqfd 路由
+            B-->>G: call eventfd → KVM irqfd → 客户机中断
+        end
+        G->>M: 检查 used，回收描述符和缓冲区
+    end

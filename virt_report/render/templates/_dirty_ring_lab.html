@@ -1,0 +1,39 @@
+<section class="dirty-ring-lab" data-dirty-ring-lab data-mechanism-view="lab" aria-labelledby="dirty-ring-lab-title">
+  <div class="mechanism-view-heading"><h3 id="dirty-ring-lab-title">脏页记录与重新保护</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>两个 vCPU 共用 8 页内存，第一轮复制已完成。写入后依次收割、重置、发布并读取页面，观察源端与目的端内容版本。</p>
+  <div class="dirty-ring-controls" data-dirty-ring-controls hidden>
+    <label>演示可用槽位<select data-dirty-ring-capacity><option value="2">每环 2 个</option><option value="4" selected>每环 4 个</option><option value="8">每环 8 个</option></select></label>
+    <label>写入的 vCPU<select data-dirty-ring-cpu><option value="0">vCPU 0</option><option value="1">vCPU 1</option></select></label>
+    <label>操作页面<select data-dirty-ring-page><option value="0">P0</option><option value="1">P1</option><option value="2">P2</option><option value="3" selected>P3</option><option value="4">P4</option><option value="5">P5</option><option value="6">P6</option><option value="7">P7</option></select></label>
+    <div class="dirty-ring-actions" role="group" aria-label="脏页交接操作">
+      <button type="button" data-dirty-ring-write>客户机写页</button>
+      <button type="button" data-dirty-ring-harvest>1 · 收割记录</button>
+      <button type="button" data-dirty-ring-reprotect>2 · 重置并保护</button>
+      <button type="button" data-dirty-ring-publish>3 · 发布待发送位</button>
+      <button type="button" data-dirty-ring-read>4 · 读页并传送</button>
+    </div>
+    <div class="dirty-ring-actions dirty-ring-demo" role="group" aria-label="演示与重置"><button type="button" data-dirty-ring-demo>示例下一步</button><button type="button" data-dirty-ring-reset>重新开始</button></div>
+  </div>
+  <p class="dirty-ring-status" data-dirty-ring-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <div class="dirty-ring-scene" data-dirty-ring-scene hidden>
+    <div class="dirty-ring-boundary"><strong>源端 · KVM</strong><span>每个 vCPU 独立生产记录</span></div>
+    <div class="dirty-ring-rings" data-dirty-ring-rings></div>
+    <p class="dirty-ring-legend">D：DIRTY，待收割 · R：RESET，待重置 · —：空闲</p>
+    <div class="dirty-ring-boundary"><strong>源端 · QEMU</strong><span>收割 → 重置返回 → 发布 → 读页</span></div>
+    <div class="dirty-ring-bitmaps">
+      <div><h4>KVMSlot 暂存位图</h4><div data-dirty-ring-pending></div><small data-dirty-ring-pending-note></small></div>
+      <div><h4>迁移待发送位图</h4><div data-dirty-ring-migration></div><small>1：下一次读取需处理该页</small></div>
+    </div>
+    <div class="dirty-ring-memories">
+      <div><h4>源端客户机内存</h4><div data-dirty-ring-source></div></div>
+      <div><h4>目的端已接收内容</h4><div data-dirty-ring-destination></div></div>
+    </div>
+    <p class="dirty-ring-counters" data-dirty-ring-counters></p>
+    <ol class="dirty-ring-events" data-dirty-ring-events aria-label="最近发生的操作"></ol>
+  </div>
+  <div class="dirty-ring-fallback" data-dirty-ring-fallback>
+    <ol><li>vCPU 0 写 P3，KVM 向它的环中发布 <code>slot = 0, offset = 3, DIRTY</code>。</li><li>QEMU 收割该记录，设置 KVMSlot 位图中的 P3，并将环条目标记为 RESET。</li><li><code>KVM_RESET_DIRTY_RINGS</code> 完成重新保护，条目可回收。</li><li>QEMU 合并迁移待发送位图，随后读取并传送 P3。</li><li>重新保护后的再次写入会产生新记录，后续同步仍能发现该页。</li></ol>
+    <p>启用 JavaScript 后可交错执行客户机写入与收割过程，也可按“示例下一步”观察完整顺序。</p>
+  </div>
+  <p class="dirty-ring-model-note">示例每页使用一个共享映射，已放行写入在重新保护前不再产生新条目。重置调用按完成的一步展示，发布操作合并 QEMU 全局位图与 RAMBlock 位图同步。硬件缓存及其预留槽位未展开，2 / 4 / 8 个槽位仅用于观察环的回绕和等待，不是实际配置值。页内容版本表示写入次数，逻辑步骤不代表耗时。</p>
+</section>

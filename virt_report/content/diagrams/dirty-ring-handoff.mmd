@@ -1,0 +1,23 @@
+sequenceDiagram
+    accTitle: Dirty Ring 条目与脏页的交接顺序
+    accDescr: KVM 先写入 slot 和 offset，再发布 DIRTY。QEMU 持有 slots 锁收割地址、设置槽位图和 RESET。内核回收环位并完成页跟踪重置，ioctl 返回后 QEMU 才允许迁移路径读取所收割的页面。
+    participant K as KVM
+    participant Q as QEMU 收割路径
+    participant M as 迁移读取路径
+    Note over K,Q: flags、slot、offset 通过共享环交接
+    K->>K: 空闲环位 flags = 0<br/>写 slot、offset
+    K->>K: 发布 flags = DIRTY
+    Q->>Q: 获取 slots 锁
+    Q->>K: acquire 读取 DIRTY，取得地址
+    Q->>Q: 设置 KVMSlot.dirty_bmap
+    Q->>K: release 写 flags = RESET
+    Note over Q,M: 锁内暂存记录；尚不允许读页
+    Q->>K: KVM_RESET_DIRTY_RINGS
+    K->>K: acquire 读取 RESET<br/>回收环位 flags = 0
+    Note over K: 环位归零时，整批重置可能仍未结束
+    K->>K: 完成整批页跟踪重置<br/>及相应 MMU 处理
+    K-->>Q: ioctl 返回
+    Q->>Q: 释放 slots 锁
+    Q-->>M: 后续同步汇入迁移待发送位图
+    M->>M: 读取页内容并发送
+    Note over K,M: 重置后再写该页会产生新记录<br/>本次读取未覆盖的写入由后续迭代处理

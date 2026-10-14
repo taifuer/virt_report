@@ -1,0 +1,27 @@
+<section class="vfio-lab" data-vfio-lab data-mechanism-view="lab" aria-labelledby="vfio-lab-title">
+  <div class="mechanism-view-heading"><h3 id="vfio-lab-title">DMA 地址与访问权限</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>设备访问一个 4 KiB 页内的 64 B 缓冲区。先建立映射，再逐步提交和处理请求。</p>
+  <div class="vfio-controls" data-vfio-controls hidden>
+    <label for="vfio-permission">目标页映射<select id="vfio-permission" data-vfio-permission><option value="rw">可读写</option><option value="readonly">设备只读</option><option value="missing">缺失映射</option></select></label>
+    <label for="vfio-operation">DMA 方向<select id="vfio-operation" data-vfio-operation><option value="read">设备读取 RAM</option><option value="write">设备写入 RAM</option></select></label>
+    <div class="vfio-actions" role="group" aria-label="DMA 交互控制"><button type="button" data-vfio-back>上一步</button><button type="button" data-vfio-next>下一步</button><button type="button" data-vfio-reset>重置</button></div>
+  </div>
+  <p class="vfio-status" data-vfio-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <div class="vfio-setup" data-vfio-node="control"><strong>QEMU / 宿主内核 · 配置路径</strong><span>关联设备与地址空间 → 固定 RAM 后备页 → 设置 I/O 页表</span><small data-vfio-map-state>IOVA 0x00400000 · HVA 0x70001000 · 长度 4 KiB</small></div>
+  <div class="vfio-structures">
+    <section><h4>IOMMU_IOAS_MAP · 映射输入</h4><dl class="vfio-fields"><div><dt>ioas_id</dt><dd>10</dd></div><div><dt>iova</dt><dd>0x00400000</dd></div><div><dt>user_va</dt><dd>0x70001000 · QEMU HVA</dd></div><div><dt>length</dt><dd>4096 B</dd></div><div><dt>flags</dt><dd data-vfio-map-flags>FIXED_IOVA | READABLE | WRITEABLE</dd></div></dl><small>标志省略共同的 IOMMU_IOAS_MAP_ 前缀。HPA 由内核解析后备页得到，不在此输入结构中。</small></section>
+    <section><h4>设备与页表关联</h4><p data-vfio-association>设备尚未绑定 IOMMUFD</p><dl class="vfio-fields"><div><dt>IOAS 10</dt><dd>逻辑 IOVA 映射</dd></div><div><dt>HWPT 20</dt><dd>本例设备使用的硬件页表</dd></div><div><dt>HPA 页</dt><dd data-vfio-mapped-hpa>等待内核建立映射</dd></div></dl><small>向 IOAS 附着时可复用兼容的 HWPT，或创建一个；一个 IOAS 可以对应多个 HWPT。</small></section>
+  </div>
+  <div class="vfio-guest" data-vfio-node="guest"><strong>客户机驱动</strong><span data-vfio-driver>缓冲区 GPA 0x00400080，长度 64 B</span><small>设备请求地址采用相同数值的 IOVA</small></div>
+  <div class="vfio-submit"><span aria-hidden="true">↓</span> 寄存器 / 队列提交请求 <span class="vfio-completion" data-vfio-completion hidden>· 已收到正常完成</span></div>
+  <div class="vfio-scene" role="group" aria-label="物理设备经过宿主 IOMMU 访问客户机后备页">
+    <section data-vfio-node="device"><h4>物理 PCIe 设备</h4><strong data-vfio-request>IOVA 0x00400080</strong><p data-vfio-device-state>等待请求</p><dl class="vfio-fields"><div><dt>长度</dt><dd>64 B</dd></div><div><dt>方向</dt><dd data-vfio-request-direction>设备读 / 写</dd></div></dl><small>设备标识选择转换上下文</small></section>
+    <div class="vfio-edge" data-vfio-edge="request"><span aria-hidden="true">→</span><strong>DMA 请求</strong><small data-vfio-direction>设备读 / 写</small></div>
+    <section class="vfio-iommu" data-vfio-node="iommu"><h4>宿主 IOMMU</h4><p>IOVA 页 → HPA 页</p><dl><div><dt>IOVA</dt><dd>0x00400000</dd></div><div><dt>HPA</dt><dd data-vfio-target>0x21000000</dd></div><div><dt>权限</dt><dd data-vfio-rights>由所选映射决定</dd></div></dl><p class="vfio-verdict" data-vfio-verdict>检查映射及读写权限</p></section>
+    <div class="vfio-edge" data-vfio-edge="data"><span data-vfio-data-arrow aria-hidden="true">↔</span><strong data-vfio-data-label>64 B 数据</strong><small>页内偏移 0x80</small></div>
+    <section data-vfio-node="memory"><h4>宿主物理内存</h4><strong>HPA 0x21000080</strong><p>客户机 RAM 的后备页</p><div class="vfio-memory-value"><span>缓冲区内容</span><b data-vfio-memory-value>原有数据 A</b></div><small data-vfio-access>尚未发生 DMA 数据访问</small></section>
+  </div>
+  <div class="vfio-detail" data-vfio-detail hidden><strong data-vfio-step-title></strong><p data-vfio-step-detail></p></div>
+  <p class="vfio-note">配置路径设置转换关系；正常数据访问由设备与 IOMMU 硬件处理。示例地址用于展示页号和偏移，不对应实际机器。故障仅表示本次数据访问被阻止，不模拟特定设备的错误恢复。</p>
+  <div data-vfio-fallback><ol><li>QEMU 向内核提供 IOVA、后备内存与访问权限，建立硬件映射。</li><li>客户机驱动提交缓冲区地址，设备发出 DMA。</li><li>IOMMU 检查映射和权限，通过后访问 HPA 对应的 RAM。</li><li>正常请求完成后，驱动消费或回收缓冲区；缺失映射和越权写入不能产生正常数据完成。</li></ol><p>启用 JavaScript 可切换权限和方向，逐步查看状态变化。</p></div>
+</section>

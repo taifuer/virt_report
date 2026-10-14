@@ -1,0 +1,30 @@
+flowchart TB
+    accTitle: qdev 从对象创建到设备释放的生命周期
+    accDescr: 新对象先执行父类到子类的实例初始化，再设置属性、关联父总线并进入 realize。回调自身失败需局部清理，框架后续阶段失败则回滚已成功的实现。正常设备通过 unrealize 和 unparent 停用、脱离总线，最后引用归零才执行 finalize。
+    create["qdev_new → object_new<br/>引用计数初值 1"]
+    init["instance_init：父类 → 子类<br/>建立局部状态与子对象<br/>随后 instance_post_init"]
+    props["配置属性<br/>例如 vectors = 5<br/>realized = false"]
+    attach["qdev_realize<br/>关联 parent_bus<br/>设置 realized 属性为 true"]
+    before["框架前置检查<br/>必要的组合树挂接 · pre-plug"]
+    callback["DeviceClass.realize<br/>校验完整配置并建立资源"]
+    after["框架后续操作<br/>VMState 注册 · 子总线 · plug"]
+    ready["发布 realized = true<br/>设备实现完成"]
+    failLocal["回调失败<br/>实现层清理已取得的资源<br/>框架不自动调用 dc.unrealize"]
+    rollback["后续阶段失败<br/>撤销已完成的框架步骤<br/>调用 dc.unrealize"]
+    failure["返回错误<br/>未发布 realized = true<br/>调用者按所有权清理对象"]
+    stop["正常停用：unrealize<br/>停止设备并撤销运行资源"]
+    detach["unparent<br/>脱离组合树和父总线<br/>释放相应引用"]
+    final["最后一个引用释放<br/>删除实例属性<br/>instance_finalize：子类 → 父类"]
+    create --> init --> props --> attach --> before --> callback
+    callback -->|成功| after -->|成功| ready
+    callback -->|失败| failLocal --> failure
+    before -->|失败| failure
+    after -->|失败| rollback --> failure
+    ready --> stop --> detach --> final
+    failure -->|释放剩余引用| final
+    classDef normal fill:#e4f1ec,stroke:#438575,color:#173e34
+    classDef lifecycle fill:#eaf0f6,stroke:#8198ac,color:#263c4c
+    classDef error fill:#f6eee5,stroke:#b59373,color:#59402b
+    class create,init,props,ready normal
+    class attach,before,callback,after,stop,detach,final lifecycle
+    class failLocal,rollback,failure error

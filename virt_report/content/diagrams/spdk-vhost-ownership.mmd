@@ -1,0 +1,27 @@
+flowchart TB
+    accTitle: SPDK vhost-user-blk 的控制连接与数据路径
+    accDescr: QEMU 配置设备和共享内存，SPDK 控制器线程从共享 virtqueue 取得请求，经 bdev 和用户态 NVMe 驱动提交硬件。客户机 RAM 可由硬件 DMA 访问。
+    guest["客户机 virtio-blk 驱动<br/>提交描述符，回收完成"]
+    shared["共享客户机 RAM<br/>virtqueue + 头 / 数据 / 状态"]
+    qemu["QEMU vhost-user-blk-pci<br/>PCI 配置、共享 RAM、通知路由"]
+    subgraph process[SPDK 后端进程]
+        direction TB
+        control["rte_vhost 控制连接<br/>内存表、队列、kick / call"]
+        task["控制器 spdk_thread<br/>vdev_worker → vhost task"]
+        bdev["当前线程的 bdev io_channel<br/>spdk_bdev_io"]
+        nvme["NVMe 驱动与 poll group<br/>SQ / CQ、DMA 地址、完成回调"]
+        control -.->|启动消息| task
+        task --> bdev --> nvme
+    end
+    device["PCIe NVMe 控制器 / namespace<br/>控制器执行命令并写 CQ"]
+    guest --> shared
+    qemu -.->|Unix socket + FD| control
+    shared -->|队列和缓冲区访问| task
+    nvme <-->|命令与完成| device
+    shared -->|写入数据：由 NVMe DMA 读取| device
+    classDef sharedmem fill:#e6f1f8,stroke:#7b9db5,color:#253e4b
+    classDef context fill:#e1f0eb,stroke:#6d9a8a,color:#24413a
+    classDef storage fill:#f5f0e5,stroke:#b7a57d,color:#4f4635
+    class shared sharedmem
+    class control,task,bdev context
+    class nvme,device storage

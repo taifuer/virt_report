@@ -6,16 +6,38 @@
 {% block head_extra %}<link rel="stylesheet" href="{{ root }}assets/mechanisms.css?v={{ mechanism_asset_version }}">{% endblock %}
 {% block content %}
 <article class="mechanisms-index">
-  <header class="mechanism-header"><div class="kicker">Virtualization Internals</div><h1>原理</h1><p>结合源码与图解，分析虚拟化机制的设计、实现和演进。</p></header>
-  {% for topic in topics %}
+  <header class="mechanism-header">
+    <div class="kicker">Virtualization Internals</div><h1>原理</h1>
+    <p>结合源码与图解，分析虚拟化机制的设计、实现和演进。</p>
+    <nav class="mechanism-directory" aria-label="专题目录">
+      {% for group in topic_groups if group.published_topics %}
+      <div class="mechanism-directory-row">
+        <span class="mechanism-directory-label" id="directory-{{ group.slug }}">{{ group.title }}</span>
+        <ul aria-labelledby="directory-{{ group.slug }}">
+          {% for topic in group.published_topics %}
+          <li><a href="#{{ topic.slug }}"><span>{{ topic.title }}</span><span class="mechanism-directory-count">{{ topic.articles|length }}<span class="sr-only"> 篇文章</span></span></a></li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+    </nav>
+  </header>
+  {% for group in topic_groups if group.published_topics %}
+  <section class="mechanism-group" aria-labelledby="group-{{ group.slug }}">
+    <h2 id="group-{{ group.slug }}">{{ group.title }}</h2>
+    {% for topic in group.published_topics %}
   <section class="mechanism-topic" id="{{ topic.slug }}" aria-labelledby="mechanism-topic-{{ topic.slug }}">
-    <header class="mechanism-topic-header"><h2 id="mechanism-topic-{{ topic.slug }}">{{ topic.title }}</h2><p>{{ topic.summary }}</p></header>
+    {% for alias in topic.aliases|default([]) %}<span id="{{ alias }}" class="mechanism-topic-alias" aria-hidden="true"></span>{% endfor %}
+    <header class="mechanism-topic-header"><h3 id="mechanism-topic-{{ topic.slug }}">{{ topic.title }}</h3><p>{{ topic.summary }}</p></header>
     <div class="mechanism-list">
       {% for article in topic.articles %}<article class="mechanism-list-item">
-        <h3><a href="mechanisms/{{ article.slug }}.html">{{ article.title }}</a></h3>
+        <h4><a href="mechanisms/{{ article.slug }}.html">{{ article.title }}</a></h4>
         <p>{{ article.summary }}</p>
       </article>{% endfor %}
     </div>
+    {% if topic.related_articles %}<nav class="mechanism-topic-related" aria-label="{{ topic.title }}相关原理"><span>相关原理</span>{% for article in topic.related_articles %}<a href="mechanisms/{{ article.slug }}.html">{{ article.title }}</a>{% endfor %}</nav>{% endif %}
+  </section>
+    {% endfor %}
   </section>
   {% endfor %}
 </article>

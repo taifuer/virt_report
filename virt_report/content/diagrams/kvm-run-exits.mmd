@@ -1,0 +1,21 @@
+sequenceDiagram
+    accTitle: CPUID 内核处理与 MMIO 用户态交接
+    accDescr: 一次 KVM_RUN 内可处理 CPUID 并继续客户机执行。需要 QEMU 处理的 MMIO 读返回到用户态，设备结果写回共享区，再次 KVM_RUN 完成此前指令。
+    participant Q as QEMU vCPU 线程
+    participant K as KVM 内核
+    participant G as 客户机执行
+    participant D as QEMU 设备模型
+    Q->>K: KVM_RUN
+    K->>G: VM Entry
+    G->>K: CPUID → VM Exit
+    K->>K: 写回 CPUID 结果、推进指令
+    K->>G: VM Entry，原 KVM_RUN 尚未返回
+    G->>K: 设备 MMIO 读 → VM Exit
+    K->>K: 记录待完成读取，填写 kvm_run
+    K-->>Q: KVM_RUN 返回 0，KVM_EXIT_MMIO
+    Q->>D: address_space_rw：读取设备寄存器
+    D-->>Q: 返回 0x12345678
+    Q->>Q: mmio.data = 78 56 34 12
+    Q->>K: 再次 KVM_RUN
+    K->>K: complete_userspace_io 消费结果、完成指令
+    K->>G: VM Entry，继续后续指令

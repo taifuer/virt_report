@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>VFIO 设备直通的 DMA 地址转换与隔离 - virt-report</title>
+  <meta name="description" content="从客户机缓冲区到宿主物理页，分析 DMA 映射、IOMMU 权限检查，以及 VFIO Container 与 IOMMUFD 的分工。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=7b86b63d1fd5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=7b86b63d1fd5">
+  <link rel="stylesheet" href="../assets/site.css?v=7b86b63d1fd5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c084ccad2981">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c084ccad2981">
+<link rel="stylesheet" href="../assets/vfio-dma.css?v=c084ccad2981"></head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=7b86b63d1fd5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#device-virtualization">设备与 I/O 虚拟化</a></div>
+    <h1>VFIO 设备直通的 DMA 地址转换与隔离</h1>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">前言</a></li><li><a href="#addresses">四种地址与两条转换路径</a></li><li><a href="#flow">一次 DMA 请求</a></li><li><a href="#isolation">隔离与映射生命周期</a></li><li><a href="#implementation">关键源码</a></li><li><a href="#evolution">从 VFIO Container 到 IOMMUFD</a></li><li><a href="#sources">参考资料</a></li></ol></nav>
+    <div class="mechanism-prose">
+<section id="preface" class="mechanism-section">
+  <h2>前言</h2>
+  <p>设备直通把物理设备的功能交给客户机驱动使用。驱动向设备提交缓冲区地址后，设备可以通过 DMA 读写客户机内存。宿主机需要把这些地址转换成实际的物理页，同时限制设备能够访问的范围。VFIO 管理设备访问与 DMA 资源，宿主 IOMMU 执行地址转换和权限检查。</p>
+  <p>本文分析 x86 / KVM 下普通 PCIe 设备访问客户机 RAM 的过程：客户机不配置虚拟 IOMMU，设备使用 GPA 作为 DMA 地址，宿主启用 IOMMU 隔离；内存采用常规可固定的 RAM。本例不涉及 PCIe 对等访问、ATS、PASID 和可恢复页故障。设备寄存器与中断仅作为请求提交和完成的上下文。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
+
+<section id="addresses" class="mechanism-section">
+  <h2>四种地址与两条转换路径</h2>
+  <p>同一块客户机内存，客户机 CPU、QEMU 进程和物理设备使用的地址不同。建映射时，QEMU 提供设备侧地址与用户态内存位置；运行时，IOMMU 根据设备所属的转换域处理 DMA。</p>
+  <table>
+    <thead><tr><th scope="col">地址</th><th scope="col">含义</th><th scope="col">本例中的用途</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">GPA</th><td>客户机物理地址</td><td>客户机 RAM 中缓冲区的位置</td></tr>
+      <tr><th scope="row">IOVA</th><td>设备发出的 I/O 虚拟地址</td><td>交给宿主 IOMMU 转换；本例数值等于 GPA</td></tr>
+      <tr><th scope="row">HVA</th><td>QEMU 进程的宿主虚拟地址</td><td>向内核描述 RAM 的后备内存</td></tr>
+      <tr><th scope="row">HPA</th><td>宿主物理地址</td><td>DMA 最终访问的宿主物理页</td></tr>
+    </tbody>
+  </table>
+  <figure class="mechanism-diagram" data-diagram="vfio-address-paths" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>CPU 与设备 DMA 的地址转换</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看CPU 与设备 DMA 的地址转换" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="CPU 与设备 DMA 的地址转换">
+    <img src="../assets/vfio-address-paths.svg?v=c084ccad2981" alt="两条访问路径指向同一后备页。虚线表示映射配置，实线表示地址转换关系；本例未配置客户机 IOMMU，设备 IOVA 与 GPA 数值相同。" loading="lazy">
+  </div>
+  <figcaption>两条访问路径指向同一后备页。虚线表示映射配置，实线表示地址转换关系；本例未配置客户机 IOMMU，设备 IOVA 与 GPA 数值相同。 <a href="../assets/vfio-address-paths.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+    accTitle: CPU 与设备 DMA 访问同一客户机后备页
+    accDescr: 客户机 CPU 经客户机页表与 EPT 或 NPT 完成地址转换，物理设备经宿主 IOMMU 完成 DMA 地址转换。QEMU 的 HVA 用于配置后备内存，内核固定页面并建立 IOVA 到 HPA 的映射，HVA 不随设备 DMA 请求传输。
+    subgraph CPU[&#34;CPU 访存路径&#34;]
+        GVA[&#34;客户机虚拟地址 GVA&#34;]
+        GPA[&#34;客户机物理地址 GPA&lt;br/&gt;0x00400080&#34;]
+        EPT[&#34;EPT / NPT&lt;br/&gt;CPU 第二阶段转换&#34;]
+        GVA --&gt;|客户机页表| GPA
+        GPA --&gt; EPT
+    end
+    subgraph DMA[&#34;设备 DMA 路径&#34;]
+        DEV[&#34;PCIe 设备标识 + IOVA&lt;br/&gt;0x00400080&#34;]
+        IOMMU[&#34;宿主 IOMMU&lt;br/&gt;转换上下文、I/O 页表与权限&#34;]
+        DEV --&gt;|设备读或设备写| IOMMU
+    end
+    subgraph MAP[&#34;映射配置路径&#34;]
+        Q[&#34;QEMU 提交 MAP&lt;br/&gt;IOVA = 0x00400000&lt;br/&gt;HVA = 0x70001000&lt;br/&gt;长度 = 4 KiB · 权限 = READ / WRITE&#34;]
+        K[&#34;内核验证并固定后备页&lt;br/&gt;页基址 HPA = 0x21000000&#34;]
+        Q --&gt; K
+    end
+    P[&#34;同一客户机 RAM 后备页&lt;br/&gt;访问 HPA 0x21000080&#34;]
+    EPT --&gt; P
+    IOMMU --&gt;|保留页内偏移 0x80| P
+    K -. 建立 IOVA → HPA 映射 .-&gt; IOMMU
+    classDef address fill:#e4f1ec,stroke:#438575,color:#173e34
+    classDef translation fill:#eaf0f6,stroke:#8198ac,color:#263c4c
+    classDef control fill:#f5f4f1,stroke:#a6aaa7,color:#3c4542
+    class GVA,GPA,DEV,P address
+    class EPT,IOMMU translation
+    class Q,K control
+</code></pre></details>
+</figure>
+  <p>EPT / NPT 负责客户机 CPU 的第二阶段地址转换，具体建图过程见<a href="kvm-ept-fault.html">KVM 内存映射与 EPT 缺页处理</a>。PCIe 设备发起的普通 DMA 使用宿主 IOMMU 的转换上下文，QEMU 的 HVA 不随 DMA 请求发送。两条路径需要指向相同的客户机后备页，但页表管理、权限和缓存失效是各自的机制。</p>
+  <p>例如，客户机缓冲区位于 <code>GPA 0x00400080</code>，设备发出同值的 IOVA；映射覆盖 <code>0x00400000–0x00400fff</code>，对应宿主页 <code>HPA 0x21000000</code>。IOMMU 保留页内偏移 <code>0x80</code>，得到 <code>HPA 0x21000080</code>。QEMU 映射这块页时可以使用完全不同的 HVA。连续的 IOVA 区间也可以对应多个不连续的宿主物理页。</p>
+  <p>客户机配置虚拟 IOMMU 后，IOVA 与 GPA 可以不同，宿主还需跟踪客户机的 DMA 映射变化或使用硬件嵌套转换。QEMU 的内存监听代码为 IOMMU 区域和普通 RAM 分别处理；本文沿普通 RAM 分支继续。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/listener.c#L523-L612">IOMMU 与 RAM 的映射分支</a></p>
+</section>
+
+<section id="flow" class="mechanism-section">
+  <h2>一次 DMA 请求</h2>
+  <p>先建立设备与地址空间的关联，再映射客户机 RAM。之后客户机提交请求，设备发出 DMA，IOMMU 检查目标地址与权限。下面可以切换设备读、设备写以及三种映射状态，观察目标内存是否被访问。</p>
+<section class="vfio-lab" data-vfio-lab data-mechanism-view="lab" aria-labelledby="vfio-lab-title">
+  <div class="mechanism-view-heading"><h3 id="vfio-lab-title">DMA 地址与访问权限</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>设备访问一个 4 KiB 页内的 64 B 缓冲区。先建立映射，再逐步提交和处理请求。</p>
+  <div class="vfio-controls" data-vfio-controls hidden>
+    <label for="vfio-permission">目标页映射<select id="vfio-permission" data-vfio-permission><option value="rw">可读写</option><option value="readonly">设备只读</option><option value="missing">缺失映射</option></select></label>
+    <label for="vfio-operation">DMA 方向<select id="vfio-operation" data-vfio-operation><option value="read">设备读取 RAM</option><option value="write">设备写入 RAM</option></select></label>
+    <div class="vfio-actions" role="group" aria-label="DMA 交互控制"><button type="button" data-vfio-back>上一步</button><button type="button" data-vfio-next>下一步</button><button type="button" data-vfio-reset>重置</button></div>
+  </div>
+  <p class="vfio-status" data-vfio-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <div class="vfio-setup" data-vfio-node="control"><strong>QEMU / 宿主内核 · 配置路径</strong><span>关联设备与地址空间 → 固定 RAM 后备页 → 设置 I/O 页表</span><small data-vfio-map-state>IOVA 0x00400000 · HVA 0x70001000 · 长度 4 KiB</small></div>
+  <div class="vfio-structures">
+    <section><h4>IOMMU_IOAS_MAP · 映射输入</h4><dl class="vfio-fields"><div><dt>ioas_id</dt><dd>10</dd></div><div><dt>iova</dt><dd>0x00400000</dd></div><div><dt>user_va</dt><dd>0x70001000 · QEMU HVA</dd></div><div><dt>length</dt><dd>4096 B</dd></div><div><dt>flags</dt><dd data-vfio-map-flags>FIXED_IOVA | READABLE | WRITEABLE</dd></div></dl><small>标志省略共同的 IOMMU_IOAS_MAP_ 前缀。HPA 由内核解析后备页得到，不在此输入结构中。</small></section>
+    <section><h4>设备与页表关联</h4><p data-vfio-association>设备尚未绑定 IOMMUFD</p><dl class="vfio-fields"><div><dt>IOAS 10</dt><dd>逻辑 IOVA 映射</dd></div><div><dt>HWPT 20</dt><dd>本例设备使用的硬件页表</dd></div><div><dt>HPA 页</dt><dd data-vfio-mapped-hpa>等待内核建立映射</dd></div></dl><small>向 IOAS 附着时可复用兼容的 HWPT，或创建一个；一个 IOAS 可以对应多个 HWPT。</small></section>
+  </div>
+  <div class="vfio-guest" data-vfio-node="guest"><strong>客户机驱动</strong><span data-vfio-driver>缓冲区 GPA 0x00400080，长度 64 B</span><small>设备请求地址采用相同数值的 IOVA</small></div>
+  <div class="vfio-submit"><span aria-hidden="true">↓</span> 寄存器 / 队列提交请求 <span class="vfio-completion" data-vfio-completion hidden>· 已收到正常完成</span></div>
+  <div class="vfio-scene" role="group" aria-label="物理设备经过宿主 IOMMU 访问客户机后备页">
+    <section data-vfio-node="device"><h4>物理 PCIe 设备</h4><strong data-vfio-request>IOVA 0x00400080</strong><p data-vfio-device-state>等待请求</p><dl class="vfio-fields"><div><dt>长度</dt><dd>64 B</dd></div><div><dt>方向</dt><dd data-vfio-request-direction>设备读 / 写</dd></div></dl><small>设备标识选择转换上下文</small></section>
+    <div class="vfio-edge" data-vfio-edge="request"><span aria-hidden="true">→</span><strong>DMA 请求</strong><small data-vfio-direction>设备读 / 写</small></div>
+    <section class="vfio-iommu" data-vfio-node="iommu"><h4>宿主 IOMMU</h4><p>IOVA 页 → HPA 页</p><dl><div><dt>IOVA</dt><dd>0x00400000</dd></div><div><dt>HPA</dt><dd data-vfio-target>0x21000000</dd></div><div><dt>权限</dt><dd data-vfio-rights>由所选映射决定</dd></div></dl><p class="vfio-verdict" data-vfio-verdict>检查映射及读写权限</p></section>
+    <div class="vfio-edge" data-vfio-edge="data"><span data-vfio-data-arrow aria-hidden="true">↔</span><strong data-vfio-data-label>64 B 数据</strong><small>页内偏移 0x80</small></div>
+    <section data-vfio-node="memory"><h4>宿主物理内存</h4><strong>HPA 0x21000080</strong><p>客户机 RAM 的后备页</p><div class="vfio-memory-value"><span>缓冲区内容</span><b data-vfio-memory-value>原有数据 A</b></div><small data-vfio-access>尚未发生 DMA 数据访问</small></section>
+  </div>
+  <div class="vfio-detail" data-vfio-detail hidden><strong data-vfio-step-title></strong><p data-vfio-step-detail></p></div>
+  <p class="vfio-note">配置路径设置转换关系；正常数据访问由设备与 IOMMU 硬件处理。示例地址用于展示页号和偏移，不对应实际机器。故障仅表示本次数据访问被阻止，不模拟特定设备的错误恢复。</p>
+  <div data-vfio-fallback><ol><li>QEMU 向内核提供 IOVA、后备内存与访问权限，建立硬件映射。</li><li>客户机驱动提交缓冲区地址，设备发出 DMA。</li><li>IOMMU 检查映射和权限，通过后访问 HPA 对应的 RAM。</li><li>正常请求完成后，驱动消费或回收缓冲区；缺失映射和越权写入不能产生正常数据完成。</li></ol><p>启用 JavaScript 可切换权限和方向，逐步查看状态变化。</p></div>
+</section>  <h3>配置阶段</h3>
+  <ol>
+    <li><strong>建立 DMA 所有权。</strong>VFIO 检查设备所在 IOMMU group 的所有权，并把设备接入受控的 I/O 地址空间。传统接口通过 group 与 container 建立关系，IOMMUFD 路径通过设备文件描述符绑定并附着 IOAS 或硬件页表。</li>
+    <li><strong>接收内存布局。</strong>QEMU 的 MemoryListener 获得可访问的 RAM 区间，计算设备侧 IOVA、进程侧 HVA、长度和只读属性。</li>
+    <li><strong>建立映射。</strong>内核验证范围、权限与页粒度，固定相应后备页，在设备关联的 IOMMU domain 中建立 IOVA 到 HPA 的映射。硬件随后可缓存转换结果。</li>
+  </ol>
+  <p>无客户机 IOMMU 时，常规配置通常映射可 DMA 访问的客户机 RAM，映射生命周期长于单个 I/O 请求。客户机驱动每次填写一个缓冲区地址，并不会使 QEMU 重新执行一遍 DMA map ioctl。</p>
+  <h3>数据阶段</h3>
+  <ol>
+    <li>客户机驱动准备缓冲区和设备所需的描述符，按照设备协议与内存顺序要求提交请求。寄存器访问可通过受支持的 BAR 映射或 VFIO 访问路径到达设备。</li>
+    <li>物理设备发出携带 DMA 地址的读写事务，宿主根据设备标识选择对应 IOMMU 转换上下文。</li>
+    <li>IOMMU 检查映射及读写权限。转换成功时访问目标宿主页；本例缺失映射或写只读页时产生故障，目标数据访问被阻止。</li>
+    <li>正常完成的数据请求由设备按其协议报告完成，驱动随后回收或消费缓冲区。DMA 故障后的错误报告、超时或恢复过程依赖设备及平台，不能当作成功完成。</li>
+  </ol>
+  <p>读写权限以<strong>设备视角</strong>命名：设备读取 RAM 使用 READ，设备把接收数据写入 RAM 使用 WRITE。驱动的“发送”通常包含设备读，“接收”通常包含设备写。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vfio/vfio_iommu_type1.c#L1585-L1615">内核的权限解释</a></p>
+</section>
+
+<section id="isolation" class="mechanism-section">
+  <h2>隔离与映射生命周期</h2>
+  <h3>为什么还需要 IOMMU group</h3>
+  <p>I/O 页表限制设备到内存的访问，但实际隔离还取决于 PCIe 拓扑。某些多功能设备、桥或缺少合适 ACS 能力的路径，可能允许事务在到达 IOMMU 前发生重定向。内核据此把无法独立隔离的设备归入同一 IOMMU group，作为 DMA 所有权的边界。</p>
+  <p>按单个设备打开文件描述符，不能改变硬件隔离粒度。IOMMUFD 的设备 cdev 接口仍检查 group 所有权；同组设备不能分配给相互独立的 DMA 所有者。拥有设备的权限也不等于能任意选择宿主物理地址：映射接口接收用户态能够提供的后备内存，并由内核验证与固定。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/driver-api/vfio.rst">VFIO group 与设备 cdev</a></p>
+  <h3>撤销映射为何要协调设备</h3>
+  <p>释放或复用 DMA 缓冲区前，需要确保设备已经停止使用它。删除 I/O 页表项还要与硬件转换缓存失效配合，避免缓存中的旧转换继续指向被回收的页。设备队列停止、在途事务处理与映射撤销共同决定安全的回收顺序；单纯删除 QEMU 的用户态指针并不完成这些工作。</p>
+  <p>QEMU 收到 RAM 区域删除通知后会调用后端的 DMA unmap。内核负责撤销其维护的 IOMMU 映射并释放固定页的引用。大范围映射可减少频繁的 map / unmap，但长期固定内存会约束内存回收、气球回收和热插拔；频繁更新小范围映射则会增加页表管理与 IOTLB 失效开销。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/listener.c#L656-L735">区域删除</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/container-legacy.c#L532-L565">RAM discard 与固定页的关系</a></p>
+  <p>设备 DMA 写入的脏页还需要独立跟踪。vCPU 的 KVM 脏页日志无法覆盖物理设备绕过 CPU 发出的全部内存写入。因此，直通设备热迁移同时依赖设备状态保存、DMA 停止与设备或 IOMMU 的脏页跟踪能力，不能仅凭 CPU 内存迁移成功判断设备可迁移。</p>
+</section>
+
+<section id="implementation" class="mechanism-section">
+  <h2>关键源码</h2>
+  <h3>QEMU 从 RAM 布局生成 DMA 映射</h3>
+  <pre><code>vfio_listener_region_add()
+  vfio_container_region_add()
+    vfio_get_section_iova_range()     # 设备地址区间及页对齐
+    memory_region_get_ram_ptr()       # RAM 在 QEMU 中的地址
+    vfio_container_dma_map()
+      legacy: vfio_legacy_dma_map()
+        VFIO_IOMMU_MAP_DMA
+      iommufd: iommufd_cdev_map()
+        iommufd_backend_map_dma()
+          IOMMU_IOAS_MAP</code></pre>
+  <p><code>vfio_container_region_add()</code>利用 MemoryRegionSection 的地址空间偏移计算 IOVA，同时组合 RAM 基址、区域内偏移和对齐偏移得到 HVA；再把 <code>section-&gt;readonly</code>传入映射后端。传统后端构造 <code>vfio_iommu_type1_dma_map</code>，IOMMUFD 后端构造 <code>iommu_ioas_map</code>。两者都区分设备读写权限。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/listener.c#L590-L612">地址计算</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/container-legacy.c#L197-L224">传统映射请求</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/backends/iommufd.c#L199-L229">IOMMUFD 映射请求</a></p>
+  <p>这条调用链采用用户虚拟地址提供后备内存。QEMU 还支持另一条分支：当 RAM 有文件后备且后端提供 <code>dma_map_file</code>时，使用内存文件描述符和偏移，走 <code>IOMMU_IOAS_MAP_FILE</code>。文件映射改变后备页的描述方式，设备侧仍使用 IOVA。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/container.c#L77-L94">映射分派</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/backends/iommufd.c#L232-L267">文件后备映射</a></p>
+  <h3>Linux 固定后备页并设置 I/O 页表</h3>
+  <pre><code>传统 Type1：vfio_dma_do_map()
+  验证范围、对齐、权限与已有映射
+  vfio_pin_map_dma()
+    vfio_pin_pages_remote()          # 获取并固定后备页
+    vfio_iommu_map()
+      iommu_map(domain, iova, paddr, length, prot, ...)
+
+IOMMUFD：iommufd_ioas_map()
+  获取 IOAS，验证用户参数
+  iopt_map_user_pages()              # 管理页及 IOAS 映射
+    将映射同步到该 IOAS 关联的硬件页表</code></pre>
+  <p>Type1 的 <code>vfio_pin_map_dma()</code>分批固定页面，将物理页号交给 <code>vfio_iommu_map()</code>。后者调用 IOMMU 子系统的映射接口，由平台驱动建立硬件所需的转换。IOMMUFD 把地址空间及硬件页表作为独立对象管理。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vfio/vfio_iommu_type1.c#L1465-L1533">Type1 页固定与映射</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/iommufd/ioas.c#L235-L269">IOAS 映射入口</a></p>
+  <p>这些函数建立或更新转换关系，正常 DMA 命中映射后由设备和 IOMMU 硬件处理。IOTLB 未命中可触发硬件页表遍历；它与缺失映射导致的访问故障不同，也不等同于每次请求都进入 QEMU 做地址换算。</p>
+</section>
+
+<section id="evolution" class="mechanism-section">
+  <h2>从 VFIO Container 到 IOMMUFD</h2>
+  <h3>以 group 和 container 组织 DMA</h3>
+  <p>传统 VFIO 将设备访问、硬件隔离组和 IOMMU 管理组织成 device、group、container 三层。应用先把 group 加入 container，再配置 IOMMU 后端，最后通过 group 获取设备文件描述符。多个可兼容的 group 可以共享 container 中的映射，减少重复的页表维护。</p>
+  <p>这种结构支撑了长期使用的设备直通路径，但 I/O 地址空间管理与 VFIO container 接口紧密绑定。随着嵌套转换、不同硬件页表类型和更细粒度设备绑定的需求出现，用户态需要更直接地表达地址空间、硬件页表及它们与设备的关联。</p>
+  <h3>把地址空间管理交给 IOMMUFD</h3>
+  <p>IOMMUFD 通过 <code>/dev/iommu</code>提供通用 I/O 地址空间接口。IOAS 保存用户态建立的地址映射；HWPT 表示关联的硬件页表。设备经 VFIO cdev 绑定 IOMMUFD，再附着到 IOAS 或 HWPT。向 IOAS 附着时，内核可以复用兼容的 HWPT，也可以新建 HWPT；同一个 IOAS 的映射可以同步到多个硬件页表。VFIO 继续提供设备区域、配置空间和中断访问，DMA 地址空间管理则使用 IOMMUFD 的对象与操作。</p>
+  <p>QEMU 在 <a href="https://github.com/qemu/qemu/commit/5ee3dc7af7859e7b8aa34c10c21778101c15e812">2023 年合入 IOMMUFD 后端实现</a>。公共 VFIO 内存监听逻辑保留，后端分别完成传统 container 或 IOMMUFD 的绑定与 map / unmap。现在的 <code>iommufd_cdev_connect_and_bind()</code>与 <code>iommufd_cdev_attach_ioas_hwpt()</code>对应绑定和附着两个步骤。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/iommufd.c#L88-L123">绑定实现</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/iommufd.c#L262-L282">附着实现</a></p>
+  <p>接口拆分为后续页表能力提供了扩展位置，同时引入对象生命周期、能力协商和多种页表关系的管理。切换后端不会改变设备的 DMA 协议，也不会自动补齐设备迁移、复位或硬件隔离能力。比较两条路径时，应分别检查地址空间管理能力与具体设备支持的功能。</p>
+  <h3>与其他设备虚拟化方式的关系</h3>
+  <p>SR-IOV 让一个物理功能提供多个 VF，VF 可以再通过 VFIO 分配；mdev 由宿主设备驱动提供受管理的设备实例；vDPA 则面向 virtio 数据面加速。它们分别解决功能划分、设备实例管理或 virtio 加速的问题。此处讨论的物理 PCIe 设备 DMA 路径，不能不加区分地套用到所有 mdev 或 vDPA 实现。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul class="mechanism-sources">
+    <li>QEMU：<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/listener.c">VFIO MemoryListener</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/container.c">公共映射分派</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/container-legacy.c">传统 container</a>。</li>
+    <li>QEMU：<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/iommufd.c">VFIO IOMMUFD 后端</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/backends/iommufd.c">IOMMUFD ioctl 封装</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/vfio-iommufd.rst">后端设计说明</a>。</li>
+    <li>Linux：<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vfio/vfio_iommu_type1.c">Type1 映射实现</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/iommufd/ioas.c">IOAS 管理</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/driver-api/vfio.rst">VFIO 设备与隔离组</a>。</li>
+    <li><a href="https://docs.kernel.org/6.18/userspace-api/iommufd.html">Linux IOMMUFD 文档</a>：IOAS、硬件页表、设备绑定与接口语义。</li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#device-virtualization">设备与 I/O 虚拟化原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=7b86b63d1fd5"></script>
+<script src="../assets/mechanism-viewer.js?v=c084ccad2981" defer></script>
+<script src="../assets/vfio-dma.js?v=c084ccad2981" defer></script></body>
+</html>

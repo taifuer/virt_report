@@ -57,7 +57,8 @@ def test_snapshot_chrome_uses_shared_navigation_without_touching_article():
     assert 'href="../daily/index.html" class="on" aria-current="page"' in result
     assert '<summary class="on">报告' in result
     assert 'data-site-menu-toggle' in result
-    assert 'href="../metrics.html"' in result
+    assert '虚拟化社区动态</span><span class="foot-note">' in result
+    assert '数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a>' in result
     assert refresh_page_chrome(result, "daily/2026-10-12.html", "virt-report") == result
 
 
@@ -75,3 +76,16 @@ def test_topic_and_conference_snapshots_use_current_shared_header():
                      "academic-conferences.html", "conference-papers.html", "kvm-forum.html"):
         html = (site / relative).read_text(encoding="utf-8")
         assert refresh_page_chrome(html, relative, "virt-report") == html, relative
+
+
+def test_all_static_footers_group_copyright_and_note_with_relative_status_link():
+    site = Path(__file__).resolve().parents[1] / "site"
+    for path in sorted(site.rglob("*.html")):
+        html = path.read_text(encoding="utf-8")
+        footer = html.split('<footer class="site-foot">', 1)[1].split("</footer>", 1)[0]
+        root = "../" * len(path.relative_to(site).parts[:-1])
+        assert '<span class="foot-copyright">© 2026 ' in footer, path
+        assert '虚拟化社区动态</span><span class="foot-note">' in footer, path
+        assert (f'数据来自社区，分析仅供参考。<a href="{root}metrics.html">'
+                '运行状态</a></span>') in footer, path
+        assert "虚拟化社区动态。" not in footer, path

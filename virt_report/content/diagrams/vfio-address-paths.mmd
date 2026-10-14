@@ -1,0 +1,30 @@
+flowchart TB
+    accTitle: CPU 与设备 DMA 访问同一客户机后备页
+    accDescr: 客户机 CPU 经客户机页表与 EPT 或 NPT 完成地址转换，物理设备经宿主 IOMMU 完成 DMA 地址转换。QEMU 的 HVA 用于配置后备内存，内核固定页面并建立 IOVA 到 HPA 的映射，HVA 不随设备 DMA 请求传输。
+    subgraph CPU["CPU 访存路径"]
+        GVA["客户机虚拟地址 GVA"]
+        GPA["客户机物理地址 GPA<br/>0x00400080"]
+        EPT["EPT / NPT<br/>CPU 第二阶段转换"]
+        GVA -->|客户机页表| GPA
+        GPA --> EPT
+    end
+    subgraph DMA["设备 DMA 路径"]
+        DEV["PCIe 设备标识 + IOVA<br/>0x00400080"]
+        IOMMU["宿主 IOMMU<br/>转换上下文、I/O 页表与权限"]
+        DEV -->|设备读或设备写| IOMMU
+    end
+    subgraph MAP["映射配置路径"]
+        Q["QEMU 提交 MAP<br/>IOVA = 0x00400000<br/>HVA = 0x70001000<br/>长度 = 4 KiB · 权限 = READ / WRITE"]
+        K["内核验证并固定后备页<br/>页基址 HPA = 0x21000000"]
+        Q --> K
+    end
+    P["同一客户机 RAM 后备页<br/>访问 HPA 0x21000080"]
+    EPT --> P
+    IOMMU -->|保留页内偏移 0x80| P
+    K -. 建立 IOVA → HPA 映射 .-> IOMMU
+    classDef address fill:#e4f1ec,stroke:#438575,color:#173e34
+    classDef translation fill:#eaf0f6,stroke:#8198ac,color:#263c4c
+    classDef control fill:#f5f4f1,stroke:#a6aaa7,color:#3c4542
+    class GVA,GPA,DEV,P address
+    class EPT,IOMMU translation
+    class Q,K control

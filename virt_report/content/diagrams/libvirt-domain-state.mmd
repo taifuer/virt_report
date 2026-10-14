@@ -1,0 +1,22 @@
+flowchart TB
+  accTitle: 进程状态与客户机运行状态
+  accDescr: 关闭的持久虚拟机先进入启动准备并取得运行时 ID，随后创建 QEMU 进程。普通启动经 cont 和 RESUME 事件进入运行状态，暂停启动保持 PAUSED。准备或运行前配置失败则清理进程和资源，回到关闭失败状态。
+  O["SHUTOFF<br/>持久定义存在<br/>id = -1，pid = 0"] --> I["PAUSED / STARTING_UP<br/>已分配运行时 ID<br/>QEMU 尚未创建"]
+  I --> Q["PAUSED / STARTING_UP<br/>QEMU 进程已存在<br/>-S 保持客户机 CPU 暂停"]
+  Q --> C{"启动模式"}
+  C -->|普通启动| N["保存 runningReason = BOOTED<br/>发送 cont"]
+  N -->|QMP RESUME 事件| R["RUNNING / BOOTED<br/>客户机 CPU 开始运行<br/>操作系统可能仍在引导"]
+  C -->|--paused| P["PAUSED / USER<br/>进程与管理通道存在<br/>客户机 CPU 保持暂停"]
+  I -.准备失败.-> F["清理本次资源与进程<br/>SHUTOFF / FAILED<br/>id = -1，pid = 0"]
+  Q -.monitor 或配置失败.-> F
+  N -.启动 CPU 失败.-> F
+  R -.完成阶段保存或钩子失败.-> F
+  F --> D["保留持久定义<br/>可修正后重新启动"]
+  classDef idle fill:#f2f1ed,stroke:#989d95,color:#37433c;
+  classDef paused fill:#edf3f8,stroke:#7591ac,color:#233b50;
+  classDef running fill:#e4f2ef,stroke:#5e8f87,color:#203e3b;
+  classDef failure fill:#fbf0e6,stroke:#b58a60,color:#5f432b;
+  class O,D idle;
+  class I,Q,C,N,P paused;
+  class R running;
+  class F failure;

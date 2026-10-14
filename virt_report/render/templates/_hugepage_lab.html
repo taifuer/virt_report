@@ -1,0 +1,29 @@
+<section class="hugepage-lab" data-hugepage-lab data-mechanism-view="lab" aria-labelledby="hugepage-lab-title">
+  <div class="mechanism-view-heading"><h3 id="hugepage-lab-title">一段 2 MiB RAM 的映射生命周期</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>选择一个 4 KiB 子页，比较拆分前后的地址、W 权限和逐页日志。修改场景会重新开始。</p>
+  <div class="hugepage-controls" data-hugepage-controls hidden>
+    <label>宿主映射级别<select data-hugepage-host><option value="2097152">2 MiB 大页</option><option value="4096">4 KiB 页（PFN 恰好连续）</option></select></label>
+    <label>客户机页大小<select data-hugepage-guest><option value="4096">4 KiB</option><option value="2097152">2 MiB</option></select></label>
+    <label>选择子页 P0–P511<input data-hugepage-page type="number" min="0" max="511" step="1" value="3" inputmode="numeric"></label>
+    <div class="hugepage-actions" role="group" aria-label="映射操作">
+      <button type="button" data-hugepage-start>开启跟踪：拆分并保护</button><button type="button" data-hugepage-write>写入所选页</button><button type="button" data-hugepage-stop>关闭跟踪并尝试恢复</button>
+      <button type="button" data-hugepage-demo>示例下一步</button><button type="button" data-hugepage-reset>重新开始</button>
+    </div>
+  </div>
+  <p class="hugepage-status" data-hugepage-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <div class="hugepage-scene" data-hugepage-scene hidden>
+    <div class="hugepage-summary" data-hugepage-summary></div>
+    <h4>EPT 叶子映射</h4><p class="hugepage-map-note" data-hugepage-map-note></p>
+    <div class="hugepage-map" data-hugepage-map aria-hidden="true"></div>
+    <p class="hugepage-legend">○ W=0 · ● W=1 · 橙色 / D：日志已记录 · 深色边框：所选子页。每个小格对应一个 4 KiB 叶子。</p>
+    <dl class="hugepage-detail" data-hugepage-detail aria-label="所选子页详情"></dl>
+    <div class="hugepage-backing"><strong>宿主物理内存 · 地址保持不变</strong><span>PFN 0x80000 → 0x801ff，共 512 个基础页</span><span data-hugepage-backing></span></div>
+    <p class="hugepage-counters" data-hugepage-counters></p>
+    <ol class="hugepage-events" data-hugepage-events aria-label="最近操作"></ol>
+  </div>
+  <div class="hugepage-fallback" data-hugepage-fallback>
+    <ol><li>初始：一个 2 MiB EPT 叶子覆盖 GPA 0x00400000–0x005fffff，W=1。</li><li>开启示例中的写保护跟踪：拆成 512 个 4 KiB 叶子，设置 W=0 并完成 TLB 刷新。</li><li>写 P3：记录第 3 页，恢复其 W=1；P0 等未写页面仍为 W=0。</li><li>关闭记录：后备条件满足时原位恢复 2 MiB 叶子，继承 P0 的 W=0。再次写入可修复写权限。</li></ol>
+    <p>全过程中 P3 的 HPA 均为 0x80003000；映射拆分和恢复均不复制客户机内存。启用 JavaScript 后可以选择全部 512 个子页并交互操作。</p>
+  </div>
+  <p class="hugepage-model-note">模型选择无 PML、未启用 initially-all-set、eager splitting 成功的写保护路径。宿主与客户机均允许写入，不启用 NX 大页缓解；所有页面已驻留且映射稳定。操作按 ioctl 或缺页处理完成的边界展示。dirty 表示逐页日志，关闭后保留为上一周期记录；未模拟日志收割、硬件 D 位及真实耗时。</p>
+</section>

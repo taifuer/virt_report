@@ -1,7 +1,7 @@
 {% macro fields(items) %}<div class="stream-fields-scroll" tabindex="0" role="region" aria-label="按写入顺序排列的字段，可横向滚动"><div class="stream-fields">{% for name, width, kind in items %}<span class="stream-field" data-kind="{{ kind }}"><code>{{ name }}</code><small>{{ width }}</small></span>{% endfor %}</div></div>{% endmacro %}
 {% macro panel(key, title, kind) %}<section class="stream-panel" data-stream-panel="{{ key }}" aria-labelledby="stream-heading-{{ key }}"><h4 id="stream-heading-{{ key }}">{{ title }}<small>{{ kind }}</small></h4>{{ caller() }}</section>{% endmacro %}
 <section class="stream-lab" data-stream-lab data-mechanism-view="lab" aria-labelledby="stream-lab-title">
-  <div class="mechanism-view-heading"><h3 id="stream-lab-title">从源端写出，到目的端恢复</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <div class="mechanism-view-heading"><h3 id="stream-lab-title">迁移流的发送与装载</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
   <p>跟踪同一个 <code>pc.ram</code> 中的四页，观察页内容重传、最终同步和 CPU / 设备状态装载。点击“下一步”，记录沿通道到达后才更新目的端。</p>
   <div class="stream-controls" data-stream-controls hidden role="group" aria-label="迁移流演示控制"><button type="button" data-stream-back>上一步</button><button type="button" data-stream-next>下一步</button><button type="button" data-stream-play aria-pressed="false">播放</button><button type="button" data-stream-reset>重置</button></div>
   <p class="stream-status" data-stream-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
@@ -31,14 +31,14 @@
     {{ fields([('MAGIC', 'BE32 · 4 B', 'marker'), ('VERSION = 3', 'BE32 · 4 B', 'header')]) }}
     <pre class="stream-hex"><code>51 45 56 4d | 00 00 00 03
     QEVM   | 流格式版本 3</code></pre>
-    <p class="stream-process">源端 <code>qemu_savevm_state_header()</code> 写出；目的端 <code>qemu_loadvm_state_header()</code> 校验。版本 3 是流格式版本，不是 QEMU 发行版本。</p>
+    <p class="stream-process">源端 <code>qemu_savevm_state_header()</code> 写出；目的端 <code>qemu_loadvm_state_header()</code> 校验。版本 3 标识流格式，独立于 QEMU 发行版本。</p>
   {% endcall %}
   {% call panel('configuration', '02 · 配置摘要', 'pc-q35-10.2 · 名称 11 B') %}
     {{ fields([('CONFIG = 07', '1 B', 'marker'), ('N = 11', 'BE32 · 4 B', 'header'), ('pc-q35-10.2', '11 B', 'payload')]) }}
     <pre class="stream-hex"><code>07 | 00 00 00 0b | 70 63 2d 71 33 35 2d 31 30 2e 32
 type | N = 11     | p  c  -  q  3  5  -  1  0  .  2</code></pre>
-    <p>这里选择不带条件子段的配置示例。它没有 section ID，也没有 section footer；若页大小、能力或 UUID 校验需要额外信息，会追加相应 VMState 子段。</p>
-    <p class="stream-process">源端序列化 <code>vmstate_configuration</code>；目的端核对已创建机器的类型与兼容性，而不是根据这一名称重新创建全部设备。</p>
+    <p>本例配置未使用条件子段，也没有 section ID 或 section footer；若页大小、能力或 UUID 校验需要额外信息，会追加相应 VMState 子段。</p>
+    <p class="stream-process">源端序列化 <code>vmstate_configuration</code>；目的端核对已创建机器的类型与兼容性，机器与设备对象已在迁入前准备。</p>
   {% endcall %}
   {% call panel('ram-start', '03 · RAM START', 'section ID = 1 · ram / instance 0 / version 4') %}
     {{ fields([('START = 01', '1 B', 'marker'), ('ID = 1', 'BE32', 'header'), ('ram', '1 B 长度 + 3 B', 'header'), ('0 / 4', '实例 / 版本 · 各 BE32', 'header'), ('pc.ram 布局', '总量、块名、块长度', 'payload'), ('RAM EOS', 'BE64 · 0x10', 'marker'), ('FOOTER + ID', '7e + BE32(1)', 'marker')]) }}
@@ -79,13 +79,13 @@ a2 a2 … [共 4096 B]           # 新内容 A2 覆盖目的端 A1
   {% endcall %}
   {% call panel('stop', '06 · 暂停源端客户机', '本地操作 · 没有对应的网络字节') %}
     <p><code>migration_stop_vm()</code> 停止源端执行。从这里开始计算停机阶段；源端不再产生本例中的 B、C 新版本，但目的端仍只有 B1 / C1，需要接收最终同步。</p>
-    <p class="stream-process">这不是一个 STOP section，也没有“暂停标记”写入迁移流。演示只改变源端执行状态，不发送记录块。</p>
+    <p class="stream-process">暂停在源端本地完成，迁移流中没有对应的 STOP section；这一步只改变执行状态。</p>
   {% endcall %}
   {% call panel('switchover', '07 · 切换阶段通知', 'COMMAND · 不带 section footer') %}
     {{ fields([('COMMAND = 08', '1 B', 'marker'), ('SWITCHOVER_START = 11', 'BE16 · 2 B', 'header'), ('长度 = 0', 'BE16 · 2 B', 'header')]) }}
     <pre class="stream-hex"><code>08 | 00 0b | 00 00
 type | 命令 11 | 载荷长度 0</code></pre>
-    <p><code>send-switchover-start</code> 在此版本默认开启。接收端分派切换回调；通知不替代最终内存与设备状态，也不是让目的端立即启动的命令。</p>
+    <p><code>send-switchover-start</code> 在此版本默认开启。接收端分派切换回调，随后继续装载最终内存与设备状态；启动检查在装载收尾阶段进行。</p>
   {% endcall %}
   {% call panel('ram-end', '08 · 最终内存同步', 'END · B2 / C2') %}
     {{ fields([('END + ID', '03 + BE32(1)', 'marker'), ('B2', 'offset / flags / 4096 B', 'payload'), ('C2', 'offset / flags / 4096 B', 'payload'), ('RAM EOS', 'BE64 · 0x10', 'marker'), ('FOOTER + ID', '7e + BE32(1)', 'marker')]) }}
@@ -96,10 +96,10 @@ b2 b2 … [共 4096 B]
 c2 c2 … [共 4096 B]
 00 00 00 00 00 00 00 10        # RAM EOS 结束本次 RAM 载荷
 7e 00 00 00 01                 # footer 校验 section ID</code></pre>
-    <p class="stream-process"><code>ram_save_complete()</code> 在最后一次脏页同步后发送余页。目的端现在得到 A2 / B2 / C2 / 0，但 CPU 与设备状态仍未装载，因此内存一致不等于可以运行。</p>
+    <p class="stream-process"><code>ram_save_complete()</code> 在最后一次脏页同步后发送余页。目的端现在得到 A2 / B2 / C2 / 0，继续等待 CPU 与设备状态装载。</p>
   {% endcall %}
   {% call panel('cpu-sync', '09 · 同步 vCPU 寄存器', '源端本地操作 · 非迁移流记录') %}
-    <p><code>cpu_synchronize_all_states()</code> 将暂停后的 KVM vCPU 状态同步到 QEMU CPU 对象。本例选取 <code>RAX = 0x2a</code>、<code>RIP = 0x1000</code>；这一步不是把寄存器发送到目的端，传输发生在后面的 FULL 中。</p>
+    <p><code>cpu_synchronize_all_states()</code> 将暂停后的 KVM vCPU 状态同步到 QEMU CPU 对象。本例选取 <code>RAX = 0x2a</code>、<code>RIP = 0x1000</code>；这些寄存器值随后随 CPU FULL 记录传输。</p>
   {% endcall %}
   {% call panel('cpu-full', '10 · CPU FULL', 'section ID = 2 · cpu / instance 0 / version 12') %}
     {{ fields([('FULL = 04', '1 B', 'marker'), ('ID = 2', 'BE32', 'header'), ('cpu', '1 B 长度 + 3 B', 'header'), ('0 / 12', '实例 / 版本 · 各 BE32', 'header'), ('寄存器、段、FPU…', 'VMState 载荷', 'payload'), ('FOOTER + ID', '7e + BE32(2)', 'marker')]) }}
@@ -110,7 +110,7 @@ c2 c2 … [共 4096 B]
 00 00 00 00 00 00 10 00        # env.eip / RIP = 0x1000
 … [eflags、FPU、段寄存器等剩余字段和条件子段]
 7e 00 00 00 02                 # section footer</code></pre>
-    <p><code>vmstate_x86_cpu</code> 规定字段顺序和长度，并非“寄存器名称 + 值”的自描述字典。目的端按相同版本的字段表装载 CPU 对象，此时仍不执行 vCPU。</p>
+    <p><code>vmstate_x86_cpu</code> 规定字段顺序和长度，流中只保存相应编码值。目的端按支持的状态版本与字段表装载 CPU 对象，此时仍不执行 vCPU。</p>
   {% endcall %}
   {% call panel('device-full', '11 · i8259 FULL', 'section ID = 3 · 主 PIC instance 0x20 / version 1') %}
     {{ fields([('FULL = 04', '1 B', 'marker'), ('ID = 3', 'BE32', 'header'), ('i8259', '1 B 长度 + 5 B', 'header'), ('0x20 / 1', '实例 / 版本 · 各 BE32', 'header'), ('PIC 字段', '16 × UINT8', 'payload'), ('FOOTER + ID', '7e + BE32(3)', 'marker')]) }}
@@ -121,26 +121,26 @@ c2 c2 … [共 4096 B]
 00 00 00 00                   # special_mask / init_state / auto_eoi / rotate_on_auto_eoi
 00 00 00 00                   # special_fully_nested_mode / init4 / single_mode / elcr
 7e 00 00 00 03                 # section footer（ltim 子段在本例不出现）</code></pre>
-    <p>字段依据 <code>vmstate_pic_common</code> 排列，各占 1 B。<code>IRR = 01</code> 表示存在待处理中断，不能只复制内存而丢弃设备执行状态。主 PIC 的 legacy instance ID 取 I/O 基址 <code>0x20</code>。</p>
-    <p>本例只展开一个 PIC。实际机器还有更多设备 FULL，CPU 与设备记录的先后取决于注册顺序，不能据此推断所有机器都先 CPU、后 PIC。</p>
+    <p>字段依据 <code>vmstate_pic_common</code> 排列，各占 1 B。<code>IRR = 01</code> 表示存在待处理中断，目的端通过该状态继续处理尚未完成的中断请求。主 PIC 的 legacy instance ID 取 I/O 基址 <code>0x20</code>。</p>
+    <p>本例只展开一个 PIC。实际机器还会保存其他设备 FULL，CPU 与设备记录的次序取决于处理器注册顺序。</p>
   {% endcall %}
   {% call panel('eof', '12 · 主状态流结束', 'EOF · 单字节 00') %}
     {{ fields([('EOF = 00', '1 B', 'marker')]) }}
     <pre class="stream-hex"><code>00                           # 退出外层状态记录循环</code></pre>
-    <p><code>qemu_loadvm_state_main()</code> 读到 EOF 后退出分发循环。它不是 TCP 关闭标记，也不是客户机启动指令；目的端还需完成装载收尾、运行状态与存储检查。</p>
+    <p><code>qemu_loadvm_state_main()</code> 读到 EOF 后退出分发循环，目的端继续完成装载收尾、运行状态与存储检查。连接关闭和客户机启动由各自的后续流程处理。</p>
   {% endcall %}
   {% call panel('description', '13 · VM Description', '可选 · EOF 后的诊断描述') %}
     {{ fields([('VMDESC = 06', '1 B', 'marker'), ('JSON 长度 N', 'BE32 · 4 B', 'header'), ('JSON', 'N B', 'payload')]) }}
     <pre class="stream-hex"><code>06 | [N 的 4 B 大端编码] | 7b … 7d
 type | JSON 字节数        | { … }
 内容形如 {"page_size":4096,"devices":[…]}</code></pre>
-    <p>实际 N 由完整设备字段描述的 JSON 字节数决定，不能用这里的省略文本计算。接收端按长度读完诊断描述；JSON 不替代 CPU / 设备状态，也不参与重新创建整台机器。</p>
+    <p>实际 N 由完整设备字段描述的 JSON 字节数决定，上述省略文本只表示结构。接收端按长度读完诊断描述；CPU 与设备恢复使用前面已经装载的二进制状态。</p>
   {% endcall %}
   {% call panel('restore', '14 · 目的端恢复执行', '装载成功且允许自动启动的分支') %}
     <p>恢复的 CPU 对象同步到 KVM，设备装载与存储激活检查通过，保存的运行状态和 <code>autostart</code> 允许执行后，目的端才调用 <code>vm_start()</code>。此时目的端使用 A2 / B2 / C2 / 0、RAX / RIP 及 PIC 状态继续运行。</p>
     <p>源端保持停止并进入迁移完成状态，不能与目的端同时执行同一虚拟机。若禁用自动启动或保存的是暂停状态，成功迁入也可以保持暂停。</p>
   {% endcall %}
-  <h4>同一条流，按字节顺序连起来</h4>
+  <h4>完整迁移流的字段示例</h4>
   <p class="stream-note">下列各行依次相接；竖线与注释只用于分组，不属于传输字节。省略号所在处有实际载荷，不能跳过；暂停与 CPU 同步是本地操作，不插入额外标记。</p>
   <pre class="stream-hex" data-stream-complete-example><code>51 45 56 4d 00 00 00 03                                       # 流头
 07 00 00 00 0b 70 63 2d 71 33 35 2d 31 30 2e 32                # CONFIG

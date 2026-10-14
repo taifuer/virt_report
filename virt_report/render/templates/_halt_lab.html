@@ -1,0 +1,27 @@
+<section class="halt-poll-lab" data-halt-poll-lab data-mechanism-view="lab" aria-labelledby="halt-poll-title">
+  <div class="mechanism-view-heading"><h3 id="halt-poll-title">事件到达与轮询窗口</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>从进入 halt 路径的 0 µs 开始，改变事件到达时刻和本轮预算，观察是否休眠，以及下一轮有效预算。</p>
+  <form class="halt-poll-controls" data-halt-poll-controls hidden>
+    <label>事件到达（µs）<input data-halt-poll-event type="number" min="0" max="1000" step="1" value="30" aria-describedby="halt-poll-input-note halt-poll-error"></label>
+    <label>本轮轮询预算（µs）<input data-halt-poll-poll type="number" min="0" max="200" step="0.001" value="50" aria-describedby="halt-poll-input-note halt-poll-error"></label>
+    <label>唤醒后调度等待（µs）<input data-halt-poll-dispatch type="number" min="0" max="200" step="1" value="40" aria-describedby="halt-poll-input-note halt-poll-error"></label>
+    <div class="halt-poll-actions"><button type="submit">更新时序</button><button type="button" data-halt-poll-reset>重置</button></div>
+    <small id="halt-poll-input-note">事件取 0—1000 µs 整数；调度等待取 0—200 µs 整数；预算取 0—200 µs，最多三位小数。调度等待是自选模型输入，不是实测延迟。</small>
+    <p class="halt-poll-error" id="halt-poll-error" data-halt-poll-error role="alert" hidden></p>
+    <div class="halt-poll-presets" aria-label="选择示例"><button type="button" data-halt-poll-inside>窗口内到达</button><button type="button" data-halt-poll-after>睡眠后到达</button><button type="button" data-halt-poll-race>准备睡眠时到达</button></div>
+  </form>
+  <div data-halt-poll-scene hidden>
+    <p class="halt-poll-status" data-halt-poll-status role="status" aria-live="polite" aria-atomic="true"></p>
+    <div class="halt-poll-timeline" role="img" data-halt-poll-timeline aria-label="本次等待时序">
+      <div class="halt-poll-track" data-halt-poll-track></div>
+      <div class="halt-poll-axis"><span>0 µs · 开始</span><span data-halt-poll-end></span></div>
+    </div>
+    <p class="halt-poll-legend"><span data-kind="poll">轮询</span><span data-kind="prepare">等待准备</span><span data-kind="blocked">睡眠</span><span data-kind="dispatch">已唤醒，待调度</span><span class="halt-poll-event-key">事件到达</span></p>
+    <ol class="halt-poll-events" data-halt-poll-events aria-label="事件顺序与时间"></ol>
+    <div class="halt-poll-summary" data-halt-poll-summary></div>
+    <p data-halt-poll-adaptation></p>
+    <button type="button" data-halt-poll-next>采用下一轮预算</button>
+  </div>
+  <div data-halt-poll-fallback><p>默认示例：预算 50 µs，事件在 30 µs 到达，轮询就能观察到事件，不进入睡眠。若事件改在 120 µs 到达，模型在 60 µs 完成等待准备并休眠；唤醒后再等待自选的 40 µs，至 160 µs 返回。启用 JavaScript 可调整时序。</p></div>
+  <p class="halt-poll-note">教学设定：轮询上限 200 µs，等待准备固定 10 µs，增长起点 10 µs、增长和缩小系数为 2。准备阶段仅在末尾检查事件；事件等于轮询边界时归入准备阶段。假设事件可使 vCPU 继续运行，无宿主抢占、信号和中断注入成本；“返回”指本次 halt 返回，不表示客户机指令已经执行。图中时间和比例不是性能测量。</p>
+</section>

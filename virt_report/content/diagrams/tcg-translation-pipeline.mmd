@@ -1,0 +1,21 @@
+flowchart TB
+    accTitle: TCG 的翻译与运行路径
+    accDescr: 缓存未命中时，客户机前端将 x86 指令译为 TCG IR，公共优化与寄存器分配后由宿主后端输出代码。运行时 CPUArchState 提供寄存器状态，生成代码通过软件 TLB 或 helper 访问客户机内存与设备。
+    subgraph compile[缓存未命中时翻译]
+      direction LR
+      G[客户机指令字节<br/>x86 前端译码] --> I[TCG IR<br/>TCGOp / temps]
+      I --> O[优化与活跃性分析<br/>寄存器分配]
+      O --> H[宿主后端生成代码<br/>TB.tc.ptr]
+    end
+    compile --> E[运行宿主代码<br/>可重复执行]
+    V[CPUArchState<br/>寄存器与运行状态] <--> E
+    E --> M{客户机访存}
+    M -->|软件 TLB 命中普通 RAM| R[宿主 RAM 映射<br/>load / store]
+    M -->|慢路径| C[访存 helper<br/>页表 / 权限 / MMIO]
+    E --> F[指令语义 helper<br/>复杂操作或异常]
+    classDef build fill:#e9f4ef,stroke:#3b7c65,color:#203d31
+    classDef state fill:#eaf0f9,stroke:#6684ab,color:#263c56
+    classDef slow fill:#f5efe2,stroke:#9d8152,color:#514328
+    class G,I,O,H,E build
+    class V,R state
+    class C,F slow

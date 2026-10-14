@@ -1,0 +1,15 @@
+flowchart TD
+    accTitle: 迁移流的处理器分发与恢复边界
+    accDescr: 接收端按外层记录匹配处理器，由处理器消费载荷，再校验 section footer。EOF 结束主记录循环，装载收尾与运行条件检查之后才允许客户机执行。
+    header["校验 Magic、版本与配置"] --> type{"读取外层类型"}
+    type -->|START / FULL| first["按名称和实例匹配处理器\n检查版本，记录 load_section_id"]
+    type -->|PART / END| again["按 load_section_id 查找处理器"]
+    first --> load["vmstate_load\nRAM、设备回调或声明式字段装载"]
+    again --> load
+    load --> footer["check_section_footer\n校验尾标记与 section ID"]
+    footer --> type
+    type -->|COMMAND| command["按命令号处理\n正常继续时读取下一记录"]
+    command --> type
+    type -->|EOF| finish["离开主记录循环\n读取可选描述，完成装载收尾"]
+    finish --> ready["同步 CPU 状态\n检查运行状态、autostart 与存储"]
+    ready --> run["满足条件后 vm_start"]

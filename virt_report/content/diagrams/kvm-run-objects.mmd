@@ -1,0 +1,23 @@
+flowchart TB
+    accTitle: KVM vCPU 执行者与状态对象
+    accDescr: QEMU 的 vCPU 线程以 KVM_RUN 进入内核。共享的 kvm_run 交接请求，内核 kvm_vcpu 保存私有执行状态，VMX 控制结构控制硬件进入与退出。
+    Q["QEMU vCPU 线程<br/>CPUState · kvm_cpu_exec"]
+    R["共享映射：struct kvm_run<br/>exit_reason · io / mmio · immediate_exit"]
+    K["KVM 内核执行路径<br/>struct kvm_vcpu · vcpu_run"]
+    V["VMX 后端与 VMCS<br/>进入控制 · 客户机状态 · 硬件退出原因"]
+    G["宿主处理器执行客户机代码"]
+    Q -->|KVM_RUN：进入内核| K
+    Q <-->|填写输入、读取请求及写回结果| R
+    K <-->|发布请求、消费结果| R
+    K -->|准备执行与处理退出| V
+    V -->|VM Entry| G
+    G -->|VM Exit| V
+    K -.->|需要用户态处理时返回| Q
+    classDef user fill:#e4f1ec,stroke:#438575,color:#173e34
+    classDef shared fill:#f4f3eb,stroke:#aaa98c,color:#3c4542
+    classDef kernel fill:#eef3f2,stroke:#738b87,color:#263c38
+    classDef hardware fill:#f5f4f1,stroke:#a6aaa7,color:#3c4542
+    class Q user
+    class R shared
+    class K kernel
+    class V,G hardware

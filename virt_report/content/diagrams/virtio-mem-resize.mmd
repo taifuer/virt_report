@@ -1,0 +1,28 @@
+sequenceDiagram
+    accTitle: virtio-mem 在线子块的回收交接
+    accDescr: 管理程序调低目标后，Linux 客户机先隔离子块，再向 QEMU 请求回收；隔离失败时跳过该子块，设备 BUSY 时归还已隔离页，成功时减少设备容量。
+    participant M as 管理程序
+    participant Q as QEMU virtio-mem
+    participant V as 客户机 virtio-mem 驱动
+    participant L as Linux 内存管理
+    M->>Q: 降低 requested-size
+    Q-->>M: 属性更新成功
+    Q-->>V: 配置变化通知
+    V->>Q: 读取 requested / plugged / usable
+    Q-->>V: 当前容量与地址范围
+    V->>L: alloc_contig_range 隔离在线子块
+    alt 页暂时不能迁出
+        L-->>V: -EBUSY，未完成隔离
+        Note over V,L: 跳过该子块，尝试其他范围并安排重试
+    else 隔离成功
+        L-->>V: 页由驱动持有，暂不再分配
+        V->>Q: UNPLUG(addr, nb_blocks)
+        alt QEMU 暂不能完成
+            Q-->>V: BUSY
+            V->>L: fake-online，归还已隔离页
+        else 回收成功
+            Note over Q: discard、通知监听者、清位图、减少 size
+            Q-->>V: ACK
+            Note over V,L: 全部子块回收后，再尝试移除 Linux 内存块
+        end
+    end

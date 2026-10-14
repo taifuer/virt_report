@@ -1,0 +1,28 @@
+sequenceDiagram
+  accTitle: CPR-transfer 的准备、停机与恢复
+  accDescr: 新 QEMU 在创建设备和打开 monitor 前等待 CPR 通道。旧 QEMU 先发送描述符清单，目标准备资源并监听主通道后关闭 CPR 通道。旧端收到 HUP 才连接主通道，再停止客户机、发送状态。目标恢复完成后接管执行，旧端保持 postmigrate。
+  participant M as 管理程序
+  participant S as 旧 QEMU
+  participant D as 新 QEMU
+  participant R as 共享 RAM 后端
+  M->>D: 启动，指定 cpr 与 main incoming
+  Note over D: cpr_state_load 等待连接<br/>尚未打开 monitor
+  M->>S: mode = cpr-transfer，migrate 两个通道
+  S->>D: cpr：QCPR 头部、清单、SCM_RIGHTS
+  Note over S,D: 源客户机尚可运行<br/>目标持有资源引用，但不执行客户机
+  D->>R: 用收到的 fd 映射共享 RAM
+  D->>D: 初始化兼容机器、设备与新 KVM VM
+  D->>D: 设置 main 监听
+  D-->>S: 关闭 cpr 端，源端收到 HUP
+  S->>D: 连接 main 通道
+  Note over S,D: 若目标失败，HUP 也可能出现<br/>还需检查 main 连接结果
+  S->>S: migration_stop_vm：finish-migrate
+  Note over S,D: 客户机停机窗口开始
+  S->>D: main：CPU、设备及其他迁移状态
+  Note over R: RAM 内容保留，不进行普通页数据搬运
+  D->>D: 加载状态、激活资源与中断路由
+  S->>S: 保持 postmigrate
+  D->>D: 按原运行状态与 autostart 恢复客户机
+  Note over S,D: 仅新端执行，停机窗口结束
+  M->>D: 确认恢复结果
+  M->>S: 清理已完成交接的旧进程

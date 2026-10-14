@@ -5,7 +5,7 @@
 {% block nav_mechanisms %}on{% endblock %}
 {% block head_extra %}<link rel="stylesheet" href="{{ root }}assets/mechanisms.css?v={{ mechanism_asset_version }}">
 <link rel="stylesheet" href="{{ root }}assets/mechanism-viewer.css?v={{ mechanism_asset_version }}">
-<link rel="stylesheet" href="{{ root }}assets/{{ article.stylesheet }}?v={{ mechanism_asset_version }}">{% endblock %}
+{% if article.stylesheet %}<link rel="stylesheet" href="{{ root }}assets/{{ article.stylesheet }}?v={{ mechanism_asset_version }}">{% endif %}{% endblock %}
 {% block content %}
 <article class="mechanism-article">
   <header class="mechanism-header">
@@ -16,8 +16,8 @@
     <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol>{% for section in article.sections %}<li><a href="#{{ section.id }}">{{ section.title }}</a></li>{% endfor %}</ol></nav>
     <div class="mechanism-prose">{% include article.template %}</div>
   </div>
-  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="{{ root }}mechanisms.html#{{ topic.slug }}">{{ topic.title }}原理</a><a href="{{ root }}topics/migration/index.html">热迁移动态</a></nav>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="{{ root }}mechanisms.html#{{ topic.slug }}">{{ topic.title }}原理</a>{% for link in topic.related|default([]) %}<a href="{{ root }}{{ link.path }}">{{ link.label }}</a>{% endfor %}</nav>
 </article>
 {% endblock %}
 {% block scripts %}<script src="{{ root }}assets/mechanism-viewer.js?v={{ mechanism_asset_version }}" defer></script>
-<script src="{{ root }}assets/{{ article.script }}?v={{ mechanism_asset_version }}" defer></script>{% endblock %}
+{% if article.script %}<script src="{{ root }}assets/{{ article.script }}?v={{ mechanism_asset_version }}" defer></script>{% endif %}{% endblock %}

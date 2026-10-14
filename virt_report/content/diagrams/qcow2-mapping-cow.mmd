@@ -1,0 +1,22 @@
+flowchart TB
+  accTitle: qcow2 地址映射与局部写入
+  accDescr: 本图限普通数据、未分配以及无预分配数据簇的显式零。客户机偏移拆成 L1 索引、L2 索引和簇内偏移。读取按表项返回本层数据、backing 数据或零。写入先准备可修改的 L2 表，独占普通数据簇可原位写入，共享或未分配数据需要新簇；新数据准备完成并设置写回依赖后更新 L2，最后减少旧数据引用。
+  address["客户机磁盘字节偏移<br/>普通数据 / 未分配 / 无预分配的显式零"] --> indices["L1 索引 → L2 表项<br/>保留簇内偏移"]
+  indices --> operation{"读取 / 写入"}
+  operation -->|读| kind{"L2 类型"}
+  kind -->|普通数据| local["本层宿主簇 + 簇内偏移"]
+  kind -->|未分配| backing["backing 的同一客户机偏移<br/>无覆盖部分返回零"]
+  kind -->|显式零| zero["直接返回零<br/>不读取 backing"]
+  operation -->|写| metadata["准备可修改的 L2<br/>共享时先复制，接入 L1 后减旧表引用"]
+  metadata --> private{"普通数据簇独占？"}
+  private -->|是| inplace["原位写入请求范围<br/>其余字节保持原位"]
+  private -->|否| allocate["分配新数据簇<br/>建立新引用计数"]
+  allocate --> prepare["写入客户机数据，补齐未覆盖部分<br/>旧本层 / backing / 零"]
+  prepare --> link["数据准备成功，设置写回依赖<br/>更新 L2 指针"]
+  link --> release["减少旧数据簇引用<br/>若原先没有数据簇则无需释放"]
+  classDef mapping fill:#e4f1ec,stroke:#438575,color:#173e34;
+  classDef read fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef write fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class address,indices,operation,kind,private mapping;
+  class local,backing,zero read;
+  class metadata,inplace,allocate,prepare,link,release write;
