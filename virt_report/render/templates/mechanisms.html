@@ -28,14 +28,13 @@
     {% for topic in group.published_topics %}
   <section class="mechanism-topic" id="{{ topic.slug }}" aria-labelledby="mechanism-topic-{{ topic.slug }}">
     {% for alias in topic.aliases|default([]) %}<span id="{{ alias }}" class="mechanism-topic-alias" aria-hidden="true"></span>{% endfor %}
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-{{ topic.slug }}">{{ topic.title }}</h3><p>{{ topic.summary }}</p></header>
+    <header class="mechanism-topic-header"><h3 id="mechanism-topic-{{ topic.slug }}">{% if topic.overview_article %}<a href="mechanisms/{{ topic.overview_article.slug }}.html">{{ topic.title }}</a>{% else %}{{ topic.title }}{% endif %}</h3><p>{{ topic.summary }}</p></header>
     <div class="mechanism-list">
-      {% for article in topic.articles %}<article class="mechanism-list-item">
+      {% for article in topic.detail_articles %}<article class="mechanism-list-item">
         <h4><a href="mechanisms/{{ article.slug }}.html">{{ article.title }}</a></h4>
         <p>{{ article.summary }}</p>
       </article>{% endfor %}
     </div>
-    {% if topic.related_articles %}<nav class="mechanism-topic-related" aria-label="{{ topic.title }}相关原理"><span>相关原理</span>{% for article in topic.related_articles %}<a href="mechanisms/{{ article.slug }}.html">{{ article.title }}</a>{% endfor %}</nav>{% endif %}
   </section>
     {% endfor %}
   </section>

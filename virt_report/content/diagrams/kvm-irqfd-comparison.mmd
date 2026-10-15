@@ -1,0 +1,20 @@
+sequenceDiagram
+    accTitle: 后端完成方向的 QEMU 中转与 irqfd 对比
+    accDescr: 后端先在共享队列中发布 used。没有 irqfd 时可通知 QEMU，再调用中断注入接口；绑定 irqfd 后触发 callfd，由 KVM 中断路由处理，不必由 QEMU 中转。callfd 与提交方向的 kickfd 是两个独立事件；客户机收到中断后从 used 消费完成信息。
+    participant B as 设备后端
+    participant Q as QEMU 设备模型
+    participant C as callfd
+    participant K as KVM 中断路由
+    participant G as 客户机驱动
+    Note over B,G: 后端先将完成记录发布到共享内存中的 used
+    alt 经 QEMU 中转完成通知
+        B->>Q: 完成通知
+        Q->>K: KVM_IRQ_LINE / KVM_SIGNAL_MSI 等接口
+        K->>G: 满足条件时交付中断
+    else 配置 irqfd 后
+        B->>C: 需要中断时 signal
+        C->>K: irqfd 处理事件，使用预设 GSI / MSI 路由
+        K->>G: 满足条件时交付中断，必要时唤醒 vCPU
+    end
+    G->>G: 从共享 used 读取完成信息，回收描述符
+    Note over C,G: callfd 不携带完成数据；与提交方向的 kickfd 相互独立

@@ -9,12 +9,12 @@
 {% block content %}
 <article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="{{ root }}mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="{{ root }}mechanisms.html#{{ topic.slug }}">{{ topic.title }}</a></div>
+    <div class="kicker mechanism-breadcrumb"><a href="{{ root }}mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="{% if topic.overview_article and topic.overview != article.slug %}{{ topic.overview }}.html{% else %}{{ root }}mechanisms.html#{{ topic.slug }}{% endif %}">{{ topic.title }}</a></div>
     <h1>{{ article.title }}</h1>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol>{% for section in article.sections %}<li><a href="#{{ section.id }}">{{ section.title }}</a></li>{% endfor %}</ol></nav>
-    <div class="mechanism-prose">{% include article.template %}</div>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol>{% for section in article_outline %}<li><a href="#{{ section.id }}">{{ section.number }}{{ section.title }}</a>{% if section.children %}<ol>{% for child in section.children %}<li><a href="#{{ child.id }}">{{ child.number }}{{ child.title }}</a></li>{% endfor %}</ol>{% endif %}</li>{% endfor %}</ol></nav>
+    <div class="mechanism-prose">{{ article_body }}</div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="{{ root }}mechanisms.html#{{ topic.slug }}">{{ topic.title }}原理</a>{% for link in topic.related|default([]) %}<a href="{{ root }}{{ link.path }}">{{ link.label }}</a>{% endfor %}</nav>
 </article>

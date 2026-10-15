@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=c084ccad2981">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c084ccad2981">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -43,20 +43,21 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#qemu-internals">QEMU 内部机制</a></div>
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="qemu-internals.html">QEMU 内部机制</a></div>
     <h1>QEMU AioContext、协程与 IOThread</h1>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">前言</a></li><li><a href="#structures">线程、事件循环与协程</a></li><li><a href="#request">一次写请求的挂起与恢复</a></li><li><a href="#dispatch">BH 与跨线程调度</a></li><li><a href="#mapping">多队列如何分配到 IOThread</a></li><li><a href="#synchronization">数据面并行与管理操作</a></li><li><a href="#evolution">从单一事件循环到队列级并行</a></li><li><a href="#sources">参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、等待磁盘时如何继续处理其他请求</a></li><li><a href="#structures">二、IOThread、AioContext 与协程的分工</a></li><li><a href="#request">三、4 KiB 写入：提交、挂起与恢复</a><ol><li><a href="#request-part-1">1. 提交任务，保留请求栈后挂起</a></li><li><a href="#request-part-2">2. worker 执行阻塞调用并发布结果</a></li><li><a href="#request-part-3">3. 回到原 IOThread 恢复协程与设备回调</a></li></ol></li><li><a href="#dispatch">四、BH 如何把完成交回原上下文</a></li><li><a href="#mapping">五、多队列如何分配到 IOThread</a></li><li><a href="#synchronization">六、并行读写如何与 drain 和块图修改协调</a></li><li><a href="#evolution">七、从单一事件循环到队列级并行</a></li><li><a href="#sources">八、参考资料</a></li></ol></nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2><span class="mechanism-heading-number">一、</span>等待磁盘时如何继续处理其他请求</h2>
   <p>磁盘请求的大部分时间可能花在等待上。QEMU 需要让等待中的请求保留进度，同时继续处理其他队列、完成通知和管理事件。AioContext 组织事件分发，协程保存请求的执行过程，IOThread 提供独立的事件循环线程；三者共同决定 I/O 在何处运行、何时恢复。</p>
   <p>本文沿 Linux 宿主上的 virtio-blk 写请求，跟踪 raw 文件后端的 <code>aio=threads</code> 路径，再讨论多队列映射、同步与调优。客户机描述符和完成通知的格式见<a href="qemu-virtio-blk.html">virtio-blk 的请求处理与写入完成</a>。</p>
+  <p>设请求 A 的文件写入尚未返回，请求 B 已经到达队列。若事件循环直接阻塞在 A 上，B 和其他完成回调都要等待。本文路径把阻塞调用交给 worker，让 A 的协程挂起，事件循环转去处理 B；A 完成后再回到原上下文恢复。需要解释的核心是任务怎样移交，以及等待期间谁保证请求仍然有效。</p>
 <p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p></section>
 
 <section id="structures" class="mechanism-section">
-  <h2>线程、事件循环与协程</h2>
+  <h2><span class="mechanism-heading-number">二、</span>IOThread、AioContext 与协程的分工</h2>
   <table><thead><tr><th scope="col">结构</th><th scope="col">关键字段</th><th scope="col">含义</th></tr></thead><tbody>
     <tr><td><code>IOThread</code></td><td><code>thread / ctx / running / thread_id</code></td><td>一个宿主线程及其 AioContext，负责执行事件循环。</td></tr>
     <tr><td><code>AioContext</code></td><td><code>aio_handlers / bh_list / notifier / tlg</code></td><td>文件描述符处理器、延迟回调、跨线程唤醒和定时器。</td></tr>
@@ -69,7 +70,7 @@
 </section>
 
 <section id="request" class="mechanism-section">
-  <h2>一次写请求的挂起与恢复</h2>
+  <h2><span class="mechanism-heading-number">三、</span>4 KiB 写入：提交、挂起与恢复</h2>
   <p>假设队列 0 已映射到 IOThread A，客户机提交一个 4 KiB 写请求，数据经映射得到一个连续 iovec，后端使用 raw 普通文件、writeback 缓存和 aio=threads。请求到达后，IOThread A 处理队列，调用 <code>blk_aio_pwritev()</code>。</p>
   <figure class="mechanism-diagram" data-diagram="aio-request-lifecycle" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
@@ -77,9 +78,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看写请求在 IOThread 与 worker 之间的往返" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="写请求在 IOThread 与 worker 之间的往返">
-    <img src="../assets/aio-request-lifecycle.svg?v=c084ccad2981" alt="协程在 IOThread 中提交并挂起，worker 执行阻塞文件操作；完成结果通过 BH 返回原上下文，再恢复协程和设备回调。" loading="lazy">
+    <img src="../assets/aio-request-lifecycle.svg?v=32683d73423f" alt="协程在 IOThread 中提交并挂起，worker 执行阻塞文件操作；完成结果通过 BH 返回原上下文，再恢复协程和设备回调。" loading="lazy">
   </div>
-  <figcaption>协程在 IOThread 中提交并挂起，worker 执行阻塞文件操作；完成结果通过 BH 返回原上下文，再恢复协程和设备回调。 <a href="../assets/aio-request-lifecycle.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>协程在 IOThread 中提交并挂起，worker 执行阻塞文件操作；完成结果通过 BH 返回原上下文，再恢复协程和设备回调。 <a href="../assets/aio-request-lifecycle.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 写请求在 IOThread 与 worker 之间的往返
     accDescr: IOThread 创建写协程并提交线程池任务，协程挂起后线程可处理其他事件。worker 执行阻塞写入，发布结果并调度完成 BH；原 IOThread 恢复协程，调用设备完成函数。
@@ -105,6 +106,7 @@
     Note over I,W: worker 不直接执行客户机完成回调
 </code></pre></details>
 </figure>
+  <h3 id="request-part-1"><span class="mechanism-heading-number">1. </span>提交任务，保留请求栈后挂起</h3>
   <p><code>blk_aio_prwv()</code> 创建 <code>BlkAioEmAIOCB</code>，保存偏移、向量、完成函数等信息，再创建并进入写协程。协程沿块图下行到 <code>raw_co_prw()</code>，构造栈上的 <code>RawPosixAIOData</code>，交给线程池：</p>
   <pre><code>RawPosixAIOData
   aio_fildes = 文件 fd
@@ -118,14 +120,16 @@ ThreadPoolElementAio
   arg  = &amp;RawPosixAIOData
   state: THREAD_QUEUED → THREAD_ACTIVE → THREAD_DONE</code></pre>
   <p><code>thread_pool_submit_co()</code> 记录当前 Coroutine，将任务加入当前 AioContext 的线程池，然后执行 <code>qemu_coroutine_yield()</code>。协程栈仍然存在，因此栈上的请求参数保持有效；提交端也必须让 iovec 和数据缓冲区存活到完成。IOThread 返回事件循环，继续处理其他请求。</p>
+  <h3 id="request-part-2"><span class="mechanism-heading-number">2. </span>worker 执行阻塞调用并发布结果</h3>
   <p>worker 从队列取出任务，执行 <code>handle_aiocb_rw()</code>。本例只有一个 iovec，进入 pwrite 循环；多个合适的 iovec 才尝试 pwritev。worker 返回后先保存结果，再发布 THREAD_DONE，通过 <code>qemu_bh_schedule(completion_bh)</code> 通知所属事件循环。它不直接修改客户机 used ring。</p>
+  <h3 id="request-part-3"><span class="mechanism-heading-number">3. </span>回到原 IOThread 恢复协程与设备回调</h3>
   <p>IOThread A 执行 <code>thread_pool_completion_bh()</code>，找到完成任务，调用 <code>thread_pool_co_cb()</code>。该函数保存返回值并通过 <code>aio_co_wake()</code> 恢复协程。原来的 submit_co 从 yield 后返回，结果沿块层回到 <code>blk_aio_complete()</code>，最后调用 virtio-blk 的完成函数，写状态、更新 used ring，并按通知规则告知客户机。</p>
   <p>即使某条块路径立即完成，异步接口也不能在提交函数返回前提前调用外部完成函数。<code>has_returned</code> 配合完成 BH 保证这一点。上述 raw 写入成功只表示该次文件操作成功；writeback 下数据可能仍在宿主页缓存，持久化还取决于后续 flush、存储设备及其保证。</p>
   <p>例如请求 A 先提交后挂起，请求 B 随后进入另一 worker 并先完成。IOThread 可以先恢复 B，再恢复 A。每个请求拥有自己的参数、协程和返回值，完成顺序不必等于提交顺序；应用需要的写入先后关系必须由客户机块层、协议中的 flush 等约束建立。增加 IOThread 不会替应用推导依赖关系。</p>
 </section>
 
 <section id="dispatch" class="mechanism-section">
-  <h2>BH 与跨线程调度</h2>
+  <h2><span class="mechanism-heading-number">四、</span>BH 如何把完成交回原上下文</h2>
   <p>BH 是用户态的延迟回调。调度操作设置标志并把它加入所属 AioContext 的待处理链表，必要时通过 EventNotifier 唤醒事件循环。回调在目标线程运行，不在调用 qemu_bh_schedule 的线程内执行。线程池中的锁保护工作队列，结果发布与读取还使用内存屏障，避免看到 DONE 却读到旧结果。</p>
   <p><code>aio_co_enter()</code> 根据调用位置选择恢复方式：目标上下文不同，先把协程放入 <code>scheduled_coroutines</code> 并调度 <code>co_schedule_bh</code>；同上下文且当前不在协程中，可以直接进入；当前也在协程中，则加入唤醒队列，在安全的切换点处理。一个协程不能同时在两条线程上运行，也不能被重复入队。</p>
   <p>跨线程执行普通函数通常用 <code>aio_bh_schedule_oneshot(ctx, cb, opaque)</code>。但把指针交给 BH 不会自动延长对象寿命，调用者仍需安排引用、完成等待和删除顺序。虚拟机关闭、设备移除及后端切换时，遗漏这些约束就可能使回调访问已释放的状态。</p>
@@ -133,7 +137,7 @@ ThreadPoolElementAio
 </section>
 
 <section id="mapping" class="mechanism-section">
-  <h2>多队列如何分配到 IOThread</h2>
+  <h2><span class="mechanism-heading-number">五、</span>多队列如何分配到 IOThread</h2>
   <p>创建多个 virtqueue，只提供多个提交入口。若它们都映射到同一个 AioContext，请求解析和完成处理仍由同一条事件循环线程推进。下面的磁盘配置片段将四个队列分给两个 IOThread；disk.raw 需已存在：</p>
   <pre><code>-object iothread,id=io0 \
 -object iothread,id=io1 \
@@ -145,9 +149,9 @@ ThreadPoolElementAio
     <button type="button" data-mechanism-expand aria-label="放大查看四个 virtqueue、两个 IOThread 与一个磁盘后端" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="四个 virtqueue、两个 IOThread 与一个磁盘后端">
-    <img src="../assets/aio-queue-thread-mapping.svg?v=c084ccad2981" alt="队列入口和完成处理按 vq_aio_context 分配；两个线程共享块后端，各自在需要时使用所属 AioContext 的线程池。" loading="lazy">
+    <img src="../assets/aio-queue-thread-mapping.svg?v=32683d73423f" alt="队列入口和完成处理按 vq_aio_context 分配；两个线程共享块后端，各自在需要时使用所属 AioContext 的线程池。" loading="lazy">
   </div>
-  <figcaption>队列入口和完成处理按 vq_aio_context 分配；两个线程共享块后端，各自在需要时使用所属 AioContext 的线程池。 <a href="../assets/aio-queue-thread-mapping.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>队列入口和完成处理按 vq_aio_context 分配；两个线程共享块后端，各自在需要时使用所属 AioContext 的线程池。 <a href="../assets/aio-queue-thread-mapping.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 四个 virtqueue 映射到两个 IOThread
     accDescr: 队列 0 和 2 由 IOThread io0 处理，队列 1 和 3 由 io1 处理。它们共享块后端，aio=threads 请求进入各自上下文的线程池，完成 BH 返回原上下文。
@@ -186,14 +190,14 @@ ThreadPoolElementAio
 </section>
 
 <section id="synchronization" class="mechanism-section">
-  <h2>数据面并行与管理操作</h2>
+  <h2><span class="mechanism-heading-number">六、</span>并行读写如何与 drain 和块图修改协调</h2>
   <p>IOThread 的数据路径通常不持有 BQL。设备配置、复位和管理操作仍有各自的同步要求。块层的 I/O API 可以跨线程调用，块图的修改需要图锁与相应的全局状态上下文；设备的共享请求链表等状态则由自己的锁保护。多条线程能够遍历同一块图，不意味着可以同时任意更改节点关系。</p>
   <p>管理侧需要停止接收并等待已有请求完成时使用 drain。virtio-blk 的 drained_begin 会暂时摘下各队列的 host notifier，drained_end 再挂回。已有请求仍需由事件循环推进到完成，不能简单把 IOThread 停住再等它完成工作。drain 也不等于磁盘 flush，两者分别处理活动请求与持久化语义。</p>
   <p>容量变更提供了一个具体的跨线程例子：<code>virtio_blk_resize()</code> 用 BH 把配置通知安排到主 AioContext，后者调用 <code>virtio_notify_config()</code>。把需要 BQL 的控制操作直接塞进普通 IOThread 回调，会破坏既有锁和上下文约束。</p>
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>从单一事件循环到队列级并行</h2>
+  <h2><span class="mechanism-heading-number">七、</span>从单一事件循环到队列级并行</h2>
   <p>2014 年引入的 <a href="https://github.com/qemu/qemu/commit/be8d8537668c9be7a8dee6aed94b2b3f9fcd4a9f">IOThread 对象</a>让事件循环可以独立配置，减少数据路径与主循环、BQL 的竞争。协程让异步等待仍能保持顺序代码的结构；线程池为阻塞文件接口提供执行位置，但线程切换、排队和缓存局部性也随之成为成本。</p>
   <p>2023 年末，块层<a href="https://github.com/qemu/qemu/commit/b49f4755c7fa35ea6e17e5b52c1cdaef6b4aa21c">移除了广泛使用的 AioContext acquire/release 锁定</a>，改由明确的 API 分类、块图锁和对象级同步承担职责。本文版本仍有 AioContext.lock 字段，不能据此沿用旧式块层锁模型，也不能把这次改动解读成所有路径都无锁。</p>
   <p><a href="https://www.qemu.org/2024/04/23/qemu-9-0-0/">QEMU 9.0</a>加入同一 virtio-blk 磁盘的队列到多 IOThread 映射，使单盘请求解析与完成处理能够使用多核。收益取决于客户机是否真正使用多个队列、宿主 CPU 余量以及后端并行能力；对低队列深度负载，增加线程可能只增加调度和跨核通信。</p>
@@ -206,7 +210,7 @@ ThreadPoolElementAio
 </section>
 
 <section id="sources" class="mechanism-section">
-  <h2>参考资料</h2>
+  <h2><span class="mechanism-heading-number">八、</span>参考资料</h2>
   <ul>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/iothread.c#L39-L77">IOThread 事件循环</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/util/aio-posix.c#L630-L728">aio_poll 的线程约束与分发</a></li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/block/aio.h#L223-L359">AioContext</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/qemu/coroutine_int.h#L44-L70">Coroutine</a></li>
@@ -226,6 +230,6 @@ ThreadPoolElementAio
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=c084ccad2981" defer></script>
+<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
 </body>
 </html>

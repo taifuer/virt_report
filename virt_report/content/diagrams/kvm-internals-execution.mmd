@@ -1,0 +1,21 @@
+sequenceDiagram
+    accTitle: KVM 客户机执行与用户态设备读取
+    accDescr: 同一个 vCPU 线程以 KVM_RUN 从 QEMU 进入内核再进入客户机。普通计算直接执行，可在内核处理的 CPUID 退出不返回用户态。MMIO 读取返回 QEMU 取得设备值，下一次 KVM_RUN 完成读取后客户机继续计算。
+    participant Q as vCPU 线程：QEMU 用户态
+    participant K as 同一线程：KVM 内核路径
+    participant G as 硬件中的客户机执行
+    Q->>K: KVM_RUN
+    K->>G: 准备状态，进入客户机
+    G->>G: 普通计算 1 + 2 → 3
+    opt 若查询 CPUID（VMX 示例）
+        G->>K: 硬件退出
+        K->>K: 填写虚拟 CPU 能力
+        K->>G: 再次进入，继续执行
+    end
+    G->>K: 读取用户态设备 MMIO，硬件退出
+    K-->>Q: KVM_EXIT_MMIO，携带地址与读长度
+    Q->>Q: 调用设备模型，填入返回值 0x10
+    Q->>K: 再次 KVM_RUN
+    K->>K: 完成之前的 MMIO 读取
+    K->>G: 继续执行
+    G->>G: 3 + 16 → 19

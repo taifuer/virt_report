@@ -1,0 +1,19 @@
+flowchart TB
+  accTitle: 资源热增与热移除的完成边界
+  accDescr: 增加资源先准备后端与虚拟设备，再通知客户机识别使用；移除资源先通知客户机停止访问，再确认移除并回收资源。
+  subgraph ADD["增加资源"]
+    A["管理程序：准备后端与容量"] --> B["QEMU：提供设备或内存块"]
+    B --> C["客户机：识别、上线并使用"]
+  end
+  subgraph REMOVE["移除资源"]
+    D["管理程序：请求移除或缩容"] --> E["客户机：停止访问或迁移页面"]
+    E --> F["确认完成：移除设备或内存块"]
+    F --> G["回收已无使用者的宿主资源"]
+  end
+  C -. "后续调整" .-> D
+  classDef management fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef handoff fill:#e4f1ec,stroke:#438575,color:#173e34;
+  classDef guest fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class A,D,G management;
+  class B,F handoff;
+  class C,E guest;

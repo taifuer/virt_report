@@ -2,9 +2,10 @@
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2>同一地址为什么会访问不同对象</h2>
   <p>一台虚拟机的物理地址空间中既有 RAM，也有设备寄存器、ROM 和未映射区。客户机改写 PCI BAR 或内存控制器配置后，同一个地址还可能指向另一块设备。QEMU 用 MemoryRegion 描述这些区域及其连接关系，再为每个 AddressSpace 生成当前可见的映射。</p>
   <p>本文从一段带设备窗口的 RAM 出发，分析别名、优先级、FlatView 和访问分发，最后跟踪一次映射更新怎样通知 KVM。文中的小地址空间用于展示地址计算；客户机页表与 EPT 的两级转换见<a href="kvm-ept-fault.html">KVM 内存映射与 EPT 缺页处理</a>。</p>
+  <p>主线是一笔地址为 <code>0x2004</code> 的访问：设备窗口开启时，它命中设备寄存器的偏移 4；窗口关闭后，它命中 RAM 的偏移 0x2004。QEMU 先把可变的设备拓扑展开成可查找的区间，再让访问路径使用这个结果，避免每次访存都重新解释整棵拓扑。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -23,7 +24,7 @@
 </section>
 
 <section id="topology" class="mechanism-section">
-  <h2>别名窗口与优先级</h2>
+  <h2>示例：RAM 上的 MMIO 别名窗口</h2>
   <p>下面建立一个 64 KiB 地址空间，低 32 KiB 为 RAM；在 0x2000 处放置长度为 16 KiB 的别名 window，指向独立设备总线 bus 的一段。bus 的两个叶子区域都是 4 KiB MMIO，分别位于 0x1000 和 0x3000，其余位置是纯容器留下的空洞。</p>
   <pre><code>system：容器，大小 0x10000
   ram：RAM，addr = 0，size = 0x8000，priority = 0
@@ -39,7 +40,7 @@ bus：独立容器，大小 0x8000
 </section>
 
 <section id="lookup" class="mechanism-section">
-  <h2>地址映射交互</h2>
+  <h2>访问 0x2004：窗口开关改变目标</h2>
   {% include '_memory_region_lab.html' %}
   <p>演示中的布局每次变更后立即生成新视图，再查询选定地址。默认布局的主要 FlatRange 如下；没有映射的尾部不会成为普通 RAM 或 MMIO 的 FlatRange。</p>
   <table><thead><tr><th scope="col">system 地址范围</th><th scope="col">目标区域</th><th scope="col">起始区域偏移</th></tr></thead><tbody>
@@ -53,7 +54,7 @@ bus：独立容器，大小 0x8000
 </section>
 
 <section id="flatten" class="mechanism-section">
-  <h2>从拓扑到访问分发</h2>
+  <h2>FlatView 如何把地址分发到叶子</h2>
   <p><code>render_memory_region()</code> 先展开高优先级子区域，再由当前终止区域填充剩余空洞。纯容器的 <code>terminates</code> 为 false，只有已展开的子区域会进入结果。别名先修正 base 并递归到目标；只读等属性随路径向下传递。生成结果经过相邻区间合并，再建立 AddressSpaceDispatch。</p>
   <p>QEMU 用户态实际访问时读取 <code>AddressSpace.current_map</code>，由 dispatch 查找 MemoryRegionSection。地址换算为：</p>
   <pre><code>区域内偏移 = 访问地址
@@ -82,14 +83,17 @@ bus：独立容器，大小 0x8000
 <section id="updates" class="mechanism-section">
   <h2>布局更新与 KVM 内存槽</h2>
   {{ diagram('memory-region-publication', '区域修改、视图发布与 KVM 更新', '外层事务提交时生成新视图，比较区间并通知监听器。KVM 在监听器提交阶段处理内存槽增删；旧视图通过引用计数与 RCU 延迟回收。') }}
+  <h3>事务提交与新视图发布</h3>
   <p>调整多个区域时，设备可用 <code>memory_region_transaction_begin()</code> 与 <code>memory_region_transaction_commit()</code> 合并修改。事务允许嵌套，最外层提交才处理待更新布局；提交要求持有 BQL。它合并内存拓扑的发布，并不提供数据库式的任意错误回滚。</p>
   <p>框架比较旧、新 FlatView，先发出删除通知，再处理新增、保持不变和日志状态变化。<code>address_space_set_flatview()</code> 发布新的 current_map；全局监听器 commit 随后执行。KVM 的 region_add / region_del 先把更新排队，在 <code>kvm_region_commit()</code> 中先移除旧槽、再加入新槽，对需要保护的重叠变化协调加速器访问。不能把用户态视图指针的替换理解为所有内核状态同时完成切换。</p>
+  <h3>KVM 内存槽与 MMIO 分流</h3>
   <p>普通 RAM 区间可注册为 KVM 内存槽，提供客户机物理地址到宿主用户地址的对应关系。客户机在 KVM 中访问已建立映射的 RAM 时不会逐次经过 QEMU 的 memcpy。需要用户态模拟的 MMIO 退出则由 <code>KVM_EXIT_MMIO</code> 分支调用 <code>address_space_rw()</code>，回到上述分发路径。内核处理的设备或 ioeventfd 等加速路径有各自的处理入口。<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L1505-L1540">内存槽准备</a>、<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L1736-L1830">KVM 更新事务</a>、<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L3246-L3254">MMIO 退出处理</a></p>
+  <h3>等待旧视图的读者退出</h3>
   <p>并发读取还需要保证旧视图和区域存活。访问端进入 RCU 读侧临界区，FlatView 引用归零后用 <code>call_rcu()</code> 延后销毁。RCU 保护这里的视图生命周期，设备寄存器的并发读写仍须由设备及其执行环境同步。<a href="{{ qemu_source }}system/memory.c#L293-L324">视图回收</a>、<a href="{{ qemu_source }}system/physmem.c#L3424-L3453">读侧访问</a></p>
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>内存模型的演进</h2>
+  <h2>预先展开与视图共享的收益和成本</h2>
   <p>设备配置会改变可见布局，KVM、软件访存和后端又都需要了解变化。QEMU 逐步把局部区域描述、全局可见映射和观察者通知分离：<a href="https://github.com/qemu/qemu/commit/4ef4db860362ce9852c20b343e9813897ecdefce">2011 年的内存事务接口</a>允许组合布局变更；同年的<a href="https://github.com/qemu/qemu/commit/7664e80c84700d8b7e88ae854d1d74806c63f013">内存映射观察接口</a>把变化通知交给监听器。这使设备模型可以描述自身映射，不必各自直接维护所有使用方的状态。</p>
   <p><a href="https://github.com/qemu/qemu/commit/ac1970fbe8ad5a70174f462109ac0f6c7bf1bc43">2012 年的 per-AddressSpace dispatch</a>让不同访问入口拥有相应的查找结构。随后多个地址空间可能引用同一个有效根，重复维护视图与分发树又带来额外成本；<a href="https://github.com/qemu/qemu/commit/967dc9b1194a9281124b2e1ce67b6c3359a2138f">2017 年的 FlatView 共享</a>使经别名等关系归一后根指针相同的地址空间可以复用结果。</p>
   <p>预先展开减少了运行时反复解释拓扑的工作，但映射变更需要重建、比较和发布视图，并协调监听器及旧对象的生命周期。看待这一设计，需要同时区分配置更新路径与频繁访问路径：热插拔、BAR 重定位走前者，普通 MMIO 和用户态 DMA 查找使用后者。<code>info mtree</code> 可检查区域关系，<code>info mtree -f</code> 可进一步检查展开后的可见区间。</p>

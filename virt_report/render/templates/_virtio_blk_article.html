@@ -2,9 +2,10 @@
 {% from '_mechanism_diagram.html' import diagram with context %}
 
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2>一次写入何时可以归还缓冲区</h2>
   <p>virtio-blk 用一条描述符链表达一次块设备请求。客户机驱动提交命令和数据缓冲区，QEMU 将请求交给块层，在操作完成后写回状态、归还描述符。读写接口虽然简单，队列完成、宿主缓存和持久化却分别发生在不同位置。</p>
   <p>本文使用 QEMU 10.2.0 的现代 virtio PCI 接口和 split virtqueue，跟踪向 raw 文件写入 4 KiB 的过程。设备采用 writeback 模式，客户机已协商 FLUSH；先看普通写完成，再看刷新如何建立持久化边界。队列的基本结构可结合<a href="qemu-network-tx.html#virtqueue">描述符表、available ring 与 used ring</a>阅读。</p>
+  <p>这次写入有两次需要分清的完成：OUT 成功后，设备已不再使用本次数据缓冲区，驱动可以回收；随后 FLUSH 成功，才满足这组写入要求的持久化边界。全文沿同一条 <code>5 → 9 → 12</code> 描述符链，从命令解析跟踪到 used 回写，再检查刷新和错误策略如何改变完成条件。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -26,7 +27,7 @@
 </section>
 
 <section id="objects" class="mechanism-section">
-  <h2>QEMU 如何表示请求</h2>
+  <h2>描述符如何转换为 VirtIOBlockReq</h2>
   <p><code>virtqueue_pop()</code>解析并映射描述符，构造带有 <code>VirtQueueElement</code>的 <code>VirtIOBlockReq</code>。设备可读区域进入 <code>out_sg</code>，设备可写区域进入 <code>in_sg</code>。这里的 in / out 以客户机数据流向命名，阅读实现时需要同时检查操作类型和描述符权限。</p>
   <table>
     <thead><tr><th scope="col">结构或字段</th><th scope="col">本例内容</th><th scope="col">作用</th></tr></thead>
@@ -44,7 +45,7 @@
 </section>
 
 <section id="submission" class="mechanism-section">
-  <h2>从 virtqueue 到块后端</h2>
+  <h2>合并相邻请求并异步提交块后端</h2>
   <p><code>virtio_blk_handle_vq()</code>连续提取可用请求，经过类型、长度、对齐和磁盘边界检查后，将读写请求暂存到 <code>MultiReqBuffer</code>。同方向的相邻磁盘区域可以合并，合并后的 iovec 数和传输长度必须满足后端限制；改变读写方向、达到批次上限或完成本轮消费时，暂存批次会被提交。</p>
   <p>合并前，QEMU 按 sector 排序。例如本例的 2048—2055 和另一个请求的 2056—2063 可以组成 8 KiB 后端写入；两个客户机请求仍各自保有状态字节和完成记录。<code>mr_next</code>把它们串起来，后端回调再逐一处理。提交顺序和完成顺序因此不应当作客户机写入依赖的保证。<a href="{{ qemu_source }}hw/block/virtio-blk.c#L212-L332">合并与提交</a></p>
   <pre><code>virtio_blk_handle_vq()
@@ -93,7 +94,7 @@ len = 设备写入的缓冲区长度，本次只有 status 的 1 字节</code></
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>从单队列到多线程处理</h2>
+  <h2>多队列与 IOThread 的收益和代价</h2>
   <p>virtio-blk 将命令、数据和完成组织为共享队列，减少了逐个模拟传统磁盘寄存器的工作。批量消费和相邻请求合并继续降低每次提交的开销，但共享队列和单线程处理也会成为高 IOPS 设备的瓶颈。多队列让客户机分散提交；IOThread 将处理工作从主事件循环中分离。</p>
   <p>单个设备的多条队列若仍归同一 IOThread，宿主侧处理仍集中于一条线程。QEMU 引入 <code>iothread-vq-mapping</code>后，可按队列分配多个 IOThread；QEMU 10.2 的设备直接维护 <code>vq_aio_context[]</code>，块请求和重试路径也相应处理多线程访问。<a href="https://github.com/qemu/qemu/commit/b6948ab01df068bef591868c22d1f873d2d05cde">引入逐队列线程映射的提交</a>、<a href="{{ qemu_source }}hw/block/virtio-blk.c#L1425-L1480">当前映射初始化</a></p>
   <p>更多队列增加并发机会，也会带来线程调度、缓存竞争和 NUMA 访问成本；零散的小请求还可能降低合并机会。应结合客户机负载、请求深度、后端延迟和处理线程占用选择配置。性能比较尤其要保持缓存与刷新语义一致，否则降低持久化要求得到的延迟改善，无法说明队列路径本身变快了。</p>

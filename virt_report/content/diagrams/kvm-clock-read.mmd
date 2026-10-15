@@ -1,0 +1,16 @@
+flowchart TB
+    accTitle: KVM pvclock 共享时间基准与客户机读时钟
+    accDescr: 物理 TSC 经硬件比例与偏移得到客户机 TSC。KVM 将 version、tsc_timestamp、system_time、乘数、移位和 flags 发布到客户机共享结构。客户机验证版本，以当前 TSC 减去参考 TSC，换算纳秒并加参考时间。此图只有读取数据流，没有定时中断。
+    H["宿主物理 TSC"] --> V["VMX 硬件变换<br/>比例 + 偏移"]
+    V --> G["客户机读取 TSC<br/>current_tsc"]
+    K["KVM 更新参考点<br/>奇数 version → 字段 → 偶数 version"] -. "发布到客户机 RAM" .-> P["pvclock_vcpu_time_info · 32 B<br/>version · tsc_timestamp · system_time<br/>tsc_to_system_mul · tsc_shift · flags"]
+    G --> D["验证前后版本一致且为偶数<br/>delta = current_tsc − tsc_timestamp"]
+    P --> D
+    D --> N["delta 按 shift 移位<br/>乘以 mul，再右移 32 位"]
+    N --> R["纳秒读数<br/>system_time + delta_ns"]
+    classDef source fill:#e4f1ec,stroke:#438575,color:#173e34
+    classDef data fill:#f4f3eb,stroke:#aaa98c,color:#3c4542
+    classDef calc fill:#eef3f2,stroke:#738b87,color:#263c38
+    class H,V,G source
+    class K,P data
+    class D,N,R calc

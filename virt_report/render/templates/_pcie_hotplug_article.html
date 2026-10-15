@@ -2,9 +2,10 @@
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2>在线增删设备为什么需要客户机配合</h2>
   <p>运行中的虚拟机增加一块网卡，需要 QEMU 创建设备、插槽报告变化、客户机枚举资源并绑定驱动。移除时则需要先停止客户机对设备的使用，再撤销模型和后端关联。这些动作分属管理程序、设备模型和客户机操作系统，完成时间也不同。</p>
   <p>本文以 q35 上预先创建的 PCIe Root Port 和一块现代 virtio-net-pci 网卡为例，分析 PCIe 原生热插拔。客户机通过 PCIe 插槽寄存器与中断配合操作；ACPI 热插拔使用另一套通知和应答路径。</p>
+  <p>例子中的端口是 <code>rp1</code>，网卡是 <code>net1</code>，宿主网络后端是 <code>n1</code>。添加时按“预留插槽 → 创建后端和网卡 → 通知客户机 → 枚举并绑定驱动”推进；删除时先请求客户机停用，再拆除网卡，最后清理独立后端。QMP 命令受理只覆盖其中一个阶段，后文用完成事件把这条异步流程接起来。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -21,7 +22,7 @@
 </section>
 
 <section id="structures" class="mechanism-section">
-  <h2>对象状态与插槽寄存器</h2>
+  <h2>用插槽状态和事件表达设备变化</h2>
   <table><thead><tr><th scope="col">对象或寄存器</th><th scope="col">关键字段</th><th scope="col">作用</th></tr></thead><tbody>
     <tr><td>DeviceState</td><td><code>id</code>、<code>parent_bus</code>、<code>realized</code>、<code>hotplugged</code></td><td>标识设备、连接总线，区分初始化完成和启动后添加</td></tr>
     <tr><td>删除交接</td><td><code>pending_deleted_event</code>、<code>pending_deleted_expires_ms</code></td><td>记录待完成的删除通知及重复请求检查窗口</td></tr>
@@ -34,7 +35,7 @@
 </section>
 
 <section id="addition" class="mechanism-section">
-  <h2>添加网卡的处理过程</h2>
+  <h2>添加 net1：创建、通知与客户机枚举</h2>
   <p>管理程序先创建网络后端，再把设备连接到它。以下是完成 QMP 握手后的请求示例，<code>id</code> 位于命令外层时用于匹配响应，位于 arguments 内时表示设备或后端标识。</p>
   <pre><code>{"execute":"netdev_add","arguments":{"type":"user","id":"n1"},"id":"backend-add"}
 {"return":{},"id":"backend-add"}
@@ -55,7 +56,7 @@
 </section>
 
 <section id="removal" class="mechanism-section">
-  <h2>异步移除与完成事件</h2>
+  <h2>删除 net1：客户机停用与完成事件</h2>
   <p>对正在使用的网卡，管理程序首先发送移除请求。QEMU 找到 net1 后调用 <code>qdev_unplug()</code>，若处理器实现了 <code>unplug_request</code>，就交给它发起与客户机的交接。此时模型和后端关联可能仍然存在。</p>
   <pre><code>{"execute":"device_del","arguments":{"id":"net1"},"id":"nic-del"}
 {"return":{},"id":"nic-del"}
@@ -73,7 +74,7 @@
 </section>
 
 <section id="failure" class="mechanism-section">
-  <h2>未完成操作的判断</h2>
+  <h2>操作卡在哪一层，资源何时能回收</h2>
   <table><thead><tr><th scope="col">看到的现象</th><th scope="col">含义与检查位置</th></tr></thead><tbody>
     <tr><td>device_add 立即报错</td><td>检查设备类、总线、ID 冲突、属性和资源初始化；未进入成功发布路径</td></tr>
     <tr><td>添加成功，客户机没有可用网卡</td><td>分别检查插槽通知、客户机枚举、BAR 分配和驱动；QMP 成功不覆盖客户机这几步</td></tr>
@@ -86,7 +87,7 @@
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码</h2>
+  <h2>源码：插槽通知与设备最终拆除</h2>
   <table><thead><tr><th scope="col">入口</th><th scope="col">检查重点</th></tr></thead><tbody>
     <tr><td><a href="{{ qemu_source }}system/qdev-monitor.c#L643-L743">qdev_device_add_from_qdict()</a></td><td>查类、查总线、创建对象、设置属性与 realize，错误路径的引用释放</td></tr>
     <tr><td><a href="{{ qemu_source }}hw/core/qdev.c#L483-L646">device_set_realized()</a></td><td>pre_plug、设备初始化与 plug 的顺序，后续阶段失败时的回滚</td></tr>

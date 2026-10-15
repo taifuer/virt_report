@@ -1,0 +1,17 @@
+flowchart TB
+  accTitle: CPR-transfer 的同机进程替换
+  accDescr: 旧 QEMU 通过 CPR 通道向新 QEMU 交接已登记资源；新端重建机器与 KVM 对象，共享 RAM 保留在同一宿主。旧端停机后主迁移通道传递 CPU 和设备状态，目标加载后独占客户机执行权。
+  A["旧 QEMU：客户机运行"] --> B["CPR 通道：交接已登记的 fd"]
+  B --> C["新 QEMU：准备机器与 KVM 对象"]
+  C --> D["旧 QEMU：停止客户机"]
+  D --> E["主通道：CPU、设备与队列状态"]
+  E --> F["新 QEMU：加载状态并恢复执行"]
+  R["同一宿主：共享 RAM 保留原内容"] -.-> A
+  R -.-> C
+  R -.-> F
+  classDef process fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef transfer fill:#fff4db,stroke:#b89a55,color:#59491e;
+  classDef shared fill:#e4f1ec,stroke:#438575,color:#173e34;
+  class A,C,D,F process;
+  class B,E transfer;
+  class R shared;

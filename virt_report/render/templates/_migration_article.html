@@ -3,14 +3,15 @@
 {% set kernel_source = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2>预拷贝如何缩短停机</h2>
   <p>预拷贝迁移在虚拟机运行期间复制内存，最后暂停虚拟机，传输剩余脏页及处理器、设备状态。复制期间客户机仍会写入内存，已经传过的页可能需要重传。QEMU 通过脏页跟踪记录这些修改，并根据剩余数据量和传输速率决定切换时机。本文分析这两个过程及其对停机时间的影响。</p>
+  <p>以 8 GiB 内存、1000 MiB/s 的有效传输速率为例，停机后再复制全部内存，仅数据传输就约需 8.2 秒。预拷贝先在运行期间完成大部分复制，再把停机阶段的剩余量压到可接受范围。下面先看两端如何交接，再跟踪一页被重新写脏后的重传，最后讨论何时停止迭代，以及停机超出目标时应检查什么。</p>
   <p>以下分析以 x86 / KVM、普通 RAM 的预拷贝路径为例，假定两端机器配置兼容、存储已就绪，不涉及磁盘复制、VFIO 或机密虚拟机。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="principle" class="mechanism-section">
-  <h2>基本原理</h2>
+  <h2>运行中复制与停机交接</h2>
   <p>暂停虚拟机后复制全部内存，可以在停止修改的条件下传送一致状态，停机时间也会包含整个内存传输过程。预拷贝将大部分复制工作移到运行阶段：先建立目的端内存副本，再重复传输发生修改的页，最后暂停客户机并完成状态交接。重复传输增加了流量，同时减少了暂停期间需要处理的数据量。</p>
   {{ diagram('migration-precopy-sequence', '预拷贝迁移与最终状态交接', '运行期间传送内存；暂停后同步余页与处理器、设备状态，目的端完成恢复后继续执行。') }}
   <p>Libvirt 协调目的端准备和迁移任务；QEMU 保存、传送和恢复状态；KVM 提供客户机执行及脏页记录能力。目的端 QEMU 边接收边填充内存，但客户机尚未运行。运行阶段得到的副本不要求任意时刻都一致，最终一致性依靠停止修改、最后一次脏页同步和状态交接建立。</p>
@@ -18,7 +19,7 @@
 </section>
 
 <section id="iteration" class="mechanism-section">
-  <h2>脏页跟踪与内存迭代</h2>
+  <h2>脏页位图如何驱动重传</h2>
   <h3>迁移位图与脏页记录</h3>
   <p>QEMU 为各个 <code>RAMBlock</code>维护迁移位图 <code>bmap</code>，表示哪些页还需要发送。初始化时将相应位设为 1，使首次扫描覆盖需要迁移的内存；与此同时开启脏页跟踪，记录运行期间的新修改。<a href="{{ qemu_source }}migration/ram.c#L2829-L2914">初始化代码</a>还会排除符合条件的丢弃页，缩小首次扫描的待传集合。</p>
   <p>KVM 的 dirty bitmap 或 dirty ring 记录客户机写脏的页；QEMU 内存子系统汇总相关记录，再由 <code>migration_bitmap_sync()</code>合入迁移位图。原来为 0、此次变为 1 的页增加待传数量，已经为 1 的页不会重复计数。同一页在两次发送之间反复写入，合入位图后仍只需安排一次重传。<a href="{{ qemu_source }}migration/ram.c#L940-L1023">位图合并</a>、<a href="{{ qemu_source }}migration/ram.c#L1144-L1188">同步入口</a></p>
@@ -44,7 +45,7 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
 </section>
 
 <section id="convergence" class="mechanism-section">
-  <h2>收敛与切换条件</h2>
+  <h2>带宽与写脏速率决定收敛</h2>
   <p>用一个简化的轮次模型可以说明重传的代价。设内存量为 M，第 n 轮待传量为 R<sub>n</sub>，有效内存传输速率为 B，按脏页粒度去重后的新增数据速率为 D。在速率稳定、没有压缩和其他开销的近似下：</p>
   <pre><code>本轮耗时      Tₙ ≈ Rₙ / B
 下一轮待传量  Rₙ₊₁ ≈ min(M, D × Tₙ)
@@ -56,7 +57,7 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
 </section>
 
 <section id="downtime" class="mechanism-section">
-  <h2>停机时间与观测指标</h2>
+  <h2>从剩余量估算停机时间</h2>
   <h3>从时间目标换算剩余量阈值</h3>
   <p><code>migration_update_counters()</code>使用近期观测带宽，或配置的 <code>avail-switchover-bandwidth</code>，计算切换阈值。固定版本中的关键表达式为：</p>
   <pre><code>s-&gt;threshold_size = expected_bw_per_ms * migrate_downtime_limit();</code></pre>
@@ -76,7 +77,7 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码</h2>
+  <h2>源码：迭代与最终状态保存</h2>
   <p>迁移线程负责判断是否继续迭代，RAM 处理器负责维护待传集合，两者通过状态保存回调连接。初始化、迭代和最终保存的主要调用关系如下：</p>
   <pre><code>migration_thread
   qemu_savevm_state_setup
@@ -96,7 +97,7 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
 </section>
 
 <section id="optimization" class="mechanism-section">
-  <h2>优化机制与代价</h2>
+  <h2>并行、限速与后拷贝的取舍</h2>
   <p>预拷贝的主要开销来自内存传输、脏页跟踪与重传，以及暂停阶段的状态保存和恢复。不同优化机制针对其中的不同环节，也各自需要额外的计算、内存或同步资源。</p>
   <h3>传输能力不足：并行化</h3>
   <p>当单一路径的页面处理或传输成为瓶颈时，MultiFD 使用多个工作线程和通道处理内存；QAPI 的 <code>multifd</code>能力自 QEMU 4.0 提供。它有机会提高有效 B，但会增加线程、缓冲区和同步开销；若已受网络总带宽或内存带宽限制，增加通道不会按比例提速。<a href="{{ qemu_source }}migration/multifd.c">MultiFD 实现</a>、<a href="{{ qemu_source }}qapi/migration.json#L476">能力版本</a></p>

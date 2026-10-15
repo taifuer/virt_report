@@ -1,0 +1,24 @@
+flowchart TB
+    accTitle: QEMU 的机器接口、执行引擎与 I/O 后端
+    accDescr: QEMU 用机器与设备模型组织客户机接口，通过 KVM 或 TCG 运行客户机代码，通过块或网络后端访问实际资源。QMP 是单独的管理路径，数据请求无需逐次经过管理命令。
+    G["客户机<br/>内核、驱动与应用"]
+    subgraph QEMU["QEMU 进程"]
+        E["CPU 执行接口<br/>KVM 调用 / TCG 翻译"]
+        D["机器与设备模型<br/>地址、队列、寄存器、中断"]
+        B["I/O 后端<br/>块设备图 / 网络后端"]
+        M["QMP 管理入口<br/>配置与运行状态"]
+        D -->|"解释请求，提交实际工作"| B
+        D -. "地址与中断关系" .-> E
+        M -. "配置与生命周期" .-> D
+        M -. "启动、暂停" .-> E
+    end
+    G -->|"客户机代码"| E
+    G -->|"设备请求"| D
+    E --> H["宿主内核与物理资源<br/>CPU、内存、文件、网络"]
+    B --> H
+    classDef guest fill:#e4f1ec,stroke:#438575,color:#173e34;
+    classDef component fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+    classDef control fill:#fff4db,stroke:#b89a55,color:#59491e;
+    class G,H guest;
+    class E,D,B component;
+    class M control;

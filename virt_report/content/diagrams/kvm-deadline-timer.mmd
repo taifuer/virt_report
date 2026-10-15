@@ -1,0 +1,19 @@
+sequenceDiagram
+    accTitle: KVM 软件 deadline 定时器到期与客户机唤醒
+    accDescr: 在 2GHz 客户机 TSC 的示例中，客户机当前计数 24000000，写入截止计数 26000000。省略编程耗时与注入提前量，KVM 将剩余 1ms 换算为宿主 hrtimer 期限。客户机随后空闲，vCPU 宿主线程阻塞。hrtimer 到期后，KVM 记录 pending 和 UNBLOCK 并唤醒线程；得到宿主调度后投递虚拟 LAPIC 中断，客户机允许中断时执行处理，再由客户机调度任务。本图限定普通软件定时分支。
+    participant G as 客户机内核
+    participant K as KVM / 虚拟 LAPIC
+    participant T as 宿主 hrtimer
+    participant S as 宿主调度器
+    G->>K: 已设定时器向量，写 deadline = 26,000,000
+    K->>K: 当前 TSC = 24,000,000<br/>2,000,000 ticks / 2 GHz = 1 ms
+    K->>T: 目标间隔 1 ms<br/>省略编程耗时与提前量
+    G->>K: 空闲，执行 HLT
+    K->>S: vCPU 宿主线程阻塞
+    T->>K: 到期回调
+    K->>K: pending++，设置 UNBLOCK
+    K->>S: kick 唤醒，使线程可运行
+    S-->>K: 线程获得 CPU
+    K->>K: 投递虚拟 LAPIC 定时器向量
+    K-->>G: 恢复执行，允许时接受中断
+    G->>G: 定时处理 → 唤醒任务 → 客户机调度

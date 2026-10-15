@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=c084ccad2981">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c084ccad2981">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -43,20 +43,20 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#vm-startup">虚拟机启动</a></div>
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="vm-startup.html">虚拟机启动</a></div>
     <h1>QEMU 虚拟机启动与 vCPU 初始化</h1>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">前言</a></li><li><a href="#example">一个暂停启动的配置</a></li><li><a href="#objects">机器、执行后端与处理器对象</a></li><li><a href="#phases">从参数解析到板级初始化</a></li><li><a href="#vcpu">vCPU 线程与内核接口的建立</a></li><li><a href="#first-run">复位、继续执行与固件入口</a></li><li><a href="#evolution">启动阶段拆分与配置边界</a></li><li><a href="#implementation">关键源码</a></li><li><a href="#sources">参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、从创建进程到执行第一条指令</a></li><li><a href="#example">二、用 -S 分开机器创建与客户机执行</a></li><li><a href="#objects">三、机器、执行后端与处理器对象</a></li><li><a href="#phases">四、创建机器、KVM 虚拟机与板级设备</a></li><li><a href="#vcpu">五、vCPU 线程与内核接口的建立</a></li><li><a href="#first-run">六、复位、继续执行与固件入口</a></li><li><a href="#evolution">七、受控启动的演进与耗时分析</a></li><li><a href="#implementation">八、源码：初始化与首次执行入口</a></li><li><a href="#sources">九、参考资料</a></li></ol></nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2><span class="mechanism-heading-number">一、</span>从创建进程到执行第一条指令</h2>
   <p>启动一台 QEMU 虚拟机，需要先确定机器布局和 CPU 能力，建立内存与设备，再把初始处理器状态交给执行后端。QEMU 进程、vCPU 线程、客户机固件和操作系统分别有自己的启动时刻；进程已经存在，不代表客户机已经执行了指令。</p>
   <p>本文以 x86 的 <code>pc-q35-10.2</code>、KVM 加速、普通 RAM 和 BIOS 冷启动为例，从命令行跟踪到启动处理器执行固件。重点是初始化顺序和对象之间的依赖，后续执行循环见<a href="kvm-vcpu-run.html">KVM vCPU 执行与 I/O 退出</a>。</p>
 <p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p></section>
 
 <section id="example" class="mechanism-section">
-  <h2>一个暂停启动的配置</h2>
+  <h2><span class="mechanism-heading-number">二、</span>用 -S 分开机器创建与客户机执行</h2>
   <p>下面的命令创建 2 个 vCPU、4 GiB 内存的 Q35 虚拟机，并通过 <code>-S</code> 停在客户机执行之前。示例不配置启动盘，便于单独观察机器创建和固件入口；它不会引导一个已安装的操作系统。</p>
   <pre><code>qemu-system-x86_64 \
   -machine pc-q35-10.2,accel=kvm \
@@ -70,10 +70,11 @@
 {"execute":"query-cpus-fast"}
 {"execute":"cont"}</code></pre>
   <p>正常冷启动的 <code>-S</code> 配置在 cont 前处于 <code>prelaunch</code>，<code>running</code> 为 false。此时 query-cpus-fast 已能返回 vCPU 的宿主线程信息。QMP 的 RESUME 事件表示开始恢复执行，不代表固件初始化、磁盘引导或客户机服务已经完成。</p>
+  <p>这个例子把后面的调用链分为两段：<code>qemu_init → machine init → CPU / RAM / 设备就绪 → 复位</code> 建立可运行的机器；<code>cont → vm_start → KVM_RUN</code> 才允许客户机执行。接下来先明确这些步骤操作哪些对象，再按两个阶段展开。</p>
 </section>
 
 <section id="objects" class="mechanism-section">
-  <h2>机器、执行后端与处理器对象</h2>
+  <h2><span class="mechanism-heading-number">三、</span>机器、执行后端与处理器对象</h2>
   <table><thead><tr><th scope="col">对象</th><th scope="col">关键字段</th><th scope="col">职责</th></tr></thead><tbody>
     <tr><td><code>MachineState</code></td><td><code>smp / ram_size / ram / cpu_type / accelerator</code></td><td>保存整机配置，关联 RAM 后端、CPU 型号和执行后端；MachineClass 的 init 创建具体板级布局。</td></tr>
     <tr><td><code>KVMState</code></td><td><code>fd / vmfd / memory_listener</code></td><td>fd 指向 /dev/kvm，vmfd 指向本虚拟机；监听地址空间变更并维护 KVM 内存槽。</td></tr>
@@ -86,7 +87,7 @@
 </section>
 
 <section id="phases" class="mechanism-section">
-  <h2>从参数解析到板级初始化</h2>
+  <h2><span class="mechanism-heading-number">四、</span>创建机器、KVM 虚拟机与板级设备</h2>
   <p><code>main()</code> 进入 <code>qemu_init()</code>。后者解析参数、初始化主循环基础设施，选定机器类型并创建 MachineState；机器属性设置完成后，才配置 accelerator。KVM 的初始化需要读取 irqchip 等机器属性，所以这两步有明确的先后关系。</p>
   <figure class="mechanism-diagram" data-diagram="qemu-startup-phases" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
@@ -94,9 +95,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看Q35 冷启动的初始化阶段" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="Q35 冷启动的初始化阶段">
-    <img src="../assets/qemu-startup-phases.svg?v=c084ccad2981" alt="创建机器和 KVM 虚拟机后进入板级初始化；CPU 线程早于 Q35 内存布局和外设完成创建，执行则由最后的运行状态控制。" loading="lazy">
+    <img src="../assets/qemu-startup-phases.svg?v=32683d73423f" alt="创建机器和 KVM 虚拟机后进入板级初始化；CPU 线程早于 Q35 内存布局和外设完成创建，执行则由最后的运行状态控制。" loading="lazy">
   </div>
-  <figcaption>创建机器和 KVM 虚拟机后进入板级初始化；CPU 线程早于 Q35 内存布局和外设完成创建，执行则由最后的运行状态控制。 <a href="../assets/qemu-startup-phases.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>创建机器和 KVM 虚拟机后进入板级初始化；CPU 线程早于 Q35 内存布局和外设完成创建，执行则由最后的运行状态控制。 <a href="../assets/qemu-startup-phases.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TD
   accTitle: Q35 冷启动的初始化阶段
   accDescr: QEMU 先建立机器与 KVM 容器，注册内存监听器，再准备 RAM 后端并执行板级初始化。Q35 先创建暂停的 CPU 线程，再布置内存和固件并创建设备。复位和继续执行属于后续阶段。
@@ -135,7 +136,7 @@
 </section>
 
 <section id="vcpu" class="mechanism-section">
-  <h2>vCPU 线程与内核接口的建立</h2>
+  <h2><span class="mechanism-heading-number">五、</span>vCPU 线程与内核接口的建立</h2>
   <p><code>x86_cpus_init()</code> 按拓扑计算 APIC ID，为每个启动 CPU 创建 X86CPU 并 realize。<code>x86_cpu_realizefn()</code> 验证 CPU 特性，准备 APIC，进入 <code>qemu_init_vcpu()</code>。该函数先设 <code>cpu-&gt;stopped = true</code>，再通过 accelerator 的 create_vcpu_thread 回调创建线程。</p>
   <figure class="mechanism-diagram" data-diagram="qemu-startup-vcpu" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
@@ -143,9 +144,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看vCPU 创建握手与首次执行" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="vCPU 创建握手与首次执行">
-    <img src="../assets/qemu-startup-vcpu.svg?v=c084ccad2981" alt="KVM vCPU 和共享区由新线程建立；主线程等待 created 通知，再继续机器初始化。cont 之后，BSP 从复位向量开始，其他处理器等待启动事件。" loading="lazy">
+    <img src="../assets/qemu-startup-vcpu.svg?v=32683d73423f" alt="KVM vCPU 和共享区由新线程建立；主线程等待 created 通知，再继续机器初始化。cont 之后，BSP 从复位向量开始，其他处理器等待启动事件。" loading="lazy">
   </div>
-  <figcaption>KVM vCPU 和共享区由新线程建立；主线程等待 created 通知，再继续机器初始化。cont 之后，BSP 从复位向量开始，其他处理器等待启动事件。 <a href="../assets/qemu-startup-vcpu.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>KVM vCPU 和共享区由新线程建立；主线程等待 created 通知，再继续机器初始化。cont 之后，BSP 从复位向量开始，其他处理器等待启动事件。 <a href="../assets/qemu-startup-vcpu.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
   accTitle: vCPU 创建握手与首次执行
   accDescr: 主线程创建 CPU 对象并等待 vCPU 线程建立内核接口。线程完成 KVM_CREATE_VCPU 与 kvm_run 映射后报告 created，保持 stopped。机器初始化、复位和寄存器同步完成，cont 才允许执行；BSP 执行固件，AP 等待 INIT 和 SIPI。
@@ -196,7 +197,7 @@ vmfd
 </section>
 
 <section id="first-run" class="mechanism-section">
-  <h2>复位、继续执行与固件入口</h2>
+  <h2><span class="mechanism-heading-number">六、</span>复位、继续执行与固件入口</h2>
   <p>设备创建完成后，<code>qdev_machine_creation_done()</code> 同步 CPU 初始化状态，推进到 MACHINE_READY，发送机器初始化完成通知，登记 ROM 复位处理，再执行整机复位。x86 CPU 的复位回调建立起始寄存器和启动状态，后续通过 KVM 的寄存器同步接口写入内核 vCPU。</p>
   <p>普通 BIOS 冷启动时，启动处理器 BSP 的 CS selector 为 <code>0xf000</code>，CS 隐藏基址为 <code>0xffff0000</code>，EIP 为 <code>0xfff0</code>，得到复位取指地址 <code>0xfffffff0</code>。这里要使用 CS 的隐藏基址计算，不能用实模式常见的 selector × 16 公式把它算成 0xffff0。固件随后跳转并完成平台初始化。</p>
   <table><thead><tr><th scope="col">时刻</th><th scope="col">CPU 0：BSP</th><th scope="col">CPU 1：AP</th></tr></thead><tbody>
@@ -210,7 +211,7 @@ vmfd
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>启动阶段拆分与配置边界</h2>
+  <h2><span class="mechanism-heading-number">七、</span>受控启动的演进与耗时分析</h2>
   <p>自动启动适合直接运行虚拟机，管理程序则需要在客户机运行前检查拓扑、设置资源策略或等待迁移。<code>-S</code> 提供了“机器已经完成初始化、客户机尚未执行”的控制点。此时内存和 CPU 拓扑已经落地，不能再把启动参数当成任意可改的配置表。</p>
   <p>2018 年引入的 <a href="https://github.com/qemu/qemu/commit/047f7038f586d2150f16c6d9ba9cfd0479f0f6ac">preconfig 模式</a> 把控制点前移到板级初始化之前，让管理程序可以先查询允许的配置，再通过 QMP 设置 NUMA 等信息。在本文版本中，它仍是实验接口，只有标记允许的命令可用；<code>x-exit-preconfig</code> 才会继续创建板级设备。它也已经完成一部分前置初始化，不能理解为 QEMU 尚未创建任何对象。</p>
   <table><thead><tr><th scope="col">控制点</th><th scope="col">解决的问题</th><th scope="col">约束</th></tr></thead><tbody>
@@ -223,7 +224,7 @@ vmfd
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码</h2>
+  <h2><span class="mechanism-heading-number">八、</span>源码：初始化与首次执行入口</h2>
   <table><thead><tr><th scope="col">位置</th><th scope="col">阅读重点</th></tr></thead><tbody>
     <tr><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/vl.c#L3769-L3850">qemu_init</a></td><td>machine、accelerator、后端、CPU 类型与板级初始化的顺序。</td></tr>
     <tr><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/core/machine.c#L1658-L1746">machine_run_board_init</a></td><td>默认内存后端、CPU 类型校验和 MachineClass.init。</td></tr>
@@ -237,7 +238,7 @@ vmfd
 </section>
 
 <section id="sources" class="mechanism-section">
-  <h2>参考资料</h2>
+  <h2><span class="mechanism-heading-number">九、</span>参考资料</h2>
   <ul>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/system/managed-startup.rst">QEMU 10.2.0：受控启动与 preconfig</a></li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/x86-common.c#L57-L121">x86 CPU 对象创建与 APIC ID 分配</a></li>
@@ -254,6 +255,6 @@ vmfd
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=c084ccad2981" defer></script>
+<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
 </body>
 </html>

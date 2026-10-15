@@ -1,0 +1,12 @@
+flowchart TB
+    accTitle: 设备接口与数据后端的选择
+    accDescr: 客户机设备可以使用模拟硬件接口、virtio 共享队列或分配的设备功能。virtio 队列有 QEMU、内核 vhost、用户态 vhost-user 和 vDPA 等不同后端，VFIO 直通则使用所分配设备的接口。
+    G["客户机驱动"] --> E["模拟 e1000 接口"]
+    G --> V["virtio 接口<br/>virtqueue"]
+    G --> P["分配的 PCI 功能<br/>PF / VF 等"]
+    E --> Q["QEMU 设备模型<br/>TAP 等后端"]
+    V --> Q
+    V --> K["vhost-net<br/>宿主内核"]
+    V --> U["vhost-user<br/>DPDK / SPDK 等独立进程"]
+    V --> D["vDPA 后端<br/>virtio 兼容数据面"]
+    P --> H["设备 DMA<br/>VFIO / IOMMU 管理隔离"]

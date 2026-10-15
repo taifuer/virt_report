@@ -3,14 +3,14 @@
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2>大页效率与逐页跟踪的冲突</h2>
   <p>同一段虚拟机内存可以由一个 2 MiB EPT 叶子项覆盖，也可以由 512 个 4 KiB 叶子项覆盖。大页减少第二级页表遍历层数和表项数量；细粒度映射则允许 KVM 分别控制子页的写权限与脏状态。迁移开始和结束时，这两种需求会推动映射粒度转换。</p>
   <p>本文以 x86、Intel EPT、KVM TDP MMU 和普通 HVA 后备 RAM 为例，跟踪大页建立、脏页记录期间的拆分，以及关闭记录后的恢复。地址转换和首次缺页的完整路径见<a href="kvm-ept-fault.html">内存映射与 EPT 缺页处理</a>。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="layers" class="mechanism-section">
-  <h2>三个层面的页大小</h2>
+  <h2>客户机页、后备页与 EPT 叶子</h2>
   <table><thead><tr><th scope="col">层面</th><th scope="col">管理者与映射</th><th scope="col">与 EPT 大页的关系</th></tr></thead><tbody>
     <tr><td>客户机页表</td><td>客户机内核管理 GVA → GPA</td><td>客户机使用 4 KiB 页，EPT 仍可用 2 MiB 叶子覆盖连续 GPA；客户机使用大页也不能保证 EPT 使用大页。</td></tr>
     <tr><td>宿主后备映射</td><td>宿主内核管理 QEMU 的 HVA → HPA；可能使用 hugetlb 或透明大页</td><td>提供当前可用的物理连续范围和宿主页表级别，限制 KVM 能建立的映射。</td></tr>
@@ -27,7 +27,7 @@
 </section>
 
 <section id="structures" class="mechanism-section">
-  <h2>页级别、表项与地址</h2>
+  <h2>一个 2 MiB 映射如何拆成 512 项</h2>
   <table><thead><tr><th scope="col">对象</th><th scope="col">字段或操作</th></tr></thead><tbody>
     <tr><td><code>kvm_page_fault</code></td><td><code>max_level</code> 给出本次缺页上限；<code>req_level</code> 结合后备条件；<code>goal_level</code> 加入限制后决定实际安装级别。</td></tr>
     <tr><td><code>kvm_lpage_info</code></td><td><code>disallow_lpage</code> 记录某个候选大页范围的限制，供级别选择使用。</td></tr>
@@ -55,13 +55,19 @@
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码</h2>
+  <h2>源码：级别选择、拆分与恢复</h2>
   <table><thead><tr><th scope="col">问题</th><th scope="col">固定版本入口</th></tr></thead><tbody>
     <tr><td>缺页为何选择这个级别</td><td><a href="{{ linux_source }}arch/x86/kvm/mmu/mmu_internal.h#L254-L276"><code>max_level / req_level / goal_level</code></a>；<a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L3342-L3409"><code>kvm_mmu_hugepage_adjust()</code></a></td></tr>
     <tr><td>如何生成并发布 512 个子项</td><td><a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1522-L1558"><code>tdp_mmu_split_huge_page()</code></a>；<a href="{{ linux_source }}arch/x86/kvm/mmu/spte.c#L330-L364"><code>make_small_spte()</code></a></td></tr>
     <tr><td>何时开始或停止细粒度跟踪</td><td><a href="{{ linux_source }}arch/x86/kvm/x86.c#L13490-L13556"><code>kvm_mmu_slot_apply_flags()</code></a>；<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L2564-L2603">QEMU 手动保护能力选择</a></td></tr>
     <tr><td>如何恢复大页及写权限</td><td><a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1799-L1878"><code>recover_huge_pages_range()</code></a>；<a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L3720-L3761">快速写权限修复</a></td></tr>
   </tbody></table>
+</section>
+
+<section id="tradeoffs" class="mechanism-section">
+  <h2>拆分成本与恢复效果如何衡量</h2>
+  <p>在前面的 2 MiB 示例中，拆分增加一张 4 KiB 页表，原来一个叶子覆盖的范围变成 512 个独立叶子。代价包括页表内存、地址转换缓存压力，以及重新保护和后续写入的处理；收益是可以精确指出哪些 4 KiB 页需要重传。映射项增多并不意味着应用访问就按同样倍数变慢，实际影响取决于工作集、TLB 命中和访问模式。</p>
+  <p>比较拆分策略，应分别测量开启跟踪时的停顿、迁移期间的客户机延迟与缺页开销、关闭跟踪后的大页恢复情况。预先拆分把一部分工作移到开启阶段，按需拆分把成本留给后续访问；原位恢复减少重新建图的缺页，但不能补齐宿主缺失的连续后备条件。只看迁移完成时间，会漏掉迁移结束后仍使用小页映射的持续影响。</p>
 </section>
 
 <section id="evolution" class="mechanism-section">

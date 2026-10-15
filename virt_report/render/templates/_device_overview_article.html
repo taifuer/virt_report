@@ -1,0 +1,81 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+{% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
+{% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
+<section id="preface" class="mechanism-section">
+  <h2>客户机需要网卡，宿主怎样提供</h2>
+  <p>一台物理服务器可能运行几十台虚拟机，却只有几块网卡。每台客户机仍需要初始化设备、提交报文并收到完成通知。虚拟化要把这些动作连接到真实网络，同时隔离不同客户机的内存和请求。</p>
+  <p>可以模拟客户机已有驱动认识的网卡，也可以让驱动与后端采用适合虚拟化的接口，或直接分配设备功能。下面先解决“客户机怎样描述一个请求”，再讨论“谁处理它”。这些选择改变不同边界，不能排成一条简单的替代关系。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+<section id="architecture" class="mechanism-section">
+  <h2>模拟已有网卡，先解决驱动兼容</h2>
+  <p>以 e1000 为例，客户机驱动配置网卡寄存器，准备硬件规定格式的发送描述符，再更新尾指针。QEMU 实现这些寄存器及状态变化，从客户机内存读取描述符和报文，然后交给 TAP 等网络后端。客户机因而可以使用已有驱动，无需知道网卡由软件实现。</p>
+  <p>代价来自兼容整套硬件协议：寄存器访问可能触发退出，描述符解析、状态更新和中断行为都需要实现。批处理能减少通知，所以不能说每个报文必然对应一次退出；但软件仍要维护该硬件接口的语义。若允许客户机安装专用驱动，就可以重新设计交接方式。</p>
+</section>
+<section id="queue" class="mechanism-section">
+  <h2>virtio 用共享队列表达请求和完成</h2>
+  <p>virtio 规定设备与驱动怎样协商能力、建立队列和归还缓冲区。客户机驱动是请求提交者，QEMU 或其他后端扮演设备。双方共享客户机内存中的结构，通过队列批量交接缓冲区，再用独立通知提示进度。传统 e1000 同样使用描述符和设备直接访问内存的 DMA 接口；virtio 的区别在于针对虚拟化统一这些约定，减少兼容具体硬件行为的负担。</p>
+  <table><thead><tr><th>Split virtqueue 的组成</th><th>保存什么</th><th>谁发布</th></tr></thead><tbody>
+    <tr><td>描述符表 desc</td><td>每项 16 字节：addr、len、flags、next；可把多个缓冲区串成一项请求</td><td>驱动准备，设备读取</td></tr>
+    <tr><td>可用环 avail</td><td>待处理描述符链的链头编号，以及发布进度 idx</td><td>驱动</td></tr>
+    <tr><td>已用环 used</td><td>完成的链头 id、设备写入长度 len，以及完成进度 idx</td><td>设备</td></tr>
+  </tbody></table>
+  <p>这两个环是循环使用的数组，不存放报文本身。长度为 N 的环用 <code>idx % N</code> 定位槽位；16 位 idx 按其位宽回绕，不会每绕一圈数组就清零。描述符还标明设备能否写缓冲区：发送数据通常供设备读取，接收缓冲区则需要允许设备写入。<a href="{{ linux }}include/uapi/linux/virtio_ring.h#L96-L143">队列结构定义</a></p>
+  <h3>先协商格式，再启用队列</h3>
+  <p>两端必须先约定怎样解释这段共享内存。现代 virtio 初始化时，驱动复位设备，设置 ACKNOWLEDGE 和 DRIVER 状态，读取设备提供的特性，再选出自己支持且准备使用的子集。设置 <code>FEATURES_OK</code> 后还要读回确认设备接受，然后配置队列大小、各结构地址和设备参数，最后设置 <code>DRIVER_OK</code>，才进入正常请求处理。</p>
+  <p>例如 packed 格式必须经过双方协商；未选用时，不能把 packed 描述符交给按 split 格式读取的后端。协商失败时需要停止初始化，修正条件后重新复位，不能带着不同的结构解释继续运行。队列解决数据交接，初始化协议则保证双方从同一套规则开始。<a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">Virtio 规范第 3.1 节：设备初始化</a></p>
+</section>
+<section id="example" class="mechanism-section">
+  <h2>一个报文怎样经过队列并归还缓冲区</h2>
+  {{ diagram('virtqueue-tx-layout', '一个发送请求的三组结构与两块缓冲区', '示例采用长度为 4 的 split 队列和 12 字节网络头：链 0 → 2 分别描述网络头与 60 字节报文。实际头部布局取决于协商特性，图中只展示这一种配置。') }}
+  <ol>
+    <li>假设先前 3 项请求已完成。驱动写好新报文和网络头，准备 <code>desc[0] → desc[2]</code>。两块缓冲区共同构成一项请求，无需在内存中相邻。</li>
+    <li>原先 <code>avail.idx = 3</code>，驱动把链头 0 写入 <code>avail.ring[3]</code>，保证内容先可见，再把 idx 发布为 4。下一次提交将使用槽 0。</li>
+    <li>后端发现新增条目，沿链读取缓冲区，把报文送往所选网络路径。需要通知时，kick 提醒后端检查队列；通知本身不携带报文。</li>
+    <li>后端不再引用这些缓冲区后，以 <code>used.id = 0</code> 归还整条链，并更新 used.idx。这个发送例子没有向缓冲区写数据，所以 used.len 为 0。驱动看到完成，才可重新使用缓冲区。</li>
+  </ol>
+  <p>“先写内容，再发布索引”需要内存屏障；“看到完成，再复用缓冲区”决定所有权。只理解环的形状，仍不足以写出正确驱动。如果后端先复制到自己的缓冲区，客户机完成可早于物理网卡真正发出报文；避免复制则需要把客户机缓冲区保留更久。共享队列也就不等于端到端零拷贝。</p>
+</section>
+<section id="backends" class="mechanism-section">
+  <h2>保留 virtio 接口，改变队列处理位置</h2>
+  <p>QEMU 可以自己消费队列，但高吞吐网络还可能受到用户态与内核交接、线程调度和缓存移动的影响。vhost-net 把 virtio-net 队列处理移入宿主内核，连接内核网络路径；QEMU 仍负责设备配置与控制，客户机无需更换 virtio 驱动。</p>
+  <p>vhost-user 让独立用户态进程消费队列。QEMU 通过 UNIX socket 协商特性、共享内存和通知文件描述符；报文通常从共享内存读取，不逐包走这条控制 socket。DPDK 后端可以接用户态交换或网卡驱动，SPDK 后端可以接存储栈。收益来自专门的数据处理实现，代价是跨进程内存、重连、故障和升级的协调。<a href="{{ qemu }}docs/interop/vhost-user.rst#L16-L34">vhost-user 控制协议</a></p>
+  <p>设备可以通过中断通知完成，驱动或后端也可以轮询。轮询减少短请求的唤醒等待，却在空闲时继续消耗 CPU；批处理摊薄每次交接成本，等待凑批又可能增加低负载延迟。应按负载选择，不能仅凭后端名称推断性能。</p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2>硬件分配与卸载解决另一组问题</h2>
+  <p>如果希望减少软件处理，可以经 VFIO 把一个可隔离的设备功能交给客户机。客户机使用相应硬件驱动，设备通过 DMA 访问获准映射的内存；IOMMU 约束其访问范围。CPU 的 EPT/NPT 不能自动替代 DMA 隔离，设备重置和中断也仍需宿主协调。</p>
+  <p>SR-IOV 允许物理功能（PF）提供多个虚拟功能（VF），解决硬件资源如何细分；VFIO 可以负责把 VF 分配给客户机，两者经常组合使用。mdev 则由设备相关驱动提供中介设备实例，其共享与隔离能力取决于实现。vDPA 保留 virtio 兼容的数据接口，让适配后的硬件或软件处理队列，仍需控制侧配置。</p>
+  {{ diagram('device-backend-overview', '接口选择与处理位置的分支', '传统设备模拟、virtio 和分配的硬件功能可以长期并存。SR-IOV 主要划分设备功能，VFIO 管理访问与隔离，vDPA 连接 virtio 数据接口与后端；它们各自解决不同问题。') }}
+  <p>virtio 自身也在演进。Split 队列用三组结构分开描述请求与完成；packed 队列把可用、已用状态放入同一描述符环，并结合回绕标记识别所有权，以调整缓存访问成本。两种格式都必须遵守发布顺序和缓冲区生命周期，也都可连接不同后端。</p>
+</section>
+<section id="evaluation" class="mechanism-section">
+  <h2>按需求比较，沿数据路径定位成本</h2>
+  <table><thead><tr><th>优先解决的问题</th><th>常见选择</th><th>还需确认的代价</th></tr></thead><tbody>
+    <tr><td>沿用客户机已有驱动</td><td>传统设备模拟</td><td>兼容语义与设备模拟开销</td></tr>
+    <tr><td>通用队列接口与灵活管理</td><td>virtio＋QEMU 或 vhost</td><td>队列交接、通知与后端 CPU 消耗</td></tr>
+    <tr><td>独立网络或存储数据处理</td><td>vhost-user</td><td>进程间共享、断连与恢复</td></tr>
+    <tr><td>减少软件数据处理</td><td>VFIO 分配或 vDPA 卸载</td><td>硬件能力、隔离粒度与状态迁移支持</td></tr>
+  </tbody></table>
+  <p>先固定报文大小、队列数和 CPU 预算，再比较吞吐、尾延迟、丢包与 CPU 占用。随后核对启动、热插拔、迁移和故障恢复：硬件能发送报文，不代表它能导出完整设备状态。把请求、缓冲区和状态所有者逐项画出来，才容易发现省下了哪次交接，又新增了哪项协调。</p>
+</section>
+<section id="reading" class="mechanism-section">
+  <h2>沿队列与后端继续阅读</h2>
+  <ul>
+    <li><a href="virtio-device-initialization.html">virtio 设备初始化与特性协商</a>：从设备发现、格式协商到队列启用，区分失败与复位。</li>
+    <li><a href="qemu-network-tx.html">e1000 与 virtio-net 发包路径</a>：交互查看描述符、环索引与缓冲区。</li>
+    <li><a href="qemu-vhost-net.html">vhost-net 与 vhost-user</a>：队列消费者、控制通道与通知绑定。</li>
+    <li><a href="dpdk-vhost-user-net.html">DPDK vhost-user 报文收发</a>：virtqueue、mbuf 与物理网卡发送环。</li>
+    <li><a href="spdk-vhost-user-blk.html">SPDK vhost-user-blk</a>、<a href="qemu-virtio-blk.html">QEMU virtio-blk</a>：存储请求与完成语义。</li>
+    <li><a href="qemu-vfio-dma.html">VFIO 与 DMA 地址转换</a>：直通设备访问内存及隔离边界。</li>
+  </ul>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">Virtio 1.2：split、packed 队列与通知协议</a>、<a href="{{ linux }}include/uapi/linux/virtio_ring.h">Linux 队列结构</a></li>
+    <li><a href="{{ qemu }}hw/net/virtio-net.c#L2683-L2804">QEMU virtio-net 发送与完成</a>、<a href="{{ qemu }}docs/interop/vhost-user.rst">vhost-user 协议</a></li>
+    <li><a href="{{ linux }}Documentation/driver-api/vfio.rst">Linux VFIO</a>、<a href="{{ linux }}Documentation/driver-api/vfio-mediated-device.rst">中介设备框架</a>、<a href="https://docs.kernel.org/PCI/pci-iov-howto.html">SR-IOV 的 PF 与 VF</a></li>
+    <li><a href="{{ linux }}include/linux/vdpa.h">vDPA 设备与队列管理接口</a></li>
+  </ul>
+</section>

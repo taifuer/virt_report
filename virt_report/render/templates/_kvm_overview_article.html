@@ -1,0 +1,77 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+{% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
+{% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
+<section id="preface" class="mechanism-section">
+  <h2>让客户机直接执行，同时保留宿主控制权</h2>
+  <p>虚拟机里的操作系统需要管理页表、中断和设备，普通计算又希望尽量直接使用 CPU。若让它随意修改宿主的这些资源，多个系统就无法安全共存；逐条模拟所有指令则需要大量软件处理。硬件虚拟化提供了另一种执行环境：客户机保有自己的 CPU 状态，宿主规定它可以直接执行什么，以及何时交回控制权。</p>
+  <p>以 Intel VT-x 为例，宿主管理代码运行在 VMX root 环境，客户机运行在 VMX non-root 环境。两种环境各自保留 x86 权限级，客户机内核可以在自己的 ring 0 运行。客户机应用调用自己的内核，与 VM exit 返回宿主，是不同的控制转移。AMD-V 用对应的客户机运行与拦截机制实现同类隔离。</p>
+  <p>KVM 将这些硬件能力接入 Linux：提供创建虚拟机、配置 vCPU 和内存的接口，并处理执行中的退出与事件。QEMU 提供机器和设备模型，Linux 继续负责线程调度及宿主内存管理。下面用一次设备读取，把创建、执行、退出与恢复连接起来。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+<section id="objects" class="mechanism-section">
+  <h2>通过文件描述符建立一台虚拟机</h2>
+  <p>一个最小的用户态虚拟机程序先打开 <code>/dev/kvm</code>，查询接口与能力，再创建 VM、准备 RAM、创建 vCPU 并设置寄存器。KVM 用文件描述符区分这些操作的作用范围，程序通过 <code>ioctl</code> 配置相应对象。</p>
+  {{ diagram('kvm-internal-objects', '从用户态接口到客户机执行', 'VM 描述符用于配置共享资源，vCPU 描述符用于配置并运行某个处理器。调用 KVM_RUN 的宿主线程进入内核，再进入硬件客户机环境；共享 kvm_run 负责必要的用户态交接。') }}
+  <table><thead><tr><th scope="col">接口或对象</th><th scope="col">准备什么</th><th scope="col">为什么分开</th></tr></thead><tbody>
+    <tr><td><code>/dev/kvm</code> 描述符</td><td>查询能力，以 KVM_CREATE_VM 创建 VM</td><td>宿主能力与某台虚拟机的配置分开</td></tr>
+    <tr><td>VM 描述符</td><td>登记内存范围、配置中断、创建 vCPU</td><td>多个 vCPU 共同使用一套机器资源</td></tr>
+    <tr><td>vCPU 描述符</td><td>设置寄存器，以 KVM_RUN 运行该 vCPU</td><td>每个处理器有独立的指令位置和执行状态</td></tr>
+  </tbody></table>
+  <p>内核对应的 <code>struct kvm</code> 保存 VM 级资源，<code>struct kvm_vcpu</code> 保存单个执行上下文。内存槽描述一段客户机物理地址与用户态后备内存的关系。创建 VM 得到的是空的容器，RAM 与 vCPU 需随后配置。<a href="{{ linux }}Documentation/virt/kvm/api.rst#L149-L161">VM 创建接口</a>、<a href="{{ linux }}include/linux/kvm_host.h#L326-L350">vCPU 对象</a></p>
+  <p>QEMU 通常用一个宿主线程运行一个 vCPU。线程调用 KVM_RUN 后，依次执行内核和客户机代码；发生需要用户态处理的退出时，又回到同一线程的 QEMU 路径。Linux 调度器决定该线程何时占用物理 CPU，vCPU 状态可随线程调度继续保留。</p>
+</section>
+<section id="execution" class="mechanism-section">
+  <h2>一次设备读取怎样退出后继续运行</h2>
+  <p>假设客户机先计算 <code>1 + 2</code>，再读取一个由 QEMU 模拟的 MMIO 寄存器，其返回值为 <code>0x10</code>，最后把两者相加。先选普通用户态设备读取路径，观察最终结果 19 是怎样得到的。</p>
+  {{ diagram('kvm-internals-execution', '普通计算、内核处理与用户态设备交接', '图中的用户态和 KVM 路径由同一个 vCPU 线程执行。CPUID 示意可留在内核处理的退出；MMIO 读取需要返回 QEMU，下一次 KVM_RUN 才完成指令交接。') }}
+  <h3>进入之前，先准备执行条件</h3>
+  <p>KVM 处理待办工作，准备地址转换和待注入事件，再由 VMX/SVM 后端进入客户机。普通加法直接在处理器上执行。一次 KVM_RUN 可以包含多次硬件退出：例如 VMX 上的 CPUID 查询由 KVM 根据虚拟 CPU 配置填回结果，随后即可再次进入客户机。<a href="{{ linux }}arch/x86/kvm/x86.c#L11028-L11082">进入前处理</a>、<a href="{{ linux }}arch/x86/kvm/cpuid.c#L2090-L2104">CPUID 模拟</a></p>
+  <h3>设备读取由 QEMU 提供结果</h3>
+  <p>访问需要用户态设备模型处理的 MMIO 时，KVM 在共享的 <code>kvm_run</code> 中填写退出原因、地址、长度和读写方向，KVM_RUN 返回。QEMU 找到设备的读取回调，将 <code>0x10</code> 写回交接区。再次调用 KVM_RUN 后，内核完成这次读取，客户机才可继续计算得到 19。</p>
+  <p><code>kvm_run</code> 是用户态与内核交换信息的区域，内核私有执行状态仍保存在 vCPU 对象中。MMIO 结果写回和指令完成分属两个步骤，暂停或迁移同样需要处理这一交接边界。<a href="{{ qemu }}accel/kvm/kvm-all.c#L3234-L3254">QEMU 的 MMIO 分派</a>、<a href="{{ linux }}Documentation/virt/kvm/api.rst#L6676-L6708">KVM 的完成规则</a></p>
+</section>
+<section id="resources" class="mechanism-section">
+  <h2>内存和中断怎样支撑这条执行路径</h2>
+  <p>读取普通 RAM 时，客户机页表给出客户机物理地址，EPT/NPT 等二级转换再确定获准访问的宿主物理页。KVM 根据用户态登记的内存槽建立映射，宿主页发生变化时撤销旧转换。有效映射建立后，CPU 可直接完成后续访问；设备地址则按对应设备的访问规则处理。</p>
+  <p>设备完成异步工作后，还需要通知客户机。KVM 保存虚拟中断控制器状态，按路由记录待处理事件，在允许接受时安排投递。irqfd 可把后端的事件通知接入 KVM，硬件辅助中断机制还可减少部分退出。若 vCPU 已阻塞，线程需先被唤醒并得到调度，才有机会执行客户机的处理代码。</p>
+  <p>因此，一台可运行的虚拟机需要执行、地址映射和事件三者配合：CPU 执行指令，映射决定它可访问的资源，事件推动它处理外部工作。各部分的加速效果最终都取决于客户机何时能够继续有效执行。</p>
+</section>
+<section id="coordination" class="mechanism-section">
+  <h2>多个 vCPU 同时运行时如何保持一致</h2>
+  <p>设 vCPU 0、vCPU 1 都访问客户机物理页 <code>0x4000</code>。宿主开始跟踪写入，将对应二级映射设为只读；另一个物理 CPU 仍可能缓存旧的可写转换。修改页表后，需要让相关 CPU 按规则失效旧转换，随后写入才能触发跟踪。</p>
+  <p>KVM 可发布 TLB 刷新等请求，并按目标状态发送 IPI 或唤醒线程。目标在进入客户机前处理待办；允许延后的请求可留给睡眠中的 vCPU 在下次进入时处理。锁保护共享修改，内存屏障约束更新的可见顺序，请求和通知把执行线程引到处理位置。这些约束共同避免“配置已经改变，运行端却继续使用旧状态”。</p>
+  <p>普通 kick、IPI 确认和具体操作完成有各自的边界。跨 CPU 更新必须依据对应协议判断何时安全继续，相关细节见<a href="kvm-vcpu-requests.html">请求与同步</a>。<a href="{{ linux }}virt/kvm/kvm_main.c#L293-L325">远端 TLB 刷新</a></p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2>演进怎样减少退出、建图与同步成本</h2>
+  <p>KVM 从 x86 硬件辅助虚拟化出发，复用 Linux 的线程和内存管理。后续演进持续减少运行途中的软件往返，同时保留管理与隔离所需的控制点。不同改进分别作用于执行、地址转换与事件路径。</p>
+  <table><thead><tr><th scope="col">原有成本</th><th scope="col">改进</th><th scope="col">留下的约束</th></tr></thead><tbody>
+    <tr><td>软件维护客户机与宿主的合成页表</td><td>EPT/NPT 提供硬件二级转换</td><td>页表遍历、TLB 未命中与宿主页失效仍需处理</td></tr>
+    <tr><td>中断控制和通知多次返回用户态</td><td>内核 irqchip、eventfd 接口及硬件中断辅助</td><td>路由、屏蔽与非运行 vCPU 的调度协调</td></tr>
+    <tr><td>多 vCPU 建图与更新争用共享状态</td><td>TDP MMU 并行管理、合并刷新与按状态通知</td><td>失效顺序、生命周期和冲突重试更复杂</td></tr>
+  </tbody></table>
+  <p>这些方案能减少重复工作，却会把部分成本转移到同步和配置上。减少退出后，后端 I/O 或宿主调度仍可能成为瓶颈；更大的刷新批次节省通知，也可能增加等待。评价时应同时观察退出原因、用户态往返、TLB 刷新和调度延迟，再对应业务吞吐与尾延迟。</p>
+</section>
+<section id="summary" class="mechanism-section">
+  <h2>总结：建立状态、受控执行、协调变化</h2>
+  <p>KVM 的基本过程可以归纳为三步：通过 VM/vCPU 接口建立客户机状态；让调用线程在受控硬件环境中执行，按退出原因决定由内核还是 QEMU 处理；在映射、事件和配置变化时协调所有相关执行者。排查问题时，先确定停在哪一步，再查该步骤的对象、通知与完成条件。</p>
+</section>
+<section id="reading" class="mechanism-section">
+  <h2>进一步阅读</h2>
+  <ul>
+    <li><a href="kvm-vcpu-run.html">KVM vCPU 执行与退出处理</a>：展开执行循环、MMIO 与 eventfd 路径。</li>
+    <li><a href="kvm-ept-fault.html">KVM 二级地址转换与缺页处理</a>：跟踪 RAM 映射的建立和失效。</li>
+    <li><a href="interrupt-virtualization.html">中断虚拟化</a>、<a href="kvm-vcpu-halt.html">阻塞与唤醒</a>：连接通知、调度和客户机执行。</li>
+    <li><a href="kvm-vcpu-requests.html">KVM vCPU 请求与跨 CPU 同步</a>：请求位图、进入竞争与完成边界。</li>
+    <li><a href="qemu-internals.html">QEMU 内部机制</a>：联系用户态设备模型与事件循环。</li>
+  </ul>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html">Intel SDM</a>：VMX 执行环境、进入与退出。</li>
+    <li><a href="{{ linux }}Documentation/virt/kvm/api.rst">Linux：KVM 对象接口与运行交接</a>、<a href="{{ linux }}Documentation/virt/kvm/x86/mmu.rst">x86 MMU 设计</a></li>
+    <li><a href="{{ linux }}arch/x86/kvm/x86.c">Linux：vCPU 执行循环</a>、<a href="{{ linux }}Documentation/virt/kvm/vcpu-requests.rst">请求同步约定</a></li>
+    <li><a href="{{ qemu }}accel/kvm/kvm-all.c">QEMU：KVM 接口调用与退出分派</a></li>
+  </ul>
+</section>

@@ -1,0 +1,15 @@
+flowchart TB
+    accTitle: 两台虚拟机的独立内存映射
+    accDescr: 虚拟机 A 和 B 的客户机页表都可得到客户机物理地址 0x2000，但各自的 EPT 或 NPT 将其转换到不同宿主物理页；客户机不能自行指定第二级映射。
+    subgraph A["虚拟机 A"]
+        AV["应用的虚拟地址"] -->|"A 的客户机页表"| AP["客户机物理地址<br/>0x2000"]
+    end
+    subgraph B["虚拟机 B"]
+        BV["应用的虚拟地址"] -->|"B 的客户机页表"| BP["客户机物理地址<br/>0x2000"]
+    end
+    AP -->|"宿主管理 A 的 EPT / NPT"| AH["宿主物理页 A<br/>示例页基址 0x9a000"]
+    BP -->|"宿主管理 B 的 EPT / NPT"| BH["宿主物理页 B<br/>示例页基址 0xb7000"]
+    classDef guest fill:#e4f1ec,stroke:#438575,color:#173e34
+    classDef host fill:#eaf0f6,stroke:#8198ac,color:#263c4c
+    class AV,AP,BV,BP guest
+    class AH,BH host

@@ -1,0 +1,52 @@
+<p><button type="button" data-tx-graph-zoom aria-pressed="false" hidden>放大图解</button></p>
+<div class="device-tx-queue-graphic" data-tx-graph-viewport role="region" aria-label="可用环、描述符链、报文和已用环的交互图，放大后可横向滚动" tabindex="0">
+  <svg viewBox="0 0 1000 680" role="img" aria-labelledby="tx-queue-graphic-title tx-queue-graphic-desc">
+    <title id="tx-queue-graphic-title">一个发送请求在 split virtqueue 中的完整关系</title>
+    <desc id="tx-queue-graphic-desc">左侧可用环发布描述符头编号 0，中间描述符 0 的 next 指向描述符 2；addr 分别指向右侧网络头和报文。QEMU 读取这些缓冲区后向已用环写回 id 0、len 0。圆形表示数组循环使用，内存中的环槽实际连续排列。当前步骤和索引随演示更新。</desc>
+    <defs><marker id="tx-queue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker></defs>
+    <g class="device-tx-graph-driver"><rect x="335" y="12" width="320" height="58" rx="8"/><text x="495" y="37" text-anchor="middle">客户机 virtio-net 驱动</text><text x="495" y="57" text-anchor="middle" class="device-tx-graph-small">准备数据 → 发布 avail → 回收 used</text></g>
+    <g class="device-tx-graph-ring">
+      <text x="155" y="110" text-anchor="middle">Available ring</text><text x="155" y="132" text-anchor="middle" class="device-tx-graph-small">驱动写 · 设备读</text>
+      <circle cx="155" cy="230" r="76" class="device-tx-graph-track"/>
+      {% for x,y in [(121,139),(212,207),(121,275),(30,207)] %}
+      <g data-tx-graphic-avail-slot="{{ loop.index0 }}" transform="translate({{ x }},{{ y }})"><rect width="68" height="46" rx="5"/><text x="34" y="17" text-anchor="middle" class="device-tx-graph-small">slot {{ loop.index0 }}</text><text x="34" y="35" text-anchor="middle" data-tx-graphic-entry>{{ 'head=0' if loop.first else '—' }}</text></g>
+      {% endfor %}
+      <text x="155" y="225" text-anchor="middle" class="device-tx-graph-small">avail.idx</text><text x="155" y="247" text-anchor="middle" data-tx-graphic-avail-index>1</text>
+      <text x="155" y="347" text-anchor="middle" class="device-tx-graph-small" data-tx-graphic-avail-position>下一槽 0 → 1 → 2 → 3 → 0</text>
+    </g>
+    <g class="device-tx-graph-descriptors" data-tx-graphic-state="descriptor">
+      <text x="490" y="112" text-anchor="middle">描述符表 · desc[4]</text>
+      <rect x="335" y="134" width="310" height="224" rx="6"/>
+      <path d="M335 174H645 M335 220H645 M335 266H645 M335 312H645 M378 134V358 M474 134V358 M520 134V358 M590 134V358"/>
+      <g class="device-tx-graph-small" text-anchor="middle"><text x="356" y="159">编号</text><text x="426" y="159">addr</text><text x="497" y="159">len</text><text x="555" y="159">flags</text><text x="617" y="159">next</text></g>
+      {% for row in [0,1,2,3] %}
+      <g data-tx-graphic-desc="{{ row }}" class="device-tx-graph-small" text-anchor="middle"><text x="356" y="{{ 202 + row * 46 }}">{{ row }}</text><text x="426" y="{{ 202 + row * 46 }}" data-field="addr">{{ '0x1000' if row == 0 else '0x2000' if row == 2 else '—' }}</text><text x="497" y="{{ 202 + row * 46 }}" data-field="len">{{ '12' if row == 0 else '60' if row == 2 else '—' }}</text><text x="555" y="{{ 202 + row * 46 }}" data-field="flags">{{ 'NEXT' if row == 0 else '0' if row == 2 else '—' }}</text><text x="617" y="{{ 202 + row * 46 }}" data-field="next">{{ '2' if row == 0 else '—' }}</text></g>
+      {% endfor %}
+      <path class="device-tx-graph-path" d="M645 197H674V289H645"/><text x="683" y="249" class="device-tx-graph-small">NEXT</text>
+    </g>
+    <g class="device-tx-graph-buffers" data-tx-graphic-state="payload">
+      <text x="850" y="112" text-anchor="middle">客户机报文缓冲区</text>
+      <rect x="750" y="155" width="210" height="75" rx="6"/><text x="855" y="181" text-anchor="middle">0x1000 · 12 B</text><text x="855" y="209" text-anchor="middle" class="device-tx-graph-small">virtio-net header</text>
+      <rect x="750" y="266" width="210" height="92" rx="6"/><text x="855" y="293" text-anchor="middle">0x2000 · 60 B</text><text x="855" y="319" text-anchor="middle">P1 · 以太网帧</text><text x="855" y="343" text-anchor="middle" class="device-tx-graph-small">数据不存放在环槽中</text>
+    </g>
+    <path class="device-tx-graph-path" data-tx-graphic-path="publish" d="M189 162H305V197H333"/>
+    <text x="294" y="181" class="device-tx-graph-small">head=0</text>
+    <path class="device-tx-graph-path" data-tx-graphic-path="payload" d="M645 181H748 M690 289H748"/>
+    <g class="device-tx-graph-ring">
+      <text x="155" y="388" text-anchor="middle">Used ring</text><text x="155" y="410" text-anchor="middle" class="device-tx-graph-small">设备写 · 驱动读</text>
+      <circle cx="155" cy="510" r="76" class="device-tx-graph-track"/>
+      {% for x,y in [(118,417),(209,486),(118,555),(27,486)] %}
+      <g data-tx-graphic-used-slot="{{ loop.index0 }}" transform="translate({{ x }},{{ y }})"><rect width="74" height="54" rx="5"/><text x="37" y="16" text-anchor="middle" class="device-tx-graph-small">slot {{ loop.index0 }}</text><text x="37" y="34" text-anchor="middle" data-tx-graphic-entry>—</text><text x="37" y="48" text-anchor="middle" class="device-tx-graph-tiny" data-tx-graphic-length></text></g>
+      {% endfor %}
+      <text x="155" y="504" text-anchor="middle" class="device-tx-graph-small">used.idx</text><text x="155" y="526" text-anchor="middle" data-tx-graphic-used-index>0</text>
+      <text x="155" y="637" text-anchor="middle" class="device-tx-graph-small" data-tx-graphic-used-position>下一槽 0 → 1 → 2 → 3 → 0</text>
+    </g>
+    <g class="device-tx-graph-backend" data-tx-graphic-state="backend"><rect x="390" y="465" width="570" height="125" rx="8"/><text x="675" y="494" text-anchor="middle">QEMU virtio-net 后端 · 本例 vhost=off</text><text x="675" y="523" text-anchor="middle" class="device-tx-graph-small">读 avail → 解析链 → 读取数据 → TAP</text><text x="675" y="553" text-anchor="middle" class="device-tx-graph-small">缓冲区用完后：used.id = 0，used.len = 0</text><text x="675" y="576" text-anchor="middle" class="device-tx-graph-small" data-tx-graphic-backend-state>等待发布请求</text></g>
+    <path class="device-tx-graph-path" data-tx-graphic-path="consume" d="M490 358V463 M850 358V463"/>
+    <text x="506" y="407" class="device-tx-graph-small">读取链</text><text x="863" y="407" class="device-tx-graph-small">读取 P1</text>
+    <path class="device-tx-graph-path" data-tx-graphic-path="complete" d="M390 510H305V444H194"/><text x="298" y="490" class="device-tx-graph-small">归还链</text>
+    <text x="665" y="632" text-anchor="middle" class="device-tx-graph-small">kick / call eventfd 只承载通知；描述符和报文保存在共享内存</text>
+    <text x="665" y="657" text-anchor="middle" class="device-tx-graph-small">环槽按数组顺序循环使用，链首编号与环槽号相互独立</text>
+  </svg>
+</div>
+<p class="device-tx-queue-note">箭头分别表示链首引用、next 链接和 addr 缓冲区引用。环图表示循环索引，实际共享内存中的槽是连续数组；默认完整呈现，放大后可横向滚动查看细节。</p>

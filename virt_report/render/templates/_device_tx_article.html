@@ -3,14 +3,15 @@
 {% from '_mechanism_diagram.html' import diagram with context %}
 
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
-  <p>QEMU 可以向客户机提供 e1000 或 virtio-net 网卡。前者实现已有网卡的寄存器和描述符接口，客户机可以使用对应的硬件驱动；后者采用 virtio 协议，由客户机驱动和设备端通过 virtqueue 交换请求。沿一次发包过程，可以看到两种接口如何提交报文、通知设备，以及回收缓冲区。</p>
+  <h2>一个报文怎样离开虚拟机</h2>
+  <p>客户机准备好一个 60 B 以太网帧后，需要把三件事告诉设备：数据放在哪里、现在可以读取，以及读完后何时归还缓冲区。本文沿“准备 P1 → 发布队列 → QEMU 读取 → TAP 接收 → 驱动回收”追踪同一个请求，比较 e1000 寄存器接口与 virtio-net 共享队列。</p>
+  <p>virtio-net 的主线是：描述符记录地址和长度，available ring 发布描述符链首，used ring 归还已处理的链；报文位于描述符指向的缓冲区。kick 和中断提示另一端检查队列。理解这几个对象的关系后，就能区分数据传递、通知加速和缓冲区生命周期。</p>
   <p>本文分析 x86 / KVM 下的 QEMU 用户态网卡路径：e1000 与 modern virtio-net PCI 设备使用相同的 TAP 后端，关闭 vhost；virtio-net 采用 split virtqueue。示例只发送一个普通以太网帧，省略校验和与分段卸载，不配置客户机 IOMMU。涉及 DMA 地址的实际系统，还需按平台配置完成地址转换。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="interfaces" class="mechanism-section">
-  <h2>设备接口与队列</h2>
+  <h2>接口选择：e1000 寄存器与 virtio 队列</h2>
   <p>网络发送包含三类交互：客户机在内存中准备报文和队列元数据，通过设备接口提交工作，再从完成记录中判断哪些缓冲区可以回收。报文内容、提交通知和完成通知承担不同职责，追踪时应分别观察。</p>
   <h3>e1000：实现硬件定义的接口</h3>
   <p>e1000 驱动在客户机内存中分配 TX 描述符环。描述符记录缓冲区地址、长度以及命令和状态位；<code>EOP</code>标记一个报文的结束，<code>RS</code>请求状态回写。设备寄存器 <code>TDBAL/TDBAH</code>保存环地址，<code>TDLEN</code>保存长度，<code>TDH</code>和 <code>TDT</code>表示消费位置与驱动提交的尾位置。</p>
@@ -32,7 +33,7 @@
 </section>
 
 <section id="virtqueue" class="mechanism-section">
-  <h2>virtqueue 的数据结构与操作</h2>
+  <h2>共享结构：描述符、两个环与报文缓冲区</h2>
   <p>split virtqueue 使用三个共享区域：描述符表保存缓冲区位置，available ring 发布可用的描述符链，used ring 归还已处理的链。两个环中的项可以循环复用，报文则保存在描述符指向的内存中。描述符表、环槽和报文缓冲区各有自己的地址与生命周期。</p>
   {{ diagram('virtqueue-tx-layout', '一条 TX 请求在 split virtqueue 中的关联', '本例队列长度为 4，图示请求已完成、驱动尚未回收。环槽 3 保存链首 0，描述符链为 0 → 2，实际数据位于各自的客户机缓冲区；used.len 为 0 表示设备没有向这条发送链写入数据。') }}
   <div class="device-tx-structure-map" role="group" aria-label="Split virtqueue 的共享数据与读写分工">
@@ -58,7 +59,7 @@
 </section>
 
 <section id="flow" class="mechanism-section">
-  <h2>一次发包的处理过程</h2>
+  <h2>逐步发送：发布 P1、后端读取与驱动回收</h2>
   <p>下图以报文 P1 为例，展示客户机准备缓冲区、设备处理和驱动回收的全过程。两种网卡使用相同的 TAP 后端，图中的变化集中在队列和通知机制。</p>
   {% include '_device_tx_lab.html' %}
   <h3>e1000 的发送路径</h3>
@@ -82,7 +83,7 @@
 </section>
 
 <section id="notification" class="mechanism-section">
-  <h2>通知与完成</h2>
+  <h2>通知边界：kick、完成记录与中断</h2>
   <h3>发布队列与发送 kick</h3>
   <p>驱动先发布可用缓冲区，后端才能安全地消费。通知只提示设备检查队列；多个请求可以共享一次 kick，设备正在处理队列时也可以抑制新的 kick。队列发布需要正确的内存屏障，通知抑制还需要防止“设备准备休眠时恰好新增请求”的竞态。仅删除通知操作，会让后端失去唤醒机会。</p>
   <p>在普通 MMIO 路径中，客户机写 virtio PCI 通知地址，QEMU 的 <code>virtio_pci_notify_write()</code>找到队列后调用通知函数。启用 ioeventfd 时，QEMU 预先注册通知地址与 eventfd 的对应关系；KVM 处理匹配的写入并触发 eventfd，QEMU 的事件处理再调度该队列。这减少了通过 <code>KVM_RUN</code>返回用户态模拟此次 MMIO 的往返。CPU 从客户机执行切换到 KVM 的硬件退出仍可能发生，二者应分开计数。<a href="{{ qemu_source }}hw/virtio/virtio-pci.c#L371-L415">ioeventfd 注册</a>、<a href="{{ qemu_source }}hw/virtio/virtio.c#L3949-L3955">QEMU 事件处理</a>、<a href="{{ kernel_source }}Documentation/virt/kvm/api.rst#L2092-L2135">KVM_IOEVENTFD</a></p>
@@ -93,7 +94,7 @@
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码</h2>
+  <h2>源码路径：从网卡接口到 TAP</h2>
   <p>两条调用链在 QEMU 网络后端处汇合。阅读时可以分别标记“寄存器或队列状态”“客户机缓冲区访问”“后端发送”三个部分：</p>
   <pre><code>e1000
   e1000_mmio_write(TDT)
@@ -122,7 +123,7 @@ TAP 后端
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>接口演进与后端分工</h2>
+  <h2>演进取舍：packed 队列与独立后端</h2>
   <h3>兼容硬件驱动与统一虚拟设备接口</h3>
   <p>模拟已有网卡可以利用操作系统现成的驱动，代价是设备模型需要遵循硬件的寄存器、副作用、描述符格式和中断行为。virtio 选择统一的特性协商、队列和通知机制，再按网络、块设备等用途扩展设备格式。这样可以减少不同虚拟设备之间重复设计的接口，也要求客户机安装匹配的驱动，并正确处理功能协商与版本兼容。</p>
   <p>virtio 的队列格式本身也在演进。1.0 及更早规范使用 split virtqueue，1.1 加入 packed virtqueue，将请求发布与完成状态合并到同一描述符环，减少处理队列时涉及的分散内存区域。packed 描述符使用 <code>addr / len / id / flags</code>，以 AVAIL、USED 位和 wrap counter 判断所有权；直接链按环中连续位置组织，不再使用 split 的 next 字段。驱动和设备仍分别保留事件抑制结构。两种格式需通过特性协商选定。<a href="https://docs.oasis-open.org/virtio/virtio/v1.1/cs01/virtio-v1.1-cs01.html">VIRTIO 1.1 规范</a></p>
@@ -131,6 +132,18 @@ TAP 后端
   <p>统一客户机接口之后，可以继续调整宿主处理位置。vhost-net 将 virtqueue 的主要网络数据处理移到宿主内核，减少经 QEMU 用户态处理报文的环节；vhost-user 则通过控制协议，让独立用户态进程取得共享内存、队列和通知所需的信息。客户机侧仍可使用 virtio-net 驱动。<a href="{{ qemu_source }}docs/interop/vhost-user.rst#L15-L48">vhost-user 的控制面与队列共享</a></p>
   <p>处理位置的变化带来新的资源和状态管理任务：线程如何调度、内存如何共享、后端退出时如何处理队列，以及迁移时如何保存尚未完成的请求。vhost-user 的 Unix socket 负责建立与管理这些关系，普通报文通过共享队列和内存交换。网络后端可以使用 DPDK，块设备后端可以使用 SPDK；两者的具体请求路径需要分别分析。</p>
   <p>三种后端的初始化与发包过程见<a href="qemu-vhost-net.html">《virtio-net 的后端处理：vhost-net 与 vhost-user》</a>。比较方案时，应固定客户机负载、后端出口和卸载配置，再观察队列处理、通知、复制与调度开销。设备接口和后端位置是两个独立维度，同一 virtio 接口可以连接不同后端，硬件直通和 vDPA 则还会改变设备访问与数据面实现。</p>
+  <p>使用 DPDK 的独立用户态网络后端见<a href="dpdk-vhost-user-net.html">《DPDK vhost-user 的报文转发与缓冲区管理》</a>：同样的客户机 TX 链先转换为 rte_mbuf，再提交给物理网卡 PMD。客户机缓冲区与 PMD 报文缓冲区的回收时刻也随之分开。</p>
+</section>
+
+<section id="evaluation" class="mechanism-section">
+  <h2>如何判断瓶颈与改进是否有效</h2>
+  <p>回到 P1：一次成功处理依次推进 avail.idx、后端消费位置、used.idx 和驱动回收位置。四个位置停在哪里，给出了排查起点；只观察报文吞吐或中断次数，无法区分队列等待与后端拥塞。</p>
+  <table><thead><tr><th scope="col">现象</th><th scope="col">解释与检查</th><th scope="col">改进与代价</th></tr></thead><tbody>
+    <tr><td>avail 增长，后端消费落后</td><td>检查 kick 是否到达、QEMU 发送任务调度和 CPU 占用</td><td>批处理、ioeventfd 或独立后端可以减少调度往返；批量过大也会延后单个报文处理</td></tr>
+    <tr><td>已取出请求，used 迟迟不推进</td><td>检查 TAP 可写状态、异步发送回调与后端排队</td><td>增加出口能力或调整排队策略；仅增加 virtqueue 深度会占用更多内存并延长等待</td></tr>
+    <tr><td>used 已推进，客户机没有回收</td><td>检查完成通知条件、客户机中断或主动回收路径</td><td>通知合并减少中断，轮询降低唤醒等待；两者都要兼顾空闲 CPU 消耗与尾延迟</td></tr>
+  </tbody></table>
+  <p>e1000 的兼容性便于使用已有驱动，virtio 的通用队列便于扩展和替换后端。性能比较应同时记录每秒报文数、吞吐、尾延迟、宿主 CPU 和丢包，固定包长、队列数与卸载配置；某一项开销下降，仍需确认它没有转移到另一个线程或增加排队时间。</p>
 </section>
 
 <section id="sources" class="mechanism-section">
@@ -141,6 +154,6 @@ TAP 后端
     <li>QEMU 10.2.0：<a href="{{ qemu_source }}net/tap.c">tap.c</a>，TAP 数据提交与暂不可写处理；<a href="{{ qemu_source }}net/net.c">net.c</a>，网络队列及发送分派。</li>
     <li><a href="{{ kernel_source }}Documentation/virt/kvm/api.rst#L2092-L2135">Linux 6.18 KVM_IOEVENTFD</a>：客户机 PIO / MMIO 写与 eventfd 的关联。</li>
     <li><a href="{{ kernel_source }}include/uapi/linux/virtio_ring.h">Linux 6.18 virtio_ring.h</a>：描述符、可用环、已用环及 packed 格式；<a href="{{ kernel_source }}drivers/virtio/virtio_ring.c">virtio_ring.c</a>：驱动发布、通知检查与回收。</li>
-    <li><a href="https://docs.oasis-open.org/virtio/virtio/v1.3/virtio-v1.3.html">VIRTIO 1.3 规范</a>：split virtqueue、驱动通知和网络设备发送约定；<a href="https://docs.oasis-open.org/virtio/virtio/v1.1/cs01/virtio-v1.1-cs01.html">VIRTIO 1.1 规范</a>：split 与 packed 队列格式。</li>
+    <li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">VIRTIO 1.2 规范</a>：split virtqueue、驱动通知和网络设备发送约定；<a href="https://docs.oasis-open.org/virtio/virtio/v1.1/cs01/virtio-v1.1-cs01.html">VIRTIO 1.1 规范</a>：split 与 packed 队列格式。</li>
   </ul>
 </section>

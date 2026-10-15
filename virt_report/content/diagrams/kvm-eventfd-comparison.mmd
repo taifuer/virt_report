@@ -1,0 +1,25 @@
+sequenceDiagram
+    accTitle: 客户机提交方向的普通 MMIO 与 ioeventfd 对比
+    accDescr: 客户机先在共享内存发布队列内容。普通 MMIO 使 KVM_RUN 返回 QEMU 设备模型；匹配 ioeventfd 的 doorbell 写在 KVM 内发布事件并继续客户机。后端从共享队列取请求，eventfd 只通知，不传输数据。
+    participant G as 客户机驱动
+    participant K as KVM 内核
+    participant Q as QEMU vCPU / 设备模型
+    participant E as kickfd
+    participant B as 设备后端
+    participant M as 客户机内存中的队列
+    G-->>M: 发布描述符、缓冲区与 avail
+    alt doorbell 由普通用户态 MMIO 回调处理
+        G->>K: doorbell 写：VM Exit
+        K->>Q: KVM_RUN 返回 KVM_EXIT_MMIO
+        Q->>Q: 分派设备写回调
+        Q->>B: 通知或提交后端工作
+        Q->>K: 再次 KVM_RUN，完成指令
+        K->>G: VM Entry，继续执行
+    else 配置 ioeventfd 后的队列通知
+        G->>K: doorbell 写：通常仍有 VM Exit
+        K->>E: 地址 / 长度 / 可选数据匹配，signal kickfd
+        E->>B: 监听者得到通知
+        K->>G: 完成写入并继续，不返回 QEMU
+    end
+    B-->>M: 读取 avail、描述符及缓冲区，处理请求
+    Note over E,M: kickfd 只通知；描述符和实际数据留在客户机内存中

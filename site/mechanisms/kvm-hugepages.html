@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=c084ccad2981">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c084ccad2981">
-<link rel="stylesheet" href="../assets/hugepage-map.css?v=c084ccad2981"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/hugepage-map.css?v=32683d73423f"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -43,20 +43,20 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#memory-virtualization">内存虚拟化</a></div>
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="memory-virtualization.html">内存虚拟化</a></div>
     <h1>KVM 大页映射的建立、拆分与恢复</h1>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">前言</a></li><li><a href="#layers">三个层面的页大小</a></li><li><a href="#eligibility">何时可以建立大页</a></li><li><a href="#structures">页级别、表项与地址</a></li><li><a href="#split">脏页记录如何推动拆分</a></li><li><a href="#recovery">关闭记录后的恢复</a></li><li><a href="#implementation">关键源码</a></li><li><a href="#evolution">从按需拆分到原位恢复</a></li><li><a href="#sources">参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、大页效率与逐页跟踪的冲突</a></li><li><a href="#layers">二、客户机页、后备页与 EPT 叶子</a></li><li><a href="#eligibility">三、何时可以建立大页</a></li><li><a href="#structures">四、一个 2 MiB 映射如何拆成 512 项</a></li><li><a href="#split">五、脏页记录如何推动拆分</a></li><li><a href="#recovery">六、关闭记录后的恢复</a></li><li><a href="#implementation">七、源码：级别选择、拆分与恢复</a></li><li><a href="#tradeoffs">八、拆分成本与恢复效果如何衡量</a></li><li><a href="#evolution">九、从按需拆分到原位恢复</a></li><li><a href="#sources">十、参考资料</a></li></ol></nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2><span class="mechanism-heading-number">一、</span>大页效率与逐页跟踪的冲突</h2>
   <p>同一段虚拟机内存可以由一个 2 MiB EPT 叶子项覆盖，也可以由 512 个 4 KiB 叶子项覆盖。大页减少第二级页表遍历层数和表项数量；细粒度映射则允许 KVM 分别控制子页的写权限与脏状态。迁移开始和结束时，这两种需求会推动映射粒度转换。</p>
   <p>本文以 x86、Intel EPT、KVM TDP MMU 和普通 HVA 后备 RAM 为例，跟踪大页建立、脏页记录期间的拆分，以及关闭记录后的恢复。地址转换和首次缺页的完整路径见<a href="kvm-ept-fault.html">内存映射与 EPT 缺页处理</a>。</p>
 <p class="mechanism-baselines">源码版本：<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>、<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p></section>
 
 <section id="layers" class="mechanism-section">
-  <h2>三个层面的页大小</h2>
+  <h2><span class="mechanism-heading-number">二、</span>客户机页、后备页与 EPT 叶子</h2>
   <table><thead><tr><th scope="col">层面</th><th scope="col">管理者与映射</th><th scope="col">与 EPT 大页的关系</th></tr></thead><tbody>
     <tr><td>客户机页表</td><td>客户机内核管理 GVA → GPA</td><td>客户机使用 4 KiB 页，EPT 仍可用 2 MiB 叶子覆盖连续 GPA；客户机使用大页也不能保证 EPT 使用大页。</td></tr>
     <tr><td>宿主后备映射</td><td>宿主内核管理 QEMU 的 HVA → HPA；可能使用 hugetlb 或透明大页</td><td>提供当前可用的物理连续范围和宿主页表级别，限制 KVM 能建立的映射。</td></tr>
@@ -66,14 +66,14 @@
 </section>
 
 <section id="eligibility" class="mechanism-section">
-  <h2>何时可以建立大页</h2>
+  <h2><span class="mechanism-heading-number">三、</span>何时可以建立大页</h2>
   <p>一个 2 MiB 叶子必须描述完整、按 2 MiB 对齐的 GPA 和 HPA 区间，并以一组属性覆盖整个范围。KVM 还要求该范围落在允许大页的内存槽中，GPA 与 HVA 在对应页级别具有相同偏移。槽首尾未覆盖完整大页、地址偏移不匹配、页跟踪或混合内存属性，都可能限制可用级别。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L13379-L13407">槽边界与相对对齐检查</a></p>
   <p><code>host_pfn_mapping_level()</code> 遍历宿主页表，识别 PMD / PUD 叶子。<code>kvm_mmu_max_mapping_level()</code> 再结合硬件上限和槽的大页限制，返回可用级别。因此，HVA 连续，甚至恰好连续的若干物理页，都不足以单独保证本路径建立大页；还需符合宿主映射级别与 KVM 的检查。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/mmu.c#L3228-L3409">级别选择</a></p>
   <p>宿主可写性、槽属性和执行限制共同约束最终权限。例如 iTLB multihit 缓解可使大页不可执行，并让执行访问使用较小映射。脏页记录开启时，<code>kvm_mmu_hugepage_adjust()</code> 保持缺页目标为 4 KiB，以便逐页记录；后备页仍然可以是 2 MiB。</p>
 </section>
 
 <section id="structures" class="mechanism-section">
-  <h2>页级别、表项与地址</h2>
+  <h2><span class="mechanism-heading-number">四、</span>一个 2 MiB 映射如何拆成 512 项</h2>
   <table><thead><tr><th scope="col">对象</th><th scope="col">字段或操作</th></tr></thead><tbody>
     <tr><td><code>kvm_page_fault</code></td><td><code>max_level</code> 给出本次缺页上限；<code>req_level</code> 结合后备条件；<code>goal_level</code> 加入限制后决定实际安装级别。</td></tr>
     <tr><td><code>kvm_lpage_info</code></td><td><code>disallow_lpage</code> 记录某个候选大页范围的限制，供级别选择使用。</td></tr>
@@ -84,7 +84,7 @@
 </section>
 
 <section id="split" class="mechanism-section">
-  <h2>脏页记录如何推动拆分</h2>
+  <h2><span class="mechanism-heading-number">五、</span>脏页记录如何推动拆分</h2>
   <p>QEMU 的内存监听器通过槽标志开启 <code>KVM_MEM_LOG_DIRTY_PAGES</code>。在启用 eager splitting、未使用 initially-all-set 的路径中，KVM 尝试预先将大页拆到 4 KiB，再设置跟踪所需的写保护或脏位状态。提前拆分把页表分配工作移出首次写入路径；分配失败时仍可先保护大页，随后由缺页路径处理。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L657-L753">QEMU 标志更新</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L13530-L13556">KVM 启停处理</a></p>
   <p>下面选择软件写保护式记录：没有 PML，eager splitting 成功，未启用 initially-all-set，宿主页允许写入且不启用 NX 大页缓解。开启操作完成后，512 个子项均为 W=0。写 P3 时产生写保护缺页，KVM 记录 P3 并恢复该项的 W；P4 仍可保持 W=0。显示的 dirty 是逐页日志标记，与 EPT 硬件 D 位分开。</p>
 <section class="hugepage-lab" data-hugepage-lab data-mechanism-view="lab" aria-labelledby="hugepage-lab-title">
@@ -120,7 +120,7 @@
 </section>
 
 <section id="recovery" class="mechanism-section">
-  <h2>关闭记录后的恢复</h2>
+  <h2><span class="mechanism-heading-number">六、</span>关闭记录后的恢复</h2>
   <p>迁移取消后，源虚拟机可能继续运行。关闭槽的脏页记录会调用 <code>kvm_mmu_recover_huge_pages()</code>。Linux 6.18 的 TDP 分支遍历候选非叶子项，重新检查槽和宿主允许的映射级别，找到已有叶子项后构造大页项，原子替换父项并完成所需的 TLB 刷新。后备条件仍不满足的范围保持小页映射。</p>
   <figure class="mechanism-diagram" data-diagram="kvm-hugepage-lifecycle" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
@@ -128,9 +128,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看EPT 大页的拆分与原位恢复" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="EPT 大页的拆分与原位恢复">
-    <img src="../assets/kvm-hugepage-lifecycle.svg?v=c084ccad2981" alt="示例采用预先拆分和软件写保护。2 MiB 叶子拆成 512 个 4 KiB 叶子，关闭跟踪后核验条件并原位恢复。宿主后备范围与子页 PFN 始终不变。" loading="lazy">
+    <img src="../assets/kvm-hugepage-lifecycle.svg?v=32683d73423f" alt="示例采用预先拆分和软件写保护。2 MiB 叶子拆成 512 个 4 KiB 叶子，关闭跟踪后核验条件并原位恢复。宿主后备范围与子页 PFN 始终不变。" loading="lazy">
   </div>
-  <figcaption>示例采用预先拆分和软件写保护。2 MiB 叶子拆成 512 个 4 KiB 叶子，关闭跟踪后核验条件并原位恢复。宿主后备范围与子页 PFN 始终不变。 <a href="../assets/kvm-hugepage-lifecycle.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>示例采用预先拆分和软件写保护。2 MiB 叶子拆成 512 个 4 KiB 叶子，关闭跟踪后核验条件并原位恢复。宿主后备范围与子页 PFN 始终不变。 <a href="../assets/kvm-hugepage-lifecycle.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: KVM TDP MMU 大页拆分与原位恢复
     accDescr: 在宿主两兆字节后备映射稳定的条件下，KVM 将一个两兆字节 EPT 叶子拆分为五百一十二个四千字节叶子，完成写保护和 TLB 刷新后逐页记录写入。关闭记录时重新核验大页条件，原位恢复大页并刷新 TLB。宿主物理范围始终不变，映射转换不复制客户机数据。
@@ -152,7 +152,7 @@
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码</h2>
+  <h2><span class="mechanism-heading-number">七、</span>源码：级别选择、拆分与恢复</h2>
   <table><thead><tr><th scope="col">问题</th><th scope="col">固定版本入口</th></tr></thead><tbody>
     <tr><td>缺页为何选择这个级别</td><td><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/mmu_internal.h#L254-L276"><code>max_level / req_level / goal_level</code></a>；<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/mmu.c#L3342-L3409"><code>kvm_mmu_hugepage_adjust()</code></a></td></tr>
     <tr><td>如何生成并发布 512 个子项</td><td><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/tdp_mmu.c#L1522-L1558"><code>tdp_mmu_split_huge_page()</code></a>；<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/spte.c#L330-L364"><code>make_small_spte()</code></a></td></tr>
@@ -161,14 +161,20 @@
   </tbody></table>
 </section>
 
+<section id="tradeoffs" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">八、</span>拆分成本与恢复效果如何衡量</h2>
+  <p>在前面的 2 MiB 示例中，拆分增加一张 4 KiB 页表，原来一个叶子覆盖的范围变成 512 个独立叶子。代价包括页表内存、地址转换缓存压力，以及重新保护和后续写入的处理；收益是可以精确指出哪些 4 KiB 页需要重传。映射项增多并不意味着应用访问就按同样倍数变慢，实际影响取决于工作集、TLB 命中和访问模式。</p>
+  <p>比较拆分策略，应分别测量开启跟踪时的停顿、迁移期间的客户机延迟与缺页开销、关闭跟踪后的大页恢复情况。预先拆分把一部分工作移到开启阶段，按需拆分把成本留给后续访问；原位恢复减少重新建图的缺页，但不能补齐宿主缺失的连续后备条件。只看迁移完成时间，会漏掉迁移结束后仍使用小页映射的持续影响。</p>
+</section>
+
 <section id="evolution" class="mechanism-section">
-  <h2>从按需拆分到原位恢复</h2>
+  <h2><span class="mechanism-heading-number">九、</span>从按需拆分到原位恢复</h2>
   <p>2022 年的 <a href="https://github.com/torvalds/linux/commit/a3fe5dbda0a4bb7759dcd5a0ad713d347e020401">TDP eager splitting 提交</a>将拆分提前到启用脏页记录时，减少客户机首次写入时承担的页表处理。它采取尽力而为策略，未完成的拆分仍可通过保护和缺页保证正确性。</p>
   <p>Linux 6.13 的 <a href="https://github.com/torvalds/linux/commit/c59de1413391868057cfe70b45dbce66de643064">KVM MMU 更新</a>加入 TDP 大页原位恢复，避免先撤销下级映射、等待再次访问才重建大页。本文基线已包含这一路径。预先拆分与原位恢复分别减少进入和退出细粒度跟踪时的 vCPU 扰动，但仍需分配页表、同步 TLB，并受宿主后备条件约束。</p>
 </section>
 
 <section id="sources" class="mechanism-section">
-  <h2>参考资料</h2>
+  <h2><span class="mechanism-heading-number">十、</span>参考资料</h2>
   <ul>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/x86/mmu.rst">Linux 6.18：KVM x86 MMU 结构与页级别</a></li>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/mmu.c#L3342-L3409">Linux 6.18：后备级别与大页选择</a></li>
@@ -183,6 +189,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=c084ccad2981" defer></script>
-<script src="../assets/hugepage-map.js?v=c084ccad2981" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+<script src="../assets/hugepage-map.js?v=32683d73423f" defer></script></body>
 </html>

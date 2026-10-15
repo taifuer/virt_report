@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>虚拟机启动：资源准备、机器创建与客户机引导 - virt-report</title>
+  <meta name="description" content="从复位状态与虚拟硬件准备出发，沿 Libvirt、QEMU、固件和客户机引导解释启动顺序，区分进程建立、运行放行与服务就绪。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
+  <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=85f3a75ef38f" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#vm-startup">虚拟机启动</a></div>
+    <h1>虚拟机启动：资源准备、机器创建与客户机引导</h1>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、启动要跨过哪些阶段</a></li><li><a href="#state">二、先建立硬件，再让客户机自己引导</a></li><li><a href="#process">三、从定义到客户机执行</a><ol><li><a href="#process-part-1">1. Libvirt 准备宿主环境</a></li><li><a href="#process-part-2">2. QEMU 建机，KVM 执行</a></li></ol></li><li><a href="#example">四、暂停启动一台虚拟机</a></li><li><a href="#evolution">五、受控启动与兼容性的演进</a></li><li><a href="#evaluation">六、启动优化应对应具体阶段</a></li><li><a href="#reading">七、沿启动路径继续阅读</a></li><li><a href="#sources">八、参考资料</a></li></ol></nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">一、</span>启动要跨过哪些阶段</h2>
+  <p>启动虚拟机涉及宿主资源准备、虚拟机器创建和客户机引导。Libvirt 把定义转为可运行的进程配置，QEMU 创建 CPU、内存与设备，KVM 提供硬件执行环境，客户机固件和操作系统随后完成自己的初始化。定位启动失败或耗时，需要先区分问题发生在哪一阶段。</p>
+  <p>冷启动首先要为客户机建立一套虚拟硬件，并把 CPU 和设备放到约定的复位状态。客户机随后像物理机一样，从固件开始识别硬件、寻找启动介质，再加载操作系统。管理层负责前一阶段的资源与执行条件，客户机软件负责后一阶段的引导。</p>
+  <p>本文以 x86、Q35、KVM 加速的冷启动为例。已有保存状态的恢复、迁入虚拟机的启动会复用其中部分步骤，但客户机的初始执行状态不同。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/libvirt/libvirt/tree/4d937284669ecf180abea087d0b3ad67d9476349" target="_blank" rel="noopener noreferrer" title="commit 4d937284669ecf180abea087d0b3ad67d9476349">Libvirt 12.0.0</a>。</p></section>
+<section id="state" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">二、</span>先建立硬件，再让客户机自己引导</h2>
+  <p>物理机上电后，CPU 从架构规定的复位入口执行固件。虚拟机也需要这个起点：QEMU 把固件映射到客户机地址空间，设置 CPU 复位状态，并提供固件能够枚举的总线、内存和设备。KVM 随后执行客户机指令；固件读磁盘时，设备模型和存储后端才把请求变成真实 I/O。</p>
+  <p>设想启动一台 2 vCPU、4 GiB RAM、virtio 磁盘的虚拟机。XML 中的“4 GiB”先变为 QEMU 的内存后端与客户机地址布局，再注册到 KVM；磁盘路径先变为块后端，再连接到客户机可见的控制器。只有这些关系成立，客户机才有条件执行引导程序。创建进程只是其中一步。</p>
+  <table><thead><tr><th>观察到的状态</th><th>已经完成的工作</th><th>还不能据此确认的事</th></tr></thead><tbody>
+    <tr><td>虚拟机已定义</td><td>管理层保存了配置</td><td>宿主资源是否可用、QEMU 能否启动</td></tr>
+    <tr><td>机器已建立、处于暂停</td><td>CPU、RAM、设备及管理连接已准备</td><td>客户机是否已经执行固件</td></tr>
+    <tr><td>虚拟机运行中</td><td>vCPU 获准执行</td><td>内核、网络或应用是否就绪</td></tr>
+    <tr><td>业务健康检查通过</td><td>指定服务已能处理测试请求</td><td>其他服务及完整业务链路是否正常</td></tr>
+  </tbody></table>
+</section>
+<section id="process" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">三、</span>从定义到客户机执行</h2>
+  <figure class="mechanism-diagram" data-diagram="startup-overview-handoff" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>虚拟机启动的分工与放行顺序</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看虚拟机启动的分工与放行顺序" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="虚拟机启动的分工与放行顺序">
+    <img src="../assets/startup-overview-handoff.svg?v=32683d73423f" alt="Libvirt 先准备宿主资源，再启动暂停的 QEMU；QEMU 建好机器，Libvirt 完成运行前设置后放行 vCPU。固件、操作系统与服务就绪属于客户机内部阶段。" loading="lazy">
+  </div>
+  <figcaption>Libvirt 先准备宿主资源，再启动暂停的 QEMU；QEMU 建好机器，Libvirt 完成运行前设置后放行 vCPU。固件、操作系统与服务就绪属于客户机内部阶段。 <a href="../assets/startup-overview-handoff.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+  accTitle: 虚拟机启动的分工与放行顺序
+  accDescr: 启动请求进入 Libvirt，完成资源准备和进程隔离，QEMU 创建暂停的机器与 KVM 对象；Libvirt 配置 QMP 后放行 vCPU，客户机依次执行固件、内核与服务。
+  A[&#34;启动请求与虚拟机定义&#34;] --&gt; B[&#34;Libvirt：资源、权限与进程隔离&#34;]
+  B --&gt; C[&#34;QEMU：机器、RAM、设备与 KVM 对象&lt;br/&gt;-S 暂停客户机执行&#34;]
+  C --&gt; D[&#34;Libvirt：QMP 查询与运行前设置&#34;]
+  D --&gt;|cont| E[&#34;vCPU 开始执行：KVM_RUN&#34;]
+  E --&gt; F[&#34;客户机：固件 → 内核 → 服务&#34;]
+  F --&gt; G[&#34;业务健康检查：确认服务就绪&#34;]
+  classDef manager fill:#e4f1ec,stroke:#438575,color:#173e34;
+  classDef machine fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef guest fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class A,B,D manager;
+  class C,E machine;
+  class F,G guest;
+</code></pre></details>
+</figure>
+  <h3 id="process-part-1"><span class="mechanism-heading-number">1. </span>Libvirt 准备宿主环境</h3>
+  <p>启动请求先经过配置与权限检查，再准备磁盘、网络、设备和进程隔离。fork 与 exec 之间的握手让 cgroup、权限等约束在 QEMU 使用资源前生效。Libvirt 还加入 <code>-S</code>，让 QEMU 完成机器创建后暂不执行客户机代码。</p>
+  <p>这两个暂停点解决不同的竞态。进程启动握手用于避免 QEMU 在隔离措施生效前使用宿主资源；<code>-S</code> 用于避免客户机在管理层完成线程设置等操作前开始运行。若任一步失败，管理层要按已完成阶段回收资源，而不能留下被其他任务误认为可用的实例。</p>
+  <h3 id="process-part-2"><span class="mechanism-heading-number">2. </span>QEMU 建机，KVM 执行</h3>
+  <p>QEMU 选择机器与 CPU 型号，建立 RAM、总线和设备，创建 KVM VM、vCPU 及宿主线程，完成复位。Libvirt 连接 QMP，查询线程并设置运行参数，再发送 <code>cont</code>。vCPU 开始进入 KVM_RUN，启动处理器从固件入口执行。</p>
+  <p>常见的磁盘启动路径中，固件选择启动设备并运行引导程序，引导程序加载内核与初始文件系统，内核初始化驱动和根文件系统，用户空间再启动服务。每个阶段都有独立的失败位置与完成条件，启动耗时也应沿这条链分别记录。</p>
+</section>
+<section id="example" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">四、</span>暂停启动一台虚拟机</h2>
+  <p>对已定义、没有 managed save 的 <code>demo</code> 执行：</p>
+  <pre><code>virsh start demo --paused
+virsh domstate demo
+virsh resume demo</code></pre>
+  <p>第二步可以看到 paused，此时 QEMU 进程、机器与管理连接已经存在。resume 允许客户机开始执行；随后仍有固件枚举、内核引导和服务启动。应用可用时间需要客户机代理或业务健康检查确认，不能只看 PID、QMP 连接或 RUNNING 状态。</p>
+  <p>若 resume 成功后仍看不到登录提示，应先查看客户机控制台：停在固件菜单，检查启动介质和设备识别；内核找不到根文件系统，检查启动参数与驱动；已经登录但业务未就绪，再检查客户机网络和服务。沿阶段定位，可以避免把客户机软件问题都归为 QEMU 启动失败。</p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">五、</span>受控启动与兼容性的演进</h2>
+  <p>QMP 的结构化命令与事件让管理程序可以协调启动阶段，而不必解析人工 monitor 输出。<code>-S</code> 提供执行前的暂停点；preconfig 则把部分配置操作提前到板级机器创建之前，两者不能互换。版本化机器类型让升级后的 QEMU 继续提供既有虚拟硬件接口，但 CPU 型号、固件和设备属性仍需匹配。</p>
+  <p>管理从人工命令转向结构化接口后，可以明确记录每阶段的输入与结果；机器类型的版本化进一步让相同虚拟硬件接口跨 QEMU 版本保留。代价是要维护更多状态和兼容属性。旧机器类型可以保留客户机预期，新设备和新属性则需要另行验证，升级程序并不会自动把运行中的机器转换为新型号。</p>
+</section>
+<section id="evaluation" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>启动优化应对应具体阶段</h2>
+  <table><thead><tr><th>改进方向</th><th>减少的等待</th><th>需要接受的条件或代价</th></tr></thead><tbody>
+    <tr><td>预先准备网络、存储与必要资源</td><td>启动请求中的宿主准备时间</td><td>提前占用资源，仍需处理失效与清理</td></tr>
+    <tr><td>裁减无用设备，调整客户机引导</td><td>设备初始化、固件枚举和服务等待</td><td>要验证驱动、引导方式和业务依赖</td></tr>
+    <tr><td>预分配 RAM</td><td>运行初期的首次分配抖动</td><td>可能延长机器准备阶段，并提前占用内存</td></tr>
+    <tr><td>从保存状态恢复</td><td>重新执行固件、内核及部分初始化</td><td>保存状态兼容性、恢复 I/O 和外部连接一致性</td></tr>
+  </tbody></table>
+  <p>启动总耗时应拆为宿主准备、建机、固件、内核和应用就绪。优化其中一段后，要同时检查失败清理和服务可用时间。启动流程的核心是逐步建立运行条件，并在条件满足后放行下一阶段；这条顺序同样决定了故障定位的方法。</p>
+</section>
+<section id="reading" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">七、</span>沿启动路径继续阅读</h2>
+  <ul>
+    <li><a href="libvirt-domain-start.html">Libvirt 虚拟机启动流程</a>：宿主资源、两道启动屏障与失败清理。</li>
+    <li><a href="qemu-vm-startup.html">QEMU 虚拟机启动流程</a>：机器对象、KVM 初始化与首次执行。</li>
+    <li><a href="qemu-qom-device.html">QEMU 对象模型与设备初始化</a>：对象创建、属性设置和 realize。</li>
+    <li><a href="kvm-vcpu-run.html">KVM vCPU 执行与退出处理</a>：启动后的运行循环。</li>
+  </ul>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">八、</span>参考资料</h2>
+  <ul>
+    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8566-L8707">Libvirt：完成启动与失败处理</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/vl.c#L3769-L3850">QEMU：机器、执行后端与启动阶段</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/system/managed-startup.rst">QEMU：-S 与 preconfig</a></li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#vm-startup">虚拟机启动原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=85f3a75ef38f"></script>
+<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+</body>
+</html>

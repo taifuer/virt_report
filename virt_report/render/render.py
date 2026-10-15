@@ -14,6 +14,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from virt_report.config import Config
 from virt_report.report_links import prepare_report_links
 from virt_report.render.calendar import build_archive_index, build_archive_views
+from virt_report.render.article_outline import prepare_outline
 from virt_report.summarize import periods, report as report_builder
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -40,6 +41,19 @@ MECHANISM_DIAGRAM_NAMES = (
     "qcow2-mapping-cow",
     "kvm-halt-wakeup", "kvm-hugepage-lifecycle",
     "tcg-translation-pipeline", "tcg-tb-lifecycle",
+    "virtualization-system-overview", "cpu-execution-overview", "memory-address-overview",
+    "device-backend-overview", "interrupt-delivery-overview", "kvm-eventfd-comparison", "kvm-irqfd-comparison",
+    "dpdk-vhost-data-path", "dpdk-buffer-ownership", "dpdk-vhost-completion",
+    "startup-overview-handoff", "migration-overview-handoff",
+    "hotplug-overview-lifecycle", "upgrade-overview-ownership",
+    "qemu-internals-overview", "libvirt-internals-overview",
+    "qemu-overview-read-lifecycle", "libvirt-suspend-sequence",
+    "kvm-internals-execution",
+    "kvm-internal-objects", "kvm-request-tlb-sequence", "kvm-request-entry-race",
+    "interrupt-controller-paths", "interrupt-acceleration-layers",
+    "cpu-foundation-methods", "memory-foundation-paging", "virtualization-isolation-example",
+    "kvm-clock-read", "kvm-deadline-timer",
+    "virtio-init-handshake", "virtio-init-queue-layout",
 )
 MECHANISM_LAYOUT_NAMES = ("migration-wire-layout",)
 MECHANISM_ASSET_NAMES = ("mechanisms.css", "mechanisms.js", "precopy-lab.css",
@@ -312,7 +326,7 @@ def render_versions_html(config: Config, content: dict) -> str:
     )
 
 
-@lru_cache(maxsize=16)
+@lru_cache(maxsize=64)
 def _render_mechanism_page(site_name: str, slug: str | None) -> str | None:
     """Render immutable editorial pages once; no database or network work."""
     from virt_report import mechanisms
@@ -323,7 +337,7 @@ def _render_mechanism_page(site_name: str, slug: str | None) -> str | None:
     digest = hashlib.sha256()
     for filename in MECHANISM_ASSET_NAMES:
         digest.update((ASSETS_DIR / filename).read_bytes())
-    return _env().get_template("mechanism.html" if article else "mechanisms.html").render(
+    context = dict(
         article=article, articles=mechanisms.articles(), topics=mechanisms.topics(),
         topic_groups=mechanisms.topic_groups() if article is None else (),
         topic=mechanisms.get_topic(article["topic"]) if article else None,
@@ -333,6 +347,10 @@ def _render_mechanism_page(site_name: str, slug: str | None) -> str | None:
             ASSETS_DIR.parents[1] / "content" / "diagrams" / f"{name}.mmd"
         ).read_text(encoding="utf-8")} for name in MECHANISM_DIAGRAM_NAMES} if article else {},
     )
+    if article:
+        body = _env().get_template(article["template"]).render(**context)
+        context["article_body"], context["article_outline"] = prepare_outline(body, article["sections"])
+    return _env().get_template("mechanism.html" if article else "mechanisms.html").render(**context)
 
 
 def render_mechanisms_html(config: Config, slug: str | None = None) -> str | None:

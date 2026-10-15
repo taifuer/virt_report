@@ -1,0 +1,27 @@
+flowchart TB
+    accTitle: KVM 请求发布与客户机进入的双向检查
+    accDescr: 发送方先设置 requests 再检查 mode，目标先设置 mode 再检查 requests。两侧的配对屏障保证不会同时读到旧值，从而由取消进入或 IPI 退出推动请求处理。
+    subgraph S["发送方 CPU"]
+        S1["更新关联状态<br/>发布 requests 位"]
+        S2["屏障 + 原子模式检查<br/>IN → EXITING"]
+        S3["需要时发送 IPI"]
+        S1 --> S2 --> S3
+    end
+    subgraph V["目标 vCPU"]
+        V1["关闭本地中断<br/>发布 IN_GUEST_MODE"]
+        V2["配对全屏障<br/>检查 requests / 退出条件"]
+        V3{"是否存在退出条件？"}
+        V1 --> V2 --> V3
+    end
+    S1 -.->|目标检查待办| V2
+    V1 -.->|发送方检查模式| S2
+    S3 --> R["目标退出或取消进入<br/>回到请求处理路径"]
+    V3 -->|有| R
+    V3 -->|无| G["硬件进入客户机"]
+    G -.->|随后 IPI 到来时退出| R
+    classDef actor fill:#e4f1ec,stroke:#438575,color:#173e34
+    classDef barrier fill:#f4f3eb,stroke:#aaa98c,color:#3c4542
+    classDef result fill:#eef3f2,stroke:#738b87,color:#263c38
+    class S1,V1 actor
+    class S2,V2 barrier
+    class S3,V3,G,R result

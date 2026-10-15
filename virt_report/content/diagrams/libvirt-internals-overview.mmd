@@ -1,0 +1,13 @@
+flowchart TB
+    accTitle: Libvirt 请求、状态与事件的分工
+    accDescr: 客户端 API 经 remote RPC 到达服务端 QEMU 驱动。驱动通过虚拟机对象与作业协调 QMP 命令，响应和异步事件沿不同路径反馈；客户机数据不经过 Libvirt RPC。
+    APP["应用 / virsh<br/>API 与 virDomain 句柄"] --> RPC["连接与 remote 驱动<br/>RPC 编码 · 请求序号"]
+    RPC --> DAEMON["libvirtd 或 virtqemud<br/>认证 · 分发 · 权限检查"]
+    DAEMON --> DRIVER["QEMU 驱动<br/>按 UUID 查找 virDomainObj"]
+    DRIVER --> JOB["对象状态与作业协调<br/>定义 · 运行状态 · 操作约束"]
+    JOB -->|"QMP 命令"| QEMU["QEMU 进程<br/>机器与设备的实际状态"]
+    QEMU -.->|"命令响应"| JOB
+    QEMU -.->|"异步事件"| EVENT["事件处理<br/>记录结果 · 唤醒等待者 · 清理"]
+    EVENT -.-> JOB
+    JOB -.->|"API 结果或事件通知"| APP
+    QEMU -->|"客户机 I/O 数据路径"| BACKEND["磁盘、网络或外部后端<br/>不经 Libvirt RPC"]

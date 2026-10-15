@@ -1,0 +1,16 @@
+flowchart TB
+  accTitle: 预拷贝迁移与外部资源切换
+  accDescr: 目的端准备兼容机器，源端运行时复制内存并重传脏页，源端停机后传递剩余内存及 CPU 和设备状态。目的端加载状态，并在存储和网络接管具备条件后恢复客户机。
+  A["目的端：兼容机器与接收通道就绪"] --> B["源端运行：首轮 RAM 复制"]
+  B --> C["源端运行：脏页迭代重传"]
+  C -->|切换条件满足| D["源端停止：剩余 RAM、CPU 与设备状态"]
+  D --> E["目的端：加载完整执行状态"]
+  E --> F["目的端恢复客户机<br/>源端保持停止"]
+  R["管理层：存储可用、访问权与网络接管"] -.-> A
+  R -.-> F
+  classDef source fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef destination fill:#e4f1ec,stroke:#438575,color:#173e34;
+  classDef coordination fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class B,C,D source;
+  class A,E,F destination;
+  class R coordination;

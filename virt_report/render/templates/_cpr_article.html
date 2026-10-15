@@ -2,14 +2,14 @@
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2>替换 QEMU 时需要保留哪些状态</h2>
   <p>更新 QEMU 二进制后，已经运行的虚拟机仍由旧进程维护。要让新版本接管，需要保留客户机内存，交接 CPU 和设备状态，并重新连接相关宿主资源。QEMU 的 CheckPoint and Restart（CPR）为同一宿主机上的进程替换提供了几种迁移模式。</p>
   <p>本文重点分析 <code>cpr-transfer</code>：旧、新 QEMU 进程短暂并存，内存在原共享后端中保留，文件描述符通过 Unix socket 传递，CPU 与设备状态通过主迁移通道恢复。它包含客户机停机阶段；减少 RAM 搬运可以缩短其中一部分成本，不能把整个过程理解为零中断更新。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="principle" class="mechanism-section">
-  <h2>保留内容与重建对象</h2>
+  <h2>共享 RAM，重建对象并恢复执行状态</h2>
   <p>跨主机热迁移需要把内存内容送到另一台机器。CPR-transfer 的两个进程位于同一宿主，可以映射同一个共享内存后端。迁移前后的 GPA 布局保持兼容，新进程的 HVA 可以改变；QEMU 的用户态对象和 KVM 虚拟机则重新建立，再加载原有的执行状态。</p>
   {{ diagram('cpr-state-ownership', 'CPR-transfer 的资源与状态交接', '两个进程映射同一共享 RAM 后端，分别拥有自己的 QEMU 对象和 KVM 虚拟机。CPR 通道传送已登记资源的描述符，主通道传送执行状态；客户机执行权只交给一端。') }}
   <table><thead><tr><th scope="col">内容</th><th scope="col">处理方式</th><th scope="col">需要保持的关系</th></tr></thead><tbody>
@@ -20,6 +20,7 @@
     <tr><td>磁盘内容</td><td>继续使用原有块设备或镜像，协调访问权</td><td>交接期间不能被另一方独立修改，也不能同时由两端客户机写入</td></tr>
   </tbody></table>
   <p>文件描述符是进程内的索引。通过 <code>SCM_RIGHTS</code> 发送 fd 后，接收进程获得一个指向同一打开文件对象的描述符，数值无需相同。这个动作新增引用，不会自动关闭发送方的 fd，也不会自动把客户机执行权转移过去。</p>
+  <p>以一台 8 GiB 虚拟机为例，新进程取得共享 RAM 后端后，不必先收取一份 8 GiB 的普通页流；它仍需创建机器与 KVM 对象，并从旧进程接收 CPU、设备和队列状态。接管顺序因此是“取得可共享资源 → 准备新对象 → 停住旧执行流 → 装载状态 → 放行新执行流”。下面的 fd 清单和两条通道分别服务于这几个阶段。</p>
 </section>
 
 <section id="structures" class="mechanism-section">
@@ -46,7 +47,7 @@ fd 17 与 fd 23 → 同一个共享 memfd 后端
 </section>
 
 <section id="channels" class="mechanism-section">
-  <h2>两条通道与先后顺序</h2>
+  <h2>先传 CPR 资源，再连接主状态通道</h2>
   <p>目标 QEMU 通过两项 <code>-incoming</code> 配置接收 main 与 cpr 通道。CPR 通道需要支持 SCM_RIGHTS，通常是 Unix domain socket；普通 TCP 连接只能传字节，无法代替它传递宿主 fd。main 通道继续使用迁移状态格式，并不承担共享 RAM 的完整复制。</p>
   <table><thead><tr><th scope="col">通道</th><th scope="col">内容</th><th scope="col">接收时机</th></tr></thead><tbody>
     <tr><td>cpr</td><td>magic <code>0x51435052</code>（QCPR）、版本 1、CprState 与 fd 附带数据</td><td>目标创建机器对象后、创建设备和打开 monitor 之前</td></tr>
@@ -58,7 +59,7 @@ fd 17 与 fd 23 → 同一个共享 memfd 后端
 </section>
 
 <section id="handoff" class="mechanism-section">
-  <h2>从资源准备到执行接管</h2>
+  <h2>停止旧 vCPU，再让新进程接管</h2>
   {{ diagram('cpr-transfer-sequence', 'CPR-transfer 的准备、停机与恢复', '源端先发送 fd 清单，目标据此准备资源；目标监听 main 后关闭 CPR 通道。源端随后建立 main 并停止客户机，发送执行状态，目标恢复完成后才运行客户机。') }}
   <p>main 连接就绪后，<code>migrate_fd_connect()</code> 对 CPR 模式先调用 <code>migration_stop_vm()</code>，将源虚拟机置于 finish-migrate，再创建迁移线程。此后保存的 CPU 和设备状态对应停止后的执行点。CPR 在保存内存状态前停止客户机，不依赖运行期间的脏页迭代。</p>
   <p><code>migrate_ram_is_ignored()</code> 对 cpr-transfer 返回 true，普通 RAM 数据不再按预拷贝方式发送。CPU 与设备状态仍需经过 VMState 保存和恢复；目标为新建的 KVM vCPU 写回寄存器等状态，恢复中断路由与后端关系。主迁移流的分段和设备状态编码见<a href="qemu-migration-stream.html">QEMU 迁移流格式与状态恢复</a>。</p>
@@ -90,7 +91,7 @@ fd 17 与 fd 23 → 同一个共享 memfd 后端
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码与资料</h2>
+  <h2>源码与资料：资源清单和状态交接</h2>
   <ul>
     <li><a href="{{ qemu_source }}docs/devel/migration/CPR.rst">CPR 模式、配置条件、限制与示例</a></li>
     <li><a href="{{ qemu_source }}include/migration/cpr.h#L16-L29">CPR 头部和 CprState</a>、<a href="{{ qemu_source }}migration/cpr.c#L28-L95">CprFd 与 name / id 查找</a></li>

@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Libvirt 内部机制：管理接口、运行状态与并发协调 - virt-report</title>
+  <meta name="description" content="从管理多台虚拟机的需求出发，沿一次暂停与恢复解释 API、RPC、驱动和状态反馈，再分析配置、作业及守护进程演变。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
+  <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=85f3a75ef38f" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#libvirt-internals">Libvirt 内部机制</a></div>
+    <h1>Libvirt 内部机制：管理接口、运行状态与并发协调</h1>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、从控制一个进程到管理一组虚拟机</a></li><li><a href="#architecture">二、一项管理操作为什么要经过几层接口</a><ol><li><a href="#architecture-part-1">1. API 表达操作，连接确定管理范围</a></li><li><a href="#architecture-part-2">2. RPC 跨越进程，驱动落实具体实现</a></li></ol></li><li><a href="#state">三、定义、运行配置与运行状态有什么不同</a></li><li><a href="#example">四、示例：暂停 demo，再从原处继续</a></li><li><a href="#coordination">五、并发修改为什么需要作业，完成为什么需要事件</a><ol><li><a href="#coordination-part-1">1. 短时保护对象，长操作限制冲突</a></li><li><a href="#coordination-part-2">2. 以热拔网卡区分受理和完成</a></li></ol></li><li><a href="#evolution">六、从单体守护进程到按驱动拆分</a></li><li><a href="#summary">七、沿请求、状态与资源检查管理过程</a></li><li><a href="#reading">八、从管理接口深入到具体操作</a></li><li><a href="#sources">九、参考资料</a></li></ol></nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">一、</span>从控制一个进程到管理一组虚拟机</h2>
+  <p>运行一台测试虚拟机，可以直接拼出 QEMU 命令行，再通过 QMP 管理协议暂停或增加设备。虚拟机数量增多后，问题会扩展到进程之外：怎样保存关机后仍存在的配置，谁可以操作哪台机器，网卡和磁盘资源由谁准备，两个管理程序同时修改设备时怎么办？进程异常退出后，还需要识别实际状态并回收资源。</p>
+  <p>这些工作可以逐项写进脚本，脚本也就逐渐变成一套管理系统。Libvirt 将它们组织成统一的对象与操作接口。上层表达“暂停 demo”或“启动这个定义”，服务端负责找到实例、检查条件、执行具体操作并维护状态。本文先沿一次暂停与恢复理解分层，再讨论并发和异步事件为何必不可少。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/libvirt/libvirt/tree/4d937284669ecf180abea087d0b3ad67d9476349" target="_blank" rel="noopener noreferrer" title="commit 4d937284669ecf180abea087d0b3ad67d9476349">Libvirt 12.0.0</a>、<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p></section>
+<section id="architecture" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">二、</span>一项管理操作为什么要经过几层接口</h2>
+  <h3 id="architecture-part-1"><span class="mechanism-heading-number">1. </span>API 表达操作，连接确定管理范围</h3>
+  <p>应用调用 <code>virDomainSuspend()</code> 表达暂停；virsh 是使用这些 API 的命令行客户端。这里的 domain 指受管理的虚拟机，客户端句柄保存名称、UUID 和所属连接等标识。它不包含完整的客户机内存，也不等同于 QEMU 的进程号。</p>
+  <p>连接回答“向哪里操作”。<code>qemu:///system</code> 访问本机系统级 QEMU 管理服务，<code>qemu:///session</code> 访问当前用户的会话级服务；两者可见的实例和权限不同。远程连接还要选择传输方式并验证身份。请求指向同一个名称，并不代表在不同连接里操作的是同一台机器。<a href="https://libvirt.org/uri.html">连接 URI</a></p>
+  <h3 id="architecture-part-2"><span class="mechanism-heading-number">2. </span>RPC 跨越进程，驱动落实具体实现</h3>
+  <p>管理应用与服务端通常不在同一进程。客户端把操作、对象标识和参数编码为消息，由服务端解码并分发，这就是 RPC。调用序号用来把响应交回原来的等待者；传输成功只说明消息到达，服务端仍需检查权限与对象状态。</p>
+  <p>服务端的 QEMU 驱动知道如何准备宿主资源、启动进程以及发送 QMP 命令。于是同一个公开 API 可以保持稳定，而底层处理随具体后端变化。一项 API 可能需要多条 QMP 命令，也可能只读取服务端已有记录。Libvirt 属于管理路径，客户机日常的读盘和发包不逐项经过这条 RPC 链。</p>
+  <figure class="mechanism-diagram" data-diagram="libvirt-internals-overview" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>管理请求与状态反馈分别经过哪些组件</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看管理请求与状态反馈分别经过哪些组件" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="管理请求与状态反馈分别经过哪些组件">
+    <img src="../assets/libvirt-internals-overview.svg?v=32683d73423f" alt="API 表达操作，RPC 负责跨进程交接，QEMU 驱动处理资源和状态，QMP 操作具体实例。命令响应和异步事件分别处理，数据请求走虚拟机自己的 I/O 路径。" loading="lazy">
+  </div>
+  <figcaption>API 表达操作，RPC 负责跨进程交接，QEMU 驱动处理资源和状态，QMP 操作具体实例。命令响应和异步事件分别处理，数据请求走虚拟机自己的 I/O 路径。 <a href="../assets/libvirt-internals-overview.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+    accTitle: Libvirt 请求、状态与事件的分工
+    accDescr: 客户端 API 经 remote RPC 到达服务端 QEMU 驱动。驱动通过虚拟机对象与作业协调 QMP 命令，响应和异步事件沿不同路径反馈；客户机数据不经过 Libvirt RPC。
+    APP[&#34;应用 / virsh&lt;br/&gt;API 与 virDomain 句柄&#34;] --&gt; RPC[&#34;连接与 remote 驱动&lt;br/&gt;RPC 编码 · 请求序号&#34;]
+    RPC --&gt; DAEMON[&#34;libvirtd 或 virtqemud&lt;br/&gt;认证 · 分发 · 权限检查&#34;]
+    DAEMON --&gt; DRIVER[&#34;QEMU 驱动&lt;br/&gt;按 UUID 查找 virDomainObj&#34;]
+    DRIVER --&gt; JOB[&#34;对象状态与作业协调&lt;br/&gt;定义 · 运行状态 · 操作约束&#34;]
+    JOB --&gt;|&#34;QMP 命令&#34;| QEMU[&#34;QEMU 进程&lt;br/&gt;机器与设备的实际状态&#34;]
+    QEMU -.-&gt;|&#34;命令响应&#34;| JOB
+    QEMU -.-&gt;|&#34;异步事件&#34;| EVENT[&#34;事件处理&lt;br/&gt;记录结果 · 唤醒等待者 · 清理&#34;]
+    EVENT -.-&gt; JOB
+    JOB -.-&gt;|&#34;API 结果或事件通知&#34;| APP
+    QEMU --&gt;|&#34;客户机 I/O 数据路径&#34;| BACKEND[&#34;磁盘、网络或外部后端&lt;br/&gt;不经 Libvirt RPC&#34;]
+</code></pre></details>
+</figure>
+</section>
+<section id="state" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">三、</span>定义、运行配置与运行状态有什么不同</h2>
+  <p>给 demo 保存“2 个 vCPU、4 GiB 内存和一块磁盘”的定义后，它可以尚未启动。启动时，Libvirt 根据定义与宿主能力建立本次运行配置；进程运行后，还要记录它处于运行、暂停或关机等状态。三者回答不同问题，不能只用一份“当前配置”笼统表示。</p>
+  <table><thead><tr><th>信息</th><th>回答的问题</th><th>例子</th></tr></thead><tbody>
+    <tr><td>持久定义</td><td>下一次应当怎样创建机器</td><td>关机后仍保留的 CPU、内存、设备配置</td></tr>
+    <tr><td>运行配置</td><td>本次实例实际具有什么资源</td><td>已热插入、但未写入持久定义的网卡</td></tr>
+    <tr><td>运行状态</td><td>实例现在是否执行，以及为什么改变</td><td>运行中；因用户请求暂停；因 I/O 错误暂停</td></tr>
+  </tbody></table>
+  <p>部分修改接口允许分别指定 live 和 config。只改持久定义，当前实例可能继续保持原配置；只改运行配置，下次重新创建又可能消失。暂停操作主要改变执行状态，既不删除定义，也不重新创建机器。服务端用 <code>virDomainObj</code> 联系这些信息，实际 CPU 与设备状态仍由 QEMU/KVM 持有。</p>
+</section>
+<section id="example" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">四、</span>示例：暂停 demo，再从原处继续</h2>
+  <p>假设 demo 已在系统级服务中运行，执行 <code>virsh -c qemu:///system suspend demo</code>。暂停保留 QEMU 进程和客户机 RAM，停止客户机 vCPU 执行；客户机电源管理休眠、保存内存到磁盘和关闭虚拟机则是另外的操作。</p>
+  <figure class="mechanism-diagram" data-diagram="libvirt-suspend-sequence" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>一次暂停请求中的命令与事件</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看一次暂停请求中的命令与事件" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="一次暂停请求中的命令与事件">
+    <img src="../assets/libvirt-suspend-sequence.svg?v=32683d73423f" alt="示例跟踪普通运行状态下的暂停。QMP 响应交付命令结果，STOP 事件驱动状态记录；图中分开展示两条反馈，不能把事件订阅当成 API 调用返回的一部分。" loading="lazy">
+  </div>
+  <figcaption>示例跟踪普通运行状态下的暂停。QMP 响应交付命令结果，STOP 事件驱动状态记录；图中分开展示两条反馈，不能把事件订阅当成 API 调用返回的一部分。 <a href="../assets/libvirt-suspend-sequence.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
+    accTitle: Libvirt 暂停虚拟机的调用与事件反馈
+    accDescr: virsh 的暂停 API 经 RPC 进入 QEMU 驱动。驱动查找对象、取得作业后发送 stop，QEMU 暂停 vCPU。命令结果和 STOP 事件分别沿响应与状态处理路径反馈。
+    participant A as virsh / 管理应用
+    participant L as Libvirt 服务端&lt;br/&gt;QEMU 驱动
+    participant Q as QEMU 实例 demo
+    A-&gt;&gt;L: RPC：暂停 demo 的对象标识
+    L-&gt;&gt;L: 权限检查 · 取得暂停作业&lt;br/&gt;确认实例仍活跃
+    L-&gt;&gt;Q: QMP stop
+    Q-&gt;&gt;Q: 协调 vCPU 停止&lt;br/&gt;保留进程、内存与执行现场
+    par 命令响应路径
+        Q--&gt;&gt;L: QMP 命令结果
+        L--&gt;&gt;A: RPC 返回 API 结果
+    and 状态事件路径
+        Q--&gt;&gt;L: STOP 事件
+        L-&gt;&gt;L: 记录 PAUSED 与原因&lt;br/&gt;保存运行状态
+        L--&gt;&gt;A: 生命周期通知&lt;br/&gt;仅发送给已订阅客户端
+    end
+    Note over A,Q: 应用不应假设事件回调与 API 返回的固定先后
+</code></pre></details>
+</figure>
+  <ol>
+    <li>virsh 查找 demo，调用暂停 API。客户端按连接的实现编码 RPC，将虚拟机标识交给服务端。</li>
+    <li>QEMU 驱动重新查找对象，检查权限，取得暂停作业，并确认实例仍然活跃。客户端之前查到的状态不能替代这次检查。</li>
+    <li>驱动进入 QEMU 监控接口，发送 <code>stop</code>。QEMU 协调 vCPU 停止，保留运行现场；QMP 响应返回命令结果。</li>
+    <li>Libvirt 收到 <code>STOP</code> 事件后记录暂停状态和原因，保存运行状态，并向已订阅的客户端发送生命周期通知。管理程序也可查询当前状态。</li>
+  </ol>
+  <p>恢复时，<code>virsh -c qemu:///system resume demo</code> 经恢复 API 和 QEMU 驱动发送 <code>cont</code>，相关宿主资源也要恢复到允许运行的条件。QEMU 继续执行，Libvirt 的 <code>RESUME</code> 事件处理更新运行状态。事件与命令响应有各自处理路径，应用不应假设自己的事件回调一定早于或晚于 API 返回。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L1621-L1723">暂停与恢复入口</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L816-L919">状态事件处理</a></p>
+</section>
+<section id="coordination" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">五、</span>并发修改为什么需要作业，完成为什么需要事件</h2>
+  <h3 id="coordination-part-1"><span class="mechanism-heading-number">1. </span>短时保护对象，长操作限制冲突</h3>
+  <p>如果一个请求正删除网卡，另一个请求同时修改其后端，仅让各次字段读写互斥还不够：删除动作可能跨过多次命令和等待。Libvirt 用对象锁保护短时访问，用作业机制约束整项操作可与哪些工作并发。迁移这样的长作业也能允许查询或取消，而排斥不兼容的修改。</p>
+  <p>等待 QMP 响应时，驱动释放虚拟机对象锁，使事件处理能继续取得对象并更新状态；作业约束仍保留。如果一直拿锁等待，所等的事件可能恰好也需要这把锁。重新获得执行机会后还要复查实例，等待期间它可能已经退出。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/docs/kbase/internals/qemu-threads.rst#L27-L105">对象锁与作业规则</a></p>
+  <h3 id="coordination-part-2"><span class="mechanism-heading-number">2. </span>以热拔网卡区分受理和完成</h3>
+  <p>发送 <code>device_del</code> 后，QEMU 可以先返回成功，客户机驱动随后才停止使用设备；最终完成用 <code>DEVICE_DELETED</code> 表达。Libvirt 保留移除标记，等待事件或交给后续处理，再更新配置并清理资源。客户机拒绝、迟迟不响应和管理连接断开，都需要区别处理。</p>
+  <p>因此，“没有收到响应”与“没有执行”并不相同。超时后直接重复修改可能与仍在推进的操作冲突；应根据操作语义结合事件、状态查询与错误信息决定后续动作。命令响应回答这次调用怎样返回，事件反映运行过程中发生了什么，查询则帮助重新建立当前视图。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_hotplug.c#L5698-L5755">移除等待与事件交接</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qapi/qdev.json#L96-L143">QEMU 移除语义</a></p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>从单体守护进程到按驱动拆分</h2>
+  <p>传统 <code>libvirtd</code> 在同一个常驻进程中提供虚拟机、网络、存储等有状态驱动。入口集中，部署较直观；但不同驱动也共享进程生命周期和运行环境。模块化架构用 <code>virtqemud</code>、<code>virtnetworkd</code>、<code>virtstoraged</code> 等分别承载职责，以减少这类耦合。</p>
+  <p>拆分后，必要时由 <code>virtproxyd</code> 提供兼容或远程入口，上层继续使用原有 API。代价是服务、socket、配置和启动依赖更多，排查也需要识别请求实际经过哪些进程。单体与模块化布局要按部署确认，不能从 <code>qemu:///system</code> 一个 URI 推断全部进程结构。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/docs/daemons.rst#L12-L40">守护进程演进</a></p>
+</section>
+<section id="summary" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">七、</span>沿请求、状态与资源检查管理过程</h2>
+  <p>Libvirt 把用户操作落实为可检查的资源与状态变化：连接确定范围，API 表达意图，RPC 传递调用，驱动执行具体动作，作业和事件处理保证并发时仍能协调。它减少管理程序重复实现这些机制的负担，也引入需要观察的传输、排队和状态同步环节。</p>
+  <p>遇到操作慢或结果不确定，依次确认请求是否到达、是否在等待作业、QMP 是否返回、是否仍需客户机配合，再检查实际状态。这样能把管理链路的问题与客户机数据路径的性能问题分开，也能避免把某次成功响应当作所有后续动作的完成证明。</p>
+</section>
+<section id="reading" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">八、</span>从管理接口深入到具体操作</h2>
+  <ul>
+    <li><a href="libvirt-rpc.html">Libvirt RPC 编解码与分发</a>：请求如何编码，响应怎样找到原调用。</li>
+    <li><a href="libvirt-domain-start.html">Libvirt 虚拟机启动</a>：资源准备、QEMU 进程与运行状态的交接。</li>
+    <li><a href="qemu-pcie-hotplug.html">PCIe 热插拔</a>：客户机协作与移除完成事件。</li>
+    <li><a href="qemu-memory-migration.html">预拷贝内存迁移</a>：管理操作怎样联系实际状态传输。</li>
+  </ul>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">九、</span>参考资料</h2>
+  <ul>
+    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/libvirt-domain.c#L646-L741">Libvirt 暂停与恢复 API</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L1621-L1723">QEMU 驱动实现</a></li>
+    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_monitor_json.c#L1545-L1594">stop / cont 命令</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L3398-L3488">暂停与恢复时的资源协调</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/monitor/qmp-cmds.c#L50-L113">QEMU stop / cont 实现</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qapi/run-state.json#L200-L226">STOP / RESUME 事件</a></li>
+    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_domain.c#L5078-L5145">进入 monitor 时的锁交接</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/docs/daemons.rst">Libvirt 守护进程架构</a></li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#libvirt-internals">Libvirt 内部机制原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=85f3a75ef38f"></script>
+<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+</body>
+</html>

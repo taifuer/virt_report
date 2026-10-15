@@ -1,0 +1,23 @@
+sequenceDiagram
+    accTitle: 现代 virtio 设备初始化握手
+    accDescr: 驱动复位设备，依次设置 ACKNOWLEDGE 和 DRIVER，选择特性后设置 FEATURES_OK 并读回确认。接受后配置并启用队列，最后设置 DRIVER_OK 才可通知设备处理请求；拒绝特性时停止初始化。
+    participant D as 客户机驱动
+    participant V as QEMU virtio 设备
+    D->>V: device_status = 0
+    V-->>D: 读回 0：复位完成
+    D->>V: ACKNOWLEDGE：0x01
+    D->>V: 加 DRIVER：0x03
+    D->>V: 读取设备特性，写回有效子集
+    D->>V: 加 FEATURES_OK：尝试 0x0b
+    V-->>D: 读回 device_status
+    alt FEATURES_OK 被接受
+        D->>D: 初始化描述符和环内存
+        D->>V: 配置地址、大小及必要的中断字段
+        D->>V: queue_enable = 1
+        Note over D,V: 单队列已配置，尚未放行设备
+        D->>V: 加 DRIVER_OK：0x0f
+        D->>V: 按通知条件 kick
+    else FEATURES_OK 未置位
+        D->>D: 停止初始化，处理失败
+        Note over D,V: 重试从设备复位重新开始
+    end

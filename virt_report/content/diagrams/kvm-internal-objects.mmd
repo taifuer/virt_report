@@ -1,0 +1,24 @@
+flowchart TB
+    accTitle: 通过 KVM 文件描述符建立并运行虚拟机
+    accDescr: 用户态打开 dev kvm，创建 VM 描述符后登记内存并创建 vCPU。调用线程通过 vCPU 描述符执行 KVM_RUN，经过内核准备进入客户机。共享 kvm_run 在需要用户态处理时交接退出原因与结果。
+    DEV["打开 /dev/kvm<br/>查询接口与硬件能力"]
+    VM["VM 描述符<br/>一台虚拟机的共享配置"]
+    RAM["登记 RAM 内存槽<br/>客户机物理范围 ↔ 用户态后备内存"]
+    VCPU["vCPU 描述符<br/>寄存器 · 指令位置 · 执行状态"]
+    THREAD["QEMU vCPU 线程<br/>调用 KVM_RUN"]
+    KERNEL["同一线程进入 KVM<br/>准备映射、事件与执行状态"]
+    GUEST["硬件客户机环境<br/>执行客户机代码"]
+    SHARED["共享 kvm_run<br/>退出原因 · MMIO 参数与结果"]
+    DEV -->|KVM_CREATE_VM| VM
+    VM -->|配置共享内存| RAM
+    VM -->|KVM_CREATE_VCPU| VCPU
+    VCPU -->|配置完成后运行| THREAD
+    THREAD --> KERNEL --> GUEST
+    THREAD <-->|用户态交接| SHARED
+    KERNEL <-->|内核交接| SHARED
+    classDef api fill:#e4f1ec,stroke:#438575,color:#173e34
+    classDef state fill:#f4f3eb,stroke:#aaa98c,color:#3c4542
+    classDef execution fill:#eef3f2,stroke:#738b87,color:#263c38
+    class DEV,VM,VCPU api
+    class RAM,SHARED state
+    class THREAD,KERNEL,GUEST execution

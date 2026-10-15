@@ -1,14 +1,15 @@
 {% from '_mechanism_diagram.html' import diagram with context %}
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
-  <p>QEMU 将内存、处理器和设备状态组织为迁移流，由目的端顺序解析和装载。外层记录标识状态处理器，内部载荷保存内存布局、页面或设备字段。本文按发送顺序介绍迁移流的分层格式、结束标记及目的端的状态恢复过程。</p>
+  <h2>迁移流如何恢复运行状态</h2>
+  <p>目的端 QEMU 已经创建了机器与设备，但还不知道源端哪些页被修改、CPU 停在哪条指令、设备处理到了哪个请求。迁移流把这些运行状态交给对应的接收处理器：先识别流格式和机器配置，再建立 RAM 布局并更新页面，暂停后交接 CPU 与设备状态，最后检查是否可以恢复执行。</p>
+  <p>这条路径由两层格式配合完成：外层 section 选择处理器并校验边界，内层载荷描述页面或设备字段。以下用同一组四个内存页贯穿完整流示例，再逐层展开头部、RAM 编码、VMState 和接收流程。</p>
   {% include '_mechanism_baselines.html' %}
   <p>以下以 x86 / KVM、普通 RAM 的单流预拷贝为例，机器与设备已在目的端创建，存储另行准备。内存重传和停机切换条件见<a href="qemu-memory-migration.html">《QEMU 预拷贝迁移的内存迭代与停机控制》</a>。</p>
 </section>
 
 <section id="structure" class="mechanism-section">
-  <h2>整体结构</h2>
+  <h2>完整示例：从流头到状态恢复</h2>
   <p><code>QEMUFile</code>提供顺序读写接口；迁移框架在流中标识状态处理器，RAM、CPU 和设备各自负责载荷。左侧按发送顺序排列整条迁移流，右侧展开相应记录的字段。RAM 载荷内部的 EOS、section 尾部的 footer 和整条状态流的 EOF 属于不同层次。</p>
   <figure class="mechanism-wire-diagram" data-mechanism-view="diagram">
     <div class="mechanism-view-heading">
@@ -75,7 +76,7 @@
 </section>
 
 <section id="device-state" class="mechanism-section">
-  <h2>处理器与设备状态</h2>
+  <h2>暂停后保存 CPU 与设备状态</h2>
   <p>源端暂停后，默认还会发送切换通知：<code>08 00 0b 00 00</code>，分别是 COMMAND、<code>SWITCHOVER_START = 11</code>和长度 0。接收端据此分派 <code>switchover_start</code>回调，后续仍需完成内存与设备状态装载，才能进入运行状态检查。COMMAND 的长度属于这种记录自身的格式，普通设备 section 仍没有统一载荷长度。<a href="{{ qemu_source }}migration/savevm.c#L1075-L1097">命令编码</a>、<a href="{{ qemu_source }}migration/migration.c#L3000-L3031">发送时机</a></p>
   <p>完成 RAM 后，<code>cpu_synchronize_all_states()</code>把 KVM 维护的寄存器状态同步进 QEMU 对象，再保存非迭代状态。CPU、设备及其他处理器按注册顺序写 FULL，不保证“全部 CPU 在前、全部设备在后”。标记 <code>early_setup</code>的状态还可以在初始化阶段提前保存。</p>
   <p><code>VMStateDescription</code>规定要保存的字段、类型、版本条件以及保存前和装载后回调。它与状态处理器和字段定义共同完成序列化：</p>
@@ -100,6 +101,7 @@ VMSTATE_UINTTL(env.eflags, X86CPU),</code></pre>
   {{ diagram('migration-load-dispatch', '接收端的处理器分发与恢复边界', '普通预拷贝主路径：处理器按自己的格式消费载荷，返回后检查外层 footer；错误会中断装载。EOF 结束记录循环，后续仍需完成状态同步与运行条件检查。') }}
   <p>EOF 后可能跟随 <code>VMDESCRIPTION 0x06</code>＋JSON 字节长度（BE32）＋JSON，供调试工具分析状态字段；实际恢复使用前面已装载的二进制状态。普通预拷贝接收端按条件读完诊断描述，再完成装载收尾与 CPU 状态同步。<a href="{{ qemu_source }}migration/savevm.c#L2597-L2697">处理器匹配</a>、<a href="{{ qemu_source }}migration/savevm.c#L3033-L3133">装载收尾</a></p>
   <p><code>cpu_synchronize_all_post_init()</code>使恢复的 CPU 对象状态同步到 KVM vCPU；真正开始执行还需要后续运行状态检查。<code>process_incoming_migration_bh()</code>考虑原运行状态、autostart 与存储激活，满足条件才调用 <code>vm_start()</code>。因此 EOF、装载完成和客户机恢复执行是三个不同的时刻。<a href="{{ qemu_source }}migration/migration.c#L814-L866">目的端运行决策</a></p>
+  <p>沿这条路径排查失败，可先按层定位：magic 或格式版本错误发生在流入口；名称、实例或版本不匹配发生在处理器选择；RAM 范围和设备字段错误发生在载荷装载；数据全部读完后仍未运行，再检查 autostart、存储激活与原运行状态。这样可以把传输损坏、配置不兼容和有意保持暂停区分开。</p>
 </section>
 
 <section id="evolution" class="mechanism-section">

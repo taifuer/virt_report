@@ -6,7 +6,7 @@
   <p>两种网卡都由 QEMU 处理报文，再写入同一个 TAP 后端。切换接口后，观察客户机内存中的队列、通知路径和完成记录。</p>
   <div class="device-tx-controls" data-tx-controls hidden>
     <div class="device-tx-options">
-      <label for="device-tx-interface">客户机网卡<select id="device-tx-interface" data-tx-interface><option value="e1000">e1000 · 设备模拟</option><option value="virtio">virtio-net · QEMU 后端</option></select></label>
+      <label for="device-tx-interface">客户机网卡<select id="device-tx-interface" data-tx-interface><option value="e1000">e1000 · 设备模拟</option><option value="virtio" selected>virtio-net · QEMU 后端</option></select></label>
       <label for="device-tx-notification">提交通知<select id="device-tx-notification" data-tx-notification disabled><option value="ioeventfd">KVM ioeventfd</option><option value="mmio" selected>QEMU MMIO 回调</option><option value="suppressed">后端处理中，抑制 kick</option></select></label>
       <label for="device-tx-queue-start">virtqueue 起始索引<select id="device-tx-queue-start" data-tx-queue-start disabled><option value="0">0 · 普通提交</option><option value="3">3 · 跨过最后一个环槽</option><option value="65535">65535 · 16 位索引回绕</option></select></label>
     </div>
@@ -50,7 +50,9 @@
   </div>
   <div class="device-tx-split-layout" data-tx-split-layout role="group" aria-labelledby="device-tx-split-title">
     <h4 id="device-tx-split-title">Split virtqueue · 客户机共享内存</h4>
+    <div class="device-tx-playback" data-tx-queue-controls hidden role="group" aria-label="队列结构图逐步演示"><button type="button" data-tx-queue-back>上一步</button><button type="button" data-tx-queue-next>下一步</button><button type="button" data-tx-queue-reset>重置</button><span data-tx-graphic-step aria-live="polite"></span></div>
     <p data-tx-queue-ownership>示例：链 0 → 2 已发布，设备尚未回写完成。</p>
+    {% include '_device_tx_queue_graph.html' %}
     <div class="device-tx-desc-heading"><strong>描述符表 · desc[4]</strong><span data-tx-queue-free>2 / 4 个描述符可分配</span></div>
     <table class="device-tx-desc-table">
       <thead><tr><th scope="col">编号</th><th scope="col">addr</th><th scope="col">len</th><th scope="col">flags</th><th scope="col">next</th></tr></thead>

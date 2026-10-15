@@ -1,0 +1,19 @@
+sequenceDiagram
+    accTitle: Libvirt 暂停虚拟机的调用与事件反馈
+    accDescr: virsh 的暂停 API 经 RPC 进入 QEMU 驱动。驱动查找对象、取得作业后发送 stop，QEMU 暂停 vCPU。命令结果和 STOP 事件分别沿响应与状态处理路径反馈。
+    participant A as virsh / 管理应用
+    participant L as Libvirt 服务端<br/>QEMU 驱动
+    participant Q as QEMU 实例 demo
+    A->>L: RPC：暂停 demo 的对象标识
+    L->>L: 权限检查 · 取得暂停作业<br/>确认实例仍活跃
+    L->>Q: QMP stop
+    Q->>Q: 协调 vCPU 停止<br/>保留进程、内存与执行现场
+    par 命令响应路径
+        Q-->>L: QMP 命令结果
+        L-->>A: RPC 返回 API 结果
+    and 状态事件路径
+        Q-->>L: STOP 事件
+        L->>L: 记录 PAUSED 与原因<br/>保存运行状态
+        L-->>A: 生命周期通知<br/>仅发送给已订阅客户端
+    end
+    Note over A,Q: 应用不应假设事件回调与 API 返回的固定先后

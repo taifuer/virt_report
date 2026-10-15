@@ -1,0 +1,15 @@
+flowchart TB
+  accTitle: 解释执行、动态翻译与硬件辅助
+  accDescr: 客户机代码可以由解释器逐条执行语义，可以经 TCG 形成缓存的宿主代码，也可以在 KVM 配置的硬件环境中直接执行。三种方法都必须保持寄存器、权限和异常的客户机语义。
+  G["客户机指令与 CPU 状态"] --> I["解释执行<br/>取指 → 解码 → 更新模拟状态"]
+  G --> T["TCG<br/>首次翻译 → 缓存 TB → 执行宿主代码"]
+  G --> K["KVM + 硬件辅助<br/>执行客户机 → 需要时 VM exit"]
+  I --> S["保持客户机可见的寄存器、权限与异常"]
+  T --> S
+  K --> S
+  classDef guest fill:#e4f1ec,stroke:#438575,color:#173e34;
+  classDef method fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef semantic fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class G guest;
+  class I,T,K method;
+  class S semantic;

@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>QEMU/KVM 中断虚拟化：基本原理与演进 - virt-report</title>
+  <meta name="description" content="从一次网卡收包出发，理解 PIC、APIC 和 MSI-X，再比较 QEMU 模拟、内核 irqchip、irqfd 与硬件辅助各自解决的问题。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
+  <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=85f3a75ef38f" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#interrupt-virtualization">中断虚拟化</a></div>
+    <h1>QEMU/KVM 中断虚拟化：基本原理与演进</h1>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、网卡收到数据后，CPU 怎样知道</a><ol><li><a href="#preface-part-1">1. 轮询与中断：主动检查，或等待通知</a></li><li><a href="#preface-part-2">2. 一次中断需要完成三件事</a></li></ol></li><li><a href="#controllers">二、从中断线到消息：PIC、APIC 与 MSI-X</a><ol><li><a href="#controllers-part-1">1. PIC：集中处理设备的中断请求</a></li><li><a href="#controllers-part-2">2. APIC：把路由与每个 CPU 的接收状态分开</a></li><li><a href="#controllers-part-3">3. MSI/MSI-X：设备用消息表达通知</a></li></ol></li><li><a href="#path">三、QEMU/KVM 怎样实现虚拟中断</a><ol><li><a href="#path-part-1">1. 先给每台虚拟机一套独立的中断状态</a></li><li><a href="#path-part-2">2. 把高频控制器逻辑移入 KVM</a></li></ol></li><li><a href="#acceleration">四、从 irqfd 到硬件辅助：分别省掉哪段开销</a><ol><li><a href="#acceleration-part-1">1. irqfd：把后端通知直接接到 KVM</a></li><li><a href="#acceleration-part-2">2. APICv / AVIC：减少控制器访问与虚拟中断交付的退出</a></li><li><a href="#acceleration-part-3">3. 直通设备的 interrupt posting：再减少宿主软件转发</a></li></ol></li><li><a href="#example">五、一次收包：从完成记录到客户机驱动</a></li><li><a href="#evolution">六、发展演变：新方案解决了什么，还留下什么</a></li><li><a href="#evaluation">七、总结：沿数据、通知与执行三条线定位延迟</a></li><li><a href="#reading">八、进一步阅读</a></li><li><a href="#sources">九、参考资料</a></li></ol></nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">一、</span>网卡收到数据后，CPU 怎样知道</h2>
+  <p>假设虚拟机正在执行一段计算程序，这时网卡收到一个网络包。数据已经可以放进内存，但运行中的 CPU 怎么知道该去处理它？从这个问题出发，可以逐步理解中断控制器、虚拟中断，以及 QEMU/KVM 为什么不断缩短通知路径。</p>
+  <h3 id="preface-part-1"><span class="mechanism-heading-number">1. </span>轮询与中断：主动检查，或等待通知</h3>
+  <p>一种办法是让 CPU 反复检查接收队列，这叫轮询。检查足够频繁时，响应可以很快；没有包到达时，也要消耗 CPU 时间。另一种办法由设备在有工作时发出中断，CPU 平时继续计算或进入空闲，收到通知后转入操作系统的处理入口。代价是保存与恢复执行现场，以及处理通知本身的开销。高流量网络常把两者结合：中断启动处理，再通过轮询批量收包。</p>
+  <h3 id="preface-part-2"><span class="mechanism-heading-number">2. </span>一次中断需要完成三件事</h3>
+  <p>设备先保存数据和完成状态，再发出通知；中断系统决定通知哪个 CPU、使用哪个入口；CPU 在允许接受中断时保存必要的执行现场，经中断描述符表（IDT）进入内核，驱动再读取队列或设备状态。处理结束后，系统恢复先前的执行。网络包保存在缓冲区中，中断携带的是处理入口等控制信息。</p>
+  <p>下面围绕 x86 展开。先看物理机上的通知机制，再把它放入 QEMU/KVM，最后回到同一个收包例子。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
+<section id="controllers" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">二、</span>从中断线到消息：PIC、APIC 与 MSI-X</h2>
+  <h3 id="controllers-part-1"><span class="mechanism-heading-number">1. </span>PIC：集中处理设备的中断请求</h3>
+  <p>早期 PC 使用 8259 PIC（可编程中断控制器）汇集设备的中断线，记录请求、处理屏蔽和优先级，再通知 CPU。单片有 8 个输入，传统 PC 用两片级联得到 15 个可供外部使用的输入。设备增加、多个设备共享中断线时，CPU 还要询问相关设备，才能确定谁需要处理；固定的输入与目标也难以满足多处理器分工。</p>
+  <h3 id="controllers-part-2"><span class="mechanism-heading-number">2. </span>APIC：把路由与每个 CPU 的接收状态分开</h3>
+  <p>APIC 把工作拆开：I/O APIC 汇集外部中断线，并按路由表选择目标；每个逻辑 CPU 的 Local APIC（LAPIC）负责本地的待处理中断、优先级、定时器和处理器间中断。这样，操作系统可以把设备工作分配到不同 CPU。</p>
+  <p>其中两个编号尤其重要：<strong>APIC ID</strong> 选择目标 CPU，<strong>中断向量</strong>选择该 CPU 的中断入口。例如“发给 APIC ID 1，向量 0x51”，表示让目标 CPU 按 IDT 中的 0x51 号入口处理。操作系统的 IRQ 号、设备队列号和向量属于不同编号空间，由配置关联起来。</p>
+  <h3 id="controllers-part-3"><span class="mechanism-heading-number">3. </span>MSI/MSI-X：设备用消息表达通知</h3>
+  <p>传统 PCI INTx 中断线可能被多个设备共用。MSI 改用设备向特定地址发出一次写事务，地址与数据编码中断目的地和向量。MSI-X 进一步提供可独立配置地址、数据和屏蔽状态的表项，方便把不同队列分配给不同 CPU。消息最终仍交给目标 LAPIC 接收和排队；这条路径不需要经过 I/O APIC 的引脚路由。<a href="https://docs.kernel.org/PCI/msi-howto.html">Linux MSI 文档</a></p>
+  <figure class="mechanism-diagram" data-diagram="interrupt-controller-paths" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>中断线与 MSI-X 消息最终到达哪里</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看中断线与 MSI-X 消息最终到达哪里" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="中断线与 MSI-X 消息最终到达哪里">
+    <img src="../assets/interrupt-controller-paths.svg?v=32683d73423f" alt="图中省略总线和可能存在的中断重映射。I/O APIC 处理引脚路由，MSI-X 由设备发送消息；两者都要到达目标 LAPIC，再由 CPU 接受中断。" loading="lazy">
+  </div>
+  <figcaption>图中省略总线和可能存在的中断重映射。I/O APIC 处理引脚路由，MSI-X 由设备发送消息；两者都要到达目标 LAPIC，再由 CPU 接受中断。 <a href="../assets/interrupt-controller-paths.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+  accTitle: 中断线与 MSI-X 消息的接收路径
+  accDescr: 引脚中断经 I/O APIC 路由，MSI-X 用设备表项配置消息，两条路径到达目标 Local APIC，再由 CPU 在接受条件满足后进入 IDT 中的处理入口。数据在独立缓冲区中。
+  PIN[&#34;传统 PCI INTx&lt;br/&gt;设备中断线&#34;] --&gt; IO[&#34;I/O APIC 路由表&lt;br/&gt;选择目标 CPU 与向量&#34;]
+  MSG[&#34;MSI-X 表项&lt;br/&gt;目的地址 · 向量 · 屏蔽&#34;] --&gt;|消息写事务| LAPIC[&#34;目标 CPU 的 Local APIC&lt;br/&gt;待处理 · 优先级 · 服务状态&#34;]
+  IO --&gt; LAPIC
+  LAPIC --&gt;|允许接受| CPU[&#34;CPU 保存必要现场&lt;br/&gt;按向量查 IDT&#34;]
+  CPU --&gt; DRIVER[&#34;操作系统中断入口&lt;br/&gt;驱动检查队列或设备&#34;]
+  DATA[&#34;内存中的报文与完成状态&#34;] -.-&gt;|驱动读取| DRIVER
+</code></pre></details>
+</figure>
+  <p>MSI-X 改善了多队列分工，却没有消除中断处理成本。向量数量有限，队列也可能共用一个表项；设备每完成一个包就发一次中断，在高吞吐场景仍可能让 CPU 忙于通知，所以还需要合并和批量处理。</p>
+</section>
+<section id="path" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">三、</span>QEMU/KVM 怎样实现虚拟中断</h2>
+  <h3 id="path-part-1"><span class="mechanism-heading-number">1. </span>先给每台虚拟机一套独立的中断状态</h3>
+  <p>客户机同样会配置 APIC、屏蔽某些中断、设置优先级，并在自己的 IDT 注册处理入口。宿主必须保存每台虚拟机的这些状态，保证网卡 A 的通知只进入指定虚拟机。同时，vCPU 是宿主调度的执行线程，通知到达时它未必正在占用物理 CPU。</p>
+  <p>软件模拟可以在 QEMU 中保存 PIC、I/O APIC 和 LAPIC 的寄存器及待处理位。设备产生事件后，模拟控制器选择向量，再由 CPU 模拟或虚拟化执行路径交给客户机。这种方式便于兼容不同机器，但客户机访问控制器、产生通知和确认中断都可能引入软件处理。</p>
+  <h3 id="path-part-2"><span class="mechanism-heading-number">2. </span>把高频控制器逻辑移入 KVM</h3>
+  <p>KVM 的 in-kernel irqchip 把虚拟中断控制器放进内核。客户机已经在 KVM 中执行，中断状态检查和许多控制器访问可以直接在内核完成，减少返回 QEMU 的往返。设备模型仍可能在 QEMU 中，设备事件仍需要送达 KVM。</p>
+  <p>在 x86 上，完整内核 irqchip 包括 PIC、I/O APIC 和 LAPIC；split irqchip 保留内核 LAPIC，把 PIC、I/O APIC 留给 QEMU，在内核代码范围与传统引脚路径开销之间取舍。现代 QEMU/KVM 的常见配置都使用内核 LAPIC；QEMU 已在 8.0 移除带 LAPIC 的 KVM 客户机使用用户态 LAPIC 的方式，不能把历史路径当成当前可任意切换的选项。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst">KVM irqchip 接口</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/about/removed-features.rst#L1002-L1007">QEMU 的接口演变</a></p>
+  <table><thead><tr><th scope="col">虚拟 LAPIC 状态</th><th scope="col">含义</th><th scope="col">收包例子</th></tr></thead><tbody>
+    <tr><td>IRR：待处理位图</td><td>记录已经到达、尚待接受的向量</td><td>向量 0x51 成为 pending</td></tr>
+    <tr><td>ISR：正在服务位图</td><td>记录已经接受、尚未完成 APIC 应答的向量</td><td>接受 0x51 后进入相应服务状态</td></tr>
+    <tr><td>TPR/PPR：优先级状态</td><td>参与决定哪些待处理中断可以投递</td><td>即使已有 pending，也可能暂时等待</td></tr>
+  </tbody></table>
+  <p>软件注入路径在条件满足时从 IRR 选择向量，更新服务状态，并安排 VM Entry 中断注入；客户机按自己的 IDT 执行。EOI（中断结束应答）用于结束 APIC 层面的服务状态，队列消费则由驱动负责。两者不要求“全部包处理完才 EOI”；Linux 网络驱动还可能把实际收包交给 NAPI 轮询。</p>
+</section>
+<section id="acceleration" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">四、</span>从 irqfd 到硬件辅助：分别省掉哪段开销</h2>
+  <h3 id="acceleration-part-1"><span class="mechanism-heading-number">1. </span>irqfd：把后端通知直接接到 KVM</h3>
+  <p>如果后端已经完成收包，却需要先唤醒 QEMU，再由 QEMU 调用注入接口，通知会多一次用户态中转。irqfd 允许 QEMU 事先把一个 eventfd 与 KVM 中断路由绑定。后端触发 eventfd 后，KVM 可以直接按路由投递中断；设置和更新路由仍由管理路径完成。</p>
+  <p>例如把 GSI 37 配为“APIC ID 1、向量 0x51”的 MSI 路由，再绑定 eventfd。这里 GSI 是宿主接口中的路由键；它不等于向量 0x51，也不携带网络包。相反方向的 ioeventfd 用于客户机向后端写设备通知。两个接口缩短的是不同方向的通知路径。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/eventfd.c#L195-L231">irqfd 唤醒与投递</a></p>
+  <h3 id="acceleration-part-2"><span class="mechanism-heading-number">2. </span>APICv / AVIC：减少控制器访问与虚拟中断交付的退出</h3>
+  <p>把控制器移入内核后，部分 APIC 寄存器访问和虚拟中断交付仍需退出客户机再由软件处理。Intel APICv 用虚拟 APIC 状态与执行控制，让硬件接管部分访问、优先级判断和中断交付；AMD AVIC 也沿硬件辅助方向降低开销，但使用不同的数据结构和通知机制。</p>
+  <p>以 Intel posted interrupt 为例，KVM 可以先把向量记入 Posted Interrupt Descriptor 的 PIR 位图，再按需发送通知。目标 vCPU 正在合适的运行状态时，处理器可同步待处理向量并向客户机交付，避免为这段交付专门退出。客户机的屏蔽和优先级规则仍然有效。irqfd 的投递也可以进入这条路径，因此 irqfd 与 APICv 可以配合使用。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L4217-L4256">KVM 的 posted 与软件回退路径</a></p>
+  <h3 id="acceleration-part-3"><span class="mechanism-heading-number">3. </span>直通设备的 interrupt posting：再减少宿主软件转发</h3>
+  <p>对于直通设备，CPU 已能辅助接收虚拟中断，但物理设备的通知仍可能先由宿主中断处理再转发。支持 Intel VT-d interrupt posting 的硬件可把设备中断经中断重映射单元直接写入目标 vCPU 的 posted 描述符，在符合条件时省去这段宿主软件转发。</p>
+  <p>这需要设备分配、IOMMU、CPU 和内核配置共同支持。vCPU 阻塞时仍需宿主唤醒线程；vCPU 被抢占时要保存待处理状态，等待重新调度。硬件能够减少投递开销，不能替宿主调度器分配 CPU 时间。AMD 的 AVIC/中断重映射有自己的实现，不能套用 Intel 描述符字段。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/posted_intr.c#L154-L255">阻塞与调度处理</a></p>
+  <figure class="mechanism-diagram" data-diagram="interrupt-acceleration-layers" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>软件后端通知与直通设备通知的优化位置</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看软件后端通知与直通设备通知的优化位置" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="软件后端通知与直通设备通知的优化位置">
+    <img src="../assets/interrupt-acceleration-layers.svg?v=32683d73423f" alt="左侧是软件后端经 irqfd 进入 KVM，可选择软件或 posted 投递；右侧是满足条件的 Intel VT-d 直通路径。配置、屏蔽、调度和回退仍由软件协调。" loading="lazy">
+  </div>
+  <figcaption>左侧是软件后端经 irqfd 进入 KVM，可选择软件或 posted 投递；右侧是满足条件的 Intel VT-d 直通路径。配置、屏蔽、调度和回退仍由软件协调。 <a href="../assets/interrupt-acceleration-layers.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+  accTitle: irqfd、APICv 与直通设备 interrupt posting 的不同位置
+  accDescr: 软件后端可以通过 irqfd 进入 KVM 路由，再使用软件注入或 APICv posted 路径。满足条件的 Intel VT-d 直通设备可由 IOMMU 写入 posted 描述符。阻塞或抢占状态仍需宿主调度配合。
+  BACK[&#34;软件后端&lt;br/&gt;如 vhost 或 QEMU IOThread&#34;] --&gt; EVENT[&#34;eventfd → KVM irqfd&lt;br/&gt;按已配置路由投递&#34;]
+  EVENT --&gt; SW[&#34;软件 LAPIC&lt;br/&gt;IRR → 事件检查 → 注入&#34;]
+  EVENT --&gt;|可用时| PI[&#34;Intel Posted Interrupt Descriptor&lt;br/&gt;PIR 待处理位图 + 通知状态&#34;]
+  DEV[&#34;直通设备 MSI/MSI-X&#34;] --&gt;|已配置且平台支持| IOMMU[&#34;VT-d 中断重映射&lt;br/&gt;interrupt posting&#34;]
+  IOMMU --&gt; PI
+  PI --&gt; HW[&#34;目标 vCPU 运行时&lt;br/&gt;APICv 辅助接收与交付&#34;]
+  SW --&gt; GUEST[&#34;客户机中断入口&lt;br/&gt;驱动处理队列&#34;]
+  HW --&gt; GUEST
+  PI -.-&gt;|目标未运行| SCHED[&#34;宿主唤醒或后续调度&lt;br/&gt;同步待处理状态再执行&#34;]
+  SCHED -.-&gt; HW
+</code></pre></details>
+</figure>
+</section>
+<section id="example" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">五、</span>一次收包：从完成记录到客户机驱动</h2>
+  <p>现在回到开头的虚拟机。设 virtio-net 接收队列 0 已有可写缓冲区，本次接收一个 1500 字节报文；队列关联 MSI-X 表项 2，配置为向 APIC ID 1 投递向量 0x51。先用普通软件 LAPIC 注入路径看清状态变化：</p>
+  <ol>
+    <li><strong>保存结果。</strong>后端把报文及 virtio 网络头写入客户机缓冲区，发布 used 完成项，再推进 used 索引。此时数据已经就绪；used 长度还要计入实际写入的 virtio 网络头，不能直接等同报文长度。</li>
+    <li><strong>决定是否通知。</strong>若驱动需要通知且 MSI-X 未被屏蔽，设备提交对应消息；irqfd 路径则触发预先绑定的 eventfd。多个完成可以合并为一次通知。</li>
+    <li><strong>记录待处理向量。</strong>KVM 找到目标虚拟 LAPIC，记录 0x51 的待处理状态。若客户机暂时关闭可屏蔽中断，通知会等待；若 vCPU 线程阻塞，先唤醒它，随后仍要等待宿主调度。</li>
+    <li><strong>进入客户机处理入口。</strong>条件满足后，KVM 安排中断注入，客户机经 IDT 和操作系统 IRQ 分发进入网卡驱动。驱动检查队列，或安排 NAPI 继续批量处理，最终把报文交给网络栈。</li>
+  </ol>
+  <figure class="mechanism-diagram" data-diagram="interrupt-delivery-overview" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>同一个报文的数据路径与通知路径</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看同一个报文的数据路径与通知路径" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="同一个报文的数据路径与通知路径">
+    <img src="../assets/interrupt-delivery-overview.svg?v=32683d73423f" alt="缓冲区和 used 保存结果，MSI-X 或 irqfd 负责通知；pending、宿主可运行、客户机接受、驱动消费是不同阶段。硬件辅助改变部分交付步骤，保持客户机可见的中断语义。" loading="lazy">
+  </div>
+  <figcaption>缓冲区和 used 保存结果，MSI-X 或 irqfd 负责通知；pending、宿主可运行、客户机接受、驱动消费是不同阶段。硬件辅助改变部分交付步骤，保持客户机可见的中断语义。 <a href="../assets/interrupt-delivery-overview.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+    accTitle: 从设备完成到客户机驱动处理
+    accDescr: 完成记录先于通知发布，通知按路由进入虚拟 LAPIC 并等待客户机接受。vCPU 阻塞时需要先唤醒宿主线程；客户机驱动最终读取 used 队列确定完成项。
+    C[&#34;后端收到 1500 字节报文&#34;] --&gt; B[&#34;客户机接收缓冲区&lt;br/&gt;先写网络头与报文&#34;]
+    B --&gt; U[&#34;发布 used 记录&lt;br/&gt;写屏障 → 更新 used.idx&#34;]
+    U --&gt; N{&#34;需要通知？&#34;}
+    N --&gt;|是| R[&#34;MSI-X / irqfd 路由&lt;br/&gt;目的 vCPU 与向量&#34;]
+    N --&gt;|否| P[&#34;客户机轮询或后续通知&lt;br/&gt;used 记录仍保留&#34;]
+    R --&gt; L[&#34;虚拟 LAPIC pending&lt;br/&gt;等待可接受条件&#34;]
+    L -. &#34;目标未运行&#34; .-&gt; W[&#34;阻塞时唤醒线程&lt;br/&gt;等待宿主调度&#34;]
+    W --&gt; A[&#34;客户机接受中断&lt;br/&gt;IDT → IRQ 分派&#34;]
+    L --&gt;|目标已运行且允许接受| A
+    A --&gt; D[&#34;驱动检查 used&lt;br/&gt;回收完成项&#34;]
+    P --&gt; D
+    B -. 实际报文数据 .-&gt; D
+</code></pre></details>
+</figure>
+  <p>如果采用硬件辅助，中间的 pending 保存和交付由相应软件与硬件协作完成。最终仍要让客户机驱动检查完成队列。由此可见，“收到中断”“发出 EOI”和“1500 字节报文交给网络栈”并非同一件事。</p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>发展演变：新方案解决了什么，还留下什么</h2>
+  <p>这段演进有三条相互配合的线：设备从中断线转向消息；虚拟控制器从用户态移入内核；高频访问与交付逐步获得硬件辅助。下表按这些变化的形成顺序梳理，今天的系统中仍可能同时存在多条路径。</p>
+  <table><thead><tr><th scope="col">阶段</th><th scope="col">原有问题与改进</th><th scope="col">仍需承担的工作</th></tr></thead><tbody>
+    <tr><td>PIC → APIC / I/O APIC</td><td>从集中、有限的中断输入，发展到多 CPU 路由与每 CPU 状态管理</td><td>引脚分配、路由配置、优先级与应答</td></tr>
+    <tr><td>PCI INTx → MSI / MSI-X</td><td>消息与独立表项改善共享中断辨源和多队列分工</td><td>向量资源、亲和性与通知频率</td></tr>
+    <tr><td>QEMU 软件控制器 → KVM 内核 irqchip</td><td>减少控制器处理时的用户态往返</td><td>内核中的模拟、事件检查及可能的 VM Exit</td></tr>
+    <tr><td>irqfd（2009 年提出）</td><td>把 eventfd 后端通知连接到 KVM 路由，省去用户态注入中转</td><td>eventfd 与路由生命周期、屏蔽同步</td></tr>
+    <tr><td>APICv / AVIC</td><td>硬件辅助 APIC 操作与虚拟中断交付，减少部分退出</td><td>硬件能力、不能加速的操作与回退处理</td></tr>
+    <tr><td>IOMMU interrupt posting</td><td>把设备中断直接送到虚拟中断状态，减少直通设备的宿主软件转发</td><td>平台能力、vCPU 调度迁移、阻塞唤醒与隔离</td></tr>
+  </tbody></table>
+  <p><a href="https://lwn.net/Articles/329837/">irqfd 的原始提案</a>说明了 eventfd 连接中断的设计。后来增加的 APICv/AVIC 并没有使 irqfd 失去作用：前者着重减少控制器与 CPU 交付的开销，后者把后端事件接入 KVM。</p>
+  <p>还有一条客户机与宿主协作的路线：PV EOI 用共享应答状态减少部分 EOI 写入造成的退出；PV IPI 用半虚拟化调用向一组 vCPU 发送处理器间通知，减少逐个写 APIC 的开销。这些方案需要客户机配合。选择方案时应问它消除了哪次访问、退出或转发，而不只比较技术名称的新旧。</p>
+</section>
+<section id="evaluation" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">七、</span>总结：沿数据、通知与执行三条线定位延迟</h2>
+  <p>对“包已经到达，虚拟机却迟迟没处理”，可以按顺序检查：</p>
+  <ol>
+    <li><strong>结果是否发布？</strong>查看缓冲区、used 索引和驱动消费位置。后端尚未完成时，优化中断注入没有帮助。</li>
+    <li><strong>通知是否产生并正确路由？</strong>检查通知抑制、MSI-X 屏蔽与 pending、目标 CPU 和向量，区分没有发出与已经等待。</li>
+    <li><strong>客户机是否有机会接受？</strong>区分中断屏蔽、优先级等待、vCPU 阻塞和宿主 CPU 竞争。投递变快不会自动消除调度延迟。</li>
+    <li><strong>驱动何时消费？</strong>中断处理可能只启动 NAPI，后续批量大小、网络栈与应用调度继续影响尾延迟。</li>
+  </ol>
+  <p>中断优化的目标是以合理的 CPU 成本及时处理工作。降低中断次数可能提高吞吐，也可能让低负载报文等得更久；增加轮询可缩短等待，却占用 CPU。比较时同时记录吞吐、尾延迟、每次通知的处理量和 CPU 占用，才能判断优化是否对实际负载有效。</p>
+</section>
+<section id="reading" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">八、</span>进一步阅读</h2>
+  <ul>
+    <li><a href="kvm-virtio-interrupt.html">virtio 完成通知与 KVM 中断注入</a>：继续展开 MSI-X 字段、IRR/ISR、屏蔽与源码调用。</li>
+    <li><a href="kvm-vcpu-run.html">KVM 执行与退出</a>：对比设备访问、ioeventfd 和 irqfd 两个通知方向。</li>
+    <li><a href="kvm-vcpu-halt.html">vCPU 阻塞、轮询与唤醒</a>：跟踪中断到达后的调度与运行时序。</li>
+    <li><a href="kvm-virtual-time.html">KVM 虚拟时钟与定时器</a>：时钟读取与定时中断的分工，以及到期后的唤醒和处理。</li>
+    <li><a href="qemu-network-tx.html">virtqueue 数据结构与交互图</a>：观察描述符、队列与缓冲区的读写关系。</li>
+    <li><a href="qemu-vfio-dma.html">VFIO 设备直通</a>：理解直通设备的数据访问与隔离，区分 DMA 重映射和中断重映射。</li>
+  </ul>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">九、</span>参考资料</h2>
+  <ul>
+    <li><a href="https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html">Intel SDM</a>：中断与异常、Local APIC、APIC virtualization 与 posted-interrupt processing。</li>
+    <li><a href="https://docs.kernel.org/PCI/msi-howto.html">Linux MSI Driver Guide</a>：引脚中断、MSI 与 MSI-X 的差别。</li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/intc/i8259.c">QEMU PIC</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/intc/ioapic.c">I/O APIC</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/intc/apic.c">软件 LAPIC</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/pci/msix.c#L540-L558">MSI-X 通知</a>。</li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst">KVM API</a>：CREATE_IRQCHIP、SPLIT_IRQCHIP、GSI routing 与 IRQFD；<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/x86/msr.rst#L306-L340">PV EOI</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/x86/hypercalls.rst#L140-L159">PV IPI</a>。</li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L3083-L3124">KVM LAPIC 待处理与服务状态</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L4217-L4256">VMX 中断交付</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/svm/avic.c">AMD AVIC</a>。</li>
+    <li><a href="https://cdrdv2-public.intel.com/774206/vt-directed-io-spec%20.pdf">Intel VT-d 规范</a>第 5 章：Interrupt Remapping 与 Interrupt Posting；<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/posted_intr.c">KVM 对应实现</a>。</li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#interrupt-virtualization">中断虚拟化原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=85f3a75ef38f"></script>
+<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+</body>
+</html>

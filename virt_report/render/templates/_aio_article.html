@@ -2,14 +2,15 @@
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2>等待磁盘时如何继续处理其他请求</h2>
   <p>磁盘请求的大部分时间可能花在等待上。QEMU 需要让等待中的请求保留进度，同时继续处理其他队列、完成通知和管理事件。AioContext 组织事件分发，协程保存请求的执行过程，IOThread 提供独立的事件循环线程；三者共同决定 I/O 在何处运行、何时恢复。</p>
   <p>本文沿 Linux 宿主上的 virtio-blk 写请求，跟踪 raw 文件后端的 <code>aio=threads</code> 路径，再讨论多队列映射、同步与调优。客户机描述符和完成通知的格式见<a href="qemu-virtio-blk.html">virtio-blk 的请求处理与写入完成</a>。</p>
+  <p>设请求 A 的文件写入尚未返回，请求 B 已经到达队列。若事件循环直接阻塞在 A 上，B 和其他完成回调都要等待。本文路径把阻塞调用交给 worker，让 A 的协程挂起，事件循环转去处理 B；A 完成后再回到原上下文恢复。需要解释的核心是任务怎样移交，以及等待期间谁保证请求仍然有效。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="structures" class="mechanism-section">
-  <h2>线程、事件循环与协程</h2>
+  <h2>IOThread、AioContext 与协程的分工</h2>
   <table><thead><tr><th scope="col">结构</th><th scope="col">关键字段</th><th scope="col">含义</th></tr></thead><tbody>
     <tr><td><code>IOThread</code></td><td><code>thread / ctx / running / thread_id</code></td><td>一个宿主线程及其 AioContext，负责执行事件循环。</td></tr>
     <tr><td><code>AioContext</code></td><td><code>aio_handlers / bh_list / notifier / tlg</code></td><td>文件描述符处理器、延迟回调、跨线程唤醒和定时器。</td></tr>
@@ -22,9 +23,10 @@
 </section>
 
 <section id="request" class="mechanism-section">
-  <h2>一次写请求的挂起与恢复</h2>
+  <h2>4 KiB 写入：提交、挂起与恢复</h2>
   <p>假设队列 0 已映射到 IOThread A，客户机提交一个 4 KiB 写请求，数据经映射得到一个连续 iovec，后端使用 raw 普通文件、writeback 缓存和 aio=threads。请求到达后，IOThread A 处理队列，调用 <code>blk_aio_pwritev()</code>。</p>
   {{ diagram('aio-request-lifecycle', '写请求在 IOThread 与 worker 之间的往返', '协程在 IOThread 中提交并挂起，worker 执行阻塞文件操作；完成结果通过 BH 返回原上下文，再恢复协程和设备回调。') }}
+  <h3>提交任务，保留请求栈后挂起</h3>
   <p><code>blk_aio_prwv()</code> 创建 <code>BlkAioEmAIOCB</code>，保存偏移、向量、完成函数等信息，再创建并进入写协程。协程沿块图下行到 <code>raw_co_prw()</code>，构造栈上的 <code>RawPosixAIOData</code>，交给线程池：</p>
   <pre><code>RawPosixAIOData
   aio_fildes = 文件 fd
@@ -38,14 +40,16 @@ ThreadPoolElementAio
   arg  = &amp;RawPosixAIOData
   state: THREAD_QUEUED → THREAD_ACTIVE → THREAD_DONE</code></pre>
   <p><code>thread_pool_submit_co()</code> 记录当前 Coroutine，将任务加入当前 AioContext 的线程池，然后执行 <code>qemu_coroutine_yield()</code>。协程栈仍然存在，因此栈上的请求参数保持有效；提交端也必须让 iovec 和数据缓冲区存活到完成。IOThread 返回事件循环，继续处理其他请求。</p>
+  <h3>worker 执行阻塞调用并发布结果</h3>
   <p>worker 从队列取出任务，执行 <code>handle_aiocb_rw()</code>。本例只有一个 iovec，进入 pwrite 循环；多个合适的 iovec 才尝试 pwritev。worker 返回后先保存结果，再发布 THREAD_DONE，通过 <code>qemu_bh_schedule(completion_bh)</code> 通知所属事件循环。它不直接修改客户机 used ring。</p>
+  <h3>回到原 IOThread 恢复协程与设备回调</h3>
   <p>IOThread A 执行 <code>thread_pool_completion_bh()</code>，找到完成任务，调用 <code>thread_pool_co_cb()</code>。该函数保存返回值并通过 <code>aio_co_wake()</code> 恢复协程。原来的 submit_co 从 yield 后返回，结果沿块层回到 <code>blk_aio_complete()</code>，最后调用 virtio-blk 的完成函数，写状态、更新 used ring，并按通知规则告知客户机。</p>
   <p>即使某条块路径立即完成，异步接口也不能在提交函数返回前提前调用外部完成函数。<code>has_returned</code> 配合完成 BH 保证这一点。上述 raw 写入成功只表示该次文件操作成功；writeback 下数据可能仍在宿主页缓存，持久化还取决于后续 flush、存储设备及其保证。</p>
   <p>例如请求 A 先提交后挂起，请求 B 随后进入另一 worker 并先完成。IOThread 可以先恢复 B，再恢复 A。每个请求拥有自己的参数、协程和返回值，完成顺序不必等于提交顺序；应用需要的写入先后关系必须由客户机块层、协议中的 flush 等约束建立。增加 IOThread 不会替应用推导依赖关系。</p>
 </section>
 
 <section id="dispatch" class="mechanism-section">
-  <h2>BH 与跨线程调度</h2>
+  <h2>BH 如何把完成交回原上下文</h2>
   <p>BH 是用户态的延迟回调。调度操作设置标志并把它加入所属 AioContext 的待处理链表，必要时通过 EventNotifier 唤醒事件循环。回调在目标线程运行，不在调用 qemu_bh_schedule 的线程内执行。线程池中的锁保护工作队列，结果发布与读取还使用内存屏障，避免看到 DONE 却读到旧结果。</p>
   <p><code>aio_co_enter()</code> 根据调用位置选择恢复方式：目标上下文不同，先把协程放入 <code>scheduled_coroutines</code> 并调度 <code>co_schedule_bh</code>；同上下文且当前不在协程中，可以直接进入；当前也在协程中，则加入唤醒队列，在安全的切换点处理。一个协程不能同时在两条线程上运行，也不能被重复入队。</p>
   <p>跨线程执行普通函数通常用 <code>aio_bh_schedule_oneshot(ctx, cb, opaque)</code>。但把指针交给 BH 不会自动延长对象寿命，调用者仍需安排引用、完成等待和删除顺序。虚拟机关闭、设备移除及后端切换时，遗漏这些约束就可能使回调访问已释放的状态。</p>
@@ -65,7 +69,7 @@ ThreadPoolElementAio
 </section>
 
 <section id="synchronization" class="mechanism-section">
-  <h2>数据面并行与管理操作</h2>
+  <h2>并行读写如何与 drain 和块图修改协调</h2>
   <p>IOThread 的数据路径通常不持有 BQL。设备配置、复位和管理操作仍有各自的同步要求。块层的 I/O API 可以跨线程调用，块图的修改需要图锁与相应的全局状态上下文；设备的共享请求链表等状态则由自己的锁保护。多条线程能够遍历同一块图，不意味着可以同时任意更改节点关系。</p>
   <p>管理侧需要停止接收并等待已有请求完成时使用 drain。virtio-blk 的 drained_begin 会暂时摘下各队列的 host notifier，drained_end 再挂回。已有请求仍需由事件循环推进到完成，不能简单把 IOThread 停住再等它完成工作。drain 也不等于磁盘 flush，两者分别处理活动请求与持久化语义。</p>
   <p>容量变更提供了一个具体的跨线程例子：<code>virtio_blk_resize()</code> 用 BH 把配置通知安排到主 AioContext，后者调用 <code>virtio_notify_config()</code>。把需要 BQL 的控制操作直接塞进普通 IOThread 回调，会破坏既有锁和上下文约束。</p>

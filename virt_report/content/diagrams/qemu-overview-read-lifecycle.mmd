@@ -1,0 +1,18 @@
+sequenceDiagram
+    accTitle: 从 4 KiB 读取请求到缓冲区归还
+    accDescr: 客户机发布头、数据和状态组成的描述符链，经 ioeventfd 通知 IOThread。QEMU 解析请求后提交块后端，等待数据完成，写回状态和 used，再按需通知客户机回收。
+    participant G as 客户机驱动
+    participant Q as QEMU 队列线程
+    participant B as 块层
+    participant S as 宿主存储
+    G->>G: 描述符 5 → 9 → 12<br/>发布 available 链头 5
+    G-->>Q: 按需 kick：ioeventfd
+    Q->>Q: 校验 IN、sector 2048<br/>映射 4096 B 可写缓冲区
+    Q->>B: 读取 1 MiB 偏移的 4 KiB
+    B->>S: 格式 / 协议节点提交操作
+    Note over Q,B: 等待 I/O 时协程让出<br/>事件循环可继续处理其他工作
+    S-->>B: 数据与完成结果
+    B-->>Q: 完成回调
+    Q->>Q: 写 status = OK<br/>发布 used：id 5、len 4097
+    Q-->>G: 按需完成通知
+    G->>G: 消费 used，回收描述符与缓冲区

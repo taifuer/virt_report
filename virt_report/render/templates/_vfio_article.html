@@ -3,14 +3,14 @@
 {% from '_mechanism_diagram.html' import diagram with context %}
 
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2>让设备访问客户机内存并限制范围</h2>
   <p>设备直通把物理设备的功能交给客户机驱动使用。驱动向设备提交缓冲区地址后，设备可以通过 DMA 读写客户机内存。宿主机需要把这些地址转换成实际的物理页，同时限制设备能够访问的范围。VFIO 管理设备访问与 DMA 资源，宿主 IOMMU 执行地址转换和权限检查。</p>
   <p>本文分析 x86 / KVM 下普通 PCIe 设备访问客户机 RAM 的过程：客户机不配置虚拟 IOMMU，设备使用 GPA 作为 DMA 地址，宿主启用 IOMMU 隔离；内存采用常规可固定的 RAM。本例不涉及 PCIe 对等访问、ATS、PASID 和可恢复页故障。设备寄存器与中断仅作为请求提交和完成的上下文。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="addresses" class="mechanism-section">
-  <h2>四种地址与两条转换路径</h2>
+  <h2>CPU 与 DMA 如何访问同一后备页</h2>
   <p>同一块客户机内存，客户机 CPU、QEMU 进程和物理设备使用的地址不同。建映射时，QEMU 提供设备侧地址与用户态内存位置；运行时，IOMMU 根据设备所属的转换域处理 DMA。</p>
   <table>
     <thead><tr><th scope="col">地址</th><th scope="col">含义</th><th scope="col">本例中的用途</th></tr></thead>
@@ -28,7 +28,7 @@
 </section>
 
 <section id="flow" class="mechanism-section">
-  <h2>一次 DMA 请求</h2>
+  <h2>建立 IOMMU 映射，再提交 DMA</h2>
   <p>先建立设备与地址空间的关联，再映射客户机 RAM。之后客户机提交请求，设备发出 DMA，IOMMU 检查目标地址与权限。下面可以切换设备读、设备写以及三种映射状态，观察目标内存是否被访问。</p>
   {% include '_vfio_lab.html' %}
   <h3>配置阶段</h3>
@@ -60,7 +60,7 @@
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码</h2>
+  <h2>源码：RAM 区域如何变成 DMA 映射</h2>
   <h3>QEMU 从 RAM 布局生成 DMA 映射</h3>
   <pre><code>vfio_listener_region_add()
   vfio_container_region_add()
@@ -88,6 +88,12 @@ IOMMUFD：iommufd_ioas_map()
     将映射同步到该 IOAS 关联的硬件页表</code></pre>
   <p>Type1 的 <code>vfio_pin_map_dma()</code>分批固定页面，将物理页号交给 <code>vfio_iommu_map()</code>。后者调用 IOMMU 子系统的映射接口，由平台驱动建立硬件所需的转换。IOMMUFD 把地址空间及硬件页表作为独立对象管理。<a href="{{ kernel_source }}drivers/vfio/vfio_iommu_type1.c#L1465-L1533">Type1 页固定与映射</a>、<a href="{{ kernel_source }}drivers/iommu/iommufd/ioas.c#L235-L269">IOAS 映射入口</a></p>
   <p>这些函数建立或更新转换关系，正常 DMA 命中映射后由设备和 IOMMU 硬件处理。IOTLB 未命中可触发硬件页表遍历；它与缺失映射导致的访问故障不同，也不等同于每次请求都进入 QEMU 做地址换算。</p>
+</section>
+
+<section id="tradeoffs" class="mechanism-section">
+  <h2>直通减少的开销与保留的成本</h2>
+  <p>回到 GPA <code>0x00400080</code> 的例子，映射建立后，设备通过 IOMMU 访问对应宿主页，无需 QEMU 为这次数据搬运解析一条 virtqueue 或复制报文。省下的是软件设备数据路径的一部分工作；IOMMU 转换、硬件队列、设备中断以及客户机驱动仍要运行。BAR 是否能够直接映射、设备是否需要其他模拟，也会影响实际退出次数。</p>
+  <p>评估应分开一次性的接管与映射成本、正常运行的吞吐和尾延迟，以及停止、复位和迁移的管理成本。大内存虚拟机还要观察页固定规模与映射耗时；高频小 I/O 则更容易暴露中断和调度开销。若增加虚拟 IOMMU 来细化客户机 DMA 权限，还需评估动态映射和 IOTLB 更新，不能沿用本例长期映射全部可访问 RAM 的开销结论。</p>
 </section>
 
 <section id="evolution" class="mechanism-section">

@@ -2,14 +2,15 @@
 {% set linux_source = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 {% from '_mechanism_diagram.html' import diagram with context %}
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2>运行中的内存容量如何逐步调整</h2>
   <p>虚拟机运行期间，负载需要的内存会改变。virtio-mem 在预先划定的客户机物理地址范围内，按小块提供和收回内存。管理程序设置目标容量，客户机驱动决定哪些块可以加入内存管理、哪些块能够安全回收，再通过 virtqueue 与 QEMU 完成交接。</p>
   <p>本文沿 x86 Linux 客户机的扩容和缩容过程，分析容量字段、设备协议与页面回收。重点采用 Sub Block Mode（SBM）；较大设备块的 Big Block Mode（BBM）另作对照。</p>
+  <p>以可调设备当前提供 4 GiB 为例：目标改为 6 GiB，驱动需要先请求新块，再把它们加入分配器；目标改为 2 GiB，则先迁走待回收区域中的页面，再请求 QEMU 撤回内存。两条路径都由客户机确认可安全交接后推进，目标字段因此可以先改变，实际容量随后才逐步靠近它。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="capacity" class="mechanism-section">
-  <h2>同一个设备的几种容量</h2>
+  <h2>目标容量、实际容量与可用范围</h2>
   <p>一个 virtio-mem 设备关联一个 memory backend，并管理从 <code>addr</code> 开始的一段 GPA。后端大小决定容量上限；实际向客户机提供多少内存，由块状态决定。初始内存与这个设备的容量分别计数。</p>
   <table><thead><tr><th scope="col">字段</th><th scope="col">含义</th><th scope="col">谁改变它</th></tr></thead><tbody>
     <tr><td><code>region_size</code></td><td>后端覆盖的最大范围，QMP 中为 <code>max-size</code></td><td>创建设备时确定</td></tr>
@@ -41,7 +42,7 @@
 </section>
 
 <section id="growth" class="mechanism-section">
-  <h2>从目标变化到可用内存</h2>
+  <h2>扩容：PLUG 后再加入客户机分配器</h2>
   <p>管理程序通过 QOM 属性提出请求：</p>
   <pre><code>{"execute":"qom-set","arguments":{
   "path":"/machine/peripheral/vm0",
@@ -58,7 +59,7 @@
 </section>
 
 <section id="reclaim" class="mechanism-section">
-  <h2>缩容中的页面迁移与交接</h2>
+  <h2>缩容：隔离页面后再 UNPLUG</h2>
   <p>降低目标后，客户机首先要使待回收页退出分配和使用。对于已在线 Linux 块中的子块，<code>virtio_mem_fake_offline()</code> 使用 <code>alloc_contig_range()</code> 隔离指定范围，迁出可迁移页，并由驱动持有这些页。它还通过 <code>adjust_managed_page_count()</code> 减少分配器管理的页数；同一 Linux memory block 的其他子块仍可在线使用。</p>
   <p>以一个包含 64 个子块的 128 MiB Linux memory block 为例，回收第 63 个 2 MiB 子块，只需使该子块退出使用。成功后，驱动的子块位图从全 1 变为 63 个 1 和 1 个 0，Linux 块转入部分提供状态，QEMU 的设备容量减少 2 MiB。其余 126 MiB 可以继续服务客户机。最后一个子块也回收后，才有条件清理整个 Linux 块。</p>
   <p>隔离成功后才发送 UNPLUG。QEMU 执行 <code>ram_block_discard_range()</code>，通知 <code>RamDiscardManager</code> 监听者，清除块位图，再减少 <code>size</code> 并返回 ACK。启用动态 memslot 时，完全不再含已提供块的 memslot 可以停用。discard 的底层行为取决于匿名内存、文件或大页后端，设备容量下降不等于进程 RSS 按同一数值立即下降。</p>
@@ -67,12 +68,12 @@
 </section>
 
 <section id="interaction" class="mechanism-section">
-  <h2>交互：扩容、缩容与阻塞</h2>
+  <h2>逐步观察扩缩容与失败重试</h2>
   {% include '_virtio_mem_lab.html' %}
 </section>
 
 <section id="limits" class="mechanism-section">
-  <h2>目标为何可能无法达到</h2>
+  <h2>区分客户机隔离失败与设备 BUSY</h2>
   <p>不可迁移的内核分配、暂时固定的页或迁移目标页不足，都可能使隔离失败。驱动会跳过暂忙子块，尝试其他范围；部分子块成功时，实际容量可以停在初始值与目标之间。ZONE_MOVABLE 能减少不可迁移分配带来的干扰，但仍需要处理临时引用和内存压力。</p>
   <p>设备侧 BUSY 是另一个原因。QEMU 在迁移期间限制块状态变化；预分配失败、discard 失败或监听者无法建立映射，也可能使请求暂不能完成。在线 SBM 子块的 UNPLUG 失败后，驱动会 fake-online，将已经隔离的页归还分配器，再安排重试。<a href="{{ qemu_source }}hw/virtio/virtio-mem.c#L578-L684">QEMU 状态改变</a>、<a href="{{ linux_source }}drivers/virtio/virtio_mem.c#L2415-L2499">工作队列与重试</a></p>
   <p>NACK 表示 PLUG 超过当前目标，例如目标在处理期间变化；驱动重读配置。ERROR 表示地址、对齐或块状态等请求条件错误，不能与 BUSY 混同。管理程序应同时记录目标、实际提供量及变化时间，再检查客户机内存块状态和驱动日志，避免把一次 QMP 返回当作扩缩容完成。</p>

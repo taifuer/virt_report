@@ -1,0 +1,19 @@
+flowchart TB
+  accTitle: 影子页表与两级页表的分工
+  accDescr: 影子页表由软件合成客户机页表和宿主映射，供硬件从 GVA 转换到 HPA。EPT/NPT 则让硬件依次使用客户机页表和宿主二级页表，客户机页表页的读取也要经过第二级转换。
+  subgraph SHADOW["影子页表"]
+    G["客户机页表<br/>GVA → GPA"] -->|软件跟踪与合成| S["影子页表<br/>GVA → HPA"]
+    H["宿主后备关系<br/>GPA → HPA"] --> S
+    S --> A["硬件使用合成页表完成访问"]
+  end
+  subgraph TDP["EPT / NPT"]
+    V["GVA"] -->|客户机页表| P["GPA"]
+    P -->|宿主管理的二级页表| F["HPA"]
+    W["读取客户机页表页<br/>同样需要第二级转换"] -.-> P
+  end
+  classDef guest fill:#e4f1ec,stroke:#438575,color:#173e34;
+  classDef host fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef note fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class G,V,P guest;
+  class H,S,A,F host;
+  class W note;

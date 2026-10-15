@@ -1,0 +1,22 @@
+sequenceDiagram
+    accTitle: 客户机缓冲区与 DPDK mbuf 的回收时刻
+    accDescr: DPDK 复制客户机数据到 mbuf 后归还客户机链，物理 PMD 接受 mbuf 后还要等待硬件完成。短发送时剩余 mbuf 仍由应用管理。
+    participant G as 客户机驱动
+    participant V as DPDK vhost
+    participant A as 转发应用
+    participant P as PMD / 物理网卡
+    G->>V: 发布 TX 链 0→2，avail.idx=1
+    A->>V: dequeue_burst，最多 32 个
+    V->>V: 分配 M，复制 P1，完成待执行复制
+    V-->>G: used={id:0,len:0}，used.idx=1
+    Note over G,V: 客户机可回收原缓冲区
+    V-->>A: 返回 1 个 mbuf：M
+    A->>P: tx_burst(M, 1)
+    alt 接受 1 个
+      P-->>A: 返回 1，PMD 持有 M
+      P->>P: DMA 读取 → 发送 → 完成清理
+      Note over A,P: PMD 回收 M，不能由应用提前释放
+    else 接受 0 个
+      P-->>A: 返回 0
+      A->>A: 有界重试或丢弃并释放 M
+    end

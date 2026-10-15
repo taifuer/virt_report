@@ -1,0 +1,15 @@
+flowchart TB
+  accTitle: 虚拟机启动的分工与放行顺序
+  accDescr: 启动请求进入 Libvirt，完成资源准备和进程隔离，QEMU 创建暂停的机器与 KVM 对象；Libvirt 配置 QMP 后放行 vCPU，客户机依次执行固件、内核与服务。
+  A["启动请求与虚拟机定义"] --> B["Libvirt：资源、权限与进程隔离"]
+  B --> C["QEMU：机器、RAM、设备与 KVM 对象<br/>-S 暂停客户机执行"]
+  C --> D["Libvirt：QMP 查询与运行前设置"]
+  D -->|cont| E["vCPU 开始执行：KVM_RUN"]
+  E --> F["客户机：固件 → 内核 → 服务"]
+  F --> G["业务健康检查：确认服务就绪"]
+  classDef manager fill:#e4f1ec,stroke:#438575,color:#173e34;
+  classDef machine fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef guest fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class A,B,D manager;
+  class C,E machine;
+  class F,G guest;

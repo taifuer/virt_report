@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=c084ccad2981">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c084ccad2981">
-<link rel="stylesheet" href="../assets/postcopy.css?v=c084ccad2981"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/postcopy.css?v=32683d73423f"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -43,22 +43,23 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#migration">热迁移</a></div>
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="migration.html">热迁移</a></div>
     <h1>QEMU 后拷贝迁移的缺页处理与页面传输</h1>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">前言</a></li><li><a href="#principle">执行位置与内存归属</a></li><li><a href="#switch">切换与旧页面丢弃</a></li><li><a href="#fault">一次缺页的往返</a></li><li><a href="#implementation">关键源码</a></li><li><a href="#tradeoffs">延迟、粒度与故障恢复</a></li><li><a href="#evolution">后拷贝路径的演进</a></li><li><a href="#sources">参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、预拷贝不收敛时如何交接</a></li><li><a href="#principle">二、目的端先执行，缺失页按需补齐</a></li><li><a href="#switch">三、切换与旧页面丢弃</a><ol><li><a href="#switch-part-1">1. 清理预拷贝留下的过期副本</a></li><li><a href="#switch-part-2">2. 先让页面接收路径就绪，再恢复执行</a></li></ol></li><li><a href="#fault">四、一次缺页的往返</a><ol><li><a href="#fault-part-1">1. 从宿主地址定位到 RAMBlock</a></li><li><a href="#fault-part-2">2. 完整页面安装后，访问才能继续</a></li></ol></li><li><a href="#implementation">五、源码：丢弃、请求与原子装页</a></li><li><a href="#tradeoffs">六、收敛收益、缺页延迟与故障代价</a><ol><li><a href="#tradeoffs-part-1">1. 停机结束之后仍可能等待内存</a></li><li><a href="#tradeoffs-part-2">2. 大页与通道排队</a></li><li><a href="#tradeoffs-part-3">3. 中断恢复与状态丢失</a></li></ol></li><li><a href="#evolution">七、后拷贝路径的演进</a><ol><li><a href="#evolution-part-1">1. 2015：缺页通知与按需供页</a></li><li><a href="#evolution-part-2">2. 2022：分离紧急页面与后台传输</a></li><li><a href="#evolution-part-3">3. 2024—2025：恢复状态与预拷贝并行化</a></li></ol></li><li><a href="#sources">八、参考资料</a></li></ol></nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2><span class="mechanism-heading-number">一、</span>预拷贝不收敛时如何交接</h2>
   <p>预拷贝在源端持续运行虚拟机，同时反复发送被修改的内存页。写脏速度接近传输速度时，剩余内存可能长时间无法降到停机预算以内。后拷贝将执行切到目的端，再通过后台传输和缺页请求补齐内存，从而结束源端不断产生新脏页的循环。</p>
   <p>本文分析 Linux 上普通 RAM 的后拷贝路径：切换时如何处理旧页面，目的端如何请求缺失页，以及接收线程怎样安装页面并恢复访问。先按单条页面传输通道展开，再讨论紧急通道、大页和故障恢复。</p>
 <p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p>  <p>预拷贝的迭代与停机条件见<a href="qemu-memory-migration.html">《QEMU 预拷贝迁移的内存迭代与停机控制》</a>；记录格式见<a href="qemu-migration-stream.html">《QEMU 迁移流格式与状态恢复》</a>。</p>
 </section>
 
 <section id="principle" class="mechanism-section">
-  <h2>执行位置与内存归属</h2>
+  <h2><span class="mechanism-heading-number">二、</span>目的端先执行，缺失页按需补齐</h2>
   <p>后拷贝开始后，源端 vCPU 停止执行，目的端恢复 CPU 和设备状态并开始运行。此时内存分为两部分：已经在目的端可访问的页面，以及仍需从源端取得的页面。目的端执行线程访问后一部分时，宿主内核暂时阻塞这次访问，由 QEMU 获取缺失内容。</p>
   <p>源端继续扫描待发送位图，并优先处理目的端请求的页面。随着页面到达，目的端可访问范围扩大，直到全部内存完成交接。客户机后续写入发生在目的端；源端保留的旧副本不能再覆盖已经交付的页面。</p>
+  <p>例如切换时 P0 已有最新副本，P1 从未传输，P2 只传过旧版本。目的端可立即访问 P0；P1 需要补齐；P2 必须先丢弃旧映射，再按缺失页处理。三种页面状态解释了后续流程的顺序：先确定哪些页有效，再开放执行，最后由缺页请求和后台传输完成其余交接。</p>
   <table><thead><tr><th>结构</th><th>由谁维护</th><th>一个比特或条目表示什么</th></tr></thead><tbody>
     <tr><td><code>RAMBlock.bmap</code></td><td>源端 RAM 迁移线程；preempt 路径还与请求线程协作</td><td>置位表示该页仍需发送。后拷贝期间源端不再运行客户机，成功安排传输后逐步清除。</td></tr>
     <tr><td><code>RAMBlock.receivedmap</code></td><td>目的端页面接收路径</td><td>记录已接收的页面；安装成功后更新，可避免对已到达页继续请求，并用于恢复时同步进度。</td></tr>
@@ -69,11 +70,11 @@
 </section>
 
 <section id="switch" class="mechanism-section">
-  <h2>切换与旧页面丢弃</h2>
-  <h3>清理预拷贝留下的过期副本</h3>
+  <h2><span class="mechanism-heading-number">三、</span>切换与旧页面丢弃</h2>
+  <h3 id="switch-part-1"><span class="mechanism-heading-number">1. </span>清理预拷贝留下的过期副本</h3>
   <p>假设 P2 在预拷贝时发送过 v1，之后源端又把它写成 v2。如果目的端带着 v1 开始执行，这次访问不会缺页，却会读到旧内容。因此，停住源端后还要做最终脏页同步，并通知目的端丢弃所有仍待发送的页，包括已传过但再次变脏的页和从未传过的页。</p>
   <p><code>ram_postcopy_send_discard_bitmap()</code> 先同步迁移位图，再按 RAMBlock 发送丢弃范围。如果 RAMBlock 的宿主页比迁移目标页大，同一宿主页中只要还有待传部分，就要把这一整组目标页统一标为待发送，目的端也按宿主页边界丢弃。这样后续可以一次安装完整宿主页。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c#L2595-L2714">丢弃范围与宿主页对齐</a></p>
-  <h3>先让页面接收路径就绪，再恢复执行</h3>
+  <h3 id="switch-part-2"><span class="mechanism-heading-number">2. </span>先让页面接收路径就绪，再恢复执行</h3>
   <ol class="mechanism-flow">
     <li><strong>停住源端</strong><span>停止客户机执行，完成非后拷贝迭代设备的收尾，最后同步 RAM 脏页。</span></li>
     <li><strong>发送 DISCARD</strong><span>目的端移除过期或尚未有效传输的页面映射，并清除相应接收位。</span></li>
@@ -84,8 +85,8 @@
 </section>
 
 <section id="fault" class="mechanism-section">
-  <h2>一次缺页的往返</h2>
-  <h3>从宿主地址定位到 RAMBlock</h3>
+  <h2><span class="mechanism-heading-number">四、</span>一次缺页的往返</h2>
+  <h3 id="fault-part-1"><span class="mechanism-heading-number">1. </span>从宿主地址定位到 RAMBlock</h3>
   <p>目的端为 RAM 映射注册 userfaultfd 的 missing 模式。执行线程访问缺失映射时，内核生成 <code>uffd_msg</code>，其 <code>event</code> 为 <code>UFFD_EVENT_PAGEFAULT</code>；<code>arg.pagefault.address</code> 给出目的端进程中的宿主虚拟地址，<code>flags</code> 区分读写等属性。这个地址不能直接发给源端使用，因为两端 QEMU 的虚拟地址布局可能不同。</p>
   <p><code>postcopy_ram_fault_thread()</code> 用 <code>qemu_ram_block_from_host()</code> 找到 RAMBlock 和块内偏移，再向下对齐到该块的宿主页大小。请求据此转换为“哪个 RAMBlock、从哪里开始、需要多长”。这里的缺页属于宿主内存交付过程，不要求把一个普通的客户机页错误注入给客户机操作系统。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/postcopy-ram.c#L1350-L1406">缺页地址转换</a></p>
   <pre><code>示例：RAMBlock = "pc.ram"，宿主页 = 4096 B
@@ -121,7 +122,7 @@ REQ_PAGES：   start: BE64 | len: BE32
   </div>
   <div class="postcopy-fallback" data-postcopy-fallback><ol><li>源端停机并同步脏页。目的端丢弃 P2、P5 的旧副本，以及 P3、P6、P7 的未传范围。</li><li>LISTEN 建立缺页与接收路径，加载 CPU / 设备状态；RUN 恢复目的端执行。</li><li>vCPU 访问缺失的 P2，产生 userfaultfd 事件并等待。QEMU 将宿主地址转为 pc.ram 中的偏移 0x2000。</li><li>返回通道请求 start = 0x2000、len = 4096。源端检查发送位图，优先发送 P2。</li><li>目的端收齐 P2，通过 UFFDIO_COPY 原子安装并唤醒；更新接收位图，访问继续。</li><li>后台补齐其他页。目的端对已交付页面的新写入不再被源端旧副本覆盖。</li></ol><p>启用 JavaScript 后可逐步观察页面、位图和请求字段。</p></div>
   <p class="postcopy-model-note">示例只取一个 RAMBlock 的 8 个 4 KiB 普通页，源端版本在切换后固定。一次“下一步”表示逻辑处理阶段；接收位图记账与内核唤醒合并显示。单 vCPU、单页面通道，不展开 preempt、大页、外部共享内存访问和故障恢复。版本号表示页内容变化，不表示耗时或带宽。</p>
-</section>  <h3>完整页面安装后，访问才能继续</h3>
+</section>  <h3 id="fault-part-2"><span class="mechanism-heading-number">2. </span>完整页面安装后，访问才能继续</h3>
   <p><code>ram_load_postcopy()</code> 按流格式读取页数据。如果宿主页包含多个迁移目标页，接收线程先在临时缓冲中收齐它们，再调用 <code>postcopy_place_page()</code>。宿主页与目标页相同的普通页面可以直接利用 QEMUFile 缓冲，仍要等整个页内容到齐后安装。</p>
   <p><code>UFFDIO_COPY</code> 将完整页原子地装入缺失映射：被阻塞的线程不会看到只填了一半的页。QEMU 在这条普通 RAM 路径中没有设置 DONTWAKE，因此内核同时唤醒等待访问；随后 QEMU 更新接收位图，移除待解决请求并结算阻塞时间。这里的“原子”指页面对访问者的可见性，并不表示网络传输、位图更新与线程调度发生在同一时刻。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c#L3814-L3967">接收与整页组装</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/postcopy-ram.c#L1587-L1668">安装与完成记录</a></p>
   <figure class="mechanism-diagram" data-diagram="postcopy-page-fault" data-mechanism-view="diagram">
@@ -130,9 +131,9 @@ REQ_PAGES：   start: BE64 | len: BE32
     <button type="button" data-mechanism-expand aria-label="放大查看后拷贝缺页处理的线程协作" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="后拷贝缺页处理的线程协作">
-    <img src="../assets/postcopy-page-fault.svg?v=c084ccad2981" alt="图示普通单流、4 KiB 宿主页路径。缺页线程发送请求，接收线程安装完整页；内核唤醒访问线程之后，QEMU 完成接收位图与请求记录的更新。" loading="lazy">
+    <img src="../assets/postcopy-page-fault.svg?v=32683d73423f" alt="图示普通单流、4 KiB 宿主页路径。缺页线程发送请求，接收线程安装完整页；内核唤醒访问线程之后，QEMU 完成接收位图与请求记录的更新。" loading="lazy">
   </div>
-  <figcaption>图示普通单流、4 KiB 宿主页路径。缺页线程发送请求，接收线程安装完整页；内核唤醒访问线程之后，QEMU 完成接收位图与请求记录的更新。 <a href="../assets/postcopy-page-fault.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>图示普通单流、4 KiB 宿主页路径。缺页线程发送请求，接收线程安装完整页；内核唤醒访问线程之后，QEMU 完成接收位图与请求记录的更新。 <a href="../assets/postcopy-page-fault.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 后拷贝缺页处理的线程协作
     accDescr: 目的端访问缺页后由内核阻塞，缺页线程将宿主地址转换为 RAMBlock 与页偏移并请求源端。源端在单流路径优先处理未发送的请求页；目的端接收线程收齐宿主页后通过 UFFDIO_COPY 安装，内核唤醒访问线程，QEMU 随后更新接收位图并删除请求记录。
@@ -165,7 +166,7 @@ REQ_PAGES：   start: BE64 | len: BE32
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码</h2>
+  <h2><span class="mechanism-heading-number">五、</span>源码：丢弃、请求与原子装页</h2>
   <table><thead><tr><th>环节</th><th>入口与读写的状态</th></tr></thead><tbody>
     <tr><td>准备切换</td><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/migration.c#L2728-L2859"><code>postcopy_start()</code></a>：停源、发送 discard，打包 LISTEN、设备状态与 RUN。</td></tr>
     <tr><td>丢弃旧映射</td><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c#L2685-L2750"><code>ram_postcopy_send_discard_bitmap()</code> / <code>ram_discard_range()</code></a>：发送最后待传范围，清除目的端接收位与旧映射。</td></tr>
@@ -178,31 +179,31 @@ REQ_PAGES：   start: BE64 | len: BE32
 </section>
 
 <section id="tradeoffs" class="mechanism-section">
-  <h2>延迟、粒度与故障恢复</h2>
-  <h3>停机结束之后仍可能等待内存</h3>
+  <h2><span class="mechanism-heading-number">六、</span>收敛收益、缺页延迟与故障代价</h2>
+  <h3 id="tradeoffs-part-1"><span class="mechanism-heading-number">1. </span>停机结束之后仍可能等待内存</h3>
   <p>后拷贝将“所有剩余内存复制完毕”从恢复执行的前提中移走，但 CPU 与设备状态切换仍需时间。恢复之后的缺页等待则包含事件处理、请求往返、源端排队、页数据传输及安装。这类延迟直接影响访问该页的执行线程，不能只看迁移停机时间就判断应用影响。</p>
   <p>运行指标应同时观察切换停机时间、总迁移时间、请求数、应用尾延迟，以及启用 <code>postcopy-blocktime</code> 后的阻塞统计。<code>postcopy-vcpu-blocktime</code> 给出各 vCPU 的累计阻塞，整体 <code>postcopy-blocktime</code> 统计所有 vCPU 同时因缺页受阻的重叠时间；这些数值与客户端看到的业务停顿并不等价。</p>
-  <h3>大页与通道排队</h3>
+  <h3 id="tradeoffs-part-2"><span class="mechanism-heading-number">2. </span>大页与通道排队</h3>
   <p>请求和原子安装采用 RAMBlock 宿主页粒度。一个 2 MiB 大页中的少量访问，可能需要等待整页到齐；页越大，传输和组装的等待越明显。减少缺页数与缩短单次缺页等待之间存在取舍，需结合内存后端和负载局部性判断。</p>
   <p>单流模式中，请求页即使被优先选中，也不能越过已经排入同一通道的数据。<code>postcopy-preempt</code> 为紧急页面提供独立通道，源端返回路径线程可直接发送请求页，减少在后台数据后的排队；网络带宽、CPU 和目的端安装开销仍然共享。</p>
   <p>QEMU 10.2 可以同时启用 MultiFD 与后拷贝，但 MultiFD 在这里加速的是前面的预拷贝阶段。切换前 <code>ram_save_postcopy_prepare()</code> 会 flush 并同步 MultiFD，确保目的端运行前已完成这些非原子的页加载；后拷贝页由主迁移通道或 preempt 紧急通道处理。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c#L4651-L4685">MultiFD 切换屏障</a>。多通道同步本身见<a href="qemu-multifd.html">《QEMU MultiFD 的任务分发与跨通道同步》</a>。</p>
-  <h3>中断恢复与状态丢失</h3>
+  <h3 id="tradeoffs-part-3"><span class="mechanism-heading-number">3. </span>中断恢复与状态丢失</h3>
   <p>连接中断时，只要两端进程和内存仍完整，QEMU 可以进入 <code>POSTCOPY_PAUSED</code>，重新建立通道、核对接收位图并继续迁移。典型管理流程是在目的端用 <code>migrate-recover</code> 准备连接，再由源端执行带 <code>resume=true</code> 的 <code>migrate</code>。尚未安装的在途页面需要重新传送。</p>
   <p>POSTCOPY_PAUSED 描述迁移状态，不能直接理解为整台虚拟机已经停止。目的端对已到达页的访问仍可能继续，访问缺失页的线程则等待恢复。若源端丢失仍未交付的内存，或目的端丢失已经产生的新执行状态，单靠重连无法还原这些内容。切到后拷贝之后，也不能像普通预拷贝失败那样直接回到源端继续运行。</p>
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>后拷贝路径的演进</h2>
-  <h3>2015：缺页通知与按需供页</h3>
+  <h2><span class="mechanism-heading-number">七、</span>后拷贝路径的演进</h2>
+  <h3 id="evolution-part-1"><span class="mechanism-heading-number">1. </span>2015：缺页通知与按需供页</h3>
   <p>QEMU 引入 userfaultfd 事件处理、反向页面请求和独立接收线程，把目的端的缺失映射转为源端可服务的页面需求。这个设计结束了必须等待预拷贝收敛才恢复执行的限制，也把部分性能压力转移到缺页延迟，并使迁移未完成时的状态依赖两端。<a href="https://github.com/qemu/qemu/commit/c4faeed2313e2bf9aa3694544bd211c15e28c164">缺页处理提交</a>、<a href="https://github.com/qemu/qemu/commit/1e2d90ebc54531c416a6765849308c8476d98f2d">返回路径请求提交</a></p>
-  <h3>2022：分离紧急页面与后台传输</h3>
+  <h3 id="evolution-part-2"><span class="mechanism-heading-number">2. </span>2022：分离紧急页面与后台传输</h3>
   <p>独立的 preempt 通道将缺页响应与后台流分开；随后请求页发送移入返回路径线程，降低与后台扫描的耦合。多个发送上下文共享迁移位图，因此还需要互斥与去重，保证页面交付后不再被旧副本覆盖。<a href="https://github.com/qemu/qemu/commit/ce5b0f4afc60124e2fdc81b27ef0de3875bbb9f0">preempt 能力</a>、<a href="https://github.com/qemu/qemu/commit/93589827443e7fbd68ea39e3d70dc7fb1460bb84">请求线程直接发送</a></p>
-  <h3>2024—2025：恢复状态与预拷贝并行化</h3>
+  <h3 id="evolution-part-3"><span class="mechanism-heading-number">3. </span>2024—2025：恢复状态与预拷贝并行化</h3>
   <p>2024 年增加源端 <code>POSTCOPY_RECOVER_SETUP</code>，让管理层区分“正在重建连接”与“已进入恢复握手”，也能获得建连失败的状态事件。2025 年允许 MultiFD 与后拷贝共同启用，并在切换边界同步所有先前的页传输。前者改善故障处理的可观察性，后者缩短前半程传输；目的端缺页仍遵循完整页原子安装的约束。<a href="https://github.com/qemu/qemu/commit/4146b77ec7640d3c30d42558e13423594b114385">恢复建连状态</a>、<a href="https://github.com/qemu/qemu/commit/e27418861288285d20352448fef4491a68223d39">MultiFD 与后拷贝协作</a></p>
 </section>
 
 <section id="sources" class="mechanism-section">
-  <h2>参考资料</h2>
+  <h2><span class="mechanism-heading-number">八、</span>参考资料</h2>
   <ul>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/migration/postcopy.rst">QEMU 10.2.0：后拷贝状态机、页面传输与恢复</a></li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/postcopy-ram.c">QEMU 10.2.0：缺页线程与原子页面安装</a></li>
@@ -218,6 +219,6 @@ REQ_PAGES：   start: BE64 | len: BE32
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=c084ccad2981" defer></script>
-<script src="../assets/postcopy.js?v=c084ccad2981" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+<script src="../assets/postcopy.js?v=32683d73423f" defer></script></body>
 </html>

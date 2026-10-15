@@ -3,14 +3,15 @@
 {% from '_mechanism_diagram.html' import diagram with context %}
 
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2>保留 virtio 接口，改变队列处理位置</h2>
   <p>virtio-net 驱动通过 virtqueue 提交网络请求。同一套客户机接口，可以由 QEMU 处理，也可以连接宿主内核中的 vhost-net 或独立进程中的 vhost-user 后端。后端位置改变后，队列地址、内存访问权限和通知通道需要重新安排，设备初始化和报文处理也由不同组件承担。</p>
   <p>本文沿用 <a href="qemu-network-tx.html">网卡模拟与 virtio-net 发包路径</a>中的 split virtqueue，分析 x86 / KVM 下单个发送请求。QEMU 和 vhost-net 路径使用 TAP；vhost-user 部分分析协议定义的共享内存和 eventfd 路径，网络出口由外部后端实现。示例不配置客户机 IOMMU，也不展开分段卸载、多队列和异常重试。</p>
+  <p>三条路径都处理同一个动作：从 available 取出报文 P1 的描述符，读取缓冲区，把报文交给出口，再发布 used。差别集中在“谁读队列”和“怎样把它唤醒”。先看后端如何获得内存与队列访问权，再比较一次发包经过哪些进程或内核上下文，最后评价减少中转所带来的收益及新的管理成本。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="architecture" class="mechanism-section">
-  <h2>后端分工与共享队列</h2>
+  <h2>QEMU、vhost-net 与 vhost-user 的分工</h2>
   <p>一个 TX virtqueue 包含描述符表、available ring 和 used ring。客户机驱动把网络头与报文放在客户机 RAM 中，发布描述符链；后端读取链上的数据，处理完成后写回 used ring。队列位于客户机内存，处理它的代码可以运行在不同的宿主执行环境中。</p>
   <table>
     <thead><tr><th scope="col">处理方式</th><th scope="col">消费 TX 队列</th><th scope="col">建立处理关系</th><th scope="col">本例网络出口</th></tr></thead>
@@ -35,7 +36,7 @@
 </section>
 
 <section id="flow" class="mechanism-section">
-  <h2>初始化与一次发包</h2>
+  <h2>建立队列关系，再发送报文 P1</h2>
   <p>下面把初始化和发送过程分开推进。切换后端后，客户机仍使用同一个 TX 队列结构；控制通道、队列消费者和报文出口随之变化。</p>
   {% include '_vhost_lab.html' %}
   <h3>初始化：把队列交给后端</h3>
@@ -59,7 +60,7 @@
 </section>
 
 <section id="notification" class="mechanism-section">
-  <h2>通知与完成</h2>
+  <h2>kick 唤醒后端，call 通知客户机</h2>
   <h3>控制消息、kick 与报文数据</h3>
   <p>vhost-user 的 Unix socket 承载控制消息，并通过 <code>SCM_RIGHTS</code>传递内存、kick 和 call 等文件描述符。常规 eventfd 模式下，kick 提示后端检查队列，报文内容通过共享内存访问；socket 中的 <code>payload</code>是控制消息体，例如内存区域描述，并不表示以太网报文。<a href="{{ qemu_source }}docs/interop/vhost-user.rst#L19-L39">协议职责</a>、<a href="{{ qemu_source }}docs/interop/vhost-user.rst#L397-L425">文件描述符传递</a></p>
   {{ diagram('vhost-user-control-data', 'vhost-user 的控制面与数据面', 'QEMU 建立内存、队列和通知关系，后端按映射访问客户机 RAM。图示 SET_MEM_TABLE 与 eventfd 路径；正常收发不需要把报文经控制 socket 再传一遍。') }}
@@ -71,7 +72,7 @@
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码</h2>
+  <h2>源码：配置队列与消费 TX 请求</h2>
   <h3>QEMU 建立后端关系</h3>
   <pre><code>vhost_net_start_one()
   vhost_dev_start()
@@ -106,7 +107,7 @@ vhost_ops 分派
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>数据路径的演进</h2>
+  <h2>缩短数据路径的收益与管理代价</h2>
   <h3>从 QEMU 报文处理到内核 vhost-net</h3>
   <p>QEMU 用户态模型把设备逻辑、队列处理和网络后端连接起来，便于统一管理。高报文率场景中，队列通知、用户态调度及向 TAP 提交等环节会积累开销。vhost-net 将网络队列处理放到宿主内核，保留客户机 virtio 接口，并由 QEMU 配置运行所需的资源。</p>
   <p>处理路径缩短后，宿主仍需执行队列检查、内存访问和网络转发。性能会受到 vhost 工作项调度、CPU 亲和性、NUMA、批量大小和网络栈的影响。Linux 的发送实现同时保留复制与零拷贝分支，说明“启用 vhost”本身不足以判断复制次数。<a href="{{ kernel_source }}drivers/vhost/net.c#L320-L337">零拷贝条件</a></p>

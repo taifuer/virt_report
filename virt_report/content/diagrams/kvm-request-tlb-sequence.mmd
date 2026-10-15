@@ -1,0 +1,17 @@
+sequenceDiagram
+    accTitle: KVM 远端 TLB 刷新的请求交接
+    accDescr: 发送方发布页表修改和刷新请求，并等待目标 CPU 的 IPI 确认。目标退出客户机后确认 IPI，随后才在进入循环中处理刷新请求，完成刷新后再次进入客户机。
+    participant S as 发送方 CPU
+    participant V as 目标 vCPU / 宿主 CPU
+    Note over V: 正在执行客户机<br/>可能缓存旧转换
+    S->>S: 在相应同步下修改页表项
+    S->>S: 发布 KVM_REQ_TLB_FLUSH 位
+    S->>V: 需要通用请求时发送 IPI<br/>WAIT · NO_WAKEUP
+    V->>V: 离开客户机，mode → OUTSIDE
+    V->>V: 允许并处理宿主中断
+    V-->>S: IPI 回调确认
+    Note over S,V: 退出确认已到达；请求处理尚可留待随后执行
+    V->>V: vcpu_enter_guest 检查并清除刷新位
+    V->>V: kvm_vcpu_flush_tlb_all
+    V->>V: 完成进入检查，重新运行客户机
+    Note over V: 访问按新权限处理

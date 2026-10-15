@@ -1,0 +1,13 @@
+flowchart TB
+  accTitle: irqfd、APICv 与直通设备 interrupt posting 的不同位置
+  accDescr: 软件后端可以通过 irqfd 进入 KVM 路由，再使用软件注入或 APICv posted 路径。满足条件的 Intel VT-d 直通设备可由 IOMMU 写入 posted 描述符。阻塞或抢占状态仍需宿主调度配合。
+  BACK["软件后端<br/>如 vhost 或 QEMU IOThread"] --> EVENT["eventfd → KVM irqfd<br/>按已配置路由投递"]
+  EVENT --> SW["软件 LAPIC<br/>IRR → 事件检查 → 注入"]
+  EVENT -->|可用时| PI["Intel Posted Interrupt Descriptor<br/>PIR 待处理位图 + 通知状态"]
+  DEV["直通设备 MSI/MSI-X"] -->|已配置且平台支持| IOMMU["VT-d 中断重映射<br/>interrupt posting"]
+  IOMMU --> PI
+  PI --> HW["目标 vCPU 运行时<br/>APICv 辅助接收与交付"]
+  SW --> GUEST["客户机中断入口<br/>驱动处理队列"]
+  HW --> GUEST
+  PI -.->|目标未运行| SCHED["宿主唤醒或后续调度<br/>同步待处理状态再执行"]
+  SCHED -.-> HW

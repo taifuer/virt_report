@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=c084ccad2981">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c084ccad2981">
-<link rel="stylesheet" href="../assets/multifd.css?v=c084ccad2981"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/multifd.css?v=32683d73423f"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -43,25 +43,30 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#migration">热迁移</a></div>
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="migration.html">热迁移</a></div>
     <h1>QEMU MultiFD 的任务分发与跨通道同步</h1>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">前言</a></li><li><a href="#principle">基本原理</a></li><li><a href="#flow">任务分发与传输过程</a></li><li><a href="#synchronization">跨通道同步</a></li><li><a href="#implementation">关键源码</a></li><li><a href="#evolution">实现演进与性能取舍</a></li><li><a href="#sources">参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、并行传输带来的顺序问题</a></li><li><a href="#principle">二、主流控制与多通道传页</a><ol><li><a href="#principle-part-1">1. 主迁移流与数据通道</a></li><li><a href="#principle-part-2">2. 两端各有一个完成条件</a></li></ol></li><li><a href="#flow">三、一个 RAM 批次如何分发和装载</a><ol><li><a href="#flow-part-1">1. 页面如何分给线程</a></li><li><a href="#flow-part-2">2. 通道上的包长什么样</a></li></ol></li><li><a href="#synchronization">四、SYNC 与 FLUSH 如何汇合通道</a><ol><li><a href="#synchronization-part-1">1. 发送端：完成任务，再排入 SYNC</a></li><li><a href="#synchronization-part-2">2. 接收端：汇合所有通道</a></li><li><a href="#synchronization-part-3">3. RAM EOS 与同步点</a></li></ol></li><li><a href="#implementation">五、源码：任务交接与同步屏障</a></li><li><a href="#evolution">六、实现演进与性能取舍</a><ol><li><a href="#evolution-part-1">1. 从串行处理到并行批次</a></li><li><a href="#evolution-part-2">2. 从逐 section 同步到扫描轮次同步</a></li><li><a href="#evolution-part-3">3. 通道数为什么需要测量</a></li></ol></li><li><a href="#sources">七、参考资料</a></li></ol></nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2><span class="mechanism-heading-number">一、</span>并行传输带来的顺序问题</h2>
   <p>MultiFD 将迁移数据分派给多个工作线程，通过独立通道并行发送和接收。它可以分担页面处理、压缩和传输工作，但也引入了一个顺序问题：主迁移流已经走到同步点时，其他通道上的页面可能仍在途中。</p>
   <p>本文分析普通 socket 迁移中未压缩 RAM 数据的分发与同步。示例采用默认同步方式：在 RAM 扫描轮次边界通过主流的 <code>RAM_SAVE_FLAG_MULTIFD_FLUSH</code> 协调数据通道。旧机器兼容模式、文件迁移及压缩路径在后文分别说明。</p>
 <p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p>  <p>内存迭代与停机切换见<a href="qemu-memory-migration.html">《QEMU 预拷贝迁移的内存迭代与停机控制》</a>；主迁移流的记录格式见<a href="qemu-migration-stream.html">《QEMU 迁移流格式与状态恢复》</a>。</p>
 </section>
 
 <section id="principle" class="mechanism-section">
-  <h2>基本原理</h2>
-  <h3>主迁移流与数据通道</h3>
+  <h2><span class="mechanism-heading-number">二、</span>主流控制与多通道传页</h2>
+  <h3 id="principle-part-1"><span class="mechanism-heading-number">1. </span>主迁移流与数据通道</h3>
   <p>主迁移流继续承担流头、配置、RAMBlock 布局、状态分段和同步控制；RAM 页面可以交给额外的 MultiFD 通道。每条通道各有发送线程和接收线程，同一通道内保持字节顺序，不同通道可以同时推进，抵达顺序由各自的处理和传输进度决定。</p>
   <p>源端先把同一 RAMBlock 的页偏移收集成批，再寻找空闲发送线程。目的端根据包头中的 RAMBlock 名称与偏移数组，把数据写入对应内存位置。数据批次因而可以在不同通道上独立处理，无须按地址从低到高抵达。</p>
   <p>并行通道必须在必要的边界上重新建立顺序。假设页面 P 在上一轮发送了旧内容，下一轮又被写脏并发送新内容：如果两次传输走不同通道，旧内容晚到就可能覆盖新内容。同步点保证上一组传输完成装载之后，接收端才越过相应边界。</p>
-  <h3>两端各有一个完成条件</h3>
+  <pre><code>通道 0：上一轮 P=v1 ───────→ 装载 v1 → SYNC
+通道 1：上一轮其他页面 → SYNC → 等待屏障 → 下一轮 P=v2
+主流：  FLUSH ─────────────→ 等全部通道到齐 → 放行下一轮
+
+屏障建立的顺序：装载上一轮 v1 → 装载下一轮 v2</code></pre>
+  <h3 id="principle-part-2"><span class="mechanism-heading-number">2. </span>两端各有一个完成条件</h3>
   <ul>
     <li><strong>发送端：</strong>工作线程完成已有任务，并按要求把 SYNC 包写入各自通道，主线程才能继续发出主流同步标记。</li>
     <li><strong>接收端：</strong>主流读到同步标记后，等待全部数据通道读到 SYNC；各接收线程此前已经处理了该通道上排在 SYNC 前的页面。</li>
@@ -70,7 +75,7 @@
 </section>
 
 <section id="flow" class="mechanism-section">
-  <h2>任务分发与传输过程</h2>
+  <h2><span class="mechanism-heading-number">三、</span>一个 RAM 批次如何分发和装载</h2>
   <p>以下示例先传输 16 页，再更新其中 8 页并传输一次。每批用两页展示任务边界，可以分别观察任务交接、通道内的排队、页面装载和同步。把通道 1 的接收进度调慢后，源端写完与目的端完成之间的差别会更明显。</p>
 <section class="multifd-lab" data-multifd-lab data-mechanism-view="lab" aria-labelledby="multifd-lab-title">
   <div class="mechanism-view-heading"><h3 id="multifd-lab-title">并行页传输与同步屏障</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
@@ -96,7 +101,7 @@
     <p>启用 JavaScript 后，可逐步观察页面版本、通道延迟和两端的同步状态。</p>
   </div>
   <p class="multifd-model-note">每步为逻辑时刻，不代表毫秒或带宽；每批用两页代表实际批次。延迟施加在通道 1 的接收端，通道内仍严格有序。示例只推进两组 RAM 传输，不包含 CPU / 设备状态保存与客户机启动；切换参数会重置过程。</p>
-</section>  <h3>页面如何分给线程</h3>
+</section>  <h3 id="flow-part-1"><span class="mechanism-heading-number">1. </span>页面如何分给线程</h3>
   <p><code>multifd_queue_page()</code> 收集同一个 RAMBlock 的页偏移。当前批次满了，或扫描进入另一个 RAMBlock 时，它把已有批次交给 <code>multifd_send()</code>。同步前也会提交尚未满的批次。默认批量上限按 <code>MULTIFD_PACKET_SIZE = 512 KiB</code> 计算；采用 4 KiB 页时可容纳 128 个页偏移。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/multifd-nocomp.c#L316-L351">入队实现</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/multifd.h#L76-L77">批量大小</a></p>
   <p>分发函数等待 <code>channels_ready</code>，从上次位置之后循环寻找 <code>pending_job == false</code> 的线程。交接通过交换数据对象指针完成，随后以 release 语义发布任务并唤醒线程。页面并没有在入队时整体复制成一份不可变快照；普通未压缩路径由工作线程准备 iovec 并执行写入，迁移期间的新写入仍由脏页跟踪和后续轮次处理。</p>
   <table><thead><tr><th scope="col">源端对象</th><th scope="col">关键字段</th><th scope="col">操作与所有权</th></tr></thead><tbody>
@@ -113,7 +118,7 @@
           offset[0] → 目的 host + 0x2000
           offset[1] → 目的 host + 0x7000</code></pre>
   <p>本地任务对象保存 RAMBlock 指针，通道包头保存 RAMBlock 名称及块内偏移。两端的宿主虚拟地址可以不同，只要名称、内存布局和偏移检查匹配，就能把内容放到对应页面。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/multifd.h#L79-L235">包、页批次与线程对象</a></p>
-  <h3>通道上的包长什么样</h3>
+  <h3 id="flow-part-2"><span class="mechanism-heading-number">2. </span>通道上的包长什么样</h3>
   <p>MultiFD 通道先交换初始化信息，包括 <code>magic = 0x11223344</code>、版本、虚拟机 UUID 和通道 ID。后续 RAM 包携带批次元数据与页内容。它有自己的包格式，与主迁移流的 START / PART / END section 分层处理。</p>
   <div class="multifd-wire" role="group" aria-label="未压缩 MultiFD RAM 包的字段顺序">
     <span><strong>公共头</strong><code>magic · version · flags</code></span>
@@ -125,11 +130,11 @@
 </section>
 
 <section id="synchronization" class="mechanism-section">
-  <h2>跨通道同步</h2>
-  <h3>发送端：完成任务，再排入 SYNC</h3>
+  <h2><span class="mechanism-heading-number">四、</span>SYNC 与 FLUSH 如何汇合通道</h2>
+  <h3 id="synchronization-part-1"><span class="mechanism-heading-number">1. </span>发送端：完成任务，再排入 SYNC</h3>
   <p><code>multifd_ram_flush_and_sync()</code> 先提交残留页批次，随后调用 <code>multifd_send_sync_main(MULTIFD_SYNC_ALL)</code>。主线程为每个工作线程设置 <code>pending_sync</code> 并唤醒它，再逐个等待完成信号。</p>
   <p>工作线程先处理 <code>pending_job</code>，再处理同步请求。发送 SYNC 使用与页面相同的有序通道，因此接收端不会先读到 SYNC、再读到它前面的页内容。全部线程完成这一步后，主线程写出主流的 <code>RAM_SAVE_FLAG_MULTIFD_FLUSH</code>。</p>
-  <h3>接收端：汇合所有通道</h3>
+  <h3 id="synchronization-part-2"><span class="mechanism-heading-number">2. </span>接收端：汇合所有通道</h3>
   <p>MultiFD 接收线程读到 SYNC 时，先通知公共同步信号量，再阻塞于自己的 <code>sem_sync</code>。主流处理函数 <code>ram_load()</code> 读到 FLUSH 后进入 <code>multifd_recv_sync_main()</code>，收齐全部通道的通知，然后释放这些接收线程。</p>
   <figure class="mechanism-diagram" data-diagram="multifd-synchronization" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
@@ -137,9 +142,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看MultiFD 主流与数据通道的同步时序" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="MultiFD 主流与数据通道的同步时序">
-    <img src="../assets/multifd-synchronization.svg?v=c084ccad2981" alt="以 FLUSH 先到目的端为例。发送端等待本地写入，接收端等待所有通道的 SYNC；两端等待的条件不同。" loading="lazy">
+    <img src="../assets/multifd-synchronization.svg?v=32683d73423f" alt="以 FLUSH 先到目的端为例。发送端等待本地写入，接收端等待所有通道的 SYNC；两端等待的条件不同。" loading="lazy">
   </div>
-  <figcaption>以 FLUSH 先到目的端为例。发送端等待本地写入，接收端等待所有通道的 SYNC；两端等待的条件不同。 <a href="../assets/multifd-synchronization.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>以 FLUSH 先到目的端为例。发送端等待本地写入，接收端等待所有通道的 SYNC；两端等待的条件不同。 <a href="../assets/multifd-synchronization.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: MultiFD 主流与数据通道的同步时序
     accDescr: 源端主线程提交剩余批次，各发送线程完成页面写入并排入 SYNC 后报告本地完成。主线程发送 FLUSH；目的端等待所有通道装载前序页面并读到 SYNC，然后放行接收线程。示例选择 FLUSH 先到的时序。
@@ -169,12 +174,12 @@
 </figure>
   <p>FLUSH 可能早于某条数据通道上的 SYNC 到达，某些 SYNC 也可能先于 FLUSH 到达。两种情况都由同一个汇合条件处理。接收线程在屏障处暂停，可以防止后续轮次的数据提前覆盖当前阶段仍在使用的状态。</p>
   <p>本页交互为了逐步查看，等目的端完成同步后才生成下一组任务。实际源端完成本地同步并发出 FLUSH 后即可继续工作，下一组数据可以在通道中排队；目的端接收线程仍须通过屏障才能继续装载。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/multifd-nocomp.c#L397-L437">同步发起</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/multifd.c#L615-L773">发送线程</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/multifd.c#L1409-L1424">接收线程等待</a></p>
-  <h3>RAM EOS 与同步点</h3>
+  <h3 id="synchronization-part-3"><span class="mechanism-heading-number">3. </span>RAM EOS 与同步点</h3>
   <p>默认配置下，RAM EOS 结束本次 RAM section 载荷，专门的 FLUSH 则触发跨通道同步；两者用途不同。一轮 RAM 扫描可能跨越多个 PART，不能把 PART 的数量当作预拷贝轮数。使用旧机器兼容配置时，接收端在每个 RAM EOS 上同步，发送端也必须配对发送各通道的 SYNC。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c#L4426-L4440">RAM 标记分派</a></p>
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码</h2>
+  <h2><span class="mechanism-heading-number">五、</span>源码：任务交接与同步屏障</h2>
   <table><thead><tr><th>环节</th><th>入口与关注点</th></tr></thead><tbody>
     <tr><td>收集页面</td><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/multifd-nocomp.c#L316-L351"><code>multifd_queue_page()</code></a>：同一 RAMBlock、批次容量、未满批次的提交。</td></tr>
     <tr><td>交接任务</td><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/multifd.c#L353-L414"><code>multifd_send()</code></a>：空闲线程、数据对象交换与 acquire / release。</td></tr>
@@ -186,19 +191,19 @@
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>实现演进与性能取舍</h2>
-  <h3>从串行处理到并行批次</h3>
+  <h2><span class="mechanism-heading-number">六、</span>实现演进与性能取舍</h2>
+  <h3 id="evolution-part-1"><span class="mechanism-heading-number">1. </span>从串行处理到并行批次</h3>
   <p>当页扫描、编码和发送集中在一个路径上时，CPU 处理能力可能先于网络带宽成为限制。MultiFD 把批次处理分给工作线程，让发送、接收及可选压缩获得并行机会。QMP 的 <code>multifd-channels</code> 参数自 4.0 提供，压缩方法参数自 5.0 提供；具体收益取决于 CPU、内存带宽、网络及负载。</p>
-  <h3>从逐 section 同步到扫描轮次同步</h3>
+  <h3 id="evolution-part-2"><span class="mechanism-heading-number">2. </span>从逐 section 同步到扫描轮次同步</h3>
   <p>早期协议在每个 RAM section 结束时同步全部通道。主流为了限速和迭代调度产生多个 PART 时，也会反复触发屏障，已经空闲的通道需要等待其他通道。QEMU 8.1 引入按完整 RAM 扫描轮次同步的方式，并增加 FLUSH 标记，把跨通道同步与 section 结束解耦。旧机器兼容设置仍保留逐 section 行为。<a href="https://github.com/qemu/qemu/commit/294e5a4034e81b3d8db03b4e0f691386f20d6ed3">同步粒度调整提交</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/core/machine.c#L104-L108">8.0 兼容属性</a></p>
   <p>同步减少后，工作线程可以连续处理更多批次，但协议仍需要在页面可能跨轮重复发送及阶段切换的位置建立顺序。QEMU 10.2.0 的 <code>multifd_ram_sync_per_section()</code> 与 <code>multifd_ram_sync_per_round()</code> 明确区分两种路径。演进改变的是同步频率和标记位置，顺序约束始终存在。</p>
-  <h3>通道数为什么需要测量</h3>
+  <h3 id="evolution-part-3"><span class="mechanism-heading-number">3. </span>通道数为什么需要测量</h3>
   <p>增加通道会增加线程、连接和缓冲区，也可能提高内存访问竞争。当网卡带宽已经耗尽，更多线程不能增加物理链路容量；当目的端解压或写内存较慢时，发送端的并行度也无法单独解决瓶颈。一个明显较慢的通道还会拉长屏障等待。</p>
   <p>评估配置时，应同时记录实际传输吞吐、两端工作线程 CPU 利用率、内存带宽、停机时间和迁移总时长，并观察 <code>multifd_send_sync_main_wait</code>、<code>multifd_recv_sync_main_wait</code> 等 trace 事件。通道数与压缩方式需要结合业务写脏速率测试，交互示例的逻辑步数不对应实际耗时或性能倍数。</p>
 </section>
 
 <section id="sources" class="mechanism-section">
-  <h2>参考资料</h2>
+  <h2><span class="mechanism-heading-number">七、</span>参考资料</h2>
   <ul>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/multifd.c">QEMU 10.2.0：MultiFD 线程、通道与同步实现</a></li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/multifd-nocomp.c">QEMU 10.2.0：RAM 队列、包格式和未压缩路径</a></li>
@@ -215,6 +220,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=c084ccad2981" defer></script>
-<script src="../assets/multifd.js?v=c084ccad2981" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+<script src="../assets/multifd.js?v=32683d73423f" defer></script></body>
 </html>

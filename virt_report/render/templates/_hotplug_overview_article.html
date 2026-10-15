@@ -1,0 +1,69 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+{% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
+{% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
+<section id="preface" class="mechanism-section">
+  <h2>在线调整资源要经过哪些参与者</h2>
+  <p>热插拔允许虚拟机运行期间增加或移除设备、CPU 与内存。管理程序表达变更目标，QEMU 修改虚拟硬件，客户机驱动完成发现、上线或停用。资源是否已经可用或可以回收，取决于这些阶段是否全部完成。</p>
+  <p>客户机操作系统维护着自己的设备清单、驱动绑定与资源分配。在线变更需要通过它能识别的硬件协议通知变化：增加时发现并配置新资源，移除时先停止使用并交还资源。由此，热插拔同时改变虚拟硬件和客户机的软件状态，需要双方完成交接。</p>
+  <p>不同资源使用不同协议。下面以 Q35 的 PCIe 网卡和 virtio-mem 为例，建立共同的操作顺序，再看设备拓扑与内存回收各自的约束。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+<section id="state" class="mechanism-section">
+  <h2>为什么修改配置不能立即改变可用资源</h2>
+  <p>冷启动时，客户机可以从头枚举所有硬件。运行中增加网卡，操作系统却不会因管理程序改了一个配置字段就自动发现它。QEMU 要模拟插槽状态变化并发出通知，客户机的总线驱动重新枚举设备，分配地址与中断，再把设备交给具体驱动。</p>
+  <p>移除更困难：网卡可能仍持有发送缓冲区，内存可能还装着进程页或内核对象。先删掉宿主资源，会让后续访问落到无效对象上。因此热移除要先发出请求，等客户机停止使用资源，再解除后端引用。这是增加与移除不能简单互为反向操作的原因。</p>
+  <table><thead><tr><th>状态所在位置</th><th>增加网卡时发生的变化</th><th>应确认什么</th></tr></thead><tbody>
+    <tr><td>管理层</td><td>记录目标配置，准备网络后端</td><td>本次改变运行配置、持久配置，还是两者</td></tr>
+    <tr><td>QEMU 机器模型</td><td>在可热插拔端口下创建 PCIe 设备</td><td>设备已实例化，资源窗口足够，通知已发出</td></tr>
+    <tr><td>客户机操作系统</td><td>枚举、绑定驱动并启用接口</td><td>驱动和网络配置生效，业务能够使用</td></tr>
+  </tbody></table>
+  <p>三份视图有传播顺序，短时间不一致并不罕见。持久配置中的网卡也可能只在下次启动时出现；一次在线添加成功，不代表重启后仍会保留。管理工具需要分别说明变更范围和当前进度。</p>
+</section>
+<section id="process" class="mechanism-section">
+  <h2>增加与移除的交接顺序</h2>
+  {{ diagram('hotplug-overview-lifecycle', '资源热增与热移除的完成边界', '热增先准备宿主资源与虚拟设备，再由客户机识别并使用；热移除需先通知客户机停用，确认完成后回收相应设备资源。QMP 接受请求与客户机完成操作处于不同阶段。') }}
+  <h3>热增：准备空间，再通知客户机</h3>
+  <p>PCIe 设备需要可用端口、总线号与 BAR 窗口，通常在启动时规划。QEMU 创建后端和前端设备，插槽通知客户机重新枚举，驱动绑定后才具备业务能力。virtio-mem 则通知目标容量变化，由客户机逐步请求并上线内存。</p>
+  <h3>热移除：先停止使用，再归还资源</h3>
+  <p>网卡需要客户机停止队列和驱动访问；内存需要迁移页面、排除仍在使用的区域。客户机可能延迟响应或无法完成。强行回收仍被访问的资源会破坏客户机状态，所以管理程序必须跟踪完成事件与实际容量。</p>
+</section>
+<section id="example" class="mechanism-section">
+  <h2>移除 net1，缩减一段内存</h2>
+  <p>向 QMP 发送 <code>{"execute":"device_del","arguments":{"id":"net1"}}</code> 后，成功响应只表示删除请求已受理。对于需要客户机配合的设备，管理程序继续等待对应 <code>DEVICE_DELETED</code>，再清理已无引用的网络后端。未收到完成事件时，要查看客户机驱动、插槽状态与错误事件，不能直接复用设备 ID。</p>
+  <p>完整顺序是：QEMU 改变插槽状态并通知客户机，客户机解除驱动与队列的使用，完成弹出握手，QEMU 删除设备并报告完成，管理层再处理后端。<code>DEVICE_DELETED</code> 标识 QEMU 设备已移除；它并不证明应用已把流量切换到另一块网卡，业务连续性仍需单独安排。</p>
+  <p>virtio-mem 的目标容量从 4 GiB 改为 2 GiB 后，实际 <code>size</code> 可能暂时仍为 4 GiB。客户机逐块迁移页面并请求 UNPLUG；长期固定的页面可能阻止回收。设备提供容量、客户机在线容量和宿主 RSS 是三个不同观测值。</p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2>从整设备增删到细粒度资源调整</h2>
+  <p>设备与内存沿着各自的协议发展。前者侧重插槽发现、地址空间与驱动生命周期，后者侧重可调整容量、页面迁移与回收粒度。</p>
+  <p>传统 PCI 热插拔可以借助 ACPI 事件通知操作系统；PCIe 原生热插拔使用 Root Port 等端口的插槽寄存器与事件机制，客户机在获得相应控制权后由 PCIe 热插拔驱动处理。两者对应不同的机器配置与控制方式，不能假定所有虚拟机都走相同通知路径。资源预留帮助新增设备获得地址空间，但端口、总线号和 BAR 窗口仍有边界。</p>
+  <p>virtio-mem 用较小粒度的块调整容量，减少反复添加大块 DIMM 的需要，同时引入块状态与回收协议。更细粒度不保证任意页面都可迁移。评价热插拔要记录操作完成时间、客户机停顿与失败原因，而非只看管理命令是否成功返回。</p>
+  <table><thead><tr><th>内存调整方式</th><th>如何交还宿主资源</th><th>主要限制</th></tr></thead><tbody>
+    <tr><td>DIMM 热插拔</td><td>按内存设备增删，由客户机上线或下线相应区域</td><td>插槽、地址空间、移除范围及可迁移页面</td></tr>
+    <tr><td>传统 virtio-balloon</td><td>驱动占用客户机页面并通知宿主回收后备存储</td><td>改变可用资源，不等同于移除一条 DIMM；需要客户机合作</td></tr>
+    <tr><td>virtio-mem</td><td>在设备区域内按块提供或收回内存</td><td>目标容量与已提供容量可能暂时不同，页面固定仍会阻碍缩容</td></tr>
+  </tbody></table>
+</section>
+<section id="evaluation" class="mechanism-section">
+  <h2>用完成状态和业务影响判断操作结果</h2>
+  <p>热插拔的收益是避免为资源调整重启客户机，代价是引入拓扑预留、驱动协作和异步失败处理。增加设备时分别检查命令、枚举、驱动与业务；移除设备时分别检查请求、客户机停用、设备删除与资源回收。超时后先查询实际状态，避免重复创建或删除已经变化的对象。</p>
+  <p>内存缩容还应观察页面迁移耗时、不可迁移页和客户机延迟。后续优化可以减少不必要的预留或改进回收粒度，但不能跳过“使用者先停止访问，所有者再回收资源”这项约束。</p>
+</section>
+<section id="reading" class="mechanism-section">
+  <h2>按资源类型继续阅读</h2>
+  <ul>
+    <li><a href="qemu-pcie-hotplug.html">PCIe 热插拔与异步设备移除</a>：端口、插槽事件和 DEVICE_DELETED。</li>
+    <li><a href="qemu-virtio-mem.html">virtio-mem 容量调整与内存回收</a>：目标容量、块位图及客户机协作。</li>
+    <li><a href="qemu-qom-device.html">QEMU 对象模型与设备初始化</a>：设备创建和 realize 的失败边界。</li>
+    <li><a href="qemu-vfio-dma.html">VFIO 地址转换与隔离</a>：直通设备涉及的 DMA 映射与宿主资源。</li>
+  </ul>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="{{ qemu }}qapi/qdev.json#L86-L144">QEMU：device_del 与设备移除事件</a></li>
+    <li><a href="{{ qemu }}hw/pci/pcie.c">QEMU：PCIe 插槽状态与通知</a></li>
+    <li><a href="{{ qemu }}docs/specs/acpi_pci_hotplug.rst">QEMU：ACPI PCI 热插拔通知</a>、<a href="{{ linux }}Documentation/admin-guide/mm/memory-hotplug.rst">Linux：内存上线、下线与回收限制</a></li>
+    <li><a href="{{ qemu }}hw/virtio/virtio-mem.c">QEMU：virtio-mem 请求处理</a>、<a href="{{ linux }}drivers/virtio/virtio_mem.c">Linux：客户机内存上线与回收</a></li>
+  </ul>
+</section>

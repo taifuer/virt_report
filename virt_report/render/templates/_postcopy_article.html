@@ -2,7 +2,7 @@
 {% set linux_source = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 {% from '_mechanism_diagram.html' import diagram with context %}
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2>预拷贝不收敛时如何交接</h2>
   <p>预拷贝在源端持续运行虚拟机，同时反复发送被修改的内存页。写脏速度接近传输速度时，剩余内存可能长时间无法降到停机预算以内。后拷贝将执行切到目的端，再通过后台传输和缺页请求补齐内存，从而结束源端不断产生新脏页的循环。</p>
   <p>本文分析 Linux 上普通 RAM 的后拷贝路径：切换时如何处理旧页面，目的端如何请求缺失页，以及接收线程怎样安装页面并恢复访问。先按单条页面传输通道展开，再讨论紧急通道、大页和故障恢复。</p>
   {% include '_mechanism_baselines.html' %}
@@ -10,9 +10,10 @@
 </section>
 
 <section id="principle" class="mechanism-section">
-  <h2>执行位置与内存归属</h2>
+  <h2>目的端先执行，缺失页按需补齐</h2>
   <p>后拷贝开始后，源端 vCPU 停止执行，目的端恢复 CPU 和设备状态并开始运行。此时内存分为两部分：已经在目的端可访问的页面，以及仍需从源端取得的页面。目的端执行线程访问后一部分时，宿主内核暂时阻塞这次访问，由 QEMU 获取缺失内容。</p>
   <p>源端继续扫描待发送位图，并优先处理目的端请求的页面。随着页面到达，目的端可访问范围扩大，直到全部内存完成交接。客户机后续写入发生在目的端；源端保留的旧副本不能再覆盖已经交付的页面。</p>
+  <p>例如切换时 P0 已有最新副本，P1 从未传输，P2 只传过旧版本。目的端可立即访问 P0；P1 需要补齐；P2 必须先丢弃旧映射，再按缺失页处理。三种页面状态解释了后续流程的顺序：先确定哪些页有效，再开放执行，最后由缺页请求和后台传输完成其余交接。</p>
   <table><thead><tr><th>结构</th><th>由谁维护</th><th>一个比特或条目表示什么</th></tr></thead><tbody>
     <tr><td><code>RAMBlock.bmap</code></td><td>源端 RAM 迁移线程；preempt 路径还与请求线程协作</td><td>置位表示该页仍需发送。后拷贝期间源端不再运行客户机，成功安排传输后逐步清除。</td></tr>
     <tr><td><code>RAMBlock.receivedmap</code></td><td>目的端页面接收路径</td><td>记录已接收的页面；安装成功后更新，可避免对已到达页继续请求，并用于恢复时同步进度。</td></tr>
@@ -60,7 +61,7 @@ REQ_PAGES：   start: BE64 | len: BE32
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码</h2>
+  <h2>源码：丢弃、请求与原子装页</h2>
   <table><thead><tr><th>环节</th><th>入口与读写的状态</th></tr></thead><tbody>
     <tr><td>准备切换</td><td><a href="{{ qemu_source }}migration/migration.c#L2728-L2859"><code>postcopy_start()</code></a>：停源、发送 discard，打包 LISTEN、设备状态与 RUN。</td></tr>
     <tr><td>丢弃旧映射</td><td><a href="{{ qemu_source }}migration/ram.c#L2685-L2750"><code>ram_postcopy_send_discard_bitmap()</code> / <code>ram_discard_range()</code></a>：发送最后待传范围，清除目的端接收位与旧映射。</td></tr>
@@ -73,7 +74,7 @@ REQ_PAGES：   start: BE64 | len: BE32
 </section>
 
 <section id="tradeoffs" class="mechanism-section">
-  <h2>延迟、粒度与故障恢复</h2>
+  <h2>收敛收益、缺页延迟与故障代价</h2>
   <h3>停机结束之后仍可能等待内存</h3>
   <p>后拷贝将“所有剩余内存复制完毕”从恢复执行的前提中移走，但 CPU 与设备状态切换仍需时间。恢复之后的缺页等待则包含事件处理、请求往返、源端排队、页数据传输及安装。这类延迟直接影响访问该页的执行线程，不能只看迁移停机时间就判断应用影响。</p>
   <p>运行指标应同时观察切换停机时间、总迁移时间、请求数、应用尾延迟，以及启用 <code>postcopy-blocktime</code> 后的阻塞统计。<code>postcopy-vcpu-blocktime</code> 给出各 vCPU 的累计阻塞，整体 <code>postcopy-blocktime</code> 统计所有 vCPU 同时因缺页受阻的重叠时间；这些数值与客户端看到的业务停顿并不等价。</p>

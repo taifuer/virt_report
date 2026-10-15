@@ -2,14 +2,14 @@
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2>从创建进程到执行第一条指令</h2>
   <p>启动一台 QEMU 虚拟机，需要先确定机器布局和 CPU 能力，建立内存与设备，再把初始处理器状态交给执行后端。QEMU 进程、vCPU 线程、客户机固件和操作系统分别有自己的启动时刻；进程已经存在，不代表客户机已经执行了指令。</p>
   <p>本文以 x86 的 <code>pc-q35-10.2</code>、KVM 加速、普通 RAM 和 BIOS 冷启动为例，从命令行跟踪到启动处理器执行固件。重点是初始化顺序和对象之间的依赖，后续执行循环见<a href="kvm-vcpu-run.html">KVM vCPU 执行与 I/O 退出</a>。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="example" class="mechanism-section">
-  <h2>一个暂停启动的配置</h2>
+  <h2>用 -S 分开机器创建与客户机执行</h2>
   <p>下面的命令创建 2 个 vCPU、4 GiB 内存的 Q35 虚拟机，并通过 <code>-S</code> 停在客户机执行之前。示例不配置启动盘，便于单独观察机器创建和固件入口；它不会引导一个已安装的操作系统。</p>
   <pre><code>qemu-system-x86_64 \
   -machine pc-q35-10.2,accel=kvm \
@@ -23,6 +23,7 @@
 {"execute":"query-cpus-fast"}
 {"execute":"cont"}</code></pre>
   <p>正常冷启动的 <code>-S</code> 配置在 cont 前处于 <code>prelaunch</code>，<code>running</code> 为 false。此时 query-cpus-fast 已能返回 vCPU 的宿主线程信息。QMP 的 RESUME 事件表示开始恢复执行，不代表固件初始化、磁盘引导或客户机服务已经完成。</p>
+  <p>这个例子把后面的调用链分为两段：<code>qemu_init → machine init → CPU / RAM / 设备就绪 → 复位</code> 建立可运行的机器；<code>cont → vm_start → KVM_RUN</code> 才允许客户机执行。接下来先明确这些步骤操作哪些对象，再按两个阶段展开。</p>
 </section>
 
 <section id="objects" class="mechanism-section">
@@ -39,7 +40,7 @@
 </section>
 
 <section id="phases" class="mechanism-section">
-  <h2>从参数解析到板级初始化</h2>
+  <h2>创建机器、KVM 虚拟机与板级设备</h2>
   <p><code>main()</code> 进入 <code>qemu_init()</code>。后者解析参数、初始化主循环基础设施，选定机器类型并创建 MachineState；机器属性设置完成后，才配置 accelerator。KVM 的初始化需要读取 irqchip 等机器属性，所以这两步有明确的先后关系。</p>
   {{ diagram('qemu-startup-phases', 'Q35 冷启动的初始化阶段', '创建机器和 KVM 虚拟机后进入板级初始化；CPU 线程早于 Q35 内存布局和外设完成创建，执行则由最后的运行状态控制。') }}
   <p><code>kvm_init()</code> 打开 /dev/kvm，检查 API 版本与能力，调用 KVM_CREATE_VM 获取 vmfd，初始化架构相关功能与中断控制器，并注册内存监听器。此时已经有 KVM 虚拟机容器，客户机 RAM 和板级设备尚未全部挂入地址空间。</p>
@@ -84,7 +85,7 @@ vmfd
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>启动阶段拆分与配置边界</h2>
+  <h2>受控启动的演进与耗时分析</h2>
   <p>自动启动适合直接运行虚拟机，管理程序则需要在客户机运行前检查拓扑、设置资源策略或等待迁移。<code>-S</code> 提供了“机器已经完成初始化、客户机尚未执行”的控制点。此时内存和 CPU 拓扑已经落地，不能再把启动参数当成任意可改的配置表。</p>
   <p>2018 年引入的 <a href="https://github.com/qemu/qemu/commit/047f7038f586d2150f16c6d9ba9cfd0479f0f6ac">preconfig 模式</a> 把控制点前移到板级初始化之前，让管理程序可以先查询允许的配置，再通过 QMP 设置 NUMA 等信息。在本文版本中，它仍是实验接口，只有标记允许的命令可用；<code>x-exit-preconfig</code> 才会继续创建板级设备。它也已经完成一部分前置初始化，不能理解为 QEMU 尚未创建任何对象。</p>
   <table><thead><tr><th scope="col">控制点</th><th scope="col">解决的问题</th><th scope="col">约束</th></tr></thead><tbody>
@@ -97,7 +98,7 @@ vmfd
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码</h2>
+  <h2>源码：初始化与首次执行入口</h2>
   <table><thead><tr><th scope="col">位置</th><th scope="col">阅读重点</th></tr></thead><tbody>
     <tr><td><a href="{{ qemu_source }}system/vl.c#L3769-L3850">qemu_init</a></td><td>machine、accelerator、后端、CPU 类型与板级初始化的顺序。</td></tr>
     <tr><td><a href="{{ qemu_source }}hw/core/machine.c#L1658-L1746">machine_run_board_init</a></td><td>默认内存后端、CPU 类型校验和 MachineClass.init。</td></tr>

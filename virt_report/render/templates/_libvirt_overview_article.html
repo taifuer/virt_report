@@ -1,0 +1,78 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+{% set libvirt = 'https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/' %}
+{% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
+<section id="preface" class="mechanism-section">
+  <h2>从控制一个进程到管理一组虚拟机</h2>
+  <p>运行一台测试虚拟机，可以直接拼出 QEMU 命令行，再通过 QMP 管理协议暂停或增加设备。虚拟机数量增多后，问题会扩展到进程之外：怎样保存关机后仍存在的配置，谁可以操作哪台机器，网卡和磁盘资源由谁准备，两个管理程序同时修改设备时怎么办？进程异常退出后，还需要识别实际状态并回收资源。</p>
+  <p>这些工作可以逐项写进脚本，脚本也就逐渐变成一套管理系统。Libvirt 将它们组织成统一的对象与操作接口。上层表达“暂停 demo”或“启动这个定义”，服务端负责找到实例、检查条件、执行具体操作并维护状态。本文先沿一次暂停与恢复理解分层，再讨论并发和异步事件为何必不可少。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+<section id="architecture" class="mechanism-section">
+  <h2>一项管理操作为什么要经过几层接口</h2>
+  <h3>API 表达操作，连接确定管理范围</h3>
+  <p>应用调用 <code>virDomainSuspend()</code> 表达暂停；virsh 是使用这些 API 的命令行客户端。这里的 domain 指受管理的虚拟机，客户端句柄保存名称、UUID 和所属连接等标识。它不包含完整的客户机内存，也不等同于 QEMU 的进程号。</p>
+  <p>连接回答“向哪里操作”。<code>qemu:///system</code> 访问本机系统级 QEMU 管理服务，<code>qemu:///session</code> 访问当前用户的会话级服务；两者可见的实例和权限不同。远程连接还要选择传输方式并验证身份。请求指向同一个名称，并不代表在不同连接里操作的是同一台机器。<a href="https://libvirt.org/uri.html">连接 URI</a></p>
+  <h3>RPC 跨越进程，驱动落实具体实现</h3>
+  <p>管理应用与服务端通常不在同一进程。客户端把操作、对象标识和参数编码为消息，由服务端解码并分发，这就是 RPC。调用序号用来把响应交回原来的等待者；传输成功只说明消息到达，服务端仍需检查权限与对象状态。</p>
+  <p>服务端的 QEMU 驱动知道如何准备宿主资源、启动进程以及发送 QMP 命令。于是同一个公开 API 可以保持稳定，而底层处理随具体后端变化。一项 API 可能需要多条 QMP 命令，也可能只读取服务端已有记录。Libvirt 属于管理路径，客户机日常的读盘和发包不逐项经过这条 RPC 链。</p>
+  {{ diagram('libvirt-internals-overview', '管理请求与状态反馈分别经过哪些组件', 'API 表达操作，RPC 负责跨进程交接，QEMU 驱动处理资源和状态，QMP 操作具体实例。命令响应和异步事件分别处理，数据请求走虚拟机自己的 I/O 路径。') }}
+</section>
+<section id="state" class="mechanism-section">
+  <h2>定义、运行配置与运行状态有什么不同</h2>
+  <p>给 demo 保存“2 个 vCPU、4 GiB 内存和一块磁盘”的定义后，它可以尚未启动。启动时，Libvirt 根据定义与宿主能力建立本次运行配置；进程运行后，还要记录它处于运行、暂停或关机等状态。三者回答不同问题，不能只用一份“当前配置”笼统表示。</p>
+  <table><thead><tr><th>信息</th><th>回答的问题</th><th>例子</th></tr></thead><tbody>
+    <tr><td>持久定义</td><td>下一次应当怎样创建机器</td><td>关机后仍保留的 CPU、内存、设备配置</td></tr>
+    <tr><td>运行配置</td><td>本次实例实际具有什么资源</td><td>已热插入、但未写入持久定义的网卡</td></tr>
+    <tr><td>运行状态</td><td>实例现在是否执行，以及为什么改变</td><td>运行中；因用户请求暂停；因 I/O 错误暂停</td></tr>
+  </tbody></table>
+  <p>部分修改接口允许分别指定 live 和 config。只改持久定义，当前实例可能继续保持原配置；只改运行配置，下次重新创建又可能消失。暂停操作主要改变执行状态，既不删除定义，也不重新创建机器。服务端用 <code>virDomainObj</code> 联系这些信息，实际 CPU 与设备状态仍由 QEMU/KVM 持有。</p>
+</section>
+<section id="example" class="mechanism-section">
+  <h2>示例：暂停 demo，再从原处继续</h2>
+  <p>假设 demo 已在系统级服务中运行，执行 <code>virsh -c qemu:///system suspend demo</code>。暂停保留 QEMU 进程和客户机 RAM，停止客户机 vCPU 执行；客户机电源管理休眠、保存内存到磁盘和关闭虚拟机则是另外的操作。</p>
+  {{ diagram('libvirt-suspend-sequence', '一次暂停请求中的命令与事件', '示例跟踪普通运行状态下的暂停。QMP 响应交付命令结果，STOP 事件驱动状态记录；图中分开展示两条反馈，不能把事件订阅当成 API 调用返回的一部分。') }}
+  <ol>
+    <li>virsh 查找 demo，调用暂停 API。客户端按连接的实现编码 RPC，将虚拟机标识交给服务端。</li>
+    <li>QEMU 驱动重新查找对象，检查权限，取得暂停作业，并确认实例仍然活跃。客户端之前查到的状态不能替代这次检查。</li>
+    <li>驱动进入 QEMU 监控接口，发送 <code>stop</code>。QEMU 协调 vCPU 停止，保留运行现场；QMP 响应返回命令结果。</li>
+    <li>Libvirt 收到 <code>STOP</code> 事件后记录暂停状态和原因，保存运行状态，并向已订阅的客户端发送生命周期通知。管理程序也可查询当前状态。</li>
+  </ol>
+  <p>恢复时，<code>virsh -c qemu:///system resume demo</code> 经恢复 API 和 QEMU 驱动发送 <code>cont</code>，相关宿主资源也要恢复到允许运行的条件。QEMU 继续执行，Libvirt 的 <code>RESUME</code> 事件处理更新运行状态。事件与命令响应有各自处理路径，应用不应假设自己的事件回调一定早于或晚于 API 返回。<a href="{{ libvirt }}src/qemu/qemu_driver.c#L1621-L1723">暂停与恢复入口</a>、<a href="{{ libvirt }}src/qemu/qemu_process.c#L816-L919">状态事件处理</a></p>
+</section>
+<section id="coordination" class="mechanism-section">
+  <h2>并发修改为什么需要作业，完成为什么需要事件</h2>
+  <h3>短时保护对象，长操作限制冲突</h3>
+  <p>如果一个请求正删除网卡，另一个请求同时修改其后端，仅让各次字段读写互斥还不够：删除动作可能跨过多次命令和等待。Libvirt 用对象锁保护短时访问，用作业机制约束整项操作可与哪些工作并发。迁移这样的长作业也能允许查询或取消，而排斥不兼容的修改。</p>
+  <p>等待 QMP 响应时，驱动释放虚拟机对象锁，使事件处理能继续取得对象并更新状态；作业约束仍保留。如果一直拿锁等待，所等的事件可能恰好也需要这把锁。重新获得执行机会后还要复查实例，等待期间它可能已经退出。<a href="{{ libvirt }}docs/kbase/internals/qemu-threads.rst#L27-L105">对象锁与作业规则</a></p>
+  <h3>以热拔网卡区分受理和完成</h3>
+  <p>发送 <code>device_del</code> 后，QEMU 可以先返回成功，客户机驱动随后才停止使用设备；最终完成用 <code>DEVICE_DELETED</code> 表达。Libvirt 保留移除标记，等待事件或交给后续处理，再更新配置并清理资源。客户机拒绝、迟迟不响应和管理连接断开，都需要区别处理。</p>
+  <p>因此，“没有收到响应”与“没有执行”并不相同。超时后直接重复修改可能与仍在推进的操作冲突；应根据操作语义结合事件、状态查询与错误信息决定后续动作。命令响应回答这次调用怎样返回，事件反映运行过程中发生了什么，查询则帮助重新建立当前视图。<a href="{{ libvirt }}src/qemu/qemu_hotplug.c#L5698-L5755">移除等待与事件交接</a>、<a href="{{ qemu }}qapi/qdev.json#L96-L143">QEMU 移除语义</a></p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2>从单体守护进程到按驱动拆分</h2>
+  <p>传统 <code>libvirtd</code> 在同一个常驻进程中提供虚拟机、网络、存储等有状态驱动。入口集中，部署较直观；但不同驱动也共享进程生命周期和运行环境。模块化架构用 <code>virtqemud</code>、<code>virtnetworkd</code>、<code>virtstoraged</code> 等分别承载职责，以减少这类耦合。</p>
+  <p>拆分后，必要时由 <code>virtproxyd</code> 提供兼容或远程入口，上层继续使用原有 API。代价是服务、socket、配置和启动依赖更多，排查也需要识别请求实际经过哪些进程。单体与模块化布局要按部署确认，不能从 <code>qemu:///system</code> 一个 URI 推断全部进程结构。<a href="{{ libvirt }}docs/daemons.rst#L12-L40">守护进程演进</a></p>
+</section>
+<section id="summary" class="mechanism-section">
+  <h2>沿请求、状态与资源检查管理过程</h2>
+  <p>Libvirt 把用户操作落实为可检查的资源与状态变化：连接确定范围，API 表达意图，RPC 传递调用，驱动执行具体动作，作业和事件处理保证并发时仍能协调。它减少管理程序重复实现这些机制的负担，也引入需要观察的传输、排队和状态同步环节。</p>
+  <p>遇到操作慢或结果不确定，依次确认请求是否到达、是否在等待作业、QMP 是否返回、是否仍需客户机配合，再检查实际状态。这样能把管理链路的问题与客户机数据路径的性能问题分开，也能避免把某次成功响应当作所有后续动作的完成证明。</p>
+</section>
+<section id="reading" class="mechanism-section">
+  <h2>从管理接口深入到具体操作</h2>
+  <ul>
+    <li><a href="libvirt-rpc.html">Libvirt RPC 编解码与分发</a>：请求如何编码，响应怎样找到原调用。</li>
+    <li><a href="libvirt-domain-start.html">Libvirt 虚拟机启动</a>：资源准备、QEMU 进程与运行状态的交接。</li>
+    <li><a href="qemu-pcie-hotplug.html">PCIe 热插拔</a>：客户机协作与移除完成事件。</li>
+    <li><a href="qemu-memory-migration.html">预拷贝内存迁移</a>：管理操作怎样联系实际状态传输。</li>
+  </ul>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="{{ libvirt }}src/libvirt-domain.c#L646-L741">Libvirt 暂停与恢复 API</a>、<a href="{{ libvirt }}src/qemu/qemu_driver.c#L1621-L1723">QEMU 驱动实现</a></li>
+    <li><a href="{{ libvirt }}src/qemu/qemu_monitor_json.c#L1545-L1594">stop / cont 命令</a>、<a href="{{ libvirt }}src/qemu/qemu_process.c#L3398-L3488">暂停与恢复时的资源协调</a></li>
+    <li><a href="{{ qemu }}monitor/qmp-cmds.c#L50-L113">QEMU stop / cont 实现</a>、<a href="{{ qemu }}qapi/run-state.json#L200-L226">STOP / RESUME 事件</a></li>
+    <li><a href="{{ libvirt }}src/qemu/qemu_domain.c#L5078-L5145">进入 monitor 时的锁交接</a>、<a href="{{ libvirt }}docs/daemons.rst">Libvirt 守护进程架构</a></li>
+  </ul>
+</section>

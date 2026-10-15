@@ -182,6 +182,41 @@
       get('split-layout').hidden = !virtio;
       if (virtio) {
         const queue = frame.queue;
+        text('graphic-step', `${index} / ${trace.length - 1} · ${frame.title}`);
+        text('graphic-avail-index', String(queue.availIndex));
+        text('graphic-used-index', String(queue.usedIndex));
+        text('graphic-avail-position', `本次槽 ${queue.slot}；下一发布槽 ${queue.availIndex % queue.size}`);
+        text('graphic-used-position', `本次槽 ${queue.slot}；下一完成槽 ${queue.usedIndex % queue.size}`);
+        text('graphic-backend-state', frame.reclaimed ? '驱动已回收：旧环值保留，索引区分新旧'
+          : frame.completed ? '已发布 used，等待驱动回收' : frame.consumed ? '已取出请求，缓冲区仍有效' : '等待发布请求');
+        for (const [kind, entries, position] of [['avail', queue.available, queue.availIndex], ['used', queue.used, queue.usedIndex]]) {
+          lab.querySelectorAll(`[data-tx-graphic-${kind}-slot]`).forEach(cell => {
+            const slot = Number(cell.getAttribute(`data-tx-graphic-${kind}-slot`));
+            const entry = entries[slot];
+            cell.dataset.active = String(entry !== null);
+            cell.dataset.pointer = String(slot === position % queue.size);
+            cell.querySelector('[data-tx-graphic-entry]').textContent = entry === null ? '—' : kind === 'avail' ? `head=${entry}` : `id=${entry.id}`;
+            const length = cell.querySelector('[data-tx-graphic-length]');
+            if (length) length.textContent = entry === null ? '' : `len=${entry.len}`;
+          });
+        }
+        lab.querySelectorAll('[data-tx-graphic-desc]').forEach(row => {
+          const desc = queue.descriptors[Number(row.dataset.txGraphicDesc)];
+          row.dataset.active = String(Boolean(desc) && !frame.reclaimed);
+          for (const field of ['addr', 'len', 'flags', 'next']) {
+            row.querySelector(`[data-field="${field}"]`).textContent = !desc ? '—'
+              : field === 'flags' ? (desc.flags ? 'NEXT' : '0')
+                : field === 'next' && !desc.flags ? '—' : String(desc[field]);
+          }
+        });
+        const graphStates = {descriptor: frame.descriptorPrepared && !frame.reclaimed, payload: frame.payloadPrepared && !frame.reclaimed, backend: frame.consumed && !frame.reclaimed};
+        const graphPaths = {publish: index === 2, payload: index === 4 || index === 5, consume: index === 4 || index === 5, complete: index === 6 || index === 8};
+        const publishRoutes = ['M189 162H305V197H333', 'M280 230H305V197H333', 'M189 298H305V197H333', 'M30 230H12V91H305V197H333'];
+        const completeRoutes = ['M390 510H305V444H194', 'M390 510H285', 'M390 510H305V582H194', 'M390 510H305V620H12V513H25'];
+        lab.querySelector('[data-tx-graphic-path="publish"]').setAttribute('d', publishRoutes[queue.slot]);
+        lab.querySelector('[data-tx-graphic-path="complete"]').setAttribute('d', completeRoutes[queue.slot]);
+        lab.querySelectorAll('[data-tx-graphic-state]').forEach(node => { node.dataset.active = String(graphStates[node.dataset.txGraphicState]); });
+        lab.querySelectorAll('[data-tx-graphic-path]').forEach(node => { node.dataset.active = String(graphPaths[node.dataset.txGraphicPath]); });
         text('queue-ownership', queue.ownership);
         text('queue-free', `${queue.freeDescriptors} / 4 个描述符可分配`);
         text('queue-avail', String(queue.availIndex)); text('queue-used', String(queue.usedIndex));
@@ -221,6 +256,8 @@
       });
       get('back').disabled = index === 0;
       get('next').disabled = index === trace.length - 1;
+      get('queue-back').disabled = index === 0;
+      get('queue-next').disabled = index === trace.length - 1;
       play.disabled = index === trace.length - 1;
     }
 
@@ -239,6 +276,14 @@
     get('back').addEventListener('click', () => { pause(); index = Math.max(0, index - 1); render(); });
     get('next').addEventListener('click', () => { pause(); index = Math.min(trace.length - 1, index + 1); render(); });
     get('reset').addEventListener('click', reset);
+    get('queue-back').addEventListener('click', () => { pause(); index = Math.max(0, index - 1); render(); });
+    get('queue-next').addEventListener('click', () => { pause(); index = Math.min(trace.length - 1, index + 1); render(); });
+    get('queue-reset').addEventListener('click', reset);
+    get('graph-zoom').addEventListener('click', () => {
+      const enlarged = get('graph-viewport').classList.toggle('is-zoomed');
+      get('graph-zoom').setAttribute('aria-pressed', String(enlarged));
+      get('graph-zoom').textContent = enlarged ? '适应宽度' : '放大图解';
+    });
     device.addEventListener('change', () => {
       notification.value = device.value === 'virtio' ? virtioNotification : 'mmio';
       reset();
@@ -260,6 +305,8 @@
     root.addEventListener('resize', pause);
     root.addEventListener('pagehide', pause);
     get('controls').hidden = false;
+    get('queue-controls').hidden = false;
+    get('graph-zoom').hidden = false;
     get('source').hidden = false;
     lab.dataset.initialized = 'true';
     reset();

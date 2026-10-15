@@ -3,14 +3,15 @@
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2>virsh start 要完成哪些交接</h2>
   <p><code>virsh start demo</code> 启动一个已定义的虚拟机。Libvirt 读取现有定义，准备宿主资源，创建 QEMU 进程，建立 QMP 连接，完成运行参数设置，最后允许客户机 CPU 执行。每一步产生的资源与状态都需要记录，失败时还要沿相应路径清理。</p>
   <p>本文使用 <code>qemu:///system</code>，跟踪没有 managed save 的持久虚拟机冷启动。调用端与守护进程之间的通信见<a href="libvirt-rpc.html">Libvirt RPC 的编码与调用分发</a>；QEMU 内部创建机器、内存和 vCPU 的过程见<a href="qemu-vm-startup.html">QEMU 虚拟机启动流程</a>。</p>
+  <p>启动的关键是两次放行：先完成宿主隔离，允许子进程 exec QEMU；再完成 QMP 配置，允许客户机 CPU 执行。下面沿“读取定义 → 准备资源 → 创建进程 → 配置 QMP → cont 与状态确认”追踪 <code>demo</code>，最后检查每个失败出口如何归还资源。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="objects" class="mechanism-section">
-  <h2>定义、进程与作业</h2>
+  <h2>用运行定义与启动作业管理状态</h2>
   <p>持久虚拟机关闭后仍保留定义。启动时，<code>virsh</code> 先按名称或 UUID 查找句柄，再发起创建调用。没有额外标志时使用 <code>virDomainCreate()</code>；携带 <code>--paused</code> 等标志时使用 <code>virDomainCreateWithFlags()</code>。服务端 QEMU 驱动最终进入同一套带 flags 的启动逻辑。<a href="{{ libvirt_source }}tools/virsh-domain.c#L4409-L4465">命令入口</a></p>
   <table><thead><tr><th scope="col">数据结构</th><th scope="col">关键字段</th><th scope="col">启动中的作用</th></tr></thead><tbody>
     <tr><td><code>virDomainObj</code></td><td><code>def</code>、<code>newDef</code>、<code>pid</code>、<code>state</code>、<code>persistent</code>、<code>job</code></td><td>关联定义、进程与生命周期；<code>newDef</code> 保存需要在关闭后使用的定义</td></tr>
@@ -69,7 +70,7 @@
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>从进程启动到状态协调</h2>
+  <h2>QMP 状态协调的收益与启动成本</h2>
   <p>早期人类可读的 monitor 适合人工交互，自动管理需要解析文本输出。QMP 提供结构化 JSON 命令、错误和异步事件，减少命令输出格式变化带来的歧义。Libvirt 在 2010 年加入<a href="https://github.com/libvirt/libvirt/commit/5d72a8944264bef63f490d1bd602fca1aea4be2c">连接时的 qmp_capabilities 协商</a>；如今启动路径依赖 QMP 查询线程、设置运行参数和同步生命周期。</p>
   <p>同年，QEMU 驱动<a href="https://github.com/libvirt/libvirt/commit/12317957ecd6c37a2fb16275dcdeeacfe25c517e">接入锁管理基础设施</a>，把磁盘锁、标签修改和 fork / exec 时序联系起来。随着直通设备、外部后端、NUMA 和 cgroup 等能力增加，创建进程逐渐成为更大资源事务中的一步。</p>
   <p>收益是资源隔离、并发控制与故障恢复可以统一处理，成本则是更多阶段、状态和失败出口。排查启动慢或启动失败，最有效的起点是定位最后一个完成的阶段：配置校验、宿主资源准备、exec、QMP 协商、运行前设置，还是客户机自己的引导。将这些耗时全部归入“QEMU 启动”会掩盖实际瓶颈。</p>

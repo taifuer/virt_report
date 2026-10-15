@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>内存虚拟化：地址转换、影子页表与两级映射 - virt-report</title>
+  <meta name="description" content="用同一次内存读取推导 GVA、GPA、HVA 与 HPA，说明影子页表、EPT/NPT、缺页和映射失效的关系。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
+  <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=85f3a75ef38f" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#memory-virtualization">内存虚拟化</a></div>
+    <h1>内存虚拟化：地址转换、影子页表与两级映射</h1>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、两台虚拟机怎样拥有相同的内存地址</a></li><li><a href="#addresses">二、一次读取涉及哪些地址</a></li><li><a href="#evolution">三、从软件合成映射到硬件两级转换</a><ol><li><a href="#evolution-part-1">1. 影子页表把两次转换合成一次</a></li><li><a href="#evolution-part-2">2. EPT/NPT 分开客户机页表与宿主映射</a></li></ol></li><li><a href="#access">四、把同一次读取走完</a><ol><li><a href="#access-part-1">1. 缺少 EPT 项时如何建立映射</a></li><li><a href="#access-part-2">2. 已有映射怎样继续保持正确</a></li><li><a href="#access-part-3">3. 设备访问与脏页记录怎样加入这条路径</a></li></ol></li><li><a href="#evaluation">五、转换、后备与跟踪应分别评价</a></li><li><a href="#reading">六、进一步阅读</a></li><li><a href="#sources">七、参考资料</a></li></ol></nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">一、</span>两台虚拟机怎样拥有相同的内存地址</h2>
+  <p>两台虚拟机都可以从物理地址零开始使用内存，却不能读写彼此的数据。客户机应用还有自己的虚拟地址，客户机内核通过页表把它们映射到自己认识的物理页。宿主必须在这层关系之外，再决定每个客户机物理页实际由哪块宿主内存承载。</p>
+  <p>内存虚拟化需要同时满足三个条件：客户机页表的含义保持不变，访问被限制在获准的宿主页内，宿主仍能分配、迁移和回收这些页面。本文以普通、可由宿主访问的 RAM 和 x86 KVM 为例，从一次读取推导影子页表与 EPT/NPT 的解决办法。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
+<section id="addresses" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">二、</span>一次读取涉及哪些地址</h2>
+  <p>设客户机执行 <code>load [0x400120]</code>，页大小为 4 KiB。客户机页表把虚拟页 <code>0x400000</code> 映射到客户机物理页 <code>0x20000</code>，偏移 <code>0x120</code> 保持不变，因此需要访问的客户机物理地址是 <code>0x20120</code>。</p>
+  <figure class="mechanism-diagram" data-diagram="memory-address-overview" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>客户机访问与宿主映射管理</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看客户机访问与宿主映射管理" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="客户机访问与宿主映射管理">
+    <img src="../assets/memory-address-overview.svg?v=32683d73423f" alt="硬件访存从 GVA 经 GPA 到 HPA。KVM 建立映射时使用 QEMU 的 HVA 定位宿主页；HVA 不构成客户机的第三次硬件页表转换。" loading="lazy">
+  </div>
+  <figcaption>硬件访存从 GVA 经 GPA 到 HPA。KVM 建立映射时使用 QEMU 的 HVA 定位宿主页；HVA 不构成客户机的第三次硬件页表转换。 <a href="../assets/memory-address-overview.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+    accTitle: 客户机地址转换与宿主映射管理
+    accDescr: 硬件访问从 GVA 经客户机页表到 GPA，再经 EPT/NPT 到 HPA。管理映射时 KVM 由内存槽定位 HVA，解析宿主页以建立二级页表，HVA 不在硬件的两级访问链上。
+    V[&#34;GVA 0x400120&lt;br/&gt;客户机应用地址&#34;] --&gt;|客户机页表| P[&#34;GPA 0x20120&lt;br/&gt;客户机物理地址&#34;]
+    P --&gt;|EPT / NPT| H[&#34;HPA 0x920120&lt;br/&gt;实际物理内存&#34;]
+    P -. &#34;缺少映射时：查内存槽&#34; .-&gt; U[&#34;HVA B + 0x20120&lt;br/&gt;QEMU RAM 后端地址&#34;]
+    U -. &#34;解析宿主页&#34; .-&gt; F[&#34;宿主页 0x920000&lt;br/&gt;页内偏移 0x120&#34;]
+    F -. &#34;建立二级映射&#34; .-&gt; H
+</code></pre></details>
+</figure>
+  <table><thead><tr><th>名称</th><th>本例</th><th>作用</th></tr></thead><tbody>
+    <tr><td>GVA，客户机虚拟地址</td><td><code>0x400120</code></td><td>程序使用的地址，由客户机页表解释</td></tr>
+    <tr><td>GPA，客户机物理地址</td><td><code>0x20120</code></td><td>客户机认为存在的 RAM 或设备地址</td></tr>
+    <tr><td>HVA，宿主虚拟地址</td><td><code>B + 0x20120</code></td><td>QEMU 进程访问后备内存的位置</td></tr>
+    <tr><td>HPA，宿主物理地址</td><td><code>0x920120</code></td><td>本次数据实际位于的宿主内存位置</td></tr>
+  </tbody></table>
+  <p>QEMU 用内存槽向 KVM 登记一段 GPA 与 HVA 的对应关系。这里假定槽从 GPA 0 开始，映射到 QEMU 的基址 B；对应宿主页基址为 <code>0x920000</code>。KVM 建图时先按槽内偏移找到 HVA，再向 Linux 内存管理取得当前宿主页。另一个虚拟机的同一 GPA 可以落到不同 HPA。隔离依赖宿主控制这份映射和访问权限，客户机不能通过修改自己的页表取得任意宿主页。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/x86/mmu.rst#L70-L108">KVM 地址空间与后备内存</a></p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">三、</span>从软件合成映射到硬件两级转换</h2>
+  <h3 id="evolution-part-1"><span class="mechanism-heading-number">1. </span>影子页表把两次转换合成一次</h3>
+  <p>传统页表硬件只负责虚拟地址到物理地址的一次转换。虚拟机监控器（VMM）可以读取客户机页表，再结合宿主的页面分配，把本例直接合成为 <code>GVA 0x400000 → HPA 0x920000</code>，形成影子页表供硬件使用。客户机仍维护自己看到的 GVA→GPA 关系，VMM 维护实际执行所用的合成结果。</p>
+  <p>难点在于保持两份关系一致：客户机修改页表、切换地址空间，或宿主替换后备页，都可能使影子项过期。软件需要跟踪相关变化、同步或撤销影子项，并处理转换缓存。页表改动频繁的负载会为这种维护付出额外成本。</p>
+  <h3 id="evolution-part-2"><span class="mechanism-heading-number">2. </span>EPT/NPT 分开客户机页表与宿主映射</h3>
+  <p>Intel EPT（扩展页表）、AMD NPT（嵌套页表）增加第二级硬件转换。客户机页表仍把 GVA 变为 GPA，KVM 管理的第二级页表把 GPA 变为 HPA。客户机可以正常维护自己的页表，无需为每次修改同步一份 GVA→HPA 合成页表。</p>
+  <figure class="mechanism-diagram" data-diagram="memory-foundation-paging" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>影子页表与两级页表的分工</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看影子页表与两级页表的分工" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="影子页表与两级页表的分工">
+    <img src="../assets/memory-foundation-paging.svg?v=32683d73423f" alt="影子模式由软件合成 GVA 到 HPA；EPT/NPT 让硬件组合客户机页表与宿主第二级页表。两种方式都必须在宿主页面变更时撤销过期映射。" loading="lazy">
+  </div>
+  <figcaption>影子模式由软件合成 GVA 到 HPA；EPT/NPT 让硬件组合客户机页表与宿主第二级页表。两种方式都必须在宿主页面变更时撤销过期映射。 <a href="../assets/memory-foundation-paging.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+  accTitle: 影子页表与两级页表的分工
+  accDescr: 影子页表由软件合成客户机页表和宿主映射，供硬件从 GVA 转换到 HPA。EPT/NPT 则让硬件依次使用客户机页表和宿主二级页表，客户机页表页的读取也要经过第二级转换。
+  subgraph SHADOW[&#34;影子页表&#34;]
+    G[&#34;客户机页表&lt;br/&gt;GVA → GPA&#34;] --&gt;|软件跟踪与合成| S[&#34;影子页表&lt;br/&gt;GVA → HPA&#34;]
+    H[&#34;宿主后备关系&lt;br/&gt;GPA → HPA&#34;] --&gt; S
+    S --&gt; A[&#34;硬件使用合成页表完成访问&#34;]
+  end
+  subgraph TDP[&#34;EPT / NPT&#34;]
+    V[&#34;GVA&#34;] --&gt;|客户机页表| P[&#34;GPA&#34;]
+    P --&gt;|宿主管理的二级页表| F[&#34;HPA&#34;]
+    W[&#34;读取客户机页表页&lt;br/&gt;同样需要第二级转换&#34;] -.-&gt; P
+  end
+  classDef guest fill:#e4f1ec,stroke:#438575,color:#173e34;
+  classDef host fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef note fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class G,V,P guest;
+  class H,S,A,F host;
+  class W note;
+</code></pre></details>
+</figure>
+  <p>两级转换仍有成本：客户机页表本身也在客户机物理内存中，读取它的每一级表项都需要经过 EPT/NPT。地址转换缓存 TLB 保存已得到的转换，页表遍历缓存复用中间结果，命中时可省去反复遍历。因此“两级”描述地址关系，并不等于每次读取固定访问两次内存。</p>
+  <p>大页进一步扩大一个映射和 TLB 项的覆盖范围，减轻转换压力，但需要合适的对齐、连续性与权限条件。KVM 的 TDP MMU 是管理这些二级页表的软件实现，后续并行建图减少了多 vCPU 的锁争用；它与 EPT/NPT 硬件能力属于不同层次的改进。</p>
+</section>
+<section id="access" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">四、</span>把同一次读取走完</h2>
+  <h3 id="access-part-1"><span class="mechanism-heading-number">1. </span>缺少 EPT 项时如何建立映射</h3>
+  <p>假设客户机页表有效，相关页表页已可访问，只有数据页 <code>GPA 0x20000</code> 的 EPT 项尚缺。硬件转换失败后退出，KVM 从内存槽找到 HVA <code>B + 0x20000</code>，取得宿主页 <code>HPA 0x920000</code>，检查权限并安装 EPT 项。客户机重试同一条 load，最终读取 <code>0x920000 + 0x120</code>。</p>
+  <p>取得宿主页时，Linux 可能还需分配或调入内存，这属于宿主缺页；客户机自己的页表无效则可能引发客户机 #PF，由客户机内核处理。普通 RAM 的 EPT 建图通常在 KVM 内完成，不必把每次访问交给 QEMU。</p>
+  <h3 id="access-part-2"><span class="mechanism-heading-number">2. </span>已有映射怎样继续保持正确</h3>
+  <p>后续访问可使用有效页表和 TLB。假设宿主将该页移到 <code>HPA 0xa30000</code>，HVA 可以不变，但旧 EPT 项和缓存必须撤销。Linux 通过 MMU notifier 这套内存变更通知机制告知 KVM 受影响的范围，KVM 使旧转换失效，并防止并发缺页把旧物理页重新写回。下一次重建后，同一 load 读取的是 <code>0xa30120</code>，内容随宿主页迁移得到保留。</p>
+  <h3 id="access-part-3"><span class="mechanism-heading-number">3. </span>设备访问与脏页记录怎样加入这条路径</h3>
+  <p>GPA 若属于设备寄存器，就需要相应设备模型完成访问，不能照 RAM 路径随意分配页面。迁移期间还需记录客户机写过哪些 RAM 页：写保护可以让首次写入进入 KVM 处理，硬件也可提供辅助脏标记；bitmap 或 dirty ring 再把记录交给用户态。记录方式不同，目标都是让迁移器知道哪些内容需要重新发送。</p>
+</section>
+<section id="evaluation" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">五、</span>转换、后备与跟踪应分别评价</h2>
+  <table><thead><tr><th>问题</th><th>可用改进</th><th>代价与边界</th></tr></thead><tbody>
+    <tr><td>TLB 未命中和页表遍历多</td><td>大页、合适的地址布局</td><td>碎片、对齐与细粒度写保护可能限制大页</td></tr>
+    <tr><td>首次访存或回收后访问慢</td><td>内存预分配、合理 NUMA 放置</td><td>启动成本、提前占用和节点资源约束</td></tr>
+    <tr><td>多 vCPU 同时建图</td><td>并行页表管理，减少锁争用</td><td>失效同步、冲突重试和生命周期更复杂</td></tr>
+    <tr><td>迁移脏页持续增长</td><td>改进记录消费、传输或写入控制</td><td>更快记账无法补足传输带宽，也不能消除业务写入</td></tr>
+  </tbody></table>
+  <p>影子页表用软件维护合成关系，EPT/NPT 用额外硬件转换换取更清晰的分工；两者最终都依赖宿主后备页的生命周期。评价时把转换未命中、缺页建图、真实内存访问和脏页跟踪分开，再观察吞吐、尾延迟与内存占用，才能判断优化发生在哪一层。</p>
+</section>
+<section id="reading" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>进一步阅读</h2>
+  <ul>
+    <li><a href="kvm-ept-fault.html">KVM 二级地址转换与缺页处理</a>：完整跟踪一页 RAM 的映射与失效。</li>
+    <li><a href="kvm-hugepages.html">KVM 大页映射</a>：建立、拆分和恢复条件。</li>
+    <li><a href="kvm-dirty-ring.html">KVM 脏页日志：位图与 Dirty Ring</a>：记录的发布、消费和重置。</li>
+    <li><a href="qemu-memory-region.html">QEMU MemoryRegion</a>：RAM、MMIO 与地址空间视图。</li>
+    <li><a href="qemu-memory-migration.html">预拷贝内存迁移</a>、<a href="qemu-virtio-mem.html">virtio-mem</a>：把映射管理放回迁移与容量调整过程。</li>
+  </ul>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">七、</span>参考资料</h2>
+  <ul>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/x86/mmu.rst">Linux：MMU 目标、影子模式与两级映射</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst">Linux：内存槽与 dirty ring API</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L674-L797">KVM：宿主映射失效通知</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/memory.rst">QEMU：内存和设备地址空间</a></li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#memory-virtualization">内存虚拟化原理</a><a href="../mechanisms.html#migration">热迁移原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=85f3a75ef38f"></script>
+<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+</body>
+</html>

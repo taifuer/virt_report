@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=c084ccad2981">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c084ccad2981">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -43,20 +43,21 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#device-virtualization">设备与 I/O 虚拟化</a></div>
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="device-virtualization.html">设备与 I/O 虚拟化</a></div>
     <h1>virtio-blk 的请求处理与写入完成</h1>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">前言</a></li><li><a href="#request">一次 4 KiB 写入的描述符链</a></li><li><a href="#objects">QEMU 如何表示请求</a></li><li><a href="#submission">从 virtqueue 到块后端</a></li><li><a href="#completion">状态、used 项与完成通知</a></li><li><a href="#durability">写入完成与持久化</a></li><li><a href="#errors">错误处理与请求保留</a></li><li><a href="#evolution">从单队列到多线程处理</a></li><li><a href="#sources">参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、一次写入何时可以归还缓冲区</a></li><li><a href="#request">二、一次 4 KiB 写入的描述符链</a></li><li><a href="#objects">三、描述符如何转换为 VirtIOBlockReq</a></li><li><a href="#submission">四、合并相邻请求并异步提交块后端</a></li><li><a href="#completion">五、状态、used 项与完成通知</a></li><li><a href="#durability">六、写入完成与持久化</a></li><li><a href="#errors">七、错误处理与请求保留</a></li><li><a href="#evolution">八、多队列与 IOThread 的收益和代价</a></li><li><a href="#sources">九、参考资料</a></li></ol></nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2><span class="mechanism-heading-number">一、</span>一次写入何时可以归还缓冲区</h2>
   <p>virtio-blk 用一条描述符链表达一次块设备请求。客户机驱动提交命令和数据缓冲区，QEMU 将请求交给块层，在操作完成后写回状态、归还描述符。读写接口虽然简单，队列完成、宿主缓存和持久化却分别发生在不同位置。</p>
   <p>本文使用 QEMU 10.2.0 的现代 virtio PCI 接口和 split virtqueue，跟踪向 raw 文件写入 4 KiB 的过程。设备采用 writeback 模式，客户机已协商 FLUSH；先看普通写完成，再看刷新如何建立持久化边界。队列的基本结构可结合<a href="qemu-network-tx.html#virtqueue">描述符表、available ring 与 used ring</a>阅读。</p>
+  <p>这次写入有两次需要分清的完成：OUT 成功后，设备已不再使用本次数据缓冲区，驱动可以回收；随后 FLUSH 成功，才满足这组写入要求的持久化边界。全文沿同一条 <code>5 → 9 → 12</code> 描述符链，从命令解析跟踪到 used 回写，再检查刷新和错误策略如何改变完成条件。</p>
 <p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p></section>
 
 <section id="request" class="mechanism-section">
-  <h2>一次 4 KiB 写入的描述符链</h2>
+  <h2><span class="mechanism-heading-number">二、</span>一次 4 KiB 写入的描述符链</h2>
   <p>假设队列大小为 16，本次使用描述符 <code>5 → 9 → 12</code>。请求写入磁盘字节偏移 1 MiB，故头部的 <code>sector = 2048</code>；4096 字节覆盖 2048 至 2055 共 8 个扇区。协议中的 sector 始终按 512 字节计数，设备报告的逻辑块大小不会改变这个单位；逻辑块大小仍决定请求的对齐要求。</p>
   <table>
     <thead><tr><th scope="col">描述符</th><th scope="col">指向的客户机缓冲区</th><th scope="col">长度与标志</th><th scope="col">QEMU 的访问方向</th></tr></thead>
@@ -74,9 +75,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看4 KiB 写请求的缓冲区与块层路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="4 KiB 写请求的缓冲区与块层路径">
-    <img src="../assets/virtio-blk-request.svg?v=c084ccad2981" alt="客户机内存保存请求头、写入数据和状态字节，描述符链连接这三个区域。QEMU 提取头部，把数据 iovec 交给块层；磁盘偏移由 sector 乘以 512 得到。" loading="lazy">
+    <img src="../assets/virtio-blk-request.svg?v=32683d73423f" alt="客户机内存保存请求头、写入数据和状态字节，描述符链连接这三个区域。QEMU 提取头部，把数据 iovec 交给块层；磁盘偏移由 sector 乘以 512 得到。" loading="lazy">
   </div>
-  <figcaption>客户机内存保存请求头、写入数据和状态字节，描述符链连接这三个区域。QEMU 提取头部，把数据 iovec 交给块层；磁盘偏移由 sector 乘以 512 得到。 <a href="../assets/virtio-blk-request.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>客户机内存保存请求头、写入数据和状态字节，描述符链连接这三个区域。QEMU 提取头部，把数据 iovec 交给块层；磁盘偏移由 sector 乘以 512 得到。 <a href="../assets/virtio-blk-request.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: virtio-blk 的 4 KiB 写请求
   accDescr: 客户机把三个描述符链接为请求头、4096 字节写入数据和一个状态字节。QEMU 读取命令和数据，经 BlockBackend 写入磁盘偏移一兆字节处，完成后写状态。
@@ -108,7 +109,7 @@
 </section>
 
 <section id="objects" class="mechanism-section">
-  <h2>QEMU 如何表示请求</h2>
+  <h2><span class="mechanism-heading-number">三、</span>描述符如何转换为 VirtIOBlockReq</h2>
   <p><code>virtqueue_pop()</code>解析并映射描述符，构造带有 <code>VirtQueueElement</code>的 <code>VirtIOBlockReq</code>。设备可读区域进入 <code>out_sg</code>，设备可写区域进入 <code>in_sg</code>。这里的 in / out 以客户机数据流向命名，阅读实现时需要同时检查操作类型和描述符权限。</p>
   <table>
     <thead><tr><th scope="col">结构或字段</th><th scope="col">本例内容</th><th scope="col">作用</th></tr></thead>
@@ -126,7 +127,7 @@
 </section>
 
 <section id="submission" class="mechanism-section">
-  <h2>从 virtqueue 到块后端</h2>
+  <h2><span class="mechanism-heading-number">四、</span>合并相邻请求并异步提交块后端</h2>
   <p><code>virtio_blk_handle_vq()</code>连续提取可用请求，经过类型、长度、对齐和磁盘边界检查后，将读写请求暂存到 <code>MultiReqBuffer</code>。同方向的相邻磁盘区域可以合并，合并后的 iovec 数和传输长度必须满足后端限制；改变读写方向、达到批次上限或完成本轮消费时，暂存批次会被提交。</p>
   <p>合并前，QEMU 按 sector 排序。例如本例的 2048—2055 和另一个请求的 2056—2063 可以组成 8 KiB 后端写入；两个客户机请求仍各自保有状态字节和完成记录。<code>mr_next</code>把它们串起来，后端回调再逐一处理。提交顺序和完成顺序因此不应当作客户机写入依赖的保证。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c#L212-L332">合并与提交</a></p>
   <pre><code>virtio_blk_handle_vq()
@@ -142,7 +143,7 @@
 </section>
 
 <section id="completion" class="mechanism-section">
-  <h2>状态、used 项与完成通知</h2>
+  <h2><span class="mechanism-heading-number">五、</span>状态、used 项与完成通知</h2>
   <p>后端成功返回后，<code>virtio_blk_rw_complete()</code>遍历合并请求链，调用 <code>virtio_blk_req_complete()</code>。后者依次写状态、恢复 iovec、发布 used，再调用通知检查。客户机通过 used 找到原请求，读取 status，回收描述符和缓冲区。</p>
   <pre><code>本例的完成记录
   status = VIRTIO_BLK_S_OK = 0
@@ -158,9 +159,9 @@ len = 设备写入的缓冲区长度，本次只有 status 的 1 字节</code></
     <button type="button" data-mechanism-expand aria-label="放大查看普通写完成与随后刷新" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="普通写完成与随后刷新">
-    <img src="../assets/virtio-blk-completion.svg?v=c084ccad2981" alt="writeback 示例先等待 OUT 成功完成，再提交 FLUSH。普通写归还缓冲区；后续 FLUSH 成功后，才达到这组写入要求的持久化边界。两次命令分别有自己的状态和 used 完成。" loading="lazy">
+    <img src="../assets/virtio-blk-completion.svg?v=32683d73423f" alt="writeback 示例先等待 OUT 成功完成，再提交 FLUSH。普通写归还缓冲区；后续 FLUSH 成功后，才达到这组写入要求的持久化边界。两次命令分别有自己的状态和 used 完成。" loading="lazy">
   </div>
-  <figcaption>writeback 示例先等待 OUT 成功完成，再提交 FLUSH。普通写归还缓冲区；后续 FLUSH 成功后，才达到这组写入要求的持久化边界。两次命令分别有自己的状态和 used 完成。 <a href="../assets/virtio-blk-completion.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>writeback 示例先等待 OUT 成功完成，再提交 FLUSH。普通写归还缓冲区；后续 FLUSH 成功后，才达到这组写入要求的持久化边界。两次命令分别有自己的状态和 used 完成。 <a href="../assets/virtio-blk-completion.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
   accTitle: virtio-blk 的写完成与刷新完成
   accDescr: 在 writeback 模式下，普通写的完成让客户机回收数据缓冲区。客户机等待写完成后另发 FLUSH，后端刷新成功后才满足该写入的持久化要求。
@@ -190,7 +191,7 @@ len = 设备写入的缓冲区长度，本次只有 status 的 1 字节</code></
 </section>
 
 <section id="durability" class="mechanism-section">
-  <h2>写入完成与持久化</h2>
+  <h2><span class="mechanism-heading-number">六、</span>写入完成与持久化</h2>
   <p>writeback 模式允许写请求在易失缓存中完成。对本例文件后端，数据可能已经复制到宿主页缓存，客户机即可复用缓冲区，但此时宿主断电仍可能丢失数据。绕过宿主页缓存也无法自动消除设备内部的易失写缓存。</p>
   <p>客户机等待相关写请求成功后，提交 <code>VIRTIO_BLK_T_FLUSH</code>：type 为 4，sector 为 0，无数据载荷，只保留命令头和状态。QEMU 先提交当前批次尚未下发的写操作，再调用 <code>blk_aio_flush()</code>；块层沿存储图刷新，完成后才回报该 FLUSH。等待写完成再发 FLUSH 也使该边界不依赖队列间的处理先后。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c#L334-L348">FLUSH 入口</a>、<a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">VIRTIO 1.2 §5.2.6.2 写入稳定性约定</a></p>
   <table><thead><tr><th scope="col">设置或操作</th><th scope="col">影响</th><th scope="col">需要注意</th></tr></thead><tbody>
@@ -203,20 +204,20 @@ len = 设备写入的缓冲区长度，本次只有 status 的 1 字节</code></
 </section>
 
 <section id="errors" class="mechanism-section">
-  <h2>错误处理与请求保留</h2>
+  <h2><span class="mechanism-heading-number">七、</span>错误处理与请求保留</h2>
   <p>磁盘越界或不满足对齐要求的请求可直接完成为 IOERR，后端执行错误则按照块设备错误策略处理。report 把失败返回客户机；stop 将请求放入设备的待重试链并触发相应暂停处理，恢复后再按队列重新提交；ignore 则可能把后端错误当作成功继续完成。</p>
   <p>stop 路径没有提前发布 used，客户机仍不能回收该请求。QEMU 10.2 用 <code>rq_lock</code>保护设备级重试链，恢复时按 virtqueue 分组并调度到对应的 AioContext。排查“请求一直未完成”时，应同时查看客户机 used 进度、QEMU 的块错误事件与虚拟机状态，而不能只看是否收到过 kick。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c#L68-L93">错误策略</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c#L1027-L1104">恢复与重新提交</a></p>
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>从单队列到多线程处理</h2>
+  <h2><span class="mechanism-heading-number">八、</span>多队列与 IOThread 的收益和代价</h2>
   <p>virtio-blk 将命令、数据和完成组织为共享队列，减少了逐个模拟传统磁盘寄存器的工作。批量消费和相邻请求合并继续降低每次提交的开销，但共享队列和单线程处理也会成为高 IOPS 设备的瓶颈。多队列让客户机分散提交；IOThread 将处理工作从主事件循环中分离。</p>
   <p>单个设备的多条队列若仍归同一 IOThread，宿主侧处理仍集中于一条线程。QEMU 引入 <code>iothread-vq-mapping</code>后，可按队列分配多个 IOThread；QEMU 10.2 的设备直接维护 <code>vq_aio_context[]</code>，块请求和重试路径也相应处理多线程访问。<a href="https://github.com/qemu/qemu/commit/b6948ab01df068bef591868c22d1f873d2d05cde">引入逐队列线程映射的提交</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c#L1425-L1480">当前映射初始化</a></p>
   <p>更多队列增加并发机会，也会带来线程调度、缓存竞争和 NUMA 访问成本；零散的小请求还可能降低合并机会。应结合客户机负载、请求深度、后端延迟和处理线程占用选择配置。性能比较尤其要保持缓存与刷新语义一致，否则降低持久化要求得到的延迟改善，无法说明队列路径本身变快了。</p>
 </section>
 
 <section id="sources" class="mechanism-section">
-  <h2>参考资料</h2>
+  <h2><span class="mechanism-heading-number">九、</span>参考资料</h2>
   <ul class="mechanism-sources">
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c">QEMU 10.2.0：virtio-blk.c</a>，请求解析、合并、完成、刷新及错误恢复。</li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/hw/virtio/virtio-blk.h">QEMU 10.2.0：virtio-blk.h</a>，设备、请求、批处理和逐队列 AioContext 结构。</li>
@@ -231,6 +232,6 @@ len = 设备写入的缓冲区长度，本次只有 status 的 1 字节</code></
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=c084ccad2981" defer></script>
+<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
 </body>
 </html>

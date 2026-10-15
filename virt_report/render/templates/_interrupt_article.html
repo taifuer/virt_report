@@ -3,14 +3,15 @@
 {% set linux_source = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2>请求完成后如何让客户机及时处理</h2>
   <p>virtio 后端完成请求后，把结果写入客户机内存中的 used ring，再根据通知条件向客户机发出中断。中间经过队列通知策略、PCI MSI-X 消息和虚拟 APIC；客户机驱动最终仍要读取队列，才能知道哪些请求已经完成。描述符提交与后端处理见<a href="qemu-network-tx.html#virtqueue">virtqueue 的数据结构与操作</a>。</p>
   <p>本文跟踪现代 virtio-pci 设备的一个 split virtqueue，采用 x86、内核 irqchip、QEMU 用户态后端的普通通知路径。示例在非 IOThread 的设备处理上下文中直接发送 MSI-X；guest notifier 与 irqfd 是后文单独分析的替代路径。APIC 状态转换先按软件注入路径展开，再讨论硬件辅助。</p>
+  <p>一次完成经过四个检查点：used 已发布、通知条件满足、MSI-X 消息到达目标 LAPIC、客户机驱动取走 used 项。任一检查点之后都可能继续等待，因此“后端完成”与“客户机发现完成”之间仍有延迟。以下用队列 0、MSI-X 表项 2 和 APIC 向量 0x51 跟踪这条路径，再比较 irqfd 省去了哪段中转。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="structures" class="mechanism-section">
-  <h2>完成记录与中断路由</h2>
+  <h2>队列、MSI-X 表项与 APIC 向量</h2>
   <p>同一个请求会经过几套编号。队列号选择设备的工作队列，MSI-X 表项索引选择一组消息配置，消息中的 APIC 向量选择客户机中断入口，irqfd 的 GSI 则选择 KVM 中断路由。它们之间由配置建立关联，数值无需相等。</p>
   <table><thead><tr><th scope="col">对象</th><th scope="col">关键字段与示例</th><th scope="col">写入与使用者</th></tr></thead><tbody>
     <tr><td>virtqueue 完成记录</td><td><code>used.ring[i].id</code>、<code>len</code> 各 32 位；<code>used.idx</code> 为 16 位</td><td>设备发布；客户机驱动按自己的 last_used_idx 消费</td></tr>
@@ -72,7 +73,7 @@ old = 7, new = 8, event = 8 → 65535 &lt; 1 为假，暂不通知</code></pre>
 </section>
 
 <section id="irqfd" class="mechanism-section">
-  <h2>irqfd 的替代通知路径</h2>
+  <h2>irqfd 如何省去用户态注入中转</h2>
   <p>QEMU 为 guest notifier 配置 irqfd 时，先通过 <code>KVM_SET_GSI_ROUTING</code> 建立 GSI 37 到 MSI 地址及 data 的路由，再通过 <code>KVM_IRQFD</code> 绑定 eventfd 与 GSI 37。<code>struct kvm_irqfd</code> 的 <code>fd</code>、<code>gsi</code>、<code>flags</code> 和 <code>resamplefd</code> 均为 32 位字段；本例边沿 MSI 路径不使用电平中断的 resamplefd 应答协议。</p>
   <p>后端发出 eventfd 事件后，KVM 的 <code>irqfd_wakeup()</code> 读取事件并尝试用缓存路由直接投递；当前上下文无法完成时，再安排工作队列。这样可以省去“用户态监听完成事件，再调用 MSI 注入接口”的中转。eventfd 计数不等于客户机应收到同样次数的中断，请求完成仍以队列为准。</p>
   <p>QEMU 10.2 的 <code>virtio_irq()</code> 在 IOThread 中使用 guest notifier；非 IOThread 的普通路径调用 <code>virtio_notify_vector()</code>。<a href="qemu-vhost-net.html#notification">vhost 的完成通知</a>也可以接到 eventfd，但其后端执行者已经不同。irqfd 路径必须随 MSI-X 路由修改、屏蔽、解除绑定同步更新，不能绕开这些设备语义。</p>
@@ -80,7 +81,7 @@ old = 7, new = 8, event = 8 → 65535 &lt; 1 为假，暂不通知</code></pre>
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码</h2>
+  <h2>源码：发布完成、路由与中断注入</h2>
   <table><thead><tr><th scope="col">阶段</th><th scope="col">函数与检查重点</th></tr></thead><tbody>
     <tr><td>完成与抑制</td><td><a href="{{ qemu_source }}hw/virtio/virtio.c#L1059-L1076"><code>virtqueue_split_flush()</code></a> 先屏障后推进索引；<a href="{{ qemu_source }}hw/virtio/virtio.c#L2583-L2610"><code>virtio_split_should_notify()</code></a> 判定 flags 或 used_event。</td></tr>
     <tr><td>选择通知路径</td><td><a href="{{ qemu_source }}hw/virtio/virtio.c#L2670-L2710"><code>virtio_irq()</code></a> 区分 IOThread notifier 与直接 vector 通知；<a href="{{ qemu_source }}hw/virtio/virtio-pci.c#L73-L85"><code>virtio_pci_notify()</code></a> 分派 MSI-X 或 INTx。</td></tr>
@@ -92,7 +93,7 @@ old = 7, new = 8, event = 8 → 65535 &lt; 1 为假，暂不通知</code></pre>
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>通知路径的演进</h2>
+  <h2>批处理、irqfd 与 APICv 的优化边界</h2>
   <p>INTx 以中断引脚和电平状态表达设备事件。共享中断需要驱动确认来源，设备还要维护拉高与撤销的状态。MSI-X 改用消息，并允许各表项独立配置目的地和屏蔽状态，更适合多队列分散到不同 CPU；同时增加了表项、pending 和亲和性配置的管理成本。</p>
   <p>virtqueue 的批量完成与 EVENT_IDX 减少通知频率，irqfd 缩短宿主侧通知交接，APICv / posted interrupt 减少部分 APIC 模拟及投递开销。它们作用于不同阶段，可以组合，但不能相互替代。</p>
   <table><thead><tr><th scope="col">机制</th><th scope="col">改善的位置</th><th scope="col">需要处理的约束</th></tr></thead><tbody>

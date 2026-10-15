@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>虚拟化基础：资源隔离、执行与系统分工 - virt-report</title>
+  <meta name="description" content="从两台虚拟机共享一台服务器的问题出发，说明 CPU、内存与设备怎样建立独立视图，并联系启动和发包理解系统分工。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
+  <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=85f3a75ef38f" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#virtualization-basics">虚拟化基础</a></div>
+    <h1>虚拟化基础：资源隔离、执行与系统分工</h1>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、为什么要在一台机器上运行多套操作系统</a></li><li><a href="#isolation">二、独立机器的外观怎样建立</a><ol><li><a href="#isolation-part-1">1. CPU：允许执行，保留接管能力</a></li><li><a href="#isolation-part-2">2. 内存：客户机的物理地址仍需要转换</a></li><li><a href="#isolation-part-3">3. 设备：给出接口，再安排真正的工作</a></li></ol></li><li><a href="#architecture">三、QEMU、KVM 与 Libvirt 怎样分工</a></li><li><a href="#example">四、沿一次启动和发包把各部分连起来</a><ol><li><a href="#example-part-1">1. 把定义变成可以运行的机器</a></li><li><a href="#example-part-2">2. 从客户机缓冲区到宿主网络</a></li></ol></li><li><a href="#evolution">五、为什么实现会从模拟走向协作</a></li><li><a href="#tradeoffs">六、资源利用、隔离与可管理性的取舍</a></li><li><a href="#reading">七、沿资源与操作继续阅读</a></li><li><a href="#sources">八、参考资料</a></li></ol></nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">一、</span>为什么要在一台机器上运行多套操作系统</h2>
+  <p>一台服务器经常需要同时承载数据库、测试环境和旧版应用。直接把它们装进同一个操作系统，资源利用率较高，但内核版本、驱动和系统配置彼此牵连；每项业务独占服务器，又可能留下大量空闲资源。虚拟机提供了一种折中：共享物理机器，同时让每套系统拥有独立的启动过程、内核和设备视图。</p>
+  <p>运行虚拟机的系统称为宿主，虚拟机里的系统称为客户机。客户机内核仍要调度进程、管理页表和驱动设备；虚拟化层则控制这些动作最终能使用哪些真实资源。本文以 x86 Linux 上两台各有 2 个虚拟 CPU（vCPU）、4 GiB 内存的 QEMU/KVM 虚拟机 A、B 为例，说明这层控制怎样建立。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
+<section id="isolation" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">二、</span>独立机器的外观怎样建立</h2>
+  <h3 id="isolation-part-1"><span class="mechanism-heading-number">1. </span>CPU：允许执行，保留接管能力</h3>
+  <p>如果只把客户机内核当普通程序运行，它操作控制寄存器、页表或中断时，会受到宿主的权限限制；若直接赋予它宿主权限，又会破坏隔离。硬件虚拟化为客户机提供受控的执行环境，保存独立的寄存器与控制状态，并让宿主设置哪些行为需要接管。</p>
+  <p>普通运算通常直接在物理 CPU 上完成。命中需要接管的条件时，处理器离开客户机，这个边界叫 VM Exit。在 QEMU/KVM 路径中，退出先由 KVM 处理，必要时再返回 QEMU，完成后恢复客户机执行。客户机看到的 2 个 vCPU 是两份可被调度的执行状态，未必独占两个物理核；宿主可以让 A、B 分时共享，也可以在资源充足时并行运行。</p>
+  <h3 id="isolation-part-2"><span class="mechanism-heading-number">2. </span>内存：客户机的物理地址仍需要转换</h3>
+  <p>A、B 都可以认为自己拥有从零开始的物理内存。例如，它们都访问客户机物理地址 <code>0x2000</code>，宿主却把它们分别映射到不同的物理页。客户机只能修改自己的地址转换，不能任意选择宿主的物理页。x86 的 EPT/NPT 由宿主控制，承担第二级转换和权限检查。</p>
+  <figure class="mechanism-diagram" data-diagram="virtualization-isolation-example" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>两台客户机使用相同地址而互不覆盖</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看两台客户机使用相同地址而互不覆盖" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="两台客户机使用相同地址而互不覆盖">
+    <img src="../assets/virtualization-isolation-example.svg?v=32683d73423f" alt="示例采用独立后备页。客户机自己的页表先得到客户机物理地址，宿主维护的二级映射再选择真实物理页；两套转换分别由不同一方管理。" loading="lazy">
+  </div>
+  <figcaption>示例采用独立后备页。客户机自己的页表先得到客户机物理地址，宿主维护的二级映射再选择真实物理页；两套转换分别由不同一方管理。 <a href="../assets/virtualization-isolation-example.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+    accTitle: 两台虚拟机的独立内存映射
+    accDescr: 虚拟机 A 和 B 的客户机页表都可得到客户机物理地址 0x2000，但各自的 EPT 或 NPT 将其转换到不同宿主物理页；客户机不能自行指定第二级映射。
+    subgraph A[&#34;虚拟机 A&#34;]
+        AV[&#34;应用的虚拟地址&#34;] --&gt;|&#34;A 的客户机页表&#34;| AP[&#34;客户机物理地址&lt;br/&gt;0x2000&#34;]
+    end
+    subgraph B[&#34;虚拟机 B&#34;]
+        BV[&#34;应用的虚拟地址&#34;] --&gt;|&#34;B 的客户机页表&#34;| BP[&#34;客户机物理地址&lt;br/&gt;0x2000&#34;]
+    end
+    AP --&gt;|&#34;宿主管理 A 的 EPT / NPT&#34;| AH[&#34;宿主物理页 A&lt;br/&gt;示例页基址 0x9a000&#34;]
+    BP --&gt;|&#34;宿主管理 B 的 EPT / NPT&#34;| BH[&#34;宿主物理页 B&lt;br/&gt;示例页基址 0xb7000&#34;]
+    classDef guest fill:#e4f1ec,stroke:#438575,color:#173e34
+    classDef host fill:#eaf0f6,stroke:#8198ac,color:#263c4c
+    class AV,AP,BV,BP guest
+    class AH,BH host
+</code></pre></details>
+</figure>
+  <p>因此，A 的应用写坏一段已获准访问的内存，通常影响 A 内部；访问未授权的宿主页则会受映射和权限限制。设备还可以直接读写内存，这称为 DMA，其地址转换和访问权限由 IOMMU 等机制约束。CPU 与设备的访问范围需要分别控制，隔离也仍受软硬件漏洞和共享资源干扰的影响。</p>
+  <h3 id="isolation-part-3"><span class="mechanism-heading-number">3. </span>设备：给出接口，再安排真正的工作</h3>
+  <p>客户机需要磁盘、网卡和时钟，但无需每项资源都独占一块硬件。虚拟磁盘可以连接一个宿主文件，虚拟网卡可以连接宿主网络；客户机驱动按约定提交请求，后端完成真实 I/O。兼容旧驱动时可模拟已有网卡，使用专门驱动时可采用 virtio 共享队列，也可以把可隔离的设备功能直接分配给客户机。</p>
+</section>
+<section id="architecture" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">三、</span>QEMU、KVM 与 Libvirt 怎样分工</h2>
+  <p>这些能力分布在多个组件中。QEMU 负责组装客户机可见的机器，KVM 把硬件辅助执行与内存映射能力接入 Linux，Libvirt 则负责把配置转成可管理的运行实例。宿主调度器和内存管理器仍参与实际资源分配。</p>
+  <figure class="mechanism-diagram" data-diagram="virtualization-system-overview" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>管理请求与客户机运行路径</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看管理请求与客户机运行路径" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="管理请求与客户机运行路径">
+    <img src="../assets/virtualization-system-overview.svg?v=32683d73423f" alt="管理通道建立和改变运行条件；CPU 执行与设备请求随后沿各自路径推进。Libvirt 不转发每条客户机指令或每个网络报文。" loading="lazy">
+  </div>
+  <figcaption>管理通道建立和改变运行条件；CPU 执行与设备请求随后沿各自路径推进。Libvirt 不转发每条客户机指令或每个网络报文。 <a href="../assets/virtualization-system-overview.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+    accTitle: QEMU KVM 与 Libvirt 的分工
+    accDescr: 管理请求从 Libvirt 经 QMP 进入 QEMU。QEMU 建立内存和设备并用 KVM_RUN 执行客户机；设备队列送到后端。管理通道与运行数据路径分别标示。
+    L[&#34;Libvirt&lt;br/&gt;配置与生命周期&#34;] -. &#34;QMP 管理&#34; .-&gt; Q[&#34;QEMU&lt;br/&gt;机器 · RAM · 设备模型&#34;]
+    Q --&gt;|创建并进入 vCPU| K[&#34;KVM 与硬件&lt;br/&gt;CPU 执行 · EPT/NPT&#34;]
+    K --&gt; G[&#34;客户机&lt;br/&gt;应用 · 内核 · 驱动&#34;]
+    G --&gt;|发布 virtqueue| M[&#34;客户机 RAM&lt;br/&gt;描述符与数据缓冲区&#34;]
+    M --&gt; B[&#34;队列后端&lt;br/&gt;QEMU / vhost / 独立进程&#34;]
+    B --&gt; H[&#34;宿主网络或存储&lt;br/&gt;物理设备&#34;]
+    Q -. &#34;初始化和配置&#34; .-&gt; M
+    Q -. &#34;建立后端连接&#34; .-&gt; B
+</code></pre></details>
+</figure>
+  <table><thead><tr><th>组件</th><th>放到例子里看它的工作</th></tr></thead><tbody>
+    <tr><td>Libvirt</td><td>保存 A、B 的定义，准备网络和磁盘，启动 QEMU，处理启动、停止与迁移请求</td></tr>
+    <tr><td>QEMU</td><td>创建 RAM、CPU 和设备对象，把虚拟网卡连接到选定后端，通过 QMP 管理协议接收命令</td></tr>
+    <tr><td>KVM</td><td>保存 vCPU 内核状态，建立二级映射，进入客户机并处理需要内核接管的退出</td></tr>
+    <tr><td>宿主内核与硬件</td><td>分配 CPU 时间和物理页，完成存储与网络操作</td></tr>
+  </tbody></table>
+</section>
+<section id="example" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">四、</span>沿一次启动和发包把各部分连起来</h2>
+  <h3 id="example-part-1"><span class="mechanism-heading-number">1. </span>把定义变成可以运行的机器</h3>
+  <p>启动 A 时，Libvirt 准备资源并拉起 QEMU。QEMU 创建机器和设备，向 KVM 注册 RAM 范围、创建 vCPU。配置完成后，执行线程调用 <code>KVM_RUN</code>，客户机开始运行固件和操作系统。4 GiB 是客户机可见的容量；普通按需分配配置下，宿主页可以随访问逐渐建立，预分配或设备 DMA 映射则会改变资源占用方式。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst#L8-L37">KVM 对象接口</a></p>
+  <h3 id="example-part-2"><span class="mechanism-heading-number">2. </span>从客户机缓冲区到宿主网络</h3>
+  <p>A 内的程序发送一条消息，客户机网络栈先形成报文。virtio 驱动把报文所在缓冲区的地址与长度交给共享队列，再按通知条件提醒后端。选用 QEMU＋TAP 时，QEMU 从客户机内存读取报文，经宿主的虚拟网络端点 TAP 提交网络；后端不再需要该缓冲区后发布完成记录，客户机驱动回收资源。</p>
+  <p>这里有四件事：CPU 执行网络代码，内存转换找到缓冲区，设备协议交接报文，中断或轮询通知完成。把后端换成内核 vhost-net，可以改变队列处理位置，但这四项责任仍然存在。发送完成通常表示缓冲区可以复用，远端收到数据则是另一层协议确认的问题。</p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">五、</span>为什么实现会从模拟走向协作</h2>
+  <p>软件可以逐条解释客户机指令，也可以把一段指令翻译为宿主代码并重复执行。这样容易控制客户机行为，还能跨指令集运行，代价是翻译和状态维护。硬件虚拟化让兼容架构的大量指令直接执行，减少软件介入；QEMU 的 TCG 与 KVM 因而服务于不同需求，前者并未失去用途。</p>
+  <p>内存也经历了类似变化：软件维护影子映射，需要跟踪客户机页表变化；EPT/NPT 允许硬件组合两级转换，但仍有页表遍历、TLB 缓存与映射失效成本。设备方面，virtio 把虚拟化环境中的请求交接规范化，vhost 和硬件卸载再改变处理位置。演变通常消除了某种重复工作，同时带来新的同步和状态管理要求。</p>
+</section>
+<section id="tradeoffs" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>资源利用、隔离与可管理性的取舍</h2>
+  <p>虚拟机让多套系统共享服务器，也增加客户机内核、虚拟设备和管理状态的开销。超分 vCPU 可以利用负载错峰，宿主繁忙时却会增加调度等待；直通可缩短 I/O 路径，但能否迁移，还取决于设备状态能否导出、恢复及停止 DMA。</p>
+  <p>评价一个方案，应先固定业务和资源预算，再同时看吞吐、尾延迟、宿主 CPU 与内存消耗，并检查启动、迁移和故障恢复是否满足要求。退出少不必然更快，分配的 vCPU 多也不必然吞吐更高。虚拟化的基本问题始终是：怎样把可控的资源视图交给客户机，并以可接受的成本维持它。</p>
+</section>
+<section id="reading" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">七、</span>沿资源与操作继续阅读</h2>
+  <ul>
+    <li><a href="cpu-virtualization.html">CPU 虚拟化</a>：指令执行、退出、调度与软件翻译。</li>
+    <li><a href="memory-virtualization.html">内存虚拟化</a>：地址空间、映射建立、大页与脏页跟踪。</li>
+    <li><a href="device-virtualization.html">设备与 I/O 虚拟化</a>、<a href="interrupt-virtualization.html">中断虚拟化</a>：请求怎样提交、完成并通知客户机。</li>
+    <li><a href="libvirt-domain-start.html">Libvirt 启动虚拟机</a>、<a href="qemu-vm-startup.html">QEMU 初始化</a>：把资源组成可运行的机器。</li>
+    <li><a href="qemu-memory-migration.html">预拷贝迁移</a>、<a href="qemu-migration-stream.html">迁移流</a>：把运行状态交给另一台宿主。</li>
+  </ul>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">八、</span>参考资料</h2>
+  <ul>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/system/introduction.rst">QEMU：系统模拟、加速器和管理接口</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst">Linux：KVM API</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/x86/mmu.rst">x86 地址转换与隔离目标</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/memory.rst">QEMU：客户机内存与地址空间</a></li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#virtualization-basics">虚拟化基础原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=85f3a75ef38f"></script>
+<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+</body>
+</html>

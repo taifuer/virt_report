@@ -26,7 +26,9 @@ def topics() -> tuple[dict, ...]:
         members = tuple(article for article in articles()
                         if article["topic"] == topic["slug"])
         if members:
-            groups.append({**topic, "articles": members})
+            overview = next((item for item in members if item["slug"] == topic.get("overview")), None)
+            groups.append({**topic, "articles": members, "overview_article": overview,
+                           "detail_articles": tuple(item for item in members if item is not overview)})
     return tuple(groups)
 
 
@@ -41,10 +43,6 @@ def topic_groups() -> tuple[dict, ...]:
                 continue
             item = {**published.get(topic["slug"], topic)}
             item.setdefault("articles", ())
-            item["related_articles"] = tuple(
-                article for slug in topic.get("related_articles", ())
-                if (article := get_article(slug)) is not None
-            )
             members.append(item)
         if members:
             result.append({**group, "topics": tuple(members),

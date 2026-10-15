@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>热升级：进程替换、资源保留与状态恢复 - virt-report</title>
+  <meta name="description" content="区分程序、执行状态与可保留资源，用同机 8 GiB 虚拟机交接解释 CPR 的工作原理、模式差异、停机成本及失败恢复条件。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
+  <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=85f3a75ef38f" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#live-upgrade">热升级</a></div>
+    <h1>热升级：进程替换、资源保留与状态恢复</h1>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、运行中的虚拟机怎样切换软件版本</a></li><li><a href="#state">二、先区分程序、运行状态和长期资源</a></li><li><a href="#process">三、保留资源、重建对象与交接执行权</a></li><li><a href="#example">四、一台 8 GiB 虚拟机的同机交接</a></li><li><a href="#evolution">五、从保存重启到进程间资源交接</a></li><li><a href="#evaluation">六、升级收益与失败边界怎样验证</a></li><li><a href="#reading">七、沿状态交接继续阅读</a></li><li><a href="#sources">八、参考资料</a></li></ol></nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">一、</span>运行中的虚拟机怎样切换软件版本</h2>
+  <p>更新磁盘上的 QEMU 程序后，已有虚拟机仍在旧进程中执行。要让它采用新版本，需要把运行状态交给新实例，并处理内存、设备和外部连接的连续性。这里的热升级允许短暂暂停客户机，目标是在不重新引导客户机的条件下完成软件切换。</p>
+  <p>基本做法是让旧实例停止执行客户机并保存状态，由新实例重建兼容的机器，再加载状态继续执行。保存和恢复越多内容，暂停通常越长。同一宿主上的进程替换可以进一步保留可共享的内存及资源，把工作集中在必须重建的对象和执行状态上。</p>
+  <p>QEMU、Libvirt 守护进程、vhost-user 后端和宿主内核具有不同的状态所有者，更新方法也不同。本文重点介绍 QEMU 同机进程替换；其他组件能否独立更新，需要检查自己的恢复或重连协议。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p></section>
+<section id="state" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">二、</span>先区分程序、运行状态和长期资源</h2>
+  <p>磁盘上的 QEMU 文件提供程序代码，运行中的进程还有对象、线程、描述符和客户机状态。更换文件只影响以后启动的进程。要切换已有虚拟机，就要把它依赖的状态拆开：哪些可以直接保留，哪些需要按协议保存，哪些必须由新程序重新构建。</p>
+  <table><thead><tr><th>内容</th><th>CPR-transfer 中的处理</th><th>这样处理的原因</th></tr></thead><tbody>
+    <tr><td>共享 RAM 的页面内容</td><td>保留后备内存，传递描述符并重新映射</td><td>同机进程可以引用同一资源，无需重传全部普通 RAM 页</td></tr>
+    <tr><td>CPU 寄存器、设备和队列状态</td><td>按迁移协议保存并加载</td><td>这些状态决定客户机下一步怎样执行</td></tr>
+    <tr><td>QEMU 对象、指针和执行线程</td><td>新程序创建自己的对象与线程</td><td>地址和内部布局可能改变，旧进程指针不能直接套用</td></tr>
+    <tr><td>KVM VM/vCPU 对象</td><td>新进程创建并恢复相应状态</td><td>保留 RAM 不代表旧执行环境也被直接接管</td></tr>
+    <tr><td>磁盘与外部后端</td><td>维持内容一致，并按支持范围保留资源或重新连接</td><td>客户机仍会继续之前的 I/O，外部状态不能被随意改动</td></tr>
+  </tbody></table>
+  <p>普通保存恢复也能保持客户机的执行位置，但若暂停后把全部内存写出再读入，复制量会随 RAM 容量增长。同机升级利用共享资源缩小这部分工作；它仍需暂停和一致的状态交接，客户机没有重新引导并不意味着业务完全没有停顿。</p>
+</section>
+<section id="process" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">三、</span>保留资源、重建对象与交接执行权</h2>
+  <figure class="mechanism-diagram" data-diagram="upgrade-overview-ownership" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>CPR-transfer 的同机进程替换</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看CPR-transfer 的同机进程替换" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="CPR-transfer 的同机进程替换">
+    <img src="../assets/upgrade-overview-ownership.svg?v=32683d73423f" alt="旧、新 QEMU 通过 CPR 通道交接共享 RAM 等已支持资源，通过主迁移通道传递执行状态。目标重新创建自己的机器与 KVM 对象，在源端停止之后接管客户机。" loading="lazy">
+  </div>
+  <figcaption>旧、新 QEMU 通过 CPR 通道交接共享 RAM 等已支持资源，通过主迁移通道传递执行状态。目标重新创建自己的机器与 KVM 对象，在源端停止之后接管客户机。 <a href="../assets/upgrade-overview-ownership.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+  accTitle: CPR-transfer 的同机进程替换
+  accDescr: 旧 QEMU 通过 CPR 通道向新 QEMU 交接已登记资源；新端重建机器与 KVM 对象，共享 RAM 保留在同一宿主。旧端停机后主迁移通道传递 CPU 和设备状态，目标加载后独占客户机执行权。
+  A[&#34;旧 QEMU：客户机运行&#34;] --&gt; B[&#34;CPR 通道：交接已登记的 fd&#34;]
+  B --&gt; C[&#34;新 QEMU：准备机器与 KVM 对象&#34;]
+  C --&gt; D[&#34;旧 QEMU：停止客户机&#34;]
+  D --&gt; E[&#34;主通道：CPU、设备与队列状态&#34;]
+  E --&gt; F[&#34;新 QEMU：加载状态并恢复执行&#34;]
+  R[&#34;同一宿主：共享 RAM 保留原内容&#34;] -.-&gt; A
+  R -.-&gt; C
+  R -.-&gt; F
+  classDef process fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef transfer fill:#fff4db,stroke:#b89a55,color:#59491e;
+  classDef shared fill:#e4f1ec,stroke:#438575,color:#173e34;
+  class A,C,D,F process;
+  class B,E transfer;
+  class R shared;
+</code></pre></details>
+</figure>
+  <p>同机 CPR-transfer 利用共享内存保留 RAM 内容。旧进程通过 Unix socket 传递已登记的文件描述符，新进程据此映射资源并建立自己的 QEMU、KVM 对象。随后旧端停止客户机，主迁移通道传送 CPU、设备与队列状态，新端加载成功后才恢复执行。</p>
+  <p>共享 RAM 必须在启动时采用兼容配置，附属 RAM 也要考虑。传递 fd 只增加资源引用，无法代替设备状态恢复或执行权切换。两端共享同一内存时，更需要避免同时放行客户机。</p>
+  <p>两条通道承担不同任务：CPR 通道先提供重建机器所需的资源引用，主迁移通道再提供可继续执行的 CPU 与设备状态。新端接收 CPR 信息发生在 monitor 就绪前，因此“新进程已经启动”也不能当作“可以发送任意 QMP 命令”。交接顺序由资源依赖关系决定。</p>
+</section>
+<section id="example" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">四、</span>一台 8 GiB 虚拟机的同机交接</h2>
+  <p>假设原虚拟机采用共享 memfd RAM。旧 QEMU 的 <code>fd 17</code> 经 SCM_RIGHTS 传给新进程后可以成为 <code>fd 23</code>，两者仍引用同一内存后端。新进程的映射地址可以不同，客户机物理地址布局需保持兼容。</p>
+  <p>这省去了搬运 8 GiB 普通页数据，但仍要创建 vCPU、恢复寄存器和设备状态、处理后端与中断关系。停机时间覆盖旧端停止执行到新端恢复的间隔，此外还要观察接管后的业务尾延迟。目标一旦执行并修改共享内存，旧进程不能直接继续运行来回退。</p>
+  <p>假设暂停时客户机的下一条指令要读取 GPA <code>0x2000</code>。新进程可以把该页映射到不同的宿主虚拟地址，但客户机仍应在相同 GPA 读到原来的内容；恢复的指令位置、队列索引及待处理中断也要与它一致。这个小例子解释了为什么资源共享和状态序列化缺一不可。</p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">五、</span>从保存重启到进程间资源交接</h2>
+  <table><thead><tr><th>方式</th><th>减少哪部分工作</th><th>引入的条件与代价</th></tr></thead><tbody>
+    <tr><td>保存状态后另起进程</td><td>避免客户机重新引导，流程容易分阶段执行</td><td>复制内存及新端准备可能占据较长暂停时间</td></tr>
+    <tr><td>cpr-reboot</td><td>兼容配置下可保留共享 RAM，再启动新实例恢复</td><td>两实例不并存，新实例的准备处于客户机停机阶段</td></tr>
+    <tr><td>cpr-transfer</td><td>两实例短暂并存，先交接资源并准备新端</td><td>需要共享 RAM、Unix 描述符通道及明确的执行权交接</td></tr>
+    <tr><td>cpr-exec</td><td>替换程序并保留 PID 和支持保留的资源引用</td><td>旧程序已被替换，恢复失败不能依赖原进程继续执行</td></tr>
+  </tbody></table>
+  <p>这些模式共享迁移状态兼容要求：机器类型、CPU 能力、设备版本和资源标识都要对应。CPR-transfer 面向同一宿主，不能直接据此推导出跨机器迁移或通用宿主内核无停机升级。vhost 与字符设备等后端的连续保留也需要逐项检查支持情况。</p>
+  <p>这些方式利用迁移的状态协议，但优化方向从“尽量把数据搬到另一台宿主”变成“尽量保留同机可复用资源”。管理守护进程的更新又是另一种情况：若它能重连仍在运行的 QEMU，通常无需重建客户机执行环境，仍要处理进行中的管理任务和事件恢复。</p>
+</section>
+<section id="evaluation" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>升级收益与失败边界怎样验证</h2>
+  <p>先列出所有设备和后端，确认状态兼容、资源保留与重连支持；再测量新端准备时间、客户机暂停、恢复后尾延迟及资源是否泄漏。只有 RAM 共享并不足以证明某种直通设备或外部后端也能顺利接管。</p>
+  <p>失败恢复要以执行权为界。源端仍保持有效状态、目标尚未接管时，可以评估取消并恢复源端；目标已经运行后，共享页和外部 I/O 可能变化，不能把旧进程当成未改变的快照。热升级的收益来自复用状态和资源，而可靠性取决于能否清楚界定每一步的所有权与回退条件。</p>
+</section>
+<section id="reading" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">七、</span>沿状态交接继续阅读</h2>
+  <ul>
+    <li><a href="qemu-cpr-transfer.html">QEMU CPR-transfer 的资源交接</a>：两条通道、fd 清单和停机顺序。</li>
+    <li><a href="qemu-migration-stream.html">QEMU 迁移流与状态恢复</a>：CPU、设备状态如何保存与加载。</li>
+    <li><a href="libvirt-domain-start.html#failure">Libvirt 失败清理与管理连接恢复</a>：管理进程重连已有 QEMU 的边界。</li>
+    <li><a href="qemu-vhost-net.html">vhost 与 vhost-user 的控制路径</a>：后端进程持有哪些队列和连接关系。</li>
+  </ul>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">八、</span>参考资料</h2>
+  <ul>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/migration/CPR.rst">QEMU：CPR 模式、共享内存要求与限制</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/cpr.c#L28-L95">CPR 资源清单</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/cpr-transfer.c#L20-L73">CPR-transfer 通道</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/cpr-exec.c">QEMU：exec 前后的状态与描述符保留</a></li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#live-upgrade">热升级原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=85f3a75ef38f"></script>
+<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+</body>
+</html>

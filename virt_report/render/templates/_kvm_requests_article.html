@@ -1,0 +1,76 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+{% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
+<section id="preface" class="mechanism-section">
+  <h2>页表更新后，怎样让另一个 vCPU 停下来</h2>
+  <p>设一台双 vCPU 虚拟机正在运行，vCPU 1 反复写入客户机物理地址 <code>0x4000</code> 所在的 4 KiB 页。宿主开始新一轮写入跟踪，把相关二级页表项从可写改为只读；运行 vCPU 1 的物理 CPU 却可能仍缓存旧的可写转换。管理路径必须协调执行中的 vCPU，让旧权限失效。只修改内存中的页表项，无法消除硬件已经缓存的转换。</p>
+  <p>KVM 通过请求位图记录待办工作，再根据目标状态决定是否唤醒线程或发送 IPI。目标 vCPU 在进入客户机前处理请求。本文以远端 TLB 刷新的通用请求路径为例，沿着“发布更新—促使退出—处理请求—再次进入”说明执行归属与同步边界。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+<section id="design" class="mechanism-section">
+  <h2>用请求记录工作，用 kick 推动处理</h2>
+  <h3>请求位图保存哪些信息</h3>
+  <p><code>vcpu-&gt;requests</code> 是待办类型的位图。某一位置位，表示该类工作需要处理；重复请求可以合并到同一位。它不保存消息队列、次数或每次操作的参数。需要随请求传递的状态，由相应子系统另外保存并同步。</p>
+  <table><thead><tr><th>对象或字段</th><th>用途</th><th>不能据此推断的内容</th></tr></thead><tbody>
+    <tr><td><code>requests</code></td><td>记录 TLB 刷新、MMU 同步、事件检查等待办类型</td><td>每次请求均有独立的一次处理或一次通知</td></tr>
+    <tr><td><code>mode</code></td><td>让发送方判断进入、执行、退出及特殊读页表阶段</td><td>客户机的 RUNNING / PAUSED 管理状态</td></tr>
+    <tr><td><code>cpu</code></td><td>目标 vCPU 所在的宿主 CPU，用于定向通知</td><td>vCPU 永远绑定该物理 CPU</td></tr>
+    <tr><td><code>wait</code></td><td>阻塞 vCPU 的等待对象，用于唤醒</td><td>线程被唤醒就已执行客户机代码</td></tr>
+  </tbody></table>
+  <p>通用请求包含 <code>KVM_REQ_TLB_FLUSH</code>；x86 还定义 <code>KVM_REQ_MMU_SYNC</code>、<code>KVM_REQ_LOAD_MMU_PGD</code>、<code>KVM_REQ_EVENT</code> 等。<code>kvm_make_request()</code> 只负责发布请求，并不自动通知远端 CPU；调用者按需要配合 kick，批量请求接口则封装了相应通知流程。<a href="{{ linux }}include/linux/kvm_host.h#L2239-L2299">请求接口</a></p>
+  <h3>三种容易混淆的通知</h3>
+  <p><strong>宿主 IPI</strong> 让某个物理 CPU 接收内核通知，促使客户机退出；<strong>客户机中断</strong> 是客户机可见的设备或定时器事件，需要路由与注入；<strong>QEMU 线程信号</strong> 属于用户态控制线程的手段。一次 TLB 刷新 kick 通常不需要给客户机注入任何中断，也不必让 KVM_RUN 返回 QEMU。</p>
+</section>
+<section id="example" class="mechanism-section">
+  <h2>一次写保护更新的完整交接</h2>
+  {{ diagram('kvm-request-tlb-sequence', '页表更新、退出确认与 TLB 刷新', '选择需要请求机制的远端刷新分支。IPI 确认发生在宿主中断处理阶段；目标稍后在执行循环内消费刷新请求，两者是不同的完成点。') }}
+  <h3>先发布页表变化</h3>
+  <p>写保护路径在相应 MMU 锁保护下修改 SPTE，并在要求的位置执行远端刷新。<code>kvm_flush_remote_tlbs()</code> 优先尝试架构提供的直接刷新；需要通用请求时，才调用 <code>kvm_make_all_cpus_request(..., KVM_REQ_TLB_FLUSH)</code>。因此不能把所有 TLB 失效都画成必经同一种 IPI 流程。<a href="{{ linux }}virt/kvm/kvm_main.c#L293-L325">远端刷新入口</a></p>
+  <h3>目标离开客户机后确认 IPI</h3>
+  <p>发送方为目标设置刷新位，并按其执行模式选择通知。正在客户机中运行的远端 CPU 收到 IPI 后退出。目标离开客户机模式、重新允许宿主中断处理时，可以执行 <code>ack_kick()</code> 对应的回调，使等待 IPI 确认的发送方继续。</p>
+  <h3>目标在下一次进入前处理刷新</h3>
+  <p>目标 vCPU 回到 <code>vcpu_enter_guest()</code>，通过 <code>kvm_check_request(KVM_REQ_TLB_FLUSH, vcpu)</code> 消费请求，再调用 <code>kvm_vcpu_flush_tlb_all()</code>。架构后端执行刷新，或设置下一次进入所需的失效控制，保证客户机继续执行前旧转换不可用。例如 SVM 可以设置 VMCB 的 <code>tlb_ctl</code>，在后续 VMRUN 时生效，也可以通过更新 ASID generation 强制分配新的 ASID。vCPU 1 随后写入 <code>0x4000</code>，会按新的写保护权限触发处理：写保护式跟踪路径可记录该页变脏，再允许客户机完成写入。<a href="{{ linux }}arch/x86/kvm/svm/svm.c#L3921-L3943">SVM 刷新安排</a></p>
+  <p>这一过程可以留在一次 KVM_RUN 调用内部。宿主退出、IPI 确认、刷新处理和返回用户态是四种不同事件，排查耗时时应分别观察。</p>
+</section>
+<section id="kick" class="mechanism-section">
+  <h2>运行、睡眠与进入中的 vCPU 怎样接收通知</h2>
+  <table><thead><tr><th>目标状态</th><th>通常采取的动作</th><th>后续保证</th></tr></thead><tbody>
+    <tr><td>等待中的线程</td><td>允许唤醒时解除等待，使线程可运行</td><td>获得 CPU 后再检查工作；唤醒本身不完成工作</td></tr>
+    <tr><td><code>IN_GUEST_MODE</code></td><td>原子尝试改为 EXITING，并按需发送 IPI</td><td>促使离开客户机；该模式也覆盖进入前的受保护窗口</td></tr>
+    <tr><td><code>OUTSIDE_GUEST_MODE</code></td><td>通常无需额外 IPI</td><td>待办请求仍在，进入前检查会阻止遗漏</td></tr>
+    <tr><td><code>EXITING_GUEST_MODE</code></td><td>普通异步通知可合并；WAIT 请求按更严格条件处理</td><td>已有退出动作不等于已经退出</td></tr>
+  </tbody></table>
+  <p><code>KVM_REQUEST_NO_WAKEUP</code> 允许保留睡眠 vCPU 的请求，避免为只需进入前完成的工作专门唤醒它。通用 <code>KVM_REQ_TLB_FLUSH</code> 同时带有 <code>WAIT</code> 与 <code>NO_WAKEUP</code>，正在休眠的目标可以继续休眠；之后进入客户机前必须消费刷新请求。</p>
+  <p>批量请求会把需要通知的物理 CPU 收集到 cpumask，一并发送。单目标普通 kick 则可使用 reschedule IPI。CPU 调度迁移也会使目标先离开客户机，因此读取到先前的物理 CPU 并不自动意味着同步丢失；仍需结合执行模式和进入检查理解源码保证。<a href="{{ linux }}virt/kvm/kvm_main.c#L185-L289">批量请求</a>、<a href="{{ linux }}virt/kvm/kvm_main.c#L3812-L3863">单目标 kick</a></p>
+</section>
+<section id="ordering" class="mechanism-section">
+  <h2>两组内存顺序约束关闭竞争窗口</h2>
+  <h3>看到请求时，也要看到新状态</h3>
+  <p>发送方先更新关联状态，<code>kvm_make_request()</code> 内部通过 <code>smp_wmb()</code> 把这些写入排在请求位置位之前。接收方检查并清除请求后，<code>kvm_check_request()</code> 以 <code>smp_mb__after_atomic()</code> 约束后续读取。两端配对，使接收方在消费请求时能够看到已发布的状态；具体状态的多写者互斥和生命周期仍由其子系统负责。</p>
+  <h3>进入前检查与远端通知不能同时漏掉</h3>
+  <p>考虑一个最危险的交错：目标刚判断“没有请求”，发送方又判断“目标尚未进入客户机”，于是两边都继续。若没有额外协调，目标可能长时间执行而不处理刚发布的工作。</p>
+  {{ diagram('kvm-request-entry-race', '请求发布与客户机进入之间的配对检查', '两侧均先写自己负责的状态，再以相应屏障约束对另一状态的读取。不能同时漏掉对方更新：目标取消进入，或发送方促使目标退出。') }}
+  <p>x86 进入路径先关闭本地中断，发布 <code>IN_GUEST_MODE</code>，退出 SRCU 读侧后执行相应全屏障，再通过 <code>kvm_vcpu_exit_request()</code> 检查请求和其他退出条件。发送方发布请求后，<code>kvm_vcpu_exiting_guest_mode()</code> 以屏障和 <code>cmpxchg()</code> 读取、更新模式。这组顺序排除了双方都观察到旧状态的结果。</p>
+  <p><code>IN_GUEST_MODE</code> 在真正的硬件进入指令之前就已发布，保证那段窗口同样受通知保护。只发一个缺少持久待办状态的 kick，无法普遍替代上述协议。Posted interrupt 使用自己的待处理中断状态配合进入检查，属于另外一条有对应同步的路径。<a href="{{ linux }}arch/x86/kvm/x86.c#L11230-L11287">进入前检查</a></p>
+</section>
+<section id="completion" class="mechanism-section">
+  <h2>等待退出确认与等待操作完成的区别</h2>
+  <p><code>KVM_REQUEST_WAIT</code> 在批量请求路径中要求等待必要的 IPI 确认。确认表示目标已越过相应执行区间，不能把它当作任意请求处理函数的完成通知。上面的例子中，发送方可以先收到 IPI 确认，目标随后才在进入循环中执行 TLB 刷新；待处理位确保这项工作不会跨过下一次客户机进入。</p>
+  <p>WAIT 请求判断通知条件时使用“模式不是 OUTSIDE”，也覆盖 <code>READING_SHADOW_PAGE_TABLES</code>。这是部分非 TDP MMU 的无锁读页表区间：读者关闭中断并声明该模式，发送方需要等它结束相应读取后，才能越过同步点。当前 TDP MMU 的无锁遍历使用 RCU，不能把这套特殊模式套到全部 EPT 读路径。<a href="{{ linux }}arch/x86/kvm/mmu/mmu.c#L550-L591">无锁页表遍历边界</a></p>
+  <p><code>KVM_REQ_OUTSIDE_GUEST_MODE</code> 还有 <code>NO_ACTION</code> 标志，只用于确保目标离开客户机模式，不向 requests 留下待处理位。需要完整操作结果的调用者，仍须采用该操作定义的锁、完成量或其他同步协议。</p>
+</section>
+<section id="evaluation" class="mechanism-section">
+  <h2>减少同步开销时应衡量什么</h2>
+  <p>请求位图把同类工作合并，EXITING 状态减少重复 kick，NO_WAKEUP 减少无收益唤醒，批量 CPU 掩码减少通知组织成本。进一步的优化方向包括批量修改后集中失效、按地址范围刷新，以及使用架构提供的直接远端刷新能力；具体收益取决于映射更新频率、vCPU 数量与硬件支持。</p>
+  <p>代价也有两面：合并降低通知次数，却使请求计数不能直接代表实际处理次数；更大的失效范围实现简单，却可能带来更多 TLB 重填；更长的批处理窗口可以提高吞吐，但会延后管理操作生效。</p>
+  <p>观察同一负载下的 <code>remote_tlb_flush_requests</code>、<code>remote_tlb_flush</code> 与每 vCPU 的 <code>tlb_flush</code> 统计，结合 <code>kvm_exit</code> / <code>kvm_entry</code>、调度唤醒及运行时序判断时间花在哪里。这些计数分别记录不同层次的行为，不能彼此相减就当作“丢失请求”，也不能把总退出数当作 kick 数。</p>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2>源码与进一步阅读</h2>
+  <ul>
+    <li><a href="{{ linux }}include/linux/kvm_host.h#L158-L180">请求编号与标志</a>、<a href="{{ linux }}include/linux/kvm_host.h#L2239-L2299">发布与消费接口</a></li>
+    <li><a href="{{ linux }}virt/kvm/kvm_main.c#L185-L325">批量通知、IPI 确认与远端 TLB 刷新</a></li>
+    <li><a href="{{ linux }}arch/x86/kvm/x86.c#L11028-L11082">x86 请求处理顺序</a>、<a href="{{ linux }}arch/x86/kvm/x86.c#L11230-L11287">进入检查与屏障</a></li>
+    <li><a href="{{ linux }}Documentation/virt/kvm/vcpu-requests.rst">KVM vCPU Requests</a>、<a href="{{ linux }}Documentation/virt/kvm/locking.rst">KVM Lock Overview</a></li>
+    <li><a href="kvm-internals.html">KVM 内部机制</a>、<a href="kvm-vcpu-run.html">vCPU 执行与退出</a>、<a href="kvm-vcpu-halt.html">阻塞与唤醒</a>、<a href="kvm-ept-fault.html">EPT 映射与失效</a></li>
+  </ul>
+</section>

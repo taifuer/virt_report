@@ -1,0 +1,9 @@
+flowchart TB
+  accTitle: 中断线与 MSI-X 消息的接收路径
+  accDescr: 引脚中断经 I/O APIC 路由，MSI-X 用设备表项配置消息，两条路径到达目标 Local APIC，再由 CPU 在接受条件满足后进入 IDT 中的处理入口。数据在独立缓冲区中。
+  PIN["传统 PCI INTx<br/>设备中断线"] --> IO["I/O APIC 路由表<br/>选择目标 CPU 与向量"]
+  MSG["MSI-X 表项<br/>目的地址 · 向量 · 屏蔽"] -->|消息写事务| LAPIC["目标 CPU 的 Local APIC<br/>待处理 · 优先级 · 服务状态"]
+  IO --> LAPIC
+  LAPIC -->|允许接受| CPU["CPU 保存必要现场<br/>按向量查 IDT"]
+  CPU --> DRIVER["操作系统中断入口<br/>驱动检查队列或设备"]
+  DATA["内存中的报文与完成状态"] -.->|驱动读取| DRIVER

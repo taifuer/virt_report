@@ -1,0 +1,71 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+{% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
+{% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
+<section id="preface" class="mechanism-section">
+  <h2>两台虚拟机怎样拥有相同的内存地址</h2>
+  <p>两台虚拟机都可以从物理地址零开始使用内存，却不能读写彼此的数据。客户机应用还有自己的虚拟地址，客户机内核通过页表把它们映射到自己认识的物理页。宿主必须在这层关系之外，再决定每个客户机物理页实际由哪块宿主内存承载。</p>
+  <p>内存虚拟化需要同时满足三个条件：客户机页表的含义保持不变，访问被限制在获准的宿主页内，宿主仍能分配、迁移和回收这些页面。本文以普通、可由宿主访问的 RAM 和 x86 KVM 为例，从一次读取推导影子页表与 EPT/NPT 的解决办法。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+<section id="addresses" class="mechanism-section">
+  <h2>一次读取涉及哪些地址</h2>
+  <p>设客户机执行 <code>load [0x400120]</code>，页大小为 4 KiB。客户机页表把虚拟页 <code>0x400000</code> 映射到客户机物理页 <code>0x20000</code>，偏移 <code>0x120</code> 保持不变，因此需要访问的客户机物理地址是 <code>0x20120</code>。</p>
+  {{ diagram('memory-address-overview', '客户机访问与宿主映射管理', '硬件访存从 GVA 经 GPA 到 HPA。KVM 建立映射时使用 QEMU 的 HVA 定位宿主页；HVA 不构成客户机的第三次硬件页表转换。') }}
+  <table><thead><tr><th>名称</th><th>本例</th><th>作用</th></tr></thead><tbody>
+    <tr><td>GVA，客户机虚拟地址</td><td><code>0x400120</code></td><td>程序使用的地址，由客户机页表解释</td></tr>
+    <tr><td>GPA，客户机物理地址</td><td><code>0x20120</code></td><td>客户机认为存在的 RAM 或设备地址</td></tr>
+    <tr><td>HVA，宿主虚拟地址</td><td><code>B + 0x20120</code></td><td>QEMU 进程访问后备内存的位置</td></tr>
+    <tr><td>HPA，宿主物理地址</td><td><code>0x920120</code></td><td>本次数据实际位于的宿主内存位置</td></tr>
+  </tbody></table>
+  <p>QEMU 用内存槽向 KVM 登记一段 GPA 与 HVA 的对应关系。这里假定槽从 GPA 0 开始，映射到 QEMU 的基址 B；对应宿主页基址为 <code>0x920000</code>。KVM 建图时先按槽内偏移找到 HVA，再向 Linux 内存管理取得当前宿主页。另一个虚拟机的同一 GPA 可以落到不同 HPA。隔离依赖宿主控制这份映射和访问权限，客户机不能通过修改自己的页表取得任意宿主页。<a href="{{ linux }}Documentation/virt/kvm/x86/mmu.rst#L70-L108">KVM 地址空间与后备内存</a></p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2>从软件合成映射到硬件两级转换</h2>
+  <h3>影子页表把两次转换合成一次</h3>
+  <p>传统页表硬件只负责虚拟地址到物理地址的一次转换。虚拟机监控器（VMM）可以读取客户机页表，再结合宿主的页面分配，把本例直接合成为 <code>GVA 0x400000 → HPA 0x920000</code>，形成影子页表供硬件使用。客户机仍维护自己看到的 GVA→GPA 关系，VMM 维护实际执行所用的合成结果。</p>
+  <p>难点在于保持两份关系一致：客户机修改页表、切换地址空间，或宿主替换后备页，都可能使影子项过期。软件需要跟踪相关变化、同步或撤销影子项，并处理转换缓存。页表改动频繁的负载会为这种维护付出额外成本。</p>
+  <h3>EPT/NPT 分开客户机页表与宿主映射</h3>
+  <p>Intel EPT（扩展页表）、AMD NPT（嵌套页表）增加第二级硬件转换。客户机页表仍把 GVA 变为 GPA，KVM 管理的第二级页表把 GPA 变为 HPA。客户机可以正常维护自己的页表，无需为每次修改同步一份 GVA→HPA 合成页表。</p>
+  {{ diagram('memory-foundation-paging', '影子页表与两级页表的分工', '影子模式由软件合成 GVA 到 HPA；EPT/NPT 让硬件组合客户机页表与宿主第二级页表。两种方式都必须在宿主页面变更时撤销过期映射。') }}
+  <p>两级转换仍有成本：客户机页表本身也在客户机物理内存中，读取它的每一级表项都需要经过 EPT/NPT。地址转换缓存 TLB 保存已得到的转换，页表遍历缓存复用中间结果，命中时可省去反复遍历。因此“两级”描述地址关系，并不等于每次读取固定访问两次内存。</p>
+  <p>大页进一步扩大一个映射和 TLB 项的覆盖范围，减轻转换压力，但需要合适的对齐、连续性与权限条件。KVM 的 TDP MMU 是管理这些二级页表的软件实现，后续并行建图减少了多 vCPU 的锁争用；它与 EPT/NPT 硬件能力属于不同层次的改进。</p>
+</section>
+<section id="access" class="mechanism-section">
+  <h2>把同一次读取走完</h2>
+  <h3>缺少 EPT 项时如何建立映射</h3>
+  <p>假设客户机页表有效，相关页表页已可访问，只有数据页 <code>GPA 0x20000</code> 的 EPT 项尚缺。硬件转换失败后退出，KVM 从内存槽找到 HVA <code>B + 0x20000</code>，取得宿主页 <code>HPA 0x920000</code>，检查权限并安装 EPT 项。客户机重试同一条 load，最终读取 <code>0x920000 + 0x120</code>。</p>
+  <p>取得宿主页时，Linux 可能还需分配或调入内存，这属于宿主缺页；客户机自己的页表无效则可能引发客户机 #PF，由客户机内核处理。普通 RAM 的 EPT 建图通常在 KVM 内完成，不必把每次访问交给 QEMU。</p>
+  <h3>已有映射怎样继续保持正确</h3>
+  <p>后续访问可使用有效页表和 TLB。假设宿主将该页移到 <code>HPA 0xa30000</code>，HVA 可以不变，但旧 EPT 项和缓存必须撤销。Linux 通过 MMU notifier 这套内存变更通知机制告知 KVM 受影响的范围，KVM 使旧转换失效，并防止并发缺页把旧物理页重新写回。下一次重建后，同一 load 读取的是 <code>0xa30120</code>，内容随宿主页迁移得到保留。</p>
+  <h3>设备访问与脏页记录怎样加入这条路径</h3>
+  <p>GPA 若属于设备寄存器，就需要相应设备模型完成访问，不能照 RAM 路径随意分配页面。迁移期间还需记录客户机写过哪些 RAM 页：写保护可以让首次写入进入 KVM 处理，硬件也可提供辅助脏标记；bitmap 或 dirty ring 再把记录交给用户态。记录方式不同，目标都是让迁移器知道哪些内容需要重新发送。</p>
+</section>
+<section id="evaluation" class="mechanism-section">
+  <h2>转换、后备与跟踪应分别评价</h2>
+  <table><thead><tr><th>问题</th><th>可用改进</th><th>代价与边界</th></tr></thead><tbody>
+    <tr><td>TLB 未命中和页表遍历多</td><td>大页、合适的地址布局</td><td>碎片、对齐与细粒度写保护可能限制大页</td></tr>
+    <tr><td>首次访存或回收后访问慢</td><td>内存预分配、合理 NUMA 放置</td><td>启动成本、提前占用和节点资源约束</td></tr>
+    <tr><td>多 vCPU 同时建图</td><td>并行页表管理，减少锁争用</td><td>失效同步、冲突重试和生命周期更复杂</td></tr>
+    <tr><td>迁移脏页持续增长</td><td>改进记录消费、传输或写入控制</td><td>更快记账无法补足传输带宽，也不能消除业务写入</td></tr>
+  </tbody></table>
+  <p>影子页表用软件维护合成关系，EPT/NPT 用额外硬件转换换取更清晰的分工；两者最终都依赖宿主后备页的生命周期。评价时把转换未命中、缺页建图、真实内存访问和脏页跟踪分开，再观察吞吐、尾延迟与内存占用，才能判断优化发生在哪一层。</p>
+</section>
+<section id="reading" class="mechanism-section">
+  <h2>进一步阅读</h2>
+  <ul>
+    <li><a href="kvm-ept-fault.html">KVM 二级地址转换与缺页处理</a>：完整跟踪一页 RAM 的映射与失效。</li>
+    <li><a href="kvm-hugepages.html">KVM 大页映射</a>：建立、拆分和恢复条件。</li>
+    <li><a href="kvm-dirty-ring.html">KVM 脏页日志：位图与 Dirty Ring</a>：记录的发布、消费和重置。</li>
+    <li><a href="qemu-memory-region.html">QEMU MemoryRegion</a>：RAM、MMIO 与地址空间视图。</li>
+    <li><a href="qemu-memory-migration.html">预拷贝内存迁移</a>、<a href="qemu-virtio-mem.html">virtio-mem</a>：把映射管理放回迁移与容量调整过程。</li>
+  </ul>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="{{ linux }}Documentation/virt/kvm/x86/mmu.rst">Linux：MMU 目标、影子模式与两级映射</a></li>
+    <li><a href="{{ linux }}Documentation/virt/kvm/api.rst">Linux：内存槽与 dirty ring API</a></li>
+    <li><a href="{{ linux }}virt/kvm/kvm_main.c#L674-L797">KVM：宿主映射失效通知</a></li>
+    <li><a href="{{ qemu }}docs/devel/memory.rst">QEMU：内存和设备地址空间</a></li>
+  </ul>
+</section>

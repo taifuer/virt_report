@@ -1,0 +1,99 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+{% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
+{% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
+{% set spec = 'https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html' %}
+<section id="preface" class="mechanism-section">
+  <h2>共享队列工作之前，双方需要约定什么</h2>
+  <p>客户机驱动与 virtio 设备通过共享内存交接请求。若驱动按 split 格式布置队列，设备却按 packed 格式解释，相同字节就会产生不同含义；若设备提前消费尚未初始化的地址，还可能访问错误内存。设备发现、特性协商、队列配置和开始处理，因此必须有明确顺序。</p>
+  <p>本文跟踪现代 virtio-pci 接口上的一个 virtio-blk 队列。例子采用 4 个描述符、split 格式，普通 RAM，无客户机 IOMMU 地址转换；队列地址以 GPA 表示。开启平台访问约束时，需要使用相应 DMA 映射，不能沿用这里“地址就是 GPA”的假设。协议依据 VIRTIO 1.2，实例由 QEMU 与 Linux 驱动实现。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+<section id="transport" class="mechanism-section">
+  <h2>通过 PCI 能力找到控制与通知区域</h2>
+  <p>PCI 枚举先识别设备，再遍历能力链。现代 virtio 使用 vendor-specific capability 描述控制区域所在的 BAR、偏移和长度。驱动据此映射寄存器，而不是假设所有设备都把寄存器放在同一固定地址。<code>virtio_pci_cap</code> 中的 <code>cfg_type / bar / offset / length</code> 负责说明“这是什么区域、在哪里、有多大”。</p>
+  <table><thead><tr><th scope="col">区域</th><th scope="col">本次初始化中的作用</th><th scope="col">与队列内存的区别</th></tr></thead><tbody>
+    <tr><td>Common configuration</td><td>读写特性、device_status、队列大小和地址</td><td>保存控制字段，不存每次请求的数据</td></tr>
+    <tr><td>Notify</td><td>驱动写门铃，提示某队列有新工作</td><td>通知不携带整条描述符或数据缓冲区</td></tr>
+    <tr><td>ISR</td><td>传统引脚中断下读取队列/配置事件原因</td><td>不代替 used 中的完成记录；MSI-X 有独立向量路由</td></tr>
+    <tr><td>Device configuration</td><td>读取块设备容量等设备特有配置</td><td>布局由设备类型和已协商特性决定</td></tr>
+  </tbody></table>
+  <p>Common 中的 <code>config_generation</code> 用于检查设备配置读取的一致性。例如读取跨多个访问的容量值时，前后读取 generation，发生变化就重试，避免拼出一次更新前后的混合值。设备配置空间、PCI 配置空间和客户机 RAM 中的 virtqueue，是三类不同位置。<a href="{{ qemu }}include/standard-headers/linux/virtio_pci.h#L119-L208">能力结构与公共配置字段</a></p>
+</section>
+<section id="negotiation" class="mechanism-section">
+  <h2>先选择特性，再让设备确认</h2>
+  <h3>特性选择包含依赖，不能只取交集</h3>
+  <p>设备公布它支持的 feature bits，驱动选择其中理解且愿意使用的子集。公共配置用 <code>device_feature_select</code> 选择每组 32 位，再从 <code>device_feature</code> 读取；驱动以对应的 <code>driver_feature_select / driver_feature</code> 写回选择。QEMU 头文件把后两者称为 guest_feature，表达的是同一组寄存器。</p>
+  <p>本例选择 <code>VIRTIO_F_VERSION_1</code>，使用现代接口；不选择 <code>RING_PACKED</code>，所以采用 split 队列，也不选择 EVENT_IDX、RING_RESET、通知数据扩展。VERSION_1 位说明采用现代协议，不能据此断言设备实现了某个文档版本的所有可选功能。</p>
+  <p>选择还要满足依赖与环境要求。比如 virtio-net 的 HOST_TSO4 要求 CSUM，不能只打开分段能力而忽略其校验和前提。平台要求设备使用受控 DMA 地址时，ACCESS_PLATFORM 也可能是运行条件。Linux 因而在初步交集后继续进行传输层和设备驱动验证。现代 PCI 路径还明确检查 VERSION_1。<a href="{{ linux }}drivers/virtio/virtio.c#L270-L345">驱动特性筛选</a>、<a href="{{ linux }}drivers/virtio/virtio_pci_modern.c#L419-L442">现代 PCI 验证与写回</a></p>
+  <h3>状态位表示已经完成的步骤</h3>
+  <table><thead><tr><th scope="col">操作</th><th scope="col">本例状态值</th><th scope="col">此时能确认什么</th></tr></thead><tbody>
+    <tr><td>写 0，等待读回 0</td><td><code>0x00</code></td><td>设备复位完成</td></tr>
+    <tr><td>加入 ACKNOWLEDGE</td><td><code>0x01</code></td><td>客户机已识别设备</td></tr>
+    <tr><td>加入 DRIVER</td><td><code>0x03</code></td><td>已找到适用驱动，开始协商</td></tr>
+    <tr><td>写回特性，加入 FEATURES_OK，再读回</td><td><code>0x0b</code>，仅限设备接受时</td><td>双方确认本轮选择，仍未开始消费请求</td></tr>
+    <tr><td>完成队列与设备配置，加入 DRIVER_OK</td><td><code>0x0f</code></td><td>驱动已准备好运行</td></tr>
+  </tbody></table>
+  <p>这些值是累积位掩码，不能把 DRIVER_OK 单独写成 4 而覆盖前面的状态。FEATURES_OK 必须读回检查：QEMU 在状态变更时验证组合，拒绝时不会接受这一步；驱动若只检查自己的写操作成功，就可能继续配置一台双方理解不一致的设备。确认后不能再随意加入新特性，重新协商需要设备复位。<a href="{{ qemu }}hw/virtio/virtio.c#L2237-L2284">QEMU 特性验证</a>、<a href="{{ linux }}drivers/virtio/virtio.c#L203-L236">Linux 读回检查</a></p>
+  {{ diagram('virtio-init-handshake', '从复位到可以处理请求', 'FEATURES_OK 是双方确认特性的边界；queue_enable 配置单队列，DRIVER_OK 放行整个设备。本例只在 DRIVER_OK 之后发布首次通知。') }}
+</section>
+<section id="queue-layout" class="mechanism-section">
+  <h2>把 4 个描述符的队列放入客户机内存</h2>
+  <p>驱动选择 <code>queue_select = 0</code>，确认该队列存在且尚未启用，读取支持的大小。设其上限至少为 4，本例写 <code>queue_size = 4</code>。split 队列大小为 2 的幂；它表示描述符表和环的容量，不表示始终可以同时提交 4 个任意大小的请求。</p>
+  <table><thead><tr><th scope="col">公共配置字段</th><th scope="col">本例 GPA</th><th scope="col">本例内存结构与最小占用</th></tr></thead><tbody>
+    <tr><td><code>queue_desc</code></td><td><code>0x100000</code></td><td>4 × 16 B 描述符，共 64 B；16 B 对齐</td></tr>
+    <tr><td><code>queue_driver</code></td><td><code>0x101000</code></td><td>available 的 flags、idx、4 个链头，共 12 B；2 B 对齐</td></tr>
+    <tr><td><code>queue_device</code></td><td><code>0x102000</code></td><td>used 的 flags、idx、4 个 id/len 项，共 36 B；4 B 对齐</td></tr>
+  </tbody></table>
+  <p>本例没有 EVENT_IDX，所以没有额外的 used_event、avail_event 字段。分开保留三页是为了让地址关系清楚，实际分配可以更紧凑。每个描述符由 <code>addr:64 / len:32 / flags:16 / next:16</code> 构成；现代接口的这些多字节字段采用小端。驱动初始化环和索引，设备就能按相同布局访问它们。</p>
+  {{ diagram('virtio-init-queue-layout', '控制寄存器指向三个独立的 RAM 区域', '描述符表保存缓冲区地址、长度和链关系；available 发布链头，used 归还完成。它们位于客户机 RAM，门铃则位于 PCI 通知区域。') }}
+  <p>选用 packed 时，queue_desc 指向 packed 描述符环，queue_driver 和 queue_device 指向双方的事件抑制结构；它们不再是上表的 available/used 环。双方必须先对 RING_PACKED 达成一致，再按对应格式分配与访问，不能在运行中只切换一个标志来改造已有队列。</p>
+</section>
+<section id="first-request" class="mechanism-section">
+  <h2>启用队列，再发出第一个读取请求</h2>
+  <p>完成地址、大小、中断等必要配置后，驱动写 <code>queue_enable = 1</code>，再完成设备级准备并设置 DRIVER_OK。前者说明这个队列已配置，后者说明驱动能够接收结果；仅有 queue_enable 不能越过 DRIVER_OK 提前通知或消费请求。</p>
+  <p>例子从磁盘偏移 1 MiB 读取 4 KiB，采用直接链 <code>0 → 1 → 2</code>。描述符 0 指向 <code>GPA 0x200000</code> 的 16 B 请求头，类型 IN、sector 2048；描述符 1 指向 <code>0x201000</code> 的 4096 B 可写数据区；描述符 2 指向 <code>0x202000</code> 的 1 B 可写状态区。第 4 个描述符空闲。WRITE 表示设备写入客户机内存，所以磁盘读取的数据区需要这个标志。</p>
+  <pre><code>desc[0]: addr=0x200000, len=16,   flags=NEXT,       next=1
+desc[1]: addr=0x201000, len=4096, flags=NEXT|WRITE, next=2
+desc[2]: addr=0x202000, len=1,    flags=WRITE
+
+avail.ring[0] = 0
+按发布顺序完成内存写入，再令 avail.idx: 0 → 1
+成功完成后：used.ring[0] = {id: 0, len: 4097}, used.idx: 0 → 1</code></pre>
+  <p>通知地址由 <code>BAR 基址 + notify capability.offset + queue_notify_off × notify_off_multiplier</code> 得到，queue_notify_off 不是字节偏移。本例未启用通知扩展，驱动向该地址写 16 位队列号 0；数据仍留在描述符指向的 RAM。发布所需的内存屏障不能被门铃写入替代，是否需要通知还应遵守队列抑制规则。<a href="{{ linux }}drivers/virtio/virtio_pci_modern_dev.c#L699-L744">通知区域计算</a></p>
+  <p>设备检查 available，读取请求并完成块操作，再写数据、状态和 used。初始化至此才接入日常数据路径。具体处理见<a href="qemu-virtio-blk.html">virtio-blk 请求与完成</a>，环槽回绕可在<a href="qemu-network-tx.html#virtqueue">virtqueue 交互图</a>中逐步观察。</p>
+</section>
+<section id="failure-reset" class="mechanism-section">
+  <h2>协商失败与复位怎样收束旧状态</h2>
+  <h3>设备复位重新开始整轮协商</h3>
+  <p>驱动遇到无法恢复的初始化错误时，标记 FAILED 并停止继续初始化。FAILED 本身不是“设备已停止访问内存”的证明；重试需要复位。设备报告 DEVICE_NEEDS_RESET 时，在途请求可能已经完成，也可能尚未完成，驱动不能据此推断结果或盲目重放。</p>
+  <p>现代 PCI 的设备复位通过向 device_status 写 0 发起，读取到 0 才确认完成；此时设备不再访问旧队列或发送相应通知。驱动还需停止自己的提交与回调，之后才能安全拆除队列、释放缓冲区，并从 ACKNOWLEDGE 重新协商。复位不会替应用证明一次磁盘写入是否持久化，设备特有状态仍遵循对应协议。<a href="{{ linux }}drivers/virtio/virtio_pci_modern.c#L544-L568">PCI 复位等待</a></p>
+  <h3>队列复位是独立的可选功能</h3>
+  <p>只有先协商 RING_RESET，驱动才可使用 <code>queue_reset</code>。选中队列后写 1，等待读回 queue_reset=0 且 queue_enable=0，再回收该队列资源、重新配置并启用。其他队列和设备级特性协商不随之重置；队列复位不能用来更换全设备的 split/packed 格式。本例没有选择 RING_RESET，不能走这条路径。</p>
+  <p>尤其要区分 PCI 与 MMIO 传输：现代 PCI 驱动不能把向 queue_enable 写 0 当成关闭队列的办法。它需要已协商的队列复位，或复位整个设备。QEMU 的公共配置写处理也只接受 queue_enable=1。<a href="{{ qemu }}hw/virtio/virtio-pci.c#L1717-L1766">队列启用与复位</a>、<a href="{{ linux }}drivers/virtio/virtio_pci_modern_dev.c#L508-L543">Linux 队列复位等待</a></p>
+</section>
+<section id="implementation" class="mechanism-section">
+  <h2>源码怎样对应这条初始化路径</h2>
+  <table><thead><tr><th scope="col">阶段</th><th scope="col">驱动与设备两侧的入口</th></tr></thead><tbody>
+    <tr><td>发现后复位并识别</td><td>Linux <a href="{{ linux }}drivers/virtio/virtio.c#L512-L577">register_virtio_device</a>：reset、ACKNOWLEDGE，再匹配驱动</td></tr>
+    <tr><td>协商与确认</td><td>Linux <a href="{{ linux }}drivers/virtio/virtio.c#L270-L365">virtio_dev_probe</a>：筛选、finalize、FEATURES_OK 读回，再调用设备驱动 probe</td></tr>
+    <tr><td>分配并配置队列</td><td>Linux <a href="{{ linux }}drivers/virtio/virtio_pci_modern.c#L685-L764">setup_vq / vp_modern_find_vqs</a>：建立 vring、写配置，最后启用</td></tr>
+    <tr><td>接收寄存器操作</td><td>QEMU <a href="{{ qemu }}hw/virtio/virtio-pci.c#L1633-L1766">virtio_pci_common_write</a>：特性、status、queue 地址与 enable/reset</td></tr>
+    <tr><td>保存设备级约定</td><td>QEMU <a href="{{ qemu }}hw/virtio/virtio.c#L3179-L3250">特性修改限制与复位</a>：确认后不再直接接受新特性，复位清理旧运行状态</td></tr>
+  </tbody></table>
+  <p>Linux 中设备驱动的 probe 可以自行调用 virtio_device_ready，核心层也会在未设置时补上 DRIVER_OK。阅读时应按状态顺序追踪，不能假定所有设备都在同一个函数内完成初始化。</p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2>从固定布局到明确协商与局部恢复</h2>
+  <p>早期 legacy 接口缺少 FEATURES_OK 的确认边界，特性选择与首次使用常交织在一起；现代接口用能力区域描述位置，用状态握手确认布局，再放行数据处理。代价是驱动要增加校验与失败清理，但双方可以安全拒绝不兼容的组合。</p>
+  <p>split 队列将描述符、可用项和完成项分开，生产者与消费者的角色清楚；packed 将可用和完成状态放回描述符环，减少部分元数据访问，需额外处理 wrap 状态和事件结构。RING_RESET 又把恢复范围缩小到单队列，但要求双方同步停止旧访问。新增能力带来选择空间，也增加配置组合和状态机的验证成本。</p>
+  <p>排查“设备可见却没有 I/O”，可依次核对特性选择及依赖、FEATURES_OK 读回、三个队列地址与大小、queue_enable、DRIVER_OK，最后检查 available 与门铃。初始化成功只表明接口约定成立，吞吐和延迟仍取决于队列深度、通知策略与实际后端。</p>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="{{ spec }}">VIRTIO 1.2</a>：§2.1–2.8 状态、特性、复位与队列；§3.1 初始化；§4.1.4–4.1.5 PCI 配置与操作。</li>
+    <li><a href="{{ qemu }}include/standard-headers/linux/virtio_pci.h">QEMU：现代 PCI 字段</a>、<a href="{{ qemu }}include/standard-headers/linux/virtio_ring.h">split / packed 结构</a>。</li>
+    <li><a href="{{ linux }}drivers/virtio/virtio.c">Linux：virtio 核心状态与特性确认</a>、<a href="{{ linux }}drivers/virtio/virtio_pci_modern.c">现代 PCI 驱动</a>。</li>
+    <li><a href="{{ qemu }}hw/virtio/virtio.c">QEMU：设备特性与状态机</a>、<a href="{{ qemu }}hw/virtio/virtio-pci.c">PCI 控制区域与通知</a>。</li>
+  </ul>
+</section>

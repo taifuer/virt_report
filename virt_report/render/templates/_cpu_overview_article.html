@@ -1,0 +1,67 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+{% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
+{% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
+<section id="preface" class="mechanism-section">
+  <h2>客户机内核需要权限，宿主需要控制权</h2>
+  <p>一段程序做整数加法，只需 CPU 按指令修改寄存器。操作系统内核还会切换页表、管理中断、访问设备。如果让虚拟机里的内核直接控制宿主的这些资源，它就可能覆盖宿主地址空间，或影响其他虚拟机；若把它简单当作普通用户程序运行，原本合法的内核操作又会因权限不足而失败。</p>
+  <p>CPU 虚拟化需要建立一套客户机可见的 CPU 状态：寄存器、指令位置、特权状态和异常行为都应符合客户机架构，同时真实资源仍由宿主控制。一个 vCPU 表示这套执行上下文，物理 CPU 则在调度时实际执行它。两者并不要求一对一独占。</p>
+  <p>本文以 x86 系统虚拟化为主，比较软件执行与硬件辅助的解决办法，再跟踪一段小程序，看普通计算、能力查询、设备访问和空闲分别在哪里完成。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+<section id="paths" class="mechanism-section">
+  <h2>三种执行办法如何实现同一套 CPU 语义</h2>
+  {{ diagram('cpu-foundation-methods', '解释执行、动态翻译与硬件辅助', '三种方式都要保持客户机寄存器、权限和异常的含义。解释器逐条执行语义，TCG 缓存翻译后的宿主代码，KVM 让硬件运行客户机并处理需要接管的事件。') }}
+  <h3>解释执行：逐条读懂并实现指令</h3>
+  <p>最直接的方案是取出客户机指令，解码，再用宿主程序更新模拟寄存器和内存。例如客户机加法由解释器完成运算并更新客户机标志位；客户机修改页表基址，也只修改模拟状态。访问都经过软件控制，便于隔离和跨架构实现，但热点循环每次都要重新取指、解码和分派，管理成本很高。</p>
+  <h3>TCG：把重复解码变为可复用代码</h3>
+  <p>QEMU 的 Tiny Code Generator（TCG）将一段客户机指令翻译为中间表示，再生成宿主机器码，缓存为 Translation Block（TB，翻译块）。普通运算成为宿主代码，复杂操作调用实现相应语义的 helper。下一次进入相同代码和匹配的 CPU 状态时，可以复用 TB；满足条件的块还能直接连接，减少返回主循环查找的次数。</p>
+  <p>翻译要付出首次生成和缓存管理成本。客户机修改代码后，旧 TB 必须失效；中途发生异常时，还需恢复准确的客户机指令位置。TCG 因而适合不同指令集之间的执行、开发调试及缺少硬件辅助的环境，它与 KVM 在当前 QEMU 中并存。<a href="{{ qemu }}docs/devel/tcg.rst#L18-L126">TB 状态匹配与直接连接</a></p>
+  <h3>硬件辅助：保留客户机权限，分开宿主控制</h3>
+  <p>Intel VT-x、AMD-V 提供受宿主配置控制的客户机执行环境。客户机内核仍可处于自己的高权限级；处理器按虚拟化控制决定哪些行为直接完成，哪些触发 VM exit（客户机退出），把控制权交回宿主。客户机从应用进入自身内核，与离开客户机环境进入宿主，是两类不同切换。</p>
+  <p>KVM 在 Linux 内核中建立并维护这个执行环境，QEMU 的 vCPU 线程通过 <code>KVM_RUN</code> 进入它。硬件退出后，KVM 能处理的事件在内核中完成，再次进入客户机；只有需要用户态设备模型或管理参与的情况才返回 QEMU。因此 VM exit 次数与 KVM_RUN 返回次数通常不同。</p>
+</section>
+<section id="example" class="mechanism-section">
+  <h2>四个操作怎样保持连续执行</h2>
+  <p>假设客户机先计算 <code>3 + 4</code>，查询 CPUID，再读取一个由 QEMU 模拟的设备寄存器，最后执行 HLT 等待工作。设备应返回 <code>0x12345678</code>。这四步对应四种成本：</p>
+  <ol>
+    <li><strong>计算。</strong>TCG 运行已翻译的宿主加法及标志更新；KVM 路径通常直接执行客户机指令，结果都是 7。</li>
+    <li><strong>CPUID。</strong>TCG 按虚拟 CPU 配置模拟结果。在 Intel VMX 路径中，CPUID 触发退出，由 KVM 填入客户机应看到的能力并推进执行，通常无需返回 QEMU。</li>
+    <li><strong>设备读取。</strong>KVM 以 <code>KVM_EXIT_MMIO</code> 返回地址、长度和方向。QEMU 调用设备模型，将结果写入 <code>kvm_run.mmio</code>；下一次 KVM_RUN 才完成该次读取的交接。TCG 的访存辅助路径直接分派到相应设备模型。</li>
+    <li><strong>等待。</strong>在常见内核管理的 KVM 路径中，HLT 可进入短暂轮询或阻塞。事件到来后唤醒 vCPU 线程，宿主调度器决定它何时重新取得 CPU。</li>
+  </ol>
+  <p>这条路径说明，接近原生的指令执行速度仍可能被高频设备往返或调度等待拖慢。<a href="{{ qemu }}accel/kvm/kvm-all.c#L3154-L3254">QEMU 的 KVM 执行循环</a>把用户态需要处理的原因分开，但无法只凭退出总数判断具体瓶颈。</p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2>演进围绕重复工作、退出和并行展开</h2>
+  <p>动态翻译把逐条解释中的重复工作移到首次翻译，后续通过缓存与块连接降低分派成本。硬件辅助让兼容架构的指令直接执行，并把权限隔离交给明确的硬件边界。两条路线解决的条件不同：跨架构执行仍需要翻译，硬件辅助也仍需要设备模型和异常处理。</p>
+  <p>继续优化时，TCG 用多线程执行不同 vCPU，需要同时维护客户机内存顺序、共享设备锁和翻译失效。KVM 则可用共享队列与事件通知减少设备往返，或由硬件加速部分中断处理。这些改进把工作移动到不同层次，无法消除后端处理与状态同步。</p>
+  <p>虚拟 CPU 型号还有兼容性取舍。向客户机暴露更多宿主特性，可能改善本机计算性能，却减少能接收该虚拟机的迁移目标。固定兼容的 CPU 能力集合有利于跨宿主调度，代价是不能使用其中较新机器的全部能力。</p>
+</section>
+<section id="evaluation" class="mechanism-section">
+  <h2>按执行成本评价方案</h2>
+  <table><thead><tr><th>主要成本</th><th>改进着力点</th><th>需要一起检查的代价</th></tr></thead><tbody>
+    <tr><td>取指、解码与翻译</td><td>复用 TB、连接热块，条件允许时采用 KVM</td><td>代码失效、首次执行成本与架构兼容性</td></tr>
+    <tr><td>设备访问和频繁退出</td><td>批处理、virtio 队列、内核或独立后端</td><td>后端 CPU、通知延迟与设备状态协调</td></tr>
+    <tr><td>空闲与唤醒等待</td><td>平衡短暂轮询和阻塞，调整调度与 CPU 放置</td><td>尾延迟、物理 CPU 占用与其他虚拟机的公平性</td></tr>
+  </tbody></table>
+  <p>更多 vCPU 不保证更快：程序需要可并行，宿主也要提供足够运行时间。实际评价应同时记录业务吞吐、尾延迟和宿主 CPU 消耗，再把等待拆为客户机内部锁、硬件退出处理、用户态 I/O 和宿主调度。这样才能把优化对应到具体的一段执行过程。</p>
+</section>
+<section id="reading" class="mechanism-section">
+  <h2>进一步阅读</h2>
+  <ul>
+    <li><a href="qemu-tcg.html">QEMU TCG 的翻译块与执行循环</a>：首次翻译、热块连接与代码失效。</li>
+    <li><a href="kvm-vcpu-run.html">KVM vCPU 执行与退出处理</a>：CPUID、MMIO 及 ioeventfd/irqfd 两个方向。</li>
+    <li><a href="kvm-vcpu-halt.html">KVM vCPU 的阻塞、轮询与唤醒</a>：短等待延迟与 CPU 成本。</li>
+    <li><a href="kvm-virtual-time.html">KVM 虚拟时钟与定时器</a>：TSC、共享时钟页、到期通知与迁移后的时间衔接。</li>
+    <li><a href="interrupt-virtualization.html">中断虚拟化</a>：设备事件如何进入客户机。</li>
+  </ul>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="{{ qemu }}docs/devel/tcg.rst">QEMU：翻译块、连接与精确异常</a>、<a href="{{ qemu }}docs/devel/multi-thread-tcg.rst">多线程 TCG</a></li>
+    <li><a href="{{ linux }}Documentation/virt/kvm/api.rst#L6676-L6708">Linux：MMIO 与 KVM_RUN 的用户态交接</a></li>
+    <li><a href="{{ linux }}arch/x86/kvm/vmx/vmx.c#L6115-L6155">Linux：VMX 退出原因与处理器分派</a></li>
+    <li><a href="{{ linux }}Documentation/virt/kvm/halt-polling.rst">Linux：halt polling 的机制与取舍</a></li>
+  </ul>
+</section>

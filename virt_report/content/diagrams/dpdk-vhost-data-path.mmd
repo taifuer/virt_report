@@ -1,0 +1,22 @@
+flowchart TB
+    accTitle: DPDK vhost-user 控制连接与报文路径
+    accDescr: QEMU 用 vhost-user 控制消息把客户机内存和队列映射到 DPDK 进程；客户机发送队列经 vhost 复制到 mbuf，再由应用提交 PMD 和物理网卡。通知不携带报文。
+    Q["QEMU<br/>virtio PCI 呈现与控制连接"]
+    subgraph G[客户机共享 RAM]
+      V["virtio-net 驱动<br/>TX virtqueue：desc + avail + used"]
+      B["网络头与报文 P1<br/>描述符 addr 指向的缓冲区"]
+    end
+    subgraph D[DPDK 用户态进程]
+      C["vhost 控制消息处理<br/>共享内存 / 队列地址 / kick 与 call"]
+      H["数据线程：rte_vhost_dequeue_burst<br/>消费 TX 队列，复制帧到 mbuf"]
+      M["rte_mbuf M<br/>应用转发策略"]
+      P["rte_eth_tx_burst → PMD<br/>物理网卡 TX 描述符"]
+    end
+    N["物理网卡<br/>DMA 读取 M 的数据 → 网络"]
+    Q -. Unix socket：消息与文件描述符 .-> C
+    C -. 建立映射与队列访问条件 .-> H
+    V -->|链首与描述符| H
+    V -->|addr| B
+    B -->|复制本例 60 B 帧| H
+    H --> M --> P --> N
+    H -. used 完成与可选 call .-> V

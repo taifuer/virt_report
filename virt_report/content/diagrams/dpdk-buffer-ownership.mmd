@@ -1,0 +1,20 @@
+flowchart TB
+    accTitle: 客户机链、DPDK mbuf 与物理发送环
+    accDescr: 客户机链和 mbuf 之间有复制边界；mbuf 数据被物理网卡 DMA 读取。客户机链在复制结束后归还，mbuf 则保留到硬件发送完成并由 PMD 清理。
+    A["avail.ring[0] = 0<br/>avail.idx = 1"]
+    D0["desc[0]<br/>addr 0x1000 · len 12<br/>NEXT → 2"]
+    D2["desc[2]<br/>addr 0x2000 · len 60<br/>链结束"]
+    H["virtio-net header<br/>卸载元数据"]
+    B["P1 客户机缓冲区<br/>60 B 以太网帧"]
+    M["rte_mbuf M<br/>buf_addr + data_off → 帧<br/>data_len = pkt_len = 60<br/>nb_segs = 1 · next = NULL"]
+    U["used.ring[0] = id 0, len 0<br/>客户机可回收原链"]
+    T["物理 TX 描述符<br/>DMA 地址 · 长度 · 控制位"]
+    R["硬件发送完成<br/>PMD 回收 M → mempool"]
+    A --> D0 -->|next| D2
+    D0 -->|addr| H
+    D2 -->|addr| B
+    H -. 解析元数据 .-> M
+    B -->|CPU 复制| M
+    M -. 复制结束后归还原链 .-> U
+    M -->|PMD 接受并引用数据| T
+    T --> R

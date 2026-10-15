@@ -1,0 +1,14 @@
+flowchart TB
+    accTitle: TCG 与 KVM 的客户机执行路径
+    accDescr: TCG 将客户机代码翻译并缓存为宿主代码。KVM 进入客户机执行，退出后区分内核处理和用户态设备处理，随后继续执行。
+    G["客户机程序<br/>计算 · CPUID · 设备读取"] --> T["TCG<br/>查询翻译块"]
+    G --> K["QEMU 调用 KVM_RUN"]
+    K --> R["内核 VM Entry<br/>客户机继续执行"]
+    T --> C["命中：复用宿主代码<br/>未命中：解码 → IR → 生成代码"]
+    C --> E["执行宿主代码<br/>访存或复杂语义调用 helper"]
+    E --> T
+    R --> X["硬件 VM Exit"]
+    X --> I["KVM 可处理<br/>例如 CPUID"]
+    X --> U["返回 QEMU<br/>例如用户态 MMIO 读取"]
+    I --> R
+    U --> K

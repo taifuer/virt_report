@@ -3,22 +3,30 @@
 {% set linux_source = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
-  <p>客户机物理地址描述虚拟机内的地址空间。Intel EPT 将它映射到宿主物理内存；KVM 建立并维护这层页表，QEMU 则向 KVM 登记哪些客户机地址对应自己的 RAM 映射。QEMU 组织内存布局，KVM 维护映射，处理器完成实际访存。</p>
-  <p>本文跟踪普通虚拟机对一页 RAM 的首次访问，以 x86、Intel EPT 和 KVM TDP MMU 为例。后备内存采用 QEMU 可访问的匿名内存或文件映射，地址示例使用 4 KiB 页；私有内存与嵌套虚拟化另有处理路径。</p>
+  <h2>客户机的一次读取如何找到宿主内存</h2>
+  <p>客户机页表只知道自己的物理地址，无法决定宿主实际把这页 RAM 放在哪里。宿主又可能按需分配、回收或迁移该页。虚拟化需要在保留客户机地址空间的同时，把访问正确落到当前宿主页，并在后备页变化后撤销旧映射。</p>
+  <p>Intel EPT 为此增加 GPA → HPA 转换：QEMU 登记 RAM 后备范围，KVM 按需建立并维护 EPT，处理器利用这些页表和 TLB 执行访存。本文跟踪一次 <code>GVA 0x40203080</code> 的读取，依次走过“登记范围 → 缺页建图 → 重试访问 → 后备页变更后重建”。</p>
+  <p>源码路径采用 x86、Intel EPT 和 KVM TDP MMU。后备内存使用 QEMU 可访问的匿名内存或文件映射，示例以 4 KiB 页展开；私有内存与嵌套虚拟化另有处理路径。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="addresses" class="mechanism-section">
-  <h2>两级转换与宿主映射</h2>
+  <h2>客户机页表与 EPT 的两级转换</h2>
   <p>客户机页表把客户机虚拟地址 GVA 转成客户机物理地址 GPA，EPT 再把 GPA 转成宿主物理地址 HPA。客户机页表页本身也放在客户机物理内存中，因此硬件读取这些页表项时，同样需要 EPT 转换。TLB 与页表遍历缓存减少了重复遍历，不能把这条路径理解为每次访问都由软件查询两张表。</p>
   <p>QEMU 的宿主虚拟地址 HVA 用于定位 RAM 后备内存。KVM 根据 HVA 查询宿主内存管理，取得当前物理页，再建立 EPT。已建立映射后的客户机访存直接使用硬件转换；HVA 不出现在 EPT 页表项中，也不会作为客户机的第三层硬件地址转换。<a href="{{ linux_source }}Documentation/virt/kvm/x86/mmu.rst">KVM MMU 的地址空间说明</a></p>
   {{ diagram('ept-address-mapping', '客户机访存与 KVM 建图路径', '实线表示客户机的硬件地址转换；虚线表示 KVM 根据 memslot 和宿主映射找到后备页，再填写 EPT。HVA 用于软件建图，不属于客户机硬件遍历的地址层级。') }}
+  <table><thead><tr><th scope="col">一次读取经过的阶段</th><th scope="col">谁负责</th><th scope="col">形成什么结果</th></tr></thead><tbody>
+    <tr><td>准备 RAM 地址范围</td><td>QEMU 注册 memslot</td><td>KVM 知道 GPA 范围对应哪个 HVA 范围</td></tr>
+    <tr><td>目标 EPT 映射尚缺</td><td>处理器退出，KVM 解析后备页</td><td>以 HVA 取得当前 PFN，建立 GPA → HPA 叶子项</td></tr>
+    <tr><td>重试原读取</td><td>处理器完成两级转换</td><td>读取目标宿主页；已有缓存可减少后续遍历</td></tr>
+    <tr><td>宿主替换后备页</td><td>宿主内存管理通知 KVM</td><td>撤销旧项与相关转换缓存，后续访问重新建图</td></tr>
+  </tbody></table>
   <p>EPT 的读、写、执行权限与客户机页表权限共同约束访问。客户机允许写入，仍可能被 EPT 写保护拦截；EPT 允许写入，也不能绕过客户机页表的只读限制。设备 DMA 使用的 IOMMU 映射是另一条路径，见<a href="qemu-vfio-dma.html">VFIO 的 DMA 地址转换与隔离</a>。</p>
 </section>
 
 <section id="structures" class="mechanism-section">
-  <h2>内存注册与关键结构</h2>
+  <h2>准备阶段：QEMU 登记 RAM，KVM 保存 memslot</h2>
+  <h3>给示例 GPA 登记一段后备内存</h3>
   <p>QEMU 的 <code>KVMSlot</code> 保存客户机地址范围及 RAM 指针，<code>kvm_set_user_memory_region()</code> 将其转成 ioctl 参数。注册的结果是建立地址范围关系，通常不会立即为范围内每一页分配宿主物理页或填满 EPT。<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L360-L392">QEMU 内存注册</a></p>
   <table><thead><tr><th scope="col">用户态字段</th><th scope="col">宽度与作用</th><th scope="col">本例</th></tr></thead><tbody>
     <tr><td><code>slot</code></td><td>32 位；低 16 位是槽 ID，高 16 位用于支持多地址空间的配置</td><td>0</td></tr>
@@ -28,6 +36,7 @@
     <tr><td><code>userspace_addr</code></td><td>64 位；QEMU 进程中的 HVA 起点</td><td><code>0x7f0000000000</code></td></tr>
   </tbody></table>
   <p>这些字段同时存在于 <code>kvm_userspace_memory_region</code> 和扩展的 <code>kvm_userspace_memory_region2</code>。后者另有 <code>guest_memfd</code>、<code>guest_memfd_offset</code> 等字段；其使用受相应标志与能力控制，普通 HVA 后备 RAM 不需要借助 guest_memfd 定位。QEMU 可以根据内核能力选择 REGION2 ioctl，这本身不表示虚拟机使用私有内存。<a href="{{ linux_source }}include/uapi/linux/kvm.h#L24-L54">ABI 定义</a></p>
+  <h3>范围描述与逐页映射如何衔接</h3>
   <table><thead><tr><th scope="col">内核对象或值</th><th scope="col">关键内容</th><th scope="col">参与的操作</th></tr></thead><tbody>
     <tr><td><code>kvm_memory_slot</code></td><td><code>base_gfn</code>、<code>npages</code>、<code>userspace_addr</code>、<code>flags</code>、<code>id</code></td><td>按客户机页号查找 RAM 范围，计算 HVA，关联脏页记录</td></tr>
     <tr><td><a href="{{ linux_source }}arch/x86/kvm/mmu/mmu_internal.h#L236-L297"><code>kvm_page_fault</code></a></td><td><code>gfn</code>、<code>slot</code>、<code>pfn</code>、<code>write</code>、<code>map_writable</code>、<code>mmu_seq</code></td><td>保存本次访存类型、后备页和失效序号，贯穿缺页处理</td></tr>
@@ -35,12 +44,22 @@
     <tr><td>SPTE</td><td>KVM 管理的页表项；本路径中对应 EPT 项，包含物理地址、权限、页级别及状态位</td><td>非叶子项指向下级页表；叶子项把 GPA 页映射到宿主页</td></tr>
   </tbody></table>
   <p><a href="{{ linux_source }}include/linux/kvm_host.h#L594-L619">memslot</a> 描述一段地址范围，<a href="{{ linux_source }}arch/x86/kvm/mmu/spte.c#L186-L312">SPTE</a> 描述某一级硬件映射。一个槽可以对应很多 EPT 叶子项；相邻 HVA 连续也不保证宿主物理页连续。只读槽、宿主页是否可写和 KVM 为记录脏页设置的写保护，还会影响最终的写权限。</p>
-  <p>EPT 页表页也是具体的数据结构：一个 4 KiB 页容纳 512 个 64 位表项，每一级从 GPA 中取 9 位选择下一项。以四级 EPT、4 KiB 叶子为例，依次使用 GPA 的位 47–39、38–30、29–21、20–12，最后 12 位是页内偏移。非叶子项保存下级页表的宿主物理地址，叶子项保存目标页的宿主物理地址；大页可在更高层终止遍历。<a href="{{ linux_source }}Documentation/virt/kvm/x86/mmu.rst#L118-L134">页表项与层级</a></p>
+  <h3>EPT 页表的实际布局</h3>
+  <p>一个 4 KiB 页容纳 512 个 64 位表项，每一级从 GPA 中取 9 位选择下一项。以四级 EPT、4 KiB 叶子为例，依次使用 GPA 的位 47–39、38–30、29–21、20–12，最后 12 位是页内偏移。非叶子项保存下级页表的宿主物理地址，叶子项保存目标页的宿主物理地址；大页可在更高层终止遍历。<a href="{{ linux_source }}Documentation/virt/kvm/x86/mmu.rst#L118-L134">页表项与层级</a></p>
+  <pre><code>GPA 0x00403080，四级 EPT、4 KiB 叶子
+  根表[0] → 下一级[0] → 下一级[2] → 叶子表[3]
+                                               ↓
+                                HPA 页基址 + 页内偏移 0x080
+
+非叶子 EPT 项：下级页表 HPA + 访问权限等属性
+叶子 EPT 项：  RAM 页 HPA    + 访问权限、内存类型等属性</code></pre>
 </section>
 
 <section id="first-access" class="mechanism-section">
-  <h2>一页 RAM 的首次访问</h2>
+  <h2>首次读取：从 GPA 找到 PFN，再安装 EPT</h2>
+  <h3>缺失的映射如何触发内核处理</h3>
   <p>假设客户机页表已把 <code>GVA 0x0000000040203080</code> 映射到 <code>GPA 0x00403080</code>，客户机页表相关的 EPT 映射也已存在，只有目标数据页尚未建立 EPT 叶子项。处理器因第二级转换无法完成而退出，VMX 后端读取 GPA 和访问类型，进入 KVM 缺页处理。</p>
+  <h3>把地址计算完整走一遍</h3>
   <pre><code>页大小                  = 0x1000 B = 4 KiB
 访问 GPA                 = 0x00403080
 GFN                      = 0x403
@@ -57,11 +76,13 @@ EPT 叶子映射             = GPA 页 0x00403000 → HPA 页 0x21000000
 本次访问的 HPA           = 0x21000000 + 0x080
                          = 0x21000080</code></pre>
   <p><code>__gfn_to_hva_memslot()</code> 完成槽内偏移计算；随后 <code>__kvm_faultin_pfn()</code> 经宿主取页路径解析 PFN。后备页尚未驻留时，可能需要分配、调入或等待 I/O；KVM 也存在异步缺页分支。普通 RAM 的这次建图获取页引用，完成后释放临时引用，不能把它理解为将整个虚拟机内存永久 pin 在物理地址上。<a href="{{ linux_source }}include/linux/kvm_host.h#L1862-L1875">GFN → HVA</a>、<a href="{{ linux_source }}virt/kvm/kvm_main.c#L2854-L2936">宿主取页</a></p>
+  <h3>提交映射后，处理器重试同一条读取</h3>
   <p>在 TDP MMU 慢路径中，KVM 取得 PFN 后获取 <code>mmu_lock</code> 读锁，确认本次结果没有失效，再逐级创建缺少的页表页，以原子操作安装叶子 SPTE。若其他 vCPU 已建立映射或修改同一项，会检查结果或重试；成功后重新进入客户机，由处理器重试原来的访存。通常无需返回 QEMU，也不需要修改客户机页表。<a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L4882-L4925">缺页入口</a>、<a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1174-L1238">叶子项安装</a></p>
+  <p>本例最终读取 <code>HPA 0x21000080</code>。后续相同访问若命中有效 TLB / EPT 映射，就沿硬件路径完成；QEMU 不会再次逐项计算 HVA，KVM 也无需每次重新取得 PFN。按需建图把工作集中到首次访问和映射变化时。</p>
 </section>
 
 <section id="fault-types" class="mechanism-section">
-  <h2>缺页、写保护与 MMIO</h2>
+  <h2>访问分支：RAM 缺页、写保护与设备地址</h2>
   <p>EPT violation 说明第二级转换或访问权限未能满足请求，它的处理结果取决于地址与映射状态。硬件退出次数不能直接当作客户机缺页次数，也不能直接当作 QEMU 设备请求次数。</p>
   <table><thead><tr><th scope="col">场景</th><th scope="col">关键区别</th><th scope="col">处理方向</th></tr></thead><tbody>
     <tr><td>客户机 #PF</td><td>客户机自己的页表缺失或权限不允许</td><td>普通 EPT 模式下由客户机异常机制处理；客户机内核决定建图、调页或报告非法访问</td></tr>
@@ -75,7 +96,7 @@ EPT 叶子映射             = GPA 页 0x00403000 → HPA 页 0x21000000
 </section>
 
 <section id="invalidation" class="mechanism-section">
-  <h2>宿主页变化与映射失效</h2>
+  <h2>后备页变化：撤销旧映射，防止旧 PFN 回填</h2>
   <p>QEMU 的 HVA 可以保持不变，背后的宿主物理页却因回收、页迁移或映射变更而改变。如果 KVM 继续使用旧 SPTE，客户机就可能访问错误的物理页。清理 CPU 缓存的转换结果还不够：已有页表项必须失效，正在处理的缺页也不能把旧 PFN 重新填回去。</p>
   <p>宿主内存管理通过 MMU notifier 通知 KVM 某个 HVA 范围即将失效。KVM 找到相交 memslot，把范围转换成 GFN，记录失效进行中，撤销对应叶子映射，并完成所需的远端 TLB 失效。失效结束时推进 <code>mmu_invalidate_seq</code>。<a href="{{ linux_source }}virt/kvm/kvm_main.c#L674-L797">范围失效与序号更新</a></p>
   {{ diagram('ept-fault-invalidation', '缺页建图与宿主映射失效的竞争', '示例中，缺页线程取得旧 PFN 后遇到宿主页替换。安装前的锁内检查发现失效序号变化，放弃旧结果并重新取页，阻止旧 SPTE 被回填。') }}
@@ -84,7 +105,7 @@ EPT 叶子映射             = GPA 页 0x00403000 → HPA 页 0x21000000
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码</h2>
+  <h2>源码调用链：解释访问、解析后备、提交映射</h2>
   <p>从 VMX 退出入口向下追踪时，可以把路径分为“解释访问、解析后备、提交映射”三段。它们分别回答客户机要做什么、宿主能提供哪一页，以及当前能否安全地把这一页交给硬件。</p>
   <table><thead><tr><th scope="col">阶段</th><th scope="col">源码入口与操作</th></tr></thead><tbody>
     <tr><td>读取硬件信息</td><td><a href="{{ linux_source }}arch/x86/kvm/vmx/vmx.c#L5746-L5777"><code>handle_ept_violation()</code></a> 读取 GPA；<a href="{{ linux_source }}arch/x86/kvm/vmx/common.h#L83-L110"><code>__vmx_handle_ept_violation()</code></a> 将读、写、取指和页表遍历信息转成 KVM 使用的标志。</td></tr>
@@ -98,13 +119,22 @@ EPT 叶子映射             = GPA 页 0x00403000 → HPA 页 0x21000000
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>从影子页表到 TDP MMU</h2>
+  <h2>演进与取舍：影子页表、EPT 与并行 TDP MMU</h2>
+  <h3>硬件分离第二级转换，减少客户机页表跟踪</h3>
   <p>早期影子页表把客户机页表和宿主映射合成为 GVA → HPA 的页表供硬件使用。客户机修改页表、切换地址空间时，KVM 需要维护合成结果，涉及页表写跟踪、同步和反向映射。EPT 把 GPA → HPA 单独交给硬件，客户机可以直接维护自己的 GVA → GPA 页表，减少软件跟踪客户机页表变化的工作。</p>
   <p>2008 年，<a href="https://github.com/torvalds/linux/commit/1439442c7b257b47a83aea4daed8fbf4a32cdff9">EPT 支持进入 KVM</a>，随 Linux 2.6.26 发布。第二级页表也带来额外的遍历成本：客户机页表访问本身仍需经过 EPT，缓存未命中时尤其明显。TLB、页表遍历缓存以及满足对齐和后备条件的大页可以减少开销；大页又会与细粒度写保护、脏页记录和回收发生权衡。</p>
+  <h3>并行建图降低多 vCPU 首次访问的锁争用</h3>
   <p>2020 年，Linux 5.10 纳入新的 TDP MMU，包含<a href="https://github.com/torvalds/linux/commit/bb18842e21111a979e2e0e1c5d85c09646f18d51">独立的缺页建图路径</a>，初期默认关闭。这是 KVM 管理 EPT / NPT 页表的软件实现演进：利用 GPA 索引的树结构简化管理，减少传统实现中维护反向映射等通用逻辑的负担。硬件 EPT 与这个软件实现不在同一时间引入。</p>
   <p>2021 年，Linux 5.12 纳入<a href="https://github.com/torvalds/linux/commit/a2855afc7ee88475e8feb16840b23f787bfc994d">并行缺页处理</a>，让 TDP 缺页路径以读模式持有 MMU 锁。大量 vCPU 同时首次访问内存时，多个缺页处理可以并行建图，降低集中锁争用；对同一页表项的竞争仍需检测与重试。</p>
   <p>当前代码中，RCU 保护页表遍历期间的对象生命周期，原子更新处理多个线程对同一 SPTE 的竞争；失效等操作仍需要相应同步。并行化也增加了重试、延迟释放及根生命周期管理的复杂度。<a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1264-L1355">页表遍历与并发安装</a></p>
-  <p>分析访存性能时，可先区分客户机 #PF、宿主取页等待、EPT 建图、写保护退出与 TLB 未命中。启动时大量首次访问、迁移时启用脏页跟踪、宿主页回收之后重新建图，虽然都可能增加 KVM MMU 工作量，优化手段却不相同。预分配后备内存主要减少运行时宿主分配等待；它本身不保证所有 EPT 都已预建。大页可以扩大 TLB 覆盖范围，但需要同时检查宿主后备、地址对齐及跟踪粒度。</p>
+  <h3>如何判断优化的是哪一段访存成本</h3>
+  <table><thead><tr><th scope="col">问题发生在哪一步</th><th scope="col">可检查的方向</th><th scope="col">收益与代价</th></tr></thead><tbody>
+    <tr><td>首次读取等待宿主页分配或调入</td><td>后备内存预分配、内存压力、NUMA 布局</td><td>预分配可减少运行中等待，同时提前消耗资源；它不保证 EPT 全部预建</td></tr>
+    <tr><td>稳定运行仍有较多转换开销</td><td>TLB 覆盖、客户机和宿主后备的大页条件</td><td>大页减少表项及遍历，但降低写保护、回收等操作的粒度</td></tr>
+    <tr><td>迁移时首次写入频繁退出</td><td>脏页跟踪方式、硬件辅助能力和写入分布</td><td>优化跟踪机制与批处理，不能直接取消迁移所需的正确记录</td></tr>
+    <tr><td>宿主页回收后反复重建</td><td>宿主内存压力、页面迁移、失效与缺页重试</td><td>缓解后备页抖动；失效同步本身是内存安全的必要条件</td></tr>
+  </tbody></table>
+  <p>评估时分别观察启动或首次触页耗时、稳定业务延迟、KVM MMU 退出与宿主缺页 / 内存压力，再比较同一负载的变化。客户机 #PF、EPT 缺页和宿主取页等待来源不同；只看一个“缺页数”，无法知道应该改客户机内存管理、KVM 建图还是宿主分配策略。</p>
   <p>大页条件与迁移期间的粒度变化见<a href="kvm-hugepages.html">KVM 大页映射的建立、拆分与恢复</a>，其中逐步展示 2 MiB 叶子与 512 个 4 KiB 叶子的转换。</p>
 </section>
 

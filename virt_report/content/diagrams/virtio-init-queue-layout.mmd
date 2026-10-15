@@ -1,0 +1,17 @@
+flowchart TB
+    accTitle: N 等于 4 的 split 队列地址与结构
+    accDescr: 公共配置的三个地址指向客户机 RAM 中的描述符表、available 和 used。描述符零到二组成读取请求，第四项空闲；available 发布链头零，used 归还 id 零及写入长度。门铃位于 PCI BAR，和这些 RAM 区域分开。
+    C["Common configuration：队列 0<br/>queue_size = 4"]
+    C -->|queue_desc = 0x100000| D["描述符表：64 B<br/>desc 0 → desc 1 → desc 2<br/>desc 3 空闲"]
+    C -->|queue_driver = 0x101000| A["available：12 B<br/>flags、idx、ring 0..3<br/>ring 0 发布链头 0"]
+    C -->|queue_device = 0x102000| U["used：36 B<br/>flags、idx、4 个 id / len<br/>成功完成：id 0、len 4097"]
+    D --> B["缓冲区位于其他 RAM 地址<br/>0x200000：16 B 请求头<br/>0x201000：4096 B 数据<br/>0x202000：1 B 状态"]
+    A -. "设备按链头查表" .-> D
+    U -. "驱动按 id 回收原链" .-> D
+    N["PCI BAR 中的 Notify 区域<br/>写入队列号 0，提示有新工作"] -. "不携带请求载荷" .-> A
+    classDef config fill:#fff4db,stroke:#b89a55,color:#59491e;
+    classDef queue fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+    classDef buffer fill:#e4f1ec,stroke:#438575,color:#173e34;
+    class C,N config;
+    class D,A,U queue;
+    class B buffer;

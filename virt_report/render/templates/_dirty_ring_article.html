@@ -2,7 +2,7 @@
 {% set linux_source = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 {% from '_mechanism_diagram.html' import diagram with context %}
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2>如何记录并发修改而不漏页</h2>
   <p>预拷贝迁移需要反复收集客户机修改过的内存页。KVM 负责记录客户机执行期间产生的脏页，QEMU 将这些记录汇入迁移位图，随后读取和传输相应页面。记录的交接顺序决定了并发写入能否在下一轮被发现。</p>
   <p>本文分析 KVM 位图接口和 Dirty Ring 的记录、收割与重新保护过程，重点跟踪一页内存在客户机写入和迁移读取之间的状态变化。硬件缓冲以 x86 PML 为例，并说明 ARM 对内存顺序及补充位图的要求。</p>
   {% include '_mechanism_baselines.html' %}
@@ -10,7 +10,7 @@
 </section>
 
 <section id="principle" class="mechanism-section">
-  <h2>脏页记录的交接</h2>
+  <h2>记录、重新保护与读页的顺序</h2>
   <p>写脏跟踪围绕客户机物理页进行。KVM 内存槽（memslot）定义一段客户机物理内存及其宿主映射，注册与建图过程见<a href="kvm-ept-fault.html#structures">内存映射与 EPT 缺页处理</a>。启用 <code>KVM_MEM_LOG_DIRTY_PAGES</code> 后，KVM 为该内存区域记录写入。一个脏页标记只表达“此页需要重新读取”，不携带页内容，也不记录客户机写过哪些字节。</p>
   <p>一个页面可以被连续修改许多次。采用写保护跟踪时，首次写入触发记录并放行后续写入；采用硬件脏位或 PML 时，记录的产生还受硬件脏状态影响。迁移关心当前页内容，因此重复记录可以合并。重新保护或重置硬件脏状态后，下一次写入需要再次进入脏页日志。</p>
   <ol class="mechanism-flow">
@@ -23,7 +23,7 @@
 </section>
 
 <section id="bitmap" class="mechanism-section">
-  <h2>按页索引的位图</h2>
+  <h2>位图接口：按内存槽收集脏页</h2>
   <p><code>KVM_GET_DIRTY_LOG</code> 按 memslot 返回位图，每个比特对应一个页偏移。例如槽中 P1、P3、P6 被修改，位图按 P0 至 P7 展示为 <code>0 1 0 1 0 0 1 0</code>。它可以直接合并同页的重复写入，也方便按内存地址扫描。</p>
   <p>位图长度由内存槽大小决定。以 1 TiB 内存、4 KiB 页为例，一份位图为 32 MiB；即使本次只修改少数页面，传统接口仍需交接对应槽的位图。内存规模大、写入较稀疏时，处理整张位图的开销会更加明显。这只是单份位图的大小，QEMU 与内核还可能维护其他用途的位图。</p>
   <h3>收取与清除的两种方式</h3>
@@ -32,7 +32,7 @@
 </section>
 
 <section id="ring" class="mechanism-section">
-  <h2>每个 vCPU 的 Dirty Ring</h2>
+  <h2>Dirty Ring：按 vCPU 交付地址记录</h2>
   <p>Dirty Ring 为每个 vCPU 分配一个可映射到用户态的环形数组。KVM 依次写入脏页地址，QEMU 顺序消费已经发布的条目。条目由 <code>flags</code>、<code>slot</code> 和 <code>offset</code> 组成：slot 标识地址空间及内存槽，offset 是槽内页偏移。</p>
   <table><thead><tr><th scope="col">kvm_dirty_gfn 字段</th><th scope="col">宽度</th><th scope="col">内容与更新者</th></tr></thead><tbody><tr><td><code>flags</code></td><td>32 位</td><td>KVM 发布 DIRTY，QEMU 收割后写 RESET，KVM 回收为 0</td></tr><tr><td><code>slot</code></td><td>32 位</td><td>KVM 写入地址空间 ID 与 memslot ID；它与环数组下标无关</td></tr><tr><td><code>offset</code></td><td>64 位</td><td>KVM 写入槽内页偏移，单位是页，不是字节</td></tr></tbody></table>
   <p>例如环位 0 中的 <code>{flags: DIRTY, slot: 0, offset: 3}</code>表示内存槽 0 的第 3 页。若槽起始 GPA 为 0、页大小为 4 KiB，对应 GPA 为 <code>0x3000</code>。条目仅记录地址，页面内容由迁移线程之后读取。<a href="{{ linux_source }}include/uapi/linux/kvm.h#L1452-L1493">共享条目定义</a></p>
@@ -64,7 +64,7 @@
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码</h2>
+  <h2>源码：从环条目到迁移位图</h2>
   <table><thead><tr><th>环节</th><th>入口与作用</th></tr></thead><tbody>
     <tr><td>记录脏页</td><td><a href="{{ linux_source }}virt/kvm/kvm_main.c#L3520-L3541"><code>mark_page_dirty_in_slot()</code></a>：根据运行中的 vCPU 和能力选择环或补充位图。</td></tr>
     <tr><td>发布环条目</td><td><a href="{{ linux_source }}virt/kvm/dirty_ring.c#L218-L240"><code>kvm_dirty_ring_push()</code></a>：写入地址、发布 DIRTY、推进生产位置并检查 soft limit。</td></tr>
@@ -75,6 +75,7 @@
   </tbody></table>
   <p>启用 Dirty Ring 后，QEMU 仍使用位图。<code>KVMSlot.dirty_bmap</code> 用来合并环中的地址记录，QEMU 全局脏页位图承接各来源的修改，<code>RAMBlock.bmap</code> 则维护迁移待发送集合。同一页在不同收割周期再次出现时，位图可以去重；它们分别承担内核交接、统一汇总和迁移调度的职责。</p>
   <p>设备模拟、vhost 和直通设备也可能修改客户机内存，需要各自的脏页记录与同步路径。仅收取 vCPU 的 Dirty Ring，不能覆盖整台虚拟机的全部写入。</p>
+  <p>回到 P3 的例子，完整条件是：其地址已经交给 QEMU、KVM 已重新允许跟踪下一次修改、迁移线程随后读取页面。只做到“把环读空”还缺少重新保护；只做到“把页读完”也不能保证之后的修改进入日志。Dirty Ring 改善地址记录的交付效率，正确性仍由这一整段交接顺序保证。</p>
 </section>
 
 <section id="evolution" class="mechanism-section">

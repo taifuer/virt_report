@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=c084ccad2981">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c084ccad2981">
-<link rel="stylesheet" href="../assets/qcow2-map.css?v=c084ccad2981"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/qcow2-map.css?v=32683d73423f"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -43,20 +43,21 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#qemu-internals">QEMU 内部机制</a></div>
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="qemu-internals.html">QEMU 内部机制</a></div>
     <h1>QEMU qcow2 的地址映射与写时复制</h1>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">前言</a></li><li><a href="#mapping">簇映射与引用计数</a></li><li><a href="#lookup">沿地址观察一次读写</a></li><li><a href="#reads">本层数据、未分配与显式零</a></li><li><a href="#writes">4 KiB 写入怎样保留其余 60 KiB</a></li><li><a href="#evolution">子簇映射与写入粒度</a></li><li><a href="#sources">参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、4 KiB 写入为何需要簇映射</a></li><li><a href="#mapping">二、L1、L2 与 refcount 如何定位数据</a><ol><li><a href="#mapping-part-1">1. 从客户机磁盘偏移查到数据簇</a></li><li><a href="#mapping-part-2">2. 用宿主簇编号查引用计数</a></li></ol></li><li><a href="#lookup">三、示例：偏移 0x20031000 的读写</a></li><li><a href="#reads">四、读取如何选择本层、backing 或零</a></li><li><a href="#writes">五、4 KiB 写入怎样保留其余 60 KiB</a><ol><li><a href="#writes-part-1">1. 独占数据簇：原位覆盖请求范围</a></li><li><a href="#writes-part-2">2. 共享数据簇：分配新位置并补齐首尾</a></li><li><a href="#writes-part-3">3. 共享 L2 与元数据的提交顺序</a></li></ol></li><li><a href="#evolution">六、Extended L2 如何减少局部写放大</a></li><li><a href="#sources">七、参考资料</a></li></ol></nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2><span class="mechanism-heading-number">一、</span>4 KiB 写入为何需要簇映射</h2>
   <p>客户机向虚拟磁盘偏移 512 MiB 附近写入 4 KiB，宿主上的 qcow2 文件不一定在同一偏移保存这段数据。文件中还分布着映射表、引用计数和未使用空间；尚未写入的区域可以从 backing file 读取。理解一次 I/O，需要分别回答“客户机地址落在哪里”和“那个位置是否允许直接改写”。</p>
   <p>本文沿着地址查找、读取分流和局部写入展开。示例使用普通 64 位 L2 表项、64 KiB 簇和 16 位 refcount，不启用压缩、加密、外置数据文件或 lazy refcounts。设备如何把请求送入块层可接着阅读 <a href="qemu-virtio-blk.html">virtio-blk 的请求处理与写入完成</a>；这里从 qcow2 驱动收到磁盘字节偏移开始。</p>
 <p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p></section>
 
 <section id="mapping" class="mechanism-section">
-  <h2>簇映射与引用计数</h2>
+  <h2><span class="mechanism-heading-number">二、</span>L1、L2 与 refcount 如何定位数据</h2>
+  <h3 id="mapping-part-1"><span class="mechanism-heading-number">1. </span>从客户机磁盘偏移查到数据簇</h3>
   <p>qcow2 以 cluster 为文件空间的分配单位。L1 指向 L2 表，L2 表项再描述数据簇；它们按客户机磁盘偏移查找。refcount table 指向 refcount block，记录的是当前 qcow2 文件中各个宿主簇的引用数，数据和元数据簇都受它管理。backing file 属于另一个块节点，不计入当前文件的这套引用计数。</p>
   <p>一个普通 L2 表占一簇，每项 8 字节。64 KiB 簇可容纳 8192 项，因此一个 L1 表项覆盖 512 MiB 客户机地址。对地址 <code>0x20031000</code>，整数除法与取余给出：</p>
   <pre><code>cluster_size = 0x10000，L2 每表 8192 项
@@ -69,13 +70,14 @@ L1[1] → L2 表 @ 0x40000
 L2[3] → 数据簇 @ 0x90000
 实际数据位置 = 0x90000 + 0x1000 = 0x91000</code></pre>
   <p>这里的箭头表示去掉标志位后的文件偏移。L1、L2 的最高位 <code>QCOW_OFLAG_COPIED</code> 表示所指簇的 refcount 为 1，可供写路径判断是否需要另行分配；名字容易使人误以为它记录“复制已完成”。该提示只对活动映射有效，不能拿非活动表中的旧值代替引用计数。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/qcow2.rst#L511-L595">映射与表项布局</a></p>
+  <h3 id="mapping-part-2"><span class="mechanism-heading-number">2. </span>用宿主簇编号查引用计数</h3>
   <p>反查数据簇的归属时，起点换成宿主文件偏移。一个 64 KiB refcount block 包含 32768 个 16 位计数；0x90000 对应宿主簇 9，因此取 refcount table[0] 指向的 block[9]。0 表示空闲，1 表示独占，2 或更大表示共享。L2 表位于宿主簇 4，其计数在 block[4]，与数据簇的 block[9] 是两个独立条目。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/qcow2.rst#L453-L508">宿主簇计数索引</a></p>
   <p>继续展开文件中的位置：假设 L1 起点为 0x10000，则 L1[1] 存在 0x10008；L2[3] 存在 0x40000 + 3 × 8 = 0x40018。若第一个 refcount block 位于 0x20000，簇 9 的计数就在 0x20012。它们分别是“指针存放的位置”“指针指向的位置”和“引用计数存放的位置”，读取十六进制转储时应逐层区分。</p>
   <p>这里的宿主簇是 qcow2 文件中的逻辑区间，不能直接等同于宿主磁盘的物理扇区。底层文件系统仍可能使用稀疏区间、压缩或自己的写时复制。qcow2 已分配一个簇，只说明格式层为其保留位置并建立归属；文件系统究竟分配多少空间，需要另看其分配与预分配行为。</p>
 </section>
 
 <section id="lookup" class="mechanism-section">
-  <h2>沿地址观察一次读写</h2>
+  <h2><span class="mechanism-heading-number">三、</span>示例：偏移 0x20031000 的读写</h2>
 <section class="qcow2-map-lab" data-qcow2-map-lab data-mechanism-view="lab" aria-labelledby="qcow2-map-title">
   <div class="mechanism-view-heading"><h3 id="qcow2-map-title">L1 / L2 映射与一次局部写入</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
   <p>输入客户机磁盘偏移，选择初态与读写方向，比较映射和两类引用计数。每次推演都从所选初态开始，不累计修改。</p>
@@ -104,7 +106,7 @@ L2[3] → 数据簇 @ 0x90000
 </section>
 
 <section id="reads" class="mechanism-section">
-  <h2>本层数据、未分配与显式零</h2>
+  <h2><span class="mechanism-heading-number">四、</span>读取如何选择本层、backing 或零</h2>
   <p><code>qcow2_get_host_offset()</code> 取得 L1、加载 L2 缓存片段，并识别表项类型。普通已分配簇按宿主偏移读取；refcount 为 2 不改变读取位置。跨越类型、连续映射或缓存片段边界的请求可能被拆开，不能假定一次客户机读取只发出一个底层 I/O。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/qcow2-cluster.c#L586-L656">查找与分类</a></p>
   <table><thead><tr><th scope="col">当前映射</th><th scope="col">读取行为</th></tr></thead><tbody>
     <tr><td>普通已分配数据</td><td>读取当前文件的数据簇，加上簇内偏移</td></tr>
@@ -117,16 +119,16 @@ L2[3] → 数据簇 @ 0x90000
 </section>
 
 <section id="writes" class="mechanism-section">
-  <h2>4 KiB 写入怎样保留其余 60 KiB</h2>
+  <h2><span class="mechanism-heading-number">五、</span>4 KiB 写入怎样保留其余 60 KiB</h2>
   <figure class="mechanism-diagram" data-diagram="qcow2-mapping-cow" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
     <span data-mechanism-title>地址查找与局部写入的分支</span>
     <button type="button" data-mechanism-expand aria-label="放大查看地址查找与局部写入的分支" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="地址查找与局部写入的分支">
-    <img src="../assets/qcow2-mapping-cow.svg?v=c084ccad2981" alt="图示普通数据、未分配及无预分配数据簇的显式零。先取得可修改的 L2 表，再判断数据簇是否需要重新分配；新分配簇准备好有效数据后才接入 L2，并释放旧引用。顺序概括成功路径，缓存依赖负责约束写回。" loading="lazy">
+    <img src="../assets/qcow2-mapping-cow.svg?v=32683d73423f" alt="图示普通数据、未分配及无预分配数据簇的显式零。先取得可修改的 L2 表，再判断数据簇是否需要重新分配；新分配簇准备好有效数据后才接入 L2，并释放旧引用。顺序概括成功路径，缓存依赖负责约束写回。" loading="lazy">
   </div>
-  <figcaption>图示普通数据、未分配及无预分配数据簇的显式零。先取得可修改的 L2 表，再判断数据簇是否需要重新分配；新分配簇准备好有效数据后才接入 L2，并释放旧引用。顺序概括成功路径，缓存依赖负责约束写回。 <a href="../assets/qcow2-mapping-cow.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>图示普通数据、未分配及无预分配数据簇的显式零。先取得可修改的 L2 表，再判断数据簇是否需要重新分配；新分配簇准备好有效数据后才接入 L2，并释放旧引用。顺序概括成功路径，缓存依赖负责约束写回。 <a href="../assets/qcow2-mapping-cow.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: qcow2 地址映射与局部写入
   accDescr: 本图限普通数据、未分配以及无预分配数据簇的显式零。客户机偏移拆成 L1 索引、L2 索引和簇内偏移。读取按表项返回本层数据、backing 数据或零。写入先准备可修改的 L2 表，独占普通数据簇可原位写入，共享或未分配数据需要新簇；新数据准备完成并设置写回依赖后更新 L2，最后减少旧数据引用。
@@ -151,10 +153,13 @@ L2[3] → 数据簇 @ 0x90000
   class metadata,inplace,allocate,prepare,link,release write;
 </code></pre></details>
 </figure>
+  <h3 id="writes-part-1"><span class="mechanism-heading-number">1. </span>独占数据簇：原位覆盖请求范围</h3>
   <p>对于已分配、独占的普通数据簇，4 KiB 写入直接落到原宿主偏移，其他 60 KiB 留在原处，无须读回拼接。<code>handle_copied()</code> 识别可以保留的簇；普通已分配区间无需生成额外的 L2 修改记录。若需改写 L2 而该表共享，仍应先准备独占的元数据表。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/qcow2-cluster.c#L1495-L1582">原位写入判断</a></p>
   <p>预分配的独占零簇也可以复用已有宿主位置，但须处理未覆盖部分的零语义并更新 L2 状态。它与图中尚无宿主数据簇的显式零不同，也不能简单套用普通数据簇“只覆盖请求范围”的分支。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/qcow2-cluster.c#L1327-L1345">是否需要新分配</a></p>
+  <h3 id="writes-part-2"><span class="mechanism-heading-number">2. </span>共享数据簇：分配新位置并补齐首尾</h3>
   <p>共享数据簇不能覆盖。示例旧数据在 0x90000、refcount 为 2，写入新分配的 0x110000 后，本次映射指向新簇，旧簇计数降为 1，另一份引用仍读到原内容。新簇中未被 4 KiB 请求覆盖的首尾区域，要从旧的逻辑视图补齐；若原映射未分配，这些字节来自 backing，或在没有 backing 数据时补零。显式零映射的保留部分始终补零。</p>
   <p><code>QCowL2Meta</code> 记录待接入映射及首尾 COW 区间。客户机数据可能先写，也可能与补齐数据合并写；<code>perform_cow()</code> 甚至会合并首尾读取，实际读取量未必恰好等于 60 KiB。因此可以用“保留 60 KiB 的旧语义”解释结果，却不能据此断言一定发生两次读或一次整簇拷贝。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/qcow2.c#L2708-L2733">数据写入与合并</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/qcow2-cluster.c#L888-L1021">补齐首尾区间</a></p>
+  <h3 id="writes-part-3"><span class="mechanism-heading-number">3. </span>共享 L2 与元数据的提交顺序</h3>
   <p>若 L2 自身共享，<code>get_cluster_table()</code> 先分配新 L2，刷出其引用计数，复制旧表并刷出，然后更新 L1 指针，最后减少旧 L2 的引用。这个步骤保留原有数据指针；数据簇的替换是接下来的独立变化。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/qcow2-cluster.c#L273-L367">新 L2 的准备和接入</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/qcow2-cluster.c#L784-L799">旧 L2 引用释放</a></p>
   <p>数据路径在写入及补齐成功后更新 L2，再减少旧数据簇的计数。常规 refcount 模式下，L2 写回依赖新簇计数的写回；COW 数据还有 flush 依赖，释放旧簇的计数更新也受元数据依赖约束。不能先让持久化指针指向尚未准备好的数据，也不能过早把仍被持久化映射引用的旧簇变为空闲。这里描述的是依赖关系，并不意味着每个小写请求都会同步刷盘；最终持久性还受 flush/FUA 和缓存模式影响。lazy refcounts 另有标脏与恢复规则。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/qcow2-cluster.c#L1028-L1117">接入 L2</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/qcow2-refcount.c#L827-L836">释放时的缓存依赖</a></p>
   <p>完整覆盖一个普通簇时，没有首尾旧字节需要保留，共享数据仍须换到新位置，但可以省去这部分读取。反过来，跨簇的小请求可能牵涉两个数据簇，甚至两张 L2 表。判断开销时要看请求与簇边界的关系，而不只看请求总长度。新分配不等于读取整个旧簇，COW 也不等于所有写入必经的固定步骤。</p>
@@ -162,15 +167,16 @@ L2[3] → 数据簇 @ 0x90000
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>子簇映射与写入粒度</h2>
+  <h2><span class="mechanism-heading-number">六、</span>Extended L2 如何减少局部写放大</h2>
   <p>普通 L2 表项把整个簇看作一个数据来源。较大簇减少映射数量，却使首次局部写入可能需要带入大量 backing 数据。QEMU 5.2 加入 extended L2：<a href="https://github.com/qemu/qemu/commit/30afc12085c8e7759abc77651f65916afdca7bbd">格式说明提交</a>定义子簇位图，<a href="https://github.com/qemu/qemu/commit/7be20252588422ab92464250d60063997ad29d59">功能启用提交</a>加入创建选项与不兼容特性位。它是可选格式能力，普通 L2 并未因此消失。</p>
   <p>扩展表项从 8 字节增加到 16 字节；后 64 位用两组 32 位分别表示分配状态和读零状态，一个普通数据簇分成 32 个连续子簇。取 128 KiB 簇，子簇就是 4 KiB：向原先未分配区域写入一个对齐的 4 KiB 块，可以仅把该子簇标为本层有效，其余子簇继续读取 backing，不必全部带入本层。零位与分配位不能同时置位。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/qcow2.rst#L624-L677">extended L2 格式</a></p>
   <p>这仍保留簇级宿主分配与 refcount，32 个子簇没有各自独立的宿主基址；共享簇也不能因子簇位图存在就任意原位覆盖。代价包括更多状态组合，以及相同簇大小下翻倍的 L2 元数据：64 KiB 簇的 L2 表只剩 4096 项，覆盖 256 MiB；若要缓存相同磁盘范围，L2 缓存也需要约两倍容量，refcount block 不随之翻倍。选择较大簇可改善映射覆盖，但实际收益还取决于局部写入、共享关系和底层文件系统的分配方式。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/qcow2-cache.txt#L227-L241">缓存容量影响</a></p>
   <p>子簇边界同样重要：只覆盖半个子簇的首次写入，仍要保留该子簇内其余字节；已经由本层独占且有效的区域则可以继续原位更新。扩展表项提供的是更细的有效数据描述，收益主要体现在避免把仍可从 backing 读取的范围提前带入本层。评估时可分别观察元数据缓存、补齐读取与宿主分配，区分究竟省下了哪一类工作。</p>
+  <p>因此，同样一次 4 KiB 写入要分三类测量：独占有效簇主要承担数据覆盖；未分配簇增加空间分配与旧语义补齐；共享簇还要保护其他引用，可能连 L2 一起 COW。比较格式或簇大小时，应固定这些初始条件及缓存、刷新策略，再观察读取放大、写入延迟和镜像实际占用。把三类请求混成一个平均值，很难看出改进来自哪个环节。</p>
 </section>
 
 <section id="sources" class="mechanism-section">
-  <h2>参考资料</h2>
+  <h2><span class="mechanism-heading-number">七、</span>参考资料</h2>
   <ul>
     <li><a href="https://www.qemu.org/docs/master/interop/qcow2.html">QEMU 官方 qcow2 格式文档</a></li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/qcow2.rst#L453-L677">基线格式：引用计数、簇映射与扩展 L2</a></li>
@@ -185,6 +191,6 @@ L2[3] → 数据簇 @ 0x90000
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=c084ccad2981" defer></script>
-<script src="../assets/qcow2-map.js?v=c084ccad2981" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+<script src="../assets/qcow2-map.js?v=32683d73423f" defer></script></body>
 </html>

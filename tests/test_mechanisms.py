@@ -42,7 +42,7 @@ def test_editorial_metadata_pins_each_repository_and_only_published_articles():
         assert (render.TEMPLATES_DIR / article["template"]).is_file()
         assert article["baselines"]
         assert {item["project"] for item in article["baselines"]} <= {
-            "QEMU", "Linux", "Libvirt", "SPDK",
+            "QEMU", "Linux", "Libvirt", "SPDK", "DPDK",
         }
         for field in ("script", "stylesheet"):
             if article.get(field):
@@ -88,10 +88,12 @@ def test_article_has_matching_toc_source_evidence_and_no_inline_scripts(slug):
     assert len(parsed.ids) == len(set(parsed.ids))
     assert len(parsed.headings) == 1
     assert f'{article["title"]} - virt-report' in page
-    for section in article["sections"]:
+    from virt_report.render.article_outline import chinese_number
+    for index, section in enumerate(article["sections"], 1):
         assert section["id"] in parsed.ids
         assert f'#{section["id"]}' in parsed.links
-        assert f'<h2>{section["title"]}</h2>' in page
+        assert (f'<h2><span class="mechanism-heading-number">{chinese_number(index)}、</span>'
+                f'{section["title"]}</h2>') in page
     assert all(src.startswith("../assets/") for src in parsed.scripts)
     for field in ("script", "stylesheet"):
         if article.get(field):
@@ -270,10 +272,14 @@ def test_catalogue_has_one_title_link_per_article_without_redundant_cta():
     assert "源码基线" not in page
     assert "QEMU 10.2.0" not in page
     for article in mechanisms.articles():
-        assert page.count(f'<h4><a href="mechanisms/{article["slug"]}.html">') == 1
+        topic = mechanisms.get_topic(article["topic"])
+        prefix = f'<h3 id="mechanism-topic-{topic["slug"]}">' if topic.get("overview") == article["slug"] else '<h4>'
+        assert page.count(f'{prefix}<a href="mechanisms/{article["slug"]}.html">') == 1
     assert 'id="migration" aria-labelledby="mechanism-topic-migration"' in page
-    assert '<h3 id="mechanism-topic-migration">热迁移</h3>' in page
-    assert '<h3 id="mechanism-topic-device-virtualization">设备与 I/O 虚拟化</h3>' in page
+    assert ('<h3 id="mechanism-topic-migration"><a href="mechanisms/'
+            'migration.html">热迁移</a></h3>') in page
+    assert ('<h3 id="mechanism-topic-device-virtualization"><a href="mechanisms/'
+            'device-virtualization.html">设备与 I/O 虚拟化</a></h3>') in page
     assert page.count('class="mechanism-topic"') == len(mechanisms.topics())
 
 

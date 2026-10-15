@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=c084ccad2981">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c084ccad2981">
-<link rel="stylesheet" href="../assets/device-tx.css?v=c084ccad2981"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/device-tx.css?v=32683d73423f"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -43,25 +43,26 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#device-virtualization">设备与 I/O 虚拟化</a></div>
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="device-virtualization.html">设备与 I/O 虚拟化</a></div>
     <h1>QEMU 网卡模拟与 virtio-net 的发包路径</h1>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">前言</a></li><li><a href="#interfaces">设备接口与队列</a></li><li><a href="#virtqueue">virtqueue 的数据结构与操作</a></li><li><a href="#flow">一次发包的处理过程</a></li><li><a href="#notification">通知与完成</a></li><li><a href="#implementation">关键源码</a></li><li><a href="#evolution">接口演进与后端分工</a></li><li><a href="#sources">参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、一个报文怎样离开虚拟机</a></li><li><a href="#interfaces">二、接口选择：e1000 寄存器与 virtio 队列</a><ol><li><a href="#interfaces-part-1">1. e1000：实现硬件定义的接口</a></li><li><a href="#interfaces-part-2">2. virtio-net：通用队列与网络设备格式</a></li></ol></li><li><a href="#virtqueue">三、共享结构：描述符、两个环与报文缓冲区</a><ol><li><a href="#virtqueue-part-1">1. 索引、环槽与描述符编号</a></li><li><a href="#virtqueue-part-2">2. 从共享描述符到 QEMU 本地对象</a></li></ol></li><li><a href="#flow">四、逐步发送：发布 P1、后端读取与驱动回收</a><ol><li><a href="#flow-part-1">1. e1000 的发送路径</a></li><li><a href="#flow-part-2">2. virtio-net 的发送路径</a></li></ol></li><li><a href="#notification">五、通知边界：kick、完成记录与中断</a><ol><li><a href="#notification-part-1">1. 发布队列与发送 kick</a></li><li><a href="#notification-part-2">2. 完成记录与完成中断</a></li></ol></li><li><a href="#implementation">六、源码路径：从网卡接口到 TAP</a></li><li><a href="#evolution">七、演进取舍：packed 队列与独立后端</a><ol><li><a href="#evolution-part-1">1. 兼容硬件驱动与统一虚拟设备接口</a></li><li><a href="#evolution-part-2">2. 后端迁移到内核或独立进程</a></li></ol></li><li><a href="#evaluation">八、如何判断瓶颈与改进是否有效</a></li><li><a href="#sources">九、参考资料</a></li></ol></nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
-  <p>QEMU 可以向客户机提供 e1000 或 virtio-net 网卡。前者实现已有网卡的寄存器和描述符接口，客户机可以使用对应的硬件驱动；后者采用 virtio 协议，由客户机驱动和设备端通过 virtqueue 交换请求。沿一次发包过程，可以看到两种接口如何提交报文、通知设备，以及回收缓冲区。</p>
+  <h2><span class="mechanism-heading-number">一、</span>一个报文怎样离开虚拟机</h2>
+  <p>客户机准备好一个 60 B 以太网帧后，需要把三件事告诉设备：数据放在哪里、现在可以读取，以及读完后何时归还缓冲区。本文沿“准备 P1 → 发布队列 → QEMU 读取 → TAP 接收 → 驱动回收”追踪同一个请求，比较 e1000 寄存器接口与 virtio-net 共享队列。</p>
+  <p>virtio-net 的主线是：描述符记录地址和长度，available ring 发布描述符链首，used ring 归还已处理的链；报文位于描述符指向的缓冲区。kick 和中断提示另一端检查队列。理解这几个对象的关系后，就能区分数据传递、通知加速和缓冲区生命周期。</p>
   <p>本文分析 x86 / KVM 下的 QEMU 用户态网卡路径：e1000 与 modern virtio-net PCI 设备使用相同的 TAP 后端，关闭 vhost；virtio-net 采用 split virtqueue。示例只发送一个普通以太网帧，省略校验和与分段卸载，不配置客户机 IOMMU。涉及 DMA 地址的实际系统，还需按平台配置完成地址转换。</p>
 <p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
 
 <section id="interfaces" class="mechanism-section">
-  <h2>设备接口与队列</h2>
+  <h2><span class="mechanism-heading-number">二、</span>接口选择：e1000 寄存器与 virtio 队列</h2>
   <p>网络发送包含三类交互：客户机在内存中准备报文和队列元数据，通过设备接口提交工作，再从完成记录中判断哪些缓冲区可以回收。报文内容、提交通知和完成通知承担不同职责，追踪时应分别观察。</p>
-  <h3>e1000：实现硬件定义的接口</h3>
+  <h3 id="interfaces-part-1"><span class="mechanism-heading-number">1. </span>e1000：实现硬件定义的接口</h3>
   <p>e1000 驱动在客户机内存中分配 TX 描述符环。描述符记录缓冲区地址、长度以及命令和状态位；<code>EOP</code>标记一个报文的结束，<code>RS</code>请求状态回写。设备寄存器 <code>TDBAL/TDBAH</code>保存环地址，<code>TDLEN</code>保存长度，<code>TDH</code>和 <code>TDT</code>表示消费位置与驱动提交的尾位置。</p>
   <p>驱动填好描述符后写 <code>TDT</code>，QEMU 的 e1000 模型就按硬件接口约定读取客户机内存。这里已经存在描述符环和 DMA 语义：软件模型通过 <code>pci_dma_read()</code>、<code>pci_dma_write()</code>完成设备视角的内存访问。描述符环本身无需复制到某个“宿主设备专属内存”才能使用。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/e1000.c#L638-L803">e1000 发送实现</a></p>
-  <h3>virtio-net：通用队列与网络设备格式</h3>
+  <h3 id="interfaces-part-2"><span class="mechanism-heading-number">2. </span>virtio-net：通用队列与网络设备格式</h3>
   <p>split virtqueue 把队列划分为描述符表、available ring 和 used ring。驱动填写描述符链，将链首编号放入 available ring；设备读取链上的缓冲区，完成后把链首编号写入 used ring。<code>avail.idx</code>与 <code>used.idx</code>分别记录已发布和已完成的队列项数量，按协议规定的整数宽度回绕。</p>
   <p>virtio-net 在帧前携带 <code>virtio_net_hdr</code>，用于描述网络卸载等信息。该头属于客户机与设备间的协议元数据；它不会作为以太网帧的一部分发送到远端。TAP 支持的 <code>vnet_hdr</code>还允许 QEMU 与宿主内核传递这些元数据，具体长度和能力需要协商。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/virtio-net.c#L2716-L2796">发送头与缓冲区整理</a></p>
   <table>
@@ -78,7 +79,7 @@
 </section>
 
 <section id="virtqueue" class="mechanism-section">
-  <h2>virtqueue 的数据结构与操作</h2>
+  <h2><span class="mechanism-heading-number">三、</span>共享结构：描述符、两个环与报文缓冲区</h2>
   <p>split virtqueue 使用三个共享区域：描述符表保存缓冲区位置，available ring 发布可用的描述符链，used ring 归还已处理的链。两个环中的项可以循环复用，报文则保存在描述符指向的内存中。描述符表、环槽和报文缓冲区各有自己的地址与生命周期。</p>
   <figure class="mechanism-diagram" data-diagram="virtqueue-tx-layout" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
@@ -86,9 +87,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看一条 TX 请求在 split virtqueue 中的关联" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="一条 TX 请求在 split virtqueue 中的关联">
-    <img src="../assets/virtqueue-tx-layout.svg?v=c084ccad2981" alt="本例队列长度为 4，图示请求已完成、驱动尚未回收。环槽 3 保存链首 0，描述符链为 0 → 2，实际数据位于各自的客户机缓冲区；used.len 为 0 表示设备没有向这条发送链写入数据。" loading="lazy">
+    <img src="../assets/virtqueue-tx-layout.svg?v=32683d73423f" alt="本例队列长度为 4，图示请求已完成、驱动尚未回收。环槽 3 保存链首 0，描述符链为 0 → 2，实际数据位于各自的客户机缓冲区；used.len 为 0 表示设备没有向这条发送链写入数据。" loading="lazy">
   </div>
-  <figcaption>本例队列长度为 4，图示请求已完成、驱动尚未回收。环槽 3 保存链首 0，描述符链为 0 → 2，实际数据位于各自的客户机缓冲区；used.len 为 0 表示设备没有向这条发送链写入数据。 <a href="../assets/virtqueue-tx-layout.svg?v=c084ccad2981" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>本例队列长度为 4，图示请求已完成、驱动尚未回收。环槽 3 保存链首 0，描述符链为 0 → 2，实际数据位于各自的客户机缓冲区；used.len 为 0 表示设备没有向这条发送链写入数据。 <a href="../assets/virtqueue-tx-layout.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: Split virtqueue 中的一条发送链
     accDescr: 长度为四的队列中，可用环编号为三的槽保存链首编号零，描述符零通过 next 指向描述符二。两个描述符分别指向网络头和以太网帧；完成环以 id 零归还整条链，报文数据不存放在两个环中。
@@ -118,7 +119,7 @@
     <div><strong>实际数据缓冲区</strong><div><code>desc[0].addr → 网络头；desc[2].addr → 报文 P1</code><p>链中的描述符编号可以不连续。驱动提交后保持描述符与数据有效，设备发布 used 后由驱动回收；设备私有的 last_avail_idx 和驱动私有的 last_used_idx 分别记录消费与回收进度。</p></div></div>
   </div>
   <p>上述字段展示共享格式的主体。启用 <code>VIRTIO_F_RING_EVENT_IDX</code> 时，可用区末尾还有 <code>used_event</code>，已用区末尾还有 <code>avail_event</code>，用于控制完成通知和 kick 的触发位置。未使用该特性时，通过对应 flags 抑制通知。modern virtio 的多字节共享字段使用小端序。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/uapi/linux/virtio_ring.h#L96-L149">Linux 的 vring 结构</a></p>
-  <h3>索引、环槽与描述符编号</h3>
+  <h3 id="virtqueue-part-1"><span class="mechanism-heading-number">1. </span>索引、环槽与描述符编号</h3>
   <p><code>idx</code> 是 16 位递增计数器，访问数组时再计算 <code>idx % N</code>。对于长度为 4 的环，提交位置 3 对应 ring[3]，下一次位置 4 对应 ring[0]；计数器达到 65535 后回到 0。ring[3] 中可以保存链首编号 0，链首 0 又可以通过 next 指向描述符 2，三种数字不能互换。</p>
   <table><thead><tr><th scope="col">操作</th><th scope="col">共享状态</th><th scope="col">私有进度与缓冲区</th></tr></thead><tbody>
     <tr><td>准备链 0 → 2</td><td>填写两个 desc，网络头和 P1 就绪</td><td>驱动保留这两个描述符，暂不允许复用</td></tr>
@@ -128,13 +129,13 @@
     <tr><td>驱动回收</td><td>不要求清零旧环项</td><td>推进 last_used_idx，把链 0 → 2 归还空闲集合</td></tr>
   </tbody></table>
   <p>新旧项由生产与消费索引区分，不能用“字段是不是 0”判断环为空。回绕时按 16 位计算索引差，驱动还要跟踪尚未回收的描述符，避免覆盖设备仍在使用的请求。下面的演示可选择起始索引 0、3 或 65535，观察环槽与计数器的不同变化。</p>
-  <h3>从共享描述符到 QEMU 本地对象</h3>
+  <h3 id="virtqueue-part-2"><span class="mechanism-heading-number">2. </span>从共享描述符到 QEMU 本地对象</h3>
   <p><code>virtqueue_split_pop()</code> 取到链首后检查描述符编号、链长度和可访问范围，将设备可读的段整理到 <code>VirtQueueElement.out_sg</code>，设备可写的段整理到 <code>in_sg</code>。元素的 <code>index</code> 保留链首，用于完成时写回 used.id。这些 iovec 是 QEMU 的宿主内存视图；它们与客户机共享的 desc[] 是不同对象。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio.c#L1693-L1848">split 队列消费</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/hw/virtio/virtio.h">VirtQueueElement 定义</a></p>
   <p>本例把 modern virtio-net 的 12 B 网络头放在 desc[0]，把 60 B 以太网帧放在 desc[2]；两项均为设备可读。实际驱动也可把网络头与报文合并在一个缓冲区，或用更多描述符组织分散的数据。描述符链长度、报文数量和通知次数应分别计数。</p>
 </section>
 
 <section id="flow" class="mechanism-section">
-  <h2>一次发包的处理过程</h2>
+  <h2><span class="mechanism-heading-number">四、</span>逐步发送：发布 P1、后端读取与驱动回收</h2>
   <p>下图以报文 P1 为例，展示客户机准备缓冲区、设备处理和驱动回收的全过程。两种网卡使用相同的 TAP 后端，图中的变化集中在队列和通知机制。</p>
 <section class="device-tx-lab" data-device-tx-lab data-mechanism-view="lab" aria-labelledby="device-tx-title">
   <div class="mechanism-view-heading">
@@ -144,7 +145,7 @@
   <p>两种网卡都由 QEMU 处理报文，再写入同一个 TAP 后端。切换接口后，观察客户机内存中的队列、通知路径和完成记录。</p>
   <div class="device-tx-controls" data-tx-controls hidden>
     <div class="device-tx-options">
-      <label for="device-tx-interface">客户机网卡<select id="device-tx-interface" data-tx-interface><option value="e1000">e1000 · 设备模拟</option><option value="virtio">virtio-net · QEMU 后端</option></select></label>
+      <label for="device-tx-interface">客户机网卡<select id="device-tx-interface" data-tx-interface><option value="e1000">e1000 · 设备模拟</option><option value="virtio" selected>virtio-net · QEMU 后端</option></select></label>
       <label for="device-tx-notification">提交通知<select id="device-tx-notification" data-tx-notification disabled><option value="ioeventfd">KVM ioeventfd</option><option value="mmio" selected>QEMU MMIO 回调</option><option value="suppressed">后端处理中，抑制 kick</option></select></label>
       <label for="device-tx-queue-start">virtqueue 起始索引<select id="device-tx-queue-start" data-tx-queue-start disabled><option value="0">0 · 普通提交</option><option value="3">3 · 跨过最后一个环槽</option><option value="65535">65535 · 16 位索引回绕</option></select></label>
     </div>
@@ -188,8 +189,63 @@
   </div>
   <div class="device-tx-split-layout" data-tx-split-layout role="group" aria-labelledby="device-tx-split-title">
     <h4 id="device-tx-split-title">Split virtqueue · 客户机共享内存</h4>
+    <div class="device-tx-playback" data-tx-queue-controls hidden role="group" aria-label="队列结构图逐步演示"><button type="button" data-tx-queue-back>上一步</button><button type="button" data-tx-queue-next>下一步</button><button type="button" data-tx-queue-reset>重置</button><span data-tx-graphic-step aria-live="polite"></span></div>
     <p data-tx-queue-ownership>示例：链 0 → 2 已发布，设备尚未回写完成。</p>
-    <div class="device-tx-desc-heading"><strong>描述符表 · desc[4]</strong><span data-tx-queue-free>2 / 4 个描述符可分配</span></div>
+<p><button type="button" data-tx-graph-zoom aria-pressed="false" hidden>放大图解</button></p>
+<div class="device-tx-queue-graphic" data-tx-graph-viewport role="region" aria-label="可用环、描述符链、报文和已用环的交互图，放大后可横向滚动" tabindex="0">
+  <svg viewBox="0 0 1000 680" role="img" aria-labelledby="tx-queue-graphic-title tx-queue-graphic-desc">
+    <title id="tx-queue-graphic-title">一个发送请求在 split virtqueue 中的完整关系</title>
+    <desc id="tx-queue-graphic-desc">左侧可用环发布描述符头编号 0，中间描述符 0 的 next 指向描述符 2；addr 分别指向右侧网络头和报文。QEMU 读取这些缓冲区后向已用环写回 id 0、len 0。圆形表示数组循环使用，内存中的环槽实际连续排列。当前步骤和索引随演示更新。</desc>
+    <defs><marker id="tx-queue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker></defs>
+    <g class="device-tx-graph-driver"><rect x="335" y="12" width="320" height="58" rx="8"/><text x="495" y="37" text-anchor="middle">客户机 virtio-net 驱动</text><text x="495" y="57" text-anchor="middle" class="device-tx-graph-small">准备数据 → 发布 avail → 回收 used</text></g>
+    <g class="device-tx-graph-ring">
+      <text x="155" y="110" text-anchor="middle">Available ring</text><text x="155" y="132" text-anchor="middle" class="device-tx-graph-small">驱动写 · 设备读</text>
+      <circle cx="155" cy="230" r="76" class="device-tx-graph-track"/>
+      <g data-tx-graphic-avail-slot="0" transform="translate(121,139)"><rect width="68" height="46" rx="5"/><text x="34" y="17" text-anchor="middle" class="device-tx-graph-small">slot 0</text><text x="34" y="35" text-anchor="middle" data-tx-graphic-entry>head=0</text></g>
+      <g data-tx-graphic-avail-slot="1" transform="translate(212,207)"><rect width="68" height="46" rx="5"/><text x="34" y="17" text-anchor="middle" class="device-tx-graph-small">slot 1</text><text x="34" y="35" text-anchor="middle" data-tx-graphic-entry>—</text></g>
+      <g data-tx-graphic-avail-slot="2" transform="translate(121,275)"><rect width="68" height="46" rx="5"/><text x="34" y="17" text-anchor="middle" class="device-tx-graph-small">slot 2</text><text x="34" y="35" text-anchor="middle" data-tx-graphic-entry>—</text></g>
+      <g data-tx-graphic-avail-slot="3" transform="translate(30,207)"><rect width="68" height="46" rx="5"/><text x="34" y="17" text-anchor="middle" class="device-tx-graph-small">slot 3</text><text x="34" y="35" text-anchor="middle" data-tx-graphic-entry>—</text></g>
+      <text x="155" y="225" text-anchor="middle" class="device-tx-graph-small">avail.idx</text><text x="155" y="247" text-anchor="middle" data-tx-graphic-avail-index>1</text>
+      <text x="155" y="347" text-anchor="middle" class="device-tx-graph-small" data-tx-graphic-avail-position>下一槽 0 → 1 → 2 → 3 → 0</text>
+    </g>
+    <g class="device-tx-graph-descriptors" data-tx-graphic-state="descriptor">
+      <text x="490" y="112" text-anchor="middle">描述符表 · desc[4]</text>
+      <rect x="335" y="134" width="310" height="224" rx="6"/>
+      <path d="M335 174H645 M335 220H645 M335 266H645 M335 312H645 M378 134V358 M474 134V358 M520 134V358 M590 134V358"/>
+      <g class="device-tx-graph-small" text-anchor="middle"><text x="356" y="159">编号</text><text x="426" y="159">addr</text><text x="497" y="159">len</text><text x="555" y="159">flags</text><text x="617" y="159">next</text></g>
+      <g data-tx-graphic-desc="0" class="device-tx-graph-small" text-anchor="middle"><text x="356" y="202">0</text><text x="426" y="202" data-field="addr">0x1000</text><text x="497" y="202" data-field="len">12</text><text x="555" y="202" data-field="flags">NEXT</text><text x="617" y="202" data-field="next">2</text></g>
+      <g data-tx-graphic-desc="1" class="device-tx-graph-small" text-anchor="middle"><text x="356" y="248">1</text><text x="426" y="248" data-field="addr">—</text><text x="497" y="248" data-field="len">—</text><text x="555" y="248" data-field="flags">—</text><text x="617" y="248" data-field="next">—</text></g>
+      <g data-tx-graphic-desc="2" class="device-tx-graph-small" text-anchor="middle"><text x="356" y="294">2</text><text x="426" y="294" data-field="addr">0x2000</text><text x="497" y="294" data-field="len">60</text><text x="555" y="294" data-field="flags">0</text><text x="617" y="294" data-field="next">—</text></g>
+      <g data-tx-graphic-desc="3" class="device-tx-graph-small" text-anchor="middle"><text x="356" y="340">3</text><text x="426" y="340" data-field="addr">—</text><text x="497" y="340" data-field="len">—</text><text x="555" y="340" data-field="flags">—</text><text x="617" y="340" data-field="next">—</text></g>
+      <path class="device-tx-graph-path" d="M645 197H674V289H645"/><text x="683" y="249" class="device-tx-graph-small">NEXT</text>
+    </g>
+    <g class="device-tx-graph-buffers" data-tx-graphic-state="payload">
+      <text x="850" y="112" text-anchor="middle">客户机报文缓冲区</text>
+      <rect x="750" y="155" width="210" height="75" rx="6"/><text x="855" y="181" text-anchor="middle">0x1000 · 12 B</text><text x="855" y="209" text-anchor="middle" class="device-tx-graph-small">virtio-net header</text>
+      <rect x="750" y="266" width="210" height="92" rx="6"/><text x="855" y="293" text-anchor="middle">0x2000 · 60 B</text><text x="855" y="319" text-anchor="middle">P1 · 以太网帧</text><text x="855" y="343" text-anchor="middle" class="device-tx-graph-small">数据不存放在环槽中</text>
+    </g>
+    <path class="device-tx-graph-path" data-tx-graphic-path="publish" d="M189 162H305V197H333"/>
+    <text x="294" y="181" class="device-tx-graph-small">head=0</text>
+    <path class="device-tx-graph-path" data-tx-graphic-path="payload" d="M645 181H748 M690 289H748"/>
+    <g class="device-tx-graph-ring">
+      <text x="155" y="388" text-anchor="middle">Used ring</text><text x="155" y="410" text-anchor="middle" class="device-tx-graph-small">设备写 · 驱动读</text>
+      <circle cx="155" cy="510" r="76" class="device-tx-graph-track"/>
+      <g data-tx-graphic-used-slot="0" transform="translate(118,417)"><rect width="74" height="54" rx="5"/><text x="37" y="16" text-anchor="middle" class="device-tx-graph-small">slot 0</text><text x="37" y="34" text-anchor="middle" data-tx-graphic-entry>—</text><text x="37" y="48" text-anchor="middle" class="device-tx-graph-tiny" data-tx-graphic-length></text></g>
+      <g data-tx-graphic-used-slot="1" transform="translate(209,486)"><rect width="74" height="54" rx="5"/><text x="37" y="16" text-anchor="middle" class="device-tx-graph-small">slot 1</text><text x="37" y="34" text-anchor="middle" data-tx-graphic-entry>—</text><text x="37" y="48" text-anchor="middle" class="device-tx-graph-tiny" data-tx-graphic-length></text></g>
+      <g data-tx-graphic-used-slot="2" transform="translate(118,555)"><rect width="74" height="54" rx="5"/><text x="37" y="16" text-anchor="middle" class="device-tx-graph-small">slot 2</text><text x="37" y="34" text-anchor="middle" data-tx-graphic-entry>—</text><text x="37" y="48" text-anchor="middle" class="device-tx-graph-tiny" data-tx-graphic-length></text></g>
+      <g data-tx-graphic-used-slot="3" transform="translate(27,486)"><rect width="74" height="54" rx="5"/><text x="37" y="16" text-anchor="middle" class="device-tx-graph-small">slot 3</text><text x="37" y="34" text-anchor="middle" data-tx-graphic-entry>—</text><text x="37" y="48" text-anchor="middle" class="device-tx-graph-tiny" data-tx-graphic-length></text></g>
+      <text x="155" y="504" text-anchor="middle" class="device-tx-graph-small">used.idx</text><text x="155" y="526" text-anchor="middle" data-tx-graphic-used-index>0</text>
+      <text x="155" y="637" text-anchor="middle" class="device-tx-graph-small" data-tx-graphic-used-position>下一槽 0 → 1 → 2 → 3 → 0</text>
+    </g>
+    <g class="device-tx-graph-backend" data-tx-graphic-state="backend"><rect x="390" y="465" width="570" height="125" rx="8"/><text x="675" y="494" text-anchor="middle">QEMU virtio-net 后端 · 本例 vhost=off</text><text x="675" y="523" text-anchor="middle" class="device-tx-graph-small">读 avail → 解析链 → 读取数据 → TAP</text><text x="675" y="553" text-anchor="middle" class="device-tx-graph-small">缓冲区用完后：used.id = 0，used.len = 0</text><text x="675" y="576" text-anchor="middle" class="device-tx-graph-small" data-tx-graphic-backend-state>等待发布请求</text></g>
+    <path class="device-tx-graph-path" data-tx-graphic-path="consume" d="M490 358V463 M850 358V463"/>
+    <text x="506" y="407" class="device-tx-graph-small">读取链</text><text x="863" y="407" class="device-tx-graph-small">读取 P1</text>
+    <path class="device-tx-graph-path" data-tx-graphic-path="complete" d="M390 510H305V444H194"/><text x="298" y="490" class="device-tx-graph-small">归还链</text>
+    <text x="665" y="632" text-anchor="middle" class="device-tx-graph-small">kick / call eventfd 只承载通知；描述符和报文保存在共享内存</text>
+    <text x="665" y="657" text-anchor="middle" class="device-tx-graph-small">环槽按数组顺序循环使用，链首编号与环槽号相互独立</text>
+  </svg>
+</div>
+<p class="device-tx-queue-note">箭头分别表示链首引用、next 链接和 addr 缓冲区引用。环图表示循环索引，实际共享内存中的槽是连续数组；默认完整呈现，放大后可横向滚动查看细节。</p>    <div class="device-tx-desc-heading"><strong>描述符表 · desc[4]</strong><span data-tx-queue-free>2 / 4 个描述符可分配</span></div>
     <table class="device-tx-desc-table">
       <thead><tr><th scope="col">编号</th><th scope="col">addr</th><th scope="col">len</th><th scope="col">flags</th><th scope="col">next</th></tr></thead>
       <tbody>
@@ -214,7 +270,7 @@
     <li><strong>回收：</strong>e1000 按 RS 写回 DD；virtio-net 写入 used 项。驱动读取完成记录后回收本地缓冲区。</li>
   </ol>
   <p class="device-tx-model-note">示例使用一个正常发送的报文、可写的 TAP 和允许的完成中断；e1000 描述符设置 EOP 与 RS，virtio-net 使用 split virtqueue。步骤拆分用于观察状态，播放速度不表示执行耗时。实际驱动常以批处理或轮询减少通知。</p>
-</section>  <h3>e1000 的发送路径</h3>
+</section>  <h3 id="flow-part-1"><span class="mechanism-heading-number">1. </span>e1000 的发送路径</h3>
   <ol>
     <li>驱动准备 P1，填写发送描述符并设置 <code>EOP</code>、<code>RS</code>。完成必要的内存顺序操作后，写入新的 <code>TDT</code>。</li>
     <li><code>e1000_mmio_write()</code>分派寄存器写操作；TDT 对应的 <code>set_tctl()</code>调用 <code>start_xmit()</code>。</li>
@@ -223,7 +279,7 @@
     <li>模型按状态回写条件设置 DD、推进 TDH，并更新中断原因。客户机驱动检查完成记录后回收缓冲区。</li>
   </ol>
   <p>这里的“DMA 读取”由 QEMU 软件执行。固定版本的 e1000 模型将报文读入自己的发送缓冲区，并在那里完成分段、校验和等模拟工作；这些工作量会受到客户机选择的功能影响。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/e1000.c#L555-L803">报文处理与状态回写</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/e1000.c#L1181-L1190">TDT 回调表</a></p>
-  <h3>virtio-net 的发送路径</h3>
+  <h3 id="flow-part-2"><span class="mechanism-heading-number">2. </span>virtio-net 的发送路径</h3>
   <ol>
     <li>驱动准备网络设备头与 P1 的缓冲区，建立设备可读的描述符链，发布 available 项。</li>
     <li>驱动检查通知条件，必要时通知对应的发送队列。QEMU 的队列处理函数安排发送任务。</li>
@@ -235,18 +291,18 @@
 </section>
 
 <section id="notification" class="mechanism-section">
-  <h2>通知与完成</h2>
-  <h3>发布队列与发送 kick</h3>
+  <h2><span class="mechanism-heading-number">五、</span>通知边界：kick、完成记录与中断</h2>
+  <h3 id="notification-part-1"><span class="mechanism-heading-number">1. </span>发布队列与发送 kick</h3>
   <p>驱动先发布可用缓冲区，后端才能安全地消费。通知只提示设备检查队列；多个请求可以共享一次 kick，设备正在处理队列时也可以抑制新的 kick。队列发布需要正确的内存屏障，通知抑制还需要防止“设备准备休眠时恰好新增请求”的竞态。仅删除通知操作，会让后端失去唤醒机会。</p>
   <p>在普通 MMIO 路径中，客户机写 virtio PCI 通知地址，QEMU 的 <code>virtio_pci_notify_write()</code>找到队列后调用通知函数。启用 ioeventfd 时，QEMU 预先注册通知地址与 eventfd 的对应关系；KVM 处理匹配的写入并触发 eventfd，QEMU 的事件处理再调度该队列。这减少了通过 <code>KVM_RUN</code>返回用户态模拟此次 MMIO 的往返。CPU 从客户机执行切换到 KVM 的硬件退出仍可能发生，二者应分开计数。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-pci.c#L371-L415">ioeventfd 注册</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio.c#L3949-L3955">QEMU 事件处理</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst#L2092-L2135">KVM_IOEVENTFD</a></p>
-  <h3>完成记录与完成中断</h3>
+  <h3 id="notification-part-2"><span class="mechanism-heading-number">2. </span>完成记录与完成中断</h3>
   <p>used 项先成为可见状态，再根据驱动配置决定是否发出中断。<code>virtio_notify()</code>内部会检查通知条件，调用它并不保证每个报文都对应一次中断。发送路径可以主动回收先前完成的请求，也可以在需要时使用中断；这为批处理提供了空间。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio.c#L2701-L2711">完成通知检查</a>。MSI-X 消息、虚拟 LAPIC 和驱动响应见<a href="kvm-virtio-interrupt.html">virtio 完成通知与 KVM 中断注入</a>。</p>
   <p>完成记录界定的是缓冲区生命周期。virtio-net 发送链的 <code>used.len</code>可以为 0，因为设备没有向发送缓冲区写入数据；它仍然是一条有效的完成记录。驱动据此回收本地内存，远端报文接收和应用处理则由相应网络协议确认。</p>
   <p>后端拥塞会暴露两种实现的细节差异。virtio-net 在异步排队后保留当前元素，等待发送回调再发布完成；e1000 模型已将客户机内容读入内部缓冲区，描述符处理与后端队列排空不必同步完成。此外，发送错误或丢弃路径也可能回收请求。因此观察 DD 或 used 时，还要结合设备统计和宿主网络状态判断发送结果。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/virtio-net.c#L2683-L2709">异步回调</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/net/tap.c#L123-L154">TAP 暂不可写处理</a></p>
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码</h2>
+  <h2><span class="mechanism-heading-number">六、</span>源码路径：从网卡接口到 TAP</h2>
   <p>两条调用链在 QEMU 网络后端处汇合。阅读时可以分别标记“寄存器或队列状态”“客户机缓冲区访问”“后端发送”三个部分：</p>
   <pre><code>e1000
   e1000_mmio_write(TDT)
@@ -275,26 +331,38 @@ TAP 后端
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>接口演进与后端分工</h2>
-  <h3>兼容硬件驱动与统一虚拟设备接口</h3>
+  <h2><span class="mechanism-heading-number">七、</span>演进取舍：packed 队列与独立后端</h2>
+  <h3 id="evolution-part-1"><span class="mechanism-heading-number">1. </span>兼容硬件驱动与统一虚拟设备接口</h3>
   <p>模拟已有网卡可以利用操作系统现成的驱动，代价是设备模型需要遵循硬件的寄存器、副作用、描述符格式和中断行为。virtio 选择统一的特性协商、队列和通知机制，再按网络、块设备等用途扩展设备格式。这样可以减少不同虚拟设备之间重复设计的接口，也要求客户机安装匹配的驱动，并正确处理功能协商与版本兼容。</p>
   <p>virtio 的队列格式本身也在演进。1.0 及更早规范使用 split virtqueue，1.1 加入 packed virtqueue，将请求发布与完成状态合并到同一描述符环，减少处理队列时涉及的分散内存区域。packed 描述符使用 <code>addr / len / id / flags</code>，以 AVAIL、USED 位和 wrap counter 判断所有权；直接链按环中连续位置组织，不再使用 split 的 next 字段。驱动和设备仍分别保留事件抑制结构。两种格式需通过特性协商选定。<a href="https://docs.oasis-open.org/virtio/virtio/v1.1/cs01/virtio-v1.1-cs01.html">VIRTIO 1.1 规范</a></p>
   <table><thead><tr><th scope="col">比较项</th><th scope="col">Split</th><th scope="col">Packed</th></tr></thead><tbody><tr><td>请求与完成</td><td>desc 表加独立 avail / used 环</td><td>同一描述符环，通过状态位交接</td></tr><tr><td>直接描述符链</td><td>NEXT + next 编号，可不连续</td><td>NEXT + 环中连续位置</td></tr><tr><td>回绕识别</td><td>16 位 idx 与各自消费位置</td><td>AVAIL / USED 与各自 wrap counter</td></tr><tr><td>代价</td><td>结构分工明确，但访问多个共享区域</td><td>元数据更集中，所有权与事件判断更复杂</td></tr></tbody></table>
-  <h3>后端迁移到内核或独立进程</h3>
+  <h3 id="evolution-part-2"><span class="mechanism-heading-number">2. </span>后端迁移到内核或独立进程</h3>
   <p>统一客户机接口之后，可以继续调整宿主处理位置。vhost-net 将 virtqueue 的主要网络数据处理移到宿主内核，减少经 QEMU 用户态处理报文的环节；vhost-user 则通过控制协议，让独立用户态进程取得共享内存、队列和通知所需的信息。客户机侧仍可使用 virtio-net 驱动。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/vhost-user.rst#L15-L48">vhost-user 的控制面与队列共享</a></p>
   <p>处理位置的变化带来新的资源和状态管理任务：线程如何调度、内存如何共享、后端退出时如何处理队列，以及迁移时如何保存尚未完成的请求。vhost-user 的 Unix socket 负责建立与管理这些关系，普通报文通过共享队列和内存交换。网络后端可以使用 DPDK，块设备后端可以使用 SPDK；两者的具体请求路径需要分别分析。</p>
   <p>三种后端的初始化与发包过程见<a href="qemu-vhost-net.html">《virtio-net 的后端处理：vhost-net 与 vhost-user》</a>。比较方案时，应固定客户机负载、后端出口和卸载配置，再观察队列处理、通知、复制与调度开销。设备接口和后端位置是两个独立维度，同一 virtio 接口可以连接不同后端，硬件直通和 vDPA 则还会改变设备访问与数据面实现。</p>
+  <p>使用 DPDK 的独立用户态网络后端见<a href="dpdk-vhost-user-net.html">《DPDK vhost-user 的报文转发与缓冲区管理》</a>：同样的客户机 TX 链先转换为 rte_mbuf，再提交给物理网卡 PMD。客户机缓冲区与 PMD 报文缓冲区的回收时刻也随之分开。</p>
+</section>
+
+<section id="evaluation" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">八、</span>如何判断瓶颈与改进是否有效</h2>
+  <p>回到 P1：一次成功处理依次推进 avail.idx、后端消费位置、used.idx 和驱动回收位置。四个位置停在哪里，给出了排查起点；只观察报文吞吐或中断次数，无法区分队列等待与后端拥塞。</p>
+  <table><thead><tr><th scope="col">现象</th><th scope="col">解释与检查</th><th scope="col">改进与代价</th></tr></thead><tbody>
+    <tr><td>avail 增长，后端消费落后</td><td>检查 kick 是否到达、QEMU 发送任务调度和 CPU 占用</td><td>批处理、ioeventfd 或独立后端可以减少调度往返；批量过大也会延后单个报文处理</td></tr>
+    <tr><td>已取出请求，used 迟迟不推进</td><td>检查 TAP 可写状态、异步发送回调与后端排队</td><td>增加出口能力或调整排队策略；仅增加 virtqueue 深度会占用更多内存并延长等待</td></tr>
+    <tr><td>used 已推进，客户机没有回收</td><td>检查完成通知条件、客户机中断或主动回收路径</td><td>通知合并减少中断，轮询降低唤醒等待；两者都要兼顾空闲 CPU 消耗与尾延迟</td></tr>
+  </tbody></table>
+  <p>e1000 的兼容性便于使用已有驱动，virtio 的通用队列便于扩展和替换后端。性能比较应同时记录每秒报文数、吞吐、尾延迟、宿主 CPU 和丢包，固定包长、队列数与卸载配置；某一项开销下降，仍需确认它没有转移到另一个线程或增加排队时间。</p>
 </section>
 
 <section id="sources" class="mechanism-section">
-  <h2>参考资料</h2>
+  <h2><span class="mechanism-heading-number">九、</span>参考资料</h2>
   <ul class="mechanism-sources">
     <li>QEMU 10.2.0：<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/e1000.c">e1000.c</a>，寄存器访问、TX 描述符与状态回写；<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/virtio-net.c">virtio-net.c</a>，用户态发送路径、网络头与异步完成。</li>
     <li>QEMU 10.2.0：<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio.c">virtio.c</a>，队列消费、完成发布与通知；<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-pci.c">virtio-pci.c</a>，PCI 通知区及 ioeventfd。</li>
     <li>QEMU 10.2.0：<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/net/tap.c">tap.c</a>，TAP 数据提交与暂不可写处理；<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/net/net.c">net.c</a>，网络队列及发送分派。</li>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst#L2092-L2135">Linux 6.18 KVM_IOEVENTFD</a>：客户机 PIO / MMIO 写与 eventfd 的关联。</li>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/uapi/linux/virtio_ring.h">Linux 6.18 virtio_ring.h</a>：描述符、可用环、已用环及 packed 格式；<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_ring.c">virtio_ring.c</a>：驱动发布、通知检查与回收。</li>
-    <li><a href="https://docs.oasis-open.org/virtio/virtio/v1.3/virtio-v1.3.html">VIRTIO 1.3 规范</a>：split virtqueue、驱动通知和网络设备发送约定；<a href="https://docs.oasis-open.org/virtio/virtio/v1.1/cs01/virtio-v1.1-cs01.html">VIRTIO 1.1 规范</a>：split 与 packed 队列格式。</li>
+    <li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">VIRTIO 1.2 规范</a>：split virtqueue、驱动通知和网络设备发送约定；<a href="https://docs.oasis-open.org/virtio/virtio/v1.1/cs01/virtio-v1.1-cs01.html">VIRTIO 1.1 规范</a>：split 与 packed 队列格式。</li>
   </ul>
 </section></div>
   </div>
@@ -304,6 +372,6 @@ TAP 后端
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=c084ccad2981" defer></script>
-<script src="../assets/device-tx.js?v=c084ccad2981" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+<script src="../assets/device-tx.js?v=32683d73423f" defer></script></body>
 </html>

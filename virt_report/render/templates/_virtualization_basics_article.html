@@ -1,0 +1,68 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+{% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
+{% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
+<section id="preface" class="mechanism-section">
+  <h2>为什么要在一台机器上运行多套操作系统</h2>
+  <p>一台服务器经常需要同时承载数据库、测试环境和旧版应用。直接把它们装进同一个操作系统，资源利用率较高，但内核版本、驱动和系统配置彼此牵连；每项业务独占服务器，又可能留下大量空闲资源。虚拟机提供了一种折中：共享物理机器，同时让每套系统拥有独立的启动过程、内核和设备视图。</p>
+  <p>运行虚拟机的系统称为宿主，虚拟机里的系统称为客户机。客户机内核仍要调度进程、管理页表和驱动设备；虚拟化层则控制这些动作最终能使用哪些真实资源。本文以 x86 Linux 上两台各有 2 个虚拟 CPU（vCPU）、4 GiB 内存的 QEMU/KVM 虚拟机 A、B 为例，说明这层控制怎样建立。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+<section id="isolation" class="mechanism-section">
+  <h2>独立机器的外观怎样建立</h2>
+  <h3>CPU：允许执行，保留接管能力</h3>
+  <p>如果只把客户机内核当普通程序运行，它操作控制寄存器、页表或中断时，会受到宿主的权限限制；若直接赋予它宿主权限，又会破坏隔离。硬件虚拟化为客户机提供受控的执行环境，保存独立的寄存器与控制状态，并让宿主设置哪些行为需要接管。</p>
+  <p>普通运算通常直接在物理 CPU 上完成。命中需要接管的条件时，处理器离开客户机，这个边界叫 VM Exit。在 QEMU/KVM 路径中，退出先由 KVM 处理，必要时再返回 QEMU，完成后恢复客户机执行。客户机看到的 2 个 vCPU 是两份可被调度的执行状态，未必独占两个物理核；宿主可以让 A、B 分时共享，也可以在资源充足时并行运行。</p>
+  <h3>内存：客户机的物理地址仍需要转换</h3>
+  <p>A、B 都可以认为自己拥有从零开始的物理内存。例如，它们都访问客户机物理地址 <code>0x2000</code>，宿主却把它们分别映射到不同的物理页。客户机只能修改自己的地址转换，不能任意选择宿主的物理页。x86 的 EPT/NPT 由宿主控制，承担第二级转换和权限检查。</p>
+  {{ diagram('virtualization-isolation-example', '两台客户机使用相同地址而互不覆盖', '示例采用独立后备页。客户机自己的页表先得到客户机物理地址，宿主维护的二级映射再选择真实物理页；两套转换分别由不同一方管理。') }}
+  <p>因此，A 的应用写坏一段已获准访问的内存，通常影响 A 内部；访问未授权的宿主页则会受映射和权限限制。设备还可以直接读写内存，这称为 DMA，其地址转换和访问权限由 IOMMU 等机制约束。CPU 与设备的访问范围需要分别控制，隔离也仍受软硬件漏洞和共享资源干扰的影响。</p>
+  <h3>设备：给出接口，再安排真正的工作</h3>
+  <p>客户机需要磁盘、网卡和时钟，但无需每项资源都独占一块硬件。虚拟磁盘可以连接一个宿主文件，虚拟网卡可以连接宿主网络；客户机驱动按约定提交请求，后端完成真实 I/O。兼容旧驱动时可模拟已有网卡，使用专门驱动时可采用 virtio 共享队列，也可以把可隔离的设备功能直接分配给客户机。</p>
+</section>
+<section id="architecture" class="mechanism-section">
+  <h2>QEMU、KVM 与 Libvirt 怎样分工</h2>
+  <p>这些能力分布在多个组件中。QEMU 负责组装客户机可见的机器，KVM 把硬件辅助执行与内存映射能力接入 Linux，Libvirt 则负责把配置转成可管理的运行实例。宿主调度器和内存管理器仍参与实际资源分配。</p>
+  {{ diagram('virtualization-system-overview', '管理请求与客户机运行路径', '管理通道建立和改变运行条件；CPU 执行与设备请求随后沿各自路径推进。Libvirt 不转发每条客户机指令或每个网络报文。') }}
+  <table><thead><tr><th>组件</th><th>放到例子里看它的工作</th></tr></thead><tbody>
+    <tr><td>Libvirt</td><td>保存 A、B 的定义，准备网络和磁盘，启动 QEMU，处理启动、停止与迁移请求</td></tr>
+    <tr><td>QEMU</td><td>创建 RAM、CPU 和设备对象，把虚拟网卡连接到选定后端，通过 QMP 管理协议接收命令</td></tr>
+    <tr><td>KVM</td><td>保存 vCPU 内核状态，建立二级映射，进入客户机并处理需要内核接管的退出</td></tr>
+    <tr><td>宿主内核与硬件</td><td>分配 CPU 时间和物理页，完成存储与网络操作</td></tr>
+  </tbody></table>
+</section>
+<section id="example" class="mechanism-section">
+  <h2>沿一次启动和发包把各部分连起来</h2>
+  <h3>把定义变成可以运行的机器</h3>
+  <p>启动 A 时，Libvirt 准备资源并拉起 QEMU。QEMU 创建机器和设备，向 KVM 注册 RAM 范围、创建 vCPU。配置完成后，执行线程调用 <code>KVM_RUN</code>，客户机开始运行固件和操作系统。4 GiB 是客户机可见的容量；普通按需分配配置下，宿主页可以随访问逐渐建立，预分配或设备 DMA 映射则会改变资源占用方式。<a href="{{ linux }}Documentation/virt/kvm/api.rst#L8-L37">KVM 对象接口</a></p>
+  <h3>从客户机缓冲区到宿主网络</h3>
+  <p>A 内的程序发送一条消息，客户机网络栈先形成报文。virtio 驱动把报文所在缓冲区的地址与长度交给共享队列，再按通知条件提醒后端。选用 QEMU＋TAP 时，QEMU 从客户机内存读取报文，经宿主的虚拟网络端点 TAP 提交网络；后端不再需要该缓冲区后发布完成记录，客户机驱动回收资源。</p>
+  <p>这里有四件事：CPU 执行网络代码，内存转换找到缓冲区，设备协议交接报文，中断或轮询通知完成。把后端换成内核 vhost-net，可以改变队列处理位置，但这四项责任仍然存在。发送完成通常表示缓冲区可以复用，远端收到数据则是另一层协议确认的问题。</p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2>为什么实现会从模拟走向协作</h2>
+  <p>软件可以逐条解释客户机指令，也可以把一段指令翻译为宿主代码并重复执行。这样容易控制客户机行为，还能跨指令集运行，代价是翻译和状态维护。硬件虚拟化让兼容架构的大量指令直接执行，减少软件介入；QEMU 的 TCG 与 KVM 因而服务于不同需求，前者并未失去用途。</p>
+  <p>内存也经历了类似变化：软件维护影子映射，需要跟踪客户机页表变化；EPT/NPT 允许硬件组合两级转换，但仍有页表遍历、TLB 缓存与映射失效成本。设备方面，virtio 把虚拟化环境中的请求交接规范化，vhost 和硬件卸载再改变处理位置。演变通常消除了某种重复工作，同时带来新的同步和状态管理要求。</p>
+</section>
+<section id="tradeoffs" class="mechanism-section">
+  <h2>资源利用、隔离与可管理性的取舍</h2>
+  <p>虚拟机让多套系统共享服务器，也增加客户机内核、虚拟设备和管理状态的开销。超分 vCPU 可以利用负载错峰，宿主繁忙时却会增加调度等待；直通可缩短 I/O 路径，但能否迁移，还取决于设备状态能否导出、恢复及停止 DMA。</p>
+  <p>评价一个方案，应先固定业务和资源预算，再同时看吞吐、尾延迟、宿主 CPU 与内存消耗，并检查启动、迁移和故障恢复是否满足要求。退出少不必然更快，分配的 vCPU 多也不必然吞吐更高。虚拟化的基本问题始终是：怎样把可控的资源视图交给客户机，并以可接受的成本维持它。</p>
+</section>
+<section id="reading" class="mechanism-section">
+  <h2>沿资源与操作继续阅读</h2>
+  <ul>
+    <li><a href="cpu-virtualization.html">CPU 虚拟化</a>：指令执行、退出、调度与软件翻译。</li>
+    <li><a href="memory-virtualization.html">内存虚拟化</a>：地址空间、映射建立、大页与脏页跟踪。</li>
+    <li><a href="device-virtualization.html">设备与 I/O 虚拟化</a>、<a href="interrupt-virtualization.html">中断虚拟化</a>：请求怎样提交、完成并通知客户机。</li>
+    <li><a href="libvirt-domain-start.html">Libvirt 启动虚拟机</a>、<a href="qemu-vm-startup.html">QEMU 初始化</a>：把资源组成可运行的机器。</li>
+    <li><a href="qemu-memory-migration.html">预拷贝迁移</a>、<a href="qemu-migration-stream.html">迁移流</a>：把运行状态交给另一台宿主。</li>
+  </ul>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="{{ qemu }}docs/system/introduction.rst">QEMU：系统模拟、加速器和管理接口</a></li>
+    <li><a href="{{ linux }}Documentation/virt/kvm/api.rst">Linux：KVM API</a>、<a href="{{ linux }}Documentation/virt/kvm/x86/mmu.rst">x86 地址转换与隔离目标</a></li>
+    <li><a href="{{ qemu }}docs/devel/memory.rst">QEMU：客户机内存与地址空间</a></li>
+  </ul>
+</section>

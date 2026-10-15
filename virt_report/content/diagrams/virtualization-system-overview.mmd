@@ -1,0 +1,11 @@
+flowchart TB
+    accTitle: QEMU KVM 与 Libvirt 的分工
+    accDescr: 管理请求从 Libvirt 经 QMP 进入 QEMU。QEMU 建立内存和设备并用 KVM_RUN 执行客户机；设备队列送到后端。管理通道与运行数据路径分别标示。
+    L["Libvirt<br/>配置与生命周期"] -. "QMP 管理" .-> Q["QEMU<br/>机器 · RAM · 设备模型"]
+    Q -->|创建并进入 vCPU| K["KVM 与硬件<br/>CPU 执行 · EPT/NPT"]
+    K --> G["客户机<br/>应用 · 内核 · 驱动"]
+    G -->|发布 virtqueue| M["客户机 RAM<br/>描述符与数据缓冲区"]
+    M --> B["队列后端<br/>QEMU / vhost / 独立进程"]
+    B --> H["宿主网络或存储<br/>物理设备"]
+    Q -. "初始化和配置" .-> M
+    Q -. "建立后端连接" .-> B

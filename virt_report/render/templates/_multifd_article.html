@@ -1,7 +1,7 @@
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 {% from '_mechanism_diagram.html' import diagram with context %}
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
+  <h2>并行传输带来的顺序问题</h2>
   <p>MultiFD 将迁移数据分派给多个工作线程，通过独立通道并行发送和接收。它可以分担页面处理、压缩和传输工作，但也引入了一个顺序问题：主迁移流已经走到同步点时，其他通道上的页面可能仍在途中。</p>
   <p>本文分析普通 socket 迁移中未压缩 RAM 数据的分发与同步。示例采用默认同步方式：在 RAM 扫描轮次边界通过主流的 <code>RAM_SAVE_FLAG_MULTIFD_FLUSH</code> 协调数据通道。旧机器兼容模式、文件迁移及压缩路径在后文分别说明。</p>
   {% include '_mechanism_baselines.html' %}
@@ -9,11 +9,16 @@
 </section>
 
 <section id="principle" class="mechanism-section">
-  <h2>基本原理</h2>
+  <h2>主流控制与多通道传页</h2>
   <h3>主迁移流与数据通道</h3>
   <p>主迁移流继续承担流头、配置、RAMBlock 布局、状态分段和同步控制；RAM 页面可以交给额外的 MultiFD 通道。每条通道各有发送线程和接收线程，同一通道内保持字节顺序，不同通道可以同时推进，抵达顺序由各自的处理和传输进度决定。</p>
   <p>源端先把同一 RAMBlock 的页偏移收集成批，再寻找空闲发送线程。目的端根据包头中的 RAMBlock 名称与偏移数组，把数据写入对应内存位置。数据批次因而可以在不同通道上独立处理，无须按地址从低到高抵达。</p>
   <p>并行通道必须在必要的边界上重新建立顺序。假设页面 P 在上一轮发送了旧内容，下一轮又被写脏并发送新内容：如果两次传输走不同通道，旧内容晚到就可能覆盖新内容。同步点保证上一组传输完成装载之后，接收端才越过相应边界。</p>
+  <pre><code>通道 0：上一轮 P=v1 ───────→ 装载 v1 → SYNC
+通道 1：上一轮其他页面 → SYNC → 等待屏障 → 下一轮 P=v2
+主流：  FLUSH ─────────────→ 等全部通道到齐 → 放行下一轮
+
+屏障建立的顺序：装载上一轮 v1 → 装载下一轮 v2</code></pre>
   <h3>两端各有一个完成条件</h3>
   <ul>
     <li><strong>发送端：</strong>工作线程完成已有任务，并按要求把 SYNC 包写入各自通道，主线程才能继续发出主流同步标记。</li>
@@ -23,7 +28,7 @@
 </section>
 
 <section id="flow" class="mechanism-section">
-  <h2>任务分发与传输过程</h2>
+  <h2>一个 RAM 批次如何分发和装载</h2>
   <p>以下示例先传输 16 页，再更新其中 8 页并传输一次。每批用两页展示任务边界，可以分别观察任务交接、通道内的排队、页面装载和同步。把通道 1 的接收进度调慢后，源端写完与目的端完成之间的差别会更明显。</p>
   {% include '_multifd_lab.html' %}
   <h3>页面如何分给线程</h3>
@@ -55,7 +60,7 @@
 </section>
 
 <section id="synchronization" class="mechanism-section">
-  <h2>跨通道同步</h2>
+  <h2>SYNC 与 FLUSH 如何汇合通道</h2>
   <h3>发送端：完成任务，再排入 SYNC</h3>
   <p><code>multifd_ram_flush_and_sync()</code> 先提交残留页批次，随后调用 <code>multifd_send_sync_main(MULTIFD_SYNC_ALL)</code>。主线程为每个工作线程设置 <code>pending_sync</code> 并唤醒它，再逐个等待完成信号。</p>
   <p>工作线程先处理 <code>pending_job</code>，再处理同步请求。发送 SYNC 使用与页面相同的有序通道，因此接收端不会先读到 SYNC、再读到它前面的页内容。全部线程完成这一步后，主线程写出主流的 <code>RAM_SAVE_FLAG_MULTIFD_FLUSH</code>。</p>
@@ -69,7 +74,7 @@
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码</h2>
+  <h2>源码：任务交接与同步屏障</h2>
   <table><thead><tr><th>环节</th><th>入口与关注点</th></tr></thead><tbody>
     <tr><td>收集页面</td><td><a href="{{ qemu_source }}migration/multifd-nocomp.c#L316-L351"><code>multifd_queue_page()</code></a>：同一 RAMBlock、批次容量、未满批次的提交。</td></tr>
     <tr><td>交接任务</td><td><a href="{{ qemu_source }}migration/multifd.c#L353-L414"><code>multifd_send()</code></a>：空闲线程、数据对象交换与 acquire / release。</td></tr>

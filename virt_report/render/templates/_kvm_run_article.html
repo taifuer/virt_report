@@ -3,15 +3,16 @@
 {% set linux_source = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>前言</h2>
-  <p>QEMU 为每个 vCPU 创建执行线程，通过 <code>KVM_RUN</code> 让宿主处理器执行客户机代码。执行期间，部分事件由硬件退出到 KVM 处理；需要用户态设备模型参与时，KVM 再把请求交回 QEMU。一次 KVM_RUN 可以包含多次客户机进入和退出。</p>
-  <p>本文沿 x86 的普通虚拟机执行路径，跟踪 CPUID 与一次设备寄存器读取，分析两个循环之间的交接。硬件入口以 Intel VMX 为例；AMD SVM 使用不同的底层指令和控制结构，KVM 的用户态接口保持相同。</p>
+  <h2>客户机执行如何与设备模拟衔接</h2>
+  <p>客户机执行普通指令时可以直接使用宿主处理器，读取虚拟网卡寄存器时却可能需要 QEMU 提供结果。KVM 要在这两种处理之间交接控制权，并保证客户机看到的指令顺序和结果正确。QEMU 为每个 vCPU 创建执行线程，以 <code>KVM_RUN</code> 进入内核；KVM 能处理的事件留在内核，需要用户态设备模型处理的请求才返回 QEMU。</p>
+  <p>本文跟踪“执行 CPUID → 读取 32 位设备寄存器 → 继续执行”这条路径，再比较 virtio 队列通知为何可以使用 ioeventfd 和 irqfd。阅读时抓住三个边界：硬件 VM Exit、KVM_RUN 返回、宿主线程调度。一次 KVM_RUN 可以包含多次 VM Entry / VM Exit，三者不能混为一谈。</p>
+  <p>硬件入口以 Intel VMX 为例；AMD SVM 使用不同的底层指令和控制结构，KVM 的用户态接口保持相同。</p>
   <p>QEMU 使用 TCG 时，执行路径转为指令翻译与宿主代码缓存，见<a href="qemu-tcg.html">QEMU TCG 的翻译块与执行循环</a>。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="principle" class="mechanism-section">
-  <h2>执行循环与两层退出</h2>
+  <h2>VM Entry、内核处理与用户态返回</h2>
   <p>开启硬件虚拟化后，普通客户机指令在处理器上直接执行。VM Entry 将处理器切入客户机执行环境；拦截到指定操作、异常或外部事件时，VM Exit 把控制权交回宿主内核。哪些操作需要拦截，取决于虚拟化控制设置和硬件能力。</p>
   <p>VM Exit 后仍在当前 vCPU 线程的内核执行路径中。KVM 能完成处理时，会继续进入客户机；需要 QEMU 处理时，才结束当前 KVM_RUN。硬件退出本身不要求切换到另一个宿主线程，也不等同于返回用户态。</p>
   <table><thead><tr><th scope="col">边界</th><th scope="col">记录与处理者</th><th scope="col">下一步</th></tr></thead><tbody>
@@ -23,7 +24,7 @@
 </section>
 
 <section id="structures" class="mechanism-section">
-  <h2>共享接口与内核状态</h2>
+  <h2>交接载体：kvm_run 如何描述一次 I/O</h2>
   <p>QEMU 通过 <code>KVM_CREATE_VCPU</code> 获得 vCPU 文件描述符，查询 <code>KVM_GET_VCPU_MMAP_SIZE</code> 后，以该描述符映射共享区。<code>CPUState.kvm_run</code> 指向起始位置的 <code>struct kvm_run</code>。共享区包含请求字段及部分附加数据，不是所有客户机寄存器和设备状态的完整副本。<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L573-L597">创建与映射</a></p>
   <table><thead><tr><th scope="col">字段</th><th scope="col">格式</th><th scope="col">谁写入、谁使用</th></tr></thead><tbody>
     <tr><td><code>exit_reason</code></td><td>32 位枚举值</td><td>KVM 写入；QEMU 在正常返回后选择对应联合体成员</td></tr>
@@ -38,7 +39,7 @@
 </section>
 
 <section id="paths" class="mechanism-section">
-  <h2>CPUID 与设备读取的处理路径</h2>
+  <h2>跟踪实例：CPUID 后读取一个设备寄存器</h2>
   <h3>在内核中处理 CPUID</h3>
   <p>客户机执行 CPUID 时，VMX 后端按硬件退出原因找到 <code>kvm_emulate_cpuid()</code>。该函数读取客户机 EAX、ECX，按照虚拟 CPU 配置计算结果，写回 EAX、EBX、ECX、EDX，并推进被模拟的指令。普通执行路径返回“已处理”，<code>vcpu_run()</code> 继续循环，QEMU 的那次 KVM_RUN 仍未返回。<a href="{{ linux_source }}arch/x86/kvm/cpuid.c#L2090-L2105">CPUID 模拟</a></p>
   <p>这里的结果来自客户机可见的 CPU 配置，并非简单复制宿主 CPUID。QEMU 在启动时参与配置虚拟 CPU 能力，但常规 CPUID 查询不需要每次再回到 QEMU 查询。</p>
@@ -57,8 +58,26 @@ mmio.data[0..3]   = 78 56 34 12</code></pre>
   <p>普通 RAM 访问通常直接经过客户机页表与 EPT / NPT 完成地址转换；EPT / NPT 缺页也可能在 KVM 中修复映射。内核设备、ioeventfd 匹配的写入和硬件直通设备又有不同路径。因此不能把所有 MMIO、所有 EPT 退出或所有设备请求都算成一次用户态退出。</p>
 </section>
 
+<section id="notifications" class="mechanism-section">
+  <h2>通知优化：ioeventfd 与 irqfd 各省去哪一步</h2>
+  <p>上例的寄存器读取需要设备返回 4 字节结果，vCPU 必须等待这次读取完成。virtio 的队列 doorbell 写入则只表示“队列里有新请求”：描述符和缓冲区已经由客户机写入共享内存，后端可以异步处理。KVM 因而可以用事件通知替代这次通用用户态寄存器回调。</p>
+  {{ diagram('kvm-eventfd-comparison', '提交方向：普通 MMIO 回调与 ioeventfd', '同一个队列 doorbell，可以经过 QEMU 通用回调，也可以由 KVM 命中 ioeventfd 后直接通知后端。虚线表示共享内存访问；eventfd 本身只携带事件计数。') }}
+  <h3>客户机 → 后端：ioeventfd 匹配队列通知</h3>
+  <p>QEMU 通过 <code>KVM_IOEVENTFD</code> 注册 PIO / MMIO 地址、访问长度及可选的匹配值。客户机写入 doorbell 后，KVM 在内核 I/O 总线上命中注册项，调用 <code>eventfd_signal()</code> 通知监听者，完成这次写入并继续客户机。监听者可以是 QEMU 的专用后端、内核 vhost worker 或其他后端；同一 vCPU 线程无需返回 QEMU 执行通用 MMIO 回调。<a href="{{ linux_source }}virt/kvm/eventfd.c#L758-L814">地址匹配与写入处理</a></p>
+  <p>此处省去的是特定通知导致的 <strong>KVM_RUN 用户态往返</strong>。常见 x86 路径仍需先 VM Exit 到 KVM；后端线程也仍可能被唤醒和调度。设备配置读取、不匹配的寄存器访问与异常处理继续使用各自的原路径。</p>
+  <h3>后端 → 客户机：irqfd 通知完成</h3>
+  <p>后端处理缓冲区并发布 used 记录后，可以触发与 <code>KVM_IRQFD</code> 绑定的 eventfd。KVM 根据已配置的 GSI / MSI 路由设置客户机待处理中断，按 vCPU 状态及中断允许条件交付。内核后端由此省去“通知 QEMU，再由 QEMU 调用中断注入接口”的接力；用户态后端触发 eventfd 本身仍可能需要系统调用。电平触发还涉及 resample 与撤销语义，不能简单视为无条件投递一个向量。<a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L3177-L3204">IRQFD 接口</a></p>
+  {{ diagram('kvm-irqfd-comparison', '完成方向：QEMU 中转与 irqfd', '后端先发布 used，再通知客户机。irqfd 将 callfd 事件接入 KVM 中断路由，省去 QEMU 中转；callfd 与提交方向的 kickfd 是独立事件，完成数据仍在共享队列中。') }}
+  <table><thead><tr><th scope="col">路径</th><th scope="col">方向与内容</th><th scope="col">减少的步骤</th><th scope="col">保留的工作</th></tr></thead><tbody>
+    <tr><td>普通用户态 MMIO</td><td>客户机与 QEMU 同步交接地址、读写数据</td><td>通用基线</td><td>VM Exit、KVM_RUN 返回、设备回调、重新进入</td></tr>
+    <tr><td>ioeventfd</td><td>客户机写 doorbell → 后端事件</td><td>匹配写入的 vCPU 用户态回调与重新进入</td><td>通常仍有 VM Exit；后端读取队列、处理请求</td></tr>
+    <tr><td>irqfd</td><td>后端完成事件 → KVM 中断路由 → 客户机</td><td>经 QEMU 中转完成通知与显式注入的步骤</td><td>发布完成、路由、注入资格判断及可能的唤醒</td></tr>
+  </tbody></table>
+  <p>eventfd 中不传网包、磁盘数据或描述符链。提交方向由后端读取 avail 和描述符，完成方向由客户机读取 used；双方还须遵守队列的内存顺序。通知次数可以因批处理或通知抑制而少于请求数。队列的具体布局见<a href="qemu-network-tx.html#virtqueue">virtqueue 数据结构与发包过程</a>。</p>
+</section>
+
 <section id="completion" class="mechanism-section">
-  <h2>I/O 完成与暂停边界</h2>
+  <h2>暂停边界：完成当前 I/O 后停止执行</h2>
   <p>用户态设备回调完成时，内核可能仍保留尚未结束的指令模拟。对于 KVM_EXIT_IO、KVM_EXIT_MMIO 等接口，KVM API 要求重新进入 KVM_RUN，让内核完成交接，再把客户机状态视为一致。这个顺序直接影响暂停、快照与热迁移。</p>
   <table><thead><tr><th scope="col">阶段</th><th scope="col">共享区</th><th scope="col">内核中的读取状态</th></tr></thead><tbody>
     <tr><td>请求返回</td><td>MMIO 地址、长度及读方向有效</td><td>等待用户态提供读结果，指令未完成</td></tr>
@@ -66,12 +85,15 @@ mmio.data[0..3]   = 78 56 34 12</code></pre>
     <tr><td>下一次 KVM_RUN</td><td>内核读取 data；必要时发布下一个片段</td><td>消费结果、推进片段或完成指令</td></tr>
     <tr><td>完成后继续执行或返回</td><td>随后一次返回按新的原因解释</td><td>可以进入客户机；也可以响应暂停而不执行新指令</td></tr>
   </tbody></table>
-  <p><code>immediate_exit</code> 用于后一种情况。KVM 在 KVM_RUN 入口采样它，先处理必要的 I/O 收尾；若仍有待处理片段，先继续交接，全部完成后再以 <code>-EINTR</code> 返回，不执行新的客户机指令。单独改写这个字节不会主动唤醒一个正在客户机中运行的线程；QEMU 还会通过信号 kick vCPU。暂停请求与设备退出相遇时，QEMU 仍重新进入内核完成 I/O，同时安排立即退出。<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L3179-L3198">QEMU 的重新进入与 kick</a>、<a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L6693-L6707">I/O 完成约定</a></p>
+  <h3>设备已经返回数据，管理线程同时请求暂停</h3>
+  <p>假设 QEMU 已把上例的 <code>78 56 34 12</code> 写入共享区，此时收到暂停请求。若直接保存 CPU 状态，内核中的 MMIO 指令仍未完成；若直接恢复正常运行，客户机又可能执行更多指令。需要的动作是：重新进入 KVM，消费这次读取结果，随后停在下一条客户机指令执行之前。</p>
+  <p><code>immediate_exit = 1</code> 提供这个“完成待处理操作后立即返回”的入口。Linux 6.18 在 KVM_RUN 入口采样该字段，记录 <code>wants_to_run = false</code>；x86 路径先调用 <code>arch.complete_userspace_io</code> 指向的继续处理函数，再检查 wants_to_run。单片段读取完成后，KVM 以 <code>-EINTR</code> 返回，期间不执行新的客户机指令。多片段 I/O 若还需用户态提供数据，会先发布下一片段；调用方要继续交接，直到整个操作完成。<a href="{{ linux_source }}virt/kvm/kvm_main.c#L4475-L4478">入口采样</a>、<a href="{{ linux_source }}arch/x86/kvm/x86.c#L11936-L11952">完成与退出的顺序</a></p>
+  <p>这个字段在入口读取一次。单独改写它不会使一个已经在客户机中运行的 vCPU 立即退出；QEMU 结合信号 kick 让线程离开运行路径，并在必要的重新进入中完成 I/O。<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L3179-L3198">QEMU 的重新进入与 kick</a>、<a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L6693-L6707">I/O 完成约定</a></p>
   <p>调用方要先检查 KVM_RUN 的返回值。常规返回值为 0 时才按 exit_reason 分派请求；信号等错误返回要走对应处理分支，不能重复消费共享区里上一次的 MMIO 数据。</p>
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>关键源码</h2>
+  <h2>源码调用链：运行、分派与继续执行</h2>
   <table><thead><tr><th scope="col">执行层</th><th scope="col">入口与关键操作</th></tr></thead><tbody>
     <tr><td>QEMU 外层循环</td><td><a href="{{ qemu_source }}accel/kvm/kvm-all.c#L3154-L3254"><code>kvm_cpu_exec()</code></a> 调用 KVM_RUN，按 IO / MMIO 等原因分派，处理完成后继续循环。</td></tr>
     <tr><td>KVM 入口与收尾</td><td><a href="{{ linux_source }}arch/x86/kvm/x86.c#L11936-L11956"><code>kvm_arch_vcpu_ioctl_run()</code></a> 先调用 complete_userspace_io，再检查是否继续执行，进入 vcpu_run。</td></tr>
@@ -84,11 +106,10 @@ mmio.data[0..3]   = 78 56 34 12</code></pre>
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>从寄存器模拟到事件通知</h2>
+  <h2>演进与取舍：减少往返，保留正确交接</h2>
   <p>用户态设备模拟便于实现多种设备，但高频寄存器访问会反复经过 KVM_RUN 返回、地址空间分派和重新进入。virtio 将大量工作描述放进共享队列，把寄存器访问集中到配置与通知；队列记录和实际数据留在客户机内存中。这降低了每个请求必须经过用户态寄存器处理的需求。</p>
   <p>2009 年，Linux 引入 <a href="https://github.com/torvalds/linux/commit/d34e6b175e61821026893ec5298cc8e7558df43a">ioeventfd</a> 和 <a href="https://github.com/torvalds/linux/commit/721eecbf4fe995ca94a9edec0c9843b1cc0eaaf3">irqfd</a>。ioeventfd 的原始设计抓住了两类访问的区别：设备寄存器读取需要同步返回数据，而队列 doorbell 写入只负责通知后端有新工作，可以在发布事件后继续执行客户机。这为通知路径提供了比完整设备模拟更短的交接方式。</p>
-  <p><code>KVM_IOEVENTFD</code> 进一步为指定 PIO / MMIO 写地址及可选数据值注册 eventfd。匹配写入由 KVM 发出事件通知，可以跳过 vCPU 返回 QEMU 处理该次写入的路径。后端仍需要被唤醒、读取队列和执行 I/O；若后端在用户态，也仍有后端线程参与。减少的是特定通知的用户态退出，不保证消除硬件 VM Exit。</p>
-  <p>反方向的 <code>KVM_IRQFD</code> 把 eventfd 事件连接到客户机中断注入。配合 vhost 等后端后，队列通知、数据处理和完成通知可以避开 QEMU vCPU 线程的通用设备回调。配置变更、异常处理及不匹配的寄存器访问仍保留原有路径。队列结构与后端分工见<a href="qemu-network-tx.html#virtqueue">virtqueue 数据结构</a>和<a href="qemu-vhost-net.html">vhost 与 vhost-user</a>。</p>
+  <p>ioeventfd / irqfd 缩短通知交接，<a href="qemu-vhost-net.html">vhost 与 vhost-user</a>再调整由谁执行队列的数据处理。两项优化可以组合，但收益来源不同：前者减少控制通知往返，后者改变数据面的执行上下文。配置变更、异常处理及不匹配访问仍需完整设备语义。</p>
   <p>客户机执行 HLT 后，宿主线程还需要决定是否继续轮询或进入睡眠，具体过程见<a href="kvm-vcpu-halt.html">KVM vCPU 的阻塞、轮询与唤醒</a>。</p>
   <table><thead><tr><th scope="col">机制</th><th scope="col">减少的工作</th><th scope="col">增加的约束或代价</th></tr></thead><tbody>
     <tr><td>共享 virtqueue</td><td>逐项寄存器交接，允许批量提交与完成</td><td>描述符所有权、内存顺序及通知抑制需要双方配合</td></tr>

@@ -88,23 +88,26 @@ cp .env.example .env
 
 | 分组 | 专题顺序 |
 | --- | --- |
-| 虚拟化基础 | CPU 虚拟化 → 内存虚拟化 → 设备与 I/O 虚拟化 → 中断虚拟化 |
+| 基础机制 | 虚拟化基础 → CPU 虚拟化 → 内存虚拟化 → 设备与 I/O 虚拟化 → 中断虚拟化 |
 | 关键操作 | 虚拟机启动 → 热迁移 → 热插拔 → 热升级 |
-| 内部机制 | QEMU 内部机制 → Libvirt 内部机制 |
+| 内部机制 | QEMU 内部机制 → KVM 内部机制 → Libvirt 内部机制 |
 
-目录只显示已有正文的专题及其主归属篇数，未发布的专题和分组不对读者展示。各文章 URL 保持稳定，跨专题内容使用“相关原理”关联，不重复计数。
+目录只显示已有正文的专题及其主归属篇数，未发布的专题和分组不对读者展示。各文章 URL 保持稳定，交叉阅读放在导读正文，不在目录增加附加行或重复计数。
+
+所有专题标题直接链接对应导读，介绍基本分工、具体例子、演进与取舍，再指向深入机制文章；列表不重复展示导读。基础部分为 `virtualization-basics.html`、`cpu-virtualization.html`、`memory-virtualization.html`、`device-virtualization.html`、`interrupt-virtualization.html`；操作部分为 `vm-startup.html`、`migration.html`、`hotplug.html`、`live-upgrade.html`；内部机制为 `qemu-internals.html`、`kvm-internals.html`、`libvirt-internals.html`。
 
 当前文章都位于 `mechanisms/`：
 
-- CPU（`#cpu-virtualization`）：`kvm-vcpu-run.html`、`kvm-vcpu-halt.html`、`qemu-tcg.html`，KVM_RUN、HLT 后的等待与唤醒，以及 TCG 指令翻译、TB 缓存与执行循环。
+- CPU（`#cpu-virtualization`）：`kvm-vcpu-run.html`、`kvm-vcpu-halt.html`、`kvm-virtual-time.html`、`qemu-tcg.html`，KVM_RUN、HLT 后的等待与唤醒、TSC/pvclock 与定时事件，以及 TCG 指令翻译、TB 缓存与执行循环。
 - 内存（`#memory-virtualization`）：`kvm-ept-fault.html`、`kvm-hugepages.html`、`kvm-dirty-ring.html`，客户机地址映射、EPT 缺页与大页拆分恢复，以及脏页记录、收割与重置。
-- 设备与 I/O（`#device-virtualization`）：`qemu-network-tx.html`、`qemu-vhost-net.html`、`spdk-vhost-user-blk.html`、`qemu-vfio-dma.html`、`qemu-virtio-blk.html`，介绍网络队列、独立存储后端、DMA 转换与隔离，以及块请求和写入持久化。
+- 设备与 I/O（`#device-virtualization`）：`virtio-device-initialization.html`、`qemu-network-tx.html`、`qemu-vhost-net.html`、`dpdk-vhost-user-net.html`、`spdk-vhost-user-blk.html`、`qemu-vfio-dma.html`、`qemu-virtio-blk.html`，从特性协商与队列启用进入数据路径，介绍网络队列、DPDK 报文与 mbuf/PMD 所有权、独立存储后端、DMA 转换与隔离，以及块请求和写入持久化。
 - 中断（`#interrupt-virtualization`）：`kvm-virtio-interrupt.html`，队列完成、通知判定、MSI-X 路由与 KVM 中断注入。
 - 启动（`#vm-startup`）：`libvirt-domain-start.html`、`qemu-vm-startup.html`，从管理请求、进程握手到 QEMU 机器初始化和 vCPU 执行。
-- 热迁移（`#migration`）：`qemu-memory-migration.html`、`qemu-migration-stream.html`、`qemu-multifd.html`、`qemu-postcopy.html`；另提供 Dirty Ring 的交叉阅读入口。
+- 热迁移（`#migration`）：`qemu-memory-migration.html`、`qemu-migration-stream.html`、`qemu-multifd.html`、`qemu-postcopy.html`，从内存迭代深入到流格式、多通道和后拷贝；导读正文链接内存专题的脏页日志文章。
 - 热插拔（`#hotplug`）：`qemu-pcie-hotplug.html`、`qemu-virtio-mem.html`，PCIe 插槽与异步移除，以及内存目标容量、客户机上线与块回收。
 - 热升级（`#live-upgrade`）：`qemu-cpr-transfer.html`，同机更新中的共享 RAM、文件描述符与执行权交接。
 - QEMU 内部机制（`#qemu-internals`）：`qemu-qom-device.html`、`qemu-memory-region.html`、`qemu-aio-iothread.html`、`qemu-qcow2.html`，类型与设备生命周期、地址布局与访问分发、异步块处理，以及镜像映射与写时复制。
+- KVM 内部机制（`#kvm-internals`）：`kvm-vcpu-requests.html`，request 位图、vCPU 模式与 kick 协作；区分内核请求、宿主 IPI、客户机中断及 QEMU 信号。
 - Libvirt 内部机制（`#libvirt-internals`）：`libvirt-rpc.html`，XDR 报文、服务端分发、响应匹配与守护进程边界。
 
 设备接口、后端和 DMA 属于同一条 I/O 路径，合并在一个专题内阅读。原 `#io-virtualization` 锚点仍定位到合并后的专题，文章 URL 不变。
@@ -117,14 +120,13 @@ TCG 交互跟踪翻译块的生成、命中、跳转链接与代码改写后的�
 
 后续选题按以下顺序补充；这是编排计划，不表示文章已发布：
 
-1. **基础机制**：虚拟时钟、Packed Virtqueue 与通知策略；ARM 选题暂缓。
-2. **存储与设备路径**：virtio-scsi 的请求取消与复位、vDPA 与 SR-IOV；在已有 virtio-blk、SPDK 和网络路径上延伸设备生命周期与硬件卸载。
-3. **在线操作**：CPU 热插拔、块设备在线扩容、快照和备份的一致性；避免重复已介绍的 PCIe 与 virtio-mem 流程。
-4. **内部机制**：Libvirt 守护进程启动及 job / 锁的具体竞争，块图修改与设备复位的同步边界。
-5. **迁移与更新约束**：进一步拆解直通设备状态、后端重连、状态版本兼容及失败恢复；不能从一种 CPR 路径推断任意设备或版本都支持无停机更新。
+1. **vDPA 队列配置与数据面卸载**：解释控制面、IOTLB 映射、硬件队列、通知和停止边界；与已有 VFIO、vhost-user 对照，不再重复通用发包过程。
+2. **虚拟磁盘在线备份与一致性**：跟踪一次写入如何进入 dirty bitmap 和备份任务，区分崩溃一致性与应用一致性；与已有 qcow2 地址映射、virtio-blk 请求处理区分。
+
+其次考虑嵌套虚拟化的一次 VM Entry、CPU 热插拔、块设备在线扩容、virtio-scsi 取消与复位，以及 Libvirt job / 锁的具体竞争。ARM 暂缓；目录不加入尚未成文的入口。迁移与更新选题应聚焦直通状态、后端重连或失败恢复等具体问题，避免重复现有预拷贝、迁移流与 CPR 文章。
 
 文章元数据在 `virt_report/content/mechanisms.json`，正文和交互模板在 `render/templates/`，
-共用阅读样式为 `mechanisms.css`，每篇的交互脚本与样式由元数据指定；纯正文与图表文章可省略 `script` / `stylesheet`，不加载空脚本。元数据 `groups` 定义分组，`topics[].group` 指定分组，文章 `topic` 指定主归属；`topics[].related_articles` 引用关联文章 slug。增加已审核文章后，会自动进入目录并显示篇数。内容绑定源码版本与提交，不随日报生成，不调用模型。
+共用阅读样式为 `mechanisms.css`，每篇的交互脚本与样式由元数据指定；纯正文与图表文章可省略 `script` / `stylesheet`，不加载空脚本。元数据 `groups` 定义分组，`topics[].group` 指定分组，文章 `topic` 指定主归属，`topics[].overview` 指定导读文章 slug。增加已审核文章后，会自动进入目录并显示篇数。内容绑定源码版本与提交，不随日报生成，不调用模型。
 
 核验实现时读取指定 tag/commit，不切换或覆盖已有源码工作区。交互是明确标注假设的教学模型，不是实际迁移跟踪或性能预测。
 内存迭代演示采用带单位的轮次近似，停机附加开销为明示的示例值，不等同于 QMP 测量结果；
@@ -135,10 +137,14 @@ TCG 交互跟踪翻译块的生成、命中、跳转链接与代码改写后的�
 字段布局图在正文内完整等比显示，点击后可适应窗口、适应宽度或手动缩放；公共查看器为 `mechanism-viewer.js` / `.css`，无 JavaScript 时仍可查看完整图与原始 SVG。
 MultiFD 演示可改变通道数与慢通道，分别观察发送侧完成和目的端接收屏障；演示步数不表示实测时间。
 网卡演示固定 QEMU 后端，切换设备接口并逐步观察描述符、通知、数据和完成处理。
-virtio 模式显示 desc / avail / used、缓冲区地址及消费位置，可选择起始索引 0 / 3 / 65535 检查环槽与 16 位计数器回绕；完成后旧环项保留，缓冲区由驱动回收。
+virtio 模式默认显示环槽、描述符表、链链接和数据缓冲区的交互图，可局部步进或放大；圆形表示索引循环，实际环槽为连续数组。可选择起始索引 0 / 3 / 65535 检查环槽与 16 位计数器回绕；完成后旧环项保留，缓冲区由驱动回收。DPDK 文章固定 24.11 的普通同步复制路径，区分客户机 used、PMD 接受与硬件完成。
 vhost 演示切换后端，分别显示初始化控制、队列通知、报文数据与完成通知；Dirty Ring 演示允许逐页写入、收割和重置，检查重新保护与迁移读取的先后关系。
 VFIO 演示显示映射请求字段与硬件页表关系，缺失或只读映射下的非法 DMA 不产生成功完成；后拷贝演示区分缺页事件、请求、页面安装和线程唤醒。
-新增文章使用正式机制名称作为标题，版本信息放在前言；正文依次介绍原理、处理流程、关键源码与设计演进，避免对话式说明和未经实测的性能结论。
+新增文章使用正式机制名称作为标题，版本信息放在开篇。先说明要解决的问题和解决思路，再用同一小例子串起架构、关键结构与源码过程，最后说明收益、代价、评价指标及演进方向，避免对话式说明和未经实测的性能结论。目录标题应能说明文章的实际内容，避免连续使用“基本原理”“关键源码”等泛称。
+基础导读需要先解释读者必须理解的概念，不能从实现术语或调用链直接开始。用同一例子回答“问题是什么、最直接的办法为何不够、改进如何生效、成本转移到哪里”，再进入源码文章。发展演变按问题和技术层次组织：例如 PIC/APIC、MSI-X、irqfd、APICv 分别涉及控制器、设备通知、内核接口和硬件交付，不应画成彼此完全替代的单线历史。图中的地址、队列和状态应与正文例子一致；确切年份需有原始文档或提交依据。
+
+12 篇导读均需单独审阅正文，不能以章节齐全或测试通过代替内容审查。组件导读用 KVM 的设备读取、QEMU 的 4 KiB 磁盘读取、Libvirt 的暂停与恢复贯穿分层；操作导读解释状态如何建立和交接，区分命令受理、操作完成与业务就绪。审阅时确认：基本概念先于结构名，例子能从输入走到结果，演进写明收益和剩余代价，图与正文一致，最终有评价方法和继续阅读路径。不得仅添加引言就标记为完整重写。
+`article_outline.py` 在服务端生成正文与目录的统一编号：一级“一、二、三”；同一章节有多个子标题时使用“1. 2. 3.”，只有一个时不加序号。保留旧 section 和子标题锚点；交互组件内部的标题不进入目录，也不计入编号数量。`sections` 的顺序和名称必须与正文一致，重复锚点或元数据不匹配会阻止渲染；关闭 JavaScript 时编号和目录仍可使用。纯排版不要改动已有锚点。
 每篇需展示解释机制所必需的数据结构：关键字段、读写角色、对象关联与操作前后的变化，并区分本地对象和线格式、地址与数据、共享状态和私有游标。结构表与交互应使用一致的示例值；已有文章也按这一要求检查。
 更新后运行 `pytest`；安装 Node 时会同时执行交互模型测试，也可单独运行：
 
