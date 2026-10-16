@@ -6,6 +6,58 @@ import sqlite3
 from email.utils import parseaddr
 
 
+_APPLICATION_REPLY = re.compile(
+    r"(?:applied(?:[,.!]\s*(?:thanks|thank you))?[.!]?|"
+    r"(?:and |I have |I've )?pushed to git[.!]?)", re.I,
+)
+
+
+def mail_application_evidence(items: list[dict], root: str) -> dict:
+    """Recognize a direct application reply, never infer a release from mail."""
+    def message_id(value: str | None) -> str:
+        return (value or "").strip().strip("<>")
+
+    root_item = next((item for item in items
+                      if message_id(root) in {message_id(item.get("native_id")),
+                                              message_id(item.get("message_id"))}), None)
+    if not root_item or root_item.get("source") != "ml":
+        return {}
+    root_ids = {message_id(root_item.get(field)) for field in ("native_id", "message_id")}
+    root_ids.discard("")
+    def subject(value: str | None) -> str:
+        value = re.sub(r"^(?:\s*re:\s*)+", "", value or "", flags=re.I)
+        return " ".join(value.split()).casefold()
+
+    confirmed = {}
+    for item in items:
+        if item is root_item or item.get("source") != "ml":
+            continue
+        body = item.get("body_excerpt") or ""
+        # A later withdrawal makes the earlier application insufficient.
+        if re.search(r"^\s*(?:(?:but|however)[,\s]+)?(?:(?:I have|I've|I|we have|we)\s+)?"
+                     r"(?:reverted|unapplied|dropped)\b", body, re.I | re.M):
+            confirmed = {}
+            continue
+        if message_id(item.get("in_reply_to")) not in root_ids:
+            continue  # Applying one patch cannot complete its whole series.
+        if subject(item.get("subject")) != subject(root_item.get("subject")):
+            continue
+        if re.search(r"\bfw(?:d)?\s*:|forwarded message|original message|<blockquote",
+                     (item.get("subject") or "") + "\n" + body, re.I):
+            continue
+        for line in body.splitlines():
+            if line.startswith(("diff --git", "---", "+++", "@@")):
+                break
+            statement = line.strip()
+            if _APPLICATION_REPLY.fullmatch(statement):
+                confirmed = {
+                    "statement": statement, "author": item.get("author") or "",
+                    "at": item.get("created_at") or "", "url": item.get("url") or "",
+                }
+                break
+    return confirmed
+
+
 def series_identity(subject: str) -> tuple[str, int] | None:
     """Only compare cover letters or single patches with the same exact topic."""
     # Replies are activity on a version, never proof that a new version was sent.
@@ -88,9 +140,14 @@ def consistency_error(item: dict, source: dict) -> str | None:
         return any(re.search(pattern, item.get(field, "") or "")
                    for field in ("title", "summary", "impact"))
 
-    if state != "merged" and (
-        claimed_status in {"已合并", "已合入"}
-        or current_claim("合入|合并")
+    application = source.get("application_evidence") or {}
+    mail_applied = (state == "applied" and source.get("source") == "ml"
+                    and isinstance(application, dict)
+                    and bool(application.get("at") and application.get("url"))
+                    and bool(_APPLICATION_REPLY.fullmatch(application.get("statement") or "")))
+    if state != "merged" and not mail_applied and (
+        claimed_status in {"已合并", "已合入", "已应用"}
+        or current_claim("合入|合并|应用")
     ):
         return "unverified_completion"
     # Closing an issue proves neither a fix nor a shipped release. A merged MR

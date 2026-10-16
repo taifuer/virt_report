@@ -71,6 +71,7 @@ _SYSTEM = """你是资深虚拟化内核与云平台技术编辑，熟悉 QEMU�
 10. messages/participants 是本期活动量；OPENING 可作期初以前的背景，LATEST/REVIEW 均不晚于期末。旧提案收到本期回复不等于本期首次提出，不得把早期评审说成本期新获评审。
 11. active_version 是本期活跃系列，latest_known_version 是截至期末已知最新系列；两者不同时写“旧版本有新评审”，不得写“推进到旧版本”。没有目标发行版证据时不得猜测何时可用；评审中的收益必须表述为合入且满足条件后的预期效果。
 12. 严格区分代码/实现边界和内核/用户态边界。例如 guest_memfd 的其他 provider 表示现有 KVM 内置实现之外的实现，不等于内核之外或用户态实现；外部管理内存也不等于内核外代码。
+13. state=applied 与 APPLICATION 表示同线程的直接回复明确确认补丁已应用或推送，状态写“已应用”。这不证明目标发行版、正式发布或可直接部署；不得将较早的确认说成本期新合入。没有 APPLICATION 时，不得从单个子补丁、引用文字或未来计划推断整个系列已应用。
 
 只输出一个合法 JSON 对象，不要 Markdown 围栏或解释。JSON 结构示例：
 {
@@ -82,7 +83,7 @@ _SYSTEM = """你是资深虚拟化内核与云平台技术编辑，熟悉 QEMU�
   ],
 {watchlist_schema}{period_analysis_schema}  "sections": [
     {"key":"qemu","name":"QEMU","items":[
-      {"ref":"T001","title":"准确简洁的标题","summary":"改了什么及背景","impact":"对研发/用户的具体意义","tag":"子系统或架构","status":"讨论中/评审中/已合并/已关闭/新提交"}
+      {"ref":"T001","title":"准确简洁的标题","summary":"改了什么及背景","impact":"对研发/用户的具体意义","tag":"子系统或架构","status":"讨论中/评审中/已应用/已合并/已关闭/新提交"}
     ]},
     {"key":"libvirt","name":"Libvirt","items":[]},
     {"key":"kvm","name":"KVM","items":[]}
@@ -138,6 +139,13 @@ def build_prompt(period: str, period_key: str, threads_data: list[dict]) -> str:
             lines.append(f"SERIES_NOTE: {t['series_note']}")
         if t.get("evidence_note"):
             lines.append(f"EVIDENCE_LIMIT: {t['evidence_note']}")
+        application = t.get("application_evidence") or {}
+        if application:
+            lines.append(
+                f"APPLICATION: at={application.get('at', '-')} "
+                f"author={application.get('author', '-')} url={application.get('url', '-')} "
+                f"statement={application.get('statement', '')}"
+            )
         if t.get("opening_at"):
             lines.append(
                 f"EVIDENCE_TIMES_UTC: opening={t['opening_at']} "
