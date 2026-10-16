@@ -1,6 +1,7 @@
 """Conservative series metadata derived from source mail, not model guesses."""
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from email.utils import parseaddr
@@ -17,9 +18,21 @@ def mail_application_evidence(items: list[dict], root: str) -> dict:
     def message_id(value: str | None) -> str:
         return (value or "").strip().strip("<>")
 
-    root_item = next((item for item in items
-                      if message_id(root) in {message_id(item.get("native_id")),
-                                              message_id(item.get("message_id"))}), None)
+    def is_root(item: dict) -> bool:
+        if message_id(root) in {message_id(item.get("native_id")),
+                               message_id(item.get("message_id"))}:
+            return True
+        # HyperKitty groups by the root's archive hash but stores Message-ID
+        # in native_id. Use collector metadata, not list order or a guessed ID.
+        try:
+            raw = item.get("raw_json") or {}
+            raw = json.loads(raw) if isinstance(raw, str) else raw
+        except (TypeError, ValueError):
+            return False
+        return (isinstance(raw, dict) and raw.get("official_api") is True
+                and raw.get("message_hash") == root == raw.get("thread_hash"))
+
+    root_item = next((item for item in items if is_root(item)), None)
     if not root_item or root_item.get("source") != "ml":
         return {}
     root_ids = {message_id(root_item.get(field)) for field in ("native_id", "message_id")}

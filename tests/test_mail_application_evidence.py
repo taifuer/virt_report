@@ -68,6 +68,26 @@ def test_later_revert_invalidates_application():
     ], 'root')
 
 
+def test_hyperkitty_archive_root_hash_maps_to_real_message_id(tmp_path):
+    with db.connect(tmp_path / 'hyperkitty.db') as conn:
+        root = message('root-message-id', project='libvir-list', thread_root='ROOT_HASH',
+                       raw_json={'official_api': True, 'message_hash': 'ROOT_HASH',
+                                 'thread_hash': 'ROOT_HASH'})
+        reply = message('reply-message-id', 'Reviewed-by: Reviewer\n\nand pushed to git.',
+                        project='libvir-list', parent='root-message-id', thread_root='ROOT_HASH',
+                        raw_json={'official_api': True, 'message_hash': 'REPLY_HASH',
+                                  'thread_hash': 'ROOT_HASH'})
+        for item in (root, reply):
+            db.upsert_item(conn, item)
+        rebuild_threads(conn)
+        end = '2026-10-15T16:00:00Z'
+        rows = db.get_top_threads(conn, '2026-10-14T16:00:00Z', end)
+        cards = report._build_threads_data(conn, rows, 600, None, end)
+        assert cards[0]['state'] == 'applied'
+        assert cards[0]['application_evidence']['statement'] == 'and pushed to git.'
+        assert not evidence.mail_application_evidence([reply], 'ROOT_HASH')
+
+
 def card_with_proof():
     proof = evidence.mail_application_evidence(
         [message('root'), message('reply', 'Applied, thanks.', parent='root')], 'root')
