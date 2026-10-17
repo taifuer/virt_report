@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>vCPU 与 NUMA 内存放置 - virt-report</title>
+  <meta name="description" content="从绑核后仍有远端内存访问的问题出发，说明客户机拓扑、线程亲和性、RAM 分配策略与 I/O 后端位置怎样配合。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
+  <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c204cdcdcf49">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c204cdcdcf49">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=85f3a75ef38f" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="memory-virtualization.html">内存虚拟化</a></div>
+    <h1>vCPU 与 NUMA 内存放置</h1>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、绑了 vCPU，访问内存为什么仍然慢</a></li><li><a href="#mapping">二、把虚拟拓扑与物理放置分开</a></li><li><a href="#allocation">三、从内存映射到物理页分配</a></li><li><a href="#example">四、4 个 vCPU 与 8 GiB RAM 的放置例子</a></li><li><a href="#io">五、I/O 路径也要计入局部性</a></li><li><a href="#verification">六、验证配置是否变成了实际放置</a></li><li><a href="#evolution">七、从默认分配到按内存对象管理</a></li><li><a href="#sources">八、参考资料</a></li></ol></nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">一、</span>绑了 vCPU，访问内存为什么仍然慢</h2>
+  <p>一台双路服务器上，虚拟机的 4 个 vCPU 都在 NUMA 节点 1 的物理 CPU 上运行，客户机 RAM 却大部分分配在节点 0。每次访问这些页，都可能跨越处理器互连。绑定线程解决了“在哪执行”，内存位置仍需单独安排。</p>
+  <p>NUMA 的含义是不同 CPU 访问不同内存位置时，延迟和可用带宽可能不同。虚拟机又增加了客户机拓扑：客户机认为自己的 CPU 和内存属于哪个节点，与真实页位于哪个宿主节点，是两套独立关系。要获得局部性，需要让客户机的工作分配、宿主线程放置和实际物理页分布相互配合。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>、<a href="https://github.com/libvirt/libvirt/tree/4d937284669ecf180abea087d0b3ad67d9476349" target="_blank" rel="noopener noreferrer" title="commit 4d937284669ecf180abea087d0b3ad67d9476349">Libvirt 12.0.0</a>。</p></section>
+<section id="mapping" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">二、</span>把虚拟拓扑与物理放置分开</h2>
+  <table><thead><tr><th>配置对象</th><th>决定什么</th><th>不自动保证什么</th></tr></thead><tbody>
+    <tr><td>客户机 NUMA 拓扑</td><td>客户机看到哪些 vCPU 与 RAM 属于同一节点、节点之间的距离</td><td>宿主线程与物理页实际位于对应节点</td></tr>
+    <tr><td>vCPU 线程亲和性</td><td>宿主调度器允许该线程在哪些逻辑 CPU 上运行</td><td>独占物理核、稳定调度时间、内存自动迁移</td></tr>
+    <tr><td>RAM 后端内存策略</td><td>该内存对象的页优先或限定从哪些宿主节点分配</td><td>客户机应用将数据分给恰当的工作线程</td></tr>
+    <tr><td>IOThread 与其他后端线程</td><td>处理 I/O 的 CPU 位置及其与队列、内存、设备的关系</td><td>只绑定 vCPU 后这些线程也随之绑定</td></tr>
+  </tbody></table>
+  <p>客户机节点编号不必等于宿主节点编号。客户机节点 0 完全可以放到宿主节点 1；迁移到另一台机器后，也可以保持客户机拓扑而采用新的物理映射。vCPU 的 socket/core/thread 拓扑同样是客户机看到的组织方式，不能当作宿主绑核配置。</p>
+  <figure class="mechanism-diagram" data-diagram="numa-placement-layers" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>一个客户机节点对应三条放置关系</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看一个客户机节点对应三条放置关系" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="一个客户机节点对应三条放置关系">
+    <img src="../assets/numa-placement-layers.svg?v=c204cdcdcf49" alt="客户机节点 0 的 vCPU、RAM 和处理其请求的后端需要分别安排。示例将 vCPU 与 RAM 放在宿主节点 1；远端后端或误放的物理页仍可能引入跨节点访问。" loading="lazy">
+  </div>
+  <figcaption>客户机节点 0 的 vCPU、RAM 和处理其请求的后端需要分别安排。示例将 vCPU 与 RAM 放在宿主节点 1；远端后端或误放的物理页仍可能引入跨节点访问。 <a href="../assets/numa-placement-layers.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+  accTitle: 客户机 NUMA 与宿主线程、内存及后端的放置
+  accDescr: 客户机节点 0 的 vCPU 线程可以绑定到宿主节点 1，RAM 后端通过独立内存策略分配到该节点。后端线程必须另行安排；如果位于节点 0，访问共享缓冲区仍会跨节点。
+  G[&#34;客户机节点 0&lt;br/&gt;4 vCPU · 8 GiB RAM&#34;] --&gt; V[&#34;vCPU 线程&lt;br/&gt;CPU 亲和性&#34;]
+  G --&gt; M[&#34;RAM 后端&lt;br/&gt;host-nodes 与 policy&#34;]
+  V --&gt; P[&#34;宿主节点 1 的 CPU&lt;br/&gt;执行客户机&#34;]
+  M --&gt; R[&#34;宿主节点 1 的物理页&lt;br/&gt;数据与队列缓冲区&#34;]
+  P &lt;--&gt;|局部访问| R
+  B[&#34;I/O 后端线程&lt;br/&gt;独立配置亲和性&#34;] --&gt; L[&#34;放在宿主节点 1&#34;]
+  B --&gt; X[&#34;放在宿主节点 0&#34;]
+  L --&gt;|局部访问| R
+  X -.-&gt;|跨节点访问| R
+  classDef guest fill:#e4f1ec,stroke:#438575,color:#173e34;
+  classDef host fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef remote fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class G,V,M guest;
+  class P,R,B,L host;
+  class X remote;
+</code></pre></details>
+</figure>
+</section>
+<section id="allocation" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">三、</span>从内存映射到物理页分配</h2>
+  <p>QEMU 创建 RAM 后端时，先获得一段宿主虚拟地址映射。使用按需分配的匿名内存时，许多物理页在后续缺页时才真正分配。分配位置取决于适用的 NUMA 内存策略、允许的节点集合以及当时的资源状况；默认局部分配下，触发分配的线程所在节点会影响结果。</p>
+  <p>这解释了为什么“启动完成后再绑核”可能晚了一步：预分配线程或启动过程中运行的线程已经让页落在别的节点。单纯调整线程亲和性不会把这些页一起搬走。共享内存、文件后端和大页还有各自的分配约束，也不宜用一个 first touch 规则概括所有情况。</p>
+  <p><code>HostMemoryBackend</code> 保存 RAM 区域、host_nodes、policy 和 prealloc 等属性。QEMU 的 Linux 路径先通过 <code>mbind()</code> 为后端应用节点策略，再执行预分配，避免预分配先发生而策略尚未生效。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/backends/hostmem.c#L367-L432">内存策略与预分配的顺序</a></p>
+  <table><thead><tr><th>常见策略</th><th>适用思路</th><th>取舍</th></tr></thead><tbody>
+    <tr><td>bind / Libvirt strict</td><td>把分配约束在指定节点集合内，维持明确的局部性</td><td>节点内存不足时可能分配失败，不能假定其他节点有空闲就一定能启动</td></tr>
+    <tr><td>preferred</td><td>优先使用指定节点，必要时允许回退</td><td>更容易满足容量，但运行时页分布可能偏离理想位置</td></tr>
+    <tr><td>interleave</td><td>将页分散到一组节点，利用多节点带宽和容量</td><td>单个 CPU 访问时包含远端页，不等于最低访问延迟</td></tr>
+  </tbody></table>
+  <p>cpuset/cgroup 的允许节点约束也参与决定最终放置。预分配能在启动阶段更早暴露容量问题并减少运行时首次缺页，代价是更长启动时间和更早占用内存；大页还需要检查目标节点的大页池，而非只检查全机空闲内存。</p>
+</section>
+<section id="example" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">四、</span>4 个 vCPU 与 8 GiB RAM 的放置例子</h2>
+  <p>假设宿主节点 1 包含逻辑 CPU 8—15，有足够空闲内存；这些编号只是例子，实际应先通过 <code>lscpu -e=CPU,NODE,SOCKET,CORE</code> 和 <code>numactl --hardware</code> 确认。客户机只暴露一个节点，包含 4 个 vCPU 和 8 GiB RAM。</p>
+  <p>QEMU 内存与虚拟拓扑部分可以表示为：</p>
+  <pre><code>-m 8G -smp 4,sockets=1,cores=4,threads=1
+-object memory-backend-ram,id=ram0,size=8G,host-nodes=1,policy=bind,prealloc=on
+-numa node,nodeid=0,cpus=0-3,memdev=ram0</code></pre>
+  <p><code>nodeid=0</code> 是客户机节点，<code>host-nodes=1</code> 是宿主节点。这段配置将 RAM 约束到宿主节点 1，但尚未设置 vCPU 亲和性。由 Libvirt 管理时，可以在既有 domain XML 中同时表达客户机 CPU/NUMA 拓扑、vcpupin 和 numatune，例如以下相关片段：</p>
+  <pre><code>&lt;cputune&gt;
+  &lt;vcpupin vcpu='0' cpuset='8'/&gt;
+  &lt;vcpupin vcpu='1' cpuset='9'/&gt;
+  &lt;vcpupin vcpu='2' cpuset='10'/&gt;
+  &lt;vcpupin vcpu='3' cpuset='11'/&gt;
+  &lt;emulatorpin cpuset='12-13'/&gt;
+&lt;/cputune&gt;
+&lt;numatune&gt;
+  &lt;memory mode='strict' nodeset='1'/&gt;
+  &lt;memnode cellid='0' mode='strict' nodeset='1'/&gt;
+&lt;/numatune&gt;</code></pre>
+  <p>这里假设客户机节点 0 已在 CPU 的 numa 配置中定义。若使用 IOThread，还要为已创建的线程配置 iothreadpin；若使用独立 vhost-user 后端，则在那个进程及其工作线程上配置。CPU 8—11 是否属于不同物理核、是否与其他任务争抢，仍需检查，四个逻辑 CPU 不保证有四份独立核心资源。</p>
+  <p>这是单节点内存密集型负载的放置例子。超过单节点容量的大 VM，可能更适合暴露多个客户机节点，让每组 vCPU 靠近自己的 RAM；此时应用也要理解 NUMA，避免把全部数据集中到一个节点后由其他节点反复远程访问。</p>
+</section>
+<section id="io" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">五、</span>I/O 路径也要计入局部性</h2>
+  <p>一次 virtio 请求可能先由 vCPU 准备描述符和缓冲区，再由 QEMU IOThread、内核 vhost 或独立用户态后端读取，最后交给网卡或存储设备。共享缓冲区没有变，读取它的 CPU 却可能跨了节点。后端线程放得很远时，绑好 vCPU 和 RAM 仍会留下远端访问及缓存交接成本。</p>
+  <p>物理设备也有所在节点。把后端靠近网卡可以缩短设备侧路径，但若客户机 RAM 在另一节点，缓冲区访问又会跨节点。合理选择取决于数据量、批大小、共享方式和队列分配；不能用“所有线程都绑到同一个 CPU”解决局部性，否则可能增加执行排队。</p>
+  <p>多队列可以把请求分配给多组工作线程，使处理并行化，也可能提高跨节点共享和通知数量。评价时要把每个队列的消费者、缓冲区位置和设备位置对应起来，再决定是否拆分队列或调整线程亲和性。</p>
+</section>
+<section id="verification" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>验证配置是否变成了实际放置</h2>
+  <p>以下命令只读取状态，其中 PID 和 DOMAIN 应替换为目标虚拟机的实际标识。重点是交叉核对配置与结果，而非只看 XML。</p>
+  <pre><code>virsh vcpupin DOMAIN
+virsh emulatorpin DOMAIN
+virsh numatune DOMAIN
+numastat -p PID
+less /proc/PID/numa_maps
+ps -L -p PID -o pid,tid,psr,comm</code></pre>
+  <p><code>psr</code> 是采样时看到的处理器，不是允许 CPU 集合；线程亲和性还应结合 <code>/proc/PID/task/TID/status</code> 的 Cpus_allowed_list。<code>numastat -p</code> 汇总进程内存，包含 QEMU 自身开销，不能把所有页都直接算成客户机 RAM；numa_maps 可进一步按映射区间核对。</p>
+  <p>先固定业务负载，再比较放置调整前后的吞吐、延迟分布、CPU 消耗和内存节点分布。节点间缓存共享、带宽竞争与调度排队可能同时存在，不能仅凭远端页数推导业务会快多少。迁移后应重新验证目的端放置；客户机拓扑保持不变，不代表目的端自动沿用正确的物理资源映射。</p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">七、</span>从默认分配到按内存对象管理</h2>
+  <p>默认调度与局部分配无需细致配置，适合资源动态共享；当虚拟机跨多个节点、使用大页或接入高吞吐设备后，默认策略可能难以保持稳定局部性。显式 NUMA 拓扑和每节点内存后端把客户机视图与宿主分配策略分开，使控制更精确，也增加了容量规划和迁移时重建映射的责任。</p>
+  <p>Linux 的自动 NUMA 平衡可以根据访问情况调整部分工作和页的位置，适用效果受策略、页类型和运行环境影响；严格绑定、大页或固定高吞吐后端不能期待它自动修正全部放置。进一步出现的异构内存描述也让“节点距离”超出了单纯双路服务器：延迟、带宽和容量可能不同，需要让客户机了解适合其负载的信息。</p>
+  <p>最实用的判断顺序是：先确认线程和页究竟在哪里，再识别访问最频繁的共享数据，最后选择局部绑定、分区或跨节点分散。局部性是数据访问关系的结果，单独增加绑定项并不能证明已经优化。</p>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">八、</span>参考资料</h2>
+  <ul>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/backends/hostmem.c#L367-L432">QEMU：NUMA 策略、mbind 与预分配</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qemu-options.hx#L433-L508">QEMU：客户机 NUMA 节点与 memory backend</a></li>
+    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/docs/formatdomain.rst#L843-L922">Libvirt：vCPU、emulator 与 IOThread 亲和性</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/docs/formatdomain.rst#L1249-L1305">内存节点策略</a></li>
+    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_command.c#L3288-L3520">Libvirt：内存后端属性构造</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L2719-L2875">线程约束与亲和性设置</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/admin-guide/mm/numa_memory_policy.rst">Linux：NUMA 内存策略、页分配与 cpuset 约束</a></li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#memory-virtualization">内存虚拟化原理</a><a href="../mechanisms.html#migration">热迁移原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=85f3a75ef38f"></script>
+<script src="../assets/mechanism-viewer.js?v=c204cdcdcf49" defer></script>
+</body>
+</html>

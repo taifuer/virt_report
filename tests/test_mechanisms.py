@@ -409,7 +409,8 @@ def test_diagrams_are_self_contained_svg_with_accessible_descriptions():
                                      "test_postcopy.cjs", "test_vfio_dma.cjs",
                                      "test_memory_map.cjs", "test_virtio_mem.cjs",
                                      "test_halt_poll.cjs", "test_hugepage_map.cjs",
-                                     "test_qcow2_map.cjs", "test_tcg_tb.cjs"])
+                                     "test_qcow2_map.cjs", "test_tcg_tb.cjs",
+                                     "test_notification_race.cjs", "test_packed_virtqueue.cjs"])
 def test_migration_model_state_invariants(filename):
     result = subprocess.run(
         ["node", "--test", str(Path(__file__).with_name(filename))],

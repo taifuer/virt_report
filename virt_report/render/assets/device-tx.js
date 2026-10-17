@@ -133,7 +133,46 @@
     }));
   }
 
-  const api = {normalizeOptions, buildTrace};
+  function buildNotificationRace(scenario = 'recheck') {
+    if (!['recheck', 'broken', 'late'].includes(scenario)) throw new RangeError('Unknown notification scenario');
+    const frames = [];
+    let state = {avail: 7, consumed: 7, notifications: false, kickSent: false, waiting: false,
+      driver: '新请求尚未发布。', backend: '已经取走前 7 项，准备结束本轮处理。'};
+    function step(title, detail, update = {}) {
+      state = {...state, ...update};
+      frames.push({...state, title, detail});
+    }
+    step('后端检查队列为空', 'avail.idx 与 last_avail_idx 都是 7；后端仍暂时关闭通知。');
+    if (scenario !== 'late') {
+      step('驱动发布第 8 项', '驱动先写好描述符和 avail 槽位，再按发布顺序更新 avail.idx。后端尚未取走这一项。',
+        {avail: 8, driver: '第 8 项已经发布到共享队列。'});
+      step('驱动检查通知条件', '后端还没恢复通知，驱动遵守抑制条件，省略这次 kick。请求依然有效。',
+        {driver: '看到通知关闭，没有发出 kick。'});
+    }
+    step('后端恢复通知', '后端设置允许通知，并通过必要的内存屏障约束接下来的队列检查。',
+      {notifications: true, backend: '通知已开启；接下来应当复查提交进度。'});
+    if (scenario === 'broken') {
+      step('错误：不复查就等待', 'avail.idx 已是 8，但后端仍以先前的空队列结果进入等待。驱动不会为同一请求补发 kick；若没有后续通知或主动检查，第 8 项会滞留。',
+        {waiting: true, backend: '省略复查，等待一个不会由第 8 项补发的通知。'});
+    } else if (scenario === 'recheck') {
+      step('复查发现新请求', '后端读到 avail.idx = 8，取消进入等待，继续消费队列。本次无需依赖 kick。',
+        {backend: '发现 8 ≠ 7，继续处理。'});
+      step('取走第 8 项', 'last_avail_idx 推进为 8，表示后端已取走请求；完成回写 used 属于后续处理，未在本演示展开。',
+        {consumed: 8, backend: '已取走第 8 项，没有遗漏。'});
+    } else {
+      step('复查时队列仍空', '此刻两个索引仍为 7，后端可以准备等待。通知已经开启。',
+        {backend: '复查为空，准备等待事件。'});
+      step('驱动随后发布第 8 项', '发布顺序不变；驱动检查通知条件时看到通知开启。',
+        {avail: 8, driver: '发布第 8 项，看到通知已开启。'});
+      step('kick 使事件就绪', '驱动发出 kick。即使后端还没有实际睡眠，事件通知也保持就绪，事件循环能继续处理。',
+        {kickSent: true, driver: '已发出 kick。', backend: '事件就绪，无需等下一项请求。'});
+      step('取走第 8 项', '后端处理就绪事件，读取队列并推进私有消费索引。',
+        {consumed: 8, backend: '已取走第 8 项，没有遗漏。'});
+    }
+    return frames;
+  }
+
+  const api = {normalizeOptions, buildTrace, buildNotificationRace};
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (!root || !root.document) return;
 
@@ -311,5 +350,29 @@
     lab.dataset.initialized = 'true';
     reset();
   }
+  function initializeNotificationRace(lab) {
+    const get = name => lab.querySelector(`[data-race-${name}]`);
+    let frames, index = 0;
+    function render() {
+      const frame = frames[index];
+      get('status').textContent = `${index + 1} / ${frames.length} · ${frame.title}`;
+      ['driver', 'backend', 'avail', 'consumed', 'detail'].forEach(name => {
+        get(name).textContent = frame[name];
+      });
+      get('flags').textContent = `通知${frame.notifications ? '开启' : '关闭'} · ${frame.kickSent ? '已发出 kick' : '未发出 kick'} · 待取走 ${frame.avail - frame.consumed} 项`;
+      lab.classList.toggle('is-stalled', frame.waiting);
+      get('back').disabled = index === 0;
+      get('next').disabled = index === frames.length - 1;
+    }
+    function reset() { index = 0; frames = buildNotificationRace(get('scenario').value); render(); }
+    get('back').addEventListener('click', () => { index = Math.max(0, index - 1); render(); });
+    get('next').addEventListener('click', () => { index = Math.min(frames.length - 1, index + 1); render(); });
+    get('reset').addEventListener('click', reset);
+    get('scenario').addEventListener('change', reset);
+    get('controls').hidden = false;
+    lab.dataset.initialized = 'true';
+    reset();
+  }
   root.document.querySelectorAll('[data-device-tx-lab]').forEach(initialize);
+  root.document.querySelectorAll('[data-notification-race]').forEach(initializeNotificationRace);
 })(typeof window === 'undefined' ? null : window);

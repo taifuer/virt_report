@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>x86 vCPU 热插拔：拓扑、上线与异步移除 - virt-report</title>
+  <meta name="description" content="区分最大拓扑、已创建 vCPU 和客户机在线 CPU，跟踪 QMP、ACPI 通知、客户机下线与删除完成事件。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
+  <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c204cdcdcf49">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c204cdcdcf49">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=85f3a75ef38f" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="hotplug.html">热插拔</a></div>
+    <h1>x86 vCPU 热插拔：拓扑、上线与异步移除</h1>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、增加一个 vCPU，需要谁同意</a></li><li><a href="#states">二、最大数量、设备存在与客户机在线</a></li><li><a href="#example">三、从 2 个 vCPU 扩到 3 个</a></li><li><a href="#handoff">四、ACPI 怎样连接设备变化和客户机动作</a></li><li><a href="#removal">五、怎样确认缩容真正完成</a></li><li><a href="#implementation">六、源码：拓扑位置、通知和拆除</a></li><li><a href="#evolution">七、从调整数量到管理完整生命周期</a></li><li><a href="#sources">八、参考资料</a></li></ol></nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">一、</span>增加一个 vCPU，需要谁同意</h2>
+  <p>一台虚拟机启动时使用 2 个 vCPU，高峰期希望扩到 4 个。QEMU 可以创建额外的 CPU 对象和执行线程，但客户机还需要发现处理器、初始化本地状态，并让调度器使用它。缩容时更复杂：客户机必须先移走任务、中断和定时器，宿主才能撤销相应执行上下文。</p>
+  <p>本文沿 x86 PC 机器的 ACPI CPU 热插拔路径，区分最大拓扑、QEMU 中已创建的 vCPU 和客户机 online CPU，再跟踪一个新增 vCPU 的创建与删除。客户机采用支持 ACPI CPU 热插拔的 Linux；CPU 是否自动上线仍取决于客户机配置。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>、<a href="https://github.com/libvirt/libvirt/tree/4d937284669ecf180abea087d0b3ad67d9476349" target="_blank" rel="noopener noreferrer" title="commit 4d937284669ecf180abea087d0b3ad67d9476349">Libvirt 12.0.0</a>。</p></section>
+<section id="states" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">二、</span>最大数量、设备存在与客户机在线</h2>
+  <table><thead><tr><th>状态</th><th>表示什么</th><th>怎样确认</th></tr></thead><tbody>
+    <tr><td>最大拓扑</td><td>启动时预留可容纳的 socket、core、thread 位置和数量上限</td><td>QEMU 的 smp/maxcpus 与 query-hotpluggable-cpus</td></tr>
+    <tr><td>QEMU 已创建设备</td><td>某个位置已经关联 CPU 对象及运行资源</td><td>query-hotpluggable-cpus 中有 qom-path；query-cpus-fast 返回实例</td></tr>
+    <tr><td>客户机 present</td><td>客户机已发现这个处理器</td><td>客户机 /sys/devices/system/cpu/present</td></tr>
+    <tr><td>客户机 online</td><td>客户机已完成上线，允许该 CPU 承担调度与中断工作</td><td>客户机 /sys/devices/system/cpu/online</td></tr>
+  </tbody></table>
+  <p>前三项也各有观察边界。QEMU 创建了设备，客户机可能尚未处理通知；客户机看到了 CPU，也可能按策略保持 offline。把 CPU 在客户机中 offline，通常只是停止使用，QEMU 对象和宿主线程仍可存在；它与从虚拟硬件中移除 CPU 是两件事。</p>
+  <p>Linux 的 <code>possible</code> 集合用于描述内核预先支持的 CPU 范围，通常在启动阶段确定。它还受客户机自身配置影响，不应机械地认为它一定与 QEMU 的 maxcpus 相等。最大拓扑也不代表预留了同样数量的独占物理核，宿主调度与绑核需要另行规划。</p>
+</section>
+<section id="example" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">三、</span>从 2 个 vCPU 扩到 3 个</h2>
+  <p>下面列出示例虚拟机启动配置中与拓扑相关的部分。CPU 模型应已在本机验证可用；其余磁盘、内存、固件和 QMP 配置沿现有虚拟机设置。</p>
+  <pre><code>-machine pc-q35-10.2,accel=kvm
+-cpu Haswell-v4
+-smp cpus=2,maxcpus=4,sockets=1,cores=4,threads=1</code></pre>
+  <p>启动前预留 4 个单线程核心位置，最初只创建其中 2 个。进入 QMP 后先查询：</p>
+  <pre><code>{"execute":"query-hotpluggable-cpus"}</code></pre>
+  <p>在返回项中寻找没有 <code>qom-path</code> 的空位，使用该项实际返回的 <code>type</code> 和 <code>props</code> 创建 CPU。例如查询结果中 core-id 为 2 的空位使用下面的类型与拓扑属性：</p>
+  <pre><code>{"execute":"device_add","arguments":{
+  "driver":"Haswell-v4-x86_64-cpu","id":"cpu-extra",
+  "socket-id":0,"core-id":2,"thread-id":0
+}}
+{"return":{}}</code></pre>
+  <p>不同拓扑可能还返回 die-id 等字段，应完整沿用对应空位的属性，不能只改数量猜测位置。返回成功后，<code>query-cpus-fast</code> 可确认 QEMU 已建立实例；再在客户机读取 <code>present</code>、<code>online</code> 和 <code>lscpu</code>，确认操作系统是否开始使用。</p>
+  <p>CPU 的 QMP 设备 ID、cpu-index、APIC ID、客户机逻辑 CPU 编号，以及宿主线程 ID 属于不同标识空间。尤其 <code>query-cpus-fast</code> 返回项顶层的 <code>thread-id</code> 是宿主线程 ID，而 <code>props.thread-id</code> 是虚拟拓扑中的线程位置；排查时应通过拓扑和查询结果关联，不能直接认为数字相等。</p>
+</section>
+<section id="handoff" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">四、</span>ACPI 怎样连接设备变化和客户机动作</h2>
+  <figure class="mechanism-diagram" data-diagram="cpu-hotplug-acpi-handoff" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>创建、上线与异步移除</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看创建、上线与异步移除" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="创建、上线与异步移除">
+    <img src="../assets/cpu-hotplug-acpi-handoff.svg?v=c204cdcdcf49" alt="QEMU 创建 CPU 后发出 ACPI 通知，客户机再完成发现和上线；删除请求需要客户机迁走工作并回应 eject，QEMU 才拆除设备并报告完成。" loading="lazy">
+  </div>
+  <figcaption>QEMU 创建 CPU 后发出 ACPI 通知，客户机再完成发现和上线；删除请求需要客户机迁走工作并回应 eject，QEMU 才拆除设备并报告完成。 <a href="../assets/cpu-hotplug-acpi-handoff.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
+  accTitle: x86 vCPU 创建、上线与异步移除
+  accDescr: 管理程序创建 vCPU 后，QEMU 通知客户机发现并上线。移除时管理程序先得到受理响应，客户机迁走工作并回应 ACPI eject 后，QEMU 才真正拆除并发送完成事件。
+  participant M as 管理程序
+  participant Q as QEMU / ACPI
+  participant G as 客户机内核
+  M-&gt;&gt;Q: device_add：空位与 CPU 类型
+  Q-&gt;&gt;Q: 检查拓扑并创建 CPU
+  Q--&gt;&gt;M: 创建结果
+  Q-&gt;&gt;G: SCI / 插入通知
+  G-&gt;&gt;G: 发现 CPU，按策略上线
+  M-&gt;&gt;Q: device_del
+  Q--&gt;&gt;M: 请求已受理
+  Q-&gt;&gt;G: SCI / 移除通知
+  G-&gt;&gt;G: 迁走任务、中断与定时器
+  G-&gt;&gt;Q: ACPI eject
+  Q-&gt;&gt;Q: 拆除 CPU，释放位置
+  Q--&gt;&gt;M: DEVICE_DELETED
+</code></pre></details>
+</figure>
+  <p>机器模型维护可用 CPU 位置，ACPI 热插拔控制器保存每个位置的 CPU 指针、插入和移除标志。<code>acpi_cpu_plug_cb()</code> 将新 CPU 关联到位置，设置插入标记并发出 ACPI 事件。客户机处理 SCI 后执行固件提供的方法，确认 CPU 存在，进入自身 CPU 注册和上线流程。</p>
+  <p>移除时，管理程序发送 <code>device_del</code>，QEMU 设置移除标记并通知客户机。Linux 的 CPU hotplug 状态机按顺序执行下线回调，把任务、中断和定时器移到其他可用 CPU，并处理每 CPU 资源。客户机随后通过 ACPI eject 交还设备，QEMU 才能清理该 CPU 对象。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/acpi/cpu.c#L250-L293">CPU 插入与移除通知</a></p>
+  <p>如果客户机卡死、热插拔被禁用，或者下线流程无法完成，删除可能停在等待阶段。直接终止对应宿主线程会破坏虚拟机的执行模型，不能作为 CPU 热拔出的替代方案。x86 PC 路径还明确拒绝拔出启动 CPU，因此例子只移除后来添加的 cpu-extra。</p>
+</section>
+<section id="removal" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">五、</span>怎样确认缩容真正完成</h2>
+  <pre><code>{"execute":"device_del","arguments":{"id":"cpu-extra"}}
+{"return":{}}
+
+稍后可能收到完成事件（省略 timestamp）：
+{"event":"DEVICE_DELETED","data":{
+  "device":"cpu-extra","path":"/machine/peripheral/cpu-extra"
+}}</code></pre>
+  <p>命令成功表示移除请求已受理。管理程序需要持续接收并关联完成事件，也要能处理事件与响应的不同先后顺序。完成后再次查询可插拔 CPU 列表，该位置应不再包含 qom-path，运行实例列表中也不再包含被删除对象。客户机的 online 列表可能更早变化，不能单独用它证明宿主资源已经释放。</p>
+  <p>Libvirt 的 <code>qemuDomainHotplugDelVcpu()</code> 会标记待移除的别名、发送删除请求并等待设备移除；超时错误明确要求重新检查实际结果。超时与删除失败不是同义词：事件可能稍后到达。重连后应重新查询状态，避免重复创建、错误复用标识或把仍在等待的操作当作已完成。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_hotplug.c#L6709-L6758">Libvirt 的移除等待</a></p>
+  <p>使用 Libvirt 管理的虚拟机，应通过其 vCPU 管理接口操作，使运行状态与持久配置保持一致。<code>--live</code>、<code>--config</code> 和客户机内部 online 控制各有不同对象；不要用旁路 QMP 操作后再假定 Libvirt XML 会自动成为预期配置。</p>
+</section>
+<section id="implementation" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>源码：拓扑位置、通知和拆除</h2>
+  <table><thead><tr><th>入口或结构</th><th>阅读重点</th></tr></thead><tbody>
+    <tr><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/x86.c#L101-L150">x86_possible_cpu_arch_ids()</a></td><td>按 maxcpus 建立位置列表，把 APIC ID 与拓扑属性联系起来</td></tr>
+    <tr><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/x86-common.c#L257-L430">x86_cpu_pre_plug()</a></td><td>检查型号、拓扑和可用位置，阻止重复占用或不匹配的 CPU</td></tr>
+    <tr><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/acpi/cpu.c#L250-L293">AcpiCpuStatus 与通知回调</a></td><td>维护插入、移除标记，并发出 SCI 对应的 ACPI 热插拔事件</td></tr>
+    <tr><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/acpi/cpu.c#L104-L153">cpu_hotplug_wr()</a></td><td>客户机写入 eject 标志后调用真正的 unplug，再解除对象关系</td></tr>
+    <tr><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/x86-common.c#L203-L254">x86_cpu_unplug_request_cb() / unplug_cb()</a></td><td>拒绝启动 CPU、清空位置、unrealize 并更新机器计数</td></tr>
+  </tbody></table>
+  <p>上层的通用设备接口把 CPU 与其他可插拔设备放在一致的生命周期框架中，具体协调仍由机器和 ACPI 实现。不能据此把 PCIe 插槽寄存器的流程直接套到 CPU 上。</p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">七、</span>从调整数量到管理完整生命周期</h2>
+  <p>早期 CPU 增加接口更强调数量和 CPU 编号。现在的 <code>query-hotpluggable-cpus</code> 配合 <code>device_add/device_del</code>，显式表达空位、设备类型与拓扑，并用异步事件区分请求与完成。ACPI 中保留的旧接口兼容分支也说明，固件描述、机器版本与客户机支持需要一起演进。</p>
+  <p>在线扩容减少了重启，但不会自动增加应用并行度或宿主可用算力。新增 vCPU 还需要合适的宿主亲和性、NUMA 放置与客户机线程分配。缩容可降低争抢，也可能让剩余 CPU 的排队和尾延迟上升。应同时观察业务吞吐、尾延迟、客户机 online 状态和宿主调度等待。</p>
+  <p>可用性检查可以分三步：先验证预留位置能否成功创建，再验证客户机是否上线，最后验证移除事件和状态收敛。测试应包含客户机延迟响应或暂不响应的情况；只验证添加命令返回成功，会漏掉最容易出问题的后半段。</p>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">八、</span>参考资料</h2>
+  <ul>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/system/cpu-hotplug.rst">QEMU：vCPU 热插拔与 QMP 示例</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/specs/acpi_cpu_hotplug.rst">QEMU：ACPI CPU 热插拔寄存器接口</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/core-api/cpu_hotplug.rst">Linux：CPU 集合、上线与下线状态机</a></li>
+    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_hotplug.c#L6642-L6960">Libvirt：vCPU 添加、移除与运行状态维护</a></li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#hotplug">热插拔原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=85f3a75ef38f"></script>
+<script src="../assets/mechanism-viewer.js?v=c204cdcdcf49" defer></script>
+</body>
+</html>

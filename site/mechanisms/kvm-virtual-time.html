@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c204cdcdcf49">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c204cdcdcf49">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -69,9 +69,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看共享时间基准与客户机的纳秒读数" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="共享时间基准与客户机的纳秒读数">
-    <img src="../assets/kvm-clock-read.svg?v=32683d73423f" alt="实线表示一次读时钟的数据依赖，虚线表示 KVM 发布基准。TSC 的宿主到客户机缩放与 pvclock 的计数到纳秒换算是两组独立参数，图中没有定时中断。" loading="lazy">
+    <img src="../assets/kvm-clock-read.svg?v=c204cdcdcf49" alt="实线表示一次读时钟的数据依赖，虚线表示 KVM 发布基准。TSC 的宿主到客户机缩放与 pvclock 的计数到纳秒换算是两组独立参数，图中没有定时中断。" loading="lazy">
   </div>
-  <figcaption>实线表示一次读时钟的数据依赖，虚线表示 KVM 发布基准。TSC 的宿主到客户机缩放与 pvclock 的计数到纳秒换算是两组独立参数，图中没有定时中断。 <a href="../assets/kvm-clock-read.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>实线表示一次读时钟的数据依赖，虚线表示 KVM 发布基准。TSC 的宿主到客户机缩放与 pvclock 的计数到纳秒换算是两组独立参数，图中没有定时中断。 <a href="../assets/kvm-clock-read.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: KVM pvclock 共享时间基准与客户机读时钟
     accDescr: 物理 TSC 经硬件比例与偏移得到客户机 TSC。KVM 将 version、tsc_timestamp、system_time、乘数、移位和 flags 发布到客户机共享结构。客户机验证版本，以当前 TSC 减去参考 TSC，换算纳秒并加参考时间。此图只有读取数据流，没有定时中断。
@@ -124,9 +124,9 @@ now_ns   = 5,000,000,000 + 2,000,000 = 5.002 s</code></pre>
     <button type="button" data-mechanism-expand aria-label="放大查看软件定时分支：到期、唤醒与客户机处理" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="软件定时分支：到期、唤醒与客户机处理">
-    <img src="../assets/kvm-deadline-timer.svg?v=32683d73423f" alt="图中省略注入提前量补偿。vCPU 设置截止时刻后进入空闲并阻塞；hrtimer 回调记录到期，唤醒使线程可运行，再由宿主调度、虚拟 LAPIC 投递及客户机处理依次衔接。" loading="lazy">
+    <img src="../assets/kvm-deadline-timer.svg?v=c204cdcdcf49" alt="图中省略注入提前量补偿。vCPU 设置截止时刻后进入空闲并阻塞；hrtimer 回调记录到期，唤醒使线程可运行，再由宿主调度、虚拟 LAPIC 投递及客户机处理依次衔接。" loading="lazy">
   </div>
-  <figcaption>图中省略注入提前量补偿。vCPU 设置截止时刻后进入空闲并阻塞；hrtimer 回调记录到期，唤醒使线程可运行，再由宿主调度、虚拟 LAPIC 投递及客户机处理依次衔接。 <a href="../assets/kvm-deadline-timer.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>图中省略注入提前量补偿。vCPU 设置截止时刻后进入空闲并阻塞；hrtimer 回调记录到期，唤醒使线程可运行，再由宿主调度、虚拟 LAPIC 投递及客户机处理依次衔接。 <a href="../assets/kvm-deadline-timer.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: KVM 软件 deadline 定时器到期与客户机唤醒
     accDescr: 在 2GHz 客户机 TSC 的示例中，客户机当前计数 24000000，写入截止计数 26000000。省略编程耗时与注入提前量，KVM 将剩余 1ms 换算为宿主 hrtimer 期限。客户机随后空闲，vCPU 宿主线程阻塞。hrtimer 到期后，KVM 记录 pending 和 UNBLOCK 并唤醒线程；得到宿主调度后投递虚拟 LAPIC 中断，客户机允许中断时执行处理，再由客户机调度任务。本图限定普通软件定时分支。
@@ -202,6 +202,6 @@ now_ns   = 5,000,000,000 + 2,000,000 = 5.002 s</code></pre>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+<script src="../assets/mechanism-viewer.js?v=c204cdcdcf49" defer></script>
 </body>
 </html>

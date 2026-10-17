@@ -67,6 +67,57 @@ fd 17 与 fd 23 → 同一个共享 memfd 后端
   <p>VFIO / IOMMUFD 还涉及设备 fd、已固定页、中断 eventfd 和 DMA 关联。该版本有相应的 CPR 支持：保留设备资源，调整旧 KVM 的中断连接，再在目标恢复路由；已进入旧 LAPIC 的待处理中断也要随 CPU 状态恢复。不能把设备 fd 复制成功等同于 DMA、中断和管理关系都已切换。地址与 DMA 对应关系见<a href="qemu-vfio-dma.html">VFIO 设备直通的 DMA 地址转换与隔离</a>。</p>
 </section>
 
+<section id="example" class="mechanism-section">
+  <h2>双进程示例：观察资源交接与客户机连续执行</h2>
+  <p>下面按 QEMU 10.2.0 的 CPR 示例组织一次最小交接：同一版本的两个 QEMU、512 MiB memfd 内存、一个 vCPU、两条 Unix 通道。客户机使用测试用内核与 initramfs，不挂载业务磁盘、不配置网络。initramfs 启动后在串口周期输出一个递增计数器，便于辨认恢复后的执行进度。命令与状态是教学示例，未在本文中执行；其中的内核、initramfs 和 QEMU 路径需要换成自己的测试文件。</p>
+  <p>先在一个 shell 中创建独立运行目录，准备两个进程共用的机器参数。内核与 initramfs 必须相同；<code>ram0</code>、内存大小、CPU 型号和设备拓扑也保持一致。这里的共享内存来自 memfd，无需复用其他虚拟机的文件路径。</p>
+  <pre><code>QEMU=/path/to/qemu-10.2.0/bin/qemu-system-x86_64
+KERNEL=/path/to/test/bzImage
+INITRD=/path/to/test/initramfs.cpio.gz
+LAB=$(mktemp -d /tmp/qemu-cpr.XXXXXX)
+chmod 700 "$LAB"
+printf '运行目录：%s\n' "$LAB"
+
+COMMON=(
+  -accel kvm -cpu host -smp 1 -m 512M
+  -machine pc-q35-10.2,memory-backend=ram0,aux-ram-share=on
+  -object memory-backend-memfd,id=ram0,size=512M,share=on
+  -nodefaults -display none -monitor none
+  -kernel "$KERNEL" -initrd "$INITRD" -append console=ttyS0
+)
+
+"$QEMU" "${COMMON[@]}" \
+  -qmp unix:"$LAB/source.qmp",server=on,wait=off \
+  -serial file:"$LAB/source.console" &amp;
+SOURCE_PID=$!
+
+"$QEMU" "${COMMON[@]}" \
+  -qmp unix:"$LAB/target.qmp",server=on,wait=off \
+  -serial file:"$LAB/target.console" \
+  -incoming unix:"$LAB/main.sock" \
+  -incoming '{"channel-type":"cpr","addr":{"transport":"socket","type":"unix","path":"'"$LAB"'/cpr.sock"}}' &amp;
+TARGET_PID=$!</code></pre>
+  <p>两个进程放在后台，是因为目标会先阻塞在 CPR 资源接收处。此时旧端串口计数应继续增长，新端 QMP 尚未就绪属于正常顺序。使用 <code>socat -,echo=0 UNIX-CONNECT:"$LAB/source.qmp"</code> 连接旧端，收到 QMP greeting 后逐条输入以下请求。JSON 中的 <code>/tmp/qemu-cpr.EXAMPLE</code> 要替换为刚才打印的运行目录：</p>
+  <pre><code>{"execute":"qmp_capabilities"}
+{"execute":"query-status"}
+{"execute":"migrate-set-parameters","arguments":{"mode":"cpr-transfer"}}
+{"execute":"migrate","arguments":{"channels":[
+  {"channel-type":"main","addr":{"transport":"socket","type":"unix","path":"/tmp/qemu-cpr.EXAMPLE/main.sock"}},
+  {"channel-type":"cpr","addr":{"transport":"socket","type":"unix","path":"/tmp/qemu-cpr.EXAMPLE/cpr.sock"}}
+]}}
+{"execute":"query-migrate"}
+{"execute":"query-status"}</code></pre>
+  <p><code>migrate</code> 返回成功只表示请求被接受，继续查询直到状态收束。目标 QMP 就绪后，用另一个连接访问 <code>target.qmp</code>，完成 <code>qmp_capabilities</code> 协商，再执行 <code>query-status</code>。成功路径应同时具备下面的证据：</p>
+  <table><thead><tr><th scope="col">观察位置</th><th scope="col">预期结果</th><th scope="col">说明</th></tr></thead><tbody>
+    <tr><td>旧端 <code>query-migrate</code></td><td><code>status: completed</code></td><td>源侧迁移任务完成；仍需核对目标与客户机</td></tr>
+    <tr><td>旧端 <code>query-status</code></td><td><code>status: postmigrate</code>、<code>running: false</code></td><td>旧进程还在，客户机已停止执行</td></tr>
+    <tr><td>新端 <code>query-status</code></td><td><code>status: running</code>、<code>running: true</code></td><td>目标已经放行客户机 CPU</td></tr>
+    <tr><td>两个串口日志</td><td>旧端停止输出，新端继续原计数，未重新出现启动流程</td><td>计数只用于辨认连续性；串口缓冲可能影响末尾少量输出，不能据此精确测量停机时间</td></tr>
+  </tbody></table>
+  <p>计数器可在客户机测试程序中每秒递增并打印，同时保存一次启动标识。新端若从初始值重来或启动标识变化，应检查是否发生了客户机重启。要测量停顿，另由宿主记录每条输出到达的单调时间；周期为一秒的输出只能发现较大间断，无法给出毫秒级 downtime。</p>
+  <p>确认目标正常后，给旧端发送 <code>{"execute":"quit"}</code> 清理旧进程。结束测试时再退出新端，确认两个 PID 均已退出后删除本次运行目录。若迁移失败，先按下一节核对双端状态与资源归属，保留日志；不要把旧端 <code>cont</code> 当作统一恢复步骤。使用不同 QEMU 版本前，还需要单独验证机器类型及设备迁移兼容性。</p>
+</section>
+
 <section id="boundaries" class="mechanism-section">
   <h2>兼容性、停机时间与失败边界</h2>
   <p>同机更新仍使用迁移兼容约定。新进程需要创建对应的机器、CPU 和设备配置，能够读取源端状态版本；资源名称和设备拓扑也要匹配。共享 RAM 解决了内存搬运问题，无法替不兼容的 VMState 或不同设备布局自动转换状态。</p>

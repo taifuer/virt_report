@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c204cdcdcf49">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c204cdcdcf49">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -79,9 +79,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看一个发送请求的三组结构与两块缓冲区" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="一个发送请求的三组结构与两块缓冲区">
-    <img src="../assets/virtqueue-tx-layout.svg?v=32683d73423f" alt="示例采用长度为 4 的 split 队列和 12 字节网络头：链 0 → 2 分别描述网络头与 60 字节报文。实际头部布局取决于协商特性，图中只展示这一种配置。" loading="lazy">
+    <img src="../assets/virtqueue-tx-layout.svg?v=c204cdcdcf49" alt="示例采用长度为 4 的 split 队列和 12 字节网络头：链 0 → 2 分别描述网络头与 60 字节报文。实际头部布局取决于协商特性，图中只展示这一种配置。" loading="lazy">
   </div>
-  <figcaption>示例采用长度为 4 的 split 队列和 12 字节网络头：链 0 → 2 分别描述网络头与 60 字节报文。实际头部布局取决于协商特性，图中只展示这一种配置。 <a href="../assets/virtqueue-tx-layout.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>示例采用长度为 4 的 split 队列和 12 字节网络头：链 0 → 2 分别描述网络头与 60 字节报文。实际头部布局取决于协商特性，图中只展示这一种配置。 <a href="../assets/virtqueue-tx-layout.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: Split virtqueue 中的一条发送链
     accDescr: 长度为四的队列中，可用环编号为三的槽保存链首编号零，描述符零通过 next 指向描述符二。两个描述符分别指向网络头和以太网帧；完成环以 id 零归还整条链，报文数据不存放在两个环中。
@@ -128,9 +128,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看接口选择与处理位置的分支" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="接口选择与处理位置的分支">
-    <img src="../assets/device-backend-overview.svg?v=32683d73423f" alt="传统设备模拟、virtio 和分配的硬件功能可以长期并存。SR-IOV 主要划分设备功能，VFIO 管理访问与隔离，vDPA 连接 virtio 数据接口与后端；它们各自解决不同问题。" loading="lazy">
+    <img src="../assets/device-backend-overview.svg?v=c204cdcdcf49" alt="传统设备模拟、virtio 和分配的硬件功能可以长期并存。SR-IOV 主要划分设备功能，VFIO 管理访问与隔离，vDPA 连接 virtio 数据接口与后端；它们各自解决不同问题。" loading="lazy">
   </div>
-  <figcaption>传统设备模拟、virtio 和分配的硬件功能可以长期并存。SR-IOV 主要划分设备功能，VFIO 管理访问与隔离，vDPA 连接 virtio 数据接口与后端；它们各自解决不同问题。 <a href="../assets/device-backend-overview.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>传统设备模拟、virtio 和分配的硬件功能可以长期并存。SR-IOV 主要划分设备功能，VFIO 管理访问与隔离，vDPA 连接 virtio 数据接口与后端；它们各自解决不同问题。 <a href="../assets/device-backend-overview.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 设备接口与数据后端的选择
     accDescr: 客户机设备可以使用模拟硬件接口、virtio 共享队列或分配的设备功能。virtio 队列有 QEMU、内核 vhost、用户态 vhost-user 和 vDPA 等不同后端，VFIO 直通则使用所分配设备的接口。
@@ -162,6 +162,9 @@
   <ul>
     <li><a href="virtio-device-initialization.html">virtio 设备初始化与特性协商</a>：从设备发现、格式协商到队列启用，区分失败与复位。</li>
     <li><a href="qemu-network-tx.html">e1000 与 virtio-net 发包路径</a>：交互查看描述符、环索引与缓冲区。</li>
+    <li><a href="virtio-net-rx.html">virtio-net 接收与 NAPI</a>：可写缓冲区、完成归还与预算轮询。</li>
+    <li><a href="packed-virtqueue.html">Packed virtqueue</a>：操作四槽队列，观察发布、完成和回绕。</li>
+    <li><a href="vhost-vdpa.html">vhost-vDPA</a>：硬件数据路径、DMA 映射与迁移时的影子队列。</li>
     <li><a href="qemu-vhost-net.html">vhost-net 与 vhost-user</a>：队列消费者、控制通道与通知绑定。</li>
     <li><a href="dpdk-vhost-user-net.html">DPDK vhost-user 报文收发</a>：virtqueue、mbuf 与物理网卡发送环。</li>
     <li><a href="spdk-vhost-user-blk.html">SPDK vhost-user-blk</a>、<a href="qemu-virtio-blk.html">QEMU virtio-blk</a>：存储请求与完成语义。</li>
@@ -184,6 +187,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+<script src="../assets/mechanism-viewer.js?v=c204cdcdcf49" defer></script>
 </body>
 </html>

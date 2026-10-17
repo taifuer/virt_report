@@ -1,0 +1,14 @@
+<div class="notification-race" data-notification-race data-mechanism-view="lab" aria-labelledby="notification-race-title">
+  <div class="mechanism-view-heading"><h3 id="notification-race-title">新请求恰好遇到后端结束处理</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <div class="device-tx-playback" data-race-controls hidden>
+    <label>交接顺序 <select data-race-scenario><option value="recheck">恢复通知，再复查</option><option value="broken">错误示例：恢复后不复查</option><option value="late">请求在复查后到达</option></select></label>
+    <button type="button" data-race-back>上一步</button><button type="button" data-race-next>下一步</button><button type="button" data-race-reset>重置</button>
+  </div>
+  <p data-race-status role="status" aria-live="polite">正确顺序：恢复通知 → 屏障 → 复查队列 → 有请求则继续处理。</p>
+  <div class="notification-race-parties">
+    <div><strong>客户机驱动</strong><p data-race-driver>准备发布新请求。</p><code>avail.idx = <span data-race-avail>7</span></code></div>
+    <div><strong>QEMU 后端</strong><p data-race-backend>已处理到索引 7。</p><code>last_avail_idx = <span data-race-consumed>7</span></code></div>
+  </div>
+  <p data-race-flags>kick 暂时关闭；没有待处理的新请求。</p>
+  <p data-race-detail>索引是共享提交进度与后端私有消费进度；数值相等表示本例队列已空。演示只显示一个合法交错，不模拟真实线程调度或 CPU 内存模型。</p>
+</div>

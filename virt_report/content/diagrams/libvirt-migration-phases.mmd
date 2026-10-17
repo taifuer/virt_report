@@ -1,0 +1,29 @@
+sequenceDiagram
+  accTitle: Libvirt 预拷贝迁移的五阶段协调
+  accDescr: Managed direct 模式下，客户端先向源端请求 Begin，再向目的端 Prepare，然后调用源端 Perform。状态数据由两个 QEMU 直接传输。目的端 Finish 确认接收并恢复客户机后，客户端通知源端 Confirm，清理暂停的旧实例。仅描绘普通预拷贝成功路径。
+  participant C as 客户端
+  participant S as 源 Libvirt
+  participant Q as 源 QEMU
+  participant R as 目的 QEMU
+  participant D as 目的 Libvirt
+  C->>S: Begin：检查配置
+  S-->>C: 可迁移 XML、cookie
+  C->>D: Prepare：创建接收环境
+  D->>R: 创建机器，配置 incoming
+  Note over R: 接收状态，暂不执行客户机
+  D-->>C: 数据地址、cookie
+  C->>S: Perform：发起迁移
+  S->>Q: QMP migrate
+  Q->>R: RAM 全量及脏页迭代
+  Note over Q: 停止源 vCPU
+  Q->>R: 剩余 RAM、CPU 与设备状态
+  Q-->>S: 源侧传输完成
+  S-->>C: Perform 结果、cookie
+  Note over Q: 保留暂停的旧实例
+  C->>D: Finish：确认迁入结果
+  D->>R: 检查完成状态，恢复 CPU
+  Note over R: 目的端接管客户机执行
+  D-->>C: 目标域句柄、cookie
+  C->>S: Confirm：确认成功
+  S->>Q: 清理旧实例
+  S-->>C: 迁移协调完成

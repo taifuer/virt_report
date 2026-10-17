@@ -86,6 +86,9 @@
   <h2>通知边界：kick、完成记录与中断</h2>
   <h3>发布队列与发送 kick</h3>
   <p>驱动先发布可用缓冲区，后端才能安全地消费。通知只提示设备检查队列；多个请求可以共享一次 kick，设备正在处理队列时也可以抑制新的 kick。队列发布需要正确的内存屏障，通知抑制还需要防止“设备准备休眠时恰好新增请求”的竞态。仅删除通知操作，会让后端失去唤醒机会。</p>
+  <p>设 <code>avail.idx = last_avail_idx = 7</code>，设备暂时关闭 kick，准备结束本轮处理。如果它检查空队列之后直接恢复通知并等待，驱动可能已在这两步之间发布第 8 项，却因为当时通知关闭而省略 kick。队列中有请求，事件循环却没有新通知可等。</p>
+  {% include '_notification_race_lab.html' %}
+  <p>安全路径先恢复通知，以必要的内存屏障约束顺序，再复查队列。第 8 项早到，复查会发现它；晚到，驱动按新的通知条件发出 kick，事件通知保持就绪，等待端继续处理。两端都需要遵守发布与检查规则，单独给某个计数器加一次屏障并不能替代完整协议。这里用 split 队列的通知开关演示；协商 EVENT_IDX 后，通知条件改用事件索引，重新启用与复查的要求仍然存在。<a href="{{ qemu_source }}hw/virtio/virtio.c#L515-L605">QEMU 通知设置与顺序约束</a>、<a href="{{ qemu_source }}hw/net/virtio-net.c#L2865-L2960">发送处理的通知重启与复查</a></p>
   <p>在普通 MMIO 路径中，客户机写 virtio PCI 通知地址，QEMU 的 <code>virtio_pci_notify_write()</code>找到队列后调用通知函数。启用 ioeventfd 时，QEMU 预先注册通知地址与 eventfd 的对应关系；KVM 处理匹配的写入并触发 eventfd，QEMU 的事件处理再调度该队列。这减少了通过 <code>KVM_RUN</code>返回用户态模拟此次 MMIO 的往返。CPU 从客户机执行切换到 KVM 的硬件退出仍可能发生，二者应分开计数。<a href="{{ qemu_source }}hw/virtio/virtio-pci.c#L371-L415">ioeventfd 注册</a>、<a href="{{ qemu_source }}hw/virtio/virtio.c#L3949-L3955">QEMU 事件处理</a>、<a href="{{ kernel_source }}Documentation/virt/kvm/api.rst#L2092-L2135">KVM_IOEVENTFD</a></p>
   <h3>完成记录与完成中断</h3>
   <p>used 项先成为可见状态，再根据驱动配置决定是否发出中断。<code>virtio_notify()</code>内部会检查通知条件，调用它并不保证每个报文都对应一次中断。发送路径可以主动回收先前完成的请求，也可以在需要时使用中断；这为批处理提供了空间。<a href="{{ qemu_source }}hw/virtio/virtio.c#L2701-L2711">完成通知检查</a>。MSI-X 消息、虚拟 LAPIC 和驱动响应见<a href="kvm-virtio-interrupt.html">virtio 完成通知与 KVM 中断注入</a>。</p>

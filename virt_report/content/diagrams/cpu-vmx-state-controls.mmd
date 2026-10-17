@@ -1,0 +1,11 @@
+flowchart TB
+  accTitle: VMCS 的执行现场与控制条件
+  accDescr: KVM 配置 VMCS。进入客户机时装入客户机状态，发生需要退出的事件后保存客户机状态并装入宿主状态，KVM 再处理退出原因。图不表示 VMCS 保存所有寄存器。
+  K["KVM 配置 VMCS"] --> C["执行控制<br/>拦截条件与事件控制"]
+  K --> G["客户机状态<br/>RIP / RSP / CR3 / 段状态"]
+  K --> H["宿主状态<br/>退出入口 / 宿主栈 / 地址空间"]
+  G -->|VM entry| V["客户机执行<br/>自身 ring 0 或 ring 3"]
+  C -. "决定哪些事件退出" .-> V
+  V -->|VM exit：保存相应现场| G
+  V -->|装入宿主状态| H
+  H --> R["KVM 处理退出原因"]

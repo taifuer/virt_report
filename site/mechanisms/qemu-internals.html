@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c204cdcdcf49">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c204cdcdcf49">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -67,9 +67,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看客户机接口、执行路径与实际资源" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="客户机接口、执行路径与实际资源">
-    <img src="../assets/qemu-internals-overview.svg?v=32683d73423f" alt="设备模型维持客户机可见的协议，CPU 执行和 I/O 后端各自推进工作。QMP 位于管理路径；客户机数据请求无需逐次经过管理命令。" loading="lazy">
+    <img src="../assets/qemu-internals-overview.svg?v=c204cdcdcf49" alt="设备模型维持客户机可见的协议，CPU 执行和 I/O 后端各自推进工作。QMP 位于管理路径；客户机数据请求无需逐次经过管理命令。" loading="lazy">
   </div>
-  <figcaption>设备模型维持客户机可见的协议，CPU 执行和 I/O 后端各自推进工作。QMP 位于管理路径；客户机数据请求无需逐次经过管理命令。 <a href="../assets/qemu-internals-overview.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>设备模型维持客户机可见的协议，CPU 执行和 I/O 后端各自推进工作。QMP 位于管理路径；客户机数据请求无需逐次经过管理命令。 <a href="../assets/qemu-internals-overview.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: QEMU 的机器接口、执行引擎与 I/O 后端
     accDescr: QEMU 用机器与设备模型组织客户机接口，通过 KVM 或 TCG 运行客户机代码，通过块或网络后端访问实际资源。QMP 是单独的管理路径，数据请求无需逐次经过管理命令。
@@ -119,9 +119,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看从请求发布到缓冲区归还" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="从请求发布到缓冲区归还">
-    <img src="../assets/qemu-overview-read-lifecycle.svg?v=32683d73423f" alt="本例配置 ioeventfd 与 IOThread。共享队列交接请求及完成，块层提交真正的存储操作；等待 I/O 的协程让出执行，完成后继续发布结果。" loading="lazy">
+    <img src="../assets/qemu-overview-read-lifecycle.svg?v=c204cdcdcf49" alt="本例配置 ioeventfd 与 IOThread。共享队列交接请求及完成，块层提交真正的存储操作；等待 I/O 的协程让出执行，完成后继续发布结果。" loading="lazy">
   </div>
-  <figcaption>本例配置 ioeventfd 与 IOThread。共享队列交接请求及完成，块层提交真正的存储操作；等待 I/O 的协程让出执行，完成后继续发布结果。 <a href="../assets/qemu-overview-read-lifecycle.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>本例配置 ioeventfd 与 IOThread。共享队列交接请求及完成，块层提交真正的存储操作；等待 I/O 的协程让出执行，完成后继续发布结果。 <a href="../assets/qemu-overview-read-lifecycle.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 从 4 KiB 读取请求到缓冲区归还
     accDescr: 客户机发布头、数据和状态组成的描述符链，经 ioeventfd 通知 IOThread。QEMU 解析请求后提交块后端，等待数据完成，写回状态和 used，再按需通知客户机回收。
@@ -154,7 +154,7 @@
   <h2><span class="mechanism-heading-number">五、</span>谁执行请求，谁可以修改状态</h2>
   <p>vCPU、设备对象和宿主线程不是一一对应的关系。常见 KVM 配置中，vCPU 线程运行客户机；主循环处理 QMP 和许多设备事件；IOThread 为支持的设备队列提供独立事件循环。一个设备的配置在管理路径修改，数据请求却可能在多个队列线程处理，所以并行必须伴随明确的访问规则。</p>
   <p>AioContext 记录某个事件循环要关注的文件描述符、定时器和延迟回调。协程保存一次操作尚未完成的执行状态，等待 I/O 时让出所在宿主线程，不能把“多条协程”当作“多个物理核并行”。完成回调必须回到合适的上下文，跨线程交接则通过事件通知、调度回调及相应同步实现。</p>
-  <p>历史设备代码常由主循环与 BQL（全局互斥锁）保护；具备 IOThread 支持的数据路径采用自己的线程约束和同步方式。增加 IOThread 不会自动使任意设备回调线程安全。配置变更尤其需要防止主线程释放对象时，另一线程仍在使用请求缓冲区或块节点。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/multiple-iothreads.rst#L51-L146">执行上下文与同步约定</a></p>
+  <p>历史设备代码常由主循环与 BQL（全局互斥锁）保护；具备 IOThread 支持的数据路径采用自己的线程约束和同步方式。增加 IOThread 不会自动使任意设备回调线程安全。配置变更尤其需要防止主线程释放对象时，另一线程仍在使用请求缓冲区或块节点。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/multiple-iothreads.rst#L51-L139">执行上下文与同步约定</a></p>
 </section>
 <section id="lifecycle" class="mechanism-section">
   <h2><span class="mechanism-heading-number">六、</span>暂停与删除怎样等待异步工作</h2>
@@ -178,6 +178,7 @@
     <li><a href="qemu-vm-startup.html">QEMU 虚拟机启动</a> → <a href="qemu-qom-device.html">QOM 与设备生命周期</a>：机器如何建立。</li>
     <li><a href="qemu-memory-region.html">MemoryRegion 与地址空间</a>：地址如何找到 RAM 或设备。</li>
     <li><a href="qemu-virtio-blk.html">virtio-blk 请求处理</a> → <a href="qemu-qcow2.html">qcow2 地址映射</a>：读写、完成与持久化边界。</li>
+    <li><a href="qemu-live-block-operations.html">外部快照与在线块操作</a>：backing 链、stream/commit 方向与 mirror 切换。</li>
     <li><a href="qemu-aio-iothread.html">AioContext 与 IOThread</a>：线程、协程和完成回调。</li>
     <li><a href="qemu-network-tx.html#virtqueue">virtqueue 数据结构与交互图</a>：描述符、环槽和缓冲区的关系。</li>
   </ul>
@@ -198,6 +199,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+<script src="../assets/mechanism-viewer.js?v=c204cdcdcf49" defer></script>
 </body>
 </html>

@@ -1,0 +1,17 @@
+flowchart TB
+    accTitle: vhost-vDPA 控制配置与直接硬件数据路径
+    accDescr: 客户机使用 virtio 驱动。QEMU 通过 vhost_vdpa 内核接口和设备驱动配置队列、DMA 映射与通知，硬件在授权映射内直接访问客户机队列和报文。
+    G["客户机 virtio-net 驱动"]
+    R["客户机 RAM<br/>virtqueue + 报文缓冲区"]
+    Q["QEMU<br/>PCI / virtio 控制接口"]
+    V["宿主 vhost_vdpa<br/>队列 / IOTLB / 通知"]
+    D["vDPA 设备驱动<br/>厂商配置适配"]
+    H["硬件 vDPA 数据面"]
+    N["外部网络"]
+    G -->|"发布与回收"| R
+    G -.->|"协商 / 配置"| Q
+    Q -.->|"ioctl / IOTLB 更新"| V
+    V -.->|"vDPA 配置操作"| D
+    D -.-> H
+    H <-->|"经过 DMA 地址映射<br/>读取请求 / 写回完成"| R
+    H <--> N

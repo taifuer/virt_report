@@ -85,7 +85,26 @@
   </tbody></table>
   <p>KVM 的 <code>halt_poll_success_ns</code>、<code>halt_poll_fail_ns</code>、<code>halt_wait_ns</code> 及直方图给出等待路径的分解；结合 <code>kvm_vcpu_wakeup</code> trace 与业务延迟，才能区分节省的调度时间和新增的空转。统计中的“成功”包括准备休眠时复查命中、实际没有 schedule 的情形。<a href="{{ linux_source }}include/linux/kvm_host.h#L2038-L2051">统计字段</a></p>
   <p>成本可以先做量纲检查：若每秒有 10000 次等待，每次白耗 50 µs，累计便是 0.5 秒 CPU 时间，约半个 CPU 的处理时间。多 vCPU 还会累加。这个估算不含真实调度与提前退出，适合检查预算数量级，不代替实测。轮询的合理目标是以可接受的 CPU 成本满足延迟要求。</p>
-  <h3>沿源码复核一次等待</h3>
+  <h3 id="evaluation-trace">用调度事件核对一次唤醒</h3>
+  <p>先通过 QMP 的 <code>query-cpus-fast</code> 找到目标 vCPU 返回项顶层的 <code>thread-id</code>，它是宿主线程 ID。下面以 31415 为例，记录该线程十秒内的唤醒、切入和 KVM 事件。运行前用 <code>perf list</code> 确认宿主内核提供这些 tracepoint；需要相应的跟踪权限，也会引入少量采集开销。</p>
+  <pre><code>TID=31415
+sudo perf record -a -o halt.data \
+  -e sched:sched_wakeup --filter "pid == $TID" \
+  -e sched:sched_switch --filter "prev_pid == $TID || next_pid == $TID" \
+  -e kvm:kvm_vcpu_wakeup --filter "common_pid == $TID" \
+  -e kvm:kvm_entry --filter "common_pid == $TID" \
+  -- sleep 10
+sudo perf script -i halt.data</code></pre>
+  <p>使用全 CPU 采集并按事件字段筛选，是因为唤醒者可能运行在另一个线程、另一个 CPU 上；只按当前执行线程采样容易遗漏它。每次采集使用新的输出文件。以下时间只用于演示读法，并非性能实测：</p>
+  <table><thead><tr><th>相对时刻</th><th>事件</th><th>可以判断什么</th></tr></thead><tbody>
+    <tr><td>0 µs</td><td>sched_wakeup，pid = 31415</td><td>目标 vCPU 线程变为可运行</td></tr>
+    <tr><td>40 µs</td><td>sched_switch，next_pid = 31415</td><td>线程取得宿主 CPU；本次 runnable 等待约 40 µs</td></tr>
+    <tr><td>43 µs</td><td>kvm_vcpu_wakeup</td><td>KVM 的 halt 处理接近结束；这是返回侧记录，并非设备事件刚到达的时刻</td></tr>
+    <tr><td>48 µs</td><td>kvm_entry</td><td>执行即将再次进入客户机；随后才是客户机中的中断处理与业务执行</td></tr>
+  </tbody></table>
+  <p>只有对齐同一次等待、排除丢失事件和中间再次调度，才能计算这样的差值。轮询命中时，线程可能从未睡眠，自然没有对应的一对 sched_wakeup/sched_switch。<code>kvm_vcpu_wakeup</code> 在 <code>kvm_vcpu_halt()</code> 末尾发出，包含该次 halt 的总时长与是否等待等信息；不要将其名称误读为硬件中断到达点。<a href="{{ linux_source }}virt/kvm/kvm_main.c#L3750-L3798">等待统计与 trace 发出位置</a></p>
+  <p>要继续判断“设备已完成但为什么还慢”，还需加入后端完成和客户机处理的观测点。宿主 kvm_entry 并不证明客户机已经运行到中断处理函数，更不代表业务请求已完成。</p>
+  <h3 id="evaluation-part-1">沿源码复核一次等待</h3>
   <table><thead><tr><th scope="col">顺序</th><th scope="col">源码入口</th><th scope="col">回答的问题</th></tr></thead><tbody>
     <tr><td>处理 HLT</td><td><code>kvm_emulate_halt() → vcpu_block()</code></td><td>是否已有可运行事件，是否需要等待</td></tr>
     <tr><td>轮询与预算</td><td><code>kvm_vcpu_halt()</code></td><td>允许轮询多久，何时停止，下一轮如何调整</td></tr>

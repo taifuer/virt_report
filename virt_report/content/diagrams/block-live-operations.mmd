@@ -1,0 +1,17 @@
+flowchart TB
+  accTitle: 外部快照前后的 backing 链与数据视图
+  accDescr: 快照前客户机入口是 B，B 的 backing 是 A。快照后入口切到 C，C 的 backing 是 B，B 仍指向 A。十六进制偏移 0x1000 在 A 中为 v1、B 中为 v2，新 C 最初未分配，后来客户机写为 v3。A 加 B 保留快照时刻视图，A 加 B 加 C 表示当前视图。
+  subgraph before[快照前]
+    direction LR
+    G0[客户机 I/O] --> B0["B：活动层<br/>0x1000 = v2"]
+    B0 -->|backing| A0["A：基础镜像<br/>0x1000 = v1"]
+  end
+  subgraph after[快照后]
+    direction LR
+    G1[客户机 I/O] --> C1["C：新活动层<br/>未分配 → 写入 v3"]
+    C1 -->|backing| B1["B：保留 v2"]
+    B1 -->|backing| A1["A：保留 v1"]
+  end
+  before -->|接入新 overlay| after
+  B1 -.-> S[快照时刻视图：A + B]
+  C1 -.-> N[当前视图：A + B + C]

@@ -176,7 +176,7 @@
       "topic": "cpu-virtualization",
       "title": "CPU 虚拟化：执行方式、隔离与调度",
       "summary": "从客户机内核的权限问题出发，比较解释执行、TCG 与硬件辅助，跟踪普通指令、设备访问和空闲等待。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-17",
       "template": "_cpu_overview_article.html",
       "baselines": [
         {
@@ -228,7 +228,7 @@
       "topic": "memory-virtualization",
       "title": "内存虚拟化：地址转换、影子页表与两级映射",
       "summary": "用同一次内存读取推导 GVA、GPA、HVA 与 HPA，说明影子页表、EPT/NPT、缺页和映射失效的关系。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-17",
       "template": "_memory_overview_article.html",
       "baselines": [
         {
@@ -280,7 +280,7 @@
       "topic": "device-virtualization",
       "title": "设备与 I/O 虚拟化：从网卡模拟到共享队列与卸载",
       "summary": "沿一个报文解释设备模拟、virtqueue 与缓冲区归还，再比较 vhost、vhost-user、VFIO、SR-IOV 和 vDPA 解决的问题及代价。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-17",
       "template": "_device_overview_article.html",
       "baselines": [
         {
@@ -469,7 +469,7 @@
         }
       ],
       "topic": "migration",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-17",
       "sections": [
         {
           "id": "preface",
@@ -668,7 +668,7 @@
       "topic": "device-virtualization",
       "title": "QEMU 网卡模拟与 virtio-net 的发包路径",
       "summary": "以相同的 TAP 后端对比 e1000 与 virtio-net，追踪描述符提交、队列通知、数据发送和完成处理。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-17",
       "template": "_device_tx_article.html",
       "stylesheet": "device-tx.css",
       "script": "device-tx.js",
@@ -1086,6 +1086,68 @@
       ]
     },
     {
+      "slug": "vcpu-numa-placement",
+      "topic": "memory-virtualization",
+      "title": "vCPU 与 NUMA 内存放置",
+      "summary": "从绑核后仍有远端内存访问的问题出发，说明客户机拓扑、线程亲和性、RAM 分配策略与 I/O 后端位置怎样配合。",
+      "reviewed_on": "2026-10-17",
+      "template": "_numa_article.html",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        },
+        {
+          "project": "Linux",
+          "version": "6.18",
+          "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+          "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"
+        },
+        {
+          "project": "Libvirt",
+          "version": "12.0.0",
+          "commit": "4d937284669ecf180abea087d0b3ad67d9476349",
+          "url": "https://github.com/libvirt/libvirt/tree/4d937284669ecf180abea087d0b3ad67d9476349"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "绑了 vCPU，访问内存为什么仍然慢"
+        },
+        {
+          "id": "mapping",
+          "title": "把虚拟拓扑与物理放置分开"
+        },
+        {
+          "id": "allocation",
+          "title": "从内存映射到物理页分配"
+        },
+        {
+          "id": "example",
+          "title": "4 个 vCPU 与 8 GiB RAM 的放置例子"
+        },
+        {
+          "id": "io",
+          "title": "I/O 路径也要计入局部性"
+        },
+        {
+          "id": "verification",
+          "title": "验证配置是否变成了实际放置"
+        },
+        {
+          "id": "evolution",
+          "title": "从默认分配到按内存对象管理"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
       "slug": "qemu-postcopy",
       "topic": "migration",
       "title": "QEMU 后拷贝迁移的缺页处理与页面传输",
@@ -1136,6 +1198,62 @@
         {
           "id": "evolution",
           "title": "后拷贝路径的演进"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
+      "slug": "libvirt-live-migration",
+      "topic": "migration",
+      "title": "Libvirt 热迁移的阶段协调与失败恢复",
+      "summary": "沿 Begin、Prepare、Perform、Finish、Confirm 追踪双端交接，比较客户端与 p2p 协调，解释断线确认、存储归属与 postcopy 恢复边界。",
+      "reviewed_on": "2026-10-17",
+      "template": "_libvirt_migration_article.html",
+      "baselines": [
+        {
+          "project": "Libvirt",
+          "version": "12.0.0",
+          "commit": "4d937284669ecf180abea087d0b3ad67d9476349",
+          "url": "https://github.com/libvirt/libvirt/tree/4d937284669ecf180abea087d0b3ad67d9476349"
+        },
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "一台虚拟机怎样安全地换到另一台主机"
+        },
+        {
+          "id": "paths",
+          "title": "控制连接与迁移数据分别走哪条路径"
+        },
+        {
+          "id": "phases",
+          "title": "五个阶段如何交接资源与执行权"
+        },
+        {
+          "id": "implementation",
+          "title": "源码怎样保存阶段并传递结果"
+        },
+        {
+          "id": "failure",
+          "title": "连接失败为什么需要核对双端状态"
+        },
+        {
+          "id": "postcopy",
+          "title": "postcopy 切换后怎样处理失败"
+        },
+        {
+          "id": "evaluation",
+          "title": "从阶段记录判断成功与恢复边界"
         },
         {
           "id": "sources",
@@ -1281,7 +1399,7 @@
         }
       ],
       "topic": "hotplug",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-17",
       "sections": [
         {
           "id": "preface",
@@ -1376,7 +1494,7 @@
       "topic": "libvirt-internals",
       "title": "Libvirt 内部机制：管理接口、运行状态与并发协调",
       "summary": "从管理多台虚拟机的需求出发，沿一次暂停与恢复解释 API、RPC、驱动和状态反馈，再分析配置、作业及守护进程演变。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-17",
       "template": "_libvirt_overview_article.html",
       "baselines": [
         {
@@ -1482,7 +1600,7 @@
       "topic": "qemu-internals",
       "title": "QEMU 内部机制：机器模型、请求处理与状态协调",
       "summary": "从整机需要的接口与资源出发，以一次 4 KiB 磁盘读取贯穿设备对象、块后端、事件循环和生命周期。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-17",
       "template": "_qemu_overview_article.html",
       "baselines": [
         {
@@ -1810,7 +1928,7 @@
       "topic": "live-upgrade",
       "title": "QEMU 同机更新的内存与文件描述符交接",
       "summary": "分析 cpr-transfer 如何保留共享 RAM、传递宿主资源并恢复 CPU 和设备状态，区分资源准备、停机与执行接管。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-17",
       "template": "_cpr_article.html",
       "baselines": [
         {
@@ -1840,6 +1958,10 @@
         {
           "id": "handoff",
           "title": "停止旧 vCPU，再让新进程接管"
+        },
+        {
+          "id": "example",
+          "title": "双进程示例：观察资源交接与客户机连续执行"
         },
         {
           "id": "boundaries",
@@ -1966,6 +2088,184 @@
       ]
     },
     {
+      "slug": "virtio-net-rx",
+      "topic": "device-virtualization",
+      "title": "virtio-net 收包与 NAPI：缓冲区、通知和批处理",
+      "summary": "从 RX 缓冲区准备到报文交付协议栈，分析 QEMU 收包、used 完成、NAPI 预算与通知恢复竞态。",
+      "reviewed_on": "2026-10-17",
+      "template": "_virtio_rx_article.html",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        },
+        {
+          "project": "Linux",
+          "version": "6.18",
+          "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+          "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "报文到达时，谁提供存放它的内存"
+        },
+        {
+          "id": "ownership",
+          "title": "RX 队列发布空缓冲区，used 归还实际数据"
+        },
+        {
+          "id": "receive",
+          "title": "一帧报文从 TAP 到客户机协议栈"
+        },
+        {
+          "id": "napi",
+          "title": "NAPI 怎样在中断与批量处理之间切换"
+        },
+        {
+          "id": "races",
+          "title": "通知恢复与缓冲区不足怎样避免停收"
+        },
+        {
+          "id": "implementation",
+          "title": "源码中的准备、完成与重新补充"
+        },
+        {
+          "id": "evolution",
+          "title": "从逐包通知到批处理、多队列与轮询"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
+      "slug": "packed-virtqueue",
+      "topic": "device-virtualization",
+      "title": "Packed virtqueue：描述符发布、完成与回绕",
+      "summary": "用四槽共享环解释 AVAIL、USED、wrap 与 Buffer ID，分析描述符链、事件抑制和紧凑布局的取舍。",
+      "reviewed_on": "2026-10-17",
+      "template": "_packed_virtqueue_article.html",
+      "script": "packed-virtqueue.js",
+      "stylesheet": "packed-virtqueue.css",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        },
+        {
+          "project": "Linux",
+          "version": "6.18",
+          "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+          "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "请求与完成能否使用同一个描述符环"
+        },
+        {
+          "id": "layout",
+          "title": "一个描述符环，加两个事件抑制结构"
+        },
+        {
+          "id": "wrap",
+          "title": "AVAIL、USED 与 wrap 怎样区分两圈"
+        },
+        {
+          "id": "interactive",
+          "title": "操作一个四槽队列，观察第二圈发布"
+        },
+        {
+          "id": "chains",
+          "title": "描述符链沿相邻槽位前进，ID 负责找回请求"
+        },
+        {
+          "id": "events",
+          "title": "事件位置减少通知，复查关闭竞态窗口"
+        },
+        {
+          "id": "implementation",
+          "title": "QEMU 怎样保存链长度并发布完成"
+        },
+        {
+          "id": "evolution",
+          "title": "紧凑布局带来的收益与复杂度"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
+      "slug": "vhost-vdpa",
+      "topic": "device-virtualization",
+      "title": "vhost-vDPA：队列配置、硬件数据路径与迁移",
+      "summary": "分析 vDPA 如何连接 virtio 队列和设备数据面，以及 DMA 映射、Shadow Virtqueue 与迁移能力的约束。",
+      "reviewed_on": "2026-10-17",
+      "template": "_vdpa_article.html",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        },
+        {
+          "project": "Linux",
+          "version": "6.18",
+          "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+          "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "保留 virtio 驱动，怎样把队列处理交给设备"
+        },
+        {
+          "id": "roles",
+          "title": "客户机、QEMU 与宿主 vDPA 驱动各负责什么"
+        },
+        {
+          "id": "configuration",
+          "title": "队列启动前，需要建立三类关系"
+        },
+        {
+          "id": "packet",
+          "title": "一个发送请求怎样经过硬件数据路径"
+        },
+        {
+          "id": "shadow",
+          "title": "Shadow Virtqueue 如何观察设备写入"
+        },
+        {
+          "id": "migration",
+          "title": "能记录脏页，还要解决状态与兼容性"
+        },
+        {
+          "id": "implementation",
+          "title": "源码如何连接配置、映射与完成转发"
+        },
+        {
+          "id": "evolution",
+          "title": "从软件后端到硬件数据面，再补齐可迁移性"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
       "slug": "qemu-aio-iothread",
       "topic": "qemu-internals",
       "title": "QEMU AioContext、协程与 IOThread",
@@ -2064,6 +2364,60 @@
       ]
     },
     {
+      "slug": "qemu-live-block-operations",
+      "topic": "qemu-internals",
+      "title": "QEMU 外部快照与在线块操作",
+      "summary": "从 A、B、C 镜像链和同一偏移的数据变化出发，比较 stream、commit、mirror 与 backup，解释活动盘切换、作业状态和取消边界。",
+      "reviewed_on": "2026-10-17",
+      "template": "_block_operations_article.html",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "运行中的磁盘怎样保留旧视图并更换存储"
+        },
+        {
+          "id": "snapshot",
+          "title": "外部快照怎样划分一个时间点"
+        },
+        {
+          "id": "stream",
+          "title": "stream 把下层仍需读取的数据补入上层"
+        },
+        {
+          "id": "commit",
+          "title": "commit 向下合并时会改变哪些历史内容"
+        },
+        {
+          "id": "mirror",
+          "title": "mirror 怎样持续追赶并切换活动磁盘"
+        },
+        {
+          "id": "backup",
+          "title": "backup 为什么保留启动时的内容"
+        },
+        {
+          "id": "failure",
+          "title": "怎样确认结束并保留可恢复的数据"
+        },
+        {
+          "id": "evolution",
+          "title": "从文件路径到块图与作业生命周期"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
       "slug": "qemu-virtio-mem",
       "topic": "hotplug",
       "title": "virtio-mem 的内存添加与回收",
@@ -2118,6 +2472,68 @@
         {
           "id": "evolution",
           "title": "粒度、资源开销与设计演进"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
+      "slug": "x86-vcpu-hotplug",
+      "topic": "hotplug",
+      "title": "x86 vCPU 热插拔：拓扑、上线与异步移除",
+      "summary": "区分最大拓扑、已创建 vCPU 和客户机在线 CPU，跟踪 QMP、ACPI 通知、客户机下线与删除完成事件。",
+      "reviewed_on": "2026-10-17",
+      "template": "_cpu_hotplug_article.html",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        },
+        {
+          "project": "Linux",
+          "version": "6.18",
+          "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+          "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"
+        },
+        {
+          "project": "Libvirt",
+          "version": "12.0.0",
+          "commit": "4d937284669ecf180abea087d0b3ad67d9476349",
+          "url": "https://github.com/libvirt/libvirt/tree/4d937284669ecf180abea087d0b3ad67d9476349"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "增加一个 vCPU，需要谁同意"
+        },
+        {
+          "id": "states",
+          "title": "最大数量、设备存在与客户机在线"
+        },
+        {
+          "id": "example",
+          "title": "从 2 个 vCPU 扩到 3 个"
+        },
+        {
+          "id": "handoff",
+          "title": "ACPI 怎样连接设备变化和客户机动作"
+        },
+        {
+          "id": "removal",
+          "title": "怎样确认缩容真正完成"
+        },
+        {
+          "id": "implementation",
+          "title": "源码：拓扑位置、通知和拆除"
+        },
+        {
+          "id": "evolution",
+          "title": "从调整数量到管理完整生命周期"
         },
         {
           "id": "sources",
@@ -2190,7 +2606,7 @@
       "topic": "cpu-virtualization",
       "title": "KVM vCPU 的阻塞、轮询与唤醒",
       "summary": "从 HLT 跟踪宿主轮询、等待者发布与中断唤醒，分析丢失唤醒的防护和轮询预算的自适应调整。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-17",
       "template": "_halt_article.html",
       "stylesheet": "halt-poll.css",
       "script": "halt-poll.js",
@@ -2376,6 +2792,58 @@
         {
           "id": "evolution",
           "title": "TCG 的演进与性能取舍"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
+      "slug": "cpu-model-migration",
+      "topic": "cpu-virtualization",
+      "title": "虚拟 CPU 模型与迁移兼容性",
+      "summary": "从两台 x86 主机的指令差异出发，说明 CPU 模型、运行状态与机器类型的约束，以及兼容基线的选择和检查。",
+      "reviewed_on": "2026-10-17",
+      "template": "_cpu_models_article.html",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        },
+        {
+          "project": "Libvirt",
+          "version": "12.0.0",
+          "commit": "4d937284669ecf180abea087d0b3ad67d9476349",
+          "url": "https://github.com/libvirt/libvirt/tree/4d937284669ecf180abea087d0b3ad67d9476349"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "同为 x86，为什么仍可能无法迁移"
+        },
+        {
+          "id": "contract",
+          "title": "需要保持的三层 CPU 约定"
+        },
+        {
+          "id": "models",
+          "title": "固定型号、host-model 与 host-passthrough"
+        },
+        {
+          "id": "example",
+          "title": "两台主机怎样确定共同能力"
+        },
+        {
+          "id": "implementation",
+          "title": "源码中的模型展开与状态恢复"
+        },
+        {
+          "id": "evolution",
+          "title": "兼容基线怎样随硬件与软件演进"
         },
         {
           "id": "sources",

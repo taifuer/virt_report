@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c204cdcdcf49">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c204cdcdcf49">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -63,9 +63,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看从客户机 TX virtqueue 到物理网卡" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="从客户机 TX virtqueue 到物理网卡">
-    <img src="../assets/dpdk-vhost-data-path.svg?v=32683d73423f" alt="虚线为初始化和通知，实线为报文访问及交接。vhost-user socket 传递控制消息和文件描述符；数据通过共享内存进入 vhost，再复制到本例的 mbuf。" loading="lazy">
+    <img src="../assets/dpdk-vhost-data-path.svg?v=c204cdcdcf49" alt="虚线为初始化和通知，实线为报文访问及交接。vhost-user socket 传递控制消息和文件描述符；数据通过共享内存进入 vhost，再复制到本例的 mbuf。" loading="lazy">
   </div>
-  <figcaption>虚线为初始化和通知，实线为报文访问及交接。vhost-user socket 传递控制消息和文件描述符；数据通过共享内存进入 vhost，再复制到本例的 mbuf。 <a href="../assets/dpdk-vhost-data-path.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>虚线为初始化和通知，实线为报文访问及交接。vhost-user socket 传递控制消息和文件描述符；数据通过共享内存进入 vhost，再复制到本例的 mbuf。 <a href="../assets/dpdk-vhost-data-path.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: DPDK vhost-user 控制连接与报文路径
     accDescr: QEMU 用 vhost-user 控制消息把客户机内存和队列映射到 DPDK 进程；客户机发送队列经 vhost 复制到 mbuf，再由应用提交 PMD 和物理网卡。通知不携带报文。
@@ -110,9 +110,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看P1 的三个表示与两次缓冲区交接" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="P1 的三个表示与两次缓冲区交接">
-    <img src="../assets/dpdk-buffer-ownership.svg?v=32683d73423f" alt="客户机链 0 → 2、DPDK mbuf M 和物理网卡 TX 描述符属于三个不同对象。本例复制完成后可以归还客户机链；M 必须保留到 PMD 确认硬件用完。" loading="lazy">
+    <img src="../assets/dpdk-buffer-ownership.svg?v=c204cdcdcf49" alt="客户机链 0 → 2、DPDK mbuf M 和物理网卡 TX 描述符属于三个不同对象。本例复制完成后可以归还客户机链；M 必须保留到 PMD 确认硬件用完。" loading="lazy">
   </div>
-  <figcaption>客户机链 0 → 2、DPDK mbuf M 和物理网卡 TX 描述符属于三个不同对象。本例复制完成后可以归还客户机链；M 必须保留到 PMD 确认硬件用完。 <a href="../assets/dpdk-buffer-ownership.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>客户机链 0 → 2、DPDK mbuf M 和物理网卡 TX 描述符属于三个不同对象。本例复制完成后可以归还客户机链；M 必须保留到 PMD 确认硬件用完。 <a href="../assets/dpdk-buffer-ownership.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 客户机链、DPDK mbuf 与物理发送环
     accDescr: 客户机链和 mbuf 之间有复制边界；mbuf 数据被物理网卡 DMA 读取。客户机链在复制结束后归还，mbuf 则保留到硬件发送完成并由 PMD 清理。
@@ -176,9 +176,9 @@ rte_eth_tx_burst(port, txq, pkts, 1)
     <button type="button" data-mechanism-expand aria-label="放大查看客户机完成、PMD 接受和硬件完成的先后关系" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="客户机完成、PMD 接受和硬件完成的先后关系">
-    <img src="../assets/dpdk-vhost-completion.svg?v=32683d73423f" alt="本例的同步复制使客户机链可以提前归还。PMD 只接受返回数量对应的 mbuf；未接受部分仍由应用重试或释放。" loading="lazy">
+    <img src="../assets/dpdk-vhost-completion.svg?v=c204cdcdcf49" alt="本例的同步复制使客户机链可以提前归还。PMD 只接受返回数量对应的 mbuf；未接受部分仍由应用重试或释放。" loading="lazy">
   </div>
-  <figcaption>本例的同步复制使客户机链可以提前归还。PMD 只接受返回数量对应的 mbuf；未接受部分仍由应用重试或释放。 <a href="../assets/dpdk-vhost-completion.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>本例的同步复制使客户机链可以提前归还。PMD 只接受返回数量对应的 mbuf；未接受部分仍由应用重试或释放。 <a href="../assets/dpdk-vhost-completion.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 客户机缓冲区与 DPDK mbuf 的回收时刻
     accDescr: DPDK 复制客户机数据到 mbuf 后归还客户机链，物理 PMD 接受 mbuf 后还要等待硬件完成。短发送时剩余 mbuf 仍由应用管理。
@@ -249,6 +249,6 @@ rte_eth_tx_burst(port, txq, pkts, 1)
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+<script src="../assets/mechanism-viewer.js?v=c204cdcdcf49" defer></script>
 </body>
 </html>

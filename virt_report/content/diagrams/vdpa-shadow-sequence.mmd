@@ -1,0 +1,18 @@
+sequenceDiagram
+    accTitle: vDPA Shadow Virtqueue 的描述符和完成转发
+    accDescr: QEMU 从客户机原队列取请求，建立地址关联并放入影子队列；设备使用影子队列并访问映射后的数据缓冲区。QEMU 收到完成后向客户机回写并参与脏页记账。
+    participant G as 客户机 virtqueue
+    participant Q as QEMU SVQ
+    participant S as 影子 virtqueue
+    participant H as vDPA 设备
+    participant B as 客户机数据缓冲区
+    G->>Q: 发布请求，按需 kick
+    Q->>Q: 保存原请求关联，翻译 DMA 地址
+    Q->>S: 写入影子描述符并发布
+    S->>H: 设备读取影子队列
+    H->>B: 在授权映射中读写数据
+    H->>S: 写影子 used 并通知
+    S->>Q: 取得完成 ID / len
+    Q->>Q: 校验关联，回收影子描述符
+    Q->>G: 发布客户机 used，完成写入记账
+    Note over Q,B: 数据区可映射为同一份 RAM；描述符中转不等于复制所有报文

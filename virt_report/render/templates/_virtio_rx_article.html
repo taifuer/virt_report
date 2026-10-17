@@ -1,0 +1,73 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+{% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
+{% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
+<section id="preface" class="mechanism-section">
+  <h2>报文到达时，谁提供存放它的内存</h2>
+  <p>一台虚拟机正在等待 HTTP 响应，宿主网络收到了一帧发给它的报文。要让客户机应用读到数据，需要先找到客户机提供的接收缓冲区，把内容写进去，再让客户机驱动处理完成记录并交给协议栈。接收过程中最重要的约束是缓冲区的所有权：设备写入期间，驱动不能把同一块内存交给另一个请求；协议栈仍在使用旧数据时，设备也不能覆盖它。</p>
+  <p>本文跟踪 QEMU virtio-net + TAP、现代 virtio-pci、split 队列的一次收包，再解释 Linux 的 NAPI 怎样批量消费完成记录。示例采用单个 RX 队列、普通报文，不开启 XDP 或合并接收缓冲区；后面单独说明这些扩展改变哪些步骤。发送方向可对照<a href="qemu-network-tx.html">virtio-net 发包路径</a>。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+<section id="ownership" class="mechanism-section">
+  <h2>RX 队列发布空缓冲区，used 归还实际数据</h2>
+  <p>TX 描述符通常让设备读取已准备好的报文；RX 描述符则把可写空间交给设备。两者使用相同的 split 结构，区别在缓冲区方向和请求含义。RX 的 available 项表示“这里有空间可以收包”，并不表示这块空间里已经有新报文。</p>
+  <table><thead><tr><th scope="col">对象</th><th scope="col">本例保存什么</th><th scope="col">谁更新</th></tr></thead><tbody>
+    <tr><td>描述符链</td><td>virtio-net 头和报文可写区域的地址、容量；设备可写部分带 WRITE</td><td>驱动在发布前准备</td></tr>
+    <tr><td>available ring</td><td>可交给设备的描述符链头</td><td>驱动发布，设备消费</td></tr>
+    <tr><td>used ring</td><td>已填充链的 id，以及设备实际写入长度 len</td><td>设备发布，驱动回收</td></tr>
+    <tr><td>驱动私有关联</td><td>链头对应的页、缓冲区上下文与 DMA 映射</td><td>驱动维护，不属于设备可任意解释的协议字段</td></tr>
+  </tbody></table>
+  <p>假设链头 2 提供总计 2048 字节的可写空间。本例协商现代基础网络头，头长为 12 字节；收到不含 FCS 的 1514 字节以太网帧后，设备发布 <code>used = { id: 2, len: 1526 }</code>。used.len 表示本次实际写入量，不能把描述符容量 2048 当成报文长度。启用额外网络头扩展后，要按协商后的头长重新计算。</p>
+  <p>驱动通过链头找到自己的缓冲区上下文，校验长度及网络头，再构造或补全 <code>sk_buff</code>。协议栈接管页或片段时，驱动应补入另一个可用缓冲区；只有旧引用释放后，相应存储空间才能再次供设备写入。回收描述符槽与回收底层数据页是两个不同的生命周期。</p>
+  {{ diagram('virtio-rx-ownership', 'RX 缓冲区从可写空间到协议栈数据', '客户机发布可写缓冲区；后端写入头和报文后发布 used；驱动交付数据并补充接收空间。描述符槽回收不代表协议栈已经释放数据页。') }}
+</section>
+<section id="receive" class="mechanism-section">
+  <h2>一帧报文从 TAP 到客户机协议栈</h2>
+  <p>驱动在设备启动及日常回收时补充 RX 缓冲区。Linux 的 <code>try_fill_recv()</code> 根据普通、小包、可合并或 XSK 等配置选择分配方法，发布可写描述符，并判断是否需要 kick 后端。RX 也有驱动到设备的通知：它表示新接收空间已经准备好。</p>
+  <ol>
+    <li><strong>准备空间。</strong>客户机驱动发布链头 2，更新 available；设备此后可以访问该链的可写缓冲区。</li>
+    <li><strong>报文到达。</strong>TAP 后端把数据交给 QEMU 网络层；<code>virtio_net_receive_rcu()</code> 检查设备运行状态、接收过滤规则及队列空间。</li>
+    <li><strong>填充缓冲区。</strong>QEMU 通过 <code>virtqueue_pop()</code> 取出描述符链，验证可写区域，写 virtio-net 头，再把以太网帧复制到客户机 RAM。</li>
+    <li><strong>发布完成。</strong><code>virtqueue_fill()</code> 准备完成记录，<code>virtqueue_flush()</code> 发布 used 进度；<code>virtio_notify()</code> 根据通知条件提示客户机。</li>
+    <li><strong>接收处理。</strong>客户机回调 <code>skb_recv_done()</code> 调度对应 NAPI；poll 从 used 取回缓冲区，解析头、构造 skb，再交给 GRO / 网络协议栈。</li>
+    <li><strong>补充空间。</strong>驱动根据空闲描述符数量补入缓冲区。应用稍后从 socket 读取数据，协议栈处理与设备完成并非同一时刻。</li>
+  </ol>
+  <p>本例采用 QEMU 软件接收路径，源码中的 <code>iov_from_buf()</code> 执行数据复制。换用 vhost-net、vhost-user 或硬件后端后，队列消费者及数据写入方式会变化；“采用 virtio”本身不能推出零拷贝。<a href="{{ qemu }}hw/net/virtio-net.c#L1903-L2043">QEMU 接收与完成发布</a></p>
+  {{ diagram('virtio-rx-napi-sequence', '从一次完成通知到一批报文处理', '通知使 NAPI 获得处理机会，poll 按预算消费 used，补充 RX 空间；只有确认本轮完成并处理好通知竞态，才回到等待状态。') }}
+</section>
+<section id="napi" class="mechanism-section">
+  <h2>NAPI 怎样在中断与批量处理之间切换</h2>
+  <p>如果每个报文都引发一次中断，流量增大后，CPU 会频繁进入通知处理路径，却没有足够时间真正处理报文。NAPI 用一次调度承接一批完成：回调安排 poll 并抑制重复通知，poll 逐步取走 used 中已经完成的接收缓冲区。常规处理发生在客户机网络软中断上下文，也存在 threaded NAPI 和 busy polling 等模式。</p>
+  <p>设一轮 poll 的预算为 4，这是便于观察的教学值。如果 used 中已有 7 帧，第一轮取 4 帧并返回预算值，NAPI 继续保持待处理状态；下一轮取剩余 3 帧，观察到队列已空后才尝试完成本轮调度。预算限制一次轮询的接收工作量，防止一个繁忙队列长期占用执行机会；它不等于硬件队列大小，也不保证每帧各占一个描述符。</p>
+  <p>恰好取走 4 帧时，即使队列此刻为空，也不能同时用“返回 4”向 NAPI 表示已经完成。Linux virtio-net 在 <code>received &lt; budget</code> 时调用完成辅助函数，等于预算则交给后续轮询确认。<code>budget = 0</code> 是只处理特定 TX 完成等场景的特殊输入，不能据此执行普通 RX 消费或完成 NAPI。<a href="{{ linux }}drivers/net/virtio_net.c#L3114-L3154">virtnet_poll</a>、<a href="https://docs.kernel.org/6.18/networking/napi.html">Linux 6.18 NAPI API</a></p>
+  <p>GRO 可以把适合合并的报文组织为更大的协议栈处理单元，降低上层逐包开销。它不把多个 RX 完成“变回一个设备请求”，也不改变设备发布 used 的责任。分析批处理效果时，应分开统计接收帧、used 消费、NAPI poll、通知与应用读取次数。</p>
+</section>
+<section id="races" class="mechanism-section">
+  <h2>通知恢复与缓冲区不足怎样避免停收</h2>
+  <h3>队列刚空时，可能又来了新报文</h3>
+  <p>驱动最后一次检查 used 时没有数据；紧接着设备写入新完成，却看到驱动仍在抑制通知。如果驱动随后直接退出 poll 等下一次中断，这个完成可能无人处理。正确交接需要协调 NAPI 状态、重新启用队列回调，并再次检查完成进度；发现窗口内到达的新工作，就重新安排处理。Linux 将这些步骤封装在 <code>virtqueue_napi_complete()</code> 等辅助函数中。</p>
+  <p>这里的“抑制通知”是 virtqueue 的协议行为，不一定等价于把整个 PCI MSI-X 向量永久屏蔽。通知可能已经在路上，也可能由多个队列共享，驱动仍必须检查队列状态。used 中的记录才是数据完成的依据，不能根据中断次数推断收到多少帧。</p>
+  <h3>available 耗尽时，设备不能随意找一页内存写入</h3>
+  <p>客户机长时间得不到 CPU、分配内存失败或补充速度不足，都会让 RX available 耗尽。QEMU 的 <code>virtio_net_has_buffers()</code> 会启用缓冲区到达通知并复查队列，确认仍无空间后让上游暂缓交付。后端可能排队、暂停读取或丢包，取决于具体路径和排队上限；这不构成无限缓存或不丢包保证。</p>
+  <p>Linux 补充空间遇到内存不足时可安排延迟 refill 工作；如果描述符已满却应用仍慢，瓶颈也可能在后续协议栈、socket 或应用消费。排查顺序应是可写缓冲区数量、used 消费速度、NAPI 调度与预算、CPU 时间，再到上层协议和应用。单纯增大 ring 可以吸收短时突发，但持续超载时还会增加排队延迟。<a href="{{ qemu }}hw/net/virtio-net.c#L1651-L1677">QEMU 空间检查</a>、<a href="{{ linux }}drivers/net/virtio_net.c#L3022-L3060">Linux 回收与 refill</a></p>
+</section>
+<section id="implementation" class="mechanism-section">
+  <h2>源码中的准备、完成与重新补充</h2>
+  <table><thead><tr><th scope="col">责任</th><th scope="col">入口</th><th scope="col">应跟踪的状态</th></tr></thead><tbody>
+    <tr><td>客户机补充空间</td><td><code>try_fill_recv → add_recvbuf_*</code></td><td>可用描述符、buffer 上下文、DMA 映射与 kick 条件</td></tr>
+    <tr><td>QEMU 填充报文</td><td><code>virtio_net_receive_rcu</code></td><td>可写 iovec、协商头长、实际写入长度</td></tr>
+    <tr><td>设备发布完成</td><td><code>virtqueue_fill / flush → virtio_notify</code></td><td>先完成内存写入，再发布进度，最后判断通知</td></tr>
+    <tr><td>客户机安排处理</td><td><code>skb_recv_done → virtqueue_napi_schedule</code></td><td>NAPI 是否已调度及队列回调状态</td></tr>
+    <tr><td>消费与交付</td><td><code>virtnet_poll → virtnet_receive → receive_buf</code></td><td>预算、used、skb/XDP 分支，以及 refill 条件</td></tr>
+  </tbody></table>
+  <p>实际 Linux 驱动支持 small、big、mergeable 和 XSK 缓冲区，不能把某一条分配分支当成所有接收路径。MRG_RXBUF 允许一个报文占用多个已发布的缓冲区，头中的 num_buffers 告知驱动如何收齐；一个报文因此可以对应多个 used 元素，NAPI 的 RX 预算仍按处理报文计数。</p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2>从逐包通知到批处理、多队列与轮询</h2>
+  <p>接收优化主要沿三条方向推进。NAPI 用预算轮询摊薄通知成本；多队列与 RSS 把不同流分配到不同队列，让多个 CPU 并行处理；GRO、校验和及分段相关卸载减少协议栈重复工作。这些措施解决的瓶颈不同，需要分别观察效果。</p>
+  <p>批量越大，通知和调度成本通常越容易摊薄，但轻负载报文可能等待更久。增加队列有利于并行，也会增加向量、缓冲区和调度开销；客户机与宿主队列、线程、NUMA 的对应关系不合理时，还可能放大跨核访问。busy polling 用主动检查换取较短等待时间，代价是持续占用 CPU。</p>
+  <p>XDP 可以在更早位置处理、丢弃或重定向报文，AF_XDP 则提供用户态数据通道；它们会改变缓冲区来源和去向。理解这些优化前，先确认本例的闭环：驱动提供空间，设备填充并归还，客户机处理数据，再提供新的空间。吞吐提升只有在 CPU 消耗、丢包与尾延迟也满足目标时才有意义。</p>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul><li><a href="{{ qemu }}hw/net/virtio-net.c">QEMU 10.2.0 virtio-net</a>：RX 空间检查、可写缓冲区填充与 used 发布。</li><li><a href="{{ linux }}drivers/net/virtio_net.c">Linux 6.18 virtio-net</a>：接收队列、缓冲区补充、NAPI poll 与协议栈交付。</li><li><a href="{{ linux }}drivers/virtio/virtio_ring.c">Linux 6.18 virtqueue</a>：队列回调、进度检查与共享结构访问。</li><li><a href="https://docs.kernel.org/6.18/networking/napi.html">Linux 6.18 NAPI</a>：调度、预算、完成条件及通知恢复。</li><li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">VIRTIO 1.2 §5.1</a>：网络头、RX 队列、合并接收缓冲区与通知约定。</li></ul>
+</section>

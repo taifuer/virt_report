@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c204cdcdcf49">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c204cdcdcf49">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -47,7 +47,7 @@
     <h1>QEMU 同机更新的内存与文件描述符交接</h1>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、替换 QEMU 时需要保留哪些状态</a></li><li><a href="#principle">二、共享 RAM，重建对象并恢复执行状态</a></li><li><a href="#structures">三、描述符清单与共享内存</a></li><li><a href="#channels">四、先传 CPR 资源，再连接主状态通道</a></li><li><a href="#handoff">五、停止旧 vCPU，再让新进程接管</a></li><li><a href="#boundaries">六、兼容性、停机时间与失败边界</a></li><li><a href="#evolution">七、从保存重启到进程间交接</a></li><li><a href="#implementation">八、源码与资料：资源清单和状态交接</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、替换 QEMU 时需要保留哪些状态</a></li><li><a href="#principle">二、共享 RAM，重建对象并恢复执行状态</a></li><li><a href="#structures">三、描述符清单与共享内存</a></li><li><a href="#channels">四、先传 CPR 资源，再连接主状态通道</a></li><li><a href="#handoff">五、停止旧 vCPU，再让新进程接管</a></li><li><a href="#example">六、双进程示例：观察资源交接与客户机连续执行</a></li><li><a href="#boundaries">七、兼容性、停机时间与失败边界</a></li><li><a href="#evolution">八、从保存重启到进程间交接</a></li><li><a href="#implementation">九、源码与资料：资源清单和状态交接</a></li></ol></nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>替换 QEMU 时需要保留哪些状态</h2>
@@ -64,9 +64,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看CPR-transfer 的资源与状态交接" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="CPR-transfer 的资源与状态交接">
-    <img src="../assets/cpr-state-ownership.svg?v=32683d73423f" alt="两个进程映射同一共享 RAM 后端，分别拥有自己的 QEMU 对象和 KVM 虚拟机。CPR 通道传送已登记资源的描述符，主通道传送执行状态；客户机执行权只交给一端。" loading="lazy">
+    <img src="../assets/cpr-state-ownership.svg?v=c204cdcdcf49" alt="两个进程映射同一共享 RAM 后端，分别拥有自己的 QEMU 对象和 KVM 虚拟机。CPR 通道传送已登记资源的描述符，主通道传送执行状态；客户机执行权只交给一端。" loading="lazy">
   </div>
-  <figcaption>两个进程映射同一共享 RAM 后端，分别拥有自己的 QEMU 对象和 KVM 虚拟机。CPR 通道传送已登记资源的描述符，主通道传送执行状态；客户机执行权只交给一端。 <a href="../assets/cpr-state-ownership.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>两个进程映射同一共享 RAM 后端，分别拥有自己的 QEMU 对象和 KVM 虚拟机。CPR 通道传送已登记资源的描述符，主通道传送执行状态；客户机执行权只交给一端。 <a href="../assets/cpr-state-ownership.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: CPR-transfer 的资源与状态交接
   accDescr: 旧进程和新进程分别创建 QEMU 对象、KVM VM 和 vCPU。CPR 通道把 name 与 id 对应的 fd 交给新进程，两个不同的 fd 和 HVA 可以引用同一共享 RAM。主迁移通道恢复 CPU 和设备状态，客户机执行不能同时在两端进行。
@@ -154,9 +154,9 @@ fd 17 与 fd 23 → 同一个共享 memfd 后端
     <button type="button" data-mechanism-expand aria-label="放大查看CPR-transfer 的准备、停机与恢复" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="CPR-transfer 的准备、停机与恢复">
-    <img src="../assets/cpr-transfer-sequence.svg?v=32683d73423f" alt="源端先发送 fd 清单，目标据此准备资源；目标监听 main 后关闭 CPR 通道。源端随后建立 main 并停止客户机，发送执行状态，目标恢复完成后才运行客户机。" loading="lazy">
+    <img src="../assets/cpr-transfer-sequence.svg?v=c204cdcdcf49" alt="源端先发送 fd 清单，目标据此准备资源；目标监听 main 后关闭 CPR 通道。源端随后建立 main 并停止客户机，发送执行状态，目标恢复完成后才运行客户机。" loading="lazy">
   </div>
-  <figcaption>源端先发送 fd 清单，目标据此准备资源；目标监听 main 后关闭 CPR 通道。源端随后建立 main 并停止客户机，发送执行状态，目标恢复完成后才运行客户机。 <a href="../assets/cpr-transfer-sequence.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>源端先发送 fd 清单，目标据此准备资源；目标监听 main 后关闭 CPR 通道。源端随后建立 main 并停止客户机，发送执行状态，目标恢复完成后才运行客户机。 <a href="../assets/cpr-transfer-sequence.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
   accTitle: CPR-transfer 的准备、停机与恢复
   accDescr: 新 QEMU 在创建设备和打开 monitor 前等待 CPR 通道。旧 QEMU 先发送描述符清单，目标准备资源并监听主通道后关闭 CPR 通道。旧端收到 HUP 才连接主通道，再停止客户机、发送状态。目标恢复完成后接管执行，旧端保持 postmigrate。
@@ -193,8 +193,59 @@ fd 17 与 fd 23 → 同一个共享 memfd 后端
   <p>VFIO / IOMMUFD 还涉及设备 fd、已固定页、中断 eventfd 和 DMA 关联。该版本有相应的 CPR 支持：保留设备资源，调整旧 KVM 的中断连接，再在目标恢复路由；已进入旧 LAPIC 的待处理中断也要随 CPU 状态恢复。不能把设备 fd 复制成功等同于 DMA、中断和管理关系都已切换。地址与 DMA 对应关系见<a href="qemu-vfio-dma.html">VFIO 设备直通的 DMA 地址转换与隔离</a>。</p>
 </section>
 
+<section id="example" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>双进程示例：观察资源交接与客户机连续执行</h2>
+  <p>下面按 QEMU 10.2.0 的 CPR 示例组织一次最小交接：同一版本的两个 QEMU、512 MiB memfd 内存、一个 vCPU、两条 Unix 通道。客户机使用测试用内核与 initramfs，不挂载业务磁盘、不配置网络。initramfs 启动后在串口周期输出一个递增计数器，便于辨认恢复后的执行进度。命令与状态是教学示例，未在本文中执行；其中的内核、initramfs 和 QEMU 路径需要换成自己的测试文件。</p>
+  <p>先在一个 shell 中创建独立运行目录，准备两个进程共用的机器参数。内核与 initramfs 必须相同；<code>ram0</code>、内存大小、CPU 型号和设备拓扑也保持一致。这里的共享内存来自 memfd，无需复用其他虚拟机的文件路径。</p>
+  <pre><code>QEMU=/path/to/qemu-10.2.0/bin/qemu-system-x86_64
+KERNEL=/path/to/test/bzImage
+INITRD=/path/to/test/initramfs.cpio.gz
+LAB=$(mktemp -d /tmp/qemu-cpr.XXXXXX)
+chmod 700 "$LAB"
+printf '运行目录：%s\n' "$LAB"
+
+COMMON=(
+  -accel kvm -cpu host -smp 1 -m 512M
+  -machine pc-q35-10.2,memory-backend=ram0,aux-ram-share=on
+  -object memory-backend-memfd,id=ram0,size=512M,share=on
+  -nodefaults -display none -monitor none
+  -kernel "$KERNEL" -initrd "$INITRD" -append console=ttyS0
+)
+
+"$QEMU" "${COMMON[@]}" \
+  -qmp unix:"$LAB/source.qmp",server=on,wait=off \
+  -serial file:"$LAB/source.console" &amp;
+SOURCE_PID=$!
+
+"$QEMU" "${COMMON[@]}" \
+  -qmp unix:"$LAB/target.qmp",server=on,wait=off \
+  -serial file:"$LAB/target.console" \
+  -incoming unix:"$LAB/main.sock" \
+  -incoming '{"channel-type":"cpr","addr":{"transport":"socket","type":"unix","path":"'"$LAB"'/cpr.sock"}}' &amp;
+TARGET_PID=$!</code></pre>
+  <p>两个进程放在后台，是因为目标会先阻塞在 CPR 资源接收处。此时旧端串口计数应继续增长，新端 QMP 尚未就绪属于正常顺序。使用 <code>socat -,echo=0 UNIX-CONNECT:"$LAB/source.qmp"</code> 连接旧端，收到 QMP greeting 后逐条输入以下请求。JSON 中的 <code>/tmp/qemu-cpr.EXAMPLE</code> 要替换为刚才打印的运行目录：</p>
+  <pre><code>{"execute":"qmp_capabilities"}
+{"execute":"query-status"}
+{"execute":"migrate-set-parameters","arguments":{"mode":"cpr-transfer"}}
+{"execute":"migrate","arguments":{"channels":[
+  {"channel-type":"main","addr":{"transport":"socket","type":"unix","path":"/tmp/qemu-cpr.EXAMPLE/main.sock"}},
+  {"channel-type":"cpr","addr":{"transport":"socket","type":"unix","path":"/tmp/qemu-cpr.EXAMPLE/cpr.sock"}}
+]}}
+{"execute":"query-migrate"}
+{"execute":"query-status"}</code></pre>
+  <p><code>migrate</code> 返回成功只表示请求被接受，继续查询直到状态收束。目标 QMP 就绪后，用另一个连接访问 <code>target.qmp</code>，完成 <code>qmp_capabilities</code> 协商，再执行 <code>query-status</code>。成功路径应同时具备下面的证据：</p>
+  <table><thead><tr><th scope="col">观察位置</th><th scope="col">预期结果</th><th scope="col">说明</th></tr></thead><tbody>
+    <tr><td>旧端 <code>query-migrate</code></td><td><code>status: completed</code></td><td>源侧迁移任务完成；仍需核对目标与客户机</td></tr>
+    <tr><td>旧端 <code>query-status</code></td><td><code>status: postmigrate</code>、<code>running: false</code></td><td>旧进程还在，客户机已停止执行</td></tr>
+    <tr><td>新端 <code>query-status</code></td><td><code>status: running</code>、<code>running: true</code></td><td>目标已经放行客户机 CPU</td></tr>
+    <tr><td>两个串口日志</td><td>旧端停止输出，新端继续原计数，未重新出现启动流程</td><td>计数只用于辨认连续性；串口缓冲可能影响末尾少量输出，不能据此精确测量停机时间</td></tr>
+  </tbody></table>
+  <p>计数器可在客户机测试程序中每秒递增并打印，同时保存一次启动标识。新端若从初始值重来或启动标识变化，应检查是否发生了客户机重启。要测量停顿，另由宿主记录每条输出到达的单调时间；周期为一秒的输出只能发现较大间断，无法给出毫秒级 downtime。</p>
+  <p>确认目标正常后，给旧端发送 <code>{"execute":"quit"}</code> 清理旧进程。结束测试时再退出新端，确认两个 PID 均已退出后删除本次运行目录。若迁移失败，先按下一节核对双端状态与资源归属，保留日志；不要把旧端 <code>cont</code> 当作统一恢复步骤。使用不同 QEMU 版本前，还需要单独验证机器类型及设备迁移兼容性。</p>
+</section>
+
 <section id="boundaries" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">六、</span>兼容性、停机时间与失败边界</h2>
+  <h2><span class="mechanism-heading-number">七、</span>兼容性、停机时间与失败边界</h2>
   <p>同机更新仍使用迁移兼容约定。新进程需要创建对应的机器、CPU 和设备配置，能够读取源端状态版本；资源名称和设备拓扑也要匹配。共享 RAM 解决了内存搬运问题，无法替不兼容的 VMState 或不同设备布局自动转换状态。</p>
   <p>停机窗口从源端停止执行延续到目标客户机恢复，包括状态保存与加载、资源激活、寄存器同步和必要的线程调度。fd 预交接和一部分目标初始化在停机前完成。即使 RAM 数据没有复制，目标页表建立、KVM 映射恢复和后端重连仍可能带来成本，应分别测量准备时间、客户机停顿和恢复后的尾延迟。</p>
   <table><thead><tr><th scope="col">失败阶段</th><th scope="col">需要判断的事实</th><th scope="col">处理边界</th></tr></thead><tbody>
@@ -206,7 +257,7 @@ fd 17 与 fd 23 → 同一个共享 memfd 后端
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">七、</span>从保存重启到进程间交接</h2>
+  <h2><span class="mechanism-heading-number">八、</span>从保存重启到进程间交接</h2>
   <p><a href="https://github.com/qemu/qemu/commit/a87e64519b027c9b36d9badbd73b13f6475dfb3d">2023 年的 cpr-reboot 实现</a> 提供保存状态、退出旧 QEMU、再启动新进程的路径。<a href="https://github.com/qemu/qemu/commit/624e6e654e110d04efd22fe7bb494010c12765f0">2025 年的 cpr-transfer 实现</a> 增加并存进程间的 fd 交接，让共享资源可以在旧进程退出前交给新进程。<a href="https://github.com/qemu/qemu/commit/a3eae205c601dd491d2e83fa9ff0d15fce7236b5">cpr-exec</a> 则使用 exec 替换当前进程映像。</p>
   <table><thead><tr><th scope="col">模式</th><th scope="col">进程与资源交接</th><th scope="col">主要取舍</th></tr></thead><tbody>
     <tr><td>cpr-reboot</td><td>保存状态后退出，另行启动；RAM 可共享保留或写入状态文件</td><td>步骤清晰，但新进程准备通常落入停机窗口；跨宿主重启保留 RAM 需要持久化内存后端等条件</td></tr>
@@ -217,7 +268,7 @@ fd 17 与 fd 23 → 同一个共享 memfd 后端
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">八、</span>源码与资料：资源清单和状态交接</h2>
+  <h2><span class="mechanism-heading-number">九、</span>源码与资料：资源清单和状态交接</h2>
   <ul>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/migration/CPR.rst">CPR 模式、配置条件、限制与示例</a></li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/migration/cpr.h#L16-L29">CPR 头部和 CprState</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/cpr.c#L28-L95">CprFd 与 name / id 查找</a></li>
@@ -236,6 +287,6 @@ fd 17 与 fd 23 → 同一个共享 memfd 后端
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+<script src="../assets/mechanism-viewer.js?v=c204cdcdcf49" defer></script>
 </body>
 </html>

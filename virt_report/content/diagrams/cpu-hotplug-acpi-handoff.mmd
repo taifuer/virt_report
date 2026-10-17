@@ -1,0 +1,18 @@
+sequenceDiagram
+  accTitle: x86 vCPU 创建、上线与异步移除
+  accDescr: 管理程序创建 vCPU 后，QEMU 通知客户机发现并上线。移除时管理程序先得到受理响应，客户机迁走工作并回应 ACPI eject 后，QEMU 才真正拆除并发送完成事件。
+  participant M as 管理程序
+  participant Q as QEMU / ACPI
+  participant G as 客户机内核
+  M->>Q: device_add：空位与 CPU 类型
+  Q->>Q: 检查拓扑并创建 CPU
+  Q-->>M: 创建结果
+  Q->>G: SCI / 插入通知
+  G->>G: 发现 CPU，按策略上线
+  M->>Q: device_del
+  Q-->>M: 请求已受理
+  Q->>G: SCI / 移除通知
+  G->>G: 迁走任务、中断与定时器
+  G->>Q: ACPI eject
+  Q->>Q: 拆除 CPU，释放位置
+  Q-->>M: DEVICE_DELETED

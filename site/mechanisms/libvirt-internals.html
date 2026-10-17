@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c204cdcdcf49">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c204cdcdcf49">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -67,9 +67,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看管理请求与状态反馈分别经过哪些组件" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="管理请求与状态反馈分别经过哪些组件">
-    <img src="../assets/libvirt-internals-overview.svg?v=32683d73423f" alt="API 表达操作，RPC 负责跨进程交接，QEMU 驱动处理资源和状态，QMP 操作具体实例。命令响应和异步事件分别处理，数据请求走虚拟机自己的 I/O 路径。" loading="lazy">
+    <img src="../assets/libvirt-internals-overview.svg?v=c204cdcdcf49" alt="API 表达操作，RPC 负责跨进程交接，QEMU 驱动处理资源和状态，QMP 操作具体实例。命令响应和异步事件分别处理，数据请求走虚拟机自己的 I/O 路径。" loading="lazy">
   </div>
-  <figcaption>API 表达操作，RPC 负责跨进程交接，QEMU 驱动处理资源和状态，QMP 操作具体实例。命令响应和异步事件分别处理，数据请求走虚拟机自己的 I/O 路径。 <a href="../assets/libvirt-internals-overview.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>API 表达操作，RPC 负责跨进程交接，QEMU 驱动处理资源和状态，QMP 操作具体实例。命令响应和异步事件分别处理，数据请求走虚拟机自己的 I/O 路径。 <a href="../assets/libvirt-internals-overview.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: Libvirt 请求、状态与事件的分工
     accDescr: 客户端 API 经 remote RPC 到达服务端 QEMU 驱动。驱动通过虚拟机对象与作业协调 QMP 命令，响应和异步事件沿不同路径反馈；客户机数据不经过 Libvirt RPC。
@@ -105,9 +105,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看一次暂停请求中的命令与事件" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="一次暂停请求中的命令与事件">
-    <img src="../assets/libvirt-suspend-sequence.svg?v=32683d73423f" alt="示例跟踪普通运行状态下的暂停。QMP 响应交付命令结果，STOP 事件驱动状态记录；图中分开展示两条反馈，不能把事件订阅当成 API 调用返回的一部分。" loading="lazy">
+    <img src="../assets/libvirt-suspend-sequence.svg?v=c204cdcdcf49" alt="示例跟踪普通运行状态下的暂停。QMP 响应交付命令结果，STOP 事件驱动状态记录；图中分开展示两条反馈，不能把事件订阅当成 API 调用返回的一部分。" loading="lazy">
   </div>
-  <figcaption>示例跟踪普通运行状态下的暂停。QMP 响应交付命令结果，STOP 事件驱动状态记录；图中分开展示两条反馈，不能把事件订阅当成 API 调用返回的一部分。 <a href="../assets/libvirt-suspend-sequence.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>示例跟踪普通运行状态下的暂停。QMP 响应交付命令结果，STOP 事件驱动状态记录；图中分开展示两条反馈，不能把事件订阅当成 API 调用返回的一部分。 <a href="../assets/libvirt-suspend-sequence.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: Libvirt 暂停虚拟机的调用与事件反馈
     accDescr: virsh 的暂停 API 经 RPC 进入 QEMU 驱动。驱动查找对象、取得作业后发送 stop，QEMU 暂停 vCPU。命令结果和 STOP 事件分别沿响应与状态处理路径反馈。
@@ -163,6 +163,7 @@
     <li><a href="libvirt-domain-start.html">Libvirt 虚拟机启动</a>：资源准备、QEMU 进程与运行状态的交接。</li>
     <li><a href="qemu-pcie-hotplug.html">PCIe 热插拔</a>：客户机协作与移除完成事件。</li>
     <li><a href="qemu-memory-migration.html">预拷贝内存迁移</a>：管理操作怎样联系实际状态传输。</li>
+    <li><a href="libvirt-live-migration.html">Libvirt 热迁移的阶段协调与失败恢复</a>：五阶段交接、结果丢失及双端状态确认。</li>
   </ul>
 </section>
 <section id="sources" class="mechanism-section">
@@ -181,6 +182,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+<script src="../assets/mechanism-viewer.js?v=c204cdcdcf49" defer></script>
 </body>
 </html>

@@ -1,0 +1,15 @@
+flowchart TB
+  accTitle: CPU 能力选择与迁移状态恢复
+  accDescr: 源端与目的端在运行前共同限定客户机 CPU 能力。运行后目标必须保持这个定义，并恢复寄存器、扩展状态与时钟。缺少已暴露能力时拒绝迁移。
+  A["主机 A<br/>SSE4.2 · AVX · AVX2"] --> C["启动前确定共同 CPU 定义<br/>模型版本 + 显式特性 + 依赖检查"]
+  B["主机 B<br/>SSE4.2 · AVX"] --> C
+  C --> V["VM 按固定定义运行<br/>生成寄存器与扩展状态"]
+  V --> T{"目标能保持 CPU 定义<br/>并恢复状态？"}
+  T -->|满足| R["恢复状态并继续执行"]
+  T -->|缺少已暴露能力| X["拒绝迁移<br/>不能在线删去客户机能力"]
+  classDef source fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef guest fill:#e4f1ec,stroke:#438575,color:#173e34;
+  classDef check fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class A,B source;
+  class C,V,R guest;
+  class T,X check;

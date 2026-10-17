@@ -1,0 +1,92 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+{% set libvirt_source = 'https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/' %}
+{% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
+
+<section id="preface" class="mechanism-section">
+  <h2>一台虚拟机怎样安全地换到另一台主机</h2>
+  <p>把运行中的 <code>demo</code> 从主机 A 迁到 B，需要完成三件事：B 具备接收资源，QEMU 传完执行状态，管理层确认由 B 接管并清理 A。若只完成前两件事，A 可能仍保留着暂停的旧实例；若过早清理 A，B 启动失败时就会失去恢复机会。</p>
+  <p>Libvirt 将这个过程拆成 Begin、Prepare、Perform、Finish、Confirm 五个阶段。本文沿一台使用共享存储的预拷贝虚拟机追踪成功路径，再讨论客户端断线、完成确认丢失及 postcopy 的恢复边界。内存如何迭代见<a href="qemu-memory-migration.html">QEMU 预拷贝内存迁移与停机时间</a>，这里关注谁发起下一步、谁掌握执行权，以及失败后凭什么决定恢复哪一端。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+
+<section id="paths" class="mechanism-section">
+  <h2>控制连接与迁移数据分别走哪条路径</h2>
+  <p>控制面携带域 XML、准备请求、阶段结果与迁移 cookie；数据面携带 RAM、CPU 和设备状态。使用原生传输时，两个 QEMU 之间传递状态，Libvirt 负责配置、驱动和观察迁移。控制连接使用 SSH，不代表 QEMU 的数据连接也经过 SSH；迁移数据包含客户机内存，生产环境需另外配置数据通道的 TLS 或受控网络。</p>
+  <table><thead><tr><th scope="col">协调方式</th><th scope="col">谁推进五个阶段</th><th scope="col">客户端断开后的影响</th></tr></thead><tbody>
+    <tr><td>Managed direct</td><td>客户端同时连接源端与目的端 Libvirt，交替调用阶段接口</td><td>协调者消失；依据当前阶段尝试取消、清理，结果不确定时可能保留暂停实例</td></tr>
+    <tr><td>Managed peer-to-peer（<code>--p2p</code>）</td><td>客户端向源端提交任务，源端 Libvirt 连接目的端并协调全过程</td><td>客户端退出不会中止已接管的迁移；源端守护进程及其到目的端的连接仍是依赖</td></tr>
+  </tbody></table>
+  <p>p2p 改变协调责任，<code>--tunnelled</code> 改变状态数据的传输路线，两者应分别理解。隧道模式通过 Libvirt 连接承载数据，减少额外网络入口，也增加拷贝与守护进程参与；并行迁移、postcopy 等能力还受隧道支持限制。p2p 使用源端守护进程的凭据访问 B，客户端能连 B 并不能证明这条连接也能成功。</p>
+  <p>例如运维电脑通过 SSH 登录 A、B，采用 managed direct；同一迁移改为 p2p 后，后续 Prepare 与 Finish 请求从 A 发往 B。QEMU 的原生状态连接在两种情况下都可以直接从 A 到 B。<a href="{{ libvirt_source }}docs/migration.rst">控制模式与数据传输说明</a></p>
+</section>
+
+<section id="phases" class="mechanism-section">
+  <h2>五个阶段如何交接资源与执行权</h2>
+  <p>以下是普通运行中虚拟机的预拷贝成功路径，未设置迁移后保持暂停的选项。源端在迁移末尾停止 vCPU，传出最后状态；目的端 Finish 验证接收和资源准备结果，再恢复客户机。源端收到 Confirm 成功后才清理原实例。</p>
+  {{ diagram('libvirt-migration-phases', 'Libvirt 预拷贝迁移的五阶段协调', '客户端调用源端 Begin、目的端 Prepare、源端 Perform、目的端 Finish、源端 Confirm。QEMU 状态流走独立的数据通道。目的端恢复客户机后，源端旧实例保持暂停，直到成功确认后被清理。') }}
+  <table><thead><tr><th scope="col">阶段</th><th scope="col">主要工作</th><th scope="col">完成后掌握的信息</th></tr></thead><tbody>
+    <tr><td>Begin · 源端</td><td>校验迁移条件，生成可迁移 XML 与 cookie，建立必要的变更保护</td><td>得到供目的端创建兼容机器的定义；源客户机继续运行</td></tr>
+    <tr><td>Prepare · 目的端</td><td>准备存储、网络、权限与 QEMU，配置 incoming 监听</td><td>返回可连接的迁移地址及能力信息；有接收实例，客户机尚未接管执行</td></tr>
+    <tr><td>Perform · 源端</td><td>配置 QEMU 迁移参数并发起传输，等待源侧阶段完成</td><td>普通预拷贝成功时源客户机已停；源 QEMU 进程仍保留，等待目的端结果</td></tr>
+    <tr><td>Finish · 目的端</td><td>核对迁入结果、刷新设备状态，按 flags 处理持久定义和 CPU 恢复</td><td>返回目标域句柄或失败；成功后 B 已接管，或按要求保持暂停</td></tr>
+    <tr><td>Confirm · 源端</td><td>根据 Finish 结果结束源端作业</td><td>成功则清理旧实例；失败走恢复分支，postcopy 另行处理</td></tr>
+  </tbody></table>
+  <p>这里有两个不同的“完成”：QEMU 完成状态传输，以及 Libvirt 完成运行位置与资源的交接。Prepare 成功只说明目标能够接收，Perform 成功仍要等待 Finish。类似地，目标客户机已运行也不等于源端清理已结束。</p>
+  <p>目标持久定义由 <code>--persistent</code> 控制；迁移成功后删除源持久定义由 <code>--undefinesource</code> 控制。默认行为允许源端保留一个已关闭的持久定义。这与源 QEMU 是否仍在执行是两件事，用“源端还能查到名字”判断迁移失败会产生误判。</p>
+</section>
+
+<section id="implementation" class="mechanism-section">
+  <h2>源码怎样保存阶段并传递结果</h2>
+  <p>managed direct 的主线位于 <code>virDomainMigrateVersion3Full()</code>。它先调用 Begin，再用返回的 XML 与 cookie 调用 Prepare，将目标地址传给 Perform，最后依次调用 Finish 和 Confirm。Prepare 失败时，若 Begin 已建立变更保护，也要调用取消性质的 Confirm 结束源端作业。Perform 失败则通知 Finish 清理目标，保留最初错误以免被后续清理覆盖。<a href="{{ libvirt_source }}src/libvirt-domain.c#L3277-L3564">客户端五阶段控制</a></p>
+  <table><thead><tr><th scope="col">结构或变量</th><th scope="col">记录什么</th><th scope="col">解决的问题</th></tr></thead><tbody>
+    <tr><td><code>vm-&gt;job</code> 的 <code>asyncJob</code> 与 <code>phase</code></td><td>迁入或迁出作业，以及 Begin、Perform 完成等阶段</td><td>约束并发操作，断连后按最后阶段选择处理路径</td></tr>
+    <tr><td><code>qemuMigrationCookie</code></td><td>身份、锁、能力、网络、块迁移及统计等可选信息</td><td>在阶段之间交换管理元数据；RAM 与寄存器仍由 QEMU 状态流传输</td></tr>
+    <tr><td><code>cancelled</code>、<code>retcode</code> 与目标域句柄</td><td>本阶段结果及后续清理意图</td><td>将 Perform 结果交给 Finish，再将 Finish 结果交给 Confirm</td></tr>
+  </tbody></table>
+  <p>cookie 由调用方原样转交，QEMU 驱动解析所需字段；它不是对网络分区作出最终裁决的凭证。<code>qemuMigrationSrcPerformPeer2Peer3()</code> 在源端守护进程内执行同样的协调逻辑，整个过程属于一个迁移作业，客户端无需继续逐阶段调用。<a href="{{ libvirt_source }}src/qemu/qemu_migration_cookie.h#L132-L175">cookie 结构</a>、<a href="{{ libvirt_source }}src/qemu/qemu_migration.c#L5700-L5759">p2p 入口</a></p>
+  <p>执行切换集中在两处。<code>qemuMigrationDstFinishFresh()</code> 等待迁入完成、刷新设备状态，再调用 <code>qemuProcessStartCPUs()</code>；<code>qemuMigrationSrcConfirmPhase()</code> 成功时调用源端完成清理，失败时检查 postcopy 状态，再决定是否恢复原运行状态。这两处把“加载成功”与“允许谁继续执行”联系起来。<a href="{{ libvirt_source }}src/qemu/qemu_migration.c#L6823-L6873">目标放行 CPU</a>、<a href="{{ libvirt_source }}src/qemu/qemu_migration.c#L4134-L4234">源端确认与恢复</a></p>
+</section>
+
+<section id="failure" class="mechanism-section">
+  <h2>连接失败为什么需要核对双端状态</h2>
+  <p>考虑同一台 <code>demo</code>：B 已加载状态并恢复客户机，但 Finish 的 RPC 响应在网络中丢失。协调者看到的是“调用失败”，B 上实际发生的却是“已开始执行”。若此时直接恢复 A，两个执行流可能同时更新共享磁盘。</p>
+  <p>固定版本源码在 <code>ddomain == NULL</code> 的分支中明确讨论了这种歧义，并依赖锁管理插件提供安全保护。集群还需要与存储和隔离策略配合：一个只能约束本机进程的锁，无法天然承担跨主机仲裁；网络不通也不能证明对方已停止。<a href="{{ libvirt_source }}src/libvirt-domain.c#L3520-L3564">Finish 结果丢失的处理与限制</a></p>
+  <table><thead><tr><th scope="col">失败位置</th><th scope="col">实例可能处于什么状态</th><th scope="col">恢复前需要确认</th></tr></thead><tbody>
+    <tr><td>Prepare 失败</td><td>A 通常仍执行，B 只有部分准备资源</td><td>目标准备清理完成，源端迁移作业已经结束</td></tr>
+    <tr><td>预拷贝传输失败，目标尚未执行</td><td>A 可能仍运行，也可能刚进入暂停；B 未完成接收</td><td>目标未接管，源端状态与后端访问权可以恢复</td></tr>
+    <tr><td>Perform 完成后协调连接丢失</td><td>A 已暂停；B 是否已经完成 Finish 可能未知</td><td>查询 B 的真实运行状态、源端阶段与存储锁，消除双端执行风险</td></tr>
+    <tr><td>Finish 成功，Confirm 失败</td><td>B 已接管；A 可能遗留暂停的 QEMU</td><td>按成功迁移清理源残留；保留暂停不等于应恢复 A</td></tr>
+  </tbody></table>
+  <p><code>qemuMigrationAnyConnectionClosed()</code> 处理等待下一阶段时的控制连接关闭。遇到 <code>PERFORM3_DONE</code>，它记录“无法确定目标是否启动”的情况，收束相应作业，并不凭断线就恢复旧 vCPU。正常 API 失败、阶段间客户端消失、守护进程重启分别有自己的路径，不能概括成“断线必回滚”。<a href="{{ libvirt_source }}src/qemu/qemu_migration.c#L2489-L2578">阶段间断连处理</a></p>
+  <p>p2p 消除了客户端作为长期协调者的依赖，但无法消除源端守护进程故障、主机故障和两端网络分区。它改善的是任务的归属与存活范围，资源归属判断仍然需要双端证据。</p>
+</section>
+
+<section id="postcopy" class="mechanism-section">
+  <h2>postcopy 切换后怎样处理失败</h2>
+  <p>预拷贝在交接前保留源端完整执行状态，目的端尚未运行时有条件退回源端。postcopy 提前把执行权移到 B，缺失 RAM 页继续从 A 获取；B 的内存和设备状态随后持续变化，A 保留的旧执行点已不再代表最新虚拟机。</p>
+  <p>因此，postcopy 网络中断后的首选恢复方向是保留两端、恢复迁移连接并继续补页。Libvirt 使用 <code>VIR_MIGRATE_POSTCOPY_RESUME</code> 区分恢复请求，重新协调 Begin Resume、Prepare Resume 等阶段。目标或源端所需内存已经丢失时，这条恢复路径也无法凭空重建状态。<a href="{{ libvirt_source }}src/qemu/qemu_migration.c#L2957-L3009">恢复入口</a></p>
+  <p>源码中的 Confirm 会识别失败的 postcopy，保留迁移状态而跳过普通源端恢复；目标 Finish 的失败分支同样区分清理目标与保留失败的 postcopy。完成交接后，把旧端手工 <code>cont</code> 等同于回滚，会丢弃目标已执行的变化并带来存储一致性风险。<a href="{{ libvirt_source }}src/qemu/qemu_migration.c#L6982-L7004">目标错误分支</a></p>
+</section>
+
+<section id="evaluation" class="mechanism-section">
+  <h2>从阶段记录判断成功与恢复边界</h2>
+  <p>测试时至少保存同一 UUID 的双端状态、迁移作业统计与事件时间。下面是针对测试域的只读观察命令；<code>domjobinfo</code> 查询失败或没有活动作业，仅说明当前查询不到该作业，不能单独证明迁移成功：</p>
+  <pre><code>virsh -c qemu+ssh://host-a/system domstate demo --reason
+virsh -c qemu+ssh://host-b/system domstate demo --reason
+virsh -c qemu+ssh://host-a/system domjobinfo demo
+virsh -c qemu+ssh://host-a/system domjobinfo demo --completed
+virsh -c qemu+ssh://host-b/system domjobinfo demo --completed</code></pre>
+  <p>成功路径应能串起“源传输结束 → 目标恢复 → 源进程清理”；保留源持久定义时，A 上的域可以继续显示为关闭。业务探测还需确认网络与应用恢复，迁移作业完成时间、客户机停止执行时间和业务不可用时间要分别记录。</p>
+  <p>机制演变的重点是扩大可确认的边界：早期较少阶段的协议更早放弃源实例，版本 3 增加 Begin 与 Confirm，把配置检查和最终清理分开；可扩展参数 API 又让新能力在原有阶段中协商；p2p 将协调责任移入守护进程。它们减少特定失败窗口，也增加阶段状态和恢复分支。可靠性应以“在哪个阶段失败，谁还持有可用状态，如何排除双端执行”来评价。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="{{ libvirt_source }}docs/kbase/internals/migration.rst">Libvirt 12.0.0：迁移内部协议、API 与驱动入口</a></li>
+    <li><a href="{{ libvirt_source }}docs/migration.rst">Libvirt 12.0.0：控制方式、数据传输与持久定义</a></li>
+    <li><a href="{{ libvirt_source }}src/libvirt-domain.c#L3277-L3564">managed direct 五阶段流程</a>、<a href="{{ libvirt_source }}src/qemu/qemu_migration.c#L5700-L6061">p2p 协调实现</a></li>
+    <li><a href="{{ libvirt_source }}src/qemu/qemu_migration.c#L6777-L7010">目的端完成与失败处理</a>、<a href="{{ libvirt_source }}src/qemu/qemu_migration.c#L4134-L4234">源端最终确认</a></li>
+    <li><a href="{{ qemu_source }}docs/devel/migration/postcopy.rst">QEMU 10.2.0：postcopy 状态与恢复机制</a></li>
+  </ul>
+</section>

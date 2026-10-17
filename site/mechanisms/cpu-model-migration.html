@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>虚拟 CPU 模型与迁移兼容性 - virt-report</title>
+  <meta name="description" content="从两台 x86 主机的指令差异出发，说明 CPU 模型、运行状态与机器类型的约束，以及兼容基线的选择和检查。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
+  <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c204cdcdcf49">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c204cdcdcf49">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=85f3a75ef38f" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="cpu-virtualization.html">CPU 虚拟化</a></div>
+    <h1>虚拟 CPU 模型与迁移兼容性</h1>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、同为 x86，为什么仍可能无法迁移</a></li><li><a href="#contract">二、需要保持的三层 CPU 约定</a></li><li><a href="#models">三、固定型号、host-model 与 host-passthrough</a></li><li><a href="#example">四、两台主机怎样确定共同能力</a></li><li><a href="#implementation">五、源码中的模型展开与状态恢复</a></li><li><a href="#evolution">六、兼容基线怎样随硬件与软件演进</a></li><li><a href="#sources">七、参考资料</a></li></ol></nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">一、</span>同为 x86，为什么仍可能无法迁移</h2>
+  <p>一台虚拟机在主机 A 上启动，应用发现 CPU 支持 AVX2，于是选择了向量计算实现。主机 B 也使用 x86 处理器，却不支持 AVX2。如果把内存与寄存器原样搬过去，程序继续执行时就可能遇到非法指令。目标能运行相同操作系统，并不意味着它能接着执行这台已经运行的虚拟机。</p>
+  <p>CPU 模型规定客户机看到的指令能力、部分控制接口和状态布局。迁移需要目标维持这些承诺，同时恢复已经产生的寄存器、扩展状态和时钟。下面先区分能力与状态，再用两台主机的例子说明模型选择、兼容检查和迁移边界。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/libvirt/libvirt/tree/4d937284669ecf180abea087d0b3ad67d9476349" target="_blank" rel="noopener noreferrer" title="commit 4d937284669ecf180abea087d0b3ad67d9476349">Libvirt 12.0.0</a>。</p></section>
+<section id="contract" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">二、</span>需要保持的三层 CPU 约定</h2>
+  <table><thead><tr><th>层次</th><th>主要内容</th><th>迁移时的要求</th></tr></thead><tbody>
+    <tr><td>可见能力</td><td>CPUID 特性、拓扑、物理地址位数、可用控制接口</td><td>目的端维持运行实例的 CPU 定义，不能临时拿掉已用能力</td></tr>
+    <tr><td>运行状态</td><td>通用寄存器、控制寄存器、MSR、XSAVE 扩展状态、待处理事件</td><td>迁移格式能表达，目的端 KVM 能接收并正确恢复</td></tr>
+    <tr><td>机器环境</td><td>机器类型、设备模型、时钟配置及其他迁移状态</td><td>与 CPU 一起构成可继续执行的系统，CPU 检查通过仍不足以证明整机兼容</td></tr>
+  </tbody></table>
+  <p>CPUID 相当于客户机可以使用的接口目录，运行状态则是当前正在使用这些接口的结果。例如暴露 AVX 会带来向量寄存器和扩展状态管理要求。简单比较两份 CPU flags 列表，无法覆盖全部状态恢复和机器兼容约束。</p>
+  <p>KVM 路径不能普遍靠软件补齐缺少的指令特性。某些功能可由 KVM 或 QEMU 模拟，另一些必须由宿主硬件提供；应以目标加速器报告的能力为准。把 <code>host</code> 换成另一个型号名，也不能让不支持该指令的宿主自动具备它。</p>
+</section>
+<section id="models" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">三、</span>固定型号、host-model 与 host-passthrough</h2>
+  <p>QEMU 的命名模型给出一个预定义基础，可以额外开启或关闭特性。Libvirt 的 <code>custom</code> 模式可明确选择模型、匹配策略与特性要求，适合维护一组迁移主机共同支持的配置。带版本的模型名，例如 <code>Haswell-v4</code>，比未固定版本的别名更容易复现；别名的解析还可能受机器类型影响。</p>
+  <p><code>host-model</code> 由 Libvirt 根据当前宿主和 QEMU 能力构造接近宿主的命名模型及特性集合。进行实时迁移时，完整 CPU 定义会传给目的端，由目的端保持这次运行实例的定义；目的端依然必须支持它。在另一台机器上重新冷启动时，host-model 可以重新计算，不能把两次启动都使用这个配置名理解为能力永远相同。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/docs/formatdomain.rst#L1521-L1554">host-model 的启动与迁移语义</a></p>
+  <p><code>host-passthrough</code> 尽量暴露宿主能力，适合优先利用本机特性的场合。迁移时更依赖双方硬件、内核、微码和 QEMU 环境的一致性。<code>migratable='on'</code> 主要筛掉已知不可迁移的特性，并不把任意两台宿主变成兼容目标。应结合宿主域能力及实际迁移验证选择模式。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/docs/formatdomain.rst#L1568-L1585">直通模式的限制</a></p>
+</section>
+<section id="example" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">四、</span>两台主机怎样确定共同能力</h2>
+  <p>用一个简化集合说明选择过程：A 可提供 <code>{SSE4.2, AVX, AVX2}</code>，B 可提供 <code>{SSE4.2, AVX}</code>。若需要在 A、B 之间迁移，就在启动前选择双方支持的模型，并检查依赖关系、扩展状态和其他约束。这里的集合用于解释，真实配置不能只对三个 flags 求交集。</p>
+  <figure class="mechanism-diagram" data-diagram="cpu-model-migration-contract" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>从宿主能力到迁移检查</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看从宿主能力到迁移检查" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="从宿主能力到迁移检查">
+    <img src="../assets/cpu-model-migration-contract.svg?v=c204cdcdcf49" alt="运行前确定两端都能提供的客户机 CPU 定义；运行后保持该定义，并单独恢复 CPU 状态。目标缺少已经暴露的能力时，迁移应被拒绝。" loading="lazy">
+  </div>
+  <figcaption>运行前确定两端都能提供的客户机 CPU 定义；运行后保持该定义，并单独恢复 CPU 状态。目标缺少已经暴露的能力时，迁移应被拒绝。 <a href="../assets/cpu-model-migration-contract.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+  accTitle: CPU 能力选择与迁移状态恢复
+  accDescr: 源端与目的端在运行前共同限定客户机 CPU 能力。运行后目标必须保持这个定义，并恢复寄存器、扩展状态与时钟。缺少已暴露能力时拒绝迁移。
+  A[&#34;主机 A&lt;br/&gt;SSE4.2 · AVX · AVX2&#34;] --&gt; C[&#34;启动前确定共同 CPU 定义&lt;br/&gt;模型版本 + 显式特性 + 依赖检查&#34;]
+  B[&#34;主机 B&lt;br/&gt;SSE4.2 · AVX&#34;] --&gt; C
+  C --&gt; V[&#34;VM 按固定定义运行&lt;br/&gt;生成寄存器与扩展状态&#34;]
+  V --&gt; T{&#34;目标能保持 CPU 定义&lt;br/&gt;并恢复状态？&#34;}
+  T --&gt;|满足| R[&#34;恢复状态并继续执行&#34;]
+  T --&gt;|缺少已暴露能力| X[&#34;拒绝迁移&lt;br/&gt;不能在线删去客户机能力&#34;]
+  classDef source fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef guest fill:#e4f1ec,stroke:#438575,color:#173e34;
+  classDef check fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class A,B source;
+  class C,V,R guest;
+  class T,X check;
+</code></pre></details>
+</figure>
+  <p>如果 VM 已在 A 上暴露了 AVX2，不能在迁移中途删掉它来适配 B。客户机可能已选择实现、建立扩展状态或生成对应机器码。应更换满足要求的目标；若要降低模型，通常需要停止虚拟机，在下一次启动前调整配置，并确认操作系统和应用的最低要求。</p>
+  <p>可以在两端各自的 QMP 中查看模型定义和展开结果：</p>
+  <pre><code>{"execute":"query-cpu-definitions"}
+{"execute":"query-cpu-model-expansion","arguments":{
+  "type":"full","model":{"name":"Haswell-v4"}
+}}</code></pre>
+  <p>第一条返回的 <code>unavailable-features</code> 可辅助判断当前加速器缺少哪些要求；第二条把模型展开为属性，便于比较最终配置。展开操作本身不会完成宿主可运行性检查，不能把“成功返回属性”当作“目标能运行”。QEMU 在 realize 阶段另外进行能力过滤，启用 <code>enforce</code> 可将缺少要求的情况作为错误处理。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/target/i386/cpu.c#L8894-L8928">模型加载、展开与过滤的分工</a></p>
+  <p>使用 Libvirt 时，<code>domcapabilities</code>、CPU baseline/compare 相关接口有助于在实际机器和虚拟机类型下筛选配置。比较时还要记录明确的机器类型、QEMU 版本和特性策略；“两端都选了同一个简称”不足以代替比较。</p>
+</section>
+<section id="implementation" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">五、</span>源码中的模型展开与状态恢复</h2>
+  <ol class="mechanism-flow">
+    <li><strong>加载定义</strong><span>x86 CPU 对象从模型定义和用户属性构造初始能力；命名模型的版本决定默认属性。</span></li>
+    <li><strong>展开能力</strong><span>x86_cpu_expand_features() 补齐依赖于宿主或加速器的内容，处理用户指定特性。</span></li>
+    <li><strong>检查可运行性</strong><span>x86_cpu_filter_features() 将请求与加速器支持比较，记录不能提供的特性；realize 根据 enforce 等配置决定失败或告警。</span></li>
+    <li><strong>建立并运行 vCPU</strong><span>QEMU 设置 KVM 的 CPUID 和状态，客户机按已确定的定义执行。</span></li>
+    <li><strong>迁移恢复状态</strong><span>vmstate_x86_cpu 及其子节描述寄存器和扩展状态；加载回调检查部分状态条件，再交给目标 KVM 恢复。</span></li>
+  </ol>
+  <p><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/target/i386/machine.c#L1671-L1819">vmstate_x86_cpu</a> 包含基本字段和按条件出现的子节。CPU 模型定义与这份状态流各负其责：模型限定可用接口，迁移流保存某一时刻的值。目的端不能只认得流里的字段名，还要能提供它们要求的语义。</p>
+  <p>时钟是容易遗漏的边界。TSC 频率、缩放支持和客户机可见的时钟承诺会影响迁移；两台 CPU 都支持相同向量指令，不代表它们的时钟环境已经匹配。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/target/i386/machine.c#L313-L333">cpu_post_load()</a> 检查显式 TSC 频率约束，具体时间连续性见<a href="kvm-virtual-time.html">KVM 虚拟时钟与定时器</a>。</p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>兼容基线怎样随硬件与软件演进</h2>
+  <p>较保守的通用模型方便兼容旧宿主，但可能达不到新操作系统或编译产物要求的 x86-64 能力等级。按硬件代际命名的模型让选择更清楚，模型版本进一步固定默认特性；安全缓解相关能力又使微码、内核与型号选择联系起来。基线过低会牺牲新指令与缓解能力，基线过高则缩小迁移范围。</p>
+  <p>可将宿主按共同能力划成迁移池：池内维持可验证的 CPU 定义，扩容和升级时重新检查；需要新特性的业务进入较新的池。这样比全环境永久采用最低能力更灵活，但管理系统需要记录每台 VM 的运行时 CPU 定义，不能只保存一个笼统的池标签。</p>
+  <p>评价应同时看应用性能、目标覆盖范围和运维可重复性。测试需覆盖真实业务负载、迁移后继续执行、时间行为，以及宿主升级前后的能力差异。一次空闲虚拟机迁移成功，不能证明尚未用到的扩展状态也已经验证。</p>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">七、</span>参考资料</h2>
+  <ul>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/system/cpu-models-x86.rst.inc">QEMU：x86 CPU 模型及能力等级</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/target/i386/cpu.c#L8934-L9220">QEMU：CPU 特性展开与过滤</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/target/i386/machine.c">QEMU：x86 CPU 迁移状态描述</a></li>
+    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/docs/formatdomain.rst#L1411-L1688">Libvirt：CPU 模型、特性和拓扑</a></li>
+    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/docs/manpages/virsh.rst">Libvirt：CPU 比较与基线命令</a></li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#cpu-virtualization">CPU 虚拟化原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=85f3a75ef38f"></script>
+<script src="../assets/mechanism-viewer.js?v=c204cdcdcf49" defer></script>
+</body>
+</html>

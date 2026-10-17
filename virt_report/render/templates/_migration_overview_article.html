@@ -46,7 +46,7 @@
 </section>
 <section id="evaluation" class="mechanism-section">
   <h2>把迁移时间、停机和业务影响分开评价</h2>
-  <p>迁移总时间包含运行中的复制阶段；downtime 表示源端停止到目的端恢复的间隔；业务不可用时间还可能包含网络收敛、客户端超时和服务恢复。QEMU 的停机统计与应用探测描述不同边界，评估时应分别记录。</p>
+  <p>迁移总时间包含运行中的复制阶段。客户机实际停顿指源端停止执行到目的端恢复执行的间隔；QMP 的 <code>downtime</code> 则由迁移实现计时，本例在源端记录，结束边界还受返回通道等因素影响，并非直接测量目的端恢复执行的时刻。业务不可用时间还可能包含网络收敛、客户端超时和服务恢复。这三种口径应分别记录，具体计时位置见<a href="qemu-memory-migration.html#downtime">停机时间与统计边界</a>。</p>
   <p>首先看剩余内存是否下降，再检查停机阶段的设备保存、传输和加载耗时，最后观察客户机恢复后的尾延迟。预拷贝的关键收益是把大规模复制移出停机窗口；它的主要代价是重复传输和迁移期间的资源竞争。理解这组交换关系，才容易判断带宽、MultiFD、压缩和后拷贝各自适合解决什么问题。</p>
 </section>
 <section id="reading" class="mechanism-section">
@@ -56,6 +56,8 @@
     <li><a href="qemu-migration-stream.html">迁移流格式与状态恢复</a>：流头、RAM 分段和 CPU、设备状态。</li>
     <li><a href="qemu-multifd.html">MultiFD 任务分发与同步</a>：提高内存传输并行度。</li>
     <li><a href="qemu-postcopy.html">后拷贝缺页与页面传输</a>：目的端先执行之后如何取得页面。</li>
+    <li><a href="cpu-model-migration.html">虚拟 CPU 模型与迁移兼容性</a>：迁移之前如何检查共同能力与状态约定。</li>
+    <li><a href="libvirt-live-migration.html">Libvirt 热迁移的阶段协调与失败恢复</a>：准备、接管与清理，以及断连后的判断。</li>
   </ul>
 </section>
 <section id="sources" class="mechanism-section">

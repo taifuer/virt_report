@@ -1,0 +1,30 @@
+sequenceDiagram
+    accTitle: QEMU virtio-net 收包与客户机 NAPI
+    accDescr: 客户机提供接收空间，QEMU 从 TAP 收到帧后填充并发布完成。客户机 NAPI 消费一批完成、补充空间，检查通知恢复窗口后继续处理或等待。
+    participant T as TAP / 宿主网络
+    participant Q as QEMU virtio-net
+    participant V as 客户机 RX virtqueue
+    participant N as 客户机驱动 / NAPI
+    participant S as 客户机协议栈
+    N->>V: 发布可写描述符，更新 available
+    opt 需要通知后端
+      N-->>Q: RX kick：有新的接收空间
+    end
+    T->>Q: 以太网帧到达
+    Q->>V: 取出链，写头和报文，发布 used
+    opt 允许完成通知
+      Q-->>N: 中断：检查 RX 队列
+    end
+    N->>N: 调度 NAPI，抑制重复回调
+    loop 每次最多处理 budget 个报文
+      N->>V: 取回 used 及缓冲区上下文
+      N->>S: skb / GRO 交付报文
+    end
+    N->>V: 根据空闲量补充可写缓冲区
+    alt 达到 budget
+      N->>N: 保持待处理，下轮继续 poll
+    else 本轮未达到 budget
+      N->>N: 协调 NAPI 完成与恢复回调
+      N->>V: 复查通知切换窗口内的新完成
+      Note over V,N: 有新工作则重新安排处理；否则等待
+    end

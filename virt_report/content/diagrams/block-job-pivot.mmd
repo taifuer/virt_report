@@ -1,0 +1,11 @@
+flowchart TB
+  accTitle: mirror 从追赶到活动盘切换
+  accDescr: RUNNING 复制源盘并跟踪新增写入，第一次同步完成进入 READY，客户机仍使用原盘。管理程序请求 job-complete，QEMU 排空 I/O、复查同步和 flush，在成功收尾时替换活动节点。auto-dismiss 为 false 时保留 CONCLUDED 供查询；确认无 error 且活动图正确，再 dismiss。
+  R["RUNNING<br/>复制与脏位图追赶"] --> E["READY<br/>继续跟踪写入，客户机仍用 C"]
+  E -->|job-complete| D[排空 I/O，复查脏数据，flush]
+  D -->|成功收尾，auto-finalize 为 true| P["pivot<br/>客户机入口 C → T"]
+  P --> C["CONCLUDED<br/>检查 error 与实际块图"]
+  C -->|确认后 job-dismiss| X[清理作业记录]
+  R -->|错误或取消| A[收束复制，保留原盘入口]
+  E -->|取消，不切换入口| A
+  A --> C

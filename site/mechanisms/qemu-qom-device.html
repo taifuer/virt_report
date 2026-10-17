@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c204cdcdcf49">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c204cdcdcf49">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -91,9 +91,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看virtio-net-pci 的类型、对象与总线关系" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="virtio-net-pci 的类型、对象与总线关系">
-    <img src="../assets/qom-types-objects.svg?v=32683d73423f" alt="类型继承决定方法和内存布局；child 属性建立对象所有权；parent_bus 决定设备接入哪条总线。图中 virtio-backend 是独立对象，不是外层 PCI 对象的父类。" loading="lazy">
+    <img src="../assets/qom-types-objects.svg?v=c204cdcdcf49" alt="类型继承决定方法和内存布局；child 属性建立对象所有权；parent_bus 决定设备接入哪条总线。图中 virtio-backend 是独立对象，不是外层 PCI 对象的父类。" loading="lazy">
   </div>
-  <figcaption>类型继承决定方法和内存布局；child 属性建立对象所有权；parent_bus 决定设备接入哪条总线。图中 virtio-backend 是独立对象，不是外层 PCI 对象的父类。 <a href="../assets/qom-types-objects.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>类型继承决定方法和内存布局；child 属性建立对象所有权；parent_bus 决定设备接入哪条总线。图中 virtio-backend 是独立对象，不是外层 PCI 对象的父类。 <a href="../assets/qom-types-objects.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: QOM 类型继承、对象组合与总线连接
     accDescr: TypeInfo 注册为 TypeImpl，后者关联一份按需初始化的类对象。virtio-net-pci 实例继承 PCI 传输层并组合一个 virtio-net-device 子对象；外层接 PCI 总线，内部设备接 virtio 总线。组合树所有权与总线拓扑互相区分。
@@ -145,9 +145,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看qdev 的配置、实现与清理路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="qdev 的配置、实现与清理路径">
-    <img src="../assets/qom-device-lifecycle.svg?v=32683d73423f" alt="instance_init 由基类到派生类执行；realize 读取已经设置的属性。回调自身失败由该实现清理局部资源，回调成功后的框架失败才进入相应 unrealize 回滚；最终释放还要等待引用计数归零。" loading="lazy">
+    <img src="../assets/qom-device-lifecycle.svg?v=c204cdcdcf49" alt="instance_init 由基类到派生类执行；realize 读取已经设置的属性。回调自身失败由该实现清理局部资源，回调成功后的框架失败才进入相应 unrealize 回滚；最终释放还要等待引用计数归零。" loading="lazy">
   </div>
-  <figcaption>instance_init 由基类到派生类执行；realize 读取已经设置的属性。回调自身失败由该实现清理局部资源，回调成功后的框架失败才进入相应 unrealize 回滚；最终释放还要等待引用计数归零。 <a href="../assets/qom-device-lifecycle.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>instance_init 由基类到派生类执行；realize 读取已经设置的属性。回调自身失败由该实现清理局部资源，回调成功后的框架失败才进入相应 unrealize 回滚；最终释放还要等待引用计数归零。 <a href="../assets/qom-device-lifecycle.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: qdev 从对象创建到设备释放的生命周期
     accDescr: 新对象先执行父类到子类的实例初始化，再设置属性、关联父总线并进入 realize。回调自身失败需局部清理，框架后续阶段失败则回滚已成功的实现。正常设备通过 unrealize 和 unparent 停用、脱离总线，最后引用归零才执行 finalize。
@@ -231,6 +231,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+<script src="../assets/mechanism-viewer.js?v=c204cdcdcf49" defer></script>
 </body>
 </html>

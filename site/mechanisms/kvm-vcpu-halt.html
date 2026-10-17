@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
-<link rel="stylesheet" href="../assets/halt-poll.css?v=32683d73423f"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c204cdcdcf49">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c204cdcdcf49">
+<link rel="stylesheet" href="../assets/halt-poll.css?v=c204cdcdcf49"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -47,7 +47,7 @@
     <h1>KVM vCPU 的阻塞、轮询与唤醒</h1>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、空闲 vCPU 如何兼顾响应时间与 CPU 占用</a></li><li><a href="#example">二、一个例子：请求完成前等待 30 µs</a></li><li><a href="#structures">三、等待状态：客户机活动状态与宿主任务状态</a></li><li><a href="#halt">四、进入等待：HLT 处理与有限轮询</a><ol><li><a href="#halt-part-1">1. HLT 如何进入 KVM 等待路径</a></li><li><a href="#halt-part-2">2. 何时继续轮询，何时归还 CPU</a></li></ol></li><li><a href="#wakeup">五、事件到达：从休眠、唤醒到重新运行</a></li><li><a href="#race">六、正确性：如何避免入睡前丢失唤醒</a></li><li><a href="#polling">七、自适应预算：短等待增长，长等待缩小</a><ol><li><a href="#polling-part-1">1. 对上例的下一轮有什么影响</a></li><li><a href="#polling-part-2">2. 源码中的边界条件</a></li></ol></li><li><a href="#experiment">八、交互验证：改变到达时间、预算与调度等待</a></li><li><a href="#evaluation">九、效果评价：降低了多少延迟，消耗了多少 CPU</a><ol><li><a href="#evaluation-part-1">沿源码复核一次等待</a></li></ol></li><li><a href="#evolution">十、演进与局限：从固定窗口到按 vCPU 调整</a></li><li><a href="#sources">十一、参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、空闲 vCPU 如何兼顾响应时间与 CPU 占用</a></li><li><a href="#example">二、一个例子：请求完成前等待 30 µs</a></li><li><a href="#structures">三、等待状态：客户机活动状态与宿主任务状态</a></li><li><a href="#halt">四、进入等待：HLT 处理与有限轮询</a><ol><li><a href="#halt-part-1">1. HLT 如何进入 KVM 等待路径</a></li><li><a href="#halt-part-2">2. 何时继续轮询，何时归还 CPU</a></li></ol></li><li><a href="#wakeup">五、事件到达：从休眠、唤醒到重新运行</a></li><li><a href="#race">六、正确性：如何避免入睡前丢失唤醒</a></li><li><a href="#polling">七、自适应预算：短等待增长，长等待缩小</a><ol><li><a href="#polling-part-1">1. 对上例的下一轮有什么影响</a></li><li><a href="#polling-part-2">2. 源码中的边界条件</a></li></ol></li><li><a href="#experiment">八、交互验证：改变到达时间、预算与调度等待</a></li><li><a href="#evaluation">九、效果评价：降低了多少延迟，消耗了多少 CPU</a><ol><li><a href="#evaluation-trace">1. 用调度事件核对一次唤醒</a></li><li><a href="#evaluation-part-1">2. 沿源码复核一次等待</a></li></ol></li><li><a href="#evolution">十、演进与局限：从固定窗口到按 vCPU 调整</a></li><li><a href="#sources">十一、参考资料</a></li></ol></nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>空闲 vCPU 如何兼顾响应时间与 CPU 占用</h2>
@@ -98,9 +98,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看HLT、轮询与事件唤醒" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="HLT、轮询与事件唤醒">
-    <img src="../assets/kvm-halt-wakeup.svg?v=32683d73423f" alt="内核 LAPIC 路径：HLT 后先检查已有事件，再短暂轮询；轮询结束后发布等待者并再次检查，仍无事件才休眠。事件发布后唤醒宿主线程，线程取得 CPU 后继续处理客户机事件。" loading="lazy">
+    <img src="../assets/kvm-halt-wakeup.svg?v=c204cdcdcf49" alt="内核 LAPIC 路径：HLT 后先检查已有事件，再短暂轮询；轮询结束后发布等待者并再次检查，仍无事件才休眠。事件发布后唤醒宿主线程，线程取得 CPU 后继续处理客户机事件。" loading="lazy">
   </div>
-  <figcaption>内核 LAPIC 路径：HLT 后先检查已有事件，再短暂轮询；轮询结束后发布等待者并再次检查，仍无事件才休眠。事件发布后唤醒宿主线程，线程取得 CPU 后继续处理客户机事件。 <a href="../assets/kvm-halt-wakeup.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>内核 LAPIC 路径：HLT 后先检查已有事件，再短暂轮询；轮询结束后发布等待者并再次检查，仍无事件才休眠。事件发布后唤醒宿主线程，线程取得 CPU 后继续处理客户机事件。 <a href="../assets/kvm-halt-wakeup.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TD
     accTitle: KVM vCPU 的 HLT、轮询与事件唤醒
     accDescr: x86 内核 LAPIC 路径。HLT 模拟先检查已有事件。没有事件时可短暂轮询，然后发布 rcuwait 等待者、设置任务状态并重新检查。仍无事件才休眠。事件发布与唤醒配合，避免轮询到休眠之间丢失唤醒。线程重新取得 CPU 后继续检查并处理客户机事件。
@@ -188,7 +188,26 @@
   </tbody></table>
   <p>KVM 的 <code>halt_poll_success_ns</code>、<code>halt_poll_fail_ns</code>、<code>halt_wait_ns</code> 及直方图给出等待路径的分解；结合 <code>kvm_vcpu_wakeup</code> trace 与业务延迟，才能区分节省的调度时间和新增的空转。统计中的“成功”包括准备休眠时复查命中、实际没有 schedule 的情形。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/linux/kvm_host.h#L2038-L2051">统计字段</a></p>
   <p>成本可以先做量纲检查：若每秒有 10000 次等待，每次白耗 50 µs，累计便是 0.5 秒 CPU 时间，约半个 CPU 的处理时间。多 vCPU 还会累加。这个估算不含真实调度与提前退出，适合检查预算数量级，不代替实测。轮询的合理目标是以可接受的 CPU 成本满足延迟要求。</p>
-  <h3 id="evaluation-part-1">沿源码复核一次等待</h3>
+  <h3 id="evaluation-trace"><span class="mechanism-heading-number">1. </span>用调度事件核对一次唤醒</h3>
+  <p>先通过 QMP 的 <code>query-cpus-fast</code> 找到目标 vCPU 返回项顶层的 <code>thread-id</code>，它是宿主线程 ID。下面以 31415 为例，记录该线程十秒内的唤醒、切入和 KVM 事件。运行前用 <code>perf list</code> 确认宿主内核提供这些 tracepoint；需要相应的跟踪权限，也会引入少量采集开销。</p>
+  <pre><code>TID=31415
+sudo perf record -a -o halt.data \
+  -e sched:sched_wakeup --filter "pid == $TID" \
+  -e sched:sched_switch --filter "prev_pid == $TID || next_pid == $TID" \
+  -e kvm:kvm_vcpu_wakeup --filter "common_pid == $TID" \
+  -e kvm:kvm_entry --filter "common_pid == $TID" \
+  -- sleep 10
+sudo perf script -i halt.data</code></pre>
+  <p>使用全 CPU 采集并按事件字段筛选，是因为唤醒者可能运行在另一个线程、另一个 CPU 上；只按当前执行线程采样容易遗漏它。每次采集使用新的输出文件。以下时间只用于演示读法，并非性能实测：</p>
+  <table><thead><tr><th>相对时刻</th><th>事件</th><th>可以判断什么</th></tr></thead><tbody>
+    <tr><td>0 µs</td><td>sched_wakeup，pid = 31415</td><td>目标 vCPU 线程变为可运行</td></tr>
+    <tr><td>40 µs</td><td>sched_switch，next_pid = 31415</td><td>线程取得宿主 CPU；本次 runnable 等待约 40 µs</td></tr>
+    <tr><td>43 µs</td><td>kvm_vcpu_wakeup</td><td>KVM 的 halt 处理接近结束；这是返回侧记录，并非设备事件刚到达的时刻</td></tr>
+    <tr><td>48 µs</td><td>kvm_entry</td><td>执行即将再次进入客户机；随后才是客户机中的中断处理与业务执行</td></tr>
+  </tbody></table>
+  <p>只有对齐同一次等待、排除丢失事件和中间再次调度，才能计算这样的差值。轮询命中时，线程可能从未睡眠，自然没有对应的一对 sched_wakeup/sched_switch。<code>kvm_vcpu_wakeup</code> 在 <code>kvm_vcpu_halt()</code> 末尾发出，包含该次 halt 的总时长与是否等待等信息；不要将其名称误读为硬件中断到达点。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L3750-L3798">等待统计与 trace 发出位置</a></p>
+  <p>要继续判断“设备已完成但为什么还慢”，还需加入后端完成和客户机处理的观测点。宿主 kvm_entry 并不证明客户机已经运行到中断处理函数，更不代表业务请求已完成。</p>
+  <h3 id="evaluation-part-1"><span class="mechanism-heading-number">2. </span>沿源码复核一次等待</h3>
   <table><thead><tr><th scope="col">顺序</th><th scope="col">源码入口</th><th scope="col">回答的问题</th></tr></thead><tbody>
     <tr><td>处理 HLT</td><td><code>kvm_emulate_halt() → vcpu_block()</code></td><td>是否已有可运行事件，是否需要等待</td></tr>
     <tr><td>轮询与预算</td><td><code>kvm_vcpu_halt()</code></td><td>允许轮询多久，何时停止，下一轮如何调整</td></tr>
@@ -222,6 +241,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
-<script src="../assets/halt-poll.js?v=32683d73423f" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=c204cdcdcf49" defer></script>
+<script src="../assets/halt-poll.js?v=c204cdcdcf49" defer></script></body>
 </html>

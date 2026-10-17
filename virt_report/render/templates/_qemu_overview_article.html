@@ -45,7 +45,7 @@
   <h2>谁执行请求，谁可以修改状态</h2>
   <p>vCPU、设备对象和宿主线程不是一一对应的关系。常见 KVM 配置中，vCPU 线程运行客户机；主循环处理 QMP 和许多设备事件；IOThread 为支持的设备队列提供独立事件循环。一个设备的配置在管理路径修改，数据请求却可能在多个队列线程处理，所以并行必须伴随明确的访问规则。</p>
   <p>AioContext 记录某个事件循环要关注的文件描述符、定时器和延迟回调。协程保存一次操作尚未完成的执行状态，等待 I/O 时让出所在宿主线程，不能把“多条协程”当作“多个物理核并行”。完成回调必须回到合适的上下文，跨线程交接则通过事件通知、调度回调及相应同步实现。</p>
-  <p>历史设备代码常由主循环与 BQL（全局互斥锁）保护；具备 IOThread 支持的数据路径采用自己的线程约束和同步方式。增加 IOThread 不会自动使任意设备回调线程安全。配置变更尤其需要防止主线程释放对象时，另一线程仍在使用请求缓冲区或块节点。<a href="{{ qemu }}docs/devel/multiple-iothreads.rst#L51-L146">执行上下文与同步约定</a></p>
+  <p>历史设备代码常由主循环与 BQL（全局互斥锁）保护；具备 IOThread 支持的数据路径采用自己的线程约束和同步方式。增加 IOThread 不会自动使任意设备回调线程安全。配置变更尤其需要防止主线程释放对象时，另一线程仍在使用请求缓冲区或块节点。<a href="{{ qemu }}docs/devel/multiple-iothreads.rst#L51-L139">执行上下文与同步约定</a></p>
 </section>
 <section id="lifecycle" class="mechanism-section">
   <h2>暂停与删除怎样等待异步工作</h2>
@@ -69,6 +69,7 @@
     <li><a href="qemu-vm-startup.html">QEMU 虚拟机启动</a> → <a href="qemu-qom-device.html">QOM 与设备生命周期</a>：机器如何建立。</li>
     <li><a href="qemu-memory-region.html">MemoryRegion 与地址空间</a>：地址如何找到 RAM 或设备。</li>
     <li><a href="qemu-virtio-blk.html">virtio-blk 请求处理</a> → <a href="qemu-qcow2.html">qcow2 地址映射</a>：读写、完成与持久化边界。</li>
+    <li><a href="qemu-live-block-operations.html">外部快照与在线块操作</a>：backing 链、stream/commit 方向与 mirror 切换。</li>
     <li><a href="qemu-aio-iothread.html">AioContext 与 IOThread</a>：线程、协程和完成回调。</li>
     <li><a href="qemu-network-tx.html#virtqueue">virtqueue 数据结构与交互图</a>：描述符、环槽和缓冲区的关系。</li>
   </ul>

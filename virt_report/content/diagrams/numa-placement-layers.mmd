@@ -1,0 +1,18 @@
+flowchart TB
+  accTitle: 客户机 NUMA 与宿主线程、内存及后端的放置
+  accDescr: 客户机节点 0 的 vCPU 线程可以绑定到宿主节点 1，RAM 后端通过独立内存策略分配到该节点。后端线程必须另行安排；如果位于节点 0，访问共享缓冲区仍会跨节点。
+  G["客户机节点 0<br/>4 vCPU · 8 GiB RAM"] --> V["vCPU 线程<br/>CPU 亲和性"]
+  G --> M["RAM 后端<br/>host-nodes 与 policy"]
+  V --> P["宿主节点 1 的 CPU<br/>执行客户机"]
+  M --> R["宿主节点 1 的物理页<br/>数据与队列缓冲区"]
+  P <-->|局部访问| R
+  B["I/O 后端线程<br/>独立配置亲和性"] --> L["放在宿主节点 1"]
+  B --> X["放在宿主节点 0"]
+  L -->|局部访问| R
+  X -.->|跨节点访问| R
+  classDef guest fill:#e4f1ec,stroke:#438575,color:#173e34;
+  classDef host fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef remote fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class G,V,M guest;
+  class P,R,B,L host;
+  class X remote;

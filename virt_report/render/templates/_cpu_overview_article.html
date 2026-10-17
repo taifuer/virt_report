@@ -18,6 +18,14 @@
   <p>翻译要付出首次生成和缓存管理成本。客户机修改代码后，旧 TB 必须失效；中途发生异常时，还需恢复准确的客户机指令位置。TCG 因而适合不同指令集之间的执行、开发调试及缺少硬件辅助的环境，它与 KVM 在当前 QEMU 中并存。<a href="{{ qemu }}docs/devel/tcg.rst#L18-L126">TB 状态匹配与直接连接</a></p>
   <h3>硬件辅助：保留客户机权限，分开宿主控制</h3>
   <p>Intel VT-x、AMD-V 提供受宿主配置控制的客户机执行环境。客户机内核仍可处于自己的高权限级；处理器按虚拟化控制决定哪些行为直接完成，哪些触发 VM exit（客户机退出），把控制权交回宿主。客户机从应用进入自身内核，与离开客户机环境进入宿主，是两类不同切换。</p>
+  <p>以 Intel VT-x 为例，VMX root / non-root 区分宿主与客户机执行环境，ring 0 / ring 3 区分各自环境内的权限级。这是两个维度：</p>
+  <table><thead><tr><th scope="col">权限级</th><th scope="col">VMX root：宿主环境</th><th scope="col">VMX non-root：客户机环境</th></tr></thead><tbody>
+    <tr><th scope="row">ring 3</th><td>QEMU 等宿主用户程序</td><td>客户机应用</td></tr>
+    <tr><th scope="row">ring 0</th><td>Linux 内核与 KVM</td><td>客户机操作系统内核</td></tr>
+  </tbody></table>
+  <p>客户机应用执行系统调用，可以在 non-root 内进入自己的 ring 0；是否同时触发退出取决于配置和具体执行事件。VM exit 则把控制权交给宿主内核。客户机 ring 0 的权限只适用于它的执行环境，不允许它自行改写宿主配置的虚拟化控制。</p>
+  {{ diagram('cpu-vmx-state-controls', 'VMCS 如何连接进入、退出与控制条件', 'VMCS 的客户机状态区域保存客户机执行现场，宿主状态区域提供退出后的执行环境，控制字段决定进入、退出以及需要拦截的操作。通用寄存器等未由硬件完整交接的状态仍需软件保存。') }}
+  <p>VMCS（虚拟机控制结构）使这条边界可以配置：客户机状态区域保存 RIP、RSP、控制寄存器和段状态等；宿主状态区域指定退出后的 RIP、RSP、CR3 等；执行控制指定中断窗口、指令拦截及其他条件。进入时恢复所需客户机状态，退出时保存相应状态并装入宿主执行环境。它并不自动保存所有通用寄存器，KVM 的进入/退出汇编仍参与现场交接。AMD 的 VMCB 提供相应的状态与控制机制，字段和执行细节另有定义。<a href="{{ linux }}arch/x86/kvm/vmx/vmenter.S">KVM VMX 进入与退出汇编</a>、<a href="https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html">Intel SDM：VMCS 与 VMX transitions</a></p>
   <p>KVM 在 Linux 内核中建立并维护这个执行环境，QEMU 的 vCPU 线程通过 <code>KVM_RUN</code> 进入它。硬件退出后，KVM 能处理的事件在内核中完成，再次进入客户机；只有需要用户态设备模型或管理参与的情况才返回 QEMU。因此 VM exit 次数与 KVM_RUN 返回次数通常不同。</p>
 </section>
 <section id="example" class="mechanism-section">
@@ -52,6 +60,8 @@
     <li><a href="qemu-tcg.html">QEMU TCG 的翻译块与执行循环</a>：首次翻译、热块连接与代码失效。</li>
     <li><a href="kvm-vcpu-run.html">KVM vCPU 执行与退出处理</a>：CPUID、MMIO 及 ioeventfd/irqfd 两个方向。</li>
     <li><a href="kvm-vcpu-halt.html">KVM vCPU 的阻塞、轮询与唤醒</a>：短等待延迟与 CPU 成本。</li>
+    <li><a href="cpu-model-migration.html">虚拟 CPU 模型与迁移兼容性</a>：能力暴露、运行状态与目标主机检查。</li>
+    <li><a href="vcpu-numa-placement.html">vCPU 与 NUMA 内存放置</a>：线程、物理页及后端的局部性。</li>
     <li><a href="kvm-virtual-time.html">KVM 虚拟时钟与定时器</a>：TSC、共享时钟页、到期通知与迁移后的时间衔接。</li>
     <li><a href="interrupt-virtualization.html">中断虚拟化</a>：设备事件如何进入客户机。</li>
   </ul>

@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>QEMU 外部快照与在线块操作 - virt-report</title>
+  <meta name="description" content="从 A、B、C 镜像链和同一偏移的数据变化出发，比较 stream、commit、mirror 与 backup，解释活动盘切换、作业状态和取消边界。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
+  <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c204cdcdcf49">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c204cdcdcf49">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=85f3a75ef38f" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="qemu-internals.html">QEMU 内部机制</a></div>
+    <h1>QEMU 外部快照与在线块操作</h1>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、运行中的磁盘怎样保留旧视图并更换存储</a></li><li><a href="#snapshot">二、外部快照怎样划分一个时间点</a></li><li><a href="#stream">三、stream 把下层仍需读取的数据补入上层</a></li><li><a href="#commit">四、commit 向下合并时会改变哪些历史内容</a></li><li><a href="#mirror">五、mirror 怎样持续追赶并切换活动磁盘</a></li><li><a href="#backup">六、backup 为什么保留启动时的内容</a></li><li><a href="#failure">七、怎样确认结束并保留可恢复的数据</a></li><li><a href="#evolution">八、从文件路径到块图与作业生命周期</a></li><li><a href="#sources">九、参考资料</a></li></ol></nav>
+    <div class="mechanism-prose">
+<section id="preface" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">一、</span>运行中的磁盘怎样保留旧视图并更换存储</h2>
+  <p>一台虚拟机持续写盘时，管理程序可能需要留下快照、合并增长的镜像链，或者把磁盘搬到另一个存储。直接复制正在变化的镜像会混合不同时刻的数据；直接改 backing 关系，又可能让同一偏移突然读到不同内容。QEMU 块层需要在客户机继续 I/O 的同时保持其可见数据一致，再安全地改变节点关系。</p>
+  <p>本文以 <code>A ← B</code> 为起点：A 是基础镜像，B 的 backing 指向 A，客户机当前写 B。沿外部快照、stream、commit、mirror 与 backup 比较数据去向和完成条件。<a href="qemu-qcow2.html">qcow2 的地址映射与写时复制</a>解释单个镜像内部，本篇分析多个块节点组成的链和在线作业。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p></section>
+
+<section id="snapshot" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">二、</span>外部快照怎样划分一个时间点</h2>
+  <p>给 B 做外部快照时，QEMU 接入新 overlay C，把客户机后续写入转到 C，形成 <code>A ← B ← C</code>。C 未覆盖的偏移仍经 B 向下读取。快照时刻的磁盘视图由 <code>A + B</code> 共同组成；新建 C 保存此后的变化。单独留下一个初始为空的 C，不能恢复快照时刻的数据。</p>
+  <figure class="mechanism-diagram" data-diagram="block-live-operations" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>外部快照前后的 backing 链与数据视图</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看外部快照前后的 backing 链与数据视图" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="外部快照前后的 backing 链与数据视图">
+    <img src="../assets/block-live-operations.svg?v=c204cdcdcf49" alt="初始活动层 B 读取基础镜像 A；外部快照后活动层切到 C，A 与 B 构成快照时刻的磁盘视图。C 初始未分配同一偏移，读取继续落到 B；客户机新写入只改变 C 中的当前视图。" loading="lazy">
+  </div>
+  <figcaption>初始活动层 B 读取基础镜像 A；外部快照后活动层切到 C，A 与 B 构成快照时刻的磁盘视图。C 初始未分配同一偏移，读取继续落到 B；客户机新写入只改变 C 中的当前视图。 <a href="../assets/block-live-operations.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+  accTitle: 外部快照前后的 backing 链与数据视图
+  accDescr: 快照前客户机入口是 B，B 的 backing 是 A。快照后入口切到 C，C 的 backing 是 B，B 仍指向 A。十六进制偏移 0x1000 在 A 中为 v1、B 中为 v2，新 C 最初未分配，后来客户机写为 v3。A 加 B 保留快照时刻视图，A 加 B 加 C 表示当前视图。
+  subgraph before[快照前]
+    direction LR
+    G0[客户机 I/O] --&gt; B0[&#34;B：活动层&lt;br/&gt;0x1000 = v2&#34;]
+    B0 --&gt;|backing| A0[&#34;A：基础镜像&lt;br/&gt;0x1000 = v1&#34;]
+  end
+  subgraph after[快照后]
+    direction LR
+    G1[客户机 I/O] --&gt; C1[&#34;C：新活动层&lt;br/&gt;未分配 → 写入 v3&#34;]
+    C1 --&gt;|backing| B1[&#34;B：保留 v2&#34;]
+    B1 --&gt;|backing| A1[&#34;A：保留 v1&#34;]
+  end
+  before --&gt;|接入新 overlay| after
+  B1 -.-&gt; S[快照时刻视图：A + B]
+  C1 -.-&gt; N[当前视图：A + B + C]
+</code></pre></details>
+</figure>
+  <table><thead><tr><th scope="col">时刻</th><th scope="col">偏移 <code>0x1000</code> 的内容</th><th scope="col">客户机读到什么</th></tr></thead><tbody>
+    <tr><td>快照前</td><td>A 中为 v1，B 中为 v2</td><td>从活动层 B 读到 v2</td></tr>
+    <tr><td>刚接入 C</td><td>C 尚未分配该区域</td><td>沿 C → B 读到 v2；快照视图仍是 A + B</td></tr>
+    <tr><td>客户机写入 v3</td><td>C 中为 v3，B 仍为 v2</td><td>当前读到 v3；从保留的 A + B 视图读到 v2</td></tr>
+  </tbody></table>
+  <p>这是磁盘视图的时间边界，RAM 和应用事务并未一起保存。多盘原子操作需要组合事务，应用一致性还需要客户机文件系统冻结、数据库检查点等协调。快照链依赖原有文件，宿主存储损坏时链上多个时间点可能一起丢失，因此仍要把备份副本与活动存储分开。</p>
+  <p>以下 QMP 示例要求：已存在活动节点 <code>node-B</code>，其 backing 为 <code>node-A</code>；<code>/path/to/test/c.qcow2</code> 是预先创建、未被其他进程使用、与 B 虚拟容量相同的空 qcow2 文件。QMP 已完成能力协商。节点名描述运行中的块图，与文件名、客户机设备名分别对应：</p>
+  <pre><code>{"execute":"blockdev-add","arguments":{
+  "driver":"qcow2","node-name":"node-C","backing":null,
+  "file":{"driver":"file","filename":"/path/to/test/c.qcow2"}
+}}
+{"execute":"blockdev-snapshot","arguments":{"node":"node-B","overlay":"node-C"}}</code></pre>
+  <p><code>blockdev-add</code> 打开已存在的文件并建立节点，不负责创建镜像内容。<code>backing:null</code> 让 C 先以无 backing 的节点接入，再由 snapshot 命令设置 B 并替换客户机入口。接入前文件必须为空且没有需保留的数据。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qapi/block-core.json#L1617-L1630">overlay 前置条件</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qapi/block-core.json#L1802-L1839">snapshot 接口</a></p>
+  <p>还要区分运行时块图与镜像头部：这里的 <code>blockdev-snapshot</code> 通过 <code>bdrv_append()</code> 接入既有节点，并不会自动把 B 的路径写进预创建 C 的文件头。若 C 没有正确的 backing 元数据，下次仅按文件名打开 C 就会丢失这层依赖。管理程序必须保存完整的启动块图，或预先准备正确的镜像 backing 元数据；后者仍可用 <code>backing:null</code> 打开，再接到已有 B 节点。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/blockdev.c#L1458-L1565">创建镜像与接入节点的两条分支</a></p>
+</section>
+
+<section id="stream" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">三、</span>stream 把下层仍需读取的数据补入上层</h2>
+  <p>继续从 <code>A ← B ← C</code> 出发。若希望当前磁盘独立于历史链，可以把 A、B 中仍被 C 引用的数据复制进 C，完成后解除 C 的 backing。客户机原本就写 C，复制过程只填充缺失的逻辑区域，不能用下层旧数据覆盖客户机已经写入的 v3。</p>
+  <pre><code>{"execute":"block-stream","arguments":{
+  "job-id":"flatten-C","device":"node-C","auto-dismiss":false
+}}</code></pre>
+  <p>这个命令没有指定 base，目标是把 C 变成独立镜像。若增加 <code>"base-node":"node-A"</code>，则只补入需要从 B 读取的部分，成功后成为 <code>A ← C</code>；A 本身的内容不在本次复制范围内。两种目标对应不同的存储占用和依赖关系。</p>
+  <p><code>StreamBlockJob</code> 保存目标节点、要保留的 base 边界和 copy-on-read 过滤节点。<code>stream_run()</code> 先检查当前层是否已经分配，再查下层是否存在需要带入的数据，通过 copy-on-read 填充。作业成功进入收尾阶段后，<code>stream_prepare()</code> 排空相关 I/O，修改块图和持久化 backing 信息。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/stream.c#L33-L128">结构与改链</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/stream.c#L152-L236">复制循环</a></p>
+  <p>收益是减少链依赖，同时保留 A、B 的原内容；代价是 C 分配更多空间，并与客户机争用读写带宽。复制完成不会自动删除旧文件，其他快照或虚拟机仍可能依赖它们。</p>
+</section>
+
+<section id="commit" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">四、</span>commit 向下合并时会改变哪些历史内容</h2>
+  <p>另一种缩链方式是把 B 的有效数据写进 A，随后让 C 直接引用 A，得到 <code>A′ ← C</code>。在前面的偏移示例中，A 从 v1 改为 v2；C 仍保存 v3，当前客户机视图保持 v3，但原来只含 A 的历史视图已经改变。中间镜像及依赖旧 A 的其他分支也可能失去原语义，不能把 base 当作可随意覆盖的公共模板。</p>
+  <pre><code>{"execute":"block-commit","arguments":{
+  "job-id":"merge-B","device":"node-C",
+  "top-node":"node-B","base-node":"node-A","auto-dismiss":false
+}}</code></pre>
+  <p>此例的 top 是非活动层 B，客户机仍写 C；A 必须允许作业取得写权限，且不存在需要保持原内容的其他使用者。<code>CommitBlockJob</code> 记录 top、base 和被冻结的链范围，按 top 的逻辑视图读取，在 base 中写数据或显式零。成功收尾用 <code>bdrv_drop_intermediate()</code> 跳过已合并的中间节点。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/commit.c#L36-L69">结构与收尾</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/commit.c#L131-L195">数据与零区间复制</a></p>
+  <p>若 top 改为活动层 C，客户机仍会不断写它，复制一遍无法完成交接。这种 active commit 使用 mirror 路径持续同步到 base，进入 READY 后等待显式完成，再把客户机入口切到 base。其关键成本包括同步写入、改链时的 I/O 排空，以及 base 已被修改后失去原有历史视图。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/blockdev.c#L2644-L2682">普通 commit 与 active commit 分流</a></p>
+</section>
+
+<section id="mirror" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">五、</span>mirror 怎样持续追赶并切换活动磁盘</h2>
+  <p>把活动盘迁到另一个存储时，准备目标节点 T，将当前 <code>A + B + C</code> 的完整逻辑视图复制过去，并追踪复制期间的写入。<code>sync:full</code> 复制完整可见磁盘，<code>sync:top</code> 与 <code>none</code> 则有不同的下层依赖，不能拿局部同步目标当作独立完整磁盘。</p>
+  <p>假设已通过 <code>blockdev-add</code> 打开一个可写、容量匹配、没有其他使用者也未连接客户机的目标 <code>node-T</code>，并正确配置其底层文件，发起独立的 mirror 作业：</p>
+  <pre><code>{"execute":"blockdev-mirror","arguments":{
+  "job-id":"move-disk","device":"node-C","target":"node-T",
+  "sync":"full","auto-dismiss":false
+}}
+{"execute":"query-block-jobs"}
+{"execute":"query-jobs"}</code></pre>
+  <p>后台模式在块图中放入 mirror 过滤节点，使用脏位图追踪还需同步的范围。客户机把某处从 v2 改为 v3 时，已经复制的旧值需要重新处理；位图、在途请求和区间冲突管理共同避免漏掉更新。第一次清空待同步数据并 flush 后，作业报告 READY；此后仍继续追踪写入，客户机入口此时还在 C。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/mirror.c#L1130-L1238">追赶、READY 与最终排空</a></p>
+  <figure class="mechanism-diagram" data-diagram="block-job-pivot" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>mirror 从追赶到活动盘切换</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看mirror 从追赶到活动盘切换" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="mirror 从追赶到活动盘切换">
+    <img src="../assets/block-job-pivot.svg?v=c204cdcdcf49" alt="RUNNING 复制当前视图并追踪写入；READY 表示可以请求完成，但客户机仍使用原盘。job-complete 后排空 I/O、再次确认同步并 flush，成功改图后客户机改用目标。auto-dismiss=false 保留终态供查询，确认后才 dismiss。" loading="lazy">
+  </div>
+  <figcaption>RUNNING 复制当前视图并追踪写入；READY 表示可以请求完成，但客户机仍使用原盘。job-complete 后排空 I/O、再次确认同步并 flush，成功改图后客户机改用目标。auto-dismiss=false 保留终态供查询，确认后才 dismiss。 <a href="../assets/block-job-pivot.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+  accTitle: mirror 从追赶到活动盘切换
+  accDescr: RUNNING 复制源盘并跟踪新增写入，第一次同步完成进入 READY，客户机仍使用原盘。管理程序请求 job-complete，QEMU 排空 I/O、复查同步和 flush，在成功收尾时替换活动节点。auto-dismiss 为 false 时保留 CONCLUDED 供查询；确认无 error 且活动图正确，再 dismiss。
+  R[&#34;RUNNING&lt;br/&gt;复制与脏位图追赶&#34;] --&gt; E[&#34;READY&lt;br/&gt;继续跟踪写入，客户机仍用 C&#34;]
+  E --&gt;|job-complete| D[排空 I/O，复查脏数据，flush]
+  D --&gt;|成功收尾，auto-finalize 为 true| P[&#34;pivot&lt;br/&gt;客户机入口 C → T&#34;]
+  P --&gt; C[&#34;CONCLUDED&lt;br/&gt;检查 error 与实际块图&#34;]
+  C --&gt;|确认后 job-dismiss| X[清理作业记录]
+  R --&gt;|错误或取消| A[收束复制，保留原盘入口]
+  E --&gt;|取消，不切换入口| A
+  A --&gt; C
+</code></pre></details>
+</figure>
+  <p>观察到 READY 后，再执行下面的请求。这里保留默认 <code>auto-finalize:true</code>，由 QEMU 自动执行收尾改图；<code>auto-dismiss:false</code> 只让已结束作业继续可查询：</p>
+  <pre><code>{"execute":"job-complete","arguments":{"id":"move-disk"}}
+{"execute":"query-jobs"}
+{"execute":"query-block"}
+{"execute":"query-named-block-nodes"}</code></pre>
+  <p>完成路径会排空相关 I/O，再次检查脏数据并 flush，最后用 <code>bdrv_replace_node()</code> 改变入口，通常称为 pivot。此后新写入落到 T，旧链不再跟随更新。QMP 命令返回与完成事件没有固定先后顺序；应核对作业终态和活动节点，不能只看到一次进度 100% 就删除旧盘。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/mirror.c#L795-L827">节点替换</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qapi/job.json#L190-L214">完成接口</a></p>
+</section>
+
+<section id="backup" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>backup 为什么保留启动时的内容</h2>
+  <p>mirror 的目标持续追赶源盘，backup 则固定一个时间点。普通 full backup 启动时若偏移 x 是 v2，客户机随后要改写成 v3，而后台还没复制 x，就先通过 copy-before-write 保存 v2，再放行覆盖。这样目标最终保持启动时的逻辑视图，而源盘继续演进。</p>
+  <table><thead><tr><th scope="col">操作</th><th scope="col">目标内容</th><th scope="col">客户机入口</th></tr></thead><tbody>
+    <tr><td>外部快照</td><td>旧链保存切换时视图，新 overlay 保存后续变化</td><td>立即改到新 overlay</td></tr>
+    <tr><td>mirror</td><td>持续追赶，完成切换时与源视图一致</td><td>READY 时不变，显式完成后切换到目标</td></tr>
+    <tr><td>backup</td><td>普通 full 模式保持作业启动时的视图</td><td>留在原盘，不因备份完成而切换</td></tr>
+  </tbody></table>
+  <p><code>backup_job_create()</code> 接入 copy-before-write 过滤器，后台拷贝与写前保护共用复制状态。增量备份另由 dirty bitmap 限定范围，还需要保留完整基线与位图继承关系。每份增量文件独立存在，不等于每份都能独立恢复。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/backup.c#L450-L500">备份过滤器与作业创建</a></p>
+</section>
+
+<section id="failure" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">七、</span>怎样确认结束并保留可恢复的数据</h2>
+  <p><code>query-jobs</code> 的 CONCLUDED 表示作业已经结束，仍需检查 <code>error</code>：没有该字段才代表成功。默认自动 dismiss 会让已完成或失败的作业消失，所以“列表里没有 job”无法区分成功、失败、已取消或根本没启动。保留终态时，核对完成事件、错误与实际块图后，再调用 <code>job-dismiss</code> 清理记录。</p>
+  <table><thead><tr><th scope="col">情况</th><th scope="col">需要保留什么</th><th scope="col">容易误判的地方</th></tr></thead><tbody>
+    <tr><td>暂停或 I/O 错误</td><td>原活动盘、作业依赖的上下层节点及错误记录</td><td>PAUSED / STANDBY 仍是活作业；修正空间或后端问题后再决定恢复或取消</td></tr>
+    <tr><td>stream 中途取消</td><td>未完成复制所需的 backing 链</td><td>部分数据已进入上层，但通常尚未解除 backing；取消与自然完成也可能竞态</td></tr>
+    <tr><td>commit 失败或取消</td><td>原活动链及所有相关文件，核对 base 的实际变化</td><td>已写入 base 的数据不会自动撤销，历史分支不能按原样复用</td></tr>
+    <tr><td>mirror 切换前取消</td><td>原盘仍承担客户机 I/O</td><td>READY 后用 <code>block-job-cancel</code> 且 <code>force:false</code> 可收束为时点副本，仍不会 pivot；强制取消不保证目标完整</td></tr>
+    <tr><td>连接丢失或进程异常</td><td>管理日志、镜像文件、持久配置与可用旧链</td><td>重新连接后先核对作业及实际图；故障可能发生在数据复制与元数据更新之间</td></tr>
+  </tbody></table>
+  <p>两个取消接口的默认语义不同：本版本 <code>job-cancel</code> 直接按 <code>force=true</code> 请求取消；<code>block-job-cancel</code> 可以指定 <code>force:false</code>，且省略时默认为 false。需要在 READY 后保留最终同步副本时，应使用后者并检查实际结果；任何取消请求都可能与自然完成竞态。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/job-qmp.c#L48-L61">job-cancel 实现</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qapi/block-core.json#L3006-L3046">block-job-cancel 语义</a></p>
+  <p><code>auto-finalize:false</code> 可以让支持的作业停在 PENDING，等待 <code>job-finalize</code> 处理改图与收尾。这个阶段仍可能失败；它也不会撤回 commit 已对 base 做过的写入。源码将 run、prepare、abort、clean 分开，既协调 I/O 和权限，也暴露了数据修改与最终图变更并非一次可任意撤销的事务。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qapi/job.json#L44-L89">作业状态</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/commit.c#L71-L114">commit 取消边界</a></p>
+  <p>这些示例分别代表不同目标，应从各自满足前置条件的测试链开始，不能按页面顺序连续执行。Libvirt 管理的虚拟机还需同步持久定义、快照元数据和存储权限，宜通过相应管理 API 操作；绕过管理层直接改块图，可能使下一次启动仍指向旧链。</p>
+</section>
+
+<section id="evolution" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">八、</span>从文件路径到块图与作业生命周期</h2>
+  <p>QEMU 1.1 提供 block-stream，1.3 提供 block-commit，2.0 扩展到活动层提交。随后 blockdev 接口将节点准备与操作分开，3.1 的 commit 支持 <code>base-node</code>、<code>top-node</code>，减少按路径字符串查找节点的歧义。统一 job 接口与 finalize、dismiss 选项，使管理程序能保留结果、协调收尾；新增能力也要求更明确的状态管理。</p>
+  <p>选择操作时先明确要保留的视图和最终入口：想独立保留当前盘，可考虑 stream；愿意改变下层内容来缩链，可考虑 commit；更换活动存储使用 mirror；保留特定时刻的副本使用 backup。再比较复制量、写放大、后端带宽和失败后仍可用的链。仅按“哪种合并更快”选择，很容易忽略历史数据与恢复条件。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">九、</span>参考资料</h2>
+  <ul>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/live-block-operations.rst">QEMU 10.2.0：在线块操作与镜像链示例</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qapi/block-core.json#L1873-L1978">block-commit</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qapi/block-core.json#L2572-L2656">blockdev-mirror</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qapi/block-core.json#L2868-L2977">block-stream</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/stream.c">stream 实现</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/commit.c">commit 实现</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/mirror.c">mirror 与 active commit 实现</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/backup.c">backup 作业</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/copy-before-write.c">写前保护</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qapi/job.json">job 状态及管理接口</a></li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#qemu-internals">QEMU 内部机制原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=85f3a75ef38f"></script>
+<script src="../assets/mechanism-viewer.js?v=c204cdcdcf49" defer></script>
+</body>
+</html>

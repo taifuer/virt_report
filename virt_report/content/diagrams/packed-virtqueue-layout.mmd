@@ -1,0 +1,16 @@
+flowchart TB
+    accTitle: Packed virtqueue 的共享布局与访问方向
+    accDescr: 驱动和设备共同访问一个描述符环，驱动事件区控制完成通知，设备事件区控制新请求通知。环外缓冲区存放数据，Buffer ID 关联驱动上下文。
+    D["客户机驱动<br/>发布请求 / 回收完成"]
+    R["Packed 描述符环<br/>每项 16 B：addr / len / id / flags<br/>槽 0 → 1 → 2 → 3 → 0"]
+    V["设备后端<br/>读取请求 / 发布完成"]
+    B["实际数据缓冲区<br/>位于环外的客户机 RAM"]
+    DE["Driver Event · 4 B<br/>控制设备 → 驱动的完成通知"]
+    VE["Device Event · 4 B<br/>控制驱动 → 设备的新请求通知"]
+    D <-->|"AVAIL / USED + wrap"| R
+    R <-->|"AVAIL / USED + wrap"| V
+    R -->|"addr / len"| B
+    D -->|"写"| DE
+    V -->|"读取通知条件"| DE
+    V -->|"写"| VE
+    D -->|"读取通知条件"| VE

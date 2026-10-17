@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c204cdcdcf49">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c204cdcdcf49">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -63,9 +63,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看从用户态接口到客户机执行" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="从用户态接口到客户机执行">
-    <img src="../assets/kvm-internal-objects.svg?v=32683d73423f" alt="VM 描述符用于配置共享资源，vCPU 描述符用于配置并运行某个处理器。调用 KVM_RUN 的宿主线程进入内核，再进入硬件客户机环境；共享 kvm_run 负责必要的用户态交接。" loading="lazy">
+    <img src="../assets/kvm-internal-objects.svg?v=c204cdcdcf49" alt="VM 描述符用于配置共享资源，vCPU 描述符用于配置并运行某个处理器。调用 KVM_RUN 的宿主线程进入内核，再进入硬件客户机环境；共享 kvm_run 负责必要的用户态交接。" loading="lazy">
   </div>
-  <figcaption>VM 描述符用于配置共享资源，vCPU 描述符用于配置并运行某个处理器。调用 KVM_RUN 的宿主线程进入内核，再进入硬件客户机环境；共享 kvm_run 负责必要的用户态交接。 <a href="../assets/kvm-internal-objects.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>VM 描述符用于配置共享资源，vCPU 描述符用于配置并运行某个处理器。调用 KVM_RUN 的宿主线程进入内核，再进入硬件客户机环境；共享 kvm_run 负责必要的用户态交接。 <a href="../assets/kvm-internal-objects.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 通过 KVM 文件描述符建立并运行虚拟机
     accDescr: 用户态打开 dev kvm，创建 VM 描述符后登记内存并创建 vCPU。调用线程通过 vCPU 描述符执行 KVM_RUN，经过内核准备进入客户机。共享 kvm_run 在需要用户态处理时交接退出原因与结果。
@@ -109,9 +109,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看普通计算、内核处理与用户态设备交接" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="普通计算、内核处理与用户态设备交接">
-    <img src="../assets/kvm-internals-execution.svg?v=32683d73423f" alt="图中的用户态和 KVM 路径由同一个 vCPU 线程执行。CPUID 示意可留在内核处理的退出；MMIO 读取需要返回 QEMU，下一次 KVM_RUN 才完成指令交接。" loading="lazy">
+    <img src="../assets/kvm-internals-execution.svg?v=c204cdcdcf49" alt="图中的用户态和 KVM 路径由同一个 vCPU 线程执行。CPUID 示意可留在内核处理的退出；MMIO 读取需要返回 QEMU，下一次 KVM_RUN 才完成指令交接。" loading="lazy">
   </div>
-  <figcaption>图中的用户态和 KVM 路径由同一个 vCPU 线程执行。CPUID 示意可留在内核处理的退出；MMIO 读取需要返回 QEMU，下一次 KVM_RUN 才完成指令交接。 <a href="../assets/kvm-internals-execution.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>图中的用户态和 KVM 路径由同一个 vCPU 线程执行。CPUID 示意可留在内核处理的退出；MMIO 读取需要返回 QEMU，下一次 KVM_RUN 才完成指令交接。 <a href="../assets/kvm-internals-execution.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: KVM 客户机执行与用户态设备读取
     accDescr: 同一个 vCPU 线程以 KVM_RUN 从 QEMU 进入内核再进入客户机。普通计算直接执行，可在内核处理的 CPUID 退出不返回用户态。MMIO 读取返回 QEMU 取得设备值，下一次 KVM_RUN 完成读取后客户机继续计算。
@@ -193,6 +193,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+<script src="../assets/mechanism-viewer.js?v=c204cdcdcf49" defer></script>
 </body>
 </html>

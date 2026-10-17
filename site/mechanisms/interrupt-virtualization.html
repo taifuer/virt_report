@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=32683d73423f">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=32683d73423f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=c204cdcdcf49">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c204cdcdcf49">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -72,9 +72,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看中断线与 MSI-X 消息最终到达哪里" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="中断线与 MSI-X 消息最终到达哪里">
-    <img src="../assets/interrupt-controller-paths.svg?v=32683d73423f" alt="图中省略总线和可能存在的中断重映射。I/O APIC 处理引脚路由，MSI-X 由设备发送消息；两者都要到达目标 LAPIC，再由 CPU 接受中断。" loading="lazy">
+    <img src="../assets/interrupt-controller-paths.svg?v=c204cdcdcf49" alt="图中省略总线和可能存在的中断重映射。I/O APIC 处理引脚路由，MSI-X 由设备发送消息；两者都要到达目标 LAPIC，再由 CPU 接受中断。" loading="lazy">
   </div>
-  <figcaption>图中省略总线和可能存在的中断重映射。I/O APIC 处理引脚路由，MSI-X 由设备发送消息；两者都要到达目标 LAPIC，再由 CPU 接受中断。 <a href="../assets/interrupt-controller-paths.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>图中省略总线和可能存在的中断重映射。I/O APIC 处理引脚路由，MSI-X 由设备发送消息；两者都要到达目标 LAPIC，再由 CPU 接受中断。 <a href="../assets/interrupt-controller-paths.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: 中断线与 MSI-X 消息的接收路径
   accDescr: 引脚中断经 I/O APIC 路由，MSI-X 用设备表项配置消息，两条路径到达目标 Local APIC，再由 CPU 在接受条件满足后进入 IDT 中的处理入口。数据在独立缓冲区中。
@@ -120,9 +120,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看软件后端通知与直通设备通知的优化位置" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="软件后端通知与直通设备通知的优化位置">
-    <img src="../assets/interrupt-acceleration-layers.svg?v=32683d73423f" alt="左侧是软件后端经 irqfd 进入 KVM，可选择软件或 posted 投递；右侧是满足条件的 Intel VT-d 直通路径。配置、屏蔽、调度和回退仍由软件协调。" loading="lazy">
+    <img src="../assets/interrupt-acceleration-layers.svg?v=c204cdcdcf49" alt="左侧是软件后端经 irqfd 进入 KVM，可选择软件或 posted 投递；右侧是满足条件的 Intel VT-d 直通路径。配置、屏蔽、调度和回退仍由软件协调。" loading="lazy">
   </div>
-  <figcaption>左侧是软件后端经 irqfd 进入 KVM，可选择软件或 posted 投递；右侧是满足条件的 Intel VT-d 直通路径。配置、屏蔽、调度和回退仍由软件协调。 <a href="../assets/interrupt-acceleration-layers.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>左侧是软件后端经 irqfd 进入 KVM，可选择软件或 posted 投递；右侧是满足条件的 Intel VT-d 直通路径。配置、屏蔽、调度和回退仍由软件协调。 <a href="../assets/interrupt-acceleration-layers.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: irqfd、APICv 与直通设备 interrupt posting 的不同位置
   accDescr: 软件后端可以通过 irqfd 进入 KVM 路由，再使用软件注入或 APICv posted 路径。满足条件的 Intel VT-d 直通设备可由 IOMMU 写入 posted 描述符。阻塞或抢占状态仍需宿主调度配合。
@@ -154,9 +154,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看同一个报文的数据路径与通知路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="同一个报文的数据路径与通知路径">
-    <img src="../assets/interrupt-delivery-overview.svg?v=32683d73423f" alt="缓冲区和 used 保存结果，MSI-X 或 irqfd 负责通知；pending、宿主可运行、客户机接受、驱动消费是不同阶段。硬件辅助改变部分交付步骤，保持客户机可见的中断语义。" loading="lazy">
+    <img src="../assets/interrupt-delivery-overview.svg?v=c204cdcdcf49" alt="缓冲区和 used 保存结果，MSI-X 或 irqfd 负责通知；pending、宿主可运行、客户机接受、驱动消费是不同阶段。硬件辅助改变部分交付步骤，保持客户机可见的中断语义。" loading="lazy">
   </div>
-  <figcaption>缓冲区和 used 保存结果，MSI-X 或 irqfd 负责通知；pending、宿主可运行、客户机接受、驱动消费是不同阶段。硬件辅助改变部分交付步骤，保持客户机可见的中断语义。 <a href="../assets/interrupt-delivery-overview.svg?v=32683d73423f" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>缓冲区和 used 保存结果，MSI-X 或 irqfd 负责通知；pending、宿主可运行、客户机接受、驱动消费是不同阶段。硬件辅助改变部分交付步骤，保持客户机可见的中断语义。 <a href="../assets/interrupt-delivery-overview.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 从设备完成到客户机驱动处理
     accDescr: 完成记录先于通知发布，通知按路由进入虚拟 LAPIC 并等待客户机接受。vCPU 阻塞时需要先唤醒宿主线程；客户机驱动最终读取 used 队列确定完成项。
@@ -230,6 +230,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=32683d73423f" defer></script>
+<script src="../assets/mechanism-viewer.js?v=c204cdcdcf49" defer></script>
 </body>
 </html>

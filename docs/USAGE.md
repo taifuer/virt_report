@@ -98,15 +98,15 @@ cp .env.example .env
 
 当前文章都位于 `mechanisms/`：
 
-- CPU（`#cpu-virtualization`）：`kvm-vcpu-run.html`、`kvm-vcpu-halt.html`、`kvm-virtual-time.html`、`qemu-tcg.html`，KVM_RUN、HLT 后的等待与唤醒、TSC/pvclock 与定时事件，以及 TCG 指令翻译、TB 缓存与执行循环。
-- 内存（`#memory-virtualization`）：`kvm-ept-fault.html`、`kvm-hugepages.html`、`kvm-dirty-ring.html`，客户机地址映射、EPT 缺页与大页拆分恢复，以及脏页记录、收割与重置。
-- 设备与 I/O（`#device-virtualization`）：`virtio-device-initialization.html`、`qemu-network-tx.html`、`qemu-vhost-net.html`、`dpdk-vhost-user-net.html`、`spdk-vhost-user-blk.html`、`qemu-vfio-dma.html`、`qemu-virtio-blk.html`，从特性协商与队列启用进入数据路径，介绍网络队列、DPDK 报文与 mbuf/PMD 所有权、独立存储后端、DMA 转换与隔离，以及块请求和写入持久化。
+- CPU（`#cpu-virtualization`）：`kvm-vcpu-run.html`、`kvm-vcpu-halt.html`、`kvm-virtual-time.html`、`qemu-tcg.html`、`cpu-model-migration.html`，执行与退出、等待与唤醒、虚拟时间、TCG，以及 CPU 模型的能力与迁移约束。
+- 内存（`#memory-virtualization`）：`kvm-ept-fault.html`、`kvm-hugepages.html`、`kvm-dirty-ring.html`、`vcpu-numa-placement.html`，地址映射、大页、脏页记录，以及客户机拓扑、线程与 RAM 的物理放置。
+- 设备与 I/O（`#device-virtualization`）：`virtio-device-initialization.html`、`qemu-network-tx.html`、`virtio-net-rx.html`、`packed-virtqueue.html`、`qemu-vhost-net.html`、`dpdk-vhost-user-net.html`、`spdk-vhost-user-blk.html`、`vhost-vdpa.html`、`qemu-vfio-dma.html`、`qemu-virtio-blk.html`，从特性协商、队列与双向收发进入软件/硬件后端，解释 DMA、缓冲区所有权、迁移限制与持久化边界。
 - 中断（`#interrupt-virtualization`）：`kvm-virtio-interrupt.html`，队列完成、通知判定、MSI-X 路由与 KVM 中断注入。
 - 启动（`#vm-startup`）：`libvirt-domain-start.html`、`qemu-vm-startup.html`，从管理请求、进程握手到 QEMU 机器初始化和 vCPU 执行。
-- 热迁移（`#migration`）：`qemu-memory-migration.html`、`qemu-migration-stream.html`、`qemu-multifd.html`、`qemu-postcopy.html`，从内存迭代深入到流格式、多通道和后拷贝；导读正文链接内存专题的脏页日志文章。
-- 热插拔（`#hotplug`）：`qemu-pcie-hotplug.html`、`qemu-virtio-mem.html`，PCIe 插槽与异步移除，以及内存目标容量、客户机上线与块回收。
+- 热迁移（`#migration`）：`qemu-memory-migration.html`、`qemu-migration-stream.html`、`qemu-multifd.html`、`qemu-postcopy.html`、`libvirt-live-migration.html`，内存迭代、流格式、多通道、后拷贝，以及管理层五阶段协调与失败恢复。
+- 热插拔（`#hotplug`）：`qemu-pcie-hotplug.html`、`qemu-virtio-mem.html`、`x86-vcpu-hotplug.html`，分别跟踪 PCIe、内存和 vCPU 的添加、客户机协作及移除完成。
 - 热升级（`#live-upgrade`）：`qemu-cpr-transfer.html`，同机更新中的共享 RAM、文件描述符与执行权交接。
-- QEMU 内部机制（`#qemu-internals`）：`qemu-qom-device.html`、`qemu-memory-region.html`、`qemu-aio-iothread.html`、`qemu-qcow2.html`，类型与设备生命周期、地址布局与访问分发、异步块处理，以及镜像映射与写时复制。
+- QEMU 内部机制（`#qemu-internals`）：`qemu-qom-device.html`、`qemu-memory-region.html`、`qemu-aio-iothread.html`、`qemu-qcow2.html`、`qemu-live-block-operations.html`，对象生命周期、地址空间、异步 I/O、镜像映射，以及外部快照与在线块图变更。
 - KVM 内部机制（`#kvm-internals`）：`kvm-vcpu-requests.html`，request 位图、vCPU 模式与 kick 协作；区分内核请求、宿主 IPI、客户机中断及 QEMU 信号。
 - Libvirt 内部机制（`#libvirt-internals`）：`libvirt-rpc.html`，XDR 报文、服务端分发、响应匹配与守护进程边界。
 
@@ -118,12 +118,9 @@ MemoryRegion 交互使用 64 KiB 示例布局，支持别名偏移、优先级�
 
 TCG 交互跟踪翻译块的生成、命中、跳转链接与代码改写后的失效；与 KVM 文章对照 CPU 执行路径。公共 Mermaid 图默认不超过原始尺寸，长图等比缩小；细节可在全屏查看器中缩放。
 
-后续选题按以下顺序补充；这是编排计划，不表示文章已发布：
+目前包含 12 篇基础与组件导读、38 篇具体机制文章。新增内容包括 CPU 模型与迁移兼容性、vCPU 热插拔、NUMA 放置、Libvirt 迁移协调、virtio-net 接收与 NAPI、Packed virtqueue、vhost-vDPA，以及外部快照与在线块操作。
 
-1. **vDPA 队列配置与数据面卸载**：解释控制面、IOTLB 映射、硬件队列、通知和停止边界；与已有 VFIO、vhost-user 对照，不再重复通用发包过程。
-2. **虚拟磁盘在线备份与一致性**：跟踪一次写入如何进入 dirty bitmap 和备份任务，区分崩溃一致性与应用一致性；与已有 qcow2 地址映射、virtio-blk 请求处理区分。
-
-其次考虑嵌套虚拟化的一次 VM Entry、CPU 热插拔、块设备在线扩容、virtio-scsi 取消与复位，以及 Libvirt job / 锁的具体竞争。ARM 暂缓；目录不加入尚未成文的入口。迁移与更新选题应聚焦直通状态、后端重连或失败恢复等具体问题，避免重复现有预拷贝、迁移流与 CPR 文章。
+后续可聚焦增量备份的 dirty bitmap 继承与恢复验证、嵌套虚拟化的一次 VM Entry、块设备在线扩容、virtio-scsi 取消与复位，以及 Libvirt job / 锁的具体竞争。ARM 暂缓；目录不加入尚未成文的入口。迁移与更新选题应聚焦直通状态、后端重连或失败恢复等具体问题，避免重复现有预拷贝、迁移流与 CPR 文章。
 
 文章元数据在 `virt_report/content/mechanisms.json`，正文和交互模板在 `render/templates/`，
 共用阅读样式为 `mechanisms.css`，每篇的交互脚本与样式由元数据指定；纯正文与图表文章可省略 `script` / `stylesheet`，不加载空脚本。元数据 `groups` 定义分组，`topics[].group` 指定分组，文章 `topic` 指定主归属，`topics[].overview` 指定导读文章 slug。增加已审核文章后，会自动进入目录并显示篇数。内容绑定源码版本与提交，不随日报生成，不调用模型。
@@ -138,6 +135,7 @@ TCG 交互跟踪翻译块的生成、命中、跳转链接与代码改写后的�
 MultiFD 演示可改变通道数与慢通道，分别观察发送侧完成和目的端接收屏障；演示步数不表示实测时间。
 网卡演示固定 QEMU 后端，切换设备接口并逐步观察描述符、通知、数据和完成处理。
 virtio 模式默认显示环槽、描述符表、链链接和数据缓冲区的交互图，可局部步进或放大；圆形表示索引循环，实际环槽为连续数组。可选择起始索引 0 / 3 / 65535 检查环槽与 16 位计数器回绕；完成后旧环项保留，缓冲区由驱动回收。DPDK 文章固定 24.11 的普通同步复制路径，区分客户机 used、PMD 接受与硬件完成。
+发送篇另含通知竞态步进演示：比较恢复通知后复查、错误地省略复查，以及新请求较晚到达的三种交错。Packed 队列允许分别发布、完成和回收，观察四槽环的 wrap、Buffer ID 与空闲额度；教学模型采用单描述符顺序完成，正文另解释乱序与多描述符链。HLT 的 perf 片段用于观察宿主调度，CPR 的 QMP 片段用于测试双进程交接；二者均不代表本站实测数据，不由网页执行。
 vhost 演示切换后端，分别显示初始化控制、队列通知、报文数据与完成通知；Dirty Ring 演示允许逐页写入、收割和重置，检查重新保护与迁移读取的先后关系。
 VFIO 演示显示映射请求字段与硬件页表关系，缺失或只读映射下的非法 DMA 不产生成功完成；后拷贝演示区分缺页事件、请求、页面安装和线程唤醒。
 新增文章使用正式机制名称作为标题，版本信息放在开篇。先说明要解决的问题和解决思路，再用同一小例子串起架构、关键结构与源码过程，最后说明收益、代价、评价指标及演进方向，避免对话式说明和未经实测的性能结论。目录标题应能说明文章的实际内容，避免连续使用“基本原理”“关键源码”等泛称。
@@ -149,7 +147,7 @@ VFIO 演示显示映射请求字段与硬件页表关系，缺失或只读映射
 更新后运行 `pytest`；安装 Node 时会同时执行交互模型测试，也可单独运行：
 
 ```bash
-node --test tests/test_migration_model.cjs tests/test_migration_stream.cjs tests/test_multifd.cjs tests/test_device_tx.cjs tests/test_vhost_path.cjs tests/test_dirty_ring.cjs tests/test_postcopy.cjs tests/test_vfio_dma.cjs tests/test_memory_map.cjs tests/test_virtio_mem.cjs tests/test_halt_poll.cjs tests/test_hugepage_map.cjs tests/test_qcow2_map.cjs
+node --test tests/test_*.cjs
 ```
 仅导出原理页面及其资源，不重建历史报告：
 
