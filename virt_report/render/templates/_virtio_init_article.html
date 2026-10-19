@@ -3,14 +3,16 @@
 {% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 {% set spec = 'https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html' %}
 <section id="preface" class="mechanism-section">
-  <h2>共享队列工作之前，双方需要约定什么</h2>
-  <p>客户机驱动与 virtio 设备通过共享内存交接请求。若驱动按 split 格式布置队列，设备却按 packed 格式解释，相同字节就会产生不同含义；若设备提前消费尚未初始化的地址，还可能访问错误内存。设备发现、特性协商、队列配置和开始处理，因此必须有明确顺序。</p>
+  <h2>virtio 设备初始化的阶段与约束</h2>
+  <p>客户机驱动与 virtio 设备通过共享内存交接请求。第一次 I/O 前，驱动先找到设备的控制区域，与设备选定共同支持的功能，再分配队列并公布地址。设备确认这些约定后，才能按相同格式读取描述符、访问缓冲区并归还结果。</p>
   <p>本文跟踪现代 virtio-pci 接口上的一个 virtio-blk 队列。例子采用 4 个描述符、split 格式，普通 RAM，无客户机 IOMMU 地址转换；队列地址以 GPA 表示。开启平台访问约束时，需要使用相应 DMA 映射，不能沿用这里“地址就是 GPA”的假设。协议依据 VIRTIO 1.2，实例由 QEMU 与 Linux 驱动实现。</p>
+  <p>这次初始化依次经过：发现设备 → 复位并选择特性 → 确认共同格式 → 配置队列内存 → 允许处理 → 发布读取请求。特性确认决定队列的解释方式；队列地址和设备状态决定何时可以开始访问。</p>
   {% include '_mechanism_baselines.html' %}
+  {{ diagram('virtio-init-handshake', '从复位到可以处理请求', 'FEATURES_OK 是双方确认特性的边界；queue_enable 配置单队列，DRIVER_OK 放行整个设备。本例只在 DRIVER_OK 之后发布首次通知。') }}
 </section>
 <section id="transport" class="mechanism-section">
   <h2>通过 PCI 能力找到控制与通知区域</h2>
-  <p>PCI 枚举先识别设备，再遍历能力链。现代 virtio 使用 vendor-specific capability 描述控制区域所在的 BAR、偏移和长度。驱动据此映射寄存器，而不是假设所有设备都把寄存器放在同一固定地址。<code>virtio_pci_cap</code> 中的 <code>cfg_type / bar / offset / length</code> 负责说明“这是什么区域、在哪里、有多大”。</p>
+  <p>PCI 枚举先识别设备，再遍历能力链。现代 virtio 使用 vendor-specific capability 描述控制区域所在的 BAR、偏移和长度，驱动据此映射寄存器。<code>virtio_pci_cap</code> 的 <code>cfg_type</code> 标识区域用途，<code>bar / offset / length</code> 给出位置与范围。这些控制区域由设备接口呈现，日常请求使用的 virtqueue 则分配在客户机 RAM 中。</p>
   <table><thead><tr><th scope="col">区域</th><th scope="col">本次初始化中的作用</th><th scope="col">与队列内存的区别</th></tr></thead><tbody>
     <tr><td>Common configuration</td><td>读写特性、device_status、队列大小和地址</td><td>保存控制字段，不存每次请求的数据</td></tr>
     <tr><td>Notify</td><td>驱动写门铃，提示某队列有新工作</td><td>通知不携带整条描述符或数据缓冲区</td></tr>
@@ -22,7 +24,7 @@
 <section id="negotiation" class="mechanism-section">
   <h2>先选择特性，再让设备确认</h2>
   <h3>特性选择包含依赖，不能只取交集</h3>
-  <p>设备公布它支持的 feature bits，驱动选择其中理解且愿意使用的子集。公共配置用 <code>device_feature_select</code> 选择每组 32 位，再从 <code>device_feature</code> 读取；驱动以对应的 <code>driver_feature_select / driver_feature</code> 写回选择。QEMU 头文件把后两者称为 guest_feature，表达的是同一组寄存器。</p>
+  <p>设备公布它支持的 feature bits，驱动选择自身支持并准备启用的特性子集。公共配置用 <code>device_feature_select</code> 选择每组 32 位，再从 <code>device_feature</code> 读取；驱动以对应的 <code>driver_feature_select / driver_feature</code> 写回选择。QEMU 头文件把后两者称为 guest_feature，表达的是同一组寄存器。</p>
   <p>本例选择 <code>VIRTIO_F_VERSION_1</code>，使用现代接口；不选择 <code>RING_PACKED</code>，所以采用 split 队列，也不选择 EVENT_IDX、RING_RESET、通知数据扩展。VERSION_1 位说明采用现代协议，不能据此断言设备实现了某个文档版本的所有可选功能。</p>
   <p>选择还要满足依赖与环境要求。比如 virtio-net 的 HOST_TSO4 要求 CSUM，不能只打开分段能力而忽略其校验和前提。平台要求设备使用受控 DMA 地址时，ACCESS_PLATFORM 也可能是运行条件。Linux 因而在初步交集后继续进行传输层和设备驱动验证。现代 PCI 路径还明确检查 VERSION_1。<a href="{{ linux }}drivers/virtio/virtio.c#L270-L345">驱动特性筛选</a>、<a href="{{ linux }}drivers/virtio/virtio_pci_modern.c#L419-L442">现代 PCI 验证与写回</a></p>
   <h3>状态位表示已经完成的步骤</h3>
@@ -33,8 +35,7 @@
     <tr><td>写回特性，加入 FEATURES_OK，再读回</td><td><code>0x0b</code>，仅限设备接受时</td><td>双方确认本轮选择，仍未开始消费请求</td></tr>
     <tr><td>完成队列与设备配置，加入 DRIVER_OK</td><td><code>0x0f</code></td><td>驱动已准备好运行</td></tr>
   </tbody></table>
-  <p>这些值是累积位掩码，不能把 DRIVER_OK 单独写成 4 而覆盖前面的状态。FEATURES_OK 必须读回检查：QEMU 在状态变更时验证组合，拒绝时不会接受这一步；驱动若只检查自己的写操作成功，就可能继续配置一台双方理解不一致的设备。确认后不能再随意加入新特性，重新协商需要设备复位。<a href="{{ qemu }}hw/virtio/virtio.c#L2237-L2284">QEMU 特性验证</a>、<a href="{{ linux }}drivers/virtio/virtio.c#L203-L236">Linux 读回检查</a></p>
-  {{ diagram('virtio-init-handshake', '从复位到可以处理请求', 'FEATURES_OK 是双方确认特性的边界；queue_enable 配置单队列，DRIVER_OK 放行整个设备。本例只在 DRIVER_OK 之后发布首次通知。') }}
+  <p>状态按位累积：本例在 <code>0x0b</code> 上加入 DRIVER_OK 的 <code>0x04</code>，得到 <code>0x0f</code>。FEATURES_OK 的读回是确认点，QEMU 会在这一步验证特性组合；读回仍带该位，驱动才继续配置队列。已确认的特性保持到设备复位，下一轮协商从复位后重新开始。<a href="{{ qemu }}hw/virtio/virtio.c#L2237-L2284">QEMU 特性验证</a>、<a href="{{ linux }}drivers/virtio/virtio.c#L203-L236">Linux 读回检查</a></p>
 </section>
 <section id="queue-layout" class="mechanism-section">
   <h2>把 4 个描述符的队列放入客户机内存</h2>
@@ -63,16 +64,16 @@ avail.ring[0] = 0
   <p>设备检查 available，读取请求并完成块操作，再写数据、状态和 used。初始化至此才接入日常数据路径。具体处理见<a href="qemu-virtio-blk.html">virtio-blk 请求与完成</a>，环槽回绕可在<a href="qemu-network-tx.html#virtqueue">virtqueue 交互图</a>中逐步观察。</p>
 </section>
 <section id="failure-reset" class="mechanism-section">
-  <h2>协商失败与复位怎样收束旧状态</h2>
+  <h2>协商失败处理与设备复位</h2>
   <h3>设备复位重新开始整轮协商</h3>
   <p>驱动遇到无法恢复的初始化错误时，标记 FAILED 并停止继续初始化。FAILED 本身不是“设备已停止访问内存”的证明；重试需要复位。设备报告 DEVICE_NEEDS_RESET 时，在途请求可能已经完成，也可能尚未完成，驱动不能据此推断结果或盲目重放。</p>
   <p>现代 PCI 的设备复位通过向 device_status 写 0 发起，读取到 0 才确认完成；此时设备不再访问旧队列或发送相应通知。驱动还需停止自己的提交与回调，之后才能安全拆除队列、释放缓冲区，并从 ACKNOWLEDGE 重新协商。复位不会替应用证明一次磁盘写入是否持久化，设备特有状态仍遵循对应协议。<a href="{{ linux }}drivers/virtio/virtio_pci_modern.c#L544-L568">PCI 复位等待</a></p>
   <h3>队列复位是独立的可选功能</h3>
   <p>只有先协商 RING_RESET，驱动才可使用 <code>queue_reset</code>。选中队列后写 1，等待读回 queue_reset=0 且 queue_enable=0，再回收该队列资源、重新配置并启用。其他队列和设备级特性协商不随之重置；队列复位不能用来更换全设备的 split/packed 格式。本例没有选择 RING_RESET，不能走这条路径。</p>
-  <p>尤其要区分 PCI 与 MMIO 传输：现代 PCI 驱动不能把向 queue_enable 写 0 当成关闭队列的办法。它需要已协商的队列复位，或复位整个设备。QEMU 的公共配置写处理也只接受 queue_enable=1。<a href="{{ qemu }}hw/virtio/virtio-pci.c#L1717-L1766">队列启用与复位</a>、<a href="{{ linux }}drivers/virtio/virtio_pci_modern_dev.c#L508-L543">Linux 队列复位等待</a></p>
+  <p>现代 PCI 传输通过已协商的队列复位或整设备复位停止队列。其 queue_enable 用于启用，QEMU 的公共配置写处理只接受 queue_enable=1；写 0 没有关闭队列的效果。MMIO 传输的寄存器操作另有约定。<a href="{{ qemu }}hw/virtio/virtio-pci.c#L1717-L1766">队列启用与复位</a>、<a href="{{ linux }}drivers/virtio/virtio_pci_modern_dev.c#L508-L543">Linux 队列复位等待</a></p>
 </section>
 <section id="implementation" class="mechanism-section">
-  <h2>源码怎样对应这条初始化路径</h2>
+  <h2>初始化路径的源码调用链</h2>
   <table><thead><tr><th scope="col">阶段</th><th scope="col">驱动与设备两侧的入口</th></tr></thead><tbody>
     <tr><td>发现后复位并识别</td><td>Linux <a href="{{ linux }}drivers/virtio/virtio.c#L512-L577">register_virtio_device</a>：reset、ACKNOWLEDGE，再匹配驱动</td></tr>
     <tr><td>协商与确认</td><td>Linux <a href="{{ linux }}drivers/virtio/virtio.c#L270-L365">virtio_dev_probe</a>：筛选、finalize、FEATURES_OK 读回，再调用设备驱动 probe</td></tr>

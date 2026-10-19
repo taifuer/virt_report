@@ -79,9 +79,19 @@ def test_topic_and_conference_snapshots_use_current_shared_header():
 
 
 def test_all_static_footers_group_copyright_and_note_with_relative_status_link():
+    from virt_report import mechanisms
+
     site = Path(__file__).resolve().parents[1] / "site"
+    redirects = {f"mechanisms/{entry['slug']}.html": entry['target']
+                 for entry in mechanisms.redirects()}
     for path in sorted(site.rglob("*.html")):
         html = path.read_text(encoding="utf-8")
+        target = redirects.get(path.relative_to(site).as_posix())
+        if target:
+            # Merged URLs are small redirect documents, not content pages.
+            assert f'<link rel="canonical" href="{target}.html">' in html
+            assert 'src="../assets/mechanism-redirect.js"' in html
+            continue
         footer = html.split('<footer class="site-foot">', 1)[1].split("</footer>", 1)[0]
         root = "../" * len(path.relative_to(site).parts[:-1])
         assert '<span class="foot-copyright">© 2026 ' in footer, path

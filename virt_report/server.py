@@ -425,6 +425,13 @@ def make_handler(config: Config, *, _database_initialized: bool = False):
             mechanism_match = _MECHANISM_ROUTE.fullmatch(path)
             if path == "/mechanisms.html" or mechanism_match:
                 slug = mechanism_match.group(1) if mechanism_match else None
+                from virt_report.mechanisms import get_redirect
+                redirect = get_redirect(slug) if slug else None
+                if redirect:
+                    self._send(308, "", head_only, extra_headers={
+                        "Location": f"/mechanisms/{redirect['target']}.html",
+                    })
+                    return
                 html = render.render_mechanisms_html(config, slug)
                 self._send(200 if html else 404, html or "Not found", head_only)
                 return

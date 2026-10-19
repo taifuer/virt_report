@@ -1,0 +1,21 @@
+sequenceDiagram
+  accTitle: virtio-blk 请求从客户机提交到回收
+  accDescr: Linux 块层分派一次四千零九十六字节写入，驱动发布链头五。QEMU 取出请求并保存异步回调上下文，后端完成后发布状态和 used。客户机队列回调取回原请求，最终结束块层 request。
+  participant G as 客户机 Linux virtio-blk
+  participant V as 客户机 RAM 中的共享队列
+  participant Q as QEMU virtio-blk
+  participant B as QEMU 块后端
+  G->>G: virtio_queue_rq：取得 request / virtblk_req
+  G->>V: 发布链 5 → 9 → 12；avail.idx 12 → 13
+  G-->>Q: 按条件 kick，触发已登记的队列入口
+  Q->>V: virtqueue_pop：取出链头 5
+  Q->>B: blk_aio_pwritev：数据、回调、VirtIOBlockReq
+  Note over Q,B: 后端异步执行期间保留请求与缓冲区
+  B-->>Q: virtio_blk_rw_complete(req, ret)
+  Q->>V: 成功时写 status=OK，再发布 used {id:5, len:1}
+  Q-->>G: 按条件发出完成通知
+  G->>V: virtblk_done → virtqueue_get_buf
+  V-->>G: 读取 used {id:5, len:1}
+  G->>G: 由链头 5 找回私有 virtblk_req
+  G->>G: blk-mq 完成路径 → virtblk_request_done
+  G->>G: 读取 status、清理映射 → blk_mq_end_request

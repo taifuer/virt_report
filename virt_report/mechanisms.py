@@ -18,6 +18,18 @@ def articles() -> tuple[dict, ...]:
     return tuple(_content()["articles"])
 
 
+def redirects() -> tuple[dict, ...]:
+    """Keep merged article URLs separate from the published catalogue."""
+    return tuple({"slug": slug, **entry}
+                 for slug, entry in _content().get("redirects", {}).items())
+
+
+def get_redirect(slug: str) -> dict | None:
+    """Resolve an explicitly registered old URL to a published article."""
+    entry = next((item for item in redirects() if item["slug"] == slug), None)
+    return entry if entry and get_article(entry["target"]) else None
+
+
 @lru_cache(maxsize=1)
 def topics() -> tuple[dict, ...]:
     """Group published articles by topic without displaying empty sections."""

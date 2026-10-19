@@ -3,50 +3,48 @@
 
 <section id="preface" class="mechanism-section">
   <h2>从创建进程到执行第一条指令</h2>
-  <p>启动一台 QEMU 虚拟机，需要先确定机器布局和 CPU 能力，建立内存与设备，再把初始处理器状态交给执行后端。QEMU 进程、vCPU 线程、客户机固件和操作系统分别有自己的启动时刻；进程已经存在，不代表客户机已经执行了指令。</p>
-  <p>本文以 x86 的 <code>pc-q35-10.2</code>、KVM 加速、普通 RAM 和 BIOS 冷启动为例，从命令行跟踪到启动处理器执行固件。重点是初始化顺序和对象之间的依赖，后续执行循环见<a href="kvm-vcpu-run.html">KVM vCPU 执行与 I/O 退出</a>。</p>
+  <p>QEMU 根据启动参数创建一台完整的虚拟计算机：CPU 与内存提供执行环境，磁盘提供系统镜像，网卡连接外部网络，芯片组、总线、中断控制器和固件把这些部件组织起来。硬件模型完成创建与复位后，客户机 CPU 开始执行固件，再由固件装载操作系统。</p>
+  <p>本文以 x86 的 <code>pc-q35-10.2</code>、KVM 加速、普通 RAM、virtio 磁盘与网卡为例，沿“参数与后端 → 机器与设备 → 复位 → 固件与系统引导”说明 BIOS 冷启动。重点是各层的依赖和初始化顺序，后续执行循环见<a href="kvm-vcpu-run.html">KVM vCPU 执行与 I/O 退出</a>。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="example" class="mechanism-section">
-  <h2>用 -S 分开机器创建与客户机执行</h2>
-  <p>下面的命令创建 2 个 vCPU、4 GiB 内存的 Q35 虚拟机，并通过 <code>-S</code> 停在客户机执行之前。示例不配置启动盘，便于单独观察机器创建和固件入口；它不会引导一个已安装的操作系统。</p>
+  <h2>包含系统盘与网卡的启动示例</h2>
+  <p>下面的命令创建 2 个 vCPU、4 GiB 内存、一块 virtio 系统盘和一张 virtio 网卡，通过 <code>-S</code> 暂停在客户机执行之前。<code>/path/demo.qcow2</code> 需替换为已有的、支持 BIOS 引导且安装了 virtio 驱动的系统镜像；创建一个空镜像不会自动安装操作系统。</p>
   <pre><code>qemu-system-x86_64 \
   -machine pc-q35-10.2,accel=kvm \
   -cpu host -smp 2 -m 4G \
   -nodefaults -display none -S \
+  -blockdev driver=file,node-name=os-file,filename=/path/demo.qcow2 \
+  -blockdev driver=qcow2,node-name=os-disk,file=os-file \
+  -device virtio-blk-pci,id=disk0,drive=os-disk,bootindex=1 \
+  -netdev user,id=net0 \
+  -device virtio-net-pci,id=nic0,netdev=net0 \
+  -serial stdio \
   -qmp unix:/tmp/virt-startup-qmp.sock,server=on,wait=off</code></pre>
   <p><code>-machine</code> 选择芯片组、总线和兼容属性；<code>-cpu</code> 决定客户机可见的处理器能力；<code>-smp</code> 描述启动 CPU 数量与拓扑。<code>-m</code> 配置的是客户机 RAM 容量，既不表示所有宿主物理页已分配，也不表示 EPT 已全部建好。<code>-nodefaults</code> 省去默认外设，不会取消 Q35 的核心芯片组和 CPU。</p>
+  <p>磁盘参数把文件后端 <code>os-file</code>、qcow2 格式节点 <code>os-disk</code> 和客户机可见的 <code>virtio-blk-pci</code> 分开声明。网卡参数把用户态网络后端 <code>net0</code> 与 <code>virtio-net-pci</code> 相连；该后端要求 QEMU 构建包含相应支持，无需手动建立 TAP 或宿主桥。Libvirt 的桥接网络通常使用 TAP 后端，客户机端仍可使用相同的 virtio 网卡。</p>
+  <p><code>-display none</code> 关闭图形显示，<code>-serial stdio</code> 将串口连接到当前终端；要看到客户机日志，还需客户机配置串口控制台。显示输出与启动状态彼此独立，终端没有内容不等于客户机没有运行。</p>
   <p>连接 QMP 后，先完成能力协商，再查询或继续执行：</p>
   <pre><code>{"execute":"qmp_capabilities"}
 {"execute":"query-status"}
 {"execute":"query-cpus-fast"}
+{"execute":"query-block"}
 {"execute":"cont"}</code></pre>
   <p>正常冷启动的 <code>-S</code> 配置在 cont 前处于 <code>prelaunch</code>，<code>running</code> 为 false。此时 query-cpus-fast 已能返回 vCPU 的宿主线程信息。QMP 的 RESUME 事件表示开始恢复执行，不代表固件初始化、磁盘引导或客户机服务已经完成。</p>
-  <p>这个例子把后面的调用链分为两段：<code>qemu_init → machine init → CPU / RAM / 设备就绪 → 复位</code> 建立可运行的机器；<code>cont → vm_start → KVM_RUN</code> 才允许客户机执行。接下来先明确这些步骤操作哪些对象，再按两个阶段展开。</p>
-</section>
-
-<section id="objects" class="mechanism-section">
-  <h2>机器、执行后端与处理器对象</h2>
-  <table><thead><tr><th scope="col">对象</th><th scope="col">关键字段</th><th scope="col">职责</th></tr></thead><tbody>
-    <tr><td><code>MachineState</code></td><td><code>smp / ram_size / ram / cpu_type / accelerator</code></td><td>保存整机配置，关联 RAM 后端、CPU 型号和执行后端；MachineClass 的 init 创建具体板级布局。</td></tr>
-    <tr><td><code>KVMState</code></td><td><code>fd / vmfd / memory_listener</code></td><td>fd 指向 /dev/kvm，vmfd 指向本虚拟机；监听地址空间变更并维护 KVM 内存槽。</td></tr>
-    <tr><td><code>CPUState</code></td><td><code>cpu_index / thread / created / stopped / kvm_fd / kvm_run</code></td><td>管理一个 vCPU 的宿主线程、控制状态及 KVM 接口。</td></tr>
-    <tr><td><code>X86CPU / CPUX86State</code></td><td><code>apic_id / env / env.eip / env.segs / env.mp_state</code></td><td>保存 x86 型号、体系结构寄存器和处理器启动状态，与通用 CPUState 一起组成 CPU 实例。</td></tr>
-    <tr><td><code>MemoryRegion / AddressSpace</code></td><td>RAM 区域、别名、子区域与解析后的映射</td><td>表达客户机可见地址布局，供 CPU、设备和 KVM 监听器使用。</td></tr>
-  </tbody></table>
-  <p>这些对象的生命周期互相关联，但创建动作不同。<code>object_new()</code> 分配并初始化 QOM 对象；<code>qdev_realize()</code> 检查属性、连接总线并完成设备可用化；<code>KVM_CREATE_VM</code> 和 <code>KVM_CREATE_VCPU</code> 则建立内核对象。一个 CPU 对象经过 realize 才会创建执行线程。对象与设备的关系见<a href="qemu-qom-device.html">QEMU 对象模型与设备初始化</a>。</p>
-  <p>源码中的 <code>created</code> 表示 vCPU 线程初始化握手完成，<code>stopped</code> 表示 QEMU 主动停止它执行客户机。两者可以同时为 true。客户机执行 HLT 后的 <code>halted</code> 又是另一种处理器状态，不能拿来代替管理侧暂停。</p>
+  <p>这个例子把后面的调用链分为两段：<code>qemu_init → machine init → CPU / RAM / 设备就绪 → 复位</code> 建立可运行的机器；<code>cont → vm_start → KVM_RUN</code> 才允许客户机执行。下面先按这个顺序跟踪启动，再用对象表对照源码。</p>
 </section>
 
 <section id="phases" class="mechanism-section">
   <h2>创建机器、KVM 虚拟机与板级设备</h2>
-  <p><code>main()</code> 进入 <code>qemu_init()</code>。后者解析参数、初始化主循环基础设施，选定机器类型并创建 MachineState；机器属性设置完成后，才配置 accelerator。KVM 的初始化需要读取 irqchip 等机器属性，所以这两步有明确的先后关系。</p>
-  {{ diagram('qemu-startup-phases', 'Q35 冷启动的初始化阶段', '创建机器和 KVM 虚拟机后进入板级初始化；CPU 线程早于 Q35 内存布局和外设完成创建，执行则由最后的运行状态控制。') }}
+  <p><code>main()</code> 进入 <code>qemu_init()</code>，解析参数并创建 MachineState。随后早期后端初始化打开块图和字符设备；机器属性设置完成后才配置 accelerator。KVM 初始化需要读取 irqchip 等机器属性，所以它必须在这些属性确定之后运行。</p>
+  {{ diagram('qemu-startup-phases', '从后端创建到系统盘引导的初始化顺序', '块后端在早期后端阶段创建，KVM 随后初始化，网络后端在晚期后端阶段创建。板级初始化建立 CPU、内存和总线，命令行设备再连接磁盘与网络后端；复位和 cont 后客户机开始固件与系统引导。') }}
   <p><code>kvm_init()</code> 打开 /dev/kvm，检查 API 版本与能力，调用 KVM_CREATE_VM 获取 vmfd，初始化架构相关功能与中断控制器，并注册内存监听器。此时已经有 KVM 虚拟机容器，客户机 RAM 和板级设备尚未全部挂入地址空间。</p>
-  <p>随后 QEMU 建立后端、解析 CPU 型号与 NUMA 配置。<code>machine_run_board_init()</code> 准备 RAM 后端，调用机器类的 init。对于本例，<code>pc_q35_init()</code> 先计算低端和高端 RAM 容量，再调用 <code>x86_cpus_init()</code> 创建 CPU，然后通过 <code>pc_memory_init()</code> 布置内存、加载固件，继续创建 PCIe 根总线、ICH9 等板级设备。命令行 <code>-device</code> 指定的附加设备在板级初始化之后创建。</p>
-  <p>因此，不能将启动过程概括成“全部设备创建完，再统一创建 vCPU”。本路径在 CPU 初始化期间已经有 vCPU 线程，但它们保持 stopped，仍可响应寄存器同步等内部工作。QEMU 用运行状态、线程条件变量和 BQL 协调初始化，防止客户机提前访问尚未完成的机器布局。</p>
-  <p>在示例的默认 Q35 布局中，4 GiB RAM 的后端被切成两个别名：前 2 GiB 映射在 4 GiB 以下，后 2 GiB 从 4 GiB 以上开始映射，为 PCI 等区域留出地址空间。低端地址中还会叠加固件和传统设备窗口，所以客户机物理地址空间不能简单理解为从 0 连续铺满 4 GiB。</p>
+  <p>后端初始化分成早、晚两组。<code>qemu_create_early_backends()</code> 中的 <code>configure_blockdev()</code> 建立本例的文件与 qcow2 节点；KVM 配置完成后，<code>qemu_create_late_backends()</code> 中的 <code>net_init_clients()</code> 创建 <code>net0</code>。块后端需要尽早可用，供机器属性引用；网络后端则在后续阶段建立。两者都先于依赖它们的 virtio 设备前端。<a href="{{ qemu_source }}system/vl.c#L2020-L2124">早期与晚期后端</a></p>
+  <p>随后解析 CPU 型号与 NUMA 配置，<code>machine_run_board_init()</code> 准备 RAM 后端并调用机器类的 init。对于本例，<code>pc_q35_init()</code> 先计算低端和高端 RAM 容量，再调用 <code>x86_cpus_init()</code> 创建 CPU，然后通过 <code>pc_memory_init()</code> 布置内存、加载固件，继续创建 PCIe 根总线、ICH9、中断控制器等板级设备。</p>
+  <p>板级初始化返回后，<code>qemu_create_cli_devices()</code> 才处理命令行中的 <code>-device</code>。virtio-blk 连接 <code>os-disk</code>，virtio-net 连接 <code>net0</code>，它们作为 PCI 设备接入已存在的总线；realize 过程建立设备状态、配置空间和中断资源。客户机后续通过 PCI 枚举发现它们，再由驱动协商 virtio 特性、建立 virtqueue。QEMU 创建完成与客户机驱动初始化属于两个阶段。<a href="{{ qemu_source }}system/vl.c#L2708-L2762">板级与命令行设备创建</a></p>
+  <p>这条路径先建立 vCPU 线程，再继续完成内存布局与其他设备。线程保持 stopped，仍可响应寄存器同步等内部工作。QEMU 用运行状态、线程条件变量和 BQL 协调初始化，使客户机在整机准备完成后才开始执行。</p>
+  <p>在示例的默认 Q35 布局中，4 GiB RAM 的后端被切成两个别名：前 2 GiB 映射在 4 GiB 以下，后 2 GiB 从 4 GiB 以上开始映射，为 PCI 等区域留出地址空间。低端地址中还会叠加固件和传统设备窗口，所以客户机物理地址空间不能简单理解为从 0 连续铺满 4 GiB。后备创建、RAMBlock、别名挂接与 KVM 注册的完整过程见<a href="qemu-memory-region.html">QEMU 内存初始化与地址空间管理</a>，其中使用 8 GiB RAM 展开地址换算。</p>
   <p>内存区域加入 AddressSpace 后，KVM 的监听回调把合适的 RAM 区域转成内存槽，登记 GPA 范围与 QEMU 用户态地址。这个步骤提供地址转换的基础，EPT 的实际叶子映射通常在客户机访问时逐步建立；详见<a href="kvm-ept-fault.html">KVM 内存映射与 EPT 缺页处理</a>。</p>
 </section>
 
@@ -73,7 +71,7 @@ vmfd
 <section id="first-run" class="mechanism-section">
   <h2>复位、继续执行与固件入口</h2>
   <p>设备创建完成后，<code>qdev_machine_creation_done()</code> 同步 CPU 初始化状态，推进到 MACHINE_READY，发送机器初始化完成通知，登记 ROM 复位处理，再执行整机复位。x86 CPU 的复位回调建立起始寄存器和启动状态，后续通过 KVM 的寄存器同步接口写入内核 vCPU。</p>
-  <p>普通 BIOS 冷启动时，启动处理器 BSP 的 CS selector 为 <code>0xf000</code>，CS 隐藏基址为 <code>0xffff0000</code>，EIP 为 <code>0xfff0</code>，得到复位取指地址 <code>0xfffffff0</code>。这里要使用 CS 的隐藏基址计算，不能用实模式常见的 selector × 16 公式把它算成 0xffff0。固件随后跳转并完成平台初始化。</p>
+  <p>普通 BIOS 冷启动时，启动处理器 BSP 的 CS selector 为 <code>0xf000</code>，CS 隐藏基址为 <code>0xffff0000</code>，EIP 为 <code>0xfff0</code>。复位取指使用隐藏基址加偏移：<code>0xffff0000 + 0xfff0 = 0xfffffff0</code>。这是复位时的特定段状态；固件从这里跳转并完成平台初始化。</p>
   <table><thead><tr><th scope="col">时刻</th><th scope="col">CPU 0：BSP</th><th scope="col">CPU 1：AP</th></tr></thead><tbody>
     <tr><td>机器创建完成，-S 生效</td><td>线程与 KVM vCPU 已存在，stopped = true</td><td>线程与 KVM vCPU 已存在，stopped = true</td></tr>
     <tr><td>复位后的多处理器状态</td><td><code>KVM_MP_STATE_RUNNABLE</code></td><td>内核 irqchip 路径下为 <code>KVM_MP_STATE_UNINITIALIZED</code></td></tr>
@@ -82,6 +80,24 @@ vmfd
   </tbody></table>
   <p><code>qmp_cont()</code> 完成状态检查后调用 vm_start，后者更新运行状态、通知后端、恢复虚拟时钟并唤醒 vCPU。KVM_RUN 最终让 BSP 进入客户机。AP 的宿主线程也可以进入内核等待启动事件，因此看到两个线程或两次 ioctl 入口，不等于两个客户机 CPU 都在执行固件指令。</p>
   <p>不指定 -S 时，普通冷启动会在初始化结束路径中自动调用 cont。<code>-incoming</code> 则先恢复迁移状态，<code>-loadvm</code> 先恢复快照；这些路径的第一条客户机指令可能是恢复点，而非复位向量。直接加载内核也会改变引导准备过程，需要另外跟踪所选机器的内核装载代码。</p>
+  <h3>从固件到磁盘与网络驱动</h3>
+  <p>本例中，BIOS 固件从复位向量开始执行，初始化平台并枚举 PCI 设备。<code>bootindex=1</code> 将 virtio 磁盘列入启动顺序，固件通过自己的 virtio-blk 驱动读取引导数据，再将控制权交给磁盘上的引导程序与操作系统内核。此时请求已经通过 virtio-blk、块后端和 qcow2/file 节点访问系统镜像。</p>
+  <p>操作系统接管后，加载自己的 virtio-blk 与 virtio-net 驱动，协商设备特性并配置队列。系统盘用于读取根文件系统；网卡完成接口与地址配置后才开始提供网络通信。QEMU 已创建网卡、客户机已识别网卡、客户机已取得 IP 和业务已可访问，是四个不同的检查点。常见启动故障也据此分层：镜像打不开会阻止 QEMU 初始化，固件找不到引导程序会停在引导阶段，缺少磁盘驱动可能使内核无法挂载根文件系统，网络配置失败则通常不会阻止 CPU 与操作系统运行。</p>
+</section>
+
+<section id="objects" class="mechanism-section">
+  <h2>机器、执行后端与处理器对象</h2>
+  <table><thead><tr><th scope="col">对象</th><th scope="col">关键字段</th><th scope="col">职责</th></tr></thead><tbody>
+    <tr><td><code>MachineState</code></td><td><code>smp / ram_size / ram / cpu_type / accelerator</code></td><td>保存整机配置，关联 RAM 后端、CPU 型号和执行后端；MachineClass 的 init 创建具体板级布局。</td></tr>
+    <tr><td><code>KVMState</code></td><td><code>fd / vmfd / memory_listener</code></td><td>fd 指向 /dev/kvm，vmfd 指向本虚拟机；监听地址空间变更并维护 KVM 内存槽。</td></tr>
+    <tr><td><code>CPUState</code></td><td><code>cpu_index / thread / created / stopped / kvm_fd / kvm_run</code></td><td>管理一个 vCPU 的宿主线程、控制状态及 KVM 接口。</td></tr>
+    <tr><td><code>X86CPU / CPUX86State</code></td><td><code>apic_id / env / env.eip / env.segs / env.mp_state</code></td><td>保存 x86 型号、体系结构寄存器和处理器启动状态，与通用 CPUState 一起组成 CPU 实例。</td></tr>
+    <tr><td><code>MemoryRegion / AddressSpace</code></td><td>RAM 区域、别名、子区域与解析后的映射</td><td>表达客户机可见地址布局，供 CPU、设备和 KVM 监听器使用。</td></tr>
+    <tr><td><code>BlockDriverState / BlockBackend</code></td><td>块图节点、格式与协议驱动、前端 I/O 接口</td><td>将客户机磁盘请求连接到 qcow2 格式节点和宿主文件；virtio-blk 是客户机可见的设备前端。</td></tr>
+    <tr><td><code>NetClientState / NICState</code></td><td>网络客户端、peer、队列与设备状态</td><td>连接 virtio-net 前端和 user、TAP 等网络后端；队列与驱动在客户机启动后进一步初始化。</td></tr>
+  </tbody></table>
+  <p>表中的结构保存在 QEMU 用户态；<code>KVMState</code> 和 <code>CPUState</code> 通过 fd 关联宿主内核的 VM 与 vCPU 对象。<code>object_new()</code> 分配并初始化 QOM 对象，<code>qdev_realize()</code> 检查属性、连接总线并完成设备可用化；<code>KVM_CREATE_VM</code> 和 <code>KVM_CREATE_VCPU</code> 则建立内核对象。一个 CPU 对象经过 realize 才会创建执行线程。对象与设备的关系见<a href="qemu-qom-device.html">QEMU 对象模型与设备初始化</a>。</p>
+  <p>源码中的 <code>created</code> 表示 vCPU 线程初始化握手完成，<code>stopped</code> 表示 QEMU 主动停止它执行客户机。两者可以同时为 true。客户机执行 HLT 后的 <code>halted</code> 又是另一种处理器状态，不能拿来代替管理侧暂停。</p>
 </section>
 
 <section id="evolution" class="mechanism-section">
@@ -100,7 +116,8 @@ vmfd
 <section id="implementation" class="mechanism-section">
   <h2>源码：初始化与首次执行入口</h2>
   <table><thead><tr><th scope="col">位置</th><th scope="col">阅读重点</th></tr></thead><tbody>
-    <tr><td><a href="{{ qemu_source }}system/vl.c#L3769-L3850">qemu_init</a></td><td>machine、accelerator、后端、CPU 类型与板级初始化的顺序。</td></tr>
+    <tr><td><a href="{{ qemu_source }}system/vl.c#L3769-L3850">qemu_init</a></td><td>machine、早期块后端、accelerator、晚期网络后端、CPU 类型与板级初始化的顺序。</td></tr>
+    <tr><td><a href="{{ qemu_source }}system/vl.c#L2020-L2124">后端初始化</a>、<a href="{{ qemu_source }}system/vl.c#L2736-L2762">qemu_create_cli_devices</a></td><td>块图和网络后端先建立，磁盘与网卡前端随后通过 -device 连接。</td></tr>
     <tr><td><a href="{{ qemu_source }}hw/core/machine.c#L1658-L1746">machine_run_board_init</a></td><td>默认内存后端、CPU 类型校验和 MachineClass.init。</td></tr>
     <tr><td><a href="{{ qemu_source }}hw/i386/pc_q35.c#L131-L245">pc_q35_init</a></td><td>CPU 创建早于 Q35 内存布局与芯片组设备完成。</td></tr>
     <tr><td><a href="{{ qemu_source }}accel/kvm/kvm-all.c#L2610-L2825">kvm_init</a></td><td>系统 fd、VM fd、能力查询、中断控制器和内存监听器。</td></tr>

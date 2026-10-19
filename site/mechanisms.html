@@ -10,7 +10,7 @@
   <link rel="shortcut icon" href="favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="assets/mechanisms.css?v=c204cdcdcf49"></head>
+<link rel="stylesheet" href="assets/mechanisms.css?v=64313220e987"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -48,7 +48,7 @@
         <span class="mechanism-directory-label" id="directory-foundations">基础机制</span>
         <ul aria-labelledby="directory-foundations">
           <li><a href="#virtualization-basics"><span>虚拟化基础</span><span class="mechanism-directory-count">1<span class="sr-only"> 篇文章</span></span></a></li>
-          <li><a href="#cpu-virtualization"><span>CPU 虚拟化</span><span class="mechanism-directory-count">6<span class="sr-only"> 篇文章</span></span></a></li>
+          <li><a href="#cpu-virtualization"><span>CPU 虚拟化</span><span class="mechanism-directory-count">5<span class="sr-only"> 篇文章</span></span></a></li>
           <li><a href="#memory-virtualization"><span>内存虚拟化</span><span class="mechanism-directory-count">5<span class="sr-only"> 篇文章</span></span></a></li>
           <li><a href="#device-virtualization"><span>设备与 I/O 虚拟化</span><span class="mechanism-directory-count">11<span class="sr-only"> 篇文章</span></span></a></li>
           <li><a href="#interrupt-virtualization"><span>中断虚拟化</span><span class="mechanism-directory-count">2<span class="sr-only"> 篇文章</span></span></a></li>
@@ -57,10 +57,10 @@
       <div class="mechanism-directory-row">
         <span class="mechanism-directory-label" id="directory-operations">关键操作</span>
         <ul aria-labelledby="directory-operations">
-          <li><a href="#vm-startup"><span>虚拟机启动</span><span class="mechanism-directory-count">3<span class="sr-only"> 篇文章</span></span></a></li>
+          <li><a href="#vm-startup"><span>虚拟机启动</span><span class="mechanism-directory-count">2<span class="sr-only"> 篇文章</span></span></a></li>
           <li><a href="#migration"><span>热迁移</span><span class="mechanism-directory-count">6<span class="sr-only"> 篇文章</span></span></a></li>
           <li><a href="#hotplug"><span>热插拔</span><span class="mechanism-directory-count">4<span class="sr-only"> 篇文章</span></span></a></li>
-          <li><a href="#live-upgrade"><span>热升级</span><span class="mechanism-directory-count">2<span class="sr-only"> 篇文章</span></span></a></li>
+          <li><a href="#live-upgrade"><span>热升级</span><span class="mechanism-directory-count">1<span class="sr-only"> 篇文章</span></span></a></li>
         </ul>
       </div>
       <div class="mechanism-directory-row">
@@ -84,9 +84,6 @@
     <header class="mechanism-topic-header"><h3 id="mechanism-topic-cpu-virtualization"><a href="mechanisms/cpu-virtualization.html">CPU 虚拟化</a></h3><p>客户机执行、退出处理、调度与时钟，以及 TCG 指令翻译、代码缓存和执行交接。</p></header>
     <div class="mechanism-list">
 <article class="mechanism-list-item">
-        <h4><a href="mechanisms/kvm-vcpu-run.html">KVM vCPU 的执行循环与退出处理</a></h4>
-        <p>沿 CPUID 与设备寄存器读取，分析 KVM_RUN、硬件退出、kvm_run 数据交接，以及暂停前的 I/O 完成顺序。</p>
-      </article><article class="mechanism-list-item">
         <h4><a href="mechanisms/kvm-vcpu-halt.html">KVM vCPU 的阻塞、轮询与唤醒</a></h4>
         <p>从 HLT 跟踪宿主轮询、等待者发布与中断唤醒，分析丢失唤醒的防护和轮询预算的自适应调整。</p>
       </article><article class="mechanism-list-item">
@@ -114,7 +111,7 @@
         <p>脏页记录的产生、收割与重置，以及重新保护、发布迁移位图和读取页面之间的顺序。</p>
       </article><article class="mechanism-list-item">
         <h4><a href="mechanisms/vcpu-numa-placement.html">vCPU 与 NUMA 内存放置</a></h4>
-        <p>从绑核后仍有远端内存访问的问题出发，说明客户机拓扑、线程亲和性、RAM 分配策略与 I/O 后端位置怎样配合。</p>
+        <p>分析客户机拓扑、线程亲和性、RAM 分配策略与 I/O 后端位置的配合，以及远端内存访问对延迟和带宽的影响。</p>
       </article>    </div>
   </section>
   <section class="mechanism-topic" id="device-virtualization" aria-labelledby="mechanism-topic-device-virtualization">
@@ -164,14 +161,11 @@
   <section class="mechanism-group" aria-labelledby="group-operations">
     <h2 id="group-operations">关键操作</h2>
   <section class="mechanism-topic" id="vm-startup" aria-labelledby="mechanism-topic-vm-startup">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-vm-startup"><a href="mechanisms/vm-startup.html">虚拟机启动</a></h3><p>从 Libvirt 请求到 QEMU 创建机器、KVM 初始化和客户机开始执行。</p></header>
+    <header class="mechanism-topic-header"><h3 id="mechanism-topic-vm-startup"><a href="mechanisms/libvirt-domain-start.html">虚拟机启动</a></h3><p>从 Libvirt 请求到 QEMU 创建机器、KVM 初始化和客户机开始执行。</p></header>
     <div class="mechanism-list">
 <article class="mechanism-list-item">
-        <h4><a href="mechanisms/libvirt-domain-start.html">Libvirt 虚拟机启动的进程与状态管理</a></h4>
-        <p>沿 virsh start 的冷启动路径，分析定义与作业、exec 前握手、QMP 配置、运行状态转换和失败清理。</p>
-      </article><article class="mechanism-list-item">
         <h4><a href="mechanisms/qemu-vm-startup.html">QEMU 虚拟机启动与 vCPU 初始化</a></h4>
-        <p>从 Q35 冷启动跟踪机器创建、KVM 接口、内存布局与 vCPU 线程，说明暂停启动、复位和固件执行之间的边界。</p>
+        <p>以包含系统盘与网卡的 Q35 虚拟机为例，跟踪后端、KVM、CPU、内存与设备初始化，再到复位、固件和操作系统引导。</p>
       </article>    </div>
   </section>
   <section class="mechanism-topic" id="migration" aria-labelledby="mechanism-topic-migration">
@@ -188,14 +182,14 @@
         <p>内存页批次的并行发送、主通道与数据通道的同步，以及慢通道对接收进度的影响。</p>
       </article><article class="mechanism-list-item">
         <h4><a href="mechanisms/qemu-postcopy.html">QEMU 后拷贝迁移的缺页处理与页面传输</a></h4>
-        <p>目的端接管执行后，如何请求尚未收到的内存页，以及页面安装、线程唤醒与后台传输的配合。</p>
+        <p>分析目的端接管后的缺页请求、页面安装、线程唤醒与后台传输，以及后拷贝的收敛收益和故障代价。</p>
       </article><article class="mechanism-list-item">
         <h4><a href="mechanisms/libvirt-live-migration.html">Libvirt 热迁移的阶段协调与失败恢复</a></h4>
         <p>沿 Begin、Prepare、Perform、Finish、Confirm 追踪双端交接，比较客户端与 p2p 协调，解释断线确认、存储归属与 postcopy 恢复边界。</p>
       </article>    </div>
   </section>
   <section class="mechanism-topic" id="hotplug" aria-labelledby="mechanism-topic-hotplug">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-hotplug"><a href="mechanisms/hotplug.html">热插拔</a></h3><p>设备与内存的在线增删、客户机通知和资源回收。</p></header>
+    <header class="mechanism-topic-header"><h3 id="mechanism-topic-hotplug"><a href="mechanisms/hotplug.html">热插拔</a></h3><p>设备、CPU 与内存的在线增删、客户机通知和资源回收。</p></header>
     <div class="mechanism-list">
 <article class="mechanism-list-item">
         <h4><a href="mechanisms/qemu-pcie-hotplug.html">QEMU PCIe 设备热插拔与异步移除</a></h4>
@@ -209,12 +203,9 @@
       </article>    </div>
   </section>
   <section class="mechanism-topic" id="live-upgrade" aria-labelledby="mechanism-topic-live-upgrade">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-live-upgrade"><a href="mechanisms/live-upgrade.html">热升级</a></h3><p>QEMU 或后端进程替换时的状态交接、连接保持与恢复。</p></header>
+    <header class="mechanism-topic-header"><h3 id="mechanism-topic-live-upgrade"><a href="mechanisms/qemu-cpr-transfer.html">热升级</a></h3><p>QEMU 同机进程替换中的共享内存、状态恢复、兼容性与失败边界。</p></header>
     <div class="mechanism-list">
-<article class="mechanism-list-item">
-        <h4><a href="mechanisms/qemu-cpr-transfer.html">QEMU 同机更新的内存与文件描述符交接</a></h4>
-        <p>分析 cpr-transfer 如何保留共享 RAM、传递宿主资源并恢复 CPU 和设备状态，区分资源准备、停机与执行接管。</p>
-      </article>    </div>
+    </div>
   </section>
   </section>
   <section class="mechanism-group" aria-labelledby="group-internals">
@@ -226,8 +217,8 @@
         <h4><a href="mechanisms/qemu-qom-device.html">QEMU 对象模型与设备初始化</a></h4>
         <p>从 virtio-net-pci 的创建过程出发，分析 QOM 类型、对象组合、属性配置与设备生命周期。</p>
       </article><article class="mechanism-list-item">
-        <h4><a href="mechanisms/qemu-memory-region.html">QEMU MemoryRegion 的地址映射与访问分发</a></h4>
-        <p>从别名窗口和重叠区域出发，分析 FlatView 的生成、RAM 与 MMIO 分发，以及布局变更时的 KVM 内存槽更新。</p>
+        <h4><a href="mechanisms/qemu-memory-region.html">QEMU 内存初始化与地址空间管理</a></h4>
+        <p>以 Q35 的 8 GiB RAM 为例，分析宿主后备分配、高低端内存布局、FlatView 与 KVM 注册，再用交互演示解释别名和区域覆盖。</p>
       </article><article class="mechanism-list-item">
         <h4><a href="mechanisms/qemu-aio-iothread.html">QEMU AioContext、协程与 IOThread</a></h4>
         <p>沿一次文件写请求，分析事件分发、协程挂起与恢复、队列到 IOThread 的映射，以及多线程块层的同步边界。</p>
@@ -240,7 +231,7 @@
       </article>    </div>
   </section>
   <section class="mechanism-topic" id="kvm-internals" aria-labelledby="mechanism-topic-kvm-internals">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-kvm-internals"><a href="mechanisms/kvm-internals.html">KVM 内部机制</a></h3><p>内核对象、vCPU 请求与跨 CPU 协调，联系执行循环、内存映射及事件处理。</p></header>
+    <header class="mechanism-topic-header"><h3 id="mechanism-topic-kvm-internals"><a href="mechanisms/kvm-vcpu-run.html">KVM 内部机制</a></h3><p>内核对象、vCPU 请求与跨 CPU 协调，联系执行循环、内存映射及事件处理。</p></header>
     <div class="mechanism-list">
 <article class="mechanism-list-item">
         <h4><a href="mechanisms/kvm-vcpu-requests.html">KVM vCPU 请求与跨 CPU 同步</a></h4>

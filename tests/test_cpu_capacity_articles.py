@@ -26,7 +26,7 @@ def test_cpu_model_expansion_is_not_presented_as_host_compatibility_validation()
     page = render.render_mechanisms_html(Config(), "cpu-model-migration")
     for marker in (
         "query-cpu-definitions", "query-cpu-model-expansion", "unavailable-features",
-        "展开操作本身不会完成宿主可运行性检查", "运行状态", "冷启动",
+        "展开和可运行性检查是两个步骤", "realize", "enforce", "运行状态", "冷启动",
         "不能在迁移中途删掉它", "TSC", "migratable",
     ):
         assert marker in page
@@ -37,7 +37,7 @@ def test_cpu_hotplug_keeps_host_existence_guest_online_and_removal_separate():
     for marker in (
         "query-hotpluggable-cpus", "query-cpus-fast", "qom-path",
         "props.thread-id", "客户机 online", "DEVICE_DELETED", "ACPI eject",
-        "启动 CPU", "超时与删除失败不是同义词",
+        "启动 CPU", "事件可能在等待超时后才到达", "重连后应重新查询状态",
     ):
         assert marker in page
 

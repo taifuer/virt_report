@@ -2,16 +2,16 @@
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>在线增删设备为什么需要客户机配合</h2>
-  <p>运行中的虚拟机增加一块网卡，需要 QEMU 创建设备、插槽报告变化、客户机枚举资源并绑定驱动。移除时则需要先停止客户机对设备的使用，再撤销模型和后端关联。这些动作分属管理程序、设备模型和客户机操作系统，完成时间也不同。</p>
-  <p>本文以 q35 上预先创建的 PCIe Root Port 和一块现代 virtio-net-pci 网卡为例，分析 PCIe 原生热插拔。客户机通过 PCIe 插槽寄存器与中断配合操作；ACPI 热插拔使用另一套通知和应答路径。</p>
-  <p>例子中的端口是 <code>rp1</code>，网卡是 <code>net1</code>，宿主网络后端是 <code>n1</code>。添加时按“预留插槽 → 创建后端和网卡 → 通知客户机 → 枚举并绑定驱动”推进；删除时先请求客户机停用，再拆除网卡，最后清理独立后端。QMP 命令受理只覆盖其中一个阶段，后文用完成事件把这条异步流程接起来。</p>
+  <h2>PCIe 设备热插拔的处理范围</h2>
+  <p>PCIe 设备热插拔允许在虚拟机运行期间添加或移除网卡、存储控制器等设备。QEMU 通过端口的插槽状态与事件通知客户机，客户机操作系统再完成设备枚举、驱动绑定或停用。管理程序负责发起变更，并在设备移除后回收独立的宿主后端。</p>
+  <p>这是<a href="hotplug.html">虚拟机热插拔</a>中的设备操作路径。<a href="x86-vcpu-hotplug.html">CPU 热插拔</a>、<a href="qemu-virtio-mem.html">内存容量调整</a>与 PCIe 设备增删都涉及资源准备、客户机状态更新和资源回收，但使用的通知协议与资源约束不同。本文以 q35 上预先创建的 PCIe Root Port 和一块现代 virtio-net-pci 网卡为例，分析 PCIe 原生热插拔；ACPI PCI 热插拔则使用另一套通知和应答路径。</p>
+  <p>例子中的端口是 <code>rp1</code>，网卡是 <code>net1</code>，宿主网络后端是 <code>n1</code>。添加流程依次为预留插槽、创建后端与网卡、发布插槽事件、客户机枚举并绑定驱动。删除流程先通知客户机停用设备，再拆除网卡，最后清理独立后端。下文沿这两条流程说明拓扑、寄存器、源码回调和完成事件。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="topology" class="mechanism-section">
   <h2>插槽拓扑与资源预留</h2>
-  <p>PCIe 原生热插拔控制器位于 Root Port 或 Downstream Port。网卡接在端口的下游总线上，端口自己的配置空间保存插槽状态。启动时直接放在 pcie.0 上的集成端点没有这套下游插槽交接；不能只给任意设备调用 device_del，就认为所有拓扑都有相同能力。<a href="{{ qemu_source }}docs/pcie.txt#L220-L262">PCIe 拓扑与热插拔规划</a></p>
+  <p>PCIe 原生热插拔控制器位于 Root Port 或 Downstream Port。网卡接在端口的下游总线上，端口自己的配置空间保存插槽状态。启动时直接放在 pcie.0 上的集成端点没有这套下游插槽机制；<code>device_del</code> 的支持范围取决于设备类型、端口能力与机器拓扑。<a href="{{ qemu_source }}docs/pcie.txt#L220-L262">PCIe 拓扑与热插拔规划</a></p>
   <p>本例启动配置中的相关部分为：</p>
   <pre><code>-machine pc-q35-10.2,accel=kvm
 -global ICH9-LPC.acpi-pci-hotplug-with-bridge-support=off
@@ -19,19 +19,6 @@
   <p>第一行选择机器型号；第二行关闭本例的 ACPI PCI 热插拔控制，让客户机协商使用原生路径；第三行预留一个端口。当前 q35 也支持 ACPI 控制 PCI 热插拔，是否走本文路径需要同时看机器兼容属性、固件的 _OSC 协商和客户机驱动。<a href="{{ qemu_source }}hw/acpi/ich9.c#L390-L455">ACPI 控制属性</a>、<a href="{{ qemu_source }}hw/i386/acpi-build.c#L895-L902">原生控制权协商</a></p>
   {{ diagram('pcie-hotplug-topology', '端口、网卡与后端的关联', 'Root Port 的插槽寄存器负责通知客户机；virtio 网卡是下游端点；netdev 是宿主后端对象。三者有不同的标识和生命周期。') }}
   <p>空端口只解决拓扑位置。客户机还需要总线号、BAR 对应的 MMIO 窗口和中断资源。固件通常在启动时安排桥窗口，后续客户机能否重分配资源也受系统能力限制。QEMU 的 Root Port 提供 <code>bus-reserve</code>、<code>mem-reserve</code>、<code>pref64-reserve</code> 等资源预留属性；它们向固件描述需求，不代表插入后必然能得到资源。<a href="{{ qemu_source }}hw/pci-bridge/gen_pcie_root_port.c#L131-L148">资源预留属性</a></p>
-</section>
-
-<section id="structures" class="mechanism-section">
-  <h2>用插槽状态和事件表达设备变化</h2>
-  <table><thead><tr><th scope="col">对象或寄存器</th><th scope="col">关键字段</th><th scope="col">作用</th></tr></thead><tbody>
-    <tr><td>DeviceState</td><td><code>id</code>、<code>parent_bus</code>、<code>realized</code>、<code>hotplugged</code></td><td>标识设备、连接总线，区分初始化完成和启动后添加</td></tr>
-    <tr><td>删除交接</td><td><code>pending_deleted_event</code>、<code>pending_deleted_expires_ms</code></td><td>记录待完成的删除通知及重复请求检查窗口</td></tr>
-    <tr><td>HotplugHandlerClass</td><td><code>pre_plug</code>、<code>plug</code>、<code>unplug_request</code>、<code>unplug</code></td><td>分别完成接入检查、插入通知、移除请求和实际拆除</td></tr>
-    <tr><td>Slot Capabilities · 32 位</td><td>HPC、PCP 等</td><td>声明热插拔、插槽电源控制等能力</td></tr>
-    <tr><td>Slot Status · 16 位</td><td>PDS、PDC、ABP、CC</td><td>设备存在、存在状态变化、注意按钮事件、控制命令完成</td></tr>
-    <tr><td>Slot Control · 16 位</td><td>HPIE、PDCE、ABPE、PCC、PIC</td><td>事件使能、电源控制和电源指示灯状态</td></tr>
-  </tbody></table>
-  <p>PDS 表示设备是否存在，PDC 表示存在状态发生过变化，不能混用。事件状态位按写 1 清除等寄存器语义处理；QEMU 只有在事件和对应使能条件满足时才发出通知。这里的中断来自端口热插拔控制器，与网卡收发完成中断是两条路径。<a href="{{ qemu_source }}hw/pci/pcie.c#L392-L442">事件与中断条件</a>、<a href="{{ qemu_source }}hw/pci/pcie.c#L668-L735">插槽寄存器初始化</a></p>
 </section>
 
 <section id="addition" class="mechanism-section">
@@ -44,6 +31,7 @@
  "bus":"rp1","netdev":"n1","disable-legacy":true},"id":"nic-add"}
 {"return":{},"id":"nic-add"}</code></pre>
   <p><code>user</code> 后端需要相应构建支持，示例选它以集中观察设备生命周期。实际发包的队列与后端处理见<a href="qemu-network-tx.html">网卡模拟与 virtio-net 发包路径</a>。</p>
+  <p>下面流程中的 PDS 表示插槽当前有设备，PDC 表示存在状态发生过变化，ABP 表示注意按钮事件。客户机读取这些状态并处理通知；完整寄存器和回调表放在添加、移除流程之后。</p>
   <ol class="mechanism-flow">
     <li><strong>查类型和总线</strong><span>qdev_device_add_from_qdict() 查找设备类和 rp1 总线，检查类型、可用位置与迁移状态。</span></li>
     <li><strong>创建并设置属性</strong><span>qdev_new() 建立对象，设置 net1 标识及 netdev 等属性，再调用 qdev_realize()。</span></li>
@@ -69,12 +57,26 @@
   <p>上面展示常见的先响应、后事件顺序。管理程序需要持续接收事件并按设备 ID 或 QOM 路径关联，不能假定它与命令响应的相对位置。删除请求的响应 ID 也不会变成 DEVICE_DELETED 的匹配字段。<a href="{{ qemu_source }}qapi/qdev.json#L87-L165">异步删除接口约定</a></p>
   {{ diagram('pcie-hotplug-removal', 'PCIe 原生热拔出的交接', '图示已上电、正在使用的单功能端点。QMP 返回只表示请求已受理；客户机停用设备并关闭插槽后，QEMU 才执行拆除，完成后再报告 DEVICE_DELETED。') }}
   <p>原生插槽回调先检查热插拔能力和锁定状态，再设置删除标记，并模拟注意按钮事件。客户机热插拔驱动处理请求，协调设备驱动停用、释放资源，并改变插槽控制寄存器。QEMU 在检测到有设备的插槽从未关闭状态切换到 <code>PCC = off</code> 且 <code>PIC = off</code> 时，调用 <code>pcie_cap_slot_do_unplug()</code>。已经关闭的插槽和部分尚未向客户机暴露的设备存在直接拆除分支。<a href="{{ qemu_source }}hw/pci/pcie.c#L608-L664">请求回调</a>、<a href="{{ qemu_source }}hw/pci/pcie.c#L879-L912">关闭插槽后的拆除</a></p>
-  <p>实际拆除依次调用处理器的 unplug、<code>qdev_unrealize()</code> 和 <code>object_unparent()</code>。unrealize 停止设备实现并撤销其资源；unparent 解除对象树及总线关系；对象引用释放到零后才进入 finalize。<code>device_finalize()</code> 检查删除标记并发送 DEVICE_DELETED，不能把“realized 已变 false”当作对象内存已经释放。<a href="{{ qemu_source }}hw/pci/pcie.c#L571-L606">拆除端点</a>、<a href="{{ qemu_source }}hw/core/qdev.c#L693-L753">最终事件与父子关系清理</a></p>
+  <p>实际拆除依次调用处理器的 unplug、<code>qdev_unrealize()</code> 和 <code>object_unparent()</code>。unrealize 停止设备实现并撤销其资源；unparent 解除对象树及总线关系；对象引用释放到零后才进入 finalize。<code>device_finalize()</code> 在最后阶段检查删除标记并发送 DEVICE_DELETED，之后释放对象内存。<a href="{{ qemu_source }}hw/pci/pcie.c#L571-L606">拆除端点</a>、<a href="{{ qemu_source }}hw/core/qdev.c#L693-L753">最终事件与父子关系清理</a></p>
   <p>端口模型按插槽处理下游设备，多功能设备可能一起被移除。本文使用单功能网卡；生产管理层需要按实际插槽与功能关系决定操作范围，不能只看一个 QMP ID。</p>
 </section>
 
+<section id="structures" class="mechanism-section">
+  <h2>插槽状态、事件与热插拔回调</h2>
+  <table><thead><tr><th scope="col">对象或寄存器</th><th scope="col">关键字段</th><th scope="col">作用</th></tr></thead><tbody>
+    <tr><td>DeviceState</td><td><code>id</code>、<code>parent_bus</code>、<code>realized</code>、<code>hotplugged</code></td><td>标识设备、连接总线，区分初始化完成和启动后添加</td></tr>
+    <tr><td>删除交接</td><td><code>pending_deleted_event</code>、<code>pending_deleted_expires_ms</code></td><td>记录待完成的删除通知及重复请求检查窗口</td></tr>
+    <tr><td>HotplugHandlerClass</td><td><code>pre_plug</code>、<code>plug</code>、<code>unplug_request</code>、<code>unplug</code></td><td>分别完成接入检查、插入通知、移除请求和实际拆除</td></tr>
+    <tr><td>Slot Capabilities · 32 位</td><td>HPC、PCP 等</td><td>声明热插拔、插槽电源控制等能力</td></tr>
+    <tr><td>Slot Status · 16 位</td><td>PDS、PDC、ABP、CC</td><td>设备存在、存在状态变化、注意按钮事件、控制命令完成</td></tr>
+    <tr><td>Slot Control · 16 位</td><td>HPIE、PDCE、ABPE、PCC、PIC</td><td>事件使能、电源控制和电源指示灯状态</td></tr>
+  </tbody></table>
+  <p>PDS 表示设备是否存在，PDC 表示存在状态发生过变化，不能混用。事件状态位按写 1 清除等寄存器语义处理；QEMU 只有在事件和对应使能条件满足时才发出通知。这里的中断来自端口热插拔控制器，与网卡收发完成中断是两条路径。<a href="{{ qemu_source }}hw/pci/pcie.c#L392-L442">事件与中断条件</a>、<a href="{{ qemu_source }}hw/pci/pcie.c#L668-L735">插槽寄存器初始化</a></p>
+</section>
+
 <section id="failure" class="mechanism-section">
-  <h2>操作卡在哪一层，资源何时能回收</h2>
+  <h2>异常状态与资源回收条件</h2>
+  <p>可以先对照 QEMU 与客户机的设备视图。宿主侧通过已协商的 QMP 连接执行 <code>{"execute":"query-pci"}</code>，沿 <code>pci_bridge.devices</code> 找到 <code>qdev_id = net1</code>，核对总线位置和 BAR；客户机内执行 <code>lspci -nnk</code> 查看设备及绑定驱动，执行 <code>ip -br link</code> 查看网络接口。QEMU 的 net1 标识不会直接成为客户机的网卡名称，二者应通过 PCI 位置、设备类型等信息关联。<a href="{{ qemu_source }}qapi/pci.json">query-pci 的返回字段</a></p>
   <table><thead><tr><th scope="col">看到的现象</th><th scope="col">含义与检查位置</th></tr></thead><tbody>
     <tr><td>device_add 立即报错</td><td>检查设备类、总线、ID 冲突、属性和资源初始化；未进入成功发布路径</td></tr>
     <tr><td>添加成功，客户机没有可用网卡</td><td>分别检查插槽通知、客户机枚举、BAR 分配和驱动；QMP 成功不覆盖客户机这几步</td></tr>
@@ -88,6 +90,13 @@
 
 <section id="implementation" class="mechanism-section">
   <h2>源码：插槽通知与设备最终拆除</h2>
+  <p>通用设备层通过热插拔处理器找到端口实现。Root Port 继承 <code>PCIESlot</code> 的处理接口，插槽类初始化时登记下面四个回调；端口实例初始化时，再用 <code>qbus_set_hotplug_handler()</code> 把下游总线与自己关联：</p>
+  <pre><code>/* pcie_slot_class_init() 中的回调登记 */
+hc-&gt;pre_plug = pcie_cap_slot_pre_plug_cb;
+hc-&gt;plug = pcie_cap_slot_plug_cb;
+hc-&gt;unplug = pcie_cap_slot_unplug_cb;
+hc-&gt;unplug_request = pcie_cap_slot_unplug_request_cb;</code></pre>
+  <p>因此，删除 <code>net1</code> 时，<code>qdev_unplug()</code> 从设备所在总线取得处理器 <code>rp1</code>，通过 <code>unplug_request</code> 进入插槽通知逻辑。随后 QMP 调用结束，等待客户机处理。客户机写入插槽控制寄存器时，另一次配置访问进入 <code>rp_write_config()</code>，检查电源状态变化，再触发实际拆除。两段处理由插槽寄存器和设备的待删除状态连接，期间网卡对象仍然存在。<a href="{{ qemu_source }}hw/pci/pcie_port.c#L214-L225">回调登记</a>、<a href="{{ qemu_source }}hw/pci/pcie.c#L732-L736">总线与处理器关联</a></p>
   <table><thead><tr><th scope="col">入口</th><th scope="col">检查重点</th></tr></thead><tbody>
     <tr><td><a href="{{ qemu_source }}system/qdev-monitor.c#L643-L743">qdev_device_add_from_qdict()</a></td><td>查类、查总线、创建对象、设置属性与 realize，错误路径的引用释放</td></tr>
     <tr><td><a href="{{ qemu_source }}hw/core/qdev.c#L483-L646">device_set_realized()</a></td><td>pre_plug、设备初始化与 plug 的顺序，后续阶段失败时的回滚</td></tr>

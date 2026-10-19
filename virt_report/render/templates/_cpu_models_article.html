@@ -2,9 +2,10 @@
 {% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 {% set libvirt = 'https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/' %}
 <section id="preface" class="mechanism-section">
-  <h2>同为 x86，为什么仍可能无法迁移</h2>
+  <h2>x86 CPU 能力差异与迁移兼容性</h2>
   <p>一台虚拟机在主机 A 上启动，应用发现 CPU 支持 AVX2，于是选择了向量计算实现。主机 B 也使用 x86 处理器，却不支持 AVX2。如果把内存与寄存器原样搬过去，程序继续执行时就可能遇到非法指令。目标能运行相同操作系统，并不意味着它能接着执行这台已经运行的虚拟机。</p>
   <p>CPU 模型规定客户机看到的指令能力、部分控制接口和状态布局。迁移需要目标维持这些承诺，同时恢复已经产生的寄存器、扩展状态和时钟。下面先区分能力与状态，再用两台主机的例子说明模型选择、兼容检查和迁移边界。</p>
+  <p>配置从管理层向下落实：Libvirt 选择模型与特性，QEMU 展开模型并与加速器能力比较，KVM 按客户机定义处理 CPUID 和运行状态，客户机操作系统及应用据此选择代码路径。宿主 CPU 型号相同，也仍需比较这些软件层最终提供的能力。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 <section id="contract" class="mechanism-section">
@@ -15,6 +16,7 @@
     <tr><td>机器环境</td><td>机器类型、设备模型、时钟配置及其他迁移状态</td><td>与 CPU 一起构成可继续执行的系统，CPU 检查通过仍不足以证明整机兼容</td></tr>
   </tbody></table>
   <p>CPUID 相当于客户机可以使用的接口目录，运行状态则是当前正在使用这些接口的结果。例如暴露 AVX 会带来向量寄存器和扩展状态管理要求。简单比较两份 CPU flags 列表，无法覆盖全部状态恢复和机器兼容约束。</p>
+  <p>因此，兼容性要在两个时刻检查：启动前选出目标池能够提供的能力；迁移前确认具体目的端仍能提供该运行实例的能力并恢复当前状态。前一次检查决定客户机可以做什么，后一次防止硬件或软件变化破坏已有约定。</p>
   <p>KVM 路径不能普遍靠软件补齐缺少的指令特性。某些功能可由 KVM 或 QEMU 模拟，另一些必须由宿主硬件提供；应以目标加速器报告的能力为准。把 <code>host</code> 换成另一个型号名，也不能让不支持该指令的宿主自动具备它。</p>
 </section>
 <section id="models" class="mechanism-section">
@@ -24,16 +26,17 @@
   <p><code>host-passthrough</code> 尽量暴露宿主能力，适合优先利用本机特性的场合。迁移时更依赖双方硬件、内核、微码和 QEMU 环境的一致性。<code>migratable='on'</code> 主要筛掉已知不可迁移的特性，并不把任意两台宿主变成兼容目标。应结合宿主域能力及实际迁移验证选择模式。<a href="{{ libvirt }}docs/formatdomain.rst#L1568-L1585">直通模式的限制</a></p>
 </section>
 <section id="example" class="mechanism-section">
-  <h2>两台主机怎样确定共同能力</h2>
+  <h2>两台主机的共同 CPU 能力基线</h2>
   <p>用一个简化集合说明选择过程：A 可提供 <code>{SSE4.2, AVX, AVX2}</code>，B 可提供 <code>{SSE4.2, AVX}</code>。若需要在 A、B 之间迁移，就在启动前选择双方支持的模型，并检查依赖关系、扩展状态和其他约束。这里的集合用于解释，真实配置不能只对三个 flags 求交集。</p>
   {{ diagram('cpu-model-migration-contract', '从宿主能力到迁移检查', '运行前确定两端都能提供的客户机 CPU 定义；运行后保持该定义，并单独恢复 CPU 状态。目标缺少已经暴露的能力时，迁移应被拒绝。') }}
   <p>如果 VM 已在 A 上暴露了 AVX2，不能在迁移中途删掉它来适配 B。客户机可能已选择实现、建立扩展状态或生成对应机器码。应更换满足要求的目标；若要降低模型，通常需要停止虚拟机，在下一次启动前调整配置，并确认操作系统和应用的最低要求。</p>
-  <p>可以在两端各自的 QMP 中查看模型定义和展开结果：</p>
+  <p>在源、目的宿主上，分别连接对应 QEMU 的 QMP，查看各自加速器下的模型定义与展开结果。新建的直接 QMP 连接先发送 <code>qmp_capabilities</code> 完成协商，再执行下面两条查询；这些请求在宿主管理通道执行，不是客户机中的命令：</p>
   <pre><code>{"execute":"query-cpu-definitions"}
 {"execute":"query-cpu-model-expansion","arguments":{
   "type":"full","model":{"name":"Haswell-v4"}
 }}</code></pre>
-  <p>第一条返回的 <code>unavailable-features</code> 可辅助判断当前加速器缺少哪些要求；第二条把模型展开为属性，便于比较最终配置。展开操作本身不会完成宿主可运行性检查，不能把“成功返回属性”当作“目标能运行”。QEMU 在 realize 阶段另外进行能力过滤，启用 <code>enforce</code> 可将缺少要求的情况作为错误处理。<a href="{{ qemu }}target/i386/cpu.c#L8894-L8928">模型加载、展开与过滤的分工</a></p>
+  <p>第一条的 <code>unavailable-features</code> 反映该加速器缺少的要求；第二条返回模型展开属性，便于核对 A、B 两端是否得到相同定义。展开和可运行性检查是两个步骤，QEMU 在 realize 阶段另行过滤能力，启用 <code>enforce</code> 时将缺少要求作为错误。结果为空的特性缺口也只覆盖 CPU 检查，设备与整机迁移仍有其他条件。<a href="{{ qemu }}target/i386/cpu.c#L8894-L8928">模型加载、展开与过滤的分工</a></p>
+  <p>这里的 <code>Haswell-v4</code> 是待检查的候选模型，并未表示前面的 A、B 都能使用它。若 B 报告候选模型缺少 AVX2，就回到启动前的基线选择；若源 VM 已经按含 AVX2 的定义运行，则改选能够接收它的目的端。这两条查询描述候选模型及加速器能力，运行实例实际采用的 CPU 定义还需与管理配置核对。</p>
   <p>使用 Libvirt 时，<code>domcapabilities</code>、CPU baseline/compare 相关接口有助于在实际机器和虚拟机类型下筛选配置。比较时还要记录明确的机器类型、QEMU 版本和特性策略；“两端都选了同一个简称”不足以代替比较。</p>
 </section>
 <section id="implementation" class="mechanism-section">
@@ -49,10 +52,10 @@
   <p>时钟是容易遗漏的边界。TSC 频率、缩放支持和客户机可见的时钟承诺会影响迁移；两台 CPU 都支持相同向量指令，不代表它们的时钟环境已经匹配。<a href="{{ qemu }}target/i386/machine.c#L313-L333">cpu_post_load()</a> 检查显式 TSC 频率约束，具体时间连续性见<a href="kvm-virtual-time.html">KVM 虚拟时钟与定时器</a>。</p>
 </section>
 <section id="evolution" class="mechanism-section">
-  <h2>兼容基线怎样随硬件与软件演进</h2>
+  <h2>硬件与软件演进中的兼容基线</h2>
   <p>较保守的通用模型方便兼容旧宿主，但可能达不到新操作系统或编译产物要求的 x86-64 能力等级。按硬件代际命名的模型让选择更清楚，模型版本进一步固定默认特性；安全缓解相关能力又使微码、内核与型号选择联系起来。基线过低会牺牲新指令与缓解能力，基线过高则缩小迁移范围。</p>
   <p>可将宿主按共同能力划成迁移池：池内维持可验证的 CPU 定义，扩容和升级时重新检查；需要新特性的业务进入较新的池。这样比全环境永久采用最低能力更灵活，但管理系统需要记录每台 VM 的运行时 CPU 定义，不能只保存一个笼统的池标签。</p>
-  <p>评价应同时看应用性能、目标覆盖范围和运维可重复性。测试需覆盖真实业务负载、迁移后继续执行、时间行为，以及宿主升级前后的能力差异。一次空闲虚拟机迁移成功，不能证明尚未用到的扩展状态也已经验证。</p>
+  <p>验证应覆盖启动前能力比较、迁移中的扩展状态保存，以及恢复后的持续执行。例如使用向量运算的负载，要在源端实际写入相应向量状态，迁移后继续计算并核对结果；同时检查时钟和业务延迟。一次空闲 VM 能成功迁移，只验证了那次执行所触及的状态，不能代表所有扩展能力。</p>
 </section>
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>

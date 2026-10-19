@@ -10,7 +10,7 @@
 </section>
 
 <section id="addresses" class="mechanism-section">
-  <h2>CPU 与 DMA 如何访问同一后备页</h2>
+  <h2>CPU 与 DMA 的地址转换路径</h2>
   <p>同一块客户机内存，客户机 CPU、QEMU 进程和物理设备使用的地址不同。建映射时，QEMU 提供设备侧地址与用户态内存位置；运行时，IOMMU 根据设备所属的转换域处理 DMA。</p>
   <table>
     <thead><tr><th scope="col">地址</th><th scope="col">含义</th><th scope="col">本例中的用途</th></tr></thead>
@@ -21,9 +21,9 @@
       <tr><th scope="row">HPA</th><td>宿主物理地址</td><td>DMA 最终访问的宿主物理页</td></tr>
     </tbody>
   </table>
+  <p>例如，客户机缓冲区位于 <code>GPA 0x00400080</code>，设备发出同值的 IOVA；映射覆盖 <code>0x00400000–0x00400fff</code>，对应宿主页 <code>HPA 0x21000000</code>。IOMMU 保留页内偏移 <code>0x80</code>，得到 <code>HPA 0x21000080</code>。QEMU 映射这块页时可以使用完全不同的 HVA。连续的 IOVA 区间也可以对应多个不连续的宿主物理页。</p>
   {{ diagram('vfio-address-paths', 'CPU 与设备 DMA 的地址转换', '两条访问路径指向同一后备页。虚线表示映射配置，实线表示地址转换关系；本例未配置客户机 IOMMU，设备 IOVA 与 GPA 数值相同。') }}
   <p>EPT / NPT 负责客户机 CPU 的第二阶段地址转换，具体建图过程见<a href="kvm-ept-fault.html">KVM 内存映射与 EPT 缺页处理</a>。PCIe 设备发起的普通 DMA 使用宿主 IOMMU 的转换上下文，QEMU 的 HVA 不随 DMA 请求发送。两条路径需要指向相同的客户机后备页，但页表管理、权限和缓存失效是各自的机制。</p>
-  <p>例如，客户机缓冲区位于 <code>GPA 0x00400080</code>，设备发出同值的 IOVA；映射覆盖 <code>0x00400000–0x00400fff</code>，对应宿主页 <code>HPA 0x21000000</code>。IOMMU 保留页内偏移 <code>0x80</code>，得到 <code>HPA 0x21000080</code>。QEMU 映射这块页时可以使用完全不同的 HVA。连续的 IOVA 区间也可以对应多个不连续的宿主物理页。</p>
   <p>客户机配置虚拟 IOMMU 后，IOVA 与 GPA 可以不同，宿主还需跟踪客户机的 DMA 映射变化或使用硬件嵌套转换。QEMU 的内存监听代码为 IOMMU 区域和普通 RAM 分别处理；本文沿普通 RAM 分支继续。<a href="{{ qemu_source }}hw/vfio/listener.c#L523-L612">IOMMU 与 RAM 的映射分支</a></p>
 </section>
 
@@ -50,17 +50,17 @@
 
 <section id="isolation" class="mechanism-section">
   <h2>隔离与映射生命周期</h2>
-  <h3>为什么还需要 IOMMU group</h3>
+  <h3>IOMMU group 的隔离边界</h3>
   <p>I/O 页表限制设备到内存的访问，但实际隔离还取决于 PCIe 拓扑。某些多功能设备、桥或缺少合适 ACS 能力的路径，可能允许事务在到达 IOMMU 前发生重定向。内核据此把无法独立隔离的设备归入同一 IOMMU group，作为 DMA 所有权的边界。</p>
-  <p>按单个设备打开文件描述符，不能改变硬件隔离粒度。IOMMUFD 的设备 cdev 接口仍检查 group 所有权；同组设备不能分配给相互独立的 DMA 所有者。拥有设备的权限也不等于能任意选择宿主物理地址：映射接口接收用户态能够提供的后备内存，并由内核验证与固定。<a href="{{ kernel_source }}Documentation/driver-api/vfio.rst">VFIO group 与设备 cdev</a></p>
-  <h3>撤销映射为何要协调设备</h3>
+  <p>IOMMUFD 的设备 cdev 接口按设备提供文件描述符，同时检查整个 group 的所有权。同组设备共享硬件隔离边界，由同一 DMA 所有者管理。映射接口接收用户态提供的后备内存，由内核验证并固定页面，再建立设备可访问的范围。<a href="{{ kernel_source }}Documentation/driver-api/vfio.rst">VFIO group 与设备 cdev</a></p>
+  <h3>撤销映射与在途 DMA 的协调</h3>
   <p>释放或复用 DMA 缓冲区前，需要确保设备已经停止使用它。删除 I/O 页表项还要与硬件转换缓存失效配合，避免缓存中的旧转换继续指向被回收的页。设备队列停止、在途事务处理与映射撤销共同决定安全的回收顺序；单纯删除 QEMU 的用户态指针并不完成这些工作。</p>
   <p>QEMU 收到 RAM 区域删除通知后会调用后端的 DMA unmap。内核负责撤销其维护的 IOMMU 映射并释放固定页的引用。大范围映射可减少频繁的 map / unmap，但长期固定内存会约束内存回收、气球回收和热插拔；频繁更新小范围映射则会增加页表管理与 IOTLB 失效开销。<a href="{{ qemu_source }}hw/vfio/listener.c#L656-L735">区域删除</a>、<a href="{{ qemu_source }}hw/vfio/container-legacy.c#L532-L565">RAM discard 与固定页的关系</a></p>
   <p>设备 DMA 写入的脏页还需要独立跟踪。vCPU 的 KVM 脏页日志无法覆盖物理设备绕过 CPU 发出的全部内存写入。因此，直通设备热迁移同时依赖设备状态保存、DMA 停止与设备或 IOMMU 的脏页跟踪能力，不能仅凭 CPU 内存迁移成功判断设备可迁移。</p>
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2>源码：RAM 区域如何变成 DMA 映射</h2>
+  <h2>源码：RAM 区域到 DMA 映射</h2>
   <h3>QEMU 从 RAM 布局生成 DMA 映射</h3>
   <pre><code>vfio_listener_region_add()
   vfio_container_region_add()
@@ -87,12 +87,13 @@ IOMMUFD：iommufd_ioas_map()
   iopt_map_user_pages()              # 管理页及 IOAS 映射
     将映射同步到该 IOAS 关联的硬件页表</code></pre>
   <p>Type1 的 <code>vfio_pin_map_dma()</code>分批固定页面，将物理页号交给 <code>vfio_iommu_map()</code>。后者调用 IOMMU 子系统的映射接口，由平台驱动建立硬件所需的转换。IOMMUFD 把地址空间及硬件页表作为独立对象管理。<a href="{{ kernel_source }}drivers/vfio/vfio_iommu_type1.c#L1465-L1533">Type1 页固定与映射</a>、<a href="{{ kernel_source }}drivers/iommu/iommufd/ioas.c#L235-L269">IOAS 映射入口</a></p>
-  <p>这些函数建立或更新转换关系，正常 DMA 命中映射后由设备和 IOMMU 硬件处理。IOTLB 未命中可触发硬件页表遍历；它与缺失映射导致的访问故障不同，也不等同于每次请求都进入 QEMU 做地址换算。</p>
+  <p>这些函数负责建立或更新转换关系。正常 DMA 由设备和 IOMMU 硬件处理：IOTLB 命中时复用缓存的转换，未命中时可遍历硬件页表；缺失映射或权限不符才形成访问故障。QEMU 参与映射配置，硬件执行随后各次 DMA 的地址转换。</p>
 </section>
 
 <section id="tradeoffs" class="mechanism-section">
   <h2>直通减少的开销与保留的成本</h2>
   <p>回到 GPA <code>0x00400080</code> 的例子，映射建立后，设备通过 IOMMU 访问对应宿主页，无需 QEMU 为这次数据搬运解析一条 virtqueue 或复制报文。省下的是软件设备数据路径的一部分工作；IOMMU 转换、硬件队列、设备中断以及客户机驱动仍要运行。BAR 是否能够直接映射、设备是否需要其他模拟，也会影响实际退出次数。</p>
+  <p>对本例可以先核对地址和方向：IOVA 0x00400080 应命中映射页，读写权限应与设备操作相符，页内偏移仍为 0x80。映射缺失或越权出现的是 IOMMU 访问故障；性能低但没有故障时，则继续检查队列、中断、DMA 带宽与 NUMA，不能把两种现象都归为地址转换错误。</p>
   <p>评估应分开一次性的接管与映射成本、正常运行的吞吐和尾延迟，以及停止、复位和迁移的管理成本。大内存虚拟机还要观察页固定规模与映射耗时；高频小 I/O 则更容易暴露中断和调度开销。若增加虚拟 IOMMU 来细化客户机 DMA 权限，还需评估动态映射和 IOTLB 更新，不能沿用本例长期映射全部可访问 RAM 的开销结论。</p>
 </section>
 

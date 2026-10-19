@@ -1,0 +1,17 @@
+flowchart TB
+  accTitle: Linux 与 QEMU 的私有队列对象及共享区域
+  accDescr: Linux 的 vring_virtqueue 位于客户机 RAM，记录驱动私有状态。共享描述符表、可用环和已用环也位于客户机 RAM。QEMU 的 VirtQueue 位于宿主进程内存，保存共享区域地址及设备私有状态。驱动发布描述符和可用项，设备读取后发布已用项；双方各自保存消费索引。
+  subgraph guest[客户机 RAM]
+    direction TB
+    linux["Linux 私有 vring_virtqueue\nlast_used_idx：下一个待回收位置\nsplit.avail_idx_shadow：已发布进度"]
+    subgraph shared[共享协议区域]
+      direction LR
+      request["desc 与 avail\n请求地址、长度与链头\navail.idx：发布进度"]
+      completion["used\n完成链头与写入长度\nused.idx：完成进度"]
+    end
+    linux -->|填写描述符并发布请求| request
+    completion -->|读取完成并回收| linux
+  end
+  qemu["QEMU 私有 VirtQueue · 宿主进程内存\nVRing：共享区域地址与访问缓存\nlast_avail_idx：下一个待取位置\nused_idx：已完成进度"]
+  request -->|读取并消费请求| qemu
+  qemu -->|写入完成| completion

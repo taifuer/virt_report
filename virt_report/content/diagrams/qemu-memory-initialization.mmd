@@ -1,0 +1,28 @@
+sequenceDiagram
+  accTitle: QEMU Q35 内存初始化与 KVM 内存槽登记
+  accDescr: QEMU 10.2 先建立名为 system 的根区域及名为 memory 的 AddressSpace，再初始化 KVM 并注册内存监听器。RAM backend 创建 RAM MemoryRegion 与 RAMBlock，host 字段保存宿主虚拟地址，随后 machine.ram 引用该区域。Q35 依次把低端和高端 RAM 别名加入地址空间。拓扑事务生成新的 FlatView，监听器收集区间变化，在 commit 阶段登记 KVM memslots。内存槽数量取决于可见 RAM 区间；内存槽保存客户机地址与宿主后备的关系，二阶段页表由后续的 KVM MMU 路径建立。
+  %% QEMU baseline: 698104725efad4b29079d857dfdebbd804e34c99
+  %% system/vl.c: qemu_create_machine, configure_accelerators, late backends
+  %% hw/core/machine.c: machine_run_board_init, machine_consume_memdev
+  %% hw/i386/pc.c: pc_memory_init; system/memory.c: transaction commit
+  %% accel/kvm/kvm-all.c: kvm_region_add, kvm_region_commit
+  participant S as 启动与 Q35
+  participant M as QEMU 内存
+  participant K as KVM 内核
+  Note over S,K: 阶段 1：地址空间与监听器
+  S->>M: 建立 system 根与 AddressSpace
+  S->>K: 创建 KVM 虚拟机
+  S->>M: 注册 KVM 内存监听器
+  Note over S,K: 阶段 2：分配 8 GiB RAM 后备
+  S->>M: 创建 RAM 后端
+  M->>M: 分配 RAMBlock 与宿主映射
+  M-->>S: machine.ram 引用 RAM 区域
+  Note over S,K: 阶段 3：发布 Q35 的 RAM 布局
+  loop 挂接低端、高端 RAM 别名
+    S->>M: 加入别名，提交拓扑事务
+    M->>M: 生成 FlatView，暂存区间变化
+    M->>M: 发布新视图
+    M->>K: 监听器 commit，登记内存槽
+  end
+  Note over M,K: 内存槽登记 GPA、长度与 HVA
+  Note over M,K: 二级映射随后由 KVM MMU 建立

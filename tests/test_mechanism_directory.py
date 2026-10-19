@@ -50,10 +50,10 @@ def test_directory_has_reading_order_and_real_anchors_only():
 
 def test_directory_counts_primary_articles_without_extra_related_rows():
     counts = {topic['slug']: len(topic['articles']) for topic in mechanisms.topics()}
-    assert counts == {'virtualization-basics': 1, 'cpu-virtualization': 6, 'memory-virtualization': 5,
+    assert counts == {'virtualization-basics': 1, 'cpu-virtualization': 5, 'memory-virtualization': 5,
                       'device-virtualization': 11, 'interrupt-virtualization': 2,
-                      'vm-startup': 3, 'migration': 6, 'hotplug': 4,
-                      'live-upgrade': 2, 'qemu-internals': 6, 'libvirt-internals': 2,
+                      'vm-startup': 2, 'migration': 6, 'hotplug': 4,
+                      'live-upgrade': 1, 'qemu-internals': 6, 'libvirt-internals': 2,
                       'kvm-internals': 2}
     assert [article['slug'] for article in
             mechanisms.get_topic('memory-virtualization')['articles']] == [

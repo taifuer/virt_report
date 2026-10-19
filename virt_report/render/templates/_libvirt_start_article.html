@@ -3,25 +3,28 @@
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>virsh start 要完成哪些交接</h2>
-  <p><code>virsh start demo</code> 启动一个已定义的虚拟机。Libvirt 读取现有定义，准备宿主资源，创建 QEMU 进程，建立 QMP 连接，完成运行参数设置，最后允许客户机 CPU 执行。每一步产生的资源与状态都需要记录，失败时还要沿相应路径清理。</p>
-  <p>本文使用 <code>qemu:///system</code>，跟踪没有 managed save 的持久虚拟机冷启动。调用端与守护进程之间的通信见<a href="libvirt-rpc.html">Libvirt RPC 的编码与调用分发</a>；QEMU 内部创建机器、内存和 vCPU 的过程见<a href="qemu-vm-startup.html">QEMU 虚拟机启动流程</a>。</p>
-  <p>启动的关键是两次放行：先完成宿主隔离，允许子进程 exec QEMU；再完成 QMP 配置，允许客户机 CPU 执行。下面沿“读取定义 → 准备资源 → 创建进程 → 配置 QMP → cont 与状态确认”追踪 <code>demo</code>，最后检查每个失败出口如何归还资源。</p>
+  <h2>虚拟机冷启动的三个阶段</h2>
+  <p><code>virsh start demo</code> 将已保存的虚拟机定义转换为一个运行实例。Libvirt 根据 XML 准备磁盘、网络和进程隔离，启动 QEMU，再通过 QMP 设置运行参数并启动客户机 CPU。QEMU 负责创建虚拟硬件；客户机随后执行固件、从启动盘装载操作系统，并初始化自己的设备驱动与服务。</p>
+  <p>本文跟踪 <code>qemu:///system</code> 下一个没有 managed save 的持久虚拟机：4 个 vCPU、8 GiB 内存、一块 qcow2 系统盘和一张连接宿主桥的 virtio 网卡。主线是定义解析、资源准备、进程创建、QMP 配置和客户机引导。调用端通信见<a href="libvirt-rpc.html">Libvirt RPC 的编码与调用分发</a>；QEMU 内部的机器创建见<a href="qemu-vm-startup.html">QEMU 虚拟机启动流程</a>。</p>
   {% include '_mechanism_baselines.html' %}
+  {{ diagram('startup-overview-handoff', '资源准备、虚拟硬件建立与客户机引导', 'Libvirt 准备宿主资源并启动 QEMU；QEMU 创建 CPU、内存与设备；放行后，客户机执行固件、操作系统和服务。') }}
+  <p>先区分这三个阶段：磁盘无访问权限属于宿主准备问题；QEMU 无法创建所选设备属于建机问题；固件找不到启动盘、客户机缺少磁盘驱动，则属于引导阶段。下面用暂停启动分开观察这些阶段，再沿源码展开资源准备和状态协调。</p>
 </section>
 
-<section id="objects" class="mechanism-section">
-  <h2>用运行定义与启动作业管理状态</h2>
-  <p>持久虚拟机关闭后仍保留定义。启动时，<code>virsh</code> 先按名称或 UUID 查找句柄，再发起创建调用。没有额外标志时使用 <code>virDomainCreate()</code>；携带 <code>--paused</code> 等标志时使用 <code>virDomainCreateWithFlags()</code>。服务端 QEMU 驱动最终进入同一套带 flags 的启动逻辑。<a href="{{ libvirt_source }}tools/virsh-domain.c#L4409-L4465">命令入口</a></p>
-  <table><thead><tr><th scope="col">数据结构</th><th scope="col">关键字段</th><th scope="col">启动中的作用</th></tr></thead><tbody>
-    <tr><td><code>virDomainObj</code></td><td><code>def</code>、<code>newDef</code>、<code>pid</code>、<code>state</code>、<code>persistent</code>、<code>job</code></td><td>关联定义、进程与生命周期；<code>newDef</code> 保存需要在关闭后使用的定义</td></tr>
-    <tr><td><code>virDomainDef</code></td><td><code>uuid</code>、<code>name</code>、<code>id</code>、CPU、内存和设备配置</td><td>启动中的 <code>def</code> 可补入设备地址、别名、监听路径等运行信息</td></tr>
-    <tr><td><code>qemuDomainObjPrivate</code></td><td><code>qemuCaps</code>、<code>mon</code>、<code>monConfig</code>、<code>pidfile</code>、<code>cgroup</code>、<code>runningReason</code></td><td>保存 QEMU 能力、monitor 通道、宿主资源及状态转换原因</td></tr>
-    <tr><td><code>virCommand</code></td><td>argv、环境变量、继承 FD、执行前钩子、握手管道</td><td>组织新进程的启动条件，协调 fork 与 exec 之间的准备</td></tr>
+<section id="example" class="mechanism-section">
+  <h2>暂停启动 demo，观察执行前后的区别</h2>
+  <p>以下操作在<strong>宿主</strong>执行，用于一台已定义、当前关闭且没有 managed save 的测试虚拟机。显式指定 <code>qemu:///system</code>，保证查询和启动使用同一个管理实例；<code>--paused</code> 让机器完成创建，但暂不执行客户机代码：</p>
+  <pre><code>virsh -c qemu:///system start demo --paused
+virsh -c qemu:///system domstate demo
+virsh -c qemu:///system dominfo demo
+virsh -c qemu:///system resume demo</code></pre>
+  <p>暂停时，QEMU 进程、RAM、磁盘与网卡已经存在，Libvirt 也已连接 QMP；<code>domstate</code> 应返回 paused。<code>resume</code> 后，vCPU 开始从复位状态执行固件，随后进入系统引导。RUNNING 只说明 CPU 获准运行，服务是否可用还要看客户机控制台和业务健康检查。</p>
+  <table><thead><tr><th>定义中的内容</th><th>启动时建立的关系</th><th>客户机开始执行后的工作</th></tr></thead><tbody>
+    <tr><td>4 个 vCPU、8 GiB RAM</td><td>CPU 对象与执行线程、RAM 后端及 KVM 内存槽</td><td>固件提供内存布局，操作系统建立自己的页表与调度状态</td></tr>
+    <tr><td>qcow2 系统盘，virtio 总线</td><td>文件与格式节点连接 virtio-blk 前端</td><td>固件读取引导数据，内核加载驱动并挂载根文件系统</td></tr>
+    <tr><td>桥接的 virtio 网卡</td><td>TAP 接入宿主桥，网络后端连接 virtio-net 前端</td><td>客户机初始化队列、配置接口与 IP</td></tr>
   </tbody></table>
-  <p><a href="{{ libvirt_source }}src/conf/domain_conf.h#L3389-L3437">通用对象</a>与<a href="{{ libvirt_source }}src/qemu/qemu_domain.h#L107-L179">QEMU 私有对象</a>分开保存通用生命周期和驱动细节。<code>pid</code> 是宿主进程号，<code>def-&gt;id</code> 是 Libvirt 分配的运行时 ID，两者没有相等关系。</p>
-  <p><code>qemuDomainCreateWithFlags()</code> 取得对象、检查 ACL，再通过 <code>qemuProcessBeginJob()</code> 建立 <code>VIR_ASYNC_JOB_START</code> 作业，取得作业后重新检查虚拟机是否已经 active。这里的 async job 是内部并发管理机制，调用 API 仍会等待启动操作返回。</p>
-  <p>对象锁保护字段的一致性，作业则保护跨多次等待与 QMP 调用的操作。等待 monitor 响应时会释放对象锁，使事件线程能够更新状态；仅靠一把全程持有的对象锁，反而可能把完成这次操作所需的事件阻塞住。<a href="{{ libvirt_source }}src/qemu/qemu_driver.c#L6410-L6455">启动入口</a>、<a href="{{ libvirt_source }}docs/kbase/internals/qemu-threads.rst">QEMU 驱动锁与作业规则</a></p>
+  <p>配置声明了资源需求，启动过程逐步把它们变成可用对象。若 resume 成功但没有登录提示，可从客户机控制台或串口日志定位最后完成的阶段：固件是否找到了启动盘，内核是否挂载了根文件系统，登录服务是否已经启动。</p>
 </section>
 
 <section id="preparation" class="mechanism-section">
@@ -30,17 +33,21 @@
   <table><thead><tr><th scope="col">阶段</th><th scope="col">主要操作</th><th scope="col">此时尚未发生的事</th></tr></thead><tbody>
     <tr><td><code>qemuProcessInit()</code></td><td>取得 QEMU 能力、校验配置，分离运行定义与持久定义，分配运行时 ID，设为 PAUSED / STARTING_UP</td><td>尚未创建 QEMU 进程</td></tr>
     <tr><td><code>qemuProcessPrepareDomain()</code></td><td>补全设备地址与别名，解析存储、网络、固件，生成 monitor 配置与运行路径</td><td>这些定义仍需转成 QEMU 参数和宿主资源</td></tr>
-    <tr><td><code>qemuProcessPrepareHost()</code></td><td>创建目录、准备 NVRAM、网络、hostdev、字符设备和存储后端等</td><td>客户机 CPU 仍未运行</td></tr>
-    <tr><td><code>qemuProcessLaunch()</code></td><td>构造命令、启动子进程、设置隔离与权限、连接 QMP、完成设备与线程配置</td><td>QEMU 已运行时，客户机 CPU 仍可保持暂停</td></tr>
+    <tr><td><code>qemuProcessPrepareHost()</code></td><td>创建目录、准备 NVRAM 与字符设备，检查存储链，准备所需外部后端和 hostdev</td><td>桥接网络的 TAP 连接等操作还会在命令构造阶段继续完成</td></tr>
+    <tr><td><code>qemuProcessLaunch()</code></td><td>构造命令并连接网络资源、启动子进程、设置隔离与权限、连接 QMP、完成设备与线程配置</td><td>QEMU 已运行时，客户机 CPU 仍可保持暂停</td></tr>
   </tbody></table>
-  <p>这几个阶段体现了配置解析与宿主副作用的分工；部分历史逻辑仍存在交叉，源码中的 TODO 也记录了继续整理的方向。Libvirt 需要结合 QEMU capabilities、宿主条件和启动模式决定实际参数。<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L5919-L5999">初始化</a>、<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L7014-L7157">定义准备</a>、<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L7688-L7781">宿主准备</a></p>
+  <p>到 Launch 阶段，定义中的磁盘路径、设备类型和网络选择逐步转成可访问的存储、打开的文件描述符和 QEMU 参数。Libvirt 结合 QEMU capabilities、宿主条件和启动模式决定具体配置；前一步留下的设备地址、别名与资源句柄，供后面的命令构造和进程创建使用。<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L5919-L5999">初始化</a>、<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L7014-L7157">定义准备</a>、<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L7688-L7781">宿主准备</a></p>
   <p>例如 8 GiB、4 vCPU 的虚拟机，持久 XML 只声明所需配置；运行时还会有设备别名、monitor socket、进程 PID 和线程 ID。将这些临时值直接写回持久定义，会让下次启动受上次实例的资源分配影响。<code>virDomainObjSetDefTransient()</code> 保留定义边界，关闭后再移除本次运行定义。</p>
+  <h3>系统盘与网络资源的具体准备</h3>
+  <p>本例系统盘的准备分为两层。Libvirt 检查镜像及 backing chain、存储访问条件和锁管理要求，生成块后端与 virtio-blk 前端参数；QEMU 启动后才据此建立块图、打开后端并创建客户机可见的磁盘设备。文件存在并不等于 QEMU 可读写：安全标签、进程身份和锁状态也必须满足要求。<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L7361-L7404">宿主存储准备</a>、<a href="{{ libvirt_source }}src/qemu/qemu_command.c#L2240-L2349">块后端与磁盘设备参数</a></p>
+  <p>桥接网卡同样需要宿主和客户机两部分。Libvirt 在构造网络命令时通过 <code>qemuBuildInterfaceConnect()</code> 连接 TAP 与宿主桥，并将需要继承的 TAP FD 纳入启动参数；QEMU 使用这些 FD 创建网络后端，再把 virtio-net 前端连接到后端。配置启用 vhost-net 时还要准备相应的 vhost FD。此时已建立数据通路，但客户机尚未加载网卡驱动或配置 IP。<a href="{{ libvirt_source }}src/qemu/qemu_command.c#L8805-L8955">桥接网络连接与命令构造</a></p>
+  <p>存储检查、TAP 连接和隔离设置分布在上述不同阶段。失败清理据实际进度关闭 FD、移除本次创建的接口并归还存储与隔离资源；尚未创建的资源无需回收。</p>
 </section>
 
 <section id="launch" class="mechanism-section">
   <h2>fork、exec 与两道启动屏障</h2>
+  {{ diagram('libvirt-domain-start', '从 virsh start 到客户机引导的完整时序', 'Libvirt 准备定义、磁盘和网络，在 exec 前完成宿主隔离；QEMU 创建虚拟硬件并保持 CPU 暂停。QMP 配置完成后 cont 启动客户机，后续操作系统引导与 API 返回分别进行。') }}
   <p><code>qemuBuildCommandLine()</code> 构造 argv，其中包含 <code>-S</code>，要求 QEMU 完成初始化后先暂停客户机 CPU。Libvirt 还为进程创建设置执行前钩子、PID 文件、输出日志和握手管道。<a href="{{ libvirt_source }}src/qemu/qemu_command.c#L10755-L10783">命令行构造</a></p>
-  {{ diagram('libvirt-domain-start', 'Libvirt 冷启动的进程交接', '第一道屏障位于 fork 后、exec 前，用于完成宿主隔离和权限设置；第二道屏障由 QEMU 的 -S 保持客户机 CPU 暂停，待 QMP 配置完成后再 cont。') }}
   <p>执行 <code>virCommandRun()</code> 后，子进程完成自己的 pre-exec 初始化，通知父进程，然后等待确认。父进程读到 PID，保存早期状态，等待握手，再设置 mount namespace、cgroup、CPU 亲和性及资源权限等。<code>virCommandHandshakeNotify()</code> 发出确认后，子进程才被允许 exec QEMU。<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L8248-L8358">父进程顺序</a>、<a href="{{ libvirt_source }}src/util/vircommand.c#L387-L432">子进程握手</a></p>
   <p>这个顺序让宿主约束在 QEMU 真正使用资源前生效。例如进程应先进入目标 cgroup，再开始分配大块内存或创建工作线程。拿到 PID 只证明子进程已出现，exec 仍可能失败；后面还需要确认 monitor 可连接、能力协商与查询成功。</p>
   <p>QEMU exec 成功后创建机器、内存、设备和 vCPU 线程，<code>-S</code> 使客户机 CPU 暂不执行。Libvirt 连接 monitor，接收 greeting，再发送 <code>qmp_capabilities</code> 进入命令模式，随后刷新 vCPU / IOThread 信息并设置调度、网络链路、内存气球和磁盘限速等。这些设置有些依赖 QEMU 实际创建的线程和设备，因此必须在进程创建之后完成。<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L2064-L2131">monitor 初始化</a>、<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L8363-L8447">运行前配置</a></p>
@@ -53,13 +60,27 @@
   {{ diagram('libvirt-domain-state', '进程状态与客户机运行状态', 'PAUSED / STARTING_UP 在创建进程之前就可能出现。当前版本由 QMP RESUME 事件处理器写入 RUNNING 状态；API 返回与客户机操作系统就绪是不同阶段。') }}
   <p>在本文版本中，<code>qemuProcessStartCPUs()</code> 不直接设置 RUNNING；QMP <code>RESUME</code> 事件进入 <code>qemuProcessHandleResume()</code> 后，处理器使用保存的运行原因更新 <code>virDomainObj</code>，保存状态并排队生命周期事件。命令响应与异步事件经过不同处理路径，不能依赖“先收到 cont 响应，再收到 RESUME”这种固定顺序。<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L873-L918">RESUME 处理器</a></p>
   <p>冷启动成功后，<code>qemuDomainObjStart()</code> 另行排队 <code>STARTED / BOOTED</code> 事件；显式暂停启动还会排队 <code>SUSPENDED / PAUSED</code>。启动作业结束，API 返回成功。运行状态、原因和事件分别描述当前状态及其变化，不能把收到某个事件简单等同于客户机服务已经可用。</p>
-  <table><thead><tr><th scope="col">观察到的信号</th><th scope="col">能确认什么</th><th scope="col">仍不能确认什么</th></tr></thead><tbody>
+  <table><thead><tr><th scope="col">观察到的信号</th><th scope="col">已确认状态</th><th scope="col">后续检查</th></tr></thead><tbody>
     <tr><td>运行时 ID 已分配</td><td>Libvirt 已进入启动准备</td><td>QEMU 是否成功 exec</td></tr>
     <tr><td>PID 存在</td><td>对应宿主进程存在</td><td>QMP 是否完成协商、客户机 CPU 是否执行</td></tr>
     <tr><td>QMP 查询成功</td><td>QEMU 管理通道可工作</td><td>客户机是否已经开始引导</td></tr>
     <tr><td>RUNNING / BOOTED</td><td>客户机 CPU 已进入运行状态</td><td>客户机内核、网络和应用是否就绪</td></tr>
   </tbody></table>
-  <p>客户机可能仍在固件、引导加载器或内核初始化阶段。应用就绪需要客户机代理或业务健康检查提供证据；启动 API 不等待这些条件。暂停中的 QEMU 同样拥有进程、设备和管理通道。</p>
+  <p>客户机在 cont 后从复位状态执行固件。固件枚举虚拟 PCI 设备，按启动顺序从系统盘加载引导程序；操作系统随后接管磁盘、网卡与中断控制器，初始化驱动、挂载文件系统，再启动网络和服务。这些工作都发生在客户机内部，通常与管理侧返回 API 结果交错进行。应用就绪需要客户机代理或业务健康检查提供证据；启动 API 不等待这些条件。暂停中的 QEMU 同样拥有进程、设备和管理通道。</p>
+</section>
+
+<section id="objects" class="mechanism-section">
+  <h2>用运行定义与启动作业管理状态</h2>
+  <p>持久虚拟机关闭后仍保留定义。启动时，<code>virsh</code> 先按名称或 UUID 查找句柄，再发起创建调用。没有额外标志时使用 <code>virDomainCreate()</code>；携带 <code>--paused</code> 等标志时使用 <code>virDomainCreateWithFlags()</code>。服务端 QEMU 驱动最终进入同一套带 flags 的启动逻辑。<a href="{{ libvirt_source }}tools/virsh-domain.c#L4409-L4465">命令入口</a></p>
+  <table><thead><tr><th scope="col">数据结构</th><th scope="col">关键字段</th><th scope="col">启动中的作用</th></tr></thead><tbody>
+    <tr><td><code>virDomainObj</code></td><td><code>def</code>、<code>newDef</code>、<code>pid</code>、<code>state</code>、<code>persistent</code>、<code>job</code></td><td>关联定义、进程与生命周期；<code>newDef</code> 保存需要在关闭后使用的定义</td></tr>
+    <tr><td><code>virDomainDef</code></td><td><code>uuid</code>、<code>name</code>、<code>id</code>、CPU、内存和设备配置</td><td>启动中的 <code>def</code> 可补入设备地址、别名、监听路径等运行信息</td></tr>
+    <tr><td><code>qemuDomainObjPrivate</code></td><td><code>qemuCaps</code>、<code>mon</code>、<code>monConfig</code>、<code>pidfile</code>、<code>cgroup</code>、<code>runningReason</code></td><td>保存 QEMU 能力、monitor 通道、宿主资源及状态转换原因</td></tr>
+    <tr><td><code>virCommand</code></td><td>argv、环境变量、继承 FD、执行前钩子、握手管道</td><td>组织新进程的启动条件，协调 fork 与 exec 之间的准备</td></tr>
+  </tbody></table>
+  <p>这些结构保存在 Libvirt 服务端进程中：<a href="{{ libvirt_source }}src/conf/domain_conf.h#L3389-L3437">通用对象</a>记录生命周期，<a href="{{ libvirt_source }}src/qemu/qemu_domain.h#L107-L179">QEMU 驱动私有对象</a>记录管理连接和宿主资源。它们通过 PID、monitor 与外部 QEMU 进程关联。<code>pid</code> 是宿主进程号，<code>def-&gt;id</code> 是 Libvirt 分配的运行时 ID，两者由不同分配器生成。</p>
+  <p><code>qemuDomainCreateWithFlags()</code> 取得对象、检查 ACL，再通过 <code>qemuProcessBeginJob()</code> 建立 <code>VIR_ASYNC_JOB_START</code> 作业，取得作业后重新检查虚拟机是否已经 active。这里的 async job 是内部并发管理机制，调用 API 仍会等待启动操作返回。</p>
+  <p>对象锁保护字段的一致性，作业则保护跨多次等待与 QMP 调用的操作。等待 monitor 响应时会释放对象锁，使事件线程能够更新状态；仅靠一把全程持有的对象锁，反而可能把完成这次操作所需的事件阻塞住。<a href="{{ libvirt_source }}src/qemu/qemu_driver.c#L6410-L6455">启动入口</a>、<a href="{{ libvirt_source }}docs/kbase/internals/qemu-threads.rst">QEMU 驱动锁与作业规则</a></p>
 </section>
 
 <section id="failure" class="mechanism-section">
@@ -74,6 +95,13 @@
   <p>早期人类可读的 monitor 适合人工交互，自动管理需要解析文本输出。QMP 提供结构化 JSON 命令、错误和异步事件，减少命令输出格式变化带来的歧义。Libvirt 在 2010 年加入<a href="https://github.com/libvirt/libvirt/commit/5d72a8944264bef63f490d1bd602fca1aea4be2c">连接时的 qmp_capabilities 协商</a>；如今启动路径依赖 QMP 查询线程、设置运行参数和同步生命周期。</p>
   <p>同年，QEMU 驱动<a href="https://github.com/libvirt/libvirt/commit/12317957ecd6c37a2fb16275dcdeeacfe25c517e">接入锁管理基础设施</a>，把磁盘锁、标签修改和 fork / exec 时序联系起来。随着直通设备、外部后端、NUMA 和 cgroup 等能力增加，创建进程逐渐成为更大资源事务中的一步。</p>
   <p>收益是资源隔离、并发控制与故障恢复可以统一处理，成本则是更多阶段、状态和失败出口。排查启动慢或启动失败，最有效的起点是定位最后一个完成的阶段：配置校验、宿主资源准备、exec、QMP 协商、运行前设置，还是客户机自己的引导。将这些耗时全部归入“QEMU 启动”会掩盖实际瓶颈。</p>
+  <table><thead><tr><th>优化方向</th><th>减少的等待</th><th>需要承担的代价</th></tr></thead><tbody>
+    <tr><td>提前准备网络和存储</td><td>请求中的宿主准备</td><td>资源提前占用，还需处理失效与清理</td></tr>
+    <tr><td>裁减无用设备和引导服务</td><td>设备初始化、固件枚举与客户机服务等待</td><td>验证驱动与业务依赖，避免遗漏必需设备</td></tr>
+    <tr><td>预分配 RAM</td><td>运行初期的按需分配抖动</td><td>通常把工作移到建机阶段，并提前占用内存</td></tr>
+    <tr><td>从保存状态恢复</td><td>重新引导操作系统的工作</td><td>需要验证状态兼容、恢复 I/O 及外部连接一致性</td></tr>
+  </tbody></table>
+  <p>对比优化结果时，以同一业务的服务可用时间为终点，并分别记录宿主准备、建机和客户机引导耗时；只测 API 返回时间，会遗漏最后一段。</p>
 </section>
 
 <section id="sources" class="mechanism-section">

@@ -25,7 +25,7 @@ FAVICON_ASSET_NAMES = ("favicon-32.png", "favicon.ico")
 MECHANISM_DIAGRAM_NAMES = (
     "migration-architecture", "migration-precopy-sequence", "migration-load-dispatch",
     "multifd-synchronization", "dirty-ring-handoff", "postcopy-page-fault",
-    "virtqueue-tx-layout", "vhost-user-control-data", "vfio-address-paths",
+    "virtqueue-tx-layout", "virtqueue-private-shared", "vhost-user-control-data", "vfio-address-paths",
     "kvm-run-objects", "kvm-run-exits",
     "ept-address-mapping", "ept-fault-invalidation",
     "interrupt-routing", "interrupt-completion",
@@ -35,7 +35,9 @@ MECHANISM_DIAGRAM_NAMES = (
     "qemu-startup-phases", "qemu-startup-vcpu",
     "libvirt-domain-start", "libvirt-domain-state",
     "cpr-state-ownership", "cpr-transfer-sequence",
-    "memory-region-publication", "virtio-blk-request", "virtio-blk-completion",
+    "memory-region-publication", "qemu-memory-initialization", "q35-memory-layout",
+    "virtio-blk-request", "virtio-blk-completion",
+    "virtio-blk-request-cycle",
     "aio-request-lifecycle", "aio-queue-thread-mapping", "virtio-mem-resize",
     "spdk-vhost-ownership", "spdk-vhost-completion",
     "qcow2-mapping-cow",
@@ -45,10 +47,9 @@ MECHANISM_DIAGRAM_NAMES = (
     "device-backend-overview", "interrupt-delivery-overview", "kvm-eventfd-comparison", "kvm-irqfd-comparison",
     "dpdk-vhost-data-path", "dpdk-buffer-ownership", "dpdk-vhost-completion",
     "startup-overview-handoff", "migration-overview-handoff",
-    "hotplug-overview-lifecycle", "upgrade-overview-ownership",
+    "hotplug-overview-lifecycle",
     "qemu-internals-overview", "libvirt-internals-overview",
     "qemu-overview-read-lifecycle", "libvirt-suspend-sequence",
-    "kvm-internals-execution",
     "kvm-internal-objects", "kvm-request-tlb-sequence", "kvm-request-entry-race",
     "interrupt-controller-paths", "interrupt-acceleration-layers",
     "cpu-foundation-methods", "memory-foundation-paging", "virtualization-isolation-example",
@@ -63,6 +64,7 @@ MECHANISM_DIAGRAM_NAMES = (
 )
 MECHANISM_LAYOUT_NAMES = ("migration-wire-layout",)
 MECHANISM_ASSET_NAMES = ("mechanisms.css", "mechanisms.js", "precopy-lab.css",
+                         "mechanism-redirect.js",
                          "mechanism-viewer.css", "mechanism-viewer.js",
                          "migration-stream.css", "migration-stream.js",
                          "multifd.css", "multifd.js", "device-tx.css", "device-tx.js",
@@ -340,6 +342,11 @@ def _render_mechanism_page(site_name: str, slug: str | None) -> str | None:
 
     article = mechanisms.get_article(slug) if slug is not None else None
     if slug is not None and article is None:
+        redirect = mechanisms.get_redirect(slug)
+        if redirect:
+            return _env().get_template("mechanism_redirect.html").render(
+                target=mechanisms.get_article(redirect["target"]),
+            )
         return None
     digest = hashlib.sha256()
     for filename in MECHANISM_ASSET_NAMES:
@@ -356,6 +363,17 @@ def _render_mechanism_page(site_name: str, slug: str | None) -> str | None:
     )
     if article:
         body = _env().get_template(article["template"]).render(**context)
+        # URL fragments never reach the HTTP server. Preserve legacy anchors in
+        # the destination so both HTTP and static redirects retain their meaning.
+        for redirect in mechanisms.redirects():
+            if redirect["target"] != slug:
+                continue
+            for old, new in redirect.get("anchors", {}).items():
+                if f'id="{old}"' not in body:
+                    marker = f'<section id="{new}"'
+                    alias = (f'<span id="{old}" class="mechanism-topic-alias" '
+                             'aria-hidden="true"></span>\n')
+                    body = body.replace(marker, alias + marker, 1)
         context["article_body"], context["article_outline"] = prepare_outline(body, article["sections"])
     return _env().get_template("mechanism.html" if article else "mechanisms.html").render(**context)
 
@@ -374,7 +392,8 @@ def render_mechanisms(config: Config) -> list[Path]:
     for filename in MECHANISM_ASSET_NAMES:
         shutil.copyfile(ASSETS_DIR / filename, assets / filename)
     paths = []
-    for slug in (None, *(article["slug"] for article in mechanisms.articles())):
+    for slug in (None, *(article["slug"] for article in mechanisms.articles()),
+                 *(entry["slug"] for entry in mechanisms.redirects())):
         path = config.output_dir / (f"mechanisms/{slug}.html" if slug else "mechanisms.html")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(render_mechanisms_html(config, slug), encoding="utf-8")

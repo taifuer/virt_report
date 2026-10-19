@@ -1,28 +1,43 @@
 sequenceDiagram
-  accTitle: Libvirt 冷启动的进程交接
-  accDescr: Libvirt 准备定义和资源后创建子进程。子进程在 exec 前等待父进程配置隔离与权限；放行后 QEMU 初始化并通过 -S 保持客户机 CPU 暂停，完成 QMP 配置后 cont 才允许客户机执行。
-  participant A as virsh 与 RPC
+  accTitle: 从 virsh start 到客户机引导的完整时序
+  accDescr: virsh 经 RPC 请求 Libvirt 启动虚拟机。Libvirt 读取定义，准备存储与桥接网络，构造命令并创建子进程，在 exec 前完成宿主隔离。QEMU 创建机器、CPU、内存、磁盘和网卡，QMP 配置完成后 cont 允许客户机执行；API 返回与固件、操作系统、业务就绪分别进行。
+  participant A as virsh / 客户端
   participant L as Libvirt QEMU 驱动
-  participant P as 子进程与 QEMU
-  A->>L: start → Create API
-  L->>L: ACL、START 作业、确认未运行
-  L->>L: Init → PrepareDomain → PrepareHost
-  L->>L: BuildCommandLine，包含 -S
-  L->>P: 创建子进程，执行 pre-exec 初始化
+  participant H as 宿主资源
+  participant P as 子进程 / QEMU
+  participant G as 客户机固件 / OS
+  A->>L: start demo → Create API / RPC
+  L->>L: 查找定义、检查 ACL<br/>启动作业、确认未运行
+  L->>L: 生成运行定义<br/>分配设备地址与别名
+  L->>H: 检查镜像 / backing chain、准备目录与后端
+  H-->>L: 可用路径、存储资源与配置
+  L->>H: 构造网络参数时连接 TAP / 宿主桥
+  H-->>L: TAP FD，按配置准备 vhost FD
+  L->>L: 构造启动参数<br/>块图、磁盘、网卡<br/>QMP、-S
+  L->>P: fork，传递参数与所需 FD
+  P->>P: pre-exec 初始化
   P-->>L: 握手就绪，等待父进程确认
   Note over L,P: 第一屏障：尚未 exec QEMU
-  L->>L: namespace、cgroup、亲和性、资源标签
+  L->>H: namespace、cgroup、亲和性、资源标签
   L->>P: HandshakeNotify：允许 exec
-  P->>P: exec QEMU；创建机器、设备、vCPU 线程
+  P->>P: exec QEMU<br/>后端、KVM、CPU<br/>RAM、总线与设备<br/>完成整机复位
   Note over L,P: 第二屏障：QEMU 已运行，-S 暂停客户机 CPU
   P-->>L: QMP greeting
   L->>P: qmp_capabilities
   P-->>L: 协商完成
-  L->>P: 查询线程与设备；设置运行参数
-  L->>L: 启用网络、恢复锁状态
+  L->>P: 查询 vCPU / IOThread、配置调度 / 链路 / 磁盘限速
+  L->>H: 启用网络设备、恢复锁状态
   L->>P: cont
-  P-->>L: cont 处理结果
-  L->>L: 保存状态、STARTED 事件、结束作业
-  L-->>A: API 成功
-  Note over L,P: RESUME 事件独立更新 RUNNING；与命令响应及 API 返回的先后不固定
-  Note over A,P: API 成功不代表客户机操作系统或业务已就绪
+  par 管理侧完成启动
+    P-->>L: 命令结果与异步 RESUME 事件
+    Note over L,P: 事件更新 RUNNING；不依赖响应与事件的固定先后
+    L->>L: 保存状态与启动事件<br/>结束作业
+    L-->>A: API 成功
+  and 客户机继续引导
+    P->>G: 从 CPU 复位状态开始执行固件
+    G->>P: 枚举设备，经 virtio-blk 读取系统盘
+    P-->>G: 块后端返回引导数据
+    G->>G: 装载内核与驱动<br/>挂载文件系统
+    G->>G: 配置网络<br/>启动业务服务
+  end
+  Note over A,G: Libvirt API 不等待客户机操作系统或业务就绪

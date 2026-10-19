@@ -47,6 +47,7 @@ def test_packed_explains_id_chains_wrap_and_non_generalized_demo():
 def test_vdpa_explains_dma_mappings_and_migration_limits():
     source = (TEMPLATES / "_vdpa_article.html").read_text()
     for term in ("VHOST_IOTLB_UPDATE", "VHOST_IOTLB_INVALIDATE", "Shadow Virtqueue",
-                 "QEMU 逐包", "迁移阻止原因", "软件模拟", "IOVA 与 GPA 未必相等",
-                 "不能据此称整个应用到网络的路径都是零拷贝"):
+                 "直接模式由设备访问队列与报文", "逐包解析和复制",
+                 "迁移阻止原因", "软件实现", "IOVA 与 GPA 未必相等",
+                 "其他环节的复制取决于设备、驱动及工作模式"):
         assert term in source

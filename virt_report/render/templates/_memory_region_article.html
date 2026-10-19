@@ -2,11 +2,60 @@
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>同一地址为什么会访问不同对象</h2>
-  <p>一台虚拟机的物理地址空间中既有 RAM，也有设备寄存器、ROM 和未映射区。客户机改写 PCI BAR 或内存控制器配置后，同一个地址还可能指向另一块设备。QEMU 用 MemoryRegion 描述这些区域及其连接关系，再为每个 AddressSpace 生成当前可见的映射。</p>
-  <p>本文从一段带设备窗口的 RAM 出发，分析别名、优先级、FlatView 和访问分发，最后跟踪一次映射更新怎样通知 KVM。文中的小地址空间用于展示地址计算；客户机页表与 EPT 的两级转换见<a href="kvm-ept-fault.html">KVM 内存映射与 EPT 缺页处理</a>。</p>
-  <p>主线是一笔地址为 <code>0x2004</code> 的访问：设备窗口开启时，它命中设备寄存器的偏移 4；窗口关闭后，它命中 RAM 的偏移 0x2004。QEMU 先把可变的设备拓扑展开成可查找的区间，再让访问路径使用这个结果，避免每次访存都重新解释整棵拓扑。</p>
+  <h2>从内存配置到客户机地址空间</h2>
+  <p>QEMU 启动一台 8 GiB 内存的虚拟机，需要先准备保存 RAM 内容的宿主内存，再把它安排到客户机物理地址空间中。这个地址空间还容纳设备寄存器、ROM 和保留窗口。QEMU 用 MemoryRegion 描述各区域及其连接关系，用 AddressSpace 确定访问入口，并把展开后的 RAM 映射登记到 KVM。</p>
+  <p>本文以 Linux 宿主上的 <code>pc-q35-10.2</code>、KVM 加速和 <code>-m 8G</code> 为例，沿着后备内存创建、Q35 地址布局、FlatView 生成、KVM 内存槽注册和实际访问展开。示例使用默认匿名 RAM 后端，未配置 NUMA、内存预分配或机密虚拟机。文中的 GiB 按 2<sup>30</sup> 字节计算。</p>
+  <p>同一份 RAM 在这条路径中有不同的表示：RAMBlock 保存宿主存储信息，RAM MemoryRegion 描述这块存储，机器通过别名决定它出现在客户机的哪些地址，KVM 内存槽登记 GPA 与宿主用户地址的对应关系。先顺着初始化过程建立这几层联系，再看一次高端 RAM 访问，就能理解它们怎样共同工作。</p>
   {% include '_mechanism_baselines.html' %}
+</section>
+
+<section id="backing" class="mechanism-section">
+  <h2>创建 RAM 后端与宿主映射</h2>
+  <p>以下命令把机器停在客户机执行之前，便于查看内存布局。它无需系统盘；在 HMP monitor 中执行 <code>info mtree -f</code> 可查看映射，执行 <code>quit</code> 退出。运行环境需要支持 KVM，并安装相应版本的 QEMU 与固件。</p>
+  <pre><code>qemu-system-x86_64 \
+  -machine pc-q35-10.2,accel=kvm \
+  -cpu host -m 8G \
+  -nodefaults -display none -S -monitor stdio</code></pre>
+  <p><code>-m 8G</code> 进入 <code>MachineState.ram_size</code>。创建机器容器时，<code>cpu_exec_init_all()</code> 已经建立名为 <code>system</code> 的根区域和全局 <code>address_space_memory</code>；随后 KVM 初始化创建内核虚拟机，并向这个 AddressSpace 注册内存监听器。根容器大小设为 <code>UINT64_MAX</code>，用于承接机器布局；<code>-m</code> 决定的 RAM 容量只占其中一部分。此时 8 GiB RAM 尚未挂入根容器。<a href="{{ qemu_source }}system/physmem.c#L3107-L3117">地址空间入口初始化</a></p>
+  {{ diagram('qemu-memory-initialization', 'RAM 从配置、分配到 KVM 注册的初始化顺序', '先建立系统地址空间并注册 KVM 监听器，再创建 RAM 后端和机器布局。区域变化生成 FlatView，经监听器同步到 KVM 内存槽；实际宿主页与二级页表映射通常随访问建立。') }}
+  <h3>默认后端的创建</h3>
+  <p>进入 <code>machine_run_board_init()</code> 后，本例没有指定 <code>memory-backend</code> 或 <code>mem-path</code>，机器类的 <code>create_default_memdev()</code> 创建一个 <code>memory-backend-ram</code> 对象，名称为 <code>pc.ram</code>，size 为 8 GiB。对象完成初始化时调用其分配函数，再把该后端关联到 <code>machine-&gt;memdev</code>。接着 <code>machine_consume_memdev()</code> 取得后端的 MemoryRegion，保存为 <code>machine-&gt;ram</code>，并登记 RAM 的迁移信息。<a href="{{ qemu_source }}hw/core/machine.c#L1078-L1108">默认后端创建</a>、<a href="{{ qemu_source }}hw/core/machine.c#L1541-L1553">后端接入机器</a></p>
+  <pre><code>machine_run_board_init()
+  create_default_memdev()
+    memory-backend-ram 对象完成初始化
+      ram_backend_memory_alloc()
+        memory_region_init_ram_flags_nomigrate()
+          qemu_ram_alloc() → qemu_ram_alloc_internal()
+            ram_block_add() → qemu_anon_ram_alloc()
+  machine_consume_memdev() → machine-&gt;ram
+  machine_class-&gt;init() → pc_q35_init()</code></pre>
+  <p><code>ram_backend_memory_alloc()</code> 为后端内嵌的 <code>backend-&gt;mr</code> 初始化 RAM 区域；<code>qemu_ram_alloc()</code> 创建相应 RAMBlock，关联 <code>mr-&gt;ram_block</code>。RAMBlock 保存宿主基址 <code>host</code>、当前长度 <code>used_length</code>、最大长度 <code>max_length</code> 等信息。本例只有一份 8 GiB 的主 RAM 后备，之后的高低端别名共享它。<a href="{{ qemu_source }}backends/hostmem-ram.c#L18-L43">RAM 后端分配</a>、<a href="{{ qemu_source }}system/physmem.c#L2479-L2579">RAMBlock 创建</a></p>
+  <h3>地址映射与物理页分配</h3>
+  <p>在本例的私有匿名内存路径上，<code>qemu_anon_ram_alloc()</code> 调用 <code>qemu_ram_mmap()</code>，通过 mmap 建立宿主虚拟地址映射。设 RAMBlock 的宿主基址为 <code>B</code>，则后备偏移 <code>x</code> 对应用户地址 <code>B + x</code>。这段用户地址可以连续，承载它的宿主物理页无需连续。<a href="{{ qemu_source }}util/oslib-posix.c#L208-L235">匿名映射入口</a>、<a href="{{ qemu_source }}util/mmap-alloc.c#L184-L208">mmap 实现</a></p>
+  <p>默认未启用 <code>prealloc</code>。宿主通常随访问处理缺页，提供零页或分配实际页面；固件加载、设备初始化也可能提前访问部分内存。因此，后端创建成功并不表示进程已经占用 8 GiB 物理内存。启用预分配会把更多取页工作提前到初始化阶段，增加启动耗时和初始驻留内存，同时降低运行初期的缺页开销。KVM 的二级页表还需要另外建立，预分配宿主页不会自动完成这一层。<a href="{{ qemu_source }}system/physmem.c#L2168-L2205">宿主后备分配入口</a>、<a href="{{ qemu_source }}backends/hostmem.c#L420-L429">预分配条件</a></p>
+</section>
+
+<section id="layout" class="mechanism-section">
+  <h2>Q35 的低端 RAM、高端 RAM 与设备窗口</h2>
+  <p>RAM 后端准备完成后，<code>pc_q35_init()</code> 计算机器布局，再由 <code>pc_memory_init()</code> 把 RAM 挂入系统地址空间。x86 的 4 GiB 以下需要容纳 PCI MMIO、固件和传统设备窗口，所以 8 GiB RAM 会分段映射。本例保持 <code>max-ram-below-4g</code> 默认值；Q35 对这个容量选择 2 GiB 低端 RAM，其余 6 GiB 从客户机物理地址 4 GiB 开始安排。<a href="{{ qemu_source }}hw/i386/pc_q35.c#L153-L200">低端与高端容量计算</a></p>
+  {{ diagram('q35-memory-layout', '8 GiB RAM 的客户机地址与后备偏移', '低端 RAM 别名覆盖 GPA 0 至 2 GiB，高端别名覆盖 GPA 4 至 10 GiB，分别引用同一后备内存的前 2 GiB 与后 6 GiB。2 至 4 GiB 留给设备及固件等窗口；低端内部还会叠加传统设备映射。区间上界均不包含。') }}
+  <table><thead><tr><th scope="col">客户机物理地址范围</th><th scope="col">布局</th><th scope="col">主 RAM 后备偏移</th></tr></thead><tbody>
+    <tr><td>[0, 2 GiB)</td><td><code>ram-below-4g</code>，低端别名</td><td>[0, 2 GiB)</td></tr>
+    <tr><td>[2 GiB, 4 GiB)</td><td>为 PCI、固件等保留的地址范围，其中可有未映射区</td><td>不对应这一段主 RAM</td></tr>
+    <tr><td>[4 GiB, 10 GiB)</td><td><code>ram-above-4g</code>，高端别名</td><td>[2 GiB, 8 GiB)</td></tr>
+  </tbody></table>
+  <p>表中给出主 RAM 的两段别名边界。低端内部还会出现 VGA、ROM、芯片组控制的覆盖区域，客户机操作系统最终得到的可用内存表也会扣除相应保留部分。10 GiB 是本例高端 RAM 的结束位置，整个机器还可以在更高地址安排 64 位 PCI 窗口或其他区域。</p>
+  <p><code>pc_memory_init()</code> 的核心操作如下。两次 <code>memory_region_init_alias()</code> 都引用 <code>machine-&gt;ram</code>，第二个别名从该区域的 2 GiB 偏移开始；<code>memory_region_add_subregion()</code> 决定别名在客户机地址空间中的位置。</p>
+  <pre><code>memory_region_init_alias(ram_below_4g, NULL, "ram-below-4g",
+                         machine-&gt;ram, 0, x86ms-&gt;below_4g_mem_size);
+memory_region_add_subregion(system_memory, 0, ram_below_4g);
+
+memory_region_init_alias(ram_above_4g, NULL, "ram-above-4g",
+                         machine-&gt;ram, x86ms-&gt;below_4g_mem_size,
+                         x86ms-&gt;above_4g_mem_size);
+memory_region_add_subregion(system_memory, x86ms-&gt;above_4g_mem_start,
+                            ram_above_4g);</code></pre>
+  <p>这里没有复制 RAM 内容，也没有再申请一份 6 GiB 内存。别名把“存放在哪里”和“客户机从哪里访问”分开，使 RAM 后端保持原来的存储布局。<code>e820_add_entry()</code> 同时记录 RAM 范围，供后续固件内存信息使用；它与建立 QEMU 内部映射承担不同工作。<a href="{{ qemu_source }}hw/i386/pc.c#L883-L903">RAM 别名与 E820 范围</a></p>
 </section>
 
 <section id="structures" class="mechanism-section">
@@ -20,12 +69,53 @@
     <tr><td><code>FlatView</code></td><td><code>ranges</code>、<code>nr</code>、<code>dispatch</code>、<code>ref</code></td><td>保存展开后的不重叠区间、查找结构和生命周期信息</td></tr>
     <tr><td><code>FlatRange</code></td><td><code>addr</code>、<code>mr</code>、<code>offset_in_region</code>、<code>readonly</code></td><td>把地址空间中的一段映射到叶子区域的指定偏移</td></tr>
   </tbody></table>
+  <p>本例中，<code>machine-&gt;ram</code> 指向 8 GiB 的 <code>pc.ram</code>；<code>ram-above-4g</code> 是指向它的别名，自己的 <code>alias_offset</code> 为 2 GiB；<code>address_space_memory.root</code> 则指向 system 根。RAMBlock 的 <code>offset</code> 用于 QEMU 内部 RAM 地址管理，与客户机 GPA、单个 RAMBlock 内的偏移各有不同含义。</p>
   <p>定义见 <a href="{{ qemu_source }}include/system/memory.h#L823-L876">MemoryRegion</a>、<a href="{{ qemu_source }}include/system/memory.h#L1160-L1210">AddressSpace 与 FlatView</a>、<a href="{{ qemu_source }}system/memory.c#L222-L250">FlatRange 与 MemoryRegionSection</a>。这些对象与 QOM 的所有权树也有区别：<code>owner</code> 负责生命周期，<code>container</code> 描述映射位置。一个区域的所属设备不会因为映射地址改变而更换。</p>
 </section>
 
+<section id="flatten" class="mechanism-section">
+  <h2>生成 FlatView、注册 KVM 与访问高端 RAM</h2>
+  <h3>把区域树展开为可见区间</h3>
+  <p>机器和设备逐步挂接区域，每次最外层内存事务提交时，内存框架处理待更新的地址空间。<code>render_memory_region()</code> 先展开高优先级子区域，再由当前终止区域填充剩余空洞。纯容器的 <code>terminates</code> 为 false，只有已展开的子区域会进入结果。别名先修正地址基址并递归到目标，只读等属性随路径向下传递。生成结果经过相邻区间合并，再建立 AddressSpaceDispatch。</p>
+  <p>对本例的高端 RAM，展开结果记录 GPA 起点为 4 GiB、长度为 6 GiB、目标区域为 pc.ram、区域起始偏移为 2 GiB。客户机通过高端别名找到后备内存的关系，被保存为可以直接查询的区间。低端的设备覆盖会进一步切分 RAM 可见范围，因此两个 RAM 别名不等于最终只有两个 FlatRange 或 KVM 内存槽。<a href="{{ qemu_source }}system/memory.c#L595-L685">拓扑展开</a>、<a href="{{ qemu_source }}system/memory.c#L747-L772">生成视图和 dispatch</a></p>
+  <h3>将 GPA 与宿主地址登记到 KVM</h3>
+  <p>KVM 的 MemoryListener 已在板级初始化之前注册。内存框架比较视图并通知区域变化；<code>kvm_region_add()</code> 先把新增区间排队，监听器的 <code>kvm_region_commit()</code> 再调用 <code>kvm_set_phys_mem()</code> 处理这些区间。对普通 RAM，它取得区域的宿主基址和偏移，填入 KVMSlot，最后经 <code>kvm_set_user_memory_region()</code> 调用 KVM 的内存注册 ioctl。宿主能力决定使用 <code>KVM_SET_USER_MEMORY_REGION</code> 或 REGION2 接口。</p>
+  <p>本例高端 RAM 提供的对应关系是 <code>GPA 4 GiB → HVA B + 2 GiB</code>，长度为 6 GiB。内核由此知道这一段客户机 RAM 的宿主用户地址，随后才能取得对应的宿主物理页并建立二级映射。内存槽注册本身不会预建全部 EPT；首次访问与失效处理见<a href="kvm-ept-fault.html">KVM 内存映射与 EPT 缺页处理</a>。<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L1505-L1537">区间与宿主地址换算</a>、<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L1736-L1828">更新排队与提交</a></p>
+  <h3>沿 GPA 0x100001000 找到同一份 RAM</h3>
+  <p>现在访问客户机物理地址 <code>0x100001000</code>，即 4 GiB + 4 KiB。这个位置落入高端 RAM，换算后的后备偏移为 2 GiB + 4 KiB。若 QEMU 用户态通过 <code>address_space_rw()</code> 访问它，会读取 <code>AddressSpace.current_map</code>，由 dispatch 查找 MemoryRegionSection，再按以下关系计算：</p>
+  <pre><code>区域内偏移 = 访问地址
+           - section.offset_within_address_space
+           + section.offset_within_region
+
+高端 RAM：section 指向 pc.ram
+  客户机访问 GPA       = 0x100001000
+  section 的 GPA 起点 = 0x100000000（4 GiB）
+  区域起始偏移        = 0x80000000 （2 GiB）
+
+  后备偏移 = 0x100001000 - 0x100000000 + 0x80000000
+           = 0x80001000
+  宿主 HVA = B + 0x80001000</code></pre>
+  <p>软件访问普通 RAM 时，QEMU 取得 RAMBlock 对应的宿主指针并复制数据；软件写入还需维护脏页等状态。客户机 vCPU 在 KVM 中执行普通 RAM 读写时，则通过硬件地址转换访问宿主页，映射建立后不会逐次调用 QEMU 的 memcpy。两条路径使用一致的内存布局，但执行访问的方式不同。</p>
+  <p>用户态查找中的 <code>address_space_lookup_region()</code> 先检查最近使用的 section，未命中再查分发结构，并处理小于页面的 subpage 分段。这使访问路径可以使用已生成的视图，无需每次重新遍历设备拓扑。<a href="{{ qemu_source }}system/physmem.c#L346-L397">section 查找与偏移转换</a>、<a href="{{ qemu_source }}system/physmem.c#L3238-L3379">RAM 与设备读写分支</a></p>
+</section>
+
+<section id="mmio" class="mechanism-section">
+  <h2>MMIO 的宽度与访问条件</h2>
+  <p>设备创建 MMIO MemoryRegion 时，通过 <code>memory_region_init_io()</code> 登记 <code>MemoryRegionOps</code> 和设备状态指针 <code>opaque</code>。设备 BAR 等映射确定后，访问相应 GPA 会解析到这个叶子区域。需要用户态模拟的访问经 <code>KVM_EXIT_MMIO</code> 回到 QEMU，再由 <code>address_space_rw()</code>、<code>memory_region_dispatch_read/write()</code> 进入设备回调；回调接收区域内偏移、访问宽度和设备状态。</p>
+  <p>MemoryRegionOps 除了读写函数，还区分设备允许的访问和实现支持的访问宽度。<code>valid</code> 描述客户机可执行的操作，<code>impl</code> 描述回调能够处理的宽度。两者混用可能使非法操作被拆分后错误接受，或让合法操作无法进入设备。</p>
+  <table><thead><tr><th scope="col">字段</th><th scope="col">含义</th></tr></thead><tbody>
+    <tr><td><code>valid.min_access_size / max_access_size</code></td><td>设备接受的宽度范围；与对齐、accepts 回调一起做访问校验</td></tr>
+    <tr><td><code>impl.min_access_size / max_access_size</code></td><td>实现处理的宽度范围；内存框架可据此调整或拆分调用</td></tr>
+    <tr><td><code>endianness</code></td><td>设备寄存器的字节序，参与访问值转换</td></tr>
+    <tr><td><code>read_with_attrs / write_with_attrs</code></td><td>接收 MemTxAttrs，并返回 MemTxResult，表达成功或访问错误</td></tr>
+  </tbody></table>
+  <p>例如设备允许 4 字节读取，回调只实现 1 字节宽度，框架可分成四次调用。带有“读取后清零”等副作用的寄存器必须按设备语义设置这些字段，不能为了适配回调任意拆分。内核设备与 ioeventfd 等加速路径还可以在内核完成相应处理，减少返回 QEMU 的次数。<a href="{{ qemu_source }}include/system/memory.h#L293-L353">MemoryRegionOps</a>、<a href="{{ qemu_source }}system/memory.c#L1443-L1487">校验与读取分发</a></p>
+</section>
+
 <section id="topology" class="mechanism-section">
-  <h2>示例：RAM 上的 MMIO 别名窗口</h2>
-  <p>下面建立一个 64 KiB 地址空间，低 32 KiB 为 RAM；在 0x2000 处放置长度为 16 KiB 的别名 window，指向独立设备总线 bus 的一段。bus 的两个叶子区域都是 4 KiB MMIO，分别位于 0x1000 和 0x3000，其余位置是纯容器留下的空洞。</p>
+  <h2>局部映射示例：别名、覆盖与空洞</h2>
+  <p>上面的 Q35 布局说明了主 RAM 如何初始化。下面用一个独立的 64 KiB 教学模型演示区域覆盖，便于逐项核对地址；这里的 system、bus 和设备均为简化对象，不对应 Q35 的完整布局，也与 x86 的 64 KiB 端口 I/O 空间无关。</p>
+  <p>模型的低 32 KiB 为 RAM；在 0x2000 处放置长度为 16 KiB 的别名 window，指向独立设备总线 bus 的一段。bus 的两个叶子区域都是 4 KiB MMIO，分别位于 0x1000 和 0x3000，其余位置是纯容器留下的空洞。</p>
   <pre><code>system：容器，大小 0x10000
   ram：RAM，addr = 0，size = 0x8000，priority = 0
   window：别名，addr = 0x2000，size = 0x4000，priority = 2
@@ -34,15 +124,15 @@
 bus：独立容器，大小 0x8000
   regs-a：MMIO，addr = 0x1000，size = 0x1000
   regs-b：MMIO，addr = 0x3000，size = 0x1000</code></pre>
-  <p>对 0x2004 的访问进入 window 后，先扣除窗口起点，再加上 alias_offset，得到 bus 地址 0x1004；regs-a 的局部偏移就是 4。两个设备之外的空洞没有终止区域承接，查找会回到外层，继续使用被窗口覆盖的 RAM。例如 0x3004 对应 bus 的 0x2004，这里没有设备，最终命中 ram 的偏移 0x3004。</p>
+  <p>对 0x2004 的访问进入 window 后，先扣除窗口起点，再加上 alias_offset，得到 bus 地址 0x1004；regs-a 的局部偏移就是 4。设备创建时登记的 ops 和 opaque 在此用于处理寄存器访问。两个设备之外的空洞没有终止区域承接，查找会回到外层，继续使用被窗口覆盖的 RAM。例如 0x3004 对应 bus 的 0x2004，这里没有设备，最终命中 ram 的偏移 0x3004。</p>
   <p>优先级只在同一容器的子区域之间比较。window 的 priority = 2 让其可见叶子遮住 priority = 0 的 ram；regs-a 自己的优先级不会拿去与外层 ram 比较。关闭 window 后，原位置重新显露 RAM，RAM 内容仍在原来的后端。别名也会裁剪目标范围，窗口之外的设备不会自动出现在 system 中。</p>
   <p><code>memory_region_add_subregion_overlap()</code> 保存优先级，子区域链表按优先级排序。启用状态、区域边界、别名偏移与嵌套裁剪都在拓扑展开时参与计算。<a href="{{ qemu_source }}system/memory.c#L2655-L2713">挂接与排序</a>、<a href="{{ qemu_source }}system/memory.c#L595-L646">别名和子区域展开</a></p>
 </section>
 
 <section id="lookup" class="mechanism-section">
-  <h2>访问 0x2004：窗口开关改变目标</h2>
+  <h2>交互演示：窗口开关与地址解析</h2>
   {% include '_memory_region_lab.html' %}
-  <p>演示中的布局每次变更后立即生成新视图，再查询选定地址。默认布局的主要 FlatRange 如下；没有映射的尾部不会成为普通 RAM 或 MMIO 的 FlatRange。</p>
+  <p>演示固定为 4 字节对齐访问，两块示例设备均接受该宽度。每次修改布局后立即生成新视图，再查询选定地址。默认布局的主要 FlatRange 如下；没有映射的尾部不会成为普通 RAM 或 MMIO 的 FlatRange。</p>
   <table><thead><tr><th scope="col">system 地址范围</th><th scope="col">目标区域</th><th scope="col">起始区域偏移</th></tr></thead><tbody>
     <tr><td>0x0000—0x1fff</td><td>ram</td><td>0x0000</td></tr>
     <tr><td>0x2000—0x2fff</td><td>regs-a</td><td>0x0000</td></tr>
@@ -50,34 +140,7 @@ bus：独立容器，大小 0x8000
     <tr><td>0x4000—0x4fff</td><td>regs-b</td><td>0x0000</td></tr>
     <tr><td>0x5000—0x7fff</td><td>ram</td><td>0x5000</td></tr>
   </tbody></table>
-  <p>这里 ram 被切成三个区间，但仍是同一个 MemoryRegion 和同一份后端内存。FlatRange 的切分描述可见性，不会把 RAMBlock 复制成三份；迁移也需要按实际 RAMBlock 识别内存。</p>
-</section>
-
-<section id="flatten" class="mechanism-section">
-  <h2>FlatView 如何把地址分发到叶子</h2>
-  <p><code>render_memory_region()</code> 先展开高优先级子区域，再由当前终止区域填充剩余空洞。纯容器的 <code>terminates</code> 为 false，只有已展开的子区域会进入结果。别名先修正 base 并递归到目标；只读等属性随路径向下传递。生成结果经过相邻区间合并，再建立 AddressSpaceDispatch。</p>
-  <p>QEMU 用户态实际访问时读取 <code>AddressSpace.current_map</code>，由 dispatch 查找 MemoryRegionSection。地址换算为：</p>
-  <pre><code>区域内偏移 = 访问地址
-           - section.offset_within_address_space
-           + section.offset_within_region
-
-默认布局读取 0x3004：
-  section 起点 = 0x3000，区域起始偏移 = 0x3000
-  区域内偏移 = 0x3004 - 0x3000 + 0x3000 = 0x3004</code></pre>
-  <p>访问路径不必每次重新遍历设备拓扑。<code>address_space_lookup_region()</code> 先检查最近使用的 section，未命中再查分发结构，并处理小于页面的 subpage 分段。具有相同有效根的多个 AddressSpace 还可以共享一套 FlatView；这与直接在原始区域图中逐层查找有不同的执行成本。<a href="{{ qemu_source }}system/memory.c#L747-L772">生成视图和 dispatch</a>、<a href="{{ qemu_source }}system/physmem.c#L346-L397">section 查找与偏移转换</a></p>
-  <p>普通 RAM 读写取得 <code>RAMBlock</code> 对应的宿主指针，进行复制；写入还需维护脏页等状态。MMIO 则进入 <code>memory_region_dispatch_read/write()</code>，检查访问条件并调用设备的 MemoryRegionOps。回调收到的是区域内偏移，通常不需要自行减掉 PCI BAR 的客户机地址。<a href="{{ qemu_source }}system/physmem.c#L3238-L3285">写入分支</a>、<a href="{{ qemu_source }}system/physmem.c#L3334-L3379">读取分支</a></p>
-</section>
-
-<section id="mmio" class="mechanism-section">
-  <h2>MMIO 的宽度与访问条件</h2>
-  <p>MemoryRegionOps 除了读写函数，还区分设备允许的访问和实现支持的访问宽度。<code>valid</code> 描述客户机可执行的操作，<code>impl</code> 描述回调能够处理的宽度。两者混用可能使非法操作被拆分后错误接受，或让合法操作无法进入设备。</p>
-  <table><thead><tr><th scope="col">字段</th><th scope="col">含义</th></tr></thead><tbody>
-    <tr><td><code>valid.min_access_size / max_access_size</code></td><td>设备接受的宽度范围；与对齐、accepts 回调一起做访问校验</td></tr>
-    <tr><td><code>impl.min_access_size / max_access_size</code></td><td>实现处理的宽度范围；内存框架可据此调整或拆分调用</td></tr>
-    <tr><td><code>endianness</code></td><td>设备寄存器的字节序，参与访问值转换</td></tr>
-    <tr><td><code>read_with_attrs / write_with_attrs</code></td><td>接收 MemTxAttrs，并返回 MemTxResult，表达成功或访问错误</td></tr>
-  </tbody></table>
-  <p>例如设备允许 4 字节读取，回调只实现 1 字节宽度，框架可分成四次调用。带有“读取后清零”等副作用的寄存器必须按设备语义设置这些字段，不能为了适配回调任意拆分。本文交互固定为 4 字节对齐访问，两块示例设备均接受该宽度，不展示跨区域请求拆分。<a href="{{ qemu_source }}include/system/memory.h#L293-L353">MemoryRegionOps</a>、<a href="{{ qemu_source }}system/memory.c#L1443-L1487">校验与读取分发</a></p>
+  <p>这里 ram 被切成三个可见区间，但仍是同一个 MemoryRegion 和同一份后端内存。FlatRange 的切分描述可见性，不会把 RAMBlock 复制成三份；迁移也需要按实际 RAMBlock 识别内存。</p>
 </section>
 
 <section id="updates" class="mechanism-section">
@@ -86,8 +149,8 @@ bus：独立容器，大小 0x8000
   <h3>事务提交与新视图发布</h3>
   <p>调整多个区域时，设备可用 <code>memory_region_transaction_begin()</code> 与 <code>memory_region_transaction_commit()</code> 合并修改。事务允许嵌套，最外层提交才处理待更新布局；提交要求持有 BQL。它合并内存拓扑的发布，并不提供数据库式的任意错误回滚。</p>
   <p>框架比较旧、新 FlatView，先发出删除通知，再处理新增、保持不变和日志状态变化。<code>address_space_set_flatview()</code> 发布新的 current_map；全局监听器 commit 随后执行。KVM 的 region_add / region_del 先把更新排队，在 <code>kvm_region_commit()</code> 中先移除旧槽、再加入新槽，对需要保护的重叠变化协调加速器访问。不能把用户态视图指针的替换理解为所有内核状态同时完成切换。</p>
-  <h3>KVM 内存槽与 MMIO 分流</h3>
-  <p>普通 RAM 区间可注册为 KVM 内存槽，提供客户机物理地址到宿主用户地址的对应关系。客户机在 KVM 中访问已建立映射的 RAM 时不会逐次经过 QEMU 的 memcpy。需要用户态模拟的 MMIO 退出则由 <code>KVM_EXIT_MMIO</code> 分支调用 <code>address_space_rw()</code>，回到上述分发路径。内核处理的设备或 ioeventfd 等加速路径有各自的处理入口。<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L1505-L1540">内存槽准备</a>、<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L1736-L1830">KVM 更新事务</a>、<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L3246-L3254">MMIO 退出处理</a></p>
+  <h3>覆盖变化时同步 KVM 内存槽</h3>
+  <p>设备窗口覆盖普通 RAM 后，QEMU 的可见区间和 KVM 的可直接访问范围必须一同调整。原来覆盖较大范围的 RAM 槽可能需要删除，再按剩余可见区间重新注册；否则客户机仍可能通过旧映射直接访问已被设备窗口占用的地址。窗口关闭时，底层 RAM 重新可见，也需要恢复相应登记。这项工作随布局变化发生，RAMBlock 中未被改写的数据仍保留。<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L1505-L1605">区间删除与登记</a>、<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L1736-L1830">KVM 更新事务</a></p>
   <h3>等待旧视图的读者退出</h3>
   <p>并发读取还需要保证旧视图和区域存活。访问端进入 RCU 读侧临界区，FlatView 引用归零后用 <code>call_rcu()</code> 延后销毁。RCU 保护这里的视图生命周期，设备寄存器的并发读写仍须由设备及其执行环境同步。<a href="{{ qemu_source }}system/memory.c#L293-L324">视图回收</a>、<a href="{{ qemu_source }}system/physmem.c#L3424-L3453">读侧访问</a></p>
 </section>
@@ -96,12 +159,19 @@ bus：独立容器，大小 0x8000
   <h2>预先展开与视图共享的收益和成本</h2>
   <p>设备配置会改变可见布局，KVM、软件访存和后端又都需要了解变化。QEMU 逐步把局部区域描述、全局可见映射和观察者通知分离：<a href="https://github.com/qemu/qemu/commit/4ef4db860362ce9852c20b343e9813897ecdefce">2011 年的内存事务接口</a>允许组合布局变更；同年的<a href="https://github.com/qemu/qemu/commit/7664e80c84700d8b7e88ae854d1d74806c63f013">内存映射观察接口</a>把变化通知交给监听器。这使设备模型可以描述自身映射，不必各自直接维护所有使用方的状态。</p>
   <p><a href="https://github.com/qemu/qemu/commit/ac1970fbe8ad5a70174f462109ac0f6c7bf1bc43">2012 年的 per-AddressSpace dispatch</a>让不同访问入口拥有相应的查找结构。随后多个地址空间可能引用同一个有效根，重复维护视图与分发树又带来额外成本；<a href="https://github.com/qemu/qemu/commit/967dc9b1194a9281124b2e1ce67b6c3359a2138f">2017 年的 FlatView 共享</a>使经别名等关系归一后根指针相同的地址空间可以复用结果。</p>
-  <p>预先展开减少了运行时反复解释拓扑的工作，但映射变更需要重建、比较和发布视图，并协调监听器及旧对象的生命周期。看待这一设计，需要同时区分配置更新路径与频繁访问路径：热插拔、BAR 重定位走前者，普通 MMIO 和用户态 DMA 查找使用后者。<code>info mtree</code> 可检查区域关系，<code>info mtree -f</code> 可进一步检查展开后的可见区间。</p>
+  <p>预先展开减少了运行时反复解释拓扑的工作，但映射变更需要重建、比较和发布视图，并协调监听器及旧对象的生命周期。热插拔、BAR 重定位主要承担更新成本；普通 MMIO 和用户态 DMA 频繁使用已经生成的查找结果。</p>
+  <p>可在目标 QEMU 的 HMP monitor 中执行以下只读命令。第一条同时显示区域 owner/parent，第二条显示展开后的 FlatView。对照区域名称、起止地址与偏移，可以检查 BAR 窗口或 RAM 别名；这些输出描述 QEMU 映射，不列出客户机页表或完整 EPT 内容。<a href="{{ qemu_source }}hmp-commands-info.hx#L230-L242">命令定义</a></p>
+  <pre><code>info mtree -o
+info mtree -f</code></pre>
+  <p>对照本例，可以先在区域树中找到 <code>pc.ram</code> 及高低端别名，再在平坦视图中核对高端 <code>0x100000000</code> 起点与 <code>0x80000000</code> 后备偏移。这样从启动参数到实际地址的关系就连起来了：容量决定后备大小，机器决定 GPA 布局，FlatView 记录当前可见性，KVM 内存槽把 RAM 布局传给内核。修改其中一层时，需要沿这条关系检查其他层是否同步。</p>
 </section>
 
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>
+    <li><a href="{{ qemu_source }}hw/core/machine.c#L1658-L1745">机器 RAM 准备与板级初始化</a>、<a href="{{ qemu_source }}backends/hostmem.c#L333-L429">后端完成与预分配</a></li>
+    <li><a href="{{ qemu_source }}backends/hostmem-ram.c#L18-L43">匿名 RAM 后端</a>、<a href="{{ qemu_source }}system/memory.c#L1585-L1604">RAM MemoryRegion 初始化</a>、<a href="{{ qemu_source }}system/physmem.c#L2479-L2579">RAMBlock 分配</a></li>
+    <li><a href="{{ qemu_source }}hw/i386/pc_q35.c#L153-L200">Q35 低端与高端 RAM 容量</a>、<a href="{{ qemu_source }}hw/i386/pc.c#L883-L903">RAM 别名与客户机地址布局</a></li>
     <li><a href="{{ qemu_source }}docs/devel/memory.rst">QEMU 10.2.0：内存模型、别名和访问约束</a></li>
     <li><a href="{{ qemu_source }}include/system/memory.h#L823-L876">MemoryRegion</a>、<a href="{{ qemu_source }}include/system/memory.h#L1160-L1210">AddressSpace 与 FlatView</a></li>
     <li><a href="{{ qemu_source }}system/memory.c#L595-L685">区域展开</a>、<a href="{{ qemu_source }}system/memory.c#L1080-L1175">视图发布与事务提交</a></li>

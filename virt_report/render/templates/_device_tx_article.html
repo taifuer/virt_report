@@ -3,9 +3,9 @@
 {% from '_mechanism_diagram.html' import diagram with context %}
 
 <section id="preface" class="mechanism-section">
-  <h2>一个报文怎样离开虚拟机</h2>
+  <h2>虚拟网卡的发包流程</h2>
   <p>客户机准备好一个 60 B 以太网帧后，需要把三件事告诉设备：数据放在哪里、现在可以读取，以及读完后何时归还缓冲区。本文沿“准备 P1 → 发布队列 → QEMU 读取 → TAP 接收 → 驱动回收”追踪同一个请求，比较 e1000 寄存器接口与 virtio-net 共享队列。</p>
-  <p>virtio-net 的主线是：描述符记录地址和长度，available ring 发布描述符链首，used ring 归还已处理的链；报文位于描述符指向的缓冲区。kick 和中断提示另一端检查队列。理解这几个对象的关系后，就能区分数据传递、通知加速和缓冲区生命周期。</p>
+  <p>客户机 RAM 保存报文和共享队列，QEMU 进程读取这些内存，TAP 连接宿主网络。virtio-net 用描述符记录缓冲区地址和长度，用 available ring 发布请求，再用 used ring 归还请求。kick 面向 QEMU，完成中断面向客户机，两者都提示接收方检查队列。</p>
   <p>本文分析 x86 / KVM 下的 QEMU 用户态网卡路径：e1000 与 modern virtio-net PCI 设备使用相同的 TAP 后端，关闭 vhost；virtio-net 采用 split virtqueue。示例只发送一个普通以太网帧，省略校验和与分段卸载，不配置客户机 IOMMU。涉及 DMA 地址的实际系统，还需按平台配置完成地址转换。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
@@ -52,8 +52,13 @@
     <tr><td>设备发布完成</td><td>used.ring[旧 idx % N] = {id: 0, len: 0}，再推进 used.idx</td><td>设备已用完缓冲区，驱动尚未回收</td></tr>
     <tr><td>驱动回收</td><td>不要求清零旧环项</td><td>推进 last_used_idx，把链 0 → 2 归还空闲集合</td></tr>
   </tbody></table>
-  <p>新旧项由生产与消费索引区分，不能用“字段是不是 0”判断环为空。回绕时按 16 位计算索引差，驱动还要跟踪尚未回收的描述符，避免覆盖设备仍在使用的请求。下面的演示可选择起始索引 0、3 或 65535，观察环槽与计数器的不同变化。</p>
-  <h3>从共享描述符到 QEMU 本地对象</h3>
+  <p>生产与消费索引的差表示待处理数量，旧环项可以保留在数组里。回绕时按 16 位计算索引差，驱动同时跟踪尚未回收的描述符，保留设备仍在使用的请求。下面的演示可选择起始索引 0、3 或 65535，分别观察普通递增、环槽回绕与计数器回绕。</p>
+  <h3 id="virtqueue-private-state">两侧私有对象指向同一组共享内存</h3>
+  <p>Linux 用 <code>struct vring_virtqueue</code> 管理一条队列，内部的 <code>split.vring</code> 保存 desc、avail、used 的客户机内核指针，其他字段记录空闲描述符和回收进度。这个对象也位于客户机 RAM 中，但属于驱动自己的管理数据。设备接口交给 QEMU 的是三个共享区域的地址，QEMU 按这些地址访问协议字段。</p>
+  <p>QEMU 在宿主进程中另建 <code>VirtQueue</code>，其中 <code>VRing</code> 保存共享区域的设备地址及访问缓存，<code>handle_output</code> 保存本队列的处理入口。两个私有对象采用各自的结构布局和地址视图，通过同一组 desc、avail、used 交换工作。<a href="{{ kernel_source }}drivers/virtio/virtio_ring.c#L97-L220">Linux 私有队列对象</a>、<a href="{{ qemu_source }}hw/virtio/virtio.c#L100-L158">QEMU 私有队列对象</a></p>
+  {{ diagram('virtqueue-private-shared', '两侧私有队列对象与共享区域', '图中箭头表示本例请求和完成的主要读写方向。Linux 的管理对象与共享队列都位于客户机 RAM；QEMU 的 VirtQueue 位于宿主进程内存，通过地址映射访问共享区域。通知抑制字段另按协议读写。') }}
+  <p>消费进度由接收方私下保存：QEMU 的 <code>last_avail_idx</code> 记录下一个待取的 available 位置，Linux 的 <code>last_used_idx</code> 记录下一个待回收的 used 位置。生产方也保留本地进度，分别是 Linux 的 <code>split.avail_idx_shadow</code> 和 QEMU 的 <code>used_idx</code>，发布时更新共享 idx。沿用图中的 P1，若 <code>avail.idx = last_avail_idx = used.idx = 4</code>，而 <code>last_used_idx = 3</code>，后端已经处理完这条请求，驱动仍有一个完成待回收。<a href="{{ kernel_source }}drivers/virtio/virtio_ring.c#L677-L685">Linux 发布 available</a>、<a href="{{ kernel_source }}drivers/virtio/virtio_ring.c#L809-L865">Linux 回收 used</a>、<a href="{{ qemu_source }}hw/virtio/virtio.c#L1704-L1750">QEMU 推进消费位置</a></p>
+  <h3 id="virtqueue-part-2">从共享描述符到 QEMU 本地对象</h3>
   <p><code>virtqueue_split_pop()</code> 取到链首后检查描述符编号、链长度和可访问范围，将设备可读的段整理到 <code>VirtQueueElement.out_sg</code>，设备可写的段整理到 <code>in_sg</code>。元素的 <code>index</code> 保留链首，用于完成时写回 used.id。这些 iovec 是 QEMU 的宿主内存视图；它们与客户机共享的 desc[] 是不同对象。<a href="{{ qemu_source }}hw/virtio/virtio.c#L1693-L1848">split 队列消费</a>、<a href="{{ qemu_source }}include/hw/virtio/virtio.h">VirtQueueElement 定义</a></p>
   <p>本例把 modern virtio-net 的 12 B 网络头放在 desc[0]，把 60 B 以太网帧放在 desc[2]；两项均为设备可读。实际驱动也可把网络头与报文合并在一个缓冲区，或用更多描述符组织分散的数据。描述符链长度、报文数量和通知次数应分别计数。</p>
 </section>
@@ -122,24 +127,39 @@ TAP 后端
   tap_receive / tap_receive_iov
     tap_write_packet → writev(tap_fd, iov, iovcnt)</code></pre>
   <p><code>virtqueue_pop()</code>中的 <code>pop</code>表示取出一个请求，客户机缓冲区仍须保持有效；到设备发布完成后，驱动才能回收。<code>virtqueue_push()</code>则包括写 used 项和更新索引，后者之前有相应的内存顺序保证。<a href="{{ qemu_source }}hw/virtio/virtio.c#L1693-L1848">split ring 消费</a>、<a href="{{ qemu_source }}hw/virtio/virtio.c#L1158-L1201">完成发布</a></p>
-  <p>复查实际虚拟机时，应同时确认客户机设备型号、QEMU 后端配置和 vhost 开关。客户机里同样显示 virtio-net，报文处理却可能已经由内核 vhost-net 接管；此时继续只跟踪 <code>virtio_net_flush_tx()</code>，就会错过实际的数据处理路径。QEMU 的 <code>virtio_queue_notify</code>、<code>virtqueue_pop</code>和 <code>virtio_notify</code>等 trace 事件可用于关联队列操作；通知次数、报文数和中断次数需要分别统计。</p>
+  <h3 id="tap-host-rx">TAP 文件描述符连接宿主网卡接收路径</h3>
+  <p>继续沿 P1 向下看：QEMU 的 <code>tap_fd</code> 是打开的字符设备文件句柄，宿主网络栈中的 TAP 网卡由另一个 <code>net_device</code> 对象表示。这里取 QEMU 通过 <code>/dev/net/tun</code> 创建普通 TAP、未启用 XDP 的路径。打开文件时，内核分配 <code>tun_file</code> 并放入 <code>file-&gt;private_data</code>；随后 <code>TUNSETIFF</code> 找到或创建接口，将这个文件与 <code>tun_struct</code> 关联，后者的 <code>dev</code> 指向 TAP 的 net_device。<a href="{{ qemu_source }}net/tap-linux.c#L38-L125">QEMU 打开与配置 TAP</a>、<a href="{{ kernel_source }}drivers/net/tun.c#L119-L196">文件与网卡对象</a>、<a href="{{ kernel_source }}drivers/net/tun.c#L3393-L3432">字符设备打开</a></p>
+  <table><thead><tr><th scope="col">P1 经过的位置</th><th scope="col">此处完成的交接</th></tr></thead><tbody>
+    <tr><th scope="row">QEMU：<code>writev(tap_fd, iov, iovcnt)</code></th><td>通过已打开的文件，把帧及已协商的 vnet 头交给宿主内核</td></tr>
+    <tr><th scope="row">字符设备：<code>tun_chr_write_iter()</code></th><td>从 file 找到 tun_file，再取得关联的 tun_struct，调用 tun_get_user()</td></tr>
+    <tr><th scope="row">TAP 接收：<code>tun_get_user()</code></th><td>解析元数据、形成 skb；以 tun-&gt;dev 作为接收网卡处理以太网头</td></tr>
+    <tr><th scope="row">宿主网络栈：<code>netif_receive_skb()</code></th><td>普通非 NAPI 路径经 tun_rx_batched() 到达这里，开始宿主侧的报文接收处理</td></tr>
+  </tbody></table>
+  <pre><code>QEMU 用户态发送 P1
+  writev(tap_fd) → tun_chr_write_iter → tun_get_user
+    tun_file → tun_struct → TAP net_device
+    skb → tun_rx_batched → netif_receive_skb
+      按宿主配置：桥接到其他端口 / 交给本机协议栈及路由</code></pre>
+  <p>因此，客户机的 TX 在宿主 TAP 接口上表现为 RX。TAP 若加入 Linux bridge，报文可继续被桥转发；后续是否经过物理网卡取决于拓扑、目的地址和转发规则。固定版本中，QEMU 的普通 TAP 创建代码不设置 <code>IFF_NAPI</code>，上述 x86 路径经 <code>tun_rx_batched()</code> 调用 <code>netif_receive_skb()</code>。预先配置 NAPI 的 TAP 可以进入另一条排队与 NAPI/GRO 路径；外部传入 FD 或 <code>/dev/tap&lt;ifindex&gt;</code> 接口也需单独确认。<a href="{{ kernel_source }}drivers/net/tun.c#L1985-L2003">writev 对应的写入口</a>、<a href="{{ kernel_source }}drivers/net/tun.c#L1902-L1956">接收分支</a>、<a href="{{ kernel_source }}drivers/net/tun.c#L1474-L1513">普通 TAP 的宿主接收入口</a></p>
+  <p>追踪本例时，先确认客户机设备型号、QEMU 网络后端和 vhost 开关。vhost 关闭时，可以关联 QEMU 的 <code>virtio_queue_notify</code>、<code>virtqueue_pop</code>和 <code>virtio_notify</code>等 trace 事件，观察通知、取请求与完成通知的顺序。启用 vhost 后，消费进度要到对应后端观察。报文数量可与这些事件分别计数，用来判断一次通知承接了多少工作。</p>
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>演进取舍：packed 队列与独立后端</h2>
-  <h3>兼容硬件驱动与统一虚拟设备接口</h3>
-  <p>模拟已有网卡可以利用操作系统现成的驱动，代价是设备模型需要遵循硬件的寄存器、副作用、描述符格式和中断行为。virtio 选择统一的特性协商、队列和通知机制，再按网络、块设备等用途扩展设备格式。这样可以减少不同虚拟设备之间重复设计的接口，也要求客户机安装匹配的驱动，并正确处理功能协商与版本兼容。</p>
-  <p>virtio 的队列格式本身也在演进。1.0 及更早规范使用 split virtqueue，1.1 加入 packed virtqueue，将请求发布与完成状态合并到同一描述符环，减少处理队列时涉及的分散内存区域。packed 描述符使用 <code>addr / len / id / flags</code>，以 AVAIL、USED 位和 wrap counter 判断所有权；直接链按环中连续位置组织，不再使用 split 的 next 字段。驱动和设备仍分别保留事件抑制结构。两种格式需通过特性协商选定。<a href="https://docs.oasis-open.org/virtio/virtio/v1.1/cs01/virtio-v1.1-cs01.html">VIRTIO 1.1 规范</a></p>
-  <table><thead><tr><th scope="col">比较项</th><th scope="col">Split</th><th scope="col">Packed</th></tr></thead><tbody><tr><td>请求与完成</td><td>desc 表加独立 avail / used 环</td><td>同一描述符环，通过状态位交接</td></tr><tr><td>直接描述符链</td><td>NEXT + next 编号，可不连续</td><td>NEXT + 环中连续位置</td></tr><tr><td>回绕识别</td><td>16 位 idx 与各自消费位置</td><td>AVAIL / USED 与各自 wrap counter</td></tr><tr><td>代价</td><td>结构分工明确，但访问多个共享区域</td><td>元数据更集中，所有权与事件判断更复杂</td></tr></tbody></table>
-  <h3>后端迁移到内核或独立进程</h3>
-  <p>统一客户机接口之后，可以继续调整宿主处理位置。vhost-net 将 virtqueue 的主要网络数据处理移到宿主内核，减少经 QEMU 用户态处理报文的环节；vhost-user 则通过控制协议，让独立用户态进程取得共享内存、队列和通知所需的信息。客户机侧仍可使用 virtio-net 驱动。<a href="{{ qemu_source }}docs/interop/vhost-user.rst#L15-L48">vhost-user 的控制面与队列共享</a></p>
-  <p>处理位置的变化带来新的资源和状态管理任务：线程如何调度、内存如何共享、后端退出时如何处理队列，以及迁移时如何保存尚未完成的请求。vhost-user 的 Unix socket 负责建立与管理这些关系，普通报文通过共享队列和内存交换。网络后端可以使用 DPDK，块设备后端可以使用 SPDK；两者的具体请求路径需要分别分析。</p>
-  <p>三种后端的初始化与发包过程见<a href="qemu-vhost-net.html">《virtio-net 的后端处理：vhost-net 与 vhost-user》</a>。比较方案时，应固定客户机负载、后端出口和卸载配置，再观察队列处理、通知、复制与调度开销。设备接口和后端位置是两个独立维度，同一 virtio 接口可以连接不同后端，硬件直通和 vDPA 则还会改变设备访问与数据面实现。</p>
-  <p>使用 DPDK 的独立用户态网络后端见<a href="dpdk-vhost-user-net.html">《DPDK vhost-user 的报文转发与缓冲区管理》</a>：同样的客户机 TX 链先转换为 rte_mbuf，再提交给物理网卡 PMD。客户机缓冲区与 PMD 报文缓冲区的回收时刻也随之分开。</p>
+  <h2>队列格式与后端位置的后续优化</h2>
+  <span id="evolution-part-1" class="mechanism-topic-alias" aria-hidden="true"></span>
+  <p>本例的 P1 经历三类成本：描述符与环的内存访问，通知与线程调度，以及向 TAP 交付数据。后续优化分别作用于这些位置，客户机接口、队列格式与后端执行者需要分开比较。</p>
+  <table><thead><tr><th scope="col">变化</th><th scope="col">针对的成本</th><th scope="col">新增约束</th></tr></thead><tbody>
+    <tr><td>Split → Packed</td><td>将发布与完成集中到描述符环，调整元数据访问局部性</td><td>双方协商格式，正确处理 wrap、完成 ID 与事件位置</td></tr>
+    <tr><td>QEMU → vhost-net</td><td>内核消费队列，减少 QEMU 逐包处理和交接</td><td>内核工作项、队列与 TAP 的配置和调度</td></tr>
+    <tr><td>QEMU → vhost-user</td><td>由外部进程安排专用的数据处理路径</td><td>共享内存、后端断连及迁移时的状态交接</td></tr>
+  </tbody></table>
+  <span id="evolution-part-2" class="mechanism-topic-alias" aria-hidden="true"></span>
+  <p>具体机制分别见<a href="packed-virtqueue.html">Packed 队列</a>、<a href="qemu-vhost-net.html">vhost-net 与 vhost-user</a>。使用 DPDK 的后端还会把 P1 转换为 mbuf，形成客户机缓冲区与物理网卡缓冲区的两次交接，见<a href="dpdk-vhost-user-net.html">DPDK 转发与缓冲区管理</a>。这些改变都不自动保证零拷贝或更低尾延迟，仍需核对实际数据路径。
+  </p>
 </section>
 
 <section id="evaluation" class="mechanism-section">
-  <h2>如何判断瓶颈与改进是否有效</h2>
+  <h2>瓶颈定位与优化效果验证</h2>
   <p>回到 P1：一次成功处理依次推进 avail.idx、后端消费位置、used.idx 和驱动回收位置。四个位置停在哪里，给出了排查起点；只观察报文吞吐或中断次数，无法区分队列等待与后端拥塞。</p>
   <table><thead><tr><th scope="col">现象</th><th scope="col">解释与检查</th><th scope="col">改进与代价</th></tr></thead><tbody>
     <tr><td>avail 增长，后端消费落后</td><td>检查 kick 是否到达、QEMU 发送任务调度和 CPU 占用</td><td>批处理、ioeventfd 或独立后端可以减少调度往返；批量过大也会延后单个报文处理</td></tr>
@@ -155,6 +175,7 @@ TAP 后端
     <li>QEMU 10.2.0：<a href="{{ qemu_source }}hw/net/e1000.c">e1000.c</a>，寄存器访问、TX 描述符与状态回写；<a href="{{ qemu_source }}hw/net/virtio-net.c">virtio-net.c</a>，用户态发送路径、网络头与异步完成。</li>
     <li>QEMU 10.2.0：<a href="{{ qemu_source }}hw/virtio/virtio.c">virtio.c</a>，队列消费、完成发布与通知；<a href="{{ qemu_source }}hw/virtio/virtio-pci.c">virtio-pci.c</a>，PCI 通知区及 ioeventfd。</li>
     <li>QEMU 10.2.0：<a href="{{ qemu_source }}net/tap.c">tap.c</a>，TAP 数据提交与暂不可写处理；<a href="{{ qemu_source }}net/net.c">net.c</a>，网络队列及发送分派。</li>
+    <li><a href="{{ kernel_source }}drivers/net/tun.c">Linux 6.18 tun.c</a>：TAP 字符设备、tun_file 与 net_device 的关联，以及用户态写入到宿主接收路径的交接。</li>
     <li><a href="{{ kernel_source }}Documentation/virt/kvm/api.rst#L2092-L2135">Linux 6.18 KVM_IOEVENTFD</a>：客户机 PIO / MMIO 写与 eventfd 的关联。</li>
     <li><a href="{{ kernel_source }}include/uapi/linux/virtio_ring.h">Linux 6.18 virtio_ring.h</a>：描述符、可用环、已用环及 packed 格式；<a href="{{ kernel_source }}drivers/virtio/virtio_ring.c">virtio_ring.c</a>：驱动发布、通知检查与回收。</li>
     <li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">VIRTIO 1.2 规范</a>：split virtqueue、驱动通知和网络设备发送约定；<a href="https://docs.oasis-open.org/virtio/virtio/v1.1/cs01/virtio-v1.1-cs01.html">VIRTIO 1.1 规范</a>：split 与 packed 队列格式。</li>

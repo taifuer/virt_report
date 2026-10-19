@@ -3,7 +3,7 @@
 {% set kernel_source = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>预拷贝如何缩短停机</h2>
+  <h2>预拷贝迁移与停机控制</h2>
   <p>预拷贝迁移在虚拟机运行期间复制内存，最后暂停虚拟机，传输剩余脏页及处理器、设备状态。复制期间客户机仍会写入内存，已经传过的页可能需要重传。QEMU 通过脏页跟踪记录这些修改，并根据剩余数据量和传输速率决定切换时机。本文分析这两个过程及其对停机时间的影响。</p>
   <p>以 8 GiB 内存、1000 MiB/s 的有效传输速率为例，停机后再复制全部内存，仅数据传输就约需 8.2 秒。预拷贝先在运行期间完成大部分复制，再把停机阶段的剩余量压到可接受范围。下面先看两端如何交接，再跟踪一页被重新写脏后的重传，最后讨论何时停止迭代，以及停机超出目标时应检查什么。</p>
   <p>以下分析以 x86 / KVM、普通 RAM 的预拷贝路径为例，假定两端机器配置兼容、存储已就绪，不涉及磁盘复制、VFIO 或机密虚拟机。</p>
@@ -19,10 +19,10 @@
 </section>
 
 <section id="iteration" class="mechanism-section">
-  <h2>脏页位图如何驱动重传</h2>
+  <h2>脏页位图与页面重传</h2>
   <h3>迁移位图与脏页记录</h3>
-  <p>QEMU 为各个 <code>RAMBlock</code>维护迁移位图 <code>bmap</code>，表示哪些页还需要发送。初始化时将相应位设为 1，使首次扫描覆盖需要迁移的内存；与此同时开启脏页跟踪，记录运行期间的新修改。<a href="{{ qemu_source }}migration/ram.c#L2829-L2914">初始化代码</a>还会排除符合条件的丢弃页，缩小首次扫描的待传集合。</p>
-  <p>KVM 的 dirty bitmap 或 dirty ring 记录客户机写脏的页；QEMU 内存子系统汇总相关记录，再由 <code>migration_bitmap_sync()</code>合入迁移位图。原来为 0、此次变为 1 的页增加待传数量，已经为 1 的页不会重复计数。同一页在两次发送之间反复写入，合入位图后仍只需安排一次重传。<a href="{{ qemu_source }}migration/ram.c#L940-L1023">位图合并</a>、<a href="{{ qemu_source }}migration/ram.c#L1144-L1188">同步入口</a></p>
+  <p>源端 QEMU 在自己的进程内为各个 <code>RAMBlock</code>维护迁移位图 <code>bmap</code>，表示哪些页还需要发送。初始化时将相应位设为 1，使首次扫描覆盖需要迁移的内存；与此同时开启脏页跟踪，记录运行期间的新修改。<a href="{{ qemu_source }}migration/ram.c#L2829-L2914">初始化代码</a>还会排除符合条件的丢弃页，缩小首次扫描的待传集合。</p>
+  <p>源端宿主内核中的 KVM 通过 dirty bitmap 或 dirty ring 向 QEMU 提供客户机写脏记录；QEMU 内存子系统汇总记录，再由 <code>migration_bitmap_sync()</code>合入自己的迁移位图。原来为 0、此次变为 1 的页增加待传数量，已经为 1 的页不会重复计数。同一页在两次发送之间反复写入，合入位图后仍只需安排一次重传。目的端接收页面内容并更新本机 RAM，源端这份待发位图只用于安排传输。<a href="{{ qemu_source }}migration/ram.c#L940-L1023">位图合并</a>、<a href="{{ qemu_source }}migration/ram.c#L1144-L1188">同步入口</a></p>
   <table><thead><tr><th scope="col">对象与关键字段</th><th scope="col">保存的内容</th><th scope="col">主要操作</th></tr></thead><tbody>
     <tr><td><code>RAMBlock.idstr / host / used_length</code></td><td>块名、源端宿主起始地址与有效长度</td><td>按块内偏移定位页面；流中用块名匹配目的端内存</td></tr>
     <tr><td><code>RAMBlock.bmap</code></td><td>按目标页索引的待发送集合，1 表示需要发送</td><td>初始化置位、脏页同步重新置位、发送前清位</td></tr>
@@ -37,7 +37,7 @@
 P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
   <p><code>bmap</code>记录发送调度需求，不代表目的端已确认收到；网络中的数据还可能尚未装载。块内第 i 个目标页的内存地址为 <code>host + i × 目标页大小</code>。它与 <code>RAMBlock.offset</code>在 QEMU 全局 RAM 地址空间中的位置也应区分。<a href="{{ qemu_source }}include/system/ramblock.h#L25-L91">RAMBlock 字段</a>、<a href="{{ qemu_source }}migration/ram.c#L128-L146">扫描状态</a></p>
   <h3>页面重传与跟踪顺序</h3>
-  <p>假设页 P 已传到目的端，随后客户机又修改了 P。底层脏页跟踪记录这次写入；下次同步把 P 重新标入待传集合，目的端旧内容便会被覆盖。发送任务完成后，跟踪仍持续到最终同步阶段。</p>
+  <p>继续看上面的 P1：待传位清零后，页面经过发送、接收和装载，目的端得到一份副本。客户机再次修改 P1，底层脏页跟踪便记录这次写入；修改也可能发生在上一份副本尚在传输时。下次同步把 P1 重新标为 1，扫描再次选中它，新的页内容随后覆盖目的端旧副本。同一页由“待传 → 已安排发送 → 再次待传”反复切换，直到最终同步完成。</p>
   <p><code>migration_bitmap_clear_dirty()</code>在发送前处理底层脏标记的清除，再清除迁移位图中的该页。相关页的跟踪必须在读取、发送之前重新有效：若发送之后才清标记，两者之间的新写入就可能被一并清除。手动 dirty-log 模式允许按块推迟清除操作，前提是仍在读页之前恢复跟踪。<a href="{{ qemu_source }}migration/ram.c#L830-L864">清除顺序</a>、<a href="{{ qemu_source }}migration/ram.c#L2247-L2265">页面发送</a></p>
   <p>运行阶段的页复制与客户机写入可能交错，因此单次复制不保证得到整页的原子快照。期间发生修改的页会再次同步。最后暂停客户机并静止相关 I/O 后，<code>ram_save_complete()</code>再次汇总脏页并发送剩余内容，形成恢复所需的最终内存。用户态设备或 DMA 的写入还需要对应的脏页记录路径，KVM 脏页日志的覆盖范围取决于写入来源。</p>
   <h3>扫描轮次与发送批次</h3>
@@ -50,9 +50,10 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
   <pre><code>本轮耗时      Tₙ ≈ Rₙ / B
 下一轮待传量  Rₙ₊₁ ≈ min(M, D × Tₙ)
                     = min(M, Rₙ × D / B)</code></pre>
-  <p>例如 M 为 8 GiB、B 为 1000 MiB/s、D 为 256 MiB/s，待传量大致按 8192 → 2097.152 → 536.871 → 137.439 → 35.184 MiB 下降；下方演示以这组参数开始，可切换 4、8、16 GiB 内存或修改带宽。D/B 越接近 1，每轮减少得越少；达到或超过 1 时，这个模型就不能靠继续迭代收敛。实际负载的热页集合、突发写入、扫描顺序和带宽变化，会使曲线偏离几何级数。</p>
+  <p>例如 M 为 8 GiB、B 为 1000 MiB/s、D 为 256 MiB/s，首轮用约 8.2 秒，产生约 2 GiB 待重传页；第二轮用约 2.1 秒，又留下约 537 MiB。各轮剩余量约为 8192 → 2097 → 537 → 137 → 35 MiB，下方演示采用这组初始参数。D/B 越接近 1，每轮减少得越少；达到或超过 1 时，这个模型就不能靠继续迭代收敛。实际负载的热页集合、突发写入、扫描顺序和带宽变化，会使曲线偏离几何级数。</p>
   <p>D 按脏页粒度统计：修改一页中的少量字节，也可能需要重传整页；同一统计周期内反复修改同一页会被合并。B 使用当前路径处理内存的有效速率，与网卡标称带宽可能有明显差异。压缩或零页编码启用后，还需分别统计逻辑内存字节数与链路字节数。</p>
   {% include '_migration_lab.html' %}
+  <p>可以先保持内存量不变，只提高写脏速率，观察曲线从快速下降变为缓慢下降；再提高带宽，比较相同停机目标下需要的轮次。最后降低停机目标：阈值变小，通常需要多迭代，但链路和设备处理能力没有因此改变。这三组操作分别对应写入压力、传输能力和切换策略。</p>
   <p>增加迭代通常能减少暂停后的剩余工作，但也会延长迁移、消耗网络与主机资源。QEMU 根据预计暂停期间的工作量判断切换时机，剩余量达到阈值后即可进入完成阶段，无需等待脏页归零。</p>
 </section>
 
@@ -67,8 +68,8 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
   <table>
     <thead><tr><th scope="col">参数或指标</th><th scope="col">含义</th></tr></thead>
     <tbody>
-      <tr><th scope="row"><code>downtime-limit</code></th><td>用于切换决策的时间目标，单位为毫秒；不是业务 SLA。</td></tr>
-      <tr><th scope="row"><code>expected-downtime</code></th><td>迁移活动期间报告的估计值，随脏页同步和带宽估计更新，不是已经发生的停机。</td></tr>
+      <tr><th scope="row"><code>downtime-limit</code></th><td>用于切换决策的时间目标，单位为毫秒；实际停机还受设备与传输收尾影响。</td></tr>
+      <tr><th scope="row"><code>expected-downtime</code></th><td>迁移活动期间对未来停机的估计，随脏页同步和带宽估计更新。</td></tr>
       <tr><th scope="row"><code>downtime</code></th><td>成功完成后报告的停机统计；需结合源端计时点与启用的协议理解。</td></tr>
       <tr><th scope="row"><code>total-time</code></th><td>整个迁移过程的耗时，包含运行期间的迭代，不能与停机时间混用。</td></tr>
     </tbody>
@@ -92,8 +93,12 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
     qemu_savevm_state_complete_precopy
       ram_save_complete → 最终脏页同步、发送余页
       complete_precopy_non_iterable → 同步 vCPU、保存设备</code></pre>
+  <p>这些回调连续推进同一份迁移状态：setup 建立待传位图；iterate 消费它，并保留当前 RAMBlock 与扫描位置；因限速返回后，下一次 iterate 从保存的位置继续。进入 complete 时，源端已经停止修改客户机状态，最后一次同步把 P1 等尚有变化的页补入集合，再发送完毕。回调返回只是把控制权交回迁移框架，位图和扫描进度仍由迁移对象保存。</p>
   <p><a href="{{ qemu_source }}migration/ram.c#L4693-L4701"><code>savevm_ram_handlers</code></a>注册了初始化、迭代、完成和装载回调。暂停阶段的<a href="{{ qemu_source }}migration/savevm.c#L1660-L1732">最终保存流程</a>先完成可迭代处理器，再通过 <code>cpu_synchronize_all_states()</code>读取所需的 CPU 状态，并保存各非迭代处理器。CPU 与具体设备的保存次序由处理器注册顺序决定。</p>
-  <p>观察一次实际迁移时，可同时记录 <code>query-migrate</code>中的 <code>ram.remaining</code>、<code>dirty-pages-rate</code>、<code>dirty-sync-count</code>、<code>pages-per-second</code>与时间指标；页速率须结合 <code>page-size</code>换算。再用 <code>migration_bitmap_sync_end</code>、<code>migrate_pending_exact</code>和 <code>vmstate_downtime_checkpoint</code>等 trace 事件区分“剩余量降不下来”和“暂停后的处理太慢”。单看链路吞吐或完成时间，无法分辨这两类问题。</p>
+  <p>在源宿主机上，可对正在迁出的 Libvirt 测试域执行只读查询；将 <code>demo</code> 替换为实际域名：</p>
+  <pre><code>virsh -c qemu:///system qemu-monitor-command demo --pretty '{"execute":"query-migrate"}'</code></pre>
+  <p>返回的 <code>ram.remaining</code> 是剩余字节数；同一 <code>ram</code> 对象中的 <code>dirty-pages-rate</code>、<code>dirty-sync-count</code>、<code>pages-per-second</code> 分别反映写脏速率、同步次数和页传输速率。页速率须结合 <code>page-size</code> 换算，字段是否出现取决于迁移阶段。按固定间隔保存多次查询，才能判断剩余量的变化；一次查询仅提供当前快照。<a href="{{ qemu_source }}qapi/migration.json#L15-L73">RAM 统计字段</a>、<a href="{{ qemu_source }}qapi/migration.json#L334-L393">查询接口</a></p>
+  <p>需要进一步区分“剩余量降不下来”和“暂停后的处理太慢”时，可结合 <code>migration_bitmap_sync_end</code>、<code>migrate_pending_exact</code> 和 <code>vmstate_downtime_checkpoint</code> 等 trace 事件。前者对应运行中的收敛过程，后者还需要观察停机后的设备保存和传输收尾。</p>
 </section>
 
 <section id="optimization" class="mechanism-section">
@@ -105,8 +110,7 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
   <h3>写脏速度过高：从统一限速到按 vCPU 限制</h3>
   <p>QEMU 1.6 的 <code>auto-converge</code>通过限制客户机 CPU 执行降低写脏速度。这会降低迁移期间的业务性能，也会影响写内存较少的 vCPU。QEMU 8.1 的 <code>dirty-limit</code>利用 KVM dirty ring 观察各 vCPU 的写脏活动，对超过配额的 vCPU 施加等待。它依赖相应 KVM 能力，并以受限 vCPU 的执行时间换取较低的写脏速率；设备写入仍需由相应路径处理。<a href="{{ qemu_source }}qapi/migration.json#L452-L453">自动收敛</a>、<a href="{{ qemu_source }}docs/devel/migration/dirty-limit.rst">Dirty limit 设计</a></p>
   <h3>跟踪本身有开销：缩短清除与读页的间隔</h3>
-  <p>传统整槽位同步、清除与重新写保护，在大内存客户机上可能持锁较久；而过早重新保护，还会记录一些随后本就会随当前页一起传走的修改。KVM 的手动 dirty-log 保护把“获取记录”和“清除并重新保护”分开，允许按较小范围、更接近发送时刻处理。它减少无效工作，却增加了顺序要求：必须在读页前恢复跟踪。dirty ring 则以队列收集脏页，带来回收、满环处理及内存顺序方面的新约束。<a href="{{ kernel_source }}Documentation/virt/kvm/api.rst#L7997-L8031">手动保护的设计动机</a>、<a href="{{ kernel_source }}Documentation/virt/kvm/api.rst#L8516-L8542">Dirty ring 约束</a></p>
-  <p>脏页记录的收割、重置与发布顺序见<a href="kvm-dirty-ring.html">《KVM 脏页日志：位图与 Dirty Ring》</a>。</p>
+  <p>获取脏页、清除日志与重新写保护本身也有成本。手动 dirty-log 保护允许更接近读页时清除相应范围，减少过早重新保护带来的重复工作；仍须满足本篇介绍的“先恢复跟踪，再读取页面”顺序。dirty ring 进一步改变记录的收集方式，其回收、满环与内存顺序集中在<a href="kvm-dirty-ring.html">脏页日志专篇</a>。<a href="{{ kernel_source }}Documentation/virt/kvm/api.rst#L7997-L8031">KVM 手动保护的设计说明</a></p>
   <h3>减少流量与控制收尾成本</h3>
   <p>零页识别避免发送整页零值；XBZRLE 在适合的重传场景中编码与已缓存页面的差异；压缩以 CPU 工作换取链路字节减少。实际收益取决于页面内容、缓存命中和处理能力。内存剩余量已经很小而停机仍长时，需要进一步分析设备保存、目的端装载和 I/O 交接的耗时。放宽停机目标可以更早切换，也会把更多工作留在暂停阶段。</p>
   <p>后拷贝允许目的端在内存尚未传完时开始执行，剩余页面由后台传输，并在访问缺失页时优先请求。它减少了预拷贝阶段的重复传输，同时引入远程缺页延迟和两端状态依赖。预拷贝与后拷贝的选择还需结合业务延迟要求、网络稳定性和故障恢复条件。<a href="{{ qemu_source }}docs/devel/migration/postcopy.rst">后拷贝设计</a></p>

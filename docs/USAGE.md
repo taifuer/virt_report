@@ -94,11 +94,13 @@ cp .env.example .env
 
 目录只显示已有正文的专题及其主归属篇数，未发布的专题和分组不对读者展示。各文章 URL 保持稳定，交叉阅读放在导读正文，不在目录增加附加行或重复计数。
 
-所有专题标题直接链接对应导读，介绍基本分工、具体例子、演进与取舍，再指向深入机制文章；列表不重复展示导读。基础部分为 `virtualization-basics.html`、`cpu-virtualization.html`、`memory-virtualization.html`、`device-virtualization.html`、`interrupt-virtualization.html`；操作部分为 `vm-startup.html`、`migration.html`、`hotplug.html`、`live-upgrade.html`；内部机制为 `qemu-internals.html`、`kvm-internals.html`、`libvirt-internals.html`。
+所有专题标题直接链接对应导读或覆盖该专题的主文章，介绍基本分工、具体例子、演进与取舍，再指向深入机制文章；列表不重复展示入口文章。基础部分为 `virtualization-basics.html`、`cpu-virtualization.html`、`memory-virtualization.html`、`device-virtualization.html`、`interrupt-virtualization.html`；操作部分为 `libvirt-domain-start.html`、`migration.html`、`hotplug.html`、`qemu-cpr-transfer.html`；内部机制为 `qemu-internals.html`、`kvm-vcpu-run.html`、`libvirt-internals.html`。
+
+重复导读已整合到对应主文章：`vm-startup.html` → `libvirt-domain-start.html`，`live-upgrade.html` → `qemu-cpr-transfer.html`，`kvm-internals.html` → `kvm-vcpu-run.html`。动态服务返回 308，静态导出保留跳转页面和无脚本入口；旧章节锚点在目标文章中保留，不重复计入文章数量。
 
 当前文章都位于 `mechanisms/`：
 
-- CPU（`#cpu-virtualization`）：`kvm-vcpu-run.html`、`kvm-vcpu-halt.html`、`kvm-virtual-time.html`、`qemu-tcg.html`、`cpu-model-migration.html`，执行与退出、等待与唤醒、虚拟时间、TCG，以及 CPU 模型的能力与迁移约束。
+- CPU（`#cpu-virtualization`）：`kvm-vcpu-halt.html`、`kvm-virtual-time.html`、`qemu-tcg.html`、`cpu-model-migration.html`，等待与唤醒、虚拟时间、TCG，以及 CPU 模型的能力与迁移约束；KVM 执行循环归入内部机制专题。
 - 内存（`#memory-virtualization`）：`kvm-ept-fault.html`、`kvm-hugepages.html`、`kvm-dirty-ring.html`、`vcpu-numa-placement.html`，地址映射、大页、脏页记录，以及客户机拓扑、线程与 RAM 的物理放置。
 - 设备与 I/O（`#device-virtualization`）：`virtio-device-initialization.html`、`qemu-network-tx.html`、`virtio-net-rx.html`、`packed-virtqueue.html`、`qemu-vhost-net.html`、`dpdk-vhost-user-net.html`、`spdk-vhost-user-blk.html`、`vhost-vdpa.html`、`qemu-vfio-dma.html`、`qemu-virtio-blk.html`，从特性协商、队列与双向收发进入软件/硬件后端，解释 DMA、缓冲区所有权、迁移限制与持久化边界。
 - 中断（`#interrupt-virtualization`）：`kvm-virtio-interrupt.html`，队列完成、通知判定、MSI-X 路由与 KVM 中断注入。
@@ -106,19 +108,19 @@ cp .env.example .env
 - 热迁移（`#migration`）：`qemu-memory-migration.html`、`qemu-migration-stream.html`、`qemu-multifd.html`、`qemu-postcopy.html`、`libvirt-live-migration.html`，内存迭代、流格式、多通道、后拷贝，以及管理层五阶段协调与失败恢复。
 - 热插拔（`#hotplug`）：`qemu-pcie-hotplug.html`、`qemu-virtio-mem.html`、`x86-vcpu-hotplug.html`，分别跟踪 PCIe、内存和 vCPU 的添加、客户机协作及移除完成。
 - 热升级（`#live-upgrade`）：`qemu-cpr-transfer.html`，同机更新中的共享 RAM、文件描述符与执行权交接。
-- QEMU 内部机制（`#qemu-internals`）：`qemu-qom-device.html`、`qemu-memory-region.html`、`qemu-aio-iothread.html`、`qemu-qcow2.html`、`qemu-live-block-operations.html`，对象生命周期、地址空间、异步 I/O、镜像映射，以及外部快照与在线块图变更。
-- KVM 内部机制（`#kvm-internals`）：`kvm-vcpu-requests.html`，request 位图、vCPU 模式与 kick 协作；区分内核请求、宿主 IPI、客户机中断及 QEMU 信号。
+- QEMU 内部机制（`#qemu-internals`）：`qemu-qom-device.html`、`qemu-memory-region.html`、`qemu-aio-iothread.html`、`qemu-qcow2.html`、`qemu-live-block-operations.html`，对象生命周期、内存初始化与地址空间、异步 I/O、镜像映射，以及外部快照与在线块图变更。
+- KVM 内部机制（`#kvm-internals`）：`kvm-vcpu-run.html`、`kvm-vcpu-requests.html`，执行循环与 I/O 退出，以及 request 位图、vCPU 模式与 kick 协作；区分内核请求、宿主 IPI、客户机中断及 QEMU 信号。
 - Libvirt 内部机制（`#libvirt-internals`）：`libvirt-rpc.html`，XDR 报文、服务端分发、响应匹配与守护进程边界。
 
 设备接口、后端和 DMA 属于同一条 I/O 路径，合并在一个专题内阅读。原 `#io-virtualization` 锚点仍定位到合并后的专题，文章 URL 不变。
 
-MemoryRegion 交互使用 64 KiB 示例布局，支持别名偏移、优先级、窗口启停和地址查询。virtio-mem 交互用 512 MiB 聚合格子展示目标、实际提供与客户机管理容量，支持回收阻塞、BUSY、回退与重置。两者均保留无 JavaScript 说明，全屏时移动原 DOM，退出后状态保持。
+内存初始化文章以 QEMU 10.2 / Q35 / 8 GiB RAM 为主线，串起宿主后备、RAMBlock、高低端别名、FlatView 与 KVM 注册，配有初始化时序图和地址布局图。64 KiB 交互后置为独立的局部映射示例，支持别名偏移、优先级、窗口启停和地址查询，不代表实际机器布局。virtio-mem 交互用 512 MiB 聚合格子展示目标、实际提供与客户机管理容量，支持回收阻塞、BUSY、回退与重置。两者均保留无 JavaScript 说明，全屏时移动原 DOM，退出后状态保持。
 
 新增交互：halt 时间线可调整事件、轮询预算和调度等待；大页模型展示 2 MiB EPT 叶子与 512 个小页叶子的转换；qcow2 模型比较 L1/L2 查找、两类引用计数、backing 回退和局部写入。SPDK 文章按 25.09 固定提交跟踪本地 NVMe 路径，采用离线架构图与时序图，不需要读者安装 SPDK 或访问外部图表服务。
 
 TCG 交互跟踪翻译块的生成、命中、跳转链接与代码改写后的失效；与 KVM 文章对照 CPU 执行路径。公共 Mermaid 图默认不超过原始尺寸，长图等比缩小；细节可在全屏查看器中缩放。
 
-目前包含 12 篇基础与组件导读、38 篇具体机制文章。新增内容包括 CPU 模型与迁移兼容性、vCPU 热插拔、NUMA 放置、Libvirt 迁移协调、virtio-net 接收与 NAPI、Packed virtqueue、vhost-vDPA，以及外部快照与在线块操作。
+目前 12 个专题共包含 47 篇独立文章，另保留 3 个旧链接跳转页。内容覆盖 CPU 模型与迁移兼容性、vCPU 热插拔、NUMA 放置、Libvirt 迁移协调、virtio-net 接收与 NAPI、Packed virtqueue、vhost-vDPA，以及外部快照与在线块操作。
 
 后续可聚焦增量备份的 dirty bitmap 继承与恢复验证、嵌套虚拟化的一次 VM Entry、块设备在线扩容、virtio-scsi 取消与复位，以及 Libvirt job / 锁的具体竞争。ARM 暂缓；目录不加入尚未成文的入口。迁移与更新选题应聚焦直通状态、后端重连或失败恢复等具体问题，避免重复现有预拷贝、迁移流与 CPR 文章。
 
@@ -141,7 +143,7 @@ VFIO 演示显示映射请求字段与硬件页表关系，缺失或只读映射
 新增文章使用正式机制名称作为标题，版本信息放在开篇。先说明要解决的问题和解决思路，再用同一小例子串起架构、关键结构与源码过程，最后说明收益、代价、评价指标及演进方向，避免对话式说明和未经实测的性能结论。目录标题应能说明文章的实际内容，避免连续使用“基本原理”“关键源码”等泛称。
 基础导读需要先解释读者必须理解的概念，不能从实现术语或调用链直接开始。用同一例子回答“问题是什么、最直接的办法为何不够、改进如何生效、成本转移到哪里”，再进入源码文章。发展演变按问题和技术层次组织：例如 PIC/APIC、MSI-X、irqfd、APICv 分别涉及控制器、设备通知、内核接口和硬件交付，不应画成彼此完全替代的单线历史。图中的地址、队列和状态应与正文例子一致；确切年份需有原始文档或提交依据。
 
-12 篇导读均需单独审阅正文，不能以章节齐全或测试通过代替内容审查。组件导读用 KVM 的设备读取、QEMU 的 4 KiB 磁盘读取、Libvirt 的暂停与恢复贯穿分层；操作导读解释状态如何建立和交接，区分命令受理、操作完成与业务就绪。审阅时确认：基本概念先于结构名，例子能从输入走到结果，演进写明收益和剩余代价，图与正文一致，最终有评价方法和继续阅读路径。不得仅添加引言就标记为完整重写。
+各专题的入口文章均需单独审阅正文，不能以章节齐全或测试通过代替内容审查。组件介绍用 KVM 的设备读取、QEMU 的 4 KiB 磁盘读取、Libvirt 的暂停与恢复贯穿分层；操作介绍解释状态如何建立和交接，区分命令受理、操作完成与业务就绪。审阅时确认：基本概念先于结构名，例子能从输入走到结果，演进写明收益和剩余代价，图与正文一致，最终有评价方法和继续阅读路径。不得仅添加引言就标记为完整重写。文章开头统一显示“本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。”。
 `article_outline.py` 在服务端生成正文与目录的统一编号：一级“一、二、三”；同一章节有多个子标题时使用“1. 2. 3.”，只有一个时不加序号。保留旧 section 和子标题锚点；交互组件内部的标题不进入目录，也不计入编号数量。`sections` 的顺序和名称必须与正文一致，重复锚点或元数据不匹配会阻止渲染；关闭 JavaScript 时编号和目录仍可使用。纯排版不要改动已有锚点。
 每篇需展示解释机制所必需的数据结构：关键字段、读写角色、对象关联与操作前后的变化，并区分本地对象和线格式、地址与数据、共享状态和私有游标。结构表与交互应使用一致的示例值；已有文章也按这一要求检查。
 更新后运行 `pytest`；安装 Node 时会同时执行交互模型测试，也可单独运行：

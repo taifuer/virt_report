@@ -12,8 +12,8 @@ from virt_report.render import render
     ('virtualization-basics', ['preface', 'isolation', 'architecture', 'example', 'evolution', 'tradeoffs']),
     ('cpu-virtualization', ['preface', 'paths', 'example', 'evolution', 'evaluation']),
     ('memory-virtualization', ['preface', 'addresses', 'evolution', 'access', 'evaluation']),
-    ('device-virtualization', ['preface', 'architecture', 'queue', 'example', 'backends', 'evolution', 'evaluation']),
-    ('interrupt-virtualization', ['preface', 'controllers', 'path', 'acceleration', 'example', 'evolution', 'evaluation']),
+    ('device-virtualization', ['preface', 'example', 'architecture', 'queue', 'backends', 'evolution', 'evaluation']),
+    ('interrupt-virtualization', ['preface', 'example', 'controllers', 'path', 'acceleration', 'evolution', 'evaluation']),
 ])
 def test_foundation_guides_introduce_principles_before_examples_and_tradeoffs(slug, sequence):
     article = mechanisms.get_article(slug)
@@ -50,7 +50,7 @@ def test_directory_links_do_not_underline_but_keep_focus_feedback():
     assert '.mechanisms-index a:focus-visible{outline:2px solid var(--brand)' in css
 
 
-@pytest.mark.parametrize('slug', ['vm-startup', 'migration', 'hotplug', 'live-upgrade'])
+@pytest.mark.parametrize('slug', ['migration', 'hotplug'])
 def test_operation_guides_explain_state_before_handoff_and_evaluate_outcomes(slug):
     article = mechanisms.get_article(slug)
     assert [section['id'] for section in article['sections']] == [
@@ -65,8 +65,8 @@ def test_operation_guides_explain_state_before_handoff_and_evaluate_outcomes(slu
 
 @pytest.mark.parametrize('slug,diagram,example_fields', [
     ('libvirt-internals', 'libvirt-suspend-sequence', ('suspend demo', 'STOP', 'DEVICE_DELETED')),
-    ('qemu-internals', 'qemu-overview-read-lifecycle', ('sector = 2048', 'len: 4097', 'IOThread')),
-    ('kvm-internals', 'kvm-internals-execution', ('0x10', 'KVM_EXIT_MMIO', 'kvm_run')),
+    ('qemu-internals', 'qemu-overview-read-lifecycle', ('4 KiB', 'used', 'IOThread')),
+    ('kvm-vcpu-run', 'kvm-run-exits', ('0xf0001000', 'KVM_EXIT_MMIO', 'kvm_run')),
 ])
 def test_component_guides_have_local_example_diagrams_and_state_handoffs(slug, diagram, example_fields):
     page = render.render_mechanisms_html(Config(), slug)
@@ -79,13 +79,16 @@ def test_component_guides_have_local_example_diagrams_and_state_handoffs(slug, d
     assert 'id="evolution"' in page
 
 
-def test_device_overview_introduces_negotiation_before_the_queue_example():
+def test_device_overview_keeps_negotiation_readable_and_links_to_protocol_detail():
     page = render.render_mechanisms_html(Config(), 'device-virtualization')
     start = page.index('id="queue"')
-    end = page.index('id="example"')
+    end = page.index('id="backends"')
     initialization = page[start:end]
-    assert initialization.index('FEATURES_OK') < initialization.index('DRIVER_OK')
-    assert '读回确认' in initialization
+    assert '先确认共同支持的特性和队列格式' in initialization
+    assert 'virtio-device-initialization.html' in initialization
+    assert 'FEATURES_OK' not in initialization
+    detail = render.render_mechanisms_html(Config(), 'virtio-device-initialization')
+    assert detail.index('FEATURES_OK') < detail.index('DRIVER_OK')
 
 
 def test_clock_article_distinguishes_reading_and_timer_delivery():

@@ -1,0 +1,43 @@
+flowchart TB
+  accTitle: Q35 的 8 GiB RAM 基础别名布局
+  accDescr: 此图不按比例绘制。QEMU 10.2 Q35 在默认低端 RAM 上限下，把八 GiB 后备划为两个无复制别名。客户机物理地址零至二 GiB 对应后备零至二 GiB，四至十 GiB 对应后备二至八 GiB。二至四 GiB 为 PCI 和固件等窗口，其中可以存在未映射区。低端基础 RAM 布局内部还会叠加 VGA、ROM 等区域。十 GiB 仅为本例高端 RAM 的末端，不代表整个客户机物理地址空间的上限。
+  %% QEMU baseline: 698104725efad4b29079d857dfdebbd804e34c99
+  %% hw/i386/pc_q35.c: lowmem = 0x80000000 for ram_size >= 0xb0000000
+  %% hw/i386/x86.c: above_4g_mem_start = 4 * GiB
+  %% hw/i386/pc.c: pc_memory_init creates two aliases into machine->ram
+  %% Keep all mapping edges inside each row; only row clusters connect vertically.
+  %% This preserves each row's LR direction when Mermaid lays out the TB graph.
+  subgraph LOW[低端 RAM 别名]
+    direction LR
+    low["GPA [0, 2 GiB)
+局部有 VGA / ROM 覆盖"]
+    first["后备 [0, 2 GiB)
+长度 2 GiB"]
+    low --> first
+  end
+  subgraph GAP[" "]
+    direction LR
+    hole["GPA [2, 4 GiB)
+PCI / 固件等窗口
+含未映射区"]
+    shared["同一份 8 GiB 后备
+两个 alias 无需复制"]
+    hole ~~~ shared
+  end
+  subgraph HIGH[高端 RAM 别名]
+    direction LR
+    high["GPA [4, 10 GiB)
+10 GiB 为本例 RAM 末端"]
+    rest["后备 [2, 8 GiB)
+长度 6 GiB"]
+    high --> rest
+  end
+  LOW ~~~ GAP
+  GAP ~~~ HIGH
+  style GAP fill:transparent,stroke:transparent;
+  classDef memory fill:#e4f1ec,stroke:#438575,color:#173e34;
+  classDef window fill:#fff4db,stroke:#b89a55,color:#59491e;
+  classDef note fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  class low,high,first,rest memory;
+  class hole window;
+  class shared note;

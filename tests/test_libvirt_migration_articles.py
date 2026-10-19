@@ -20,7 +20,7 @@ def test_libvirt_migration_has_five_phases_and_explicit_failure_boundaries():
         "managed direct", "p2p", "控制面", "数据面", "PERFORM3_DONE",
         "qemuMigrationCookie", "qemuMigrationSrcConfirmPhase",
         "VIR_MIGRATE_POSTCOPY_RESUME", "RPC 响应在网络中丢失",
-        "不能证明对方已停止", "持久定义", "只读观察命令",
+        "不能证明对方已停止", "持久定义", "domjobinfo demo --completed --keep-completed",
     ):
         assert marker in source
     assert "4d937284669ecf180abea087d0b3ad67d9476349" in source

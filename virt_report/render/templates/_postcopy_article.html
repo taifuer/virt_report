@@ -2,7 +2,7 @@
 {% set linux_source = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 {% from '_mechanism_diagram.html' import diagram with context %}
 <section id="preface" class="mechanism-section">
-  <h2>预拷贝不收敛时如何交接</h2>
+  <h2>后拷贝迁移的切换与按需传页</h2>
   <p>预拷贝在源端持续运行虚拟机，同时反复发送被修改的内存页。写脏速度接近传输速度时，剩余内存可能长时间无法降到停机预算以内。后拷贝将执行切到目的端，再通过后台传输和缺页请求补齐内存，从而结束源端不断产生新脏页的循环。</p>
   <p>本文分析 Linux 上普通 RAM 的后拷贝路径：切换时如何处理旧页面，目的端如何请求缺失页，以及接收线程怎样安装页面并恢复访问。先按单条页面传输通道展开，再讨论紧急通道、大页和故障恢复。</p>
   {% include '_mechanism_baselines.html' %}
@@ -12,15 +12,9 @@
 <section id="principle" class="mechanism-section">
   <h2>目的端先执行，缺失页按需补齐</h2>
   <p>后拷贝开始后，源端 vCPU 停止执行，目的端恢复 CPU 和设备状态并开始运行。此时内存分为两部分：已经在目的端可访问的页面，以及仍需从源端取得的页面。目的端执行线程访问后一部分时，宿主内核暂时阻塞这次访问，由 QEMU 获取缺失内容。</p>
+  <p>这里有三组职责：目的端宿主内核捕获缺失映射并等待供页；目的端 QEMU 的缺页线程发出请求，接收线程安装页面；源端 QEMU 继续提供尚未交付的 RAM。源端客户机已经停止，源端 QEMU 进程仍然存活；目的端客户机已经开始执行，却仍依赖跨主机供页。</p>
   <p>源端继续扫描待发送位图，并优先处理目的端请求的页面。随着页面到达，目的端可访问范围扩大，直到全部内存完成交接。客户机后续写入发生在目的端；源端保留的旧副本不能再覆盖已经交付的页面。</p>
   <p>例如切换时 P0 已有最新副本，P1 从未传输，P2 只传过旧版本。目的端可立即访问 P0；P1 需要补齐；P2 必须先丢弃旧映射，再按缺失页处理。三种页面状态解释了后续流程的顺序：先确定哪些页有效，再开放执行，最后由缺页请求和后台传输完成其余交接。</p>
-  <table><thead><tr><th>结构</th><th>由谁维护</th><th>一个比特或条目表示什么</th></tr></thead><tbody>
-    <tr><td><code>RAMBlock.bmap</code></td><td>源端 RAM 迁移线程；preempt 路径还与请求线程协作</td><td>置位表示该页仍需发送。后拷贝期间源端不再运行客户机，成功安排传输后逐步清除。</td></tr>
-    <tr><td><code>RAMBlock.receivedmap</code></td><td>目的端页面接收路径</td><td>记录已接收的页面；安装成功后更新，可避免对已到达页继续请求，并用于恢复时同步进度。</td></tr>
-    <tr><td><code>MigrationIncomingState.page_requested</code></td><td>目的端缺页与接收线程，在互斥锁下交接</td><td>按对齐的宿主地址记录尚待解决的页面，安装完成后删除。</td></tr>
-    <tr><td><code>RAMSrcPageRequest</code> 队列</td><td>源端返回通道线程入队，RAM 迁移线程消费</td><td>单流模式下的请求范围，以 RAMBlock 和块内偏移定位。</td></tr>
-  </tbody></table>
-  <p>源端“已发送”和目的端“已安装”是不同进度：两者之间还有网络、接收缓冲和安装操作。故障恢复需要核对目的端实际收到的页面，不能只依赖源端已经清掉的位。</p>
 </section>
 
 <section id="switch" class="mechanism-section">
@@ -43,7 +37,7 @@
   <h3>从宿主地址定位到 RAMBlock</h3>
   <p>目的端为 RAM 映射注册 userfaultfd 的 missing 模式。执行线程访问缺失映射时，内核生成 <code>uffd_msg</code>，其 <code>event</code> 为 <code>UFFD_EVENT_PAGEFAULT</code>；<code>arg.pagefault.address</code> 给出目的端进程中的宿主虚拟地址，<code>flags</code> 区分读写等属性。这个地址不能直接发给源端使用，因为两端 QEMU 的虚拟地址布局可能不同。</p>
   <p><code>postcopy_ram_fault_thread()</code> 用 <code>qemu_ram_block_from_host()</code> 找到 RAMBlock 和块内偏移，再向下对齐到该块的宿主页大小。请求据此转换为“哪个 RAMBlock、从哪里开始、需要多长”。这里的缺页属于宿主内存交付过程，不要求把一个普通的客户机页错误注入给客户机操作系统。<a href="{{ qemu_source }}migration/postcopy-ram.c#L1350-L1406">缺页地址转换</a></p>
-  <pre><code>示例：RAMBlock = "pc.ram"，宿主页 = 4096 B
+  <pre><code>示例：P2 位于 RAMBlock "pc.ram" 的偏移 0x2000，宿主页 = 4096 B
 目的端访问 address = 0x10002020，RAMBlock.host = 0x10000000
 块内偏移 0x2020 → 对齐到 start = 0x2000，len = 4096
 
@@ -51,7 +45,7 @@
 REQ_PAGES_ID：start: BE64 | len: BE32 | id_length: u8 | "pc.ram"
 REQ_PAGES：   start: BE64 | len: BE32
 同一 RAMBlock 的后续请求可省略 id，复用返回通道上一次的块名。</code></pre>
-  <p>目的端先检查接收位图，再记录尚待解决的页面并发送请求；源端的返回通道线程校验 RAMBlock 和范围，随后交给页发送路径。单流模式优先取请求队列，队列为空时继续扫描后台页面。请求到达时，后台可能已经发送过该页；<code>get_queued_page()</code> 会检查发送位图并跳过这类请求。<a href="{{ qemu_source }}migration/migration.c#L536-L628">请求编码与已接收检查</a>、<a href="{{ qemu_source }}migration/ram.c#L1851-L1910">源端请求去重</a></p>
+  <p>前面已经丢弃 P2 的 v1 副本，这次访问等待的是源端保留的 v2。目的端先检查接收位图，再记录尚待解决的页面并发送请求；源端的返回通道线程校验 RAMBlock 和范围，随后交给页发送路径。单流模式优先取请求队列，队列为空时继续扫描后台页面。请求到达时，后台可能已经发送过该页；<code>get_queued_page()</code> 会检查发送位图并跳过这类请求。<a href="{{ qemu_source }}migration/migration.c#L536-L628">请求编码与已接收检查</a>、<a href="{{ qemu_source }}migration/ram.c#L1851-L1910">源端请求去重</a></p>
   {% include '_postcopy_lab.html' %}
   <h3>完整页面安装后，访问才能继续</h3>
   <p><code>ram_load_postcopy()</code> 按流格式读取页数据。如果宿主页包含多个迁移目标页，接收线程先在临时缓冲中收齐它们，再调用 <code>postcopy_place_page()</code>。宿主页与目标页相同的普通页面可以直接利用 QEMUFile 缓冲，仍要等整个页内容到齐后安装。</p>
@@ -62,6 +56,14 @@ REQ_PAGES：   start: BE64 | len: BE32
 
 <section id="implementation" class="mechanism-section">
   <h2>源码：丢弃、请求与原子装页</h2>
+  <p>上面的 P2 从缺失到可用，要经过请求登记、源端调度、网络传输和目的端安装。两端分别记录各自进度，下面四类对象支撑这一过程：</p>
+  <table><thead><tr><th>结构</th><th>由谁维护</th><th>一个比特或条目表示什么</th></tr></thead><tbody>
+    <tr><td><code>RAMBlock.bmap</code></td><td>源端 RAM 迁移线程；preempt 路径还与请求线程协作</td><td>置位表示该页仍需发送。后拷贝期间源端不再运行客户机，成功安排传输后逐步清除。</td></tr>
+    <tr><td><code>RAMBlock.receivedmap</code></td><td>目的端页面接收路径</td><td>记录已接收的页面；安装成功后更新，可避免对已到达页继续请求，并用于恢复时同步进度。</td></tr>
+    <tr><td><code>MigrationIncomingState.page_requested</code></td><td>目的端缺页与接收线程，在互斥锁下交接</td><td>按对齐的宿主地址记录尚待解决的页面，安装完成后删除。</td></tr>
+    <tr><td><code>RAMSrcPageRequest</code> 队列</td><td>源端返回通道线程入队，RAM 迁移线程消费</td><td>单流模式下的请求范围，以 RAMBlock 和块内偏移定位。</td></tr>
+  </tbody></table>
+  <p>源端“已发送”和目的端“已安装”是不同进度：两者之间还有网络、接收缓冲和安装操作。故障恢复需要核对目的端实际收到的页面，不能只依赖源端已经清掉的位。</p>
   <table><thead><tr><th>环节</th><th>入口与读写的状态</th></tr></thead><tbody>
     <tr><td>准备切换</td><td><a href="{{ qemu_source }}migration/migration.c#L2728-L2859"><code>postcopy_start()</code></a>：停源、发送 discard，打包 LISTEN、设备状态与 RUN。</td></tr>
     <tr><td>丢弃旧映射</td><td><a href="{{ qemu_source }}migration/ram.c#L2685-L2750"><code>ram_postcopy_send_discard_bitmap()</code> / <code>ram_discard_range()</code></a>：发送最后待传范围，清除目的端接收位与旧映射。</td></tr>

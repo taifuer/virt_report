@@ -2,14 +2,22 @@
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>运行中的磁盘怎样保留旧视图并更换存储</h2>
+  <h2>在线块操作与磁盘视图管理</h2>
   <p>一台虚拟机持续写盘时，管理程序可能需要留下快照、合并增长的镜像链，或者把磁盘搬到另一个存储。直接复制正在变化的镜像会混合不同时刻的数据；直接改 backing 关系，又可能让同一偏移突然读到不同内容。QEMU 块层需要在客户机继续 I/O 的同时保持其可见数据一致，再安全地改变节点关系。</p>
   <p>本文以 <code>A ← B</code> 为起点：A 是基础镜像，B 的 backing 指向 A，客户机当前写 B。沿外部快照、stream、commit、mirror 与 backup 比较数据去向和完成条件。<a href="qemu-qcow2.html">qcow2 的地址映射与写时复制</a>解释单个镜像内部，本篇分析多个块节点组成的链和在线作业。</p>
+  <p>块图保存在宿主 QEMU 进程中。客户机看到的 <code>/dev/vda</code> 可以连接到 QEMU 的 virtio-blk 设备，设备再通过块后端访问活动节点 <code>node-B</code>；节点背后才是宿主上的 <code>b.qcow2</code> 文件。客户机设备名、QMP 节点名和宿主文件路径分别由不同层使用，在线切换节点可以保持客户机磁盘身份不变。</p>
+  <table><thead><tr><th>操作目标</th><th>采用的机制</th><th>最重要的区别</th></tr></thead><tbody>
+    <tr><td>保留当前磁盘视图，后续写入另存</td><td>外部快照</td><td>切到新 overlay；历史视图仍依赖旧链</td></tr>
+    <tr><td>消除活动层对下层的依赖</td><td>stream</td><td>把所需数据向上填入，不修改旧基础层</td></tr>
+    <tr><td>把上层内容合入基础层</td><td>commit</td><td>向下写入，会改变基础层及依赖它的历史视图</td></tr>
+    <tr><td>把当前磁盘搬到新存储</td><td>mirror</td><td>持续追赶新写入，确认完成后切换活动入口</td></tr>
+    <tr><td>保存作业开始时的副本</td><td>backup</td><td>保护时间点内容，客户机仍使用原盘</td></tr>
+  </tbody></table>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="snapshot" class="mechanism-section">
-  <h2>外部快照怎样划分一个时间点</h2>
+  <h2>外部快照的时间点与新写入层</h2>
   <p>给 B 做外部快照时，QEMU 接入新 overlay C，把客户机后续写入转到 C，形成 <code>A ← B ← C</code>。C 未覆盖的偏移仍经 B 向下读取。快照时刻的磁盘视图由 <code>A + B</code> 共同组成；新建 C 保存此后的变化。单独留下一个初始为空的 C，不能恢复快照时刻的数据。</p>
   {{ diagram('block-live-operations', '外部快照前后的 backing 链与数据视图', '初始活动层 B 读取基础镜像 A；外部快照后活动层切到 C，A 与 B 构成快照时刻的磁盘视图。C 初始未分配同一偏移，读取继续落到 B；客户机新写入只改变 C 中的当前视图。') }}
   <table><thead><tr><th scope="col">时刻</th><th scope="col">偏移 <code>0x1000</code> 的内容</th><th scope="col">客户机读到什么</th></tr></thead><tbody>
@@ -18,7 +26,7 @@
     <tr><td>客户机写入 v3</td><td>C 中为 v3，B 仍为 v2</td><td>当前读到 v3；从保留的 A + B 视图读到 v2</td></tr>
   </tbody></table>
   <p>这是磁盘视图的时间边界，RAM 和应用事务并未一起保存。多盘原子操作需要组合事务，应用一致性还需要客户机文件系统冻结、数据库检查点等协调。快照链依赖原有文件，宿主存储损坏时链上多个时间点可能一起丢失，因此仍要把备份副本与活动存储分开。</p>
-  <p>以下 QMP 示例要求：已存在活动节点 <code>node-B</code>，其 backing 为 <code>node-A</code>；<code>/path/to/test/c.qcow2</code> 是预先创建、未被其他进程使用、与 B 虚拟容量相同的空 qcow2 文件。QMP 已完成能力协商。节点名描述运行中的块图，与文件名、客户机设备名分别对应：</p>
+  <p>以下 QMP 命令发送到承载测试磁盘的 QEMU，要求已完成能力协商，已存在活动节点 <code>node-B</code>，其 backing 为 <code>node-A</code>；<code>/path/to/test/c.qcow2</code> 是预先创建、未被其他进程使用、与 B 虚拟容量相同的空 qcow2 文件。这些操作会修改块图，各节应分别从满足条件的测试链开始：</p>
   <pre><code>{"execute":"blockdev-add","arguments":{
   "driver":"qcow2","node-name":"node-C","backing":null,
   "file":{"driver":"file","filename":"/path/to/test/c.qcow2"}
@@ -35,12 +43,13 @@
   "job-id":"flatten-C","device":"node-C","auto-dismiss":false
 }}</code></pre>
   <p>这个命令没有指定 base，目标是把 C 变成独立镜像。若增加 <code>"base-node":"node-A"</code>，则只补入需要从 B 读取的部分，成功后成为 <code>A ← C</code>；A 本身的内容不在本次复制范围内。两种目标对应不同的存储占用和依赖关系。</p>
+  <p>对已经在 C 写成 v3 的偏移 <code>0x1000</code>，stream 保留 C 中的内容；只有 C 尚未覆盖的区域才需要向下查找并补入。完成前后客户机读到的内容相同，改变的是这些内容还依赖哪些下层节点。</p>
   <p><code>StreamBlockJob</code> 保存目标节点、要保留的 base 边界和 copy-on-read 过滤节点。<code>stream_run()</code> 先检查当前层是否已经分配，再查下层是否存在需要带入的数据，通过 copy-on-read 填充。作业成功进入收尾阶段后，<code>stream_prepare()</code> 排空相关 I/O，修改块图和持久化 backing 信息。<a href="{{ qemu_source }}block/stream.c#L33-L128">结构与改链</a>、<a href="{{ qemu_source }}block/stream.c#L152-L236">复制循环</a></p>
   <p>收益是减少链依赖，同时保留 A、B 的原内容；代价是 C 分配更多空间，并与客户机争用读写带宽。复制完成不会自动删除旧文件，其他快照或虚拟机仍可能依赖它们。</p>
 </section>
 
 <section id="commit" class="mechanism-section">
-  <h2>commit 向下合并时会改变哪些历史内容</h2>
+  <h2>commit 向下合并与历史内容更新</h2>
   <p>另一种缩链方式是把 B 的有效数据写进 A，随后让 C 直接引用 A，得到 <code>A′ ← C</code>。在前面的偏移示例中，A 从 v1 改为 v2；C 仍保存 v3，当前客户机视图保持 v3，但原来只含 A 的历史视图已经改变。中间镜像及依赖旧 A 的其他分支也可能失去原语义，不能把 base 当作可随意覆盖的公共模板。</p>
   <pre><code>{"execute":"block-commit","arguments":{
   "job-id":"merge-B","device":"node-C",
@@ -51,7 +60,7 @@
 </section>
 
 <section id="mirror" class="mechanism-section">
-  <h2>mirror 怎样持续追赶并切换活动磁盘</h2>
+  <h2>mirror 增量追赶与活动磁盘切换</h2>
   <p>把活动盘迁到另一个存储时，准备目标节点 T，将当前 <code>A + B + C</code> 的完整逻辑视图复制过去，并追踪复制期间的写入。<code>sync:full</code> 复制完整可见磁盘，<code>sync:top</code> 与 <code>none</code> 则有不同的下层依赖，不能拿局部同步目标当作独立完整磁盘。</p>
   <p>假设已通过 <code>blockdev-add</code> 打开一个可写、容量匹配、没有其他使用者也未连接客户机的目标 <code>node-T</code>，并正确配置其底层文件，发起独立的 mirror 作业：</p>
   <pre><code>{"execute":"blockdev-mirror","arguments":{
@@ -60,7 +69,7 @@
 }}
 {"execute":"query-block-jobs"}
 {"execute":"query-jobs"}</code></pre>
-  <p>后台模式在块图中放入 mirror 过滤节点，使用脏位图追踪还需同步的范围。客户机把某处从 v2 改为 v3 时，已经复制的旧值需要重新处理；位图、在途请求和区间冲突管理共同避免漏掉更新。第一次清空待同步数据并 flush 后，作业报告 READY；此后仍继续追踪写入，客户机入口此时还在 C。<a href="{{ qemu_source }}block/mirror.c#L1130-L1238">追赶、READY 与最终排空</a></p>
+  <p>后台模式在块图中放入 mirror 过滤节点，使用脏位图追踪还需同步的范围。假设 T 已复制了偏移 <code>0x1000</code> 的 v3，客户机又在 C 写入 v4，这个范围就需要重新同步。位图保存待处理范围，在途请求与区间冲突管理协调同时发生的写入。第一次清空待同步数据并 flush 后，作业报告 READY；此后仍继续追踪写入，客户机入口此时还在 C。<a href="{{ qemu_source }}block/mirror.c#L1130-L1238">追赶、READY 与最终排空</a></p>
   {{ diagram('block-job-pivot', 'mirror 从追赶到活动盘切换', 'RUNNING 复制当前视图并追踪写入；READY 表示可以请求完成，但客户机仍使用原盘。job-complete 后排空 I/O、再次确认同步并 flush，成功改图后客户机改用目标。auto-dismiss=false 保留终态供查询，确认后才 dismiss。') }}
   <p>观察到 READY 后，再执行下面的请求。这里保留默认 <code>auto-finalize:true</code>，由 QEMU 自动执行收尾改图；<code>auto-dismiss:false</code> 只让已结束作业继续可查询：</p>
   <pre><code>{"execute":"job-complete","arguments":{"id":"move-disk"}}
@@ -71,8 +80,8 @@
 </section>
 
 <section id="backup" class="mechanism-section">
-  <h2>backup 为什么保留启动时的内容</h2>
-  <p>mirror 的目标持续追赶源盘，backup 则固定一个时间点。普通 full backup 启动时若偏移 x 是 v2，客户机随后要改写成 v3，而后台还没复制 x，就先通过 copy-before-write 保存 v2，再放行覆盖。这样目标最终保持启动时的逻辑视图，而源盘继续演进。</p>
+  <h2>backup 与启动时刻的数据视图</h2>
+  <p>mirror 的目标持续追赶源盘，backup 则固定一个时间点。仍看偏移 <code>0x1000</code>：若 full backup 启动时 C 中为 v3，客户机随后要写 v4，而后台还没复制该位置，就先通过 copy-before-write 把 v3 保存到备份目标，再放行覆盖。完成后活动盘读到 v4，备份视图仍读到 v3；mirror 若完成切换，目标则需要包含最终同步后的 v4。</p>
   <table><thead><tr><th scope="col">操作</th><th scope="col">目标内容</th><th scope="col">客户机入口</th></tr></thead><tbody>
     <tr><td>外部快照</td><td>旧链保存切换时视图，新 overlay 保存后续变化</td><td>立即改到新 overlay</td></tr>
     <tr><td>mirror</td><td>持续追赶，完成切换时与源视图一致</td><td>READY 时不变，显式完成后切换到目标</td></tr>
@@ -82,7 +91,7 @@
 </section>
 
 <section id="failure" class="mechanism-section">
-  <h2>怎样确认结束并保留可恢复的数据</h2>
+  <h2>操作完成确认与可恢复数据保留</h2>
   <p><code>query-jobs</code> 的 CONCLUDED 表示作业已经结束，仍需检查 <code>error</code>：没有该字段才代表成功。默认自动 dismiss 会让已完成或失败的作业消失，所以“列表里没有 job”无法区分成功、失败、已取消或根本没启动。保留终态时，核对完成事件、错误与实际块图后，再调用 <code>job-dismiss</code> 清理记录。</p>
   <table><thead><tr><th scope="col">情况</th><th scope="col">需要保留什么</th><th scope="col">容易误判的地方</th></tr></thead><tbody>
     <tr><td>暂停或 I/O 错误</td><td>原活动盘、作业依赖的上下层节点及错误记录</td><td>PAUSED / STANDBY 仍是活作业；修正空间或后端问题后再决定恢复或取消</td></tr>

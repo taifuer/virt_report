@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=c204cdcdcf49">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c204cdcdcf49">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=64313220e987">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=64313220e987">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -43,19 +43,21 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="kvm-internals.html">KVM 内部机制</a></div>
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="kvm-vcpu-run.html">KVM 内部机制</a></div>
     <h1>KVM vCPU 请求与跨 CPU 同步</h1>
+    <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、页表更新后，怎样让另一个 vCPU 停下来</a></li><li><a href="#design">二、用请求记录工作，用 kick 推动处理</a><ol><li><a href="#design-part-1">1. 请求位图保存哪些信息</a></li><li><a href="#design-part-2">2. 三种容易混淆的通知</a></li></ol></li><li><a href="#example">三、一次写保护更新的完整交接</a><ol><li><a href="#example-part-1">1. 先发布页表变化</a></li><li><a href="#example-part-2">2. 目标离开客户机后确认 IPI</a></li><li><a href="#example-part-3">3. 目标在下一次进入前处理刷新</a></li></ol></li><li><a href="#kick">四、运行、睡眠与进入中的 vCPU 怎样接收通知</a></li><li><a href="#ordering">五、两组内存顺序约束关闭竞争窗口</a><ol><li><a href="#ordering-part-1">1. 看到请求时，也要看到新状态</a></li><li><a href="#ordering-part-2">2. 进入前检查与远端通知不能同时漏掉</a></li></ol></li><li><a href="#completion">六、等待退出确认与等待操作完成的区别</a></li><li><a href="#evaluation">七、减少同步开销时应衡量什么</a></li><li><a href="#sources">八、源码与进一步阅读</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、KVM 请求与跨 vCPU 状态同步</a></li><li><a href="#design">二、用请求记录工作，用 kick 推动处理</a><ol><li><a href="#design-part-1">1. 请求位图与控制标志</a></li><li><a href="#design-part-2">2. 三种容易混淆的通知</a></li></ol></li><li><a href="#example">三、一次写保护更新的完整交接</a><ol><li><a href="#example-part-1">1. 先发布页表变化</a></li><li><a href="#example-part-2">2. 目标离开客户机后确认 IPI</a></li><li><a href="#example-part-3">3. 目标在下一次进入前处理刷新</a></li></ol></li><li><a href="#kick">四、不同 vCPU 状态下的通知路径</a></li><li><a href="#ordering">五、两组内存顺序约束关闭竞争窗口</a><ol><li><a href="#ordering-part-1">1. 看到请求时，也要看到新状态</a></li><li><a href="#ordering-part-2">2. 进入前检查与远端通知不能同时漏掉</a></li></ol></li><li><a href="#completion">六、等待退出确认与等待操作完成的区别</a></li><li><a href="#evaluation">七、同步开销与性能观测</a></li><li><a href="#sources">八、源码与进一步阅读</a></li></ol></nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">一、</span>页表更新后，怎样让另一个 vCPU 停下来</h2>
+  <h2><span class="mechanism-heading-number">一、</span>KVM 请求与跨 vCPU 状态同步</h2>
   <p>设一台双 vCPU 虚拟机正在运行，vCPU 1 反复写入客户机物理地址 <code>0x4000</code> 所在的 4 KiB 页。宿主开始新一轮写入跟踪，把相关二级页表项从可写改为只读；运行 vCPU 1 的物理 CPU 却可能仍缓存旧的可写转换。管理路径必须协调执行中的 vCPU，让旧权限失效。只修改内存中的页表项，无法消除硬件已经缓存的转换。</p>
-  <p>KVM 通过请求位图记录待办工作，再根据目标状态决定是否唤醒线程或发送 IPI。目标 vCPU 在进入客户机前处理请求。本文以远端 TLB 刷新的通用请求路径为例，沿着“发布更新—促使退出—处理请求—再次进入”说明执行归属与同步边界。</p>
+  <p>KVM 通过请求位图记录待办工作，再根据目标状态决定是否唤醒线程或发送 IPI。位图保存在宿主内核的 <code>struct kvm_vcpu</code> 中，接收方是运行该 vCPU 的 QEMU 线程在 KVM 内的执行循环，客户机内核不消费这些请求。本文以远端 TLB 刷新的通用请求路径为例，沿着“发布更新—促使退出—处理请求—再次进入”说明执行归属与同步边界。</p>
+  <p>写保护更新完成后，vCPU 1 需要按新权限访问 0x4000。目标可以先停在宿主中，稍后处理刷新，但旧转换必须在下一次执行客户机之前失效。请求发布、IPI 确认和操作生效分别对应这段交接中的不同位置。</p>
 <p class="mechanism-baselines">源码版本：<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
 <section id="design" class="mechanism-section">
   <h2><span class="mechanism-heading-number">二、</span>用请求记录工作，用 kick 推动处理</h2>
-  <h3 id="design-part-1"><span class="mechanism-heading-number">1. </span>请求位图保存哪些信息</h3>
+  <h3 id="design-part-1"><span class="mechanism-heading-number">1. </span>请求位图与控制标志</h3>
   <p><code>vcpu-&gt;requests</code> 是待办类型的位图。某一位置位，表示该类工作需要处理；重复请求可以合并到同一位。它不保存消息队列、次数或每次操作的参数。需要随请求传递的状态，由相应子系统另外保存并同步。</p>
   <table><thead><tr><th>对象或字段</th><th>用途</th><th>不能据此推断的内容</th></tr></thead><tbody>
     <tr><td><code>requests</code></td><td>记录 TLB 刷新、MMU 同步、事件检查等待办类型</td><td>每次请求均有独立的一次处理或一次通知</td></tr>
@@ -65,7 +67,12 @@
   </tbody></table>
   <p>通用请求包含 <code>KVM_REQ_TLB_FLUSH</code>；x86 还定义 <code>KVM_REQ_MMU_SYNC</code>、<code>KVM_REQ_LOAD_MMU_PGD</code>、<code>KVM_REQ_EVENT</code> 等。<code>kvm_make_request()</code> 只负责发布请求，并不自动通知远端 CPU；调用者按需要配合 kick，批量请求接口则封装了相应通知流程。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/linux/kvm_host.h#L2239-L2299">请求接口</a></p>
   <h3 id="design-part-2"><span class="mechanism-heading-number">2. </span>三种容易混淆的通知</h3>
-  <p><strong>宿主 IPI</strong> 让某个物理 CPU 接收内核通知，促使客户机退出；<strong>客户机中断</strong> 是客户机可见的设备或定时器事件，需要路由与注入；<strong>QEMU 线程信号</strong> 属于用户态控制线程的手段。一次 TLB 刷新 kick 通常不需要给客户机注入任何中断，也不必让 KVM_RUN 返回 QEMU。</p>
+  <table><thead><tr><th>通知</th><th>处理方</th><th>作用</th></tr></thead><tbody>
+    <tr><td>宿主 IPI</td><td>目标物理 CPU 上的宿主内核</td><td>促使目标离开客户机，协调 KVM 的待办工作</td></tr>
+    <tr><td>客户机中断</td><td>客户机内核的中断处理程序</td><td>处理客户机可见的设备或定时器事件，需经过虚拟中断路由与交付</td></tr>
+    <tr><td>QEMU 线程信号</td><td>宿主 Linux 信号机制与 QEMU 的信号处理路径</td><td>用于 QEMU 控制线程执行，例如让 vCPU 返回用户态处理工作</td></tr>
+  </tbody></table>
+  <p>本例的 TLB 刷新可以由宿主 IPI 推动，并在 KVM 内完成；客户机继续执行时使用新映射，无需运行客户机中断处理程序。</p>
 </section>
 <section id="example" class="mechanism-section">
   <h2><span class="mechanism-heading-number">三、</span>一次写保护更新的完整交接</h2>
@@ -75,9 +82,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看页表更新、退出确认与 TLB 刷新" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="页表更新、退出确认与 TLB 刷新">
-    <img src="../assets/kvm-request-tlb-sequence.svg?v=c204cdcdcf49" alt="选择需要请求机制的远端刷新分支。IPI 确认发生在宿主中断处理阶段；目标稍后在执行循环内消费刷新请求，两者是不同的完成点。" loading="lazy">
+    <img src="../assets/kvm-request-tlb-sequence.svg?v=64313220e987" alt="选择需要请求机制的远端刷新分支。IPI 确认发生在宿主中断处理阶段；目标稍后在执行循环内消费刷新请求，两者是不同的完成点。" loading="lazy">
   </div>
-  <figcaption>选择需要请求机制的远端刷新分支。IPI 确认发生在宿主中断处理阶段；目标稍后在执行循环内消费刷新请求，两者是不同的完成点。 <a href="../assets/kvm-request-tlb-sequence.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>选择需要请求机制的远端刷新分支。IPI 确认发生在宿主中断处理阶段；目标稍后在执行循环内消费刷新请求，两者是不同的完成点。 <a href="../assets/kvm-request-tlb-sequence.svg?v=64313220e987" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: KVM 远端 TLB 刷新的请求交接
     accDescr: 发送方发布页表修改和刷新请求，并等待目标 CPU 的 IPI 确认。目标退出客户机后确认 IPI，随后才在进入循环中处理刷新请求，完成刷新后再次进入客户机。
@@ -106,7 +113,7 @@
   <p>这一过程可以留在一次 KVM_RUN 调用内部。宿主退出、IPI 确认、刷新处理和返回用户态是四种不同事件，排查耗时时应分别观察。</p>
 </section>
 <section id="kick" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">四、</span>运行、睡眠与进入中的 vCPU 怎样接收通知</h2>
+  <h2><span class="mechanism-heading-number">四、</span>不同 vCPU 状态下的通知路径</h2>
   <table><thead><tr><th>目标状态</th><th>通常采取的动作</th><th>后续保证</th></tr></thead><tbody>
     <tr><td>等待中的线程</td><td>允许唤醒时解除等待，使线程可运行</td><td>获得 CPU 后再检查工作；唤醒本身不完成工作</td></tr>
     <tr><td><code>IN_GUEST_MODE</code></td><td>原子尝试改为 EXITING，并按需发送 IPI</td><td>促使离开客户机；该模式也覆盖进入前的受保护窗口</td></tr>
@@ -128,9 +135,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看请求发布与客户机进入之间的配对检查" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="请求发布与客户机进入之间的配对检查">
-    <img src="../assets/kvm-request-entry-race.svg?v=c204cdcdcf49" alt="两侧均先写自己负责的状态，再以相应屏障约束对另一状态的读取。不能同时漏掉对方更新：目标取消进入，或发送方促使目标退出。" loading="lazy">
+    <img src="../assets/kvm-request-entry-race.svg?v=64313220e987" alt="两侧均先写自己负责的状态，再以相应屏障约束对另一状态的读取。不能同时漏掉对方更新：目标取消进入，或发送方促使目标退出。" loading="lazy">
   </div>
-  <figcaption>两侧均先写自己负责的状态，再以相应屏障约束对另一状态的读取。不能同时漏掉对方更新：目标取消进入，或发送方促使目标退出。 <a href="../assets/kvm-request-entry-race.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>两侧均先写自己负责的状态，再以相应屏障约束对另一状态的读取。不能同时漏掉对方更新：目标取消进入，或发送方促使目标退出。 <a href="../assets/kvm-request-entry-race.svg?v=64313220e987" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: KVM 请求发布与客户机进入的双向检查
     accDescr: 发送方先设置 requests 再检查 mode，目标先设置 mode 再检查 requests。两侧的配对屏障保证不会同时读到旧值，从而由取消进入或 IPI 退出推动请求处理。
@@ -170,10 +177,10 @@
   <p><code>KVM_REQ_OUTSIDE_GUEST_MODE</code> 还有 <code>NO_ACTION</code> 标志，只用于确保目标离开客户机模式，不向 requests 留下待处理位。需要完整操作结果的调用者，仍须采用该操作定义的锁、完成量或其他同步协议。</p>
 </section>
 <section id="evaluation" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">七、</span>减少同步开销时应衡量什么</h2>
+  <h2><span class="mechanism-heading-number">七、</span>同步开销与性能观测</h2>
   <p>请求位图把同类工作合并，EXITING 状态减少重复 kick，NO_WAKEUP 减少无收益唤醒，批量 CPU 掩码减少通知组织成本。进一步的优化方向包括批量修改后集中失效、按地址范围刷新，以及使用架构提供的直接远端刷新能力；具体收益取决于映射更新频率、vCPU 数量与硬件支持。</p>
   <p>代价也有两面：合并降低通知次数，却使请求计数不能直接代表实际处理次数；更大的失效范围实现简单，却可能带来更多 TLB 重填；更长的批处理窗口可以提高吞吐，但会延后管理操作生效。</p>
-  <p>观察同一负载下的 <code>remote_tlb_flush_requests</code>、<code>remote_tlb_flush</code> 与每 vCPU 的 <code>tlb_flush</code> 统计，结合 <code>kvm_exit</code> / <code>kvm_entry</code>、调度唤醒及运行时序判断时间花在哪里。这些计数分别记录不同层次的行为，不能彼此相减就当作“丢失请求”，也不能把总退出数当作 kick 数。</p>
+  <p>在宿主侧读取目标 VM 的 KVM 统计：<code>remote_tlb_flush_requests</code> 记录进入通用远端刷新入口的次数；该入口直接刷新成功，或批量请求实际发出远端通知时，<code>remote_tlb_flush</code> 才增加；每 vCPU 的 <code>tlb_flush</code> 则统计相应 vCPU 刷新入口的调用。再结合宿主内核 <code>kvm_exit</code> / <code>kvm_entry</code> 事件、调度唤醒与运行时序，定位退出等待还是后续处理耗时。这些计数受请求合并、架构直接刷新和 vCPU 状态影响，并不具有逐次一一对应关系；需要用同一时间窗口内的增量作比较。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L293-L325">远端计数更新</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L3717-L3758">vCPU 刷新计数</a></p>
 </section>
 <section id="sources" class="mechanism-section">
   <h2><span class="mechanism-heading-number">八、</span>源码与进一步阅读</h2>
@@ -182,7 +189,7 @@
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L185-L325">批量通知、IPI 确认与远端 TLB 刷新</a></li>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11028-L11082">x86 请求处理顺序</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11230-L11287">进入检查与屏障</a></li>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/vcpu-requests.rst">KVM vCPU Requests</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/locking.rst">KVM Lock Overview</a></li>
-    <li><a href="kvm-internals.html">KVM 内部机制</a>、<a href="kvm-vcpu-run.html">vCPU 执行与退出</a>、<a href="kvm-vcpu-halt.html">阻塞与唤醒</a>、<a href="kvm-ept-fault.html">EPT 映射与失效</a></li>
+    <li><a href="kvm-vcpu-run.html">KVM 对象、vCPU 执行与退出</a>、<a href="kvm-vcpu-halt.html">阻塞与唤醒</a>、<a href="kvm-ept-fault.html">EPT 映射与失效</a></li>
   </ul>
 </section></div>
   </div>
@@ -192,6 +199,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=c204cdcdcf49" defer></script>
+<script src="../assets/mechanism-viewer.js?v=64313220e987" defer></script>
 </body>
 </html>

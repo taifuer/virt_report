@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=c204cdcdcf49">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=c204cdcdcf49">
-<link rel="stylesheet" href="../assets/packed-virtqueue.css?v=c204cdcdcf49"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=64313220e987">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=64313220e987">
+<link rel="stylesheet" href="../assets/packed-virtqueue.css?v=64313220e987"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -45,12 +45,13 @@
   <header class="mechanism-header">
     <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="device-virtualization.html">设备与 I/O 虚拟化</a></div>
     <h1>Packed virtqueue：描述符发布、完成与回绕</h1>
+    <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、请求与完成能否使用同一个描述符环</a></li><li><a href="#layout">二、一个描述符环，加两个事件抑制结构</a></li><li><a href="#wrap">三、AVAIL、USED 与 wrap 怎样区分两圈</a></li><li><a href="#interactive">四、操作一个四槽队列，观察第二圈发布</a></li><li><a href="#chains">五、描述符链沿相邻槽位前进，ID 负责找回请求</a><ol><li><a href="#chains-part-1">1. NEXT 不再指向任意下一个索引</a></li><li><a href="#chains-part-2">2. 完成记录的位置与原请求的位置可以不同</a></li></ol></li><li><a href="#events">六、事件位置减少通知，复查关闭竞态窗口</a></li><li><a href="#implementation">七、QEMU 怎样保存链长度并发布完成</a></li><li><a href="#evolution">八、紧凑布局带来的收益与复杂度</a></li><li><a href="#sources">九、参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、Packed virtqueue 的共享描述符环</a></li><li><a href="#layout">二、一个描述符环，加两个事件抑制结构</a></li><li><a href="#wrap">三、AVAIL、USED 与 wrap 的状态判定</a></li><li><a href="#interactive">四、操作一个四槽队列，观察第二圈发布</a></li><li><a href="#chains">五、描述符链沿相邻槽位前进，ID 负责找回请求</a><ol><li><a href="#chains-part-1">1. 直接链使用连续槽位</a></li><li><a href="#chains-part-2">2. 完成记录的位置与原请求的位置可以不同</a></li></ol></li><li><a href="#events">六、事件位置减少通知，复查关闭竞态窗口</a></li><li><a href="#implementation">七、QEMU 的链长度记录与完成发布</a></li><li><a href="#evolution">八、紧凑布局带来的收益与复杂度</a></li><li><a href="#sources">九、参考资料</a></li></ol></nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">一、</span>请求与完成能否使用同一个描述符环</h2>
-  <p>split virtqueue 把缓冲区描述、可用链头和完成记录放在三个区域。设备处理一个请求，需要读取 available、找到描述符，再把结果写到 used。高请求率场景中，这些元数据访问也会占用缓存和内存带宽。packed virtqueue 将发布与完成状态放到同一个描述符环，减少分散访问，同时引入一个新问题：槽位反复使用，双方怎样分清当前一圈与上一圈？</p>
+  <h2><span class="mechanism-heading-number">一、</span>Packed virtqueue 的共享描述符环</h2>
+  <p>split virtqueue 把缓冲区描述、可用链头和完成记录放在三个区域。设备处理一个请求，需要读取 available、找到描述符，再把结果写到 used。高请求率场景中，这些元数据访问也会占用缓存和内存带宽。packed virtqueue 将发布与完成状态放到同一个描述符环，减少分散访问，并通过状态位和 wrap 计数区分槽位在不同轮次中的使用状态。</p>
   <p>本文先用 4 个槽位、每项请求只占一个描述符的例子说明发布、完成和回收，再扩展到描述符链与通知。队列格式依据 VIRTIO 1.2；初始化时必须协商 <code>VIRTIO_F_RING_PACKED</code>，没有协商就继续使用 split。演示让设备按提交顺序完成，便于观察位变化；它没有启用 IN_ORDER 的合并完成功能。</p>
 <p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
 <section id="layout" class="mechanism-section">
@@ -60,7 +61,7 @@
     <tr><td>Driver Event Suppression</td><td><code>off_wrap:16 / flags:16</code>，共 4 B</td><td>驱动告诉设备何时需要完成通知</td></tr>
     <tr><td>Device Event Suppression</td><td>相同的 4 B 格式</td><td>设备告诉驱动何时需要可用缓冲区通知</td></tr>
   </tbody></table>
-  <p>三个区域仍分别由队列配置地址定位；packed 去掉的是独立的 available 与 used 数据环，没有把门铃、事件抑制和报文都塞进描述符里。<code>addr</code> 指向实际缓冲区；<code>id</code> 是驱动为请求分配的标识，供完成时查回上下文。槽位编号表示记录放在哪里，Buffer ID 表示它属于哪个请求，两者不要求相等。</p>
+  <p>三个区域分别由队列配置地址定位，均用于交换队列元数据。报文或块请求数据位于 <code>addr</code> 指向的缓冲区，门铃位于设备通知接口。<code>id</code> 是驱动为请求分配的标识，完成时用它找回上下文：槽位编号定位环内记录，Buffer ID 关联请求资源。</p>
   <p>以 N=4 计算，描述符环为 64 B，加两个事件结构共 72 B，未计外部对齐填充与请求数据。split 在不带 EVENT_IDX 时对应三个区域合计 112 B。这个小例子展示的是元数据布局差别，不能直接换算成相同比例的吞吐提升。packed 的队列大小也不要求是 2 的幂；选 4 只是为了方便观察回绕。</p>
   <figure class="mechanism-diagram" data-diagram="packed-virtqueue-layout" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
@@ -68,9 +69,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看同一环中的提交、完成与事件抑制" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="同一环中的提交、完成与事件抑制">
-    <img src="../assets/packed-virtqueue-layout.svg?v=c204cdcdcf49" alt="驱动和设备在描述符环上交换记录，数据缓冲区位于环外。两个事件抑制结构决定通知时机；它们不保存额外的可用项或完成项。" loading="lazy">
+    <img src="../assets/packed-virtqueue-layout.svg?v=64313220e987" alt="驱动和设备在描述符环上交换记录，数据缓冲区位于环外。两个事件抑制结构决定通知时机；它们不保存额外的可用项或完成项。" loading="lazy">
   </div>
-  <figcaption>驱动和设备在描述符环上交换记录，数据缓冲区位于环外。两个事件抑制结构决定通知时机；它们不保存额外的可用项或完成项。 <a href="../assets/packed-virtqueue-layout.svg?v=c204cdcdcf49" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>驱动和设备在描述符环上交换记录，数据缓冲区位于环外。两个事件抑制结构决定通知时机；它们不保存额外的可用项或完成项。 <a href="../assets/packed-virtqueue-layout.svg?v=64313220e987" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: Packed virtqueue 的共享布局与访问方向
     accDescr: 驱动和设备共同访问一个描述符环，驱动事件区控制完成通知，设备事件区控制新请求通知。环外缓冲区存放数据，Buffer ID 关联驱动上下文。
@@ -91,13 +92,14 @@
 </figure>
 </section>
 <section id="wrap" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">三、</span>AVAIL、USED 与 wrap 怎样区分两圈</h2>
+  <h2><span class="mechanism-heading-number">三、</span>AVAIL、USED 与 wrap 的状态判定</h2>
   <p>flags 的 bit 7 为 AVAIL，bit 15 为 USED。发布、设备消费、完成和驱动回收分别维护所需的环位置与一位 wrap，初始 wrap 为 1，描述符内存清零。某个进度越过最后一个槽位时，对应的 wrap 翻转；不同进度不要求同时翻转。下方演示将设备消费与完成合为一步，展示发布、完成和回收三个进度。</p>
   <table><thead><tr><th scope="col">当前期望 wrap</th><th scope="col">驱动发布后的 A / U</th><th scope="col">设备完成后的 A / U</th></tr></thead><tbody>
     <tr><td>1，第一圈</td><td>1 / 0</td><td>1 / 1</td></tr>
     <tr><td>0，第二圈</td><td>0 / 1</td><td>0 / 0</td></tr>
   </tbody></table>
-  <p>设备判断“当前可用”的条件是 <code>A == expected_wrap &amp;&amp; U != expected_wrap</code>；驱动判断“当前已完成”需要对应本轮的完成状态，典型判定为 A、U 均等于回收位置的 expected_wrap。仅看 A 与 U 是否相等不够：刚初始化的 0/0 也相等，却不属于初始期望 wrap=1 的完成。</p>
+  <p>以槽 0 为例：初始化的 0/0 表示没有新工作；第一圈发布后成为 1/0，设备据此读取缓冲区；完成后成为 1/1，驱动据此归还资源。再次绕回槽 0 时，双方期待的 wrap 已变成 0，旧的 1/1 就不会被误判为新完成。</p>
+  <p>设备判断可用时检查 <code>A == expected_wrap &amp;&amp; U != expected_wrap</code>；驱动判断完成时，典型条件是 A、U 均等于回收位置的 expected_wrap。wrap 给相同位组合加上轮次：初始 0/0 与期望的 wrap=1 不匹配，第二圈的 0/0 才与 wrap=0 的完成状态匹配。</p>
   <p>驱动回收完一个请求后，不需要把槽位清零。旧 flags 留在内存里，下一圈根据翻转后的 wrap 区分新旧。驱动根据已回收的描述符数量限制继续发布；Buffer ID 和数据缓冲区必须等对应请求完成后才能复用。完成记录可以位于不同于原请求的位置，环上槽位与请求资源的生命周期需要分开。wrap 解决代际识别，不能代替空闲数量和所有权管理。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio.c#L681-L688">QEMU 的可用状态判断</a></p>
 </section>
 <section id="interactive" class="mechanism-section">
@@ -116,7 +118,7 @@
 </section>
 <section id="chains" class="mechanism-section">
   <h2><span class="mechanism-heading-number">五、</span>描述符链沿相邻槽位前进，ID 负责找回请求</h2>
-  <h3 id="chains-part-1"><span class="mechanism-heading-number">1. </span>NEXT 不再指向任意下一个索引</h3>
+  <h3 id="chains-part-1"><span class="mechanism-heading-number">1. </span>直接链使用连续槽位</h3>
   <p>split 描述符含 next 字段，可以把不相邻槽位串起来；packed 没有 next 字段。设置 NEXT 后，链的下一项就是环中的下一槽，越过末尾便从槽 0 继续。一个请求占槽 3、0、1 时，驱动需要按各位置所属的 wrap 填好所有状态，最后才发布槽 3 这个链头，防止设备读到半条链。</p>
   <p>直接链的 Buffer ID 放在最后一个描述符中。设备处理完整条链后，只为整项缓冲区写一个完成描述符；驱动用完成 ID 找回私有上下文和该链占用的描述符数，然后跳过相应槽位继续回收。used 中 NEXT 是保留位，不能拿它来重新遍历提交时的链。</p>
   <h3 id="chains-part-2"><span class="mechanism-heading-number">2. </span>完成记录的位置与原请求的位置可以不同</h3>
@@ -126,11 +128,11 @@
 <section id="events" class="mechanism-section">
   <h2><span class="mechanism-heading-number">六、</span>事件位置减少通知，复查关闭竞态窗口</h2>
   <p>每个事件结构含 off_wrap 和 flags。off_wrap 的低 15 位为描述符位置，高 1 位为该位置所属 wrap。flags 可以要求启用通知、禁用通知，或者在协商 EVENT_IDX 后按指定位置触发通知。不能只比较裸索引大小：从槽 3 到槽 0 虽然数字变小，队列实际上继续前进了。</p>
-  <p>方向容易混淆：Driver Event 控制设备发给驱动的完成通知；Device Event 控制驱动发给设备的新请求通知。发布方必须先让新描述符状态可见，再读取对方事件配置，按进度变化判断是否需要通知。等待方从轮询切回通知时，也要重新检查工作是否在切换窗口到达。</p>
+  <p>两个事件结构由等待方填写：驱动用 Driver Event 请求完成通知，设备用 Device Event 请求新工作通知。发布方先让描述符状态可见，再读取对方的事件配置，按进度变化判断是否通知。等待方从轮询切回通知时，重新检查切换窗口内到达的工作。</p>
   <p>如果等待方先看到没有工作，发布方恰好在通知仍被抑制时发布，等待方随后直接睡眠，就可能错过唤醒。packed 改变共享队列布局，没有消除生产者与消费者并发产生的通知竞态。内存屏障、通知抑制和最后复查仍共同构成正确交接。</p>
 </section>
 <section id="implementation" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">七、</span>QEMU 怎样保存链长度并发布完成</h2>
+  <h2><span class="mechanism-heading-number">七、</span>QEMU 的链长度记录与完成发布</h2>
   <p><code>virtqueue_packed_pop()</code> 从 last_avail_idx 读取链，建立可读与可写 iovec，保存 Buffer ID 和 ndescs。后者对普通直接链是占用的主环描述符数量，对间接表则为 1。I/O 完成后，fill 暂存 ID、长度和 ndescs，flush 根据完成顺序写回记录并推进 used_idx。</p>
   <pre><code>virtqueue_packed_pop()
   检查 AVAIL / USED 与 last_avail_wrap_counter
@@ -145,8 +147,8 @@
 <section id="evolution" class="mechanism-section">
   <h2><span class="mechanism-heading-number">八、</span>紧凑布局带来的收益与复杂度</h2>
   <p>packed 随 VIRTIO 1.1 引入，使高吞吐设备可以用更紧凑的共享元数据交换请求。它减少某些路径上的环间跳转和内存占用，但双方都会写描述符环，也可能带来缓存行共享；实际收益依赖后端实现、批量大小、队列深度和 CPU 拓扑。</p>
-  <p>相对于 split，packed 的实现需要同时正确处理 wrap、Buffer ID、跨尾部的链、完成位置以及事件偏移。协议复杂度集中到了所有权和进度管理。若后端不支持 packed，或迁移两端支持集不一致，应在特性协商阶段明确拒绝或选择共同布局，不能在运行中的同一队列上悄悄换格式。</p>
-  <p>评价时可以在相同报文或块请求负载下对比每核吞吐、尾延迟、缓存未命中与通知次数。小队列更省元数据，并不代表能容纳同样多的复杂请求；直接链与间接表的占用也要固定。split 仍有成熟兼容性与清晰的生产者区域，packed 提供另一种局部性取舍。</p>
+  <p>相对于 split，packed 的实现增加了 wrap、Buffer ID、跨尾部的链、完成位置及事件偏移之间的配合。双方在特性协商时选定共同布局，运行期间按这一布局访问队列；迁移目标也需支持客户机已经选定的格式。实现和验证的工作主要集中在资源归属与各方进度的对应关系上。</p>
+  <p>检查演示时，可以先发布四项，再完成两项但暂不回收：驱动仍不能继续发布，直到回收释放相应资源。这个状态把“设备已处理”与“驱动可继续提交”分开，也说明 wrap 判断必须配合空闲容量管理。评价时可以在相同报文或块请求负载下对比每核吞吐、尾延迟、缓存未命中与通知次数。小队列更省元数据，并不代表能容纳同样多的复杂请求；直接链与间接表的占用也要固定。split 仍有成熟兼容性与清晰的生产者区域，packed 提供另一种局部性取舍。</p>
 </section>
 <section id="sources" class="mechanism-section">
   <h2><span class="mechanism-heading-number">九、</span>参考资料</h2>
@@ -159,6 +161,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=c204cdcdcf49" defer></script>
-<script src="../assets/packed-virtqueue.js?v=c204cdcdcf49" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=64313220e987" defer></script>
+<script src="../assets/packed-virtqueue.js?v=64313220e987" defer></script></body>
 </html>

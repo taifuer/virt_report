@@ -88,6 +88,15 @@ def test_article_has_matching_toc_source_evidence_and_no_inline_scripts(slug):
     assert len(parsed.ids) == len(set(parsed.ids))
     assert len(parsed.headings) == 1
     assert f'{article["title"]} - virt-report' in page
+    notice = '<p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>'
+    assert page.count(notice) == 1
+    assert page.index('</h1>') < page.index(notice) < page.index('id="preface"')
+    headings = re.findall(r'<h[23][^>]*>(.*?)</h[23]>', page, re.DOTALL)
+    question = r'如何|怎样|怎么|为什么|为何|何时|谁|什么|哪些|哪一|哪条|能否|[？?]'
+    assert not any(re.search(question, re.sub(r'<[^>]*>', '', title)) for title in headings)
+    preface = re.search(r'<section id="preface"[^>]*>(.*?)</section>', page, re.DOTALL)
+    assert preface is not None
+    assert '？' not in re.sub(r'<[^>]*>', '', preface.group(1))
     from virt_report.render.article_outline import chinese_number
     for index, section in enumerate(article["sections"], 1):
         assert section["id"] in parsed.ids
@@ -292,6 +301,7 @@ def test_catalogue_about_and_export_work_without_database_and_preserve_reports(t
     assert {path.relative_to(tmp_path).as_posix() for path in exported} == {
         "mechanisms.html", *(f'mechanisms/{article["slug"]}.html'
                              for article in mechanisms.articles()),
+        *(f'mechanisms/{entry["slug"]}.html' for entry in mechanisms.redirects()),
     }
     assert historical.read_text() == "historical report"
     for name in render.MECHANISM_ASSET_NAMES:
@@ -317,10 +327,10 @@ def test_catalogue_about_and_export_work_without_database_and_preserve_reports(t
     ("/mechanisms/qemu-qom-device.html", 200, "QEMU 对象模型与设备初始化"),
     ("/mechanisms/qemu-vm-startup.html", 200, "QEMU 虚拟机启动与 vCPU 初始化"),
     ("/mechanisms/libvirt-rpc.html", 200, "Libvirt RPC 的编码与调用分发"),
-    ("/mechanisms/libvirt-domain-start.html", 200, "Libvirt 虚拟机启动的进程与状态管理"),
+    ("/mechanisms/libvirt-domain-start.html", 200, "虚拟机启动：从 Libvirt 到客户机引导"),
     ("/mechanisms/qemu-pcie-hotplug.html", 200, "QEMU PCIe 设备热插拔与异步移除"),
-    ("/mechanisms/qemu-cpr-transfer.html", 200, "QEMU 同机更新的内存与文件描述符交接"),
-    ("/mechanisms/qemu-memory-region.html", 200, "QEMU MemoryRegion 的地址映射与访问分发"),
+    ("/mechanisms/qemu-cpr-transfer.html", 200, "QEMU 热升级：CPR 的资源交接与状态恢复"),
+    ("/mechanisms/qemu-memory-region.html", 200, "QEMU 内存初始化与地址空间管理"),
     ("/mechanisms/qemu-virtio-blk.html", 200, "virtio-blk 的请求处理与写入完成"),
     ("/mechanisms/qemu-aio-iothread.html", 200, "QEMU AioContext、协程与 IOThread"),
     ("/mechanisms/qemu-virtio-mem.html", 200, "virtio-mem 的内存添加与回收"),

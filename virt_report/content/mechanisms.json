@@ -60,7 +60,7 @@
     },
     {
       "slug": "vm-startup",
-      "overview": "vm-startup",
+      "overview": "libvirt-domain-start",
       "group": "operations",
       "title": "虚拟机启动",
       "summary": "从 Libvirt 请求到 QEMU 创建机器、KVM 初始化和客户机开始执行。"
@@ -83,14 +83,14 @@
       "overview": "hotplug",
       "group": "operations",
       "title": "热插拔",
-      "summary": "设备与内存的在线增删、客户机通知和资源回收。"
+      "summary": "设备、CPU 与内存的在线增删、客户机通知和资源回收。"
     },
     {
       "slug": "live-upgrade",
-      "overview": "live-upgrade",
+      "overview": "qemu-cpr-transfer",
       "group": "operations",
       "title": "热升级",
-      "summary": "QEMU 或后端进程替换时的状态交接、连接保持与恢复。"
+      "summary": "QEMU 同机进程替换中的共享内存、状态恢复、兼容性与失败边界。"
     },
     {
       "slug": "qemu-internals",
@@ -104,7 +104,7 @@
       "group": "internals",
       "title": "KVM 内部机制",
       "summary": "内核对象、vCPU 请求与跨 CPU 协调，联系执行循环、内存映射及事件处理。",
-      "overview": "kvm-internals"
+      "overview": "kvm-vcpu-run"
     },
     {
       "slug": "libvirt-internals",
@@ -119,8 +119,8 @@
       "slug": "virtualization-basics",
       "topic": "virtualization-basics",
       "title": "虚拟化基础：资源隔离、执行与系统分工",
-      "summary": "从两台虚拟机共享一台服务器的问题出发，说明 CPU、内存与设备怎样建立独立视图，并联系启动和发包理解系统分工。",
-      "reviewed_on": "2026-10-15",
+      "summary": "介绍虚拟机的 CPU、内存与设备视图，通过两台虚拟机共享服务器的例子说明资源隔离，并沿启动和发包过程分析系统分工。",
+      "reviewed_on": "2026-10-19",
       "template": "_virtualization_basics_article.html",
       "baselines": [
         {
@@ -139,23 +139,23 @@
       "sections": [
         {
           "id": "preface",
-          "title": "为什么要在一台机器上运行多套操作系统"
+          "title": "虚拟机与资源隔离"
         },
         {
           "id": "isolation",
-          "title": "独立机器的外观怎样建立"
+          "title": "CPU、内存与设备的虚拟化"
         },
         {
           "id": "architecture",
-          "title": "QEMU、KVM 与 Libvirt 怎样分工"
+          "title": "QEMU、KVM 与 Libvirt 的分工"
         },
         {
           "id": "example",
-          "title": "沿一次启动和发包把各部分连起来"
+          "title": "虚拟机启动与网络发送示例"
         },
         {
           "id": "evolution",
-          "title": "为什么实现会从模拟走向协作"
+          "title": "软件模拟、硬件辅助与半虚拟化的演进"
         },
         {
           "id": "tradeoffs",
@@ -175,8 +175,8 @@
       "slug": "cpu-virtualization",
       "topic": "cpu-virtualization",
       "title": "CPU 虚拟化：执行方式、隔离与调度",
-      "summary": "从客户机内核的权限问题出发，比较解释执行、TCG 与硬件辅助，跟踪普通指令、设备访问和空闲等待。",
-      "reviewed_on": "2026-10-17",
+      "summary": "介绍客户机执行与权限隔离，比较解释执行、TCG 与硬件辅助，跟踪普通指令、设备访问和空闲等待。",
+      "reviewed_on": "2026-10-19",
       "template": "_cpu_overview_article.html",
       "baselines": [
         {
@@ -195,19 +195,19 @@
       "sections": [
         {
           "id": "preface",
-          "title": "客户机内核需要权限，宿主需要控制权"
+          "title": "CPU 虚拟化的执行环境与权限边界"
         },
         {
           "id": "paths",
-          "title": "三种执行办法如何实现同一套 CPU 语义"
+          "title": "解释执行、动态翻译与硬件辅助"
         },
         {
           "id": "example",
-          "title": "四个操作怎样保持连续执行"
+          "title": "计算、CPUID、设备读取与等待的执行示例"
         },
         {
           "id": "evolution",
-          "title": "演进围绕重复工作、退出和并行展开"
+          "title": "代码复用、退出处理与并行执行的演进"
         },
         {
           "id": "evaluation",
@@ -228,7 +228,7 @@
       "topic": "memory-virtualization",
       "title": "内存虚拟化：地址转换、影子页表与两级映射",
       "summary": "用同一次内存读取推导 GVA、GPA、HVA 与 HPA，说明影子页表、EPT/NPT、缺页和映射失效的关系。",
-      "reviewed_on": "2026-10-17",
+      "reviewed_on": "2026-10-19",
       "template": "_memory_overview_article.html",
       "baselines": [
         {
@@ -247,11 +247,11 @@
       "sections": [
         {
           "id": "preface",
-          "title": "两台虚拟机怎样拥有相同的内存地址"
+          "title": "客户机地址空间与宿主内存"
         },
         {
           "id": "addresses",
-          "title": "一次读取涉及哪些地址"
+          "title": "GVA、GPA、HVA 与 HPA 的对应关系"
         },
         {
           "id": "evolution",
@@ -259,7 +259,7 @@
         },
         {
           "id": "access",
-          "title": "把同一次读取走完"
+          "title": "一次读取中的建图、访问与映射失效"
         },
         {
           "id": "evaluation",
@@ -280,7 +280,7 @@
       "topic": "device-virtualization",
       "title": "设备与 I/O 虚拟化：从网卡模拟到共享队列与卸载",
       "summary": "沿一个报文解释设备模拟、virtqueue 与缓冲区归还，再比较 vhost、vhost-user、VFIO、SR-IOV 和 vDPA 解决的问题及代价。",
-      "reviewed_on": "2026-10-17",
+      "reviewed_on": "2026-10-19",
       "template": "_device_overview_article.html",
       "baselines": [
         {
@@ -299,7 +299,11 @@
       "sections": [
         {
           "id": "preface",
-          "title": "客户机需要网卡，宿主怎样提供"
+          "title": "设备接口与 I/O 处理路径"
+        },
+        {
+          "id": "example",
+          "title": "一个报文的四步交接"
         },
         {
           "id": "architecture",
@@ -310,16 +314,12 @@
           "title": "virtio 用共享队列表达请求和完成"
         },
         {
-          "id": "example",
-          "title": "一个报文怎样经过队列并归还缓冲区"
-        },
-        {
           "id": "backends",
           "title": "保留 virtio 接口，改变队列处理位置"
         },
         {
           "id": "evolution",
-          "title": "硬件分配与卸载解决另一组问题"
+          "title": "硬件分配、数据路径卸载与队列演进"
         },
         {
           "id": "evaluation",
@@ -340,7 +340,7 @@
       "topic": "device-virtualization",
       "title": "virtio 设备初始化与特性协商",
       "summary": "从 PCI 能力、状态握手到队列地址配置，跟踪一个 4 描述符队列如何开始工作，并区分失败、设备复位与队列复位。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_virtio_init_article.html",
       "baselines": [
         {
@@ -359,7 +359,7 @@
       "sections": [
         {
           "id": "preface",
-          "title": "共享队列工作之前，双方需要约定什么"
+          "title": "virtio 设备初始化的阶段与约束"
         },
         {
           "id": "transport",
@@ -379,11 +379,11 @@
         },
         {
           "id": "failure-reset",
-          "title": "协商失败与复位怎样收束旧状态"
+          "title": "协商失败处理与设备复位"
         },
         {
           "id": "implementation",
-          "title": "源码怎样对应这条初始化路径"
+          "title": "初始化路径的源码调用链"
         },
         {
           "id": "evolution",
@@ -400,7 +400,7 @@
       "topic": "interrupt-virtualization",
       "title": "QEMU/KVM 中断虚拟化：基本原理与演进",
       "summary": "从一次网卡收包出发，理解 PIC、APIC 和 MSI-X，再比较 QEMU 模拟、内核 irqchip、irqfd 与硬件辅助各自解决的问题。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_interrupt_overview_article.html",
       "baselines": [
         {
@@ -419,7 +419,11 @@
       "sections": [
         {
           "id": "preface",
-          "title": "网卡收到数据后，CPU 怎样知道"
+          "title": "中断的作用与虚拟化边界"
+        },
+        {
+          "id": "example",
+          "title": "一次收包的数据路径与通知路径"
         },
         {
           "id": "controllers",
@@ -427,23 +431,19 @@
         },
         {
           "id": "path",
-          "title": "QEMU/KVM 怎样实现虚拟中断"
+          "title": "QEMU/KVM 的虚拟中断状态与交付"
         },
         {
           "id": "acceleration",
-          "title": "从 irqfd 到硬件辅助：分别省掉哪段开销"
-        },
-        {
-          "id": "example",
-          "title": "一次收包：从完成记录到客户机驱动"
+          "title": "irqfd、APICv 与直通中断的优化层次"
         },
         {
           "id": "evolution",
-          "title": "发展演变：新方案解决了什么，还留下什么"
+          "title": "中断机制的演进与实现取舍"
         },
         {
           "id": "evaluation",
-          "title": "总结：沿数据、通知与执行三条线定位延迟"
+          "title": "中断配置、计数与延迟观察"
         },
         {
           "id": "reading",
@@ -469,15 +469,15 @@
         }
       ],
       "topic": "migration",
-      "reviewed_on": "2026-10-17",
+      "reviewed_on": "2026-10-19",
       "sections": [
         {
           "id": "preface",
-          "title": "迁移需要保持哪些连续性"
+          "title": "热迁移的状态范围与连续性要求"
         },
         {
           "id": "state",
-          "title": "为什么内存、CPU 和设备必须对应同一时刻"
+          "title": "内存、CPU 与设备的一致性"
         },
         {
           "id": "process",
@@ -485,7 +485,7 @@
         },
         {
           "id": "example",
-          "title": "8 GiB 内存的迭代示例"
+          "title": "一次磁盘请求在迁移前后的衔接"
         },
         {
           "id": "evolution",
@@ -510,7 +510,7 @@
       "topic": "migration",
       "title": "QEMU 预拷贝迁移的内存迭代与停机控制",
       "summary": "脏页跟踪、内存重传与切换条件，以及带宽、写入负载和停机时间之间的关系。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_migration_article.html",
       "stylesheet": "precopy-lab.css",
       "script": "mechanisms.js",
@@ -531,7 +531,7 @@
       "sections": [
         {
           "id": "preface",
-          "title": "预拷贝如何缩短停机"
+          "title": "预拷贝迁移与停机控制"
         },
         {
           "id": "principle",
@@ -539,7 +539,7 @@
         },
         {
           "id": "iteration",
-          "title": "脏页位图如何驱动重传"
+          "title": "脏页位图与页面重传"
         },
         {
           "id": "convergence",
@@ -568,7 +568,7 @@
       "topic": "migration",
       "title": "QEMU 迁移流格式与状态恢复",
       "summary": "从流头、内存页记录到 vCPU 与设备状态，逐层解析迁移流的字段、分段和结束标记，说明目的端如何恢复虚拟机状态。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_migration_stream_article.html",
       "stylesheet": "migration-stream.css",
       "script": "migration-stream.js",
@@ -583,7 +583,7 @@
       "sections": [
         {
           "id": "preface",
-          "title": "迁移流如何恢复运行状态"
+          "title": "迁移流的组成与状态恢复"
         },
         {
           "id": "structure",
@@ -620,7 +620,7 @@
       "topic": "migration",
       "title": "QEMU MultiFD 的任务分发与跨通道同步",
       "summary": "内存页批次的并行发送、主通道与数据通道的同步，以及慢通道对接收进度的影响。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_multifd_article.html",
       "stylesheet": "multifd.css",
       "script": "multifd.js",
@@ -643,11 +643,11 @@
         },
         {
           "id": "flow",
-          "title": "一个 RAM 批次如何分发和装载"
+          "title": "RAM 批次的分发与装载"
         },
         {
           "id": "synchronization",
-          "title": "SYNC 与 FLUSH 如何汇合通道"
+          "title": "SYNC、FLUSH 与通道同步"
         },
         {
           "id": "implementation",
@@ -668,7 +668,7 @@
       "topic": "device-virtualization",
       "title": "QEMU 网卡模拟与 virtio-net 的发包路径",
       "summary": "以相同的 TAP 后端对比 e1000 与 virtio-net，追踪描述符提交、队列通知、数据发送和完成处理。",
-      "reviewed_on": "2026-10-17",
+      "reviewed_on": "2026-10-19",
       "template": "_device_tx_article.html",
       "stylesheet": "device-tx.css",
       "script": "device-tx.js",
@@ -689,7 +689,7 @@
       "sections": [
         {
           "id": "preface",
-          "title": "一个报文怎样离开虚拟机"
+          "title": "虚拟网卡的发包流程"
         },
         {
           "id": "interfaces",
@@ -713,11 +713,11 @@
         },
         {
           "id": "evolution",
-          "title": "演进取舍：packed 队列与独立后端"
+          "title": "队列格式与后端位置的后续优化"
         },
         {
           "id": "evaluation",
-          "title": "如何判断瓶颈与改进是否有效"
+          "title": "瓶颈定位与优化效果验证"
         },
         {
           "id": "sources",
@@ -730,7 +730,7 @@
       "topic": "device-virtualization",
       "title": "virtio-net 的后端处理：vhost-net 与 vhost-user",
       "summary": "对比 QEMU、内核 vhost-net 和独立用户态后端，分析队列初始化、kick/call 通知与报文处理路径。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_vhost_article.html",
       "stylesheet": "vhost-path.css",
       "script": "vhost-path.js",
@@ -784,7 +784,7 @@
       "topic": "device-virtualization",
       "title": "DPDK vhost-user 的报文转发与缓冲区管理",
       "summary": "从客户机 TX virtqueue 到 mbuf 和物理网卡，分析队列消费、复制边界、完成顺序与轮询成本。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_dpdk_article.html",
       "baselines": [
         {
@@ -803,27 +803,27 @@
       "sections": [
         {
           "id": "preface",
-          "title": "如何把客户机报文交给物理网卡"
+          "title": "DPDK vhost-user 的网络转发路径"
         },
         {
           "id": "architecture",
           "title": "整体路径：控制连接、共享队列与 PMD"
         },
         {
-          "id": "structures",
-          "title": "三个层次：virtqueue、mbuf 与网卡发送环"
-        },
-        {
           "id": "transmit",
           "title": "发送实例：从链 0 → 2 到物理出口"
         },
         {
+          "id": "structures",
+          "title": "请求经过的结构与缓冲区归属"
+        },
+        {
           "id": "completion",
-          "title": "完成与背压：哪一侧还持有报文"
+          "title": "完成与背压：报文缓冲区的所有权"
         },
         {
           "id": "evaluation",
-          "title": "性能收益与成本怎样衡量"
+          "title": "性能收益与资源成本"
         },
         {
           "id": "evolution",
@@ -846,7 +846,7 @@
       "topic": "device-virtualization",
       "title": "SPDK vhost-user-blk 的请求处理路径",
       "summary": "沿一次 4 KiB 写入，分析共享队列、控制器线程、bdev 和 NVMe 的请求交接，以及完成通知与资源释放。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_spdk_article.html",
       "baselines": [
         {
@@ -865,27 +865,27 @@
       "sections": [
         {
           "id": "preface",
-          "title": "共享队列如何直接接入用户态存储栈"
+          "title": "共享队列与 SPDK 存储后端"
         },
         {
           "id": "architecture",
           "title": "从客户机 RAM 到 NVMe 的三层队列"
         },
         {
-          "id": "structures",
-          "title": "会话、队列与请求结构"
-        },
-        {
-          "id": "threads",
-          "title": "控制器线程如何轮询多个 virtqueue"
-        },
-        {
           "id": "write",
-          "title": "4 KiB 写入如何转换为 NVMe 命令"
+          "title": "从 4 KiB 写入到 NVMe 命令"
         },
         {
           "id": "completion",
           "title": "从 NVMe 完成到客户机回收"
+        },
+        {
+          "id": "structures",
+          "title": "用请求结构关联三层完成"
+        },
+        {
+          "id": "threads",
+          "title": "控制器线程与多 virtqueue 轮询"
         },
         {
           "id": "notifications",
@@ -906,7 +906,7 @@
       "topic": "memory-virtualization",
       "title": "KVM 内存映射与 EPT 缺页处理",
       "summary": "从内存槽注册和一页 RAM 的首次访问出发，分析 EPT 建图、权限处理、宿主页失效及 TDP MMU 的演进。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_ept_article.html",
       "baselines": [
         {
@@ -925,19 +925,19 @@
       "sections": [
         {
           "id": "preface",
-          "title": "客户机的一次读取如何找到宿主内存"
+          "title": "客户机访存与宿主内存映射"
         },
         {
           "id": "addresses",
           "title": "客户机页表与 EPT 的两级转换"
         },
         {
-          "id": "structures",
-          "title": "准备阶段：QEMU 登记 RAM，KVM 保存 memslot"
-        },
-        {
           "id": "first-access",
           "title": "首次读取：从 GPA 找到 PFN，再安装 EPT"
+        },
+        {
+          "id": "structures",
+          "title": "映射结构：内存槽、缺页状态与 EPT 表项"
         },
         {
           "id": "fault-types",
@@ -966,7 +966,7 @@
       "topic": "memory-virtualization",
       "title": "KVM 大页映射的建立、拆分与恢复",
       "summary": "区分客户机、宿主与 EPT 的页大小，跟踪 2 MiB 映射的建立、逐页脏日志期间的拆分，以及关闭跟踪后的原位恢复。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_hugepage_article.html",
       "stylesheet": "hugepage-map.css",
       "script": "hugepage-map.js",
@@ -995,15 +995,15 @@
         },
         {
           "id": "eligibility",
-          "title": "何时可以建立大页"
+          "title": "大页映射的建立条件"
         },
         {
           "id": "structures",
-          "title": "一个 2 MiB 映射如何拆成 512 项"
+          "title": "将 2 MiB 映射拆分为 512 个 4 KiB 表项"
         },
         {
           "id": "split",
-          "title": "脏页记录如何推动拆分"
+          "title": "脏页记录期间的映射拆分"
         },
         {
           "id": "recovery",
@@ -1015,7 +1015,7 @@
         },
         {
           "id": "tradeoffs",
-          "title": "拆分成本与恢复效果如何衡量"
+          "title": "拆分成本与恢复效果的测量"
         },
         {
           "id": "evolution",
@@ -1032,7 +1032,7 @@
       "topic": "memory-virtualization",
       "title": "KVM 脏页日志：位图与 Dirty Ring",
       "summary": "脏页记录的产生、收割与重置，以及重新保护、发布迁移位图和读取页面之间的顺序。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_dirty_ring_article.html",
       "stylesheet": "dirty-ring.css",
       "script": "dirty-ring.js",
@@ -1053,7 +1053,7 @@
       "sections": [
         {
           "id": "preface",
-          "title": "如何记录并发修改而不漏页"
+          "title": "脏页记录与并发写入跟踪"
         },
         {
           "id": "principle",
@@ -1089,8 +1089,8 @@
       "slug": "vcpu-numa-placement",
       "topic": "memory-virtualization",
       "title": "vCPU 与 NUMA 内存放置",
-      "summary": "从绑核后仍有远端内存访问的问题出发，说明客户机拓扑、线程亲和性、RAM 分配策略与 I/O 后端位置怎样配合。",
-      "reviewed_on": "2026-10-17",
+      "summary": "分析客户机拓扑、线程亲和性、RAM 分配策略与 I/O 后端位置的配合，以及远端内存访问对延迟和带宽的影响。",
+      "reviewed_on": "2026-10-19",
       "template": "_numa_article.html",
       "baselines": [
         {
@@ -1115,19 +1115,19 @@
       "sections": [
         {
           "id": "preface",
-          "title": "绑了 vCPU，访问内存为什么仍然慢"
+          "title": "vCPU 放置与内存访问局部性"
         },
         {
           "id": "mapping",
           "title": "把虚拟拓扑与物理放置分开"
         },
         {
-          "id": "allocation",
-          "title": "从内存映射到物理页分配"
-        },
-        {
           "id": "example",
           "title": "4 个 vCPU 与 8 GiB RAM 的放置例子"
+        },
+        {
+          "id": "allocation",
+          "title": "从内存映射到物理页分配"
         },
         {
           "id": "io",
@@ -1151,8 +1151,8 @@
       "slug": "qemu-postcopy",
       "topic": "migration",
       "title": "QEMU 后拷贝迁移的缺页处理与页面传输",
-      "summary": "目的端接管执行后，如何请求尚未收到的内存页，以及页面安装、线程唤醒与后台传输的配合。",
-      "reviewed_on": "2026-10-15",
+      "summary": "分析目的端接管后的缺页请求、页面安装、线程唤醒与后台传输，以及后拷贝的收敛收益和故障代价。",
+      "reviewed_on": "2026-10-19",
       "template": "_postcopy_article.html",
       "stylesheet": "postcopy.css",
       "script": "postcopy.js",
@@ -1173,7 +1173,7 @@
       "sections": [
         {
           "id": "preface",
-          "title": "预拷贝不收敛时如何交接"
+          "title": "后拷贝迁移的切换与按需传页"
         },
         {
           "id": "principle",
@@ -1210,7 +1210,7 @@
       "topic": "migration",
       "title": "Libvirt 热迁移的阶段协调与失败恢复",
       "summary": "沿 Begin、Prepare、Perform、Finish、Confirm 追踪双端交接，比较客户端与 p2p 协调，解释断线确认、存储归属与 postcopy 恢复边界。",
-      "reviewed_on": "2026-10-17",
+      "reviewed_on": "2026-10-19",
       "template": "_libvirt_migration_article.html",
       "baselines": [
         {
@@ -1229,27 +1229,27 @@
       "sections": [
         {
           "id": "preface",
-          "title": "一台虚拟机怎样安全地换到另一台主机"
+          "title": "Libvirt 热迁移的协调职责"
         },
         {
           "id": "paths",
-          "title": "控制连接与迁移数据分别走哪条路径"
+          "title": "控制连接与迁移数据通道"
         },
         {
           "id": "phases",
-          "title": "五个阶段如何交接资源与执行权"
-        },
-        {
-          "id": "implementation",
-          "title": "源码怎样保存阶段并传递结果"
+          "title": "五阶段协议中的资源与执行权交接"
         },
         {
           "id": "failure",
-          "title": "连接失败为什么需要核对双端状态"
+          "title": "连接失败后的双端状态核对"
         },
         {
           "id": "postcopy",
-          "title": "postcopy 切换后怎样处理失败"
+          "title": "postcopy 切换后的失败处理"
+        },
+        {
+          "id": "implementation",
+          "title": "迁移阶段记录与结果传递的源码"
         },
         {
           "id": "evaluation",
@@ -1266,7 +1266,7 @@
       "topic": "device-virtualization",
       "title": "VFIO 设备直通的 DMA 地址转换与隔离",
       "summary": "从客户机缓冲区到宿主物理页，分析 DMA 映射、IOMMU 权限检查，以及 VFIO Container 与 IOMMUFD 的分工。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_vfio_article.html",
       "stylesheet": "vfio-dma.css",
       "script": "vfio-dma.js",
@@ -1291,7 +1291,7 @@
         },
         {
           "id": "addresses",
-          "title": "CPU 与 DMA 如何访问同一后备页"
+          "title": "CPU 与 DMA 的地址转换路径"
         },
         {
           "id": "flow",
@@ -1303,7 +1303,7 @@
         },
         {
           "id": "implementation",
-          "title": "源码：RAM 区域如何变成 DMA 映射"
+          "title": "源码：RAM 区域到 DMA 映射"
         },
         {
           "id": "tradeoffs",
@@ -1324,7 +1324,7 @@
       "topic": "interrupt-virtualization",
       "title": "virtio 完成通知与 KVM 中断注入",
       "summary": "从 used ring 的完成发布出发，分析通知抑制、MSI-X 消息、LAPIC 状态及 irqfd 替代路径。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_interrupt_article.html",
       "baselines": [
         {
@@ -1343,11 +1343,7 @@
       "sections": [
         {
           "id": "preface",
-          "title": "请求完成后如何让客户机及时处理"
-        },
-        {
-          "id": "structures",
-          "title": "队列、MSI-X 表项与 APIC 向量"
+          "title": "virtio 请求完成与客户机中断通知"
         },
         {
           "id": "notification",
@@ -1358,12 +1354,16 @@
           "title": "MSI-X 消息与屏蔽状态"
         },
         {
+          "id": "structures",
+          "title": "对照队列、MSI-X 表项与路由编号"
+        },
+        {
           "id": "delivery",
           "title": "从 LAPIC 待处理中断到驱动回调"
         },
         {
           "id": "irqfd",
-          "title": "irqfd 如何省去用户态注入中转"
+          "title": "irqfd 的内核中断注入路径"
         },
         {
           "id": "implementation",
@@ -1399,15 +1399,15 @@
         }
       ],
       "topic": "hotplug",
-      "reviewed_on": "2026-10-17",
+      "reviewed_on": "2026-10-19",
       "sections": [
         {
           "id": "preface",
-          "title": "在线调整资源要经过哪些参与者"
+          "title": "热插拔的资源范围与协作过程"
         },
         {
           "id": "state",
-          "title": "为什么修改配置不能立即改变可用资源"
+          "title": "配置变更、硬件通知与客户机资源状态"
         },
         {
           "id": "process",
@@ -1440,7 +1440,7 @@
       "topic": "hotplug",
       "title": "QEMU PCIe 设备热插拔与异步移除",
       "summary": "从端口拓扑、插槽事件到客户机停用与对象回收，分析设备添加、异步删除和管理程序的完成判断。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_pcie_hotplug_article.html",
       "baselines": [
         {
@@ -1453,15 +1453,11 @@
       "sections": [
         {
           "id": "preface",
-          "title": "在线增删设备为什么需要客户机配合"
+          "title": "PCIe 设备热插拔的处理范围"
         },
         {
           "id": "topology",
           "title": "插槽拓扑与资源预留"
-        },
-        {
-          "id": "structures",
-          "title": "用插槽状态和事件表达设备变化"
         },
         {
           "id": "addition",
@@ -1472,8 +1468,12 @@
           "title": "删除 net1：客户机停用与完成事件"
         },
         {
+          "id": "structures",
+          "title": "插槽状态、事件与热插拔回调"
+        },
+        {
           "id": "failure",
-          "title": "操作卡在哪一层，资源何时能回收"
+          "title": "异常状态与资源回收条件"
         },
         {
           "id": "implementation",
@@ -1494,7 +1494,7 @@
       "topic": "libvirt-internals",
       "title": "Libvirt 内部机制：管理接口、运行状态与并发协调",
       "summary": "从管理多台虚拟机的需求出发，沿一次暂停与恢复解释 API、RPC、驱动和状态反馈，再分析配置、作业及守护进程演变。",
-      "reviewed_on": "2026-10-17",
+      "reviewed_on": "2026-10-19",
       "template": "_libvirt_overview_article.html",
       "baselines": [
         {
@@ -1517,19 +1517,19 @@
         },
         {
           "id": "architecture",
-          "title": "一项管理操作为什么要经过几层接口"
-        },
-        {
-          "id": "state",
-          "title": "定义、运行配置与运行状态有什么不同"
+          "title": "API、连接、RPC 与驱动的分层"
         },
         {
           "id": "example",
           "title": "示例：暂停 demo，再从原处继续"
         },
         {
+          "id": "state",
+          "title": "持久定义、运行配置与运行状态"
+        },
+        {
           "id": "coordination",
-          "title": "并发修改为什么需要作业，完成为什么需要事件"
+          "title": "并发作业、异步事件与完成条件"
         },
         {
           "id": "evolution",
@@ -1554,7 +1554,7 @@
       "topic": "libvirt-internals",
       "title": "Libvirt RPC 的编码与调用分发",
       "summary": "以一次虚拟机信息查询为例，解析 RPC 报文、XDR 编码、服务端分发与响应匹配，并说明守护进程拆分后的调用边界。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_libvirt_rpc_article.html",
       "baselines": [
         {
@@ -1567,27 +1567,27 @@
       "sections": [
         {
           "id": "preface",
-          "title": "一次状态查询如何跨越进程"
+          "title": "Libvirt RPC 与跨进程状态查询"
         },
         {
           "id": "layers",
-          "title": "驱动表如何把 API 变成 RPC"
-        },
-        {
-          "id": "framing",
-          "title": "示例：56 字节请求与 60 字节响应"
+          "title": "从驱动接口到 RPC 请求"
         },
         {
           "id": "dispatch",
           "title": "服务端分发与对象查询"
         },
         {
+          "id": "framing",
+          "title": "示例：56 字节请求与 60 字节响应"
+        },
+        {
           "id": "responses",
-          "title": "响应如何返回原调用，错误如何区分"
+          "title": "响应匹配与错误分类"
         },
         {
           "id": "evolution",
-          "title": "守护进程拆分与接口兼容"
+          "title": "协议复用、接口扩展与兼容成本"
         },
         {
           "id": "sources",
@@ -1600,7 +1600,7 @@
       "topic": "qemu-internals",
       "title": "QEMU 内部机制：机器模型、请求处理与状态协调",
       "summary": "从整机需要的接口与资源出发，以一次 4 KiB 磁盘读取贯穿设备对象、块后端、事件循环和生命周期。",
-      "reviewed_on": "2026-10-17",
+      "reviewed_on": "2026-10-19",
       "template": "_qemu_overview_article.html",
       "baselines": [
         {
@@ -1613,27 +1613,27 @@
       "sections": [
         {
           "id": "preface",
-          "title": "CPU 能执行，为什么还需要机器模型"
+          "title": "QEMU 系统模拟器的职责"
         },
         {
           "id": "architecture",
-          "title": "机器接口、执行引擎与后端怎样分工"
-        },
-        {
-          "id": "objects",
-          "title": "为什么需要类型、对象和连接关系"
+          "title": "机器接口、执行引擎与后端的分工"
         },
         {
           "id": "example",
-          "title": "一次 4 KiB 读取怎样往返"
+          "title": "一次 4 KiB 读取的请求与完成路径"
+        },
+        {
+          "id": "objects",
+          "title": "类型、对象与资源连接关系"
         },
         {
           "id": "execution",
-          "title": "谁执行请求，谁可以修改状态"
+          "title": "线程分工、执行上下文与状态同步"
         },
         {
           "id": "lifecycle",
-          "title": "暂停与删除怎样等待异步工作"
+          "title": "暂停、设备移除与异步请求收尾"
         },
         {
           "id": "evolution",
@@ -1658,7 +1658,7 @@
       "topic": "qemu-internals",
       "title": "QEMU 对象模型与设备初始化",
       "summary": "从 virtio-net-pci 的创建过程出发，分析 QOM 类型、对象组合、属性配置与设备生命周期。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_qom_article.html",
       "baselines": [
         {
@@ -1671,15 +1671,7 @@
       "sections": [
         {
           "id": "preface",
-          "title": "设备如何复用行为并独立保存状态"
-        },
-        {
-          "id": "structures",
-          "title": "TypeInfo、类方法与实例内存"
-        },
-        {
-          "id": "type-init",
-          "title": "注册类型并继承初始化方法"
+          "title": "QOM 类型复用与设备实例状态"
         },
         {
           "id": "composition",
@@ -1691,7 +1683,15 @@
         },
         {
           "id": "realize",
-          "title": "realize 如何连接两层设备实现"
+          "title": "realize 与两层设备实现的连接"
+        },
+        {
+          "id": "structures",
+          "title": "TypeInfo、类方法与实例内存"
+        },
+        {
+          "id": "type-init",
+          "title": "注册类型并继承初始化方法"
         },
         {
           "id": "cleanup",
@@ -1708,67 +1708,11 @@
       ]
     },
     {
-      "slug": "vm-startup",
-      "title": "虚拟机启动：资源准备、机器创建与客户机引导",
-      "summary": "从复位状态与虚拟硬件准备出发，沿 Libvirt、QEMU、固件和客户机引导解释启动顺序，区分进程建立、运行放行与服务就绪。",
-      "template": "_startup_overview_article.html",
-      "baselines": [
-        {
-          "project": "QEMU",
-          "version": "10.2.0",
-          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
-          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
-        },
-        {
-          "project": "Libvirt",
-          "version": "12.0.0",
-          "commit": "4d937284669ecf180abea087d0b3ad67d9476349",
-          "url": "https://github.com/libvirt/libvirt/tree/4d937284669ecf180abea087d0b3ad67d9476349"
-        }
-      ],
-      "topic": "vm-startup",
-      "reviewed_on": "2026-10-15",
-      "sections": [
-        {
-          "id": "preface",
-          "title": "启动要跨过哪些阶段"
-        },
-        {
-          "id": "state",
-          "title": "先建立硬件，再让客户机自己引导"
-        },
-        {
-          "id": "process",
-          "title": "从定义到客户机执行"
-        },
-        {
-          "id": "example",
-          "title": "暂停启动一台虚拟机"
-        },
-        {
-          "id": "evolution",
-          "title": "受控启动与兼容性的演进"
-        },
-        {
-          "id": "evaluation",
-          "title": "启动优化应对应具体阶段"
-        },
-        {
-          "id": "reading",
-          "title": "沿启动路径继续阅读"
-        },
-        {
-          "id": "sources",
-          "title": "参考资料"
-        }
-      ]
-    },
-    {
       "slug": "libvirt-domain-start",
       "topic": "vm-startup",
-      "title": "Libvirt 虚拟机启动的进程与状态管理",
-      "summary": "沿 virsh start 的冷启动路径，分析定义与作业、exec 前握手、QMP 配置、运行状态转换和失败清理。",
-      "reviewed_on": "2026-10-15",
+      "title": "虚拟机启动：从 Libvirt 到客户机引导",
+      "summary": "通过暂停启动实例，串起宿主资源准备、QEMU 建机与客户机引导，再分析两道启动屏障、状态事件和失败清理。",
+      "reviewed_on": "2026-10-19",
       "template": "_libvirt_start_article.html",
       "baselines": [
         {
@@ -1787,11 +1731,11 @@
       "sections": [
         {
           "id": "preface",
-          "title": "virsh start 要完成哪些交接"
+          "title": "虚拟机冷启动的三个阶段"
         },
         {
-          "id": "objects",
-          "title": "用运行定义与启动作业管理状态"
+          "id": "example",
+          "title": "暂停启动 demo，观察执行前后的区别"
         },
         {
           "id": "preparation",
@@ -1804,6 +1748,10 @@
         {
           "id": "state",
           "title": "cont、运行状态与生命周期事件"
+        },
+        {
+          "id": "objects",
+          "title": "用运行定义与启动作业管理状态"
         },
         {
           "id": "failure",
@@ -1823,8 +1771,8 @@
       "slug": "qemu-vm-startup",
       "topic": "vm-startup",
       "title": "QEMU 虚拟机启动与 vCPU 初始化",
-      "summary": "从 Q35 冷启动跟踪机器创建、KVM 接口、内存布局与 vCPU 线程，说明暂停启动、复位和固件执行之间的边界。",
-      "reviewed_on": "2026-10-15",
+      "summary": "以包含系统盘与网卡的 Q35 虚拟机为例，跟踪后端、KVM、CPU、内存与设备初始化，再到复位、固件和操作系统引导。",
+      "reviewed_on": "2026-10-19",
       "template": "_qemu_start_article.html",
       "baselines": [
         {
@@ -1841,11 +1789,7 @@
         },
         {
           "id": "example",
-          "title": "用 -S 分开机器创建与客户机执行"
-        },
-        {
-          "id": "objects",
-          "title": "机器、执行后端与处理器对象"
+          "title": "包含系统盘与网卡的启动示例"
         },
         {
           "id": "phases",
@@ -1858,6 +1802,10 @@
         {
           "id": "first-run",
           "title": "复位、继续执行与固件入口"
+        },
+        {
+          "id": "objects",
+          "title": "机器、执行后端与处理器对象"
         },
         {
           "id": "evolution",
@@ -1874,61 +1822,11 @@
       ]
     },
     {
-      "slug": "live-upgrade",
-      "title": "热升级：进程替换、资源保留与状态恢复",
-      "summary": "区分程序、执行状态与可保留资源，用同机 8 GiB 虚拟机交接解释 CPR 的工作原理、模式差异、停机成本及失败恢复条件。",
-      "template": "_upgrade_overview_article.html",
-      "baselines": [
-        {
-          "project": "QEMU",
-          "version": "10.2.0",
-          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
-          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
-        }
-      ],
-      "topic": "live-upgrade",
-      "reviewed_on": "2026-10-15",
-      "sections": [
-        {
-          "id": "preface",
-          "title": "运行中的虚拟机怎样切换软件版本"
-        },
-        {
-          "id": "state",
-          "title": "先区分程序、运行状态和长期资源"
-        },
-        {
-          "id": "process",
-          "title": "保留资源、重建对象与交接执行权"
-        },
-        {
-          "id": "example",
-          "title": "一台 8 GiB 虚拟机的同机交接"
-        },
-        {
-          "id": "evolution",
-          "title": "从保存重启到进程间资源交接"
-        },
-        {
-          "id": "evaluation",
-          "title": "升级收益与失败边界怎样验证"
-        },
-        {
-          "id": "reading",
-          "title": "沿状态交接继续阅读"
-        },
-        {
-          "id": "sources",
-          "title": "参考资料"
-        }
-      ]
-    },
-    {
       "slug": "qemu-cpr-transfer",
       "topic": "live-upgrade",
-      "title": "QEMU 同机更新的内存与文件描述符交接",
+      "title": "QEMU 热升级：CPR 的资源交接与状态恢复",
       "summary": "分析 cpr-transfer 如何保留共享 RAM、传递宿主资源并恢复 CPU 和设备状态，区分资源准备、停机与执行接管。",
-      "reviewed_on": "2026-10-17",
+      "reviewed_on": "2026-10-19",
       "template": "_cpr_article.html",
       "baselines": [
         {
@@ -1941,15 +1839,11 @@
       "sections": [
         {
           "id": "preface",
-          "title": "替换 QEMU 时需要保留哪些状态"
+          "title": "QEMU 进程替换中的资源与状态保留"
         },
         {
           "id": "principle",
           "title": "共享 RAM，重建对象并恢复执行状态"
-        },
-        {
-          "id": "structures",
-          "title": "描述符清单与共享内存"
         },
         {
           "id": "channels",
@@ -1958,6 +1852,10 @@
         {
           "id": "handoff",
           "title": "停止旧 vCPU，再让新进程接管"
+        },
+        {
+          "id": "structures",
+          "title": "描述符清单与共享内存"
         },
         {
           "id": "example",
@@ -1980,9 +1878,9 @@
     {
       "slug": "qemu-memory-region",
       "topic": "qemu-internals",
-      "title": "QEMU MemoryRegion 的地址映射与访问分发",
-      "summary": "从别名窗口和重叠区域出发，分析 FlatView 的生成、RAM 与 MMIO 分发，以及布局变更时的 KVM 内存槽更新。",
-      "reviewed_on": "2026-10-15",
+      "title": "QEMU 内存初始化与地址空间管理",
+      "summary": "以 Q35 的 8 GiB RAM 为例，分析宿主后备分配、高低端内存布局、FlatView 与 KVM 注册，再用交互演示解释别名和区域覆盖。",
+      "reviewed_on": "2026-10-19",
       "template": "_memory_region_article.html",
       "stylesheet": "memory-map.css",
       "script": "memory-map.js",
@@ -1997,27 +1895,35 @@
       "sections": [
         {
           "id": "preface",
-          "title": "同一地址为什么会访问不同对象"
+          "title": "从内存配置到客户机地址空间"
+        },
+        {
+          "id": "backing",
+          "title": "创建 RAM 后端与宿主映射"
+        },
+        {
+          "id": "layout",
+          "title": "Q35 的低端 RAM、高端 RAM 与设备窗口"
         },
         {
           "id": "structures",
           "title": "区域、地址空间与平坦视图"
         },
         {
-          "id": "topology",
-          "title": "示例：RAM 上的 MMIO 别名窗口"
-        },
-        {
-          "id": "lookup",
-          "title": "访问 0x2004：窗口开关改变目标"
-        },
-        {
           "id": "flatten",
-          "title": "FlatView 如何把地址分发到叶子"
+          "title": "生成 FlatView、注册 KVM 与访问高端 RAM"
         },
         {
           "id": "mmio",
           "title": "MMIO 的宽度与访问条件"
+        },
+        {
+          "id": "topology",
+          "title": "局部映射示例：别名、覆盖与空洞"
+        },
+        {
+          "id": "lookup",
+          "title": "交互演示：窗口开关与地址解析"
         },
         {
           "id": "updates",
@@ -2038,7 +1944,7 @@
       "topic": "device-virtualization",
       "title": "virtio-blk 的请求处理与写入完成",
       "summary": "从一次 4 KiB 写入跟踪描述符链、块后端和完成回调，说明请求合并、缓存刷新与持久化之间的关系。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_virtio_blk_article.html",
       "baselines": [
         {
@@ -2051,15 +1957,11 @@
       "sections": [
         {
           "id": "preface",
-          "title": "一次写入何时可以归还缓冲区"
+          "title": "virtio-blk 写入与缓冲区回收"
         },
         {
           "id": "request",
           "title": "一次 4 KiB 写入的描述符链"
-        },
-        {
-          "id": "objects",
-          "title": "描述符如何转换为 VirtIOBlockReq"
         },
         {
           "id": "submission",
@@ -2072,6 +1974,10 @@
         {
           "id": "durability",
           "title": "写入完成与持久化"
+        },
+        {
+          "id": "objects",
+          "title": "用 VirtIOBlockReq 保留请求与回调关联"
         },
         {
           "id": "errors",
@@ -2092,7 +1998,7 @@
       "topic": "device-virtualization",
       "title": "virtio-net 收包与 NAPI：缓冲区、通知和批处理",
       "summary": "从 RX 缓冲区准备到报文交付协议栈，分析 QEMU 收包、used 完成、NAPI 预算与通知恢复竞态。",
-      "reviewed_on": "2026-10-17",
+      "reviewed_on": "2026-10-19",
       "template": "_virtio_rx_article.html",
       "baselines": [
         {
@@ -2111,7 +2017,7 @@
       "sections": [
         {
           "id": "preface",
-          "title": "报文到达时，谁提供存放它的内存"
+          "title": "virtio-net 接收缓冲区的发布与回收"
         },
         {
           "id": "ownership",
@@ -2123,11 +2029,11 @@
         },
         {
           "id": "napi",
-          "title": "NAPI 怎样在中断与批量处理之间切换"
+          "title": "NAPI 的中断与批量轮询切换"
         },
         {
           "id": "races",
-          "title": "通知恢复与缓冲区不足怎样避免停收"
+          "title": "通知恢复与接收缓冲区补充"
         },
         {
           "id": "implementation",
@@ -2148,7 +2054,7 @@
       "topic": "device-virtualization",
       "title": "Packed virtqueue：描述符发布、完成与回绕",
       "summary": "用四槽共享环解释 AVAIL、USED、wrap 与 Buffer ID，分析描述符链、事件抑制和紧凑布局的取舍。",
-      "reviewed_on": "2026-10-17",
+      "reviewed_on": "2026-10-19",
       "template": "_packed_virtqueue_article.html",
       "script": "packed-virtqueue.js",
       "stylesheet": "packed-virtqueue.css",
@@ -2169,7 +2075,7 @@
       "sections": [
         {
           "id": "preface",
-          "title": "请求与完成能否使用同一个描述符环"
+          "title": "Packed virtqueue 的共享描述符环"
         },
         {
           "id": "layout",
@@ -2177,7 +2083,7 @@
         },
         {
           "id": "wrap",
-          "title": "AVAIL、USED 与 wrap 怎样区分两圈"
+          "title": "AVAIL、USED 与 wrap 的状态判定"
         },
         {
           "id": "interactive",
@@ -2193,7 +2099,7 @@
         },
         {
           "id": "implementation",
-          "title": "QEMU 怎样保存链长度并发布完成"
+          "title": "QEMU 的链长度记录与完成发布"
         },
         {
           "id": "evolution",
@@ -2210,7 +2116,7 @@
       "topic": "device-virtualization",
       "title": "vhost-vDPA：队列配置、硬件数据路径与迁移",
       "summary": "分析 vDPA 如何连接 virtio 队列和设备数据面，以及 DMA 映射、Shadow Virtqueue 与迁移能力的约束。",
-      "reviewed_on": "2026-10-17",
+      "reviewed_on": "2026-10-19",
       "template": "_vdpa_article.html",
       "baselines": [
         {
@@ -2229,23 +2135,23 @@
       "sections": [
         {
           "id": "preface",
-          "title": "保留 virtio 驱动，怎样把队列处理交给设备"
+          "title": "vDPA 的 virtio 接口与队列卸载"
         },
         {
           "id": "roles",
-          "title": "客户机、QEMU 与宿主 vDPA 驱动各负责什么"
+          "title": "客户机、QEMU 与宿主 vDPA 驱动的分工"
+        },
+        {
+          "id": "packet",
+          "title": "发送请求的硬件数据路径"
         },
         {
           "id": "configuration",
           "title": "队列启动前，需要建立三类关系"
         },
         {
-          "id": "packet",
-          "title": "一个发送请求怎样经过硬件数据路径"
-        },
-        {
           "id": "shadow",
-          "title": "Shadow Virtqueue 如何观察设备写入"
+          "title": "Shadow Virtqueue 与设备写入跟踪"
         },
         {
           "id": "migration",
@@ -2253,7 +2159,7 @@
         },
         {
           "id": "implementation",
-          "title": "源码如何连接配置、映射与完成转发"
+          "title": "源码：配置、映射与完成转发"
         },
         {
           "id": "evolution",
@@ -2270,7 +2176,7 @@
       "topic": "qemu-internals",
       "title": "QEMU AioContext、协程与 IOThread",
       "summary": "沿一次文件写请求，分析事件分发、协程挂起与恢复、队列到 IOThread 的映射，以及多线程块层的同步边界。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_aio_article.html",
       "baselines": [
         {
@@ -2283,27 +2189,27 @@
       "sections": [
         {
           "id": "preface",
-          "title": "等待磁盘时如何继续处理其他请求"
-        },
-        {
-          "id": "structures",
-          "title": "IOThread、AioContext 与协程的分工"
+          "title": "异步块 I/O 与请求并发"
         },
         {
           "id": "request",
           "title": "4 KiB 写入：提交、挂起与恢复"
         },
         {
+          "id": "structures",
+          "title": "IOThread、AioContext 与协程的分工"
+        },
+        {
           "id": "dispatch",
-          "title": "BH 如何把完成交回原上下文"
+          "title": "BH 与完成回调的上下文"
         },
         {
           "id": "mapping",
-          "title": "多队列如何分配到 IOThread"
+          "title": "多队列到 IOThread 的映射"
         },
         {
           "id": "synchronization",
-          "title": "并行读写如何与 drain 和块图修改协调"
+          "title": "并行读写、drain 与块图修改的协调"
         },
         {
           "id": "evolution",
@@ -2320,7 +2226,7 @@
       "topic": "qemu-internals",
       "title": "QEMU qcow2 的地址映射与写时复制",
       "summary": "从 L1/L2 和引用计数跟踪一次 4 KiB 写入，分析共享簇、backing file、元数据更新顺序与子簇映射。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_qcow2_article.html",
       "stylesheet": "qcow2-map.css",
       "script": "qcow2-map.js",
@@ -2335,11 +2241,11 @@
       "sections": [
         {
           "id": "preface",
-          "title": "4 KiB 写入为何需要簇映射"
+          "title": "qcow2 簇映射与局部写入"
         },
         {
           "id": "mapping",
-          "title": "L1、L2 与 refcount 如何定位数据"
+          "title": "L1、L2 映射与 refcount 引用计数"
         },
         {
           "id": "lookup",
@@ -2347,15 +2253,15 @@
         },
         {
           "id": "reads",
-          "title": "读取如何选择本层、backing 或零"
+          "title": "读取路径：本层数据、backing 与零数据"
         },
         {
           "id": "writes",
-          "title": "4 KiB 写入怎样保留其余 60 KiB"
+          "title": "4 KiB 局部写入与簇内数据保留"
         },
         {
           "id": "evolution",
-          "title": "Extended L2 如何减少局部写放大"
+          "title": "Extended L2 的子簇映射与写放大"
         },
         {
           "id": "sources",
@@ -2368,7 +2274,7 @@
       "topic": "qemu-internals",
       "title": "QEMU 外部快照与在线块操作",
       "summary": "从 A、B、C 镜像链和同一偏移的数据变化出发，比较 stream、commit、mirror 与 backup，解释活动盘切换、作业状态和取消边界。",
-      "reviewed_on": "2026-10-17",
+      "reviewed_on": "2026-10-19",
       "template": "_block_operations_article.html",
       "baselines": [
         {
@@ -2381,11 +2287,11 @@
       "sections": [
         {
           "id": "preface",
-          "title": "运行中的磁盘怎样保留旧视图并更换存储"
+          "title": "在线块操作与磁盘视图管理"
         },
         {
           "id": "snapshot",
-          "title": "外部快照怎样划分一个时间点"
+          "title": "外部快照的时间点与新写入层"
         },
         {
           "id": "stream",
@@ -2393,19 +2299,19 @@
         },
         {
           "id": "commit",
-          "title": "commit 向下合并时会改变哪些历史内容"
+          "title": "commit 向下合并与历史内容更新"
         },
         {
           "id": "mirror",
-          "title": "mirror 怎样持续追赶并切换活动磁盘"
+          "title": "mirror 增量追赶与活动磁盘切换"
         },
         {
           "id": "backup",
-          "title": "backup 为什么保留启动时的内容"
+          "title": "backup 与启动时刻的数据视图"
         },
         {
           "id": "failure",
-          "title": "怎样确认结束并保留可恢复的数据"
+          "title": "操作完成确认与可恢复数据保留"
         },
         {
           "id": "evolution",
@@ -2422,7 +2328,7 @@
       "topic": "hotplug",
       "title": "virtio-mem 的内存添加与回收",
       "summary": "从目标容量到客户机页面隔离，分析 virtio-mem 的块协议、Linux 内存上线与异步回收，并观察扩缩容阻塞与重试。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_virtio_mem_article.html",
       "stylesheet": "virtio-mem.css",
       "script": "virtio-mem.js",
@@ -2443,15 +2349,11 @@
       "sections": [
         {
           "id": "preface",
-          "title": "运行中的内存容量如何逐步调整"
+          "title": "virtio-mem 的内存块与容量调整"
         },
         {
           "id": "capacity",
           "title": "目标容量、实际容量与可用范围"
-        },
-        {
-          "id": "structures",
-          "title": "设备块、Linux 内存块与请求格式"
         },
         {
           "id": "growth",
@@ -2464,6 +2366,10 @@
         {
           "id": "interaction",
           "title": "逐步观察扩缩容与失败重试"
+        },
+        {
+          "id": "structures",
+          "title": "设备块、Linux 内存块与请求格式"
         },
         {
           "id": "limits",
@@ -2484,7 +2390,7 @@
       "topic": "hotplug",
       "title": "x86 vCPU 热插拔：拓扑、上线与异步移除",
       "summary": "区分最大拓扑、已创建 vCPU 和客户机在线 CPU，跟踪 QMP、ACPI 通知、客户机下线与删除完成事件。",
-      "reviewed_on": "2026-10-17",
+      "reviewed_on": "2026-10-19",
       "template": "_cpu_hotplug_article.html",
       "baselines": [
         {
@@ -2509,7 +2415,7 @@
       "sections": [
         {
           "id": "preface",
-          "title": "增加一个 vCPU，需要谁同意"
+          "title": "vCPU 热插拔与客户机状态"
         },
         {
           "id": "states",
@@ -2521,11 +2427,11 @@
         },
         {
           "id": "handoff",
-          "title": "ACPI 怎样连接设备变化和客户机动作"
+          "title": "ACPI 通知与客户机上线、下线"
         },
         {
           "id": "removal",
-          "title": "怎样确认缩容真正完成"
+          "title": "移除完成事件与状态核对"
         },
         {
           "id": "implementation",
@@ -2543,10 +2449,10 @@
     },
     {
       "slug": "kvm-vcpu-run",
-      "topic": "cpu-virtualization",
-      "title": "KVM vCPU 的执行循环与退出处理",
-      "summary": "沿 CPUID 与设备寄存器读取，分析 KVM_RUN、硬件退出、kvm_run 数据交接，以及暂停前的 I/O 完成顺序。",
-      "reviewed_on": "2026-10-15",
+      "topic": "kvm-internals",
+      "title": "KVM 的对象管理与 vCPU 执行",
+      "summary": "从 VM 与 vCPU 创建出发，跟踪 CPUID 和设备寄存器读取，解释内核处理、用户态交接与 ioeventfd、irqfd 的优化边界。",
+      "reviewed_on": "2026-10-19",
       "template": "_kvm_run_article.html",
       "baselines": [
         {
@@ -2565,23 +2471,27 @@
       "sections": [
         {
           "id": "preface",
-          "title": "客户机执行如何与设备模拟衔接"
+          "title": "KVM 的对象、执行环境与设备交接"
+        },
+        {
+          "id": "objects",
+          "title": "从 /dev/kvm 建立 VM 与 vCPU"
         },
         {
           "id": "principle",
           "title": "VM Entry、内核处理与用户态返回"
         },
         {
-          "id": "structures",
-          "title": "交接载体：kvm_run 如何描述一次 I/O"
-        },
-        {
           "id": "paths",
           "title": "跟踪实例：CPUID 后读取一个设备寄存器"
         },
         {
+          "id": "structures",
+          "title": "交接载体：kvm_run 的 I/O 字段"
+        },
+        {
           "id": "notifications",
-          "title": "通知优化：ioeventfd 与 irqfd 各省去哪一步"
+          "title": "通知优化：ioeventfd 与 irqfd 的处理路径"
         },
         {
           "id": "completion",
@@ -2606,7 +2516,7 @@
       "topic": "cpu-virtualization",
       "title": "KVM vCPU 的阻塞、轮询与唤醒",
       "summary": "从 HLT 跟踪宿主轮询、等待者发布与中断唤醒，分析丢失唤醒的防护和轮询预算的自适应调整。",
-      "reviewed_on": "2026-10-17",
+      "reviewed_on": "2026-10-19",
       "template": "_halt_article.html",
       "stylesheet": "halt-poll.css",
       "script": "halt-poll.js",
@@ -2627,15 +2537,11 @@
       "sections": [
         {
           "id": "preface",
-          "title": "空闲 vCPU 如何兼顾响应时间与 CPU 占用"
+          "title": "空闲 vCPU 的轮询与阻塞"
         },
         {
           "id": "example",
           "title": "一个例子：请求完成前等待 30 µs"
-        },
-        {
-          "id": "structures",
-          "title": "等待状态：客户机活动状态与宿主任务状态"
         },
         {
           "id": "halt",
@@ -2647,7 +2553,11 @@
         },
         {
           "id": "race",
-          "title": "正确性：如何避免入睡前丢失唤醒"
+          "title": "正确性：阻塞前的事件复查与唤醒"
+        },
+        {
+          "id": "structures",
+          "title": "等待状态：客户机活动状态与宿主任务状态"
         },
         {
           "id": "polling",
@@ -2676,7 +2586,7 @@
       "topic": "cpu-virtualization",
       "title": "KVM 虚拟时钟与定时器",
       "summary": "从一次 1 毫秒定时任务出发，分析 TSC 变换、pvclock 共享时间基准、deadline 中断，以及暂停和迁移中的时间接续。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_kvm_time_article.html",
       "baselines": [
         {
@@ -2695,31 +2605,31 @@
       "sections": [
         {
           "id": "preface",
-          "title": "虚拟机怎样计时，又怎样按时获得通知"
+          "title": "虚拟机时间读取与定时中断"
         },
         {
           "id": "tsc",
           "title": "TSC 偏移与缩放建立客户机的计数坐标"
         },
         {
-          "id": "pvclock",
-          "title": "pvclock 用共享时间基准减少读取开销"
-        },
-        {
           "id": "example",
           "title": "从 5.002 秒安排一次 1 毫秒后的通知"
         },
         {
+          "id": "pvclock",
+          "title": "pvclock 用共享时间基准减少读取开销"
+        },
+        {
           "id": "timer",
-          "title": "截止时刻如何变成客户机中断"
+          "title": "从定时截止时刻到客户机中断"
         },
         {
           "id": "state",
-          "title": "关键状态分别由谁维护"
+          "title": "时间与定时器的状态归属"
         },
         {
           "id": "migration",
-          "title": "暂停与迁移怎样接续时间"
+          "title": "暂停与迁移中的时间衔接"
         },
         {
           "id": "evolution",
@@ -2740,7 +2650,7 @@
       "topic": "cpu-virtualization",
       "title": "QEMU TCG 的翻译块与执行循环",
       "summary": "从客户机指令到宿主代码，分析 TCG 中间表示、翻译块缓存、直接链接、代码失效与异常状态恢复。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_tcg_article.html",
       "stylesheet": "tcg-tb.css",
       "script": "tcg-tb.js",
@@ -2755,7 +2665,7 @@
       "sections": [
         {
           "id": "preface",
-          "title": "TCG 怎样执行并复用一段客户机代码"
+          "title": "TCG 动态翻译与代码复用"
         },
         {
           "id": "main-path",
@@ -2766,12 +2676,12 @@
           "title": "第一次执行 A：从指令译码到宿主机器码"
         },
         {
-          "id": "structures",
-          "title": "缓存依据：TB 保存代码，CPU 状态保存运行值"
-        },
-        {
           "id": "cache",
           "title": "重复执行 A、B：缓存查找与直接链接"
+        },
+        {
+          "id": "structures",
+          "title": "缓存依据：TB 保存代码，CPU 状态保存运行值"
         },
         {
           "id": "memory",
@@ -2804,7 +2714,7 @@
       "topic": "cpu-virtualization",
       "title": "虚拟 CPU 模型与迁移兼容性",
       "summary": "从两台 x86 主机的指令差异出发，说明 CPU 模型、运行状态与机器类型的约束，以及兼容基线的选择和检查。",
-      "reviewed_on": "2026-10-17",
+      "reviewed_on": "2026-10-19",
       "template": "_cpu_models_article.html",
       "baselines": [
         {
@@ -2823,7 +2733,7 @@
       "sections": [
         {
           "id": "preface",
-          "title": "同为 x86，为什么仍可能无法迁移"
+          "title": "x86 CPU 能力差异与迁移兼容性"
         },
         {
           "id": "contract",
@@ -2835,7 +2745,7 @@
         },
         {
           "id": "example",
-          "title": "两台主机怎样确定共同能力"
+          "title": "两台主机的共同 CPU 能力基线"
         },
         {
           "id": "implementation",
@@ -2843,67 +2753,7 @@
         },
         {
           "id": "evolution",
-          "title": "兼容基线怎样随硬件与软件演进"
-        },
-        {
-          "id": "sources",
-          "title": "参考资料"
-        }
-      ]
-    },
-    {
-      "slug": "kvm-internals",
-      "topic": "kvm-internals",
-      "title": "KVM 内部机制：从虚拟机接口到客户机执行",
-      "summary": "从硬件隔离和 VM/vCPU 接口出发，用一次设备读取串联进入、退出与恢复，理解内存、中断和跨 CPU 同步的分工及演进。",
-      "reviewed_on": "2026-10-15",
-      "template": "_kvm_overview_article.html",
-      "baselines": [
-        {
-          "project": "Linux",
-          "version": "6.18",
-          "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
-          "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"
-        },
-        {
-          "project": "QEMU",
-          "version": "10.2.0",
-          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
-          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
-        }
-      ],
-      "sections": [
-        {
-          "id": "preface",
-          "title": "让客户机直接执行，同时保留宿主控制权"
-        },
-        {
-          "id": "objects",
-          "title": "通过文件描述符建立一台虚拟机"
-        },
-        {
-          "id": "execution",
-          "title": "一次设备读取怎样退出后继续运行"
-        },
-        {
-          "id": "resources",
-          "title": "内存和中断怎样支撑这条执行路径"
-        },
-        {
-          "id": "coordination",
-          "title": "多个 vCPU 同时运行时如何保持一致"
-        },
-        {
-          "id": "evolution",
-          "title": "演进怎样减少退出、建图与同步成本"
-        },
-        {
-          "id": "summary",
-          "title": "总结：建立状态、受控执行、协调变化"
-        },
-        {
-          "id": "reading",
-          "title": "进一步阅读"
+          "title": "硬件与软件演进中的兼容基线"
         },
         {
           "id": "sources",
@@ -2916,7 +2766,7 @@
       "topic": "kvm-internals",
       "title": "KVM vCPU 请求与跨 CPU 同步",
       "summary": "跟踪一次远端 TLB 刷新，解释请求位图、vCPU kick、进入竞争，以及 IPI 确认与操作完成之间的边界。",
-      "reviewed_on": "2026-10-15",
+      "reviewed_on": "2026-10-19",
       "template": "_kvm_requests_article.html",
       "baselines": [
         {
@@ -2929,7 +2779,7 @@
       "sections": [
         {
           "id": "preface",
-          "title": "页表更新后，怎样让另一个 vCPU 停下来"
+          "title": "KVM 请求与跨 vCPU 状态同步"
         },
         {
           "id": "design",
@@ -2941,7 +2791,7 @@
         },
         {
           "id": "kick",
-          "title": "运行、睡眠与进入中的 vCPU 怎样接收通知"
+          "title": "不同 vCPU 状态下的通知路径"
         },
         {
           "id": "ordering",
@@ -2953,7 +2803,7 @@
         },
         {
           "id": "evaluation",
-          "title": "减少同步开销时应衡量什么"
+          "title": "同步开销与性能观测"
         },
         {
           "id": "sources",
@@ -2961,5 +2811,35 @@
         }
       ]
     }
-  ]
+  ],
+  "redirects": {
+    "vm-startup": {
+      "target": "libvirt-domain-start",
+      "anchors": {
+        "process": "launch",
+        "evaluation": "evolution",
+        "reading": "sources"
+      }
+    },
+    "live-upgrade": {
+      "target": "qemu-cpr-transfer",
+      "anchors": {
+        "state": "principle",
+        "process": "handoff",
+        "evaluation": "boundaries",
+        "reading": "implementation",
+        "sources": "implementation"
+      }
+    },
+    "kvm-internals": {
+      "target": "kvm-vcpu-run",
+      "anchors": {
+        "execution": "paths",
+        "resources": "evolution",
+        "coordination": "evolution",
+        "summary": "evolution",
+        "reading": "sources"
+      }
+    }
+  }
 }

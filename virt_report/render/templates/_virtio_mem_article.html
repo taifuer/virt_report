@@ -2,7 +2,7 @@
 {% set linux_source = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 {% from '_mechanism_diagram.html' import diagram with context %}
 <section id="preface" class="mechanism-section">
-  <h2>运行中的内存容量如何逐步调整</h2>
+  <h2>virtio-mem 的内存块与容量调整</h2>
   <p>虚拟机运行期间，负载需要的内存会改变。virtio-mem 在预先划定的客户机物理地址范围内，按小块提供和收回内存。管理程序设置目标容量，客户机驱动决定哪些块可以加入内存管理、哪些块能够安全回收，再通过 virtqueue 与 QEMU 完成交接。</p>
   <p>本文沿 x86 Linux 客户机的扩容和缩容过程，分析容量字段、设备协议与页面回收。重点采用 Sub Block Mode（SBM）；较大设备块的 Big Block Mode（BBM）另作对照。</p>
   <p>以可调设备当前提供 4 GiB 为例：目标改为 6 GiB，驱动需要先请求新块，再把它们加入分配器；目标改为 2 GiB，则先迁走待回收区域中的页面，再请求 QEMU 撤回内存。两条路径都由客户机确认可安全交接后推进，目标字段因此可以先改变，实际容量随后才逐步靠近它。</p>
@@ -12,7 +12,7 @@
 <section id="capacity" class="mechanism-section">
   <h2>目标容量、实际容量与可用范围</h2>
   <p>一个 virtio-mem 设备关联一个 memory backend，并管理从 <code>addr</code> 开始的一段 GPA。后端大小决定容量上限；实际向客户机提供多少内存，由块状态决定。初始内存与这个设备的容量分别计数。</p>
-  <table><thead><tr><th scope="col">字段</th><th scope="col">含义</th><th scope="col">谁改变它</th></tr></thead><tbody>
+  <table><thead><tr><th scope="col">字段</th><th scope="col">含义</th><th scope="col">更新方</th></tr></thead><tbody>
     <tr><td><code>region_size</code></td><td>后端覆盖的最大范围，QMP 中为 <code>max-size</code></td><td>创建设备时确定</td></tr>
     <tr><td><code>usable_region_size</code></td><td>客户机当前可选择 PLUG / UNPLUG 地址的范围</td><td>QEMU 随目标增长而扩展</td></tr>
     <tr><td><code>requested_size</code></td><td>管理程序要求设备提供的目标容量</td><td>运行时设置 <code>requested-size</code></td></tr>
@@ -26,19 +26,7 @@
 -device virtio-mem-pci,id=vm0,memdev=vmem0,block-size=2M,requested-size=4G</code></pre>
   <p>后端地址空间可以预留到上限，但无需预先填满所有页面。若使用需要预分配的后端，virtio-mem 设备的 <code>prealloc</code> 控制每次 PLUG 的内存准备；直接预分配整个后端会提前承担上限容量的开销。容量调整只作用于这个设备，初始内存不会随 <code>requested-size</code> 一起缩减。</p>
   <p>可用范围给驱动留下选择空间。QEMU 10.2 的 x86 实现增加 256 MiB 余量，并受后端上限和块对齐约束。运行时调低目标不会立即缩小这个范围；<code>UNPLUG_ALL</code> 等允许重置范围的路径才会重新计算。它不能解释为已插入容量或当前物理占用。<a href="{{ qemu_source }}hw/virtio/virtio-mem.c#L712-L759">范围调整实现</a></p>
-</section>
-
-<section id="structures" class="mechanism-section">
-  <h2>设备块、Linux 内存块与请求格式</h2>
-  <p>设备的 <code>block_size</code> 定义协议的最小操作单位，可以是 2 MiB。Linux 的 memory block 是内存热插拔管理对象，大小应读取 <code>/sys/devices/system/memory/block_size_bytes</code>，不能与设备块混用。</p>
-  <p>驱动根据设备块与内核 pageblock 等粒度计算 subblock。若它小于 Linux memory block，就采用 SBM：一个 memory block 包含多个 subblock，可处于部分提供状态。例如 Linux 块为 128 MiB、subblock 为 2 MiB 时，一个管理对象包含 64 个可独立处理的子块。更大的设备块采用 BBM，操作范围覆盖一个或多个 Linux memory block。<a href="{{ linux_source }}drivers/virtio/virtio_mem.c#L2535-L2619">模式与粒度选择</a></p>
-  <table><thead><tr><th scope="col">结构</th><th scope="col">关键内容</th></tr></thead><tbody>
-    <tr><td>QEMU <code>VirtIOMEM</code></td><td><code>size</code>、<code>requested_size</code>、<code>block_size</code> 与按设备块索引的 bitmap</td></tr>
-    <tr><td>Linux <code>struct virtio_mem</code></td><td>容量副本、workqueue、virtqueue 与重试定时器；SBM 用 <code>mb_states</code> 记录 Linux 块状态、<code>sb_states</code> 位图记录子块状态</td></tr>
-    <tr><td><code>virtio_mem_req</code></td><td><code>type</code>、地址 <code>addr</code>、设备块数量 <code>nb_blocks</code>；完整请求为 24 字节</td></tr>
-    <tr><td><code>virtio_mem_resp</code></td><td>10 字节响应，<code>type</code> 为 ACK、NACK、BUSY 或 ERROR；STATE 查询还返回块状态</td></tr>
-  </tbody></table>
-  <p>驱动向 virtqueue 提交一个设备可读的请求缓冲区和一个设备可写的响应缓冲区。PLUG / UNPLUG 携带 GPA 与块数，不携带内存页内容。<code>addr = A + 4 MiB, nb_blocks = 2</code> 在设备块为 2 MiB 时表示处理从该地址开始的 4 MiB。<a href="{{ linux_source }}drivers/virtio/virtio_mem.c#L1389-L1488">请求提交与响应处理</a></p>
+  <p>本例按 2 MiB 设备块交接容量。若 Linux 的内存热插拔管理块为 128 MiB，SBM 可以把其中的 64 个子块分别提供或收回。因此，调整 2 MiB 不必同时撤回整个 128 MiB 区域。先沿这两个粒度看扩缩容，后面再对照块位图和请求格式。</p>
 </section>
 
 <section id="growth" class="mechanism-section">
@@ -72,12 +60,26 @@
   {% include '_virtio_mem_lab.html' %}
 </section>
 
+<section id="structures" class="mechanism-section">
+  <h2>设备块、Linux 内存块与请求格式</h2>
+  <p>设备的 <code>block_size</code> 定义协议的最小操作单位，可以是 2 MiB。Linux 的 memory block 是内存热插拔管理对象，大小应读取 <code>/sys/devices/system/memory/block_size_bytes</code>，不能与设备块混用。</p>
+  <p>驱动根据设备块与内核 pageblock 等粒度计算 subblock。若它小于 Linux memory block，就采用 SBM：一个 memory block 包含多个 subblock，可处于部分提供状态。例如 Linux 块为 128 MiB、subblock 为 2 MiB 时，一个管理对象包含 64 个可独立处理的子块。更大的设备块采用 BBM，操作范围覆盖一个或多个 Linux memory block。<a href="{{ linux_source }}drivers/virtio/virtio_mem.c#L2535-L2619">模式与粒度选择</a></p>
+  <table><thead><tr><th scope="col">结构</th><th scope="col">关键内容</th></tr></thead><tbody>
+    <tr><td>QEMU <code>VirtIOMEM</code></td><td>宿主用户态设备对象；保存 <code>size</code>、<code>requested_size</code>、<code>block_size</code> 与按设备块索引的 bitmap</td></tr>
+    <tr><td>Linux <code>struct virtio_mem</code></td><td>客户机内核驱动对象；保存容量副本、workqueue、virtqueue 与重试定时器；SBM 用 <code>mb_states</code> 记录 Linux 块状态、<code>sb_states</code> 位图记录子块状态</td></tr>
+    <tr><td><code>virtio_mem_req</code></td><td>客户机内存中的请求缓冲区，QEMU 读取；含 <code>type</code>、地址 <code>addr</code>、设备块数量 <code>nb_blocks</code>，完整请求为 24 字节</td></tr>
+    <tr><td><code>virtio_mem_resp</code></td><td>客户机内存中的 10 字节响应缓冲区，QEMU 写入、驱动读取；<code>type</code> 为 ACK、NACK、BUSY 或 ERROR，STATE 查询还返回块状态</td></tr>
+  </tbody></table>
+  <p>驱动向 virtqueue 提交一个设备可读的请求缓冲区和一个设备可写的响应缓冲区。PLUG / UNPLUG 携带 GPA 与块数，不携带内存页内容。<code>addr = A + 4 MiB, nb_blocks = 2</code> 在设备块为 2 MiB 时表示处理从该地址开始的 4 MiB。<a href="{{ linux_source }}drivers/virtio/virtio_mem.c#L1389-L1488">请求提交与响应处理</a></p>
+</section>
+
 <section id="limits" class="mechanism-section">
   <h2>区分客户机隔离失败与设备 BUSY</h2>
   <p>不可迁移的内核分配、暂时固定的页或迁移目标页不足，都可能使隔离失败。驱动会跳过暂忙子块，尝试其他范围；部分子块成功时，实际容量可以停在初始值与目标之间。ZONE_MOVABLE 能减少不可迁移分配带来的干扰，但仍需要处理临时引用和内存压力。</p>
   <p>设备侧 BUSY 是另一个原因。QEMU 在迁移期间限制块状态变化；预分配失败、discard 失败或监听者无法建立映射，也可能使请求暂不能完成。在线 SBM 子块的 UNPLUG 失败后，驱动会 fake-online，将已经隔离的页归还分配器，再安排重试。<a href="{{ qemu_source }}hw/virtio/virtio-mem.c#L578-L684">QEMU 状态改变</a>、<a href="{{ linux_source }}drivers/virtio/virtio_mem.c#L2415-L2499">工作队列与重试</a></p>
   <p>NACK 表示 PLUG 超过当前目标，例如目标在处理期间变化；驱动重读配置。ERROR 表示地址、对齐或块状态等请求条件错误，不能与 BUSY 混同。管理程序应同时记录目标、实际提供量及变化时间，再检查客户机内存块状态和驱动日志，避免把一次 QMP 返回当作扩缩容完成。</p>
   <p>判断停在哪一层，可以依次看三个现象：目标已变而设备容量未变，检查驱动是否运行、是否持续收到 BUSY；设备容量已增加而客户机可用量未增加，检查内存上线策略；设备容量只降了一部分，则查看余下子块的页面引用和可迁移性。重复设置相同目标能重新触发配置通知，但不能强制释放仍被客户机使用的页面。</p>
+  <p>宿主侧通过 QMP <code>{"execute":"query-memory-devices"}</code> 找到 <code>id = vm0</code>，对照以字节计的 <code>requested-size</code>、<code>size</code> 和 <code>block-size</code>。客户机内可读取 <code>/sys/devices/system/memory/block_size_bytes</code>，并用 <code>lsmem</code> 查看 Linux 内存块的上线状态。SBM 允许一个 online 块只提供部分子块，所以 lsmem 的块状态还需结合驱动状态与设备容量判断，不能把所有 online 块的标称大小直接相加作为 virtio-mem 已提供量。<a href="{{ qemu_source }}qapi/machine.json#L1331-L1363">QMP 容量字段</a></p>
 </section>
 
 <section id="evolution" class="mechanism-section">
