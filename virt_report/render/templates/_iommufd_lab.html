@@ -1,0 +1,55 @@
+<section class="iommufd-lab" data-iommufd-lab data-mechanism-view="lab" aria-labelledby="iommufd-lab-title">
+  <div class="mechanism-view-heading">
+    <h3 id="iommufd-lab-title">设备与地址空间的生命周期</h3>
+    <button type="button" data-mechanism-expand hidden>全屏显示</button>
+  </div>
+  <p>逐步接入一块 VF，观察对象和映射的建立、使用与回收。可切换失败场景，比较回滚需要释放的资源。</p>
+  <div class="iommufd-controls" data-iommufd-controls hidden>
+    <label for="iommufd-scenario">执行场景
+      <select id="iommufd-scenario" data-iommufd-scenario>
+        <option value="success">正常初始化与回收</option>
+        <option value="attach-failure">模拟附着失败</option>
+        <option value="map-failure">映射失败 · IOVA 受限</option>
+      </select>
+    </label>
+    <div class="iommufd-actions" role="group" aria-label="IOMMUFD 生命周期控制">
+      <button type="button" data-iommufd-back>上一步</button>
+      <button type="button" data-iommufd-next>下一步</button>
+      <button type="button" data-iommufd-reset>重置</button>
+    </div>
+  </div>
+  <p class="iommufd-status" data-iommufd-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <div class="iommufd-fds" aria-label="用户态文件描述符">
+    <div><strong>VFIO 设备 fd</strong><span data-iommufd-device-fd>尚未打开</span></div>
+    <div><strong>/dev/iommu fd</strong><span data-iommufd-context-fd>尚未打开</span></div>
+  </div>
+  <div class="iommufd-object-row" aria-label="DEVICE 到 HWPT 再到 IOAS 的依赖">
+    <section data-iommufd-object="device">
+      <h4>DEVICE 1</h4><p data-iommufd-device-state>未绑定</p><small>网卡 VF 的 DMA 所有权</small>
+    </section>
+    <div class="iommufd-edge"><span aria-hidden="true">→</span><span data-iommufd-attachment>尚未附着</span></div>
+    <section data-iommufd-object="hwpt">
+      <h4>HWPT 20</h4><p data-iommufd-hwpt-state>未分配</p><small>硬件 I/O 页表</small>
+    </section>
+    <div class="iommufd-edge"><span aria-hidden="true">→</span><span data-iommufd-association>尚未关联</span></div>
+    <section data-iommufd-object="ioas">
+      <h4>IOAS 10</h4><p data-iommufd-ioas-state>未分配</p><small>逻辑 I/O 地址空间</small>
+    </section>
+  </div>
+  <div class="iommufd-mapping" data-iommufd-object="mapping">
+    <strong>RAM 区间映射</strong><span data-iommufd-mapping-state>尚未建立</span>
+    <dl><div><dt>IOVA</dt><dd>0x00400000</dd></div><div><dt>QEMU HVA</dt><dd>0x70000000</dd></div><div><dt>长度 / 权限</dt><dd>2 MiB / 设备读写</dd></div></dl>
+    <small>硬件页粒度取决于实际后备页和 IOMMU 能力。</small>
+  </div>
+  <div class="iommufd-detail" data-iommufd-detail hidden>
+    <strong data-iommufd-step-title></strong>
+    <code data-iommufd-command></code>
+    <p data-iommufd-step-detail></p>
+    <p class="iommufd-dma" data-iommufd-dma></p>
+  </div>
+  <p class="iommufd-note">演示采用一个设备、一个 IOAS 和显式分配的 HWPT。失败场景停在首次被拒绝的操作，随后只清理本次创建的资源；不会启动 DMA。</p>
+  <div data-iommufd-fallback>
+    <ol><li>打开两个 fd，绑定设备，分配 IOAS 和 HWPT。</li><li>设备附着到 HWPT，再把 RAM 区间映射到 IOAS。</li><li>启动设备队列，使用现有映射处理 DMA。</li><li>停止队列并处理在途 DMA，脱离并销毁 HWPT，撤销映射，最后释放 IOAS 与设备绑定并关闭 fd。</li></ol>
+    <p>启用 JavaScript 后可逐步查看对象状态和失败回滚。</p>
+  </div>
+</section>

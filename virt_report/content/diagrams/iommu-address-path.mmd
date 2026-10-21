@@ -1,0 +1,22 @@
+flowchart TB
+    accTitle: 设备标识、IOTLB 与 I/O 页表共同确定一次 DMA 写入
+    accDescr: PCIe 网卡携带 Requester ID 和 IOVA 发起 DMA 写。设备上下文确定地址空间，IOTLB 命中时复用转换，未命中时硬件遍历页表。有效映射并且写权限允许时访问 HPA；缺失映射或权限不足则阻止访问。
+    D["物理网卡 03:00.0<br/>Requester ID = 0x0300<br/>写 IOVA 0x00400080 · 64 B"]
+    C["Root / Context 表或上下文缓存<br/>选择页表根与 Domain ID"]
+    T{"IOTLB 存在有效转换"}
+    P["硬件遍历多级 I/O 页表<br/>寻找 0x00400000 所在页"]
+    V{"有效映射且允许设备写"}
+    H["HPA = 0x21000000 + 0x80<br/>写入客户机后备页"]
+    F["访问故障<br/>不写入目标缓冲区"]
+    D --> C --> T
+    T -->|命中：转换及权限| V
+    T -->|未命中| P
+    P -->|检查叶子映射及权限| V
+    V -->|通过；可缓存有效转换| H
+    V -->|不满足| F
+    classDef address fill:#e4f1ec,stroke:#438575,color:#173e34
+    classDef control fill:#eaf0f6,stroke:#8198ac,color:#263c4c
+    classDef fault fill:#f7eee8,stroke:#b6927c,color:#664a3a
+    class D,H address
+    class C,T,P,V control
+    class F fault

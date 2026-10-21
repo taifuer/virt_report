@@ -1,0 +1,25 @@
+flowchart TB
+    accTitle: IOMMUFD 的文件描述符与对象关系
+    accDescr: QEMU 分别通过 VFIO 设备文件和 IOMMUFD 文件管理设备及页表；DEVICE 附着到 HWPT，HWPT 关联统一的 IOAS 映射。兼容设备可共享硬件页表，其他设备可以通过另一个硬件页表共享 IOAS。
+    subgraph userspace[QEMU · 用户态入口]
+        direction LR
+        DEVFD["VFIO 设备 fd<br/>绑定、附着、设备访问"]
+        IOMMUFD["/dev/iommu fd<br/>分配对象、MAP / UNMAP"]
+    end
+    subgraph objects[IOMMUFD 上下文 · 对象 ID]
+        direction TB
+        DEVICE["DEVICE 1<br/>物理 VF 的 DMA 所有权"]
+        HWPT["HWPT 20<br/>内核管理的硬件页表"]
+        IOAS["IOAS 10 · 逻辑映射<br/>IOVA → 后备内存"]
+        DEVICE2["另一块设备<br/>同一虚拟机"]
+        HWPT2["HWPT 21<br/>需要独立硬件页表时"]
+        DEVICE -->|附着| HWPT
+        HWPT -->|关联并同步映射| IOAS
+        DEVICE2 -.兼容时复用.-> HWPT
+        DEVICE2 -.否则尝试独立 HWPT.-> HWPT2
+        HWPT2 -.关联同一映射.-> IOAS
+    end
+    RAM["客户机 RAM 后备页<br/>内核管理页引用"]
+    DEVFD -->|BIND 返回 dev_id| DEVICE
+    IOMMUFD -->|ALLOC / MAP| IOAS
+    IOAS --> RAM

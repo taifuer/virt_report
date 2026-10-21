@@ -1,0 +1,22 @@
+sequenceDiagram
+    accTitle: virtio-gpu 资源初始化与局部更新顺序
+    accDescr: 驱动创建资源并关联 backing，传输完整初始画面，设置 scanout 并刷新；随后更新一个矩形，传输并刷新该矩形。命令的 fence 完成与显示端消费是独立的进度。
+    participant G as 客户机驱动 / backing
+    participant Q as QEMU 二维资源
+    participant D as 显示后端
+    G->>Q: RESOURCE_CREATE_2D：资源 7，1024×768
+    G->>Q: RESOURCE_ATTACH_BACKING：内存段列表
+    Note over G: 准备初始像素
+    G->>Q: TRANSFER_TO_HOST_2D：完整画面，3 MiB
+    Note over Q: iov → pixman image
+    G->>Q: SET_SCANOUT：输出 0 → 资源 7
+    Q->>D: 接入资源图像的可见区域
+    G->>Q: RESOURCE_FLUSH：完整画面
+    Q->>D: 提交初始更新
+    Note over G: 修改 (128,96) 开始的<br/>128×64 矩形
+    G->>Q: TRANSFER_TO_HOST_2D：矩形，32 KiB
+    Note over Q: 逐行更新 pixman 像素
+    G->>Q: RESOURCE_FLUSH：同一矩形，带 FENCE
+    Q->>D: dpy_gfx_update：更新区域
+    Q-->>G: 响应 + 对应 fence_id<br/>发布 used 并通知驱动
+    Note over D: 独立消费更新<br/>最终呈现时刻不由此 fence 保证

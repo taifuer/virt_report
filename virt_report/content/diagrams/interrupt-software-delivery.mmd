@@ -1,0 +1,15 @@
+sequenceDiagram
+    accTitle: QEMU virtio-net 经 KVM 软件注入向量 0x51
+    accDescr: QEMU 先写报文和 used 记录，再提交 MSI 消息。KVM 按 APIC ID 找到 vCPU 1，设置 IRR 并请求事件处理；条件满足后经 VM Entry 注入，客户机按 IDT 进入处理程序。驱动消费和 EOI 分别推进队列与 APIC 状态。
+    participant Q as QEMU 网卡模型
+    participant K as KVM 虚拟 LAPIC
+    participant V as vCPU 1 / 客户机
+    Note over Q: 发布 1500 字节帧<br/>更新 used
+    Q->>K: KVM_SIGNAL_MSI：目标 1，向量 0x51
+    Note over K: IRR[0x51] = 1<br/>请求事件处理<br/>促使 vCPU 检查
+    Note over K,V: 等待 vCPU 运行及客户机允许接受
+    Note over K: 清 IRR[0x51]，置 ISR[0x51]
+    K->>V: VM Entry 注入向量 0x51
+    Note over V: IDT → IRQ 入口<br/>Linux 边沿应答
+    V->>K: EOI：结束 APIC 服务状态
+    Note over V: 驱动回调 → NAPI<br/>读取 used，处理报文

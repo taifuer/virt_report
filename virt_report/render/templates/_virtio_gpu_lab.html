@@ -1,0 +1,22 @@
+<section class="virtio-gpu-lab" data-virtio-gpu-lab data-mechanism-view="lab" aria-labelledby="virtio-gpu-lab-title">
+  <div class="mechanism-view-heading"><h3 id="virtio-gpu-lab-title">二维资源与局部画面更新</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>1024 × 768 · 每像素 4 B · 资源 7 · 输出 0</p>
+  <div class="virtio-gpu-controls" data-gpu-controls hidden>
+    <label for="gpu-update-size">更新矩形<select id="gpu-update-size" data-gpu-size><option value="small">128 × 64 · 32 KiB</option><option value="large">256 × 128 · 128 KiB</option></select></label>
+    <div class="virtio-gpu-actions" role="group" aria-label="图像更新演示控制"><button type="button" data-gpu-back>上一步</button><button type="button" data-gpu-next>下一步</button><button type="button" data-gpu-reset>重置</button></div>
+  </div>
+  <p class="virtio-gpu-status" data-gpu-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <div class="virtio-gpu-scenes">
+    <section data-gpu-node="guest"><h4>客户机 backing</h4><div class="virtio-gpu-screen" data-gpu-image="guest"><span class="virtio-gpu-window"></span><span class="virtio-gpu-patch"></span></div><p data-gpu-guest-state>初始像素 A 已准备</p><small>客户机内存 · 行跨度 4096 B</small></section>
+    <section data-gpu-node="host"><h4>QEMU 图像资源</h4><div class="virtio-gpu-screen" data-gpu-image="host" data-version="none"><span class="virtio-gpu-window"></span><span class="virtio-gpu-patch"></span></div><p data-gpu-host-state>尚未创建资源</p><small data-gpu-backing-state>等待 CREATE 和 ATTACH</small></section>
+    <section data-gpu-node="display"><h4>显示后端示意</h4><div class="virtio-gpu-screen" data-gpu-image="display" data-version="none"><span class="virtio-gpu-window"></span><span class="virtio-gpu-patch"></span></div><p data-gpu-display-state>尚未接入输出</p><small data-gpu-scanout-state>等待 SET_SCANOUT</small></section>
+  </div>
+  <div class="virtio-gpu-transport" aria-label="数据与控制路径"><span data-gpu-copy>backing → TRANSFER → pixman</span><span data-gpu-flush>scanout 引用图像 · FLUSH 通知显示端</span></div>
+  <div class="virtio-gpu-details">
+    <section><h4>controlq · 当前操作</h4><code data-gpu-command>等待创建资源</code><p data-gpu-fields>resource_id = 7</p><p data-gpu-response>尚无命令响应</p></section>
+    <section><h4>数据与输出状态</h4><dl><div><dt>本步复制</dt><dd data-gpu-bytes>0 B</dd></div><div><dt>局部更新</dt><dd data-gpu-rect>128 × 64 · offset 393728 B</dd></div><div><dt>显示通知</dt><dd data-gpu-notify>尚未发出</dd></div></dl></section>
+  </div>
+  <p class="virtio-gpu-explanation" data-gpu-detail>先创建资源、关联 backing，再把完整初始画面传给 QEMU。</p>
+  <p class="virtio-gpu-note">右侧表示显示后端最近消费的画面更新。scanout 表面可以直接引用 QEMU 图像，并非额外复制的一份 framebuffer；此处不模拟物理屏幕的刷新时刻。</p>
+  <div data-gpu-fallback><ol><li>CREATE 建立设备端资源，ATTACH 关联客户机 backing。</li><li>TRANSFER 复制完整初始画面，SET_SCANOUT 绑定输出，FLUSH 通知显示更新。</li><li>客户机修改矩形后，再次 TRANSFER 和 FLUSH；带 fence 响应与最终呈现分别推进。</li></ol><p>启用 JavaScript 可逐步查看三处画面变化，并切换更新矩形大小。</p></div>
+</section>

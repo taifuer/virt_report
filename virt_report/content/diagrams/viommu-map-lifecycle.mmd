@@ -1,0 +1,25 @@
+sequenceDiagram
+    accTitle: 同一 IOVA 从缓冲区 A 撤销后重新映射到 B
+    accDescr: 客户机先确认设备请求完成，清除 A 的页表项并提交失效。QEMU 同步宿主 UNMAP 并完成缓存处理，然后客户机释放 A。B 的新映射经过相同同步路径后，设备才能使用复用的 IOVA。
+    participant G as 客户机驱动 / IOMMU
+    participant Q as QEMU vIOMMU / VFIO
+    participant H as 宿主内核 / IOMMU
+    participant D as 物理设备
+    G->>Q: 写 A 的 PTE，提交失效并等待
+    Q->>H: 合成 MAP：IOVA → A 的 HPA
+    H-->>Q: 建图完成
+    Q-->>G: 本次同步完成
+    G->>D: 发布指向 IOVA 的接收描述符
+    D->>H: DMA 写，转换到 A
+    D-->>G: 按设备协议报告请求完成
+    G->>Q: 清除 A 的 PTE，提交失效并等待
+    Q->>H: UNMAP，撤销宿主映射与旧转换缓存
+    H-->>Q: 撤销完成
+    Q-->>G: 本次同步完成
+    Note over G,H: A 可回收；失效不替代设备请求完成
+    G->>Q: 同一 IOVA 指向 B，提交失效并等待
+    Q->>H: 合成 MAP：IOVA → B 的 HPA
+    H-->>Q: 建图完成
+    Q-->>G: 本次同步完成
+    G->>D: 发布 B 的新描述符
+    D->>H: 同一 DMA 地址，此时转换到 B

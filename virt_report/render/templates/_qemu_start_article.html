@@ -42,10 +42,10 @@
   <p><code>kvm_init()</code> 打开 /dev/kvm，检查 API 版本与能力，调用 KVM_CREATE_VM 获取 vmfd，初始化架构相关功能与中断控制器，并注册内存监听器。此时已经有 KVM 虚拟机容器，客户机 RAM 和板级设备尚未全部挂入地址空间。</p>
   <p>后端初始化分成早、晚两组。<code>qemu_create_early_backends()</code> 中的 <code>configure_blockdev()</code> 建立本例的文件与 qcow2 节点；KVM 配置完成后，<code>qemu_create_late_backends()</code> 中的 <code>net_init_clients()</code> 创建 <code>net0</code>。块后端需要尽早可用，供机器属性引用；网络后端则在后续阶段建立。两者都先于依赖它们的 virtio 设备前端。<a href="{{ qemu_source }}system/vl.c#L2020-L2124">早期与晚期后端</a></p>
   <p>随后解析 CPU 型号与 NUMA 配置，<code>machine_run_board_init()</code> 准备 RAM 后端并调用机器类的 init。对于本例，<code>pc_q35_init()</code> 先计算低端和高端 RAM 容量，再调用 <code>x86_cpus_init()</code> 创建 CPU，然后通过 <code>pc_memory_init()</code> 布置内存、加载固件，继续创建 PCIe 根总线、ICH9、中断控制器等板级设备。</p>
-  <p>板级初始化返回后，<code>qemu_create_cli_devices()</code> 才处理命令行中的 <code>-device</code>。virtio-blk 连接 <code>os-disk</code>，virtio-net 连接 <code>net0</code>，它们作为 PCI 设备接入已存在的总线；realize 过程建立设备状态、配置空间和中断资源。客户机后续通过 PCI 枚举发现它们，再由驱动协商 virtio 特性、建立 virtqueue。QEMU 创建完成与客户机驱动初始化属于两个阶段。<a href="{{ qemu_source }}system/vl.c#L2708-L2762">板级与命令行设备创建</a></p>
-  <p>这条路径先建立 vCPU 线程，再继续完成内存布局与其他设备。线程保持 stopped，仍可响应寄存器同步等内部工作。QEMU 用运行状态、线程条件变量和 BQL 协调初始化，使客户机在整机准备完成后才开始执行。</p>
   <p>在示例的默认 Q35 布局中，4 GiB RAM 的后端被切成两个别名：前 2 GiB 映射在 4 GiB 以下，后 2 GiB 从 4 GiB 以上开始映射，为 PCI 等区域留出地址空间。低端地址中还会叠加固件和传统设备窗口，所以客户机物理地址空间不能简单理解为从 0 连续铺满 4 GiB。后备创建、RAMBlock、别名挂接与 KVM 注册的完整过程见<a href="qemu-memory-region.html">QEMU 内存初始化与地址空间管理</a>，其中使用 8 GiB RAM 展开地址换算。</p>
   <p>内存区域加入 AddressSpace 后，KVM 的监听回调把合适的 RAM 区域转成内存槽，登记 GPA 范围与 QEMU 用户态地址。这个步骤提供地址转换的基础，EPT 的实际叶子映射通常在客户机访问时逐步建立；详见<a href="kvm-ept-fault.html">KVM 内存映射与 EPT 缺页处理</a>。</p>
+  <p>板级初始化返回后，<code>qemu_create_cli_devices()</code> 才处理命令行中的 <code>-device</code>。virtio-blk 连接 <code>os-disk</code>，virtio-net 连接 <code>net0</code>，它们作为 PCI 设备接入已存在的总线；realize 过程建立设备状态、配置空间和中断资源。客户机后续通过 PCI 枚举发现它们，再由驱动协商 virtio 特性、建立 virtqueue。QEMU 创建完成与客户机驱动初始化属于两个阶段。<a href="{{ qemu_source }}system/vl.c#L2708-L2762">板级与命令行设备创建</a></p>
+  <p>按上述顺序，vCPU 线程在板级初始化中较早建立，内存布局与其他设备随后才完成。线程保持 stopped，仍可响应寄存器同步等内部工作。QEMU 用运行状态、线程条件变量和 BQL 协调初始化，使客户机在整机准备完成后才开始执行。下面展开 <code>x86_cpus_init()</code> 中的线程创建握手，再回到整机复位与放行执行的节点。</p>
 </section>
 
 <section id="vcpu" class="mechanism-section">

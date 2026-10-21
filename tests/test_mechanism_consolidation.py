@@ -75,9 +75,9 @@ def _request(path, method):
     return statuses[0], headers, handler.wfile.getvalue()
 
 
-def test_consolidated_catalogue_has_47_unique_canonical_articles():
+def test_consolidated_catalogue_has_unique_canonical_articles():
     slugs = [article["slug"] for article in mechanisms.articles()]
-    assert len(slugs) == len(set(slugs)) == 47
+    assert len(slugs) == len(set(slugs)) == 53
     assert set(slugs).isdisjoint(MERGES)
     assert {entry["slug"]: entry["target"] for entry in mechanisms.redirects()} == MERGES
     catalogue = LinksAndIds(render.render_mechanisms_html(Config()))
@@ -99,7 +99,7 @@ def test_export_includes_legacy_redirects_without_touching_reports(tmp_path, no_
         reports[path] = (path.read_bytes(), path.stat().st_mtime_ns)
     config = Config(render=Render(output_dir=output))
     paths = render.render_mechanisms(config)
-    assert len(paths) == len(set(paths)) == 51  # catalogue + 47 articles + 3 redirects
+    assert len(paths) == len(set(paths)) == 1 + len(mechanisms.articles()) + len(MERGES)
     for old, target in MERGES.items():
         path = output / "mechanisms" / f"{old}.html"
         assert path in paths

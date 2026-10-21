@@ -1,0 +1,18 @@
+flowchart TB
+    accTitle: 一条 L2 OUT 指令的嵌套退出分派
+    accDescr: L2 端口写先产生硬件退出到 L0，L0 检查 L1 的 I/O bitmap。拦截时把退出写入 VMCS12，再用 VMCS01 恢复 L1，处理后重新合成 VMCS02；不拦截时由 L0 内核或外层 QEMU 完成，再继续 L2。
+    OUT["L2 · OUT 0xe0, AL<br/>RIP = 0x1000，指令尚未完成"]
+    EXIT["真实 VM-Exit → L0<br/>VMCS02 保存退出信息"]
+    BIT{"L1 的 I/O bitmap<br/>是否拦截 0xe0"}
+    OUT --> EXIT --> BIT
+    BIT -->|位为 1| SYNC["L0 同步 VMCS12<br/>保存 L2 状态和 I/O 退出信息"]
+    SYNC --> L1["VMCS01 恢复 L1<br/>执行 L1 的退出处理程序"]
+    L1 --> DONE1["L1 完成端口写模拟<br/>VMCS12.guest_rip = 0x1002"]
+    DONE1 --> RESUME["L1 VMRESUME → L0<br/>更新 VMCS02"]
+    BIT -->|位为 0| BUS["L0 的 PIO 总线处理"]
+    BUS --> KERNEL["匹配内核后端 / ioeventfd<br/>在 L0 内核完成指令"]
+    BUS -. 无匹配处理对象 .-> QEMU["KVM_EXIT_IO<br/>外层 QEMU 模拟设备"]
+    KERNEL --> DONE0["L2 当前 RIP = 0x1002<br/>无本次 L1 嵌套退出记录"]
+    QEMU --> DONE0
+    RESUME --> RUN["VMCS02 → L2 继续执行"]
+    DONE0 --> RUN

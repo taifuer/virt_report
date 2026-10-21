@@ -1,0 +1,19 @@
+flowchart TB
+    accTitle: 嵌套 VMX 的三个控制结构
+    accDescr: L0 的 VMCS01 运行 L1；L1 提供 VMCS12 表达 L2 状态和拦截要求；L0 合成 VMCS02 实际运行 L2。两份硬件执行用 VMCS 的宿主状态都属于 L0。退出转发时 L0 同步 VMCS12 并恢复 L1。
+    subgraph L1["L1 · 客户机 Hypervisor"]
+        VM12["VMCS12 · L1 的运行请求<br/>guest-state：L2<br/>虚拟 host-state：L1<br/>I/O bitmap 与执行控制"]
+    end
+    subgraph L0["L0 · 物理宿主 KVM"]
+        V01["VMCS01<br/>guest-state：L1<br/>真实 host-state：L0"]
+        MERGE["逐字段检查与合成<br/>L1 要求 + L0 隔离约束"]
+        V02["VMCS02<br/>guest-state：L2<br/>真实 host-state：L0"]
+        V01 -. L0 的运行约束 .-> MERGE
+        MERGE -. 准备 L2 .-> V02
+    end
+    VM12 -. L2 状态与控制 .-> MERGE
+    V02 -. 退出转发时同步 .-> VM12
+    V01 --> RUN1["物理 CPU 执行 L1<br/>VMX non-root"]
+    V02 --> RUN2["物理 CPU 执行 L2<br/>VMX non-root"]
+    RUN1 -->|真实 VM-Exit| HOST["L0 的 VMX root 处理入口"]
+    RUN2 -->|真实 VM-Exit| HOST

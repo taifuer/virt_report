@@ -1,0 +1,27 @@
+flowchart TB
+    accTitle: virtio-gpu 二维资源、后备内存与输出
+    accDescr: 客户机驱动通过 controlq 管理资源，通过 cursorq 更新光标。TRANSFER 将客户机 backing 的像素复制到 QEMU pixman 图像，scanout 表面引用图像区域，FLUSH 通知显示后端。
+    subgraph guest[客户机]
+        direction LR
+        driver[virtio-gpu 驱动]
+        pages[backing 内存段列表<br/>像素由客户机写入]
+        driver --- pages
+    end
+    subgraph queues[共享 virtqueue]
+        direction LR
+        ctrl[controlq<br/>命令 + 响应]
+        cursor[cursorq<br/>光标选择与移动]
+    end
+    subgraph host[QEMU 二维后端]
+        direction LR
+        resource[resource 7<br/>iov + pixman image]
+        scanout[scanout 0<br/>资源编号 + 可见矩形]
+        resource -. 表面引用像素区域 .-> scanout
+    end
+    output[显示后端<br/>窗口 / 远程显示服务]
+    driver --> ctrl
+    driver --> cursor
+    ctrl -->|资源和输出命令| resource
+    pages ==>|TRANSFER：逐行复制像素| resource
+    cursor -->|光标更新| output
+    scanout -->|FLUSH：通知更新矩形| output

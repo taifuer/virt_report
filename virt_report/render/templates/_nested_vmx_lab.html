@@ -1,0 +1,54 @@
+<section class="nested-vmx-lab" data-nested-vmx-lab data-mechanism-view="lab" aria-labelledby="nested-vmx-lab-title">
+  <div class="mechanism-view-heading">
+    <h3 id="nested-vmx-lab-title">同一条 OUT 指令的处理路径</h3>
+    <button type="button" data-mechanism-expand hidden>全屏显示</button>
+  </div>
+  <p>L2 在 <code>0x1000</code> 执行 <code>OUT 0xe0, AL</code>，写入 <code>0x41</code>。切换 L1 的拦截配置和 L0 后端，逐步观察执行层、控制结构及退出记录。</p>
+  <div class="nested-vmx-controls" data-nested-vmx-controls hidden>
+    <label for="nested-vmx-scenario">处理场景
+      <select id="nested-vmx-scenario" data-nested-vmx-scenario>
+        <option value="l1-intercept">L1 拦截 · 转发嵌套退出</option>
+        <option value="l0-eventfd">L1 放行 · L0 匹配 ioeventfd</option>
+        <option value="l0-userspace">L1 放行 · 外层 QEMU 处理</option>
+      </select>
+    </label>
+    <div class="nested-vmx-actions" role="group" aria-label="嵌套 VMX 演示控制">
+      <button type="button" data-nested-vmx-back>上一步</button>
+      <button type="button" data-nested-vmx-next>下一步</button>
+      <button type="button" data-nested-vmx-reset>重置</button>
+    </div>
+  </div>
+  <p class="nested-vmx-status" data-nested-vmx-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <div class="nested-vmx-path" aria-label="当前执行层与控制转移">
+    <div class="nested-vmx-levels">
+      <section data-nested-vmx-level="l1"><h4>L1 · Hypervisor</h4><span>真实 VMX non-root</span><p data-nested-vmx-l1-state>VMCS12 已准备</p></section>
+      <div class="nested-vmx-connector" aria-hidden="true">↔</div>
+      <section data-nested-vmx-level="l0"><h4>L0 · 宿主 KVM</h4><span>真实 VMX root</span><p data-nested-vmx-l0-state>准备运行 L1</p></section>
+      <div class="nested-vmx-connector" aria-hidden="true">↔</div>
+      <section data-nested-vmx-level="l2"><h4>L2 · 客户机</h4><span>真实 VMX non-root</span><p data-nested-vmx-l2-state>等待首次进入</p></section>
+    </div>
+    <div class="nested-vmx-user" data-nested-vmx-level="qemu"><strong>L0 用户态 · 外层 QEMU</strong><span data-nested-vmx-qemu-state>vCPU 线程在 KVM_RUN 内</span></div>
+    <p class="nested-vmx-transfer" data-nested-vmx-transfer hidden></p>
+    <p class="nested-vmx-mode" data-nested-vmx-hardware hidden></p>
+  </div>
+  <div class="nested-vmx-structures" aria-label="VMCS01、VMCS12 和 VMCS02 状态">
+    <section data-nested-vmx-vmcs="01"><h4>VMCS01</h4><p>运行 L1 · 真实宿主 L0</p><strong data-nested-vmx-vmcs01>当前使用</strong></section>
+    <section data-nested-vmx-vmcs="12"><h4>VMCS12</h4><p>L1 的 L2 状态与控制</p><dl><div><dt>I/O 位</dt><dd data-nested-vmx-bit>1 · 拦截</dd></div><div><dt>guest_rip</dt><dd data-nested-vmx-rip12>0x1000</dd></div><div><dt>本次退出</dt><dd data-nested-vmx-exit12>尚无</dd></div></dl></section>
+    <section data-nested-vmx-vmcs="02"><h4>VMCS02</h4><p>运行 L2 · 真实宿主 L0</p><strong data-nested-vmx-vmcs02>尚未准备</strong><dl><div><dt>L2 当前 RIP</dt><dd data-nested-vmx-rip02>尚未装入</dd></div><div><dt>I/O 控制</dt><dd>端口访问真实退出</dd></div></dl></section>
+  </div>
+  <div class="nested-vmx-counters" aria-label="本次指令的处理结果">
+    <div><span>转发给 L1</span><strong data-nested-vmx-reflections>0 次</strong></div>
+    <div><span>ioeventfd 通知</span><strong data-nested-vmx-signals>0 次</strong></div>
+    <div><span>返回外层 QEMU</span><strong data-nested-vmx-user-exits>0 次</strong></div>
+  </div>
+  <div class="nested-vmx-detail" data-nested-vmx-detail hidden>
+    <strong data-nested-vmx-step-title></strong>
+    <code data-nested-vmx-command></code>
+    <p data-nested-vmx-explanation></p>
+  </div>
+  <p class="nested-vmx-note">L1 场景采用直接处理通知的简化 Hypervisor；ioeventfd 场景已注册匹配本次端口、长度和值的 PIO 通知。只演示一条成功完成的指令，不包含初始化时的 VMX 指令、并发中断和进入失败。</p>
+  <div data-nested-vmx-fallback>
+    <ol><li>L1 执行 VMLAUNCH，L0 检查 VMCS12 并构造 VMCS02，进入 L2。</li><li>L2 执行 OUT，物理 CPU 退出到 L0。</li><li>L1 拦截时，L0 保存退出记录并恢复 L1；L1 处理后更新 RIP，再以 VMRESUME 进入 L2。</li><li>L1 放行时，L0 经匹配 ioeventfd 或外层 QEMU 完成访问，继续 L2；不会给 L1 合成这次 I/O 退出。</li></ol>
+    <p>启用 JavaScript 后可切换三个场景，并逐步比较状态变化。</p>
+  </div>
+</section>

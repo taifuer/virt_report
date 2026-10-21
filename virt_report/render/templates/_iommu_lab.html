@@ -1,0 +1,19 @@
+<section class="iommu-lab" data-iommu-lab data-mechanism-view="lab" aria-labelledby="iommu-lab-title">
+  <div class="mechanism-view-heading"><h3 id="iommu-lab-title">一次接收与缓冲区回收</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>网卡向 IOVA 0x00400080 写入 64 B。观察转换缓存、页表与后备页在访问和回收阶段的变化。</p>
+  <div class="iommu-controls" data-iommu-controls hidden>
+    <label for="iommu-scenario">初始条件<select id="iommu-scenario" data-iommu-scenario><option value="cold">有效映射 · IOTLB 未命中</option><option value="warm">有效映射 · IOTLB 命中</option><option value="readonly">目标页仅允许设备读取</option><option value="missing">目标页未映射</option></select></label>
+    <div class="iommu-actions" role="group" aria-label="IOMMU 交互控制"><button type="button" data-iommu-back>上一步</button><button type="button" data-iommu-next>下一步</button><button type="button" data-iommu-reset>重置</button></div>
+  </div>
+  <p class="iommu-status" data-iommu-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <div class="iommu-scene" role="group" aria-label="网卡、IOMMU 与客户机后备页">
+    <section data-iommu-node="device"><h4>物理网卡</h4><dl><div><dt>Requester ID</dt><dd>0x0300 · 03:00.0</dd></div><div><dt>接收地址</dt><dd>IOVA 0x00400080</dd></div><div><dt>操作</dt><dd>设备写 · 64 B</dd></div></dl><p data-iommu-device>等待接收</p></section>
+    <span class="iommu-edge" aria-hidden="true">→</span>
+    <section data-iommu-node="iommu"><h4>宿主 IOMMU</h4><p data-iommu-context>设备上下文 → 本例地址空间</p><div class="iommu-record"><strong>I/O 页表叶子</strong><code>IOVA 0x00400000</code><span data-iommu-pte>HPA 0x21000000 · R / W</span></div><div class="iommu-record"><strong>IOTLB · 转换缓存</strong><span data-iommu-cache>该页暂无缓存</span></div><p data-iommu-verdict>等待访问检查</p></section>
+    <span class="iommu-edge" aria-hidden="true">→</span>
+    <section data-iommu-node="memory"><h4>客户机 RAM 后备页</h4><dl><div><dt>宿主物理页</dt><dd>HPA 0x21000000</dd></div><div><dt>数据位置</dt><dd>偏移 0x80 · 64 B</dd></div><div><dt>缓冲区内容</dt><dd data-iommu-memory>原有数据 A</dd></div></dl><p data-iommu-owner>映射持有后备页引用</p></section>
+  </div>
+  <div class="iommu-detail" data-iommu-detail hidden><strong data-iommu-title></strong><p data-iommu-description></p></div>
+  <p class="iommu-note">示例未启用 ATS。回收阶段从设备停止使用该区域开始；页表清除与缓存失效展示同步 UNMAP 的内部过程，不代表每次接收都要撤销映射。</p>
+  <div data-iommu-fallback><ol><li>设备标识选择地址空间，IOTLB 命中时复用转换，未命中时遍历页表。</li><li>有效映射与写权限都满足后，数据写入 HPA 0x21000080；否则目标缓冲区保持不变。</li><li>正常接收完成。最终停用区域时，先停止设备访问，再撤销映射并等待失效完成，最后释放后备页引用。</li></ol><p>启用 JavaScript 后可选择缓存或故障情形，逐步查看状态。</p></div>
+</section>

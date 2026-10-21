@@ -39,7 +39,14 @@ def test_editorial_metadata_pins_each_repository_and_only_published_articles():
     for article in articles:
         assert re.fullmatch(r"[a-z0-9-]+", article["slug"])
         assert mechanisms.get_topic(article["topic"]) is not None
-        assert (render.TEMPLATES_DIR / article["template"]).is_file()
+        assert bool(article.get("source")) != bool(article.get("template"))
+        if article.get("source"):
+            assert re.fullmatch(r"[a-z0-9-]+\.md", article["source"])
+            assert (render.ARTICLES_DIR / article["source"]).is_file()
+            for component in article.get("components", []):
+                assert (render.TEMPLATES_DIR / component).is_file()
+        else:
+            assert (render.TEMPLATES_DIR / article["template"]).is_file()
         assert article["baselines"]
         assert {item["project"] for item in article["baselines"]} <= {
             "QEMU", "Linux", "Libvirt", "SPDK", "DPDK",

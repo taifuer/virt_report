@@ -49,7 +49,7 @@
       ],
       "group": "foundations",
       "title": "设备与 I/O 虚拟化",
-      "summary": "从设备初始化、特性协商和 virtqueue 到 vhost 后端、DMA 地址转换与设备直通。"
+      "summary": "从 virtqueue 与网络、存储、图形设备，到 vhost 后端、IOMMU 地址转换及直通设备管理。"
     },
     {
       "slug": "interrupt-virtualization",
@@ -427,15 +427,15 @@
         },
         {
           "id": "controllers",
-          "title": "从中断线到消息：PIC、APIC 与 MSI-X"
+          "title": "设备通知与中断路由"
         },
         {
           "id": "path",
-          "title": "QEMU/KVM 的虚拟中断状态与交付"
+          "title": "QEMU/KVM 的中断模拟与交付"
         },
         {
           "id": "acceleration",
-          "title": "irqfd、APICv 与直通中断的优化层次"
+          "title": "中断路径的开销与加速"
         },
         {
           "id": "evolution",
@@ -1206,6 +1206,71 @@
       ]
     },
     {
+      "slug": "vfio-device-migration",
+      "topic": "migration",
+      "title": "VFIO 设备热迁移：设备状态与 DMA 交接",
+      "summary": "跟踪直通网卡在源端和目的端之间的状态交接，区分 RAM 脏页与设备内部状态，分析预拷贝、停止 DMA、恢复校验和失败边界。",
+      "reviewed_on": "2026-10-21",
+      "source": "vfio-device-migration.md",
+      "components": [
+        "_vfio_migration_lab.html"
+      ],
+      "stylesheet": "vfio-migration-lab.css",
+      "script": "vfio-migration-lab.js",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        },
+        {
+          "project": "Linux",
+          "version": "6.18",
+          "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+          "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "直通网卡的状态交接"
+        },
+        {
+          "id": "consistency",
+          "title": "RAM、设备状态与运行权"
+        },
+        {
+          "id": "states",
+          "title": "VFIO 用状态机约束设备行为"
+        },
+        {
+          "id": "precopy",
+          "title": "运行阶段：同步 RAM 与预拷贝设备状态"
+        },
+        {
+          "id": "handoff",
+          "title": "停机阶段：停止 DMA 并形成恢复点"
+        },
+        {
+          "id": "dma-dirty",
+          "title": "DMA 脏页跟踪接入 RAM 迁移"
+        },
+        {
+          "id": "failure",
+          "title": "取消迁移与失败边界"
+        },
+        {
+          "id": "evolution",
+          "title": "从停机导出到运行中准备"
+        },
+        {
+          "id": "sources",
+          "title": "源码入口与参考资料"
+        }
+      ]
+    },
+    {
       "slug": "libvirt-live-migration",
       "topic": "migration",
       "title": "Libvirt 热迁移的阶段协调与失败恢复",
@@ -1354,12 +1419,12 @@
           "title": "MSI-X 消息与屏蔽状态"
         },
         {
-          "id": "structures",
-          "title": "对照队列、MSI-X 表项与路由编号"
-        },
-        {
           "id": "delivery",
           "title": "从 LAPIC 待处理中断到驱动回调"
+        },
+        {
+          "id": "structures",
+          "title": "对照队列、MSI-X 表项与路由编号"
         },
         {
           "id": "irqfd",
@@ -1574,12 +1639,12 @@
           "title": "从驱动接口到 RPC 请求"
         },
         {
-          "id": "dispatch",
-          "title": "服务端分发与对象查询"
-        },
-        {
           "id": "framing",
           "title": "示例：56 字节请求与 60 字节响应"
+        },
+        {
+          "id": "dispatch",
+          "title": "服务端分发与对象查询"
         },
         {
           "id": "responses",
@@ -1937,6 +2002,165 @@
           "id": "sources",
           "title": "参考资料"
         }
+      ]
+    },
+    {
+      "slug": "iommu-dma",
+      "topic": "device-virtualization",
+      "title": "IOMMU：DMA 地址转换、缓存与失效",
+      "summary": "沿一块网卡的接收缓冲区，解释设备上下文、I/O 页表、IOTLB、权限检查与安全回收，区分数据访问和映射管理的成本。",
+      "reviewed_on": "2026-10-21",
+      "source": "iommu-dma.md",
+      "components": ["_iommu_lab.html"],
+      "script": "iommu-lab.js",
+      "stylesheet": "iommu-lab.css",
+      "baselines": [
+        {
+          "project": "Linux",
+          "version": "6.18",
+          "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+          "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"
+        }
+      ],
+      "sections": [
+        {"id": "preface", "title": "DMA 地址转换与隔离"},
+        {"id": "address-path", "title": "一个接收缓冲区的地址路径"},
+        {"id": "translation", "title": "从设备上下文到页表与 IOTLB"},
+        {"id": "receive", "title": "接收、缓存命中与访问故障"},
+        {"id": "invalidation", "title": "撤销映射与安全回收"},
+        {"id": "implementation", "title": "Linux 的映射与失效实现"},
+        {"id": "evolution", "title": "扩展能力与性能取舍"},
+        {"id": "sources", "title": "参考资料"}
+      ]
+    },
+    {
+      "slug": "iommufd",
+      "topic": "device-virtualization",
+      "title": "IOMMUFD：设备绑定与 I/O 地址空间管理",
+      "summary": "沿一块 VF 的接入与回收，解释设备 fd、DEVICE、IOAS 和 HWPT 的关系，以及附着、映射、共享和失败回滚。",
+      "reviewed_on": "2026-10-21",
+      "source": "iommufd.md",
+      "components": ["_iommufd_lab.html"],
+      "script": "iommufd-lab.js",
+      "stylesheet": "iommufd-lab.css",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        },
+        {
+          "project": "Linux",
+          "version": "6.18",
+          "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+          "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"
+        }
+      ],
+      "sections": [
+        {"id": "preface", "title": "设备分配中的地址空间管理"},
+        {"id": "objects", "title": "两个文件描述符与三类对象"},
+        {"id": "setup", "title": "一块 VF 从打开到可用"},
+        {"id": "lifecycle", "title": "映射建立后的 DMA 与资源回收"},
+        {"id": "sharing", "title": "共享与失败处理"},
+        {"id": "implementation", "title": "源码中的控制路径"},
+        {"id": "evolution", "title": "从 VFIO Container 到独立的页表管理"},
+        {"id": "sources", "title": "参考资料"}
+      ]
+    },
+    {
+      "slug": "qemu-viommu",
+      "topic": "device-virtualization",
+      "title": "vIOMMU：客户机 DMA 映射与失效同步",
+      "summary": "沿同一 IOVA 从缓冲区 A 切换到 B，分析客户机页表、QEMU 合成映射、宿主 IOTLB 的同步，以及硬件嵌套转换的演进。",
+      "reviewed_on": "2026-10-21",
+      "source": "qemu-viommu.md",
+      "components": [
+        "_viommu_lab.html"
+      ],
+      "script": "viommu-lab.js",
+      "stylesheet": "viommu-lab.css",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        },
+        {
+          "project": "Linux",
+          "version": "6.18",
+          "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+          "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "客户机管理的 DMA 地址空间"
+        },
+        {
+          "id": "addresses",
+          "title": "一个缓冲区对应三种地址"
+        },
+        {
+          "id": "mapping",
+          "title": "从客户机页表更新到可用的 DMA 映射"
+        },
+        {
+          "id": "invalidation",
+          "title": "撤销映射与复用 IOVA 的顺序"
+        },
+        {
+          "id": "interactive",
+          "title": "映射与缓存的交互演示"
+        },
+        {
+          "id": "implementation",
+          "title": "QEMU 中的页表同步路径"
+        },
+        {
+          "id": "evolution",
+          "title": "从软件合成到硬件嵌套转换"
+        },
+        {
+          "id": "summary",
+          "title": "总结与进一步阅读"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
+      "slug": "virtio-gpu",
+      "topic": "device-virtualization",
+      "title": "virtio-gpu：二维资源与画面更新",
+      "summary": "以一幅画面的局部更新，串起客户机 backing、QEMU 图像、scanout、TRANSFER 与 FLUSH，并比较二维显示与三维加速路径。",
+      "reviewed_on": "2026-10-21",
+      "source": "virtio-gpu.md",
+      "components": ["_virtio_gpu_lab.html"],
+      "script": "virtio-gpu-lab.js",
+      "stylesheet": "virtio-gpu-lab.css",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        }
+      ],
+      "sections": [
+        {"id": "preface", "title": "从客户机像素到显示输出"},
+        {"id": "resources", "title": "图像资源、后备内存与显示输出"},
+        {"id": "update-flow", "title": "一幅画面的建立与局部更新"},
+        {"id": "interactive", "title": "资源更新的交互演示"},
+        {"id": "commands", "title": "控制命令与 QEMU 处理路径"},
+        {"id": "completion", "title": "完成语义与资源回收"},
+        {"id": "evolution", "title": "从二维像素传输到三维加速"},
+        {"id": "summary", "title": "总结与进一步阅读"},
+        {"id": "references", "title": "参考资料"}
       ]
     },
     {
@@ -2490,12 +2714,12 @@
           "title": "交接载体：kvm_run 的 I/O 字段"
         },
         {
-          "id": "notifications",
-          "title": "通知优化：ioeventfd 与 irqfd 的处理路径"
-        },
-        {
           "id": "completion",
           "title": "暂停边界：完成当前 I/O 后停止执行"
+        },
+        {
+          "id": "notifications",
+          "title": "通知优化：ioeventfd 与 irqfd 的处理路径"
         },
         {
           "id": "implementation",
@@ -2702,6 +2926,67 @@
         {
           "id": "evolution",
           "title": "TCG 的演进与性能取舍"
+        },
+        {
+          "id": "sources",
+          "title": "参考资料"
+        }
+      ]
+    },
+    {
+      "slug": "kvm-nested-vmx",
+      "topic": "cpu-virtualization",
+      "title": "KVM 嵌套虚拟化：VMCS 合成与退出转发",
+      "summary": "沿 L1 启动 L2 和一次端口写，解释 VMCS01、VMCS12、VMCS02 的状态合成，比较向 L1 转发、L0 内核处理和外层 QEMU 模拟三条路径。",
+      "reviewed_on": "2026-10-21",
+      "source": "kvm-nested-vmx.md",
+      "components": [
+        "_nested_vmx_lab.html"
+      ],
+      "script": "nested-vmx-lab.js",
+      "stylesheet": "nested-vmx-lab.css",
+      "baselines": [
+        {
+          "project": "Linux",
+          "version": "6.18",
+          "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+          "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"
+        },
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "在虚拟机中运行 Hypervisor"
+        },
+        {
+          "id": "levels",
+          "title": "三个软件层次与三份控制结构"
+        },
+        {
+          "id": "entry",
+          "title": "从 VMLAUNCH 到 L2 的第一条指令"
+        },
+        {
+          "id": "exit-path",
+          "title": "一次 I/O 退出的两条处理路径"
+        },
+        {
+          "id": "memory",
+          "title": "嵌套地址转换与执行状态同步"
+        },
+        {
+          "id": "implementation",
+          "title": "源码中的进入、分派与恢复"
+        },
+        {
+          "id": "evolution",
+          "title": "从软件合成到减少嵌套开销"
         },
         {
           "id": "sources",

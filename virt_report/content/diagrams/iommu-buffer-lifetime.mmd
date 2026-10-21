@@ -1,0 +1,17 @@
+sequenceDiagram
+    accTitle: DMA 缓冲区从停止使用到安全回收
+    accDescr: 设备队列停止并确认在途访问结束后，宿主执行撤销映射，内核清除页表并同步转换缓存。等待失效完成后再释放映射对后备页的引用。示意采用无 ATS 的同步撤销路径。
+    participant O as 设备控制方
+    participant D as 网卡
+    participant K as 宿主内核
+    participant I as IOMMU
+    O->>D: 停止新请求，结束本区域的在途 DMA
+    D-->>O: 按设备协议确认停用完成
+    O->>K: 撤销该 RAM 区域的 DMA 映射
+    Note over K,I: UNMAP 内部处理<br/>设备已停止使用该区域
+    K->>K: 清除页表映射，记录失效范围
+    K->>I: 提交相关转换缓存失效
+    I-->>K: 失效完成
+    K->>K: 释放映射持有的后备页引用
+    K-->>O: 撤销操作完成
+    Note over O,K: 满足其他使用者的生命周期约束后<br/>内存可交给新的使用者

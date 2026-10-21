@@ -1,0 +1,23 @@
+flowchart TB
+    accTitle: vIOMMU 软件合成映射的控制路径与 DMA 数据路径
+    accDescr: 客户机 I/O 页表给出 IOVA 到 GPA，QEMU 查找 RAM 后备并通过 VFIO 将合成结果写入宿主 IOMMU 页表。物理网卡的正常 DMA 经宿主 IOMMU 直接访问 HPA，不经过 QEMU。
+    subgraph C["控制路径：映射变化时"]
+      G["客户机页表<br/>IOVA 0x00800000 → GPA 0x40000000"]
+      Q["QEMU vIOMMU<br/>扫描页表并发送 MAP / UNMAP"]
+      R["RAM 后备关系<br/>GPA → QEMU HVA → 宿主页"]
+      F["VFIO 后端与宿主内核<br/>建立合成映射"]
+      G -->|失效请求触发同步| Q
+      Q --> F
+      R --> F
+    end
+    subgraph D["数据路径：每笔 DMA"]
+      N["物理网卡 VF<br/>DMA 写 IOVA 0x00800080"]
+      H["宿主 IOMMU 页表 / IOTLB<br/>IOVA 0x00800000 → HPA 0x120000000"]
+      M["RAM 后备页 A<br/>写入 HPA 0x120000080"]
+      N --> H -->|权限允许| M
+    end
+    F -->|配置与失效| H
+    classDef control fill:#eaf0f6,stroke:#8198ac,color:#263c4c
+    classDef data fill:#e4f1ec,stroke:#438575,color:#173e34
+    class G,Q,R,F control
+    class N,H,M data

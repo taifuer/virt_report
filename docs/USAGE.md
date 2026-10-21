@@ -120,11 +120,35 @@ cp .env.example .env
 
 TCG 交互跟踪翻译块的生成、命中、跳转链接与代码改写后的失效；与 KVM 文章对照 CPU 执行路径。公共 Mermaid 图默认不超过原始尺寸，长图等比缩小；细节可在全屏查看器中缩放。
 
-目前 12 个专题共包含 47 篇独立文章，另保留 3 个旧链接跳转页。内容覆盖 CPU 模型与迁移兼容性、vCPU 热插拔、NUMA 放置、Libvirt 迁移协调、virtio-net 接收与 NAPI、Packed virtqueue、vhost-vDPA，以及外部快照与在线块操作。
+目前 12 个专题共包含 53 篇独立文章，另保留 3 个旧链接跳转页。内容覆盖 CPU 模型与迁移兼容性、嵌套 VMX、vCPU 热插拔、NUMA 放置、Libvirt 迁移协调、VFIO 设备迁移、virtio-net 接收与 NAPI、Packed virtqueue、vhost-vDPA、IOMMU 与 IOMMUFD、vIOMMU、virtio-gpu，以及外部快照与在线块操作。
 
-后续可聚焦增量备份的 dirty bitmap 继承与恢复验证、嵌套虚拟化的一次 VM Entry、块设备在线扩容、virtio-scsi 取消与复位，以及 Libvirt job / 锁的具体竞争。ARM 暂缓；目录不加入尚未成文的入口。迁移与更新选题应聚焦直通状态、后端重连或失败恢复等具体问题，避免重复现有预拷贝、迁移流与 CPR 文章。
+三篇交互分别展示 vIOMMU 的客户机页表、宿主映射与 IOTLB 同步，VFIO 迁移的源端/目的端设备状态与 DMA 脏页交接，以及嵌套 VMX 的 VMCS01/12/02 和退出处理归属。正文区分可组合能力与版本限制，例如固定 QEMU 10.2 路径不支持启用 vIOMMU 的 VFIO 迁移。
 
-文章元数据在 `virt_report/content/mechanisms.json`，正文和交互模板在 `render/templates/`，
+后续可聚焦 guest_memfd 的私有/共享内存转换、virtio-fs 的文件请求与缓存一致性，以及增量备份的 dirty bitmap 继承与恢复验证。ARM 暂缓；目录不加入尚未成文的入口。优先补足具体过程和失败边界，避免重复已有概述。
+
+文章元数据在 `virt_report/content/mechanisms.json`。正文可以使用 `render/templates/` 中的 HTML/Jinja 模板，也可以使用 `content/articles/*.md`。元数据的 `source` 与 `template` 二选一，按内容与组件需求选择，无需统一迁移。两种格式最终都生成 `site/mechanisms/*.html`，不在浏览器中解析 Markdown。
+
+Markdown 使用普通段落、列表、表格、链接及代码块。每个二级标题写成 `## DMA 地址转换 {#translation}`，名称与元数据 `sections` 一致，首节 ID 为 `preface`。三级标题不手写编号；需要保留既有锚点时可写 `### 缓存失效 {#stable-anchor}`，未指定时沿用自动子标题锚点。特殊代码块用于嵌入现有组件：
+
+````markdown
+## DMA 地址转换 {#preface}
+
+正文使用 Markdown 编写。
+
+```baselines
+```
+
+```diagram iommu-address-path
+设备 DMA 的地址转换路径
+图的说明文字，同时用于无障碍描述。
+```
+
+```component _iommu_lab.html
+```
+````
+
+`baselines` 只在首节出现一次；`diagram` 名称须已注册，并生成对应离线 SVG；`component` 模板须列入该文章元数据的 `components`。Markdown 正文不执行 Jinja，也不直接解析 HTML，需要交互时复用独立的 HTML/CSS/JS 组件。普通代码块始终作为示例显示。新增渲染依赖通过 `.venv/bin/pip install -e .` 安装；旧文章无需批量转换，后续修订按实际需要选择格式，并保留 URL 和锚点。
+
 共用阅读样式为 `mechanisms.css`，每篇的交互脚本与样式由元数据指定；纯正文与图表文章可省略 `script` / `stylesheet`，不加载空脚本。元数据 `groups` 定义分组，`topics[].group` 指定分组，文章 `topic` 指定主归属，`topics[].overview` 指定导读文章 slug。增加已审核文章后，会自动进入目录并显示篇数。内容绑定源码版本与提交，不随日报生成，不调用模型。
 
 核验实现时读取指定 tag/commit，不切换或覆盖已有源码工作区。交互是明确标注假设的教学模型，不是实际迁移跟踪或性能预测。

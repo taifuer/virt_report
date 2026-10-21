@@ -1,0 +1,41 @@
+<section class="viommu-lab" data-viommu-lab data-mechanism-view="lab" aria-labelledby="viommu-lab-title">
+  <div class="mechanism-view-heading">
+    <h3 id="viommu-lab-title">同一 DMA 地址从 A 切换到 B</h3>
+    <button type="button" data-mechanism-expand hidden>全屏显示</button>
+  </div>
+  <p>IOVA 固定为 <code>0x00800000</code>。逐步更新映射，观察客户机页表、宿主页表与缓存的同步，以及实际 DMA 写入哪一页。</p>
+  <div class="viommu-controls" data-viommu-controls hidden>
+    <label for="viommu-scenario">执行场景
+      <select id="viommu-scenario" data-viommu-scenario>
+        <option value="correct">正常同步与回收</option>
+        <option value="missing-invalidation">错误示例：遗漏客户机失效</option>
+      </select>
+    </label>
+    <div class="viommu-actions" role="group" aria-label="vIOMMU 映射过程控制">
+      <button type="button" data-viommu-back>上一步</button>
+      <button type="button" data-viommu-next>下一步</button>
+      <button type="button" data-viommu-reset>重置</button>
+    </div>
+  </div>
+  <p class="viommu-status" data-viommu-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <div class="viommu-layers" aria-label="三处转换状态">
+    <section data-viommu-layer="guest"><h4>客户机 I/O 页表</h4><p data-viommu-guest>无映射</p><small>由客户机驱动写入 · IOVA → GPA</small></section>
+    <section data-viommu-layer="host"><h4>宿主合成页表</h4><p data-viommu-host>无映射</p><small>通过 VFIO 后端同步 · IOVA → HPA</small></section>
+    <section data-viommu-layer="cache"><h4>宿主 IOTLB</h4><p data-viommu-cache>未缓存转换</p><small>硬件复用的转换结果</small></section>
+  </div>
+  <p class="viommu-sync" data-viommu-sync>本步无待同步的页表修改</p>
+  <div class="viommu-dma-path">
+    <div class="viommu-device"><strong>物理网卡 VF</strong><span>写 IOVA 0x00800080 · 64 B</span></div>
+    <p data-viommu-route>等待下一笔 DMA</p>
+    <div class="viommu-pages">
+      <section data-viommu-page="A"><h4>页 A</h4><p data-viommu-a-owner>接收缓冲区 A</p><code>GPA 0x40000000<br>HPA 0x120000000</code><small data-viommu-a-writes>累计 DMA 写入 0 次</small></section>
+      <section data-viommu-page="B"><h4>页 B</h4><p>新的接收缓冲区 B</p><code>GPA 0x50000000<br>HPA 0x140000000</code><small data-viommu-b-writes>累计 DMA 写入 0 次</small></section>
+    </div>
+  </div>
+  <div class="viommu-explanation" data-viommu-explanation hidden><p data-viommu-detail></p><small data-viommu-queue></small></div>
+  <p class="viommu-note">错误分支仅清除客户机 PTE，没有调用宿主 UNMAP。正常 UNMAP 完成的步骤已包含缓存处理。故意发出的迟到探测用于比较旧映射是否仍可访问，不代表设备协议允许继续使用已回收缓冲区。</p>
+  <div data-viommu-fallback>
+    <ol><li>客户机写入 A 的映射，提交失效，QEMU 同步宿主映射后开始 DMA。</li><li>旧请求完成后清除客户机 PTE，再完成宿主 UNMAP 与转换缓存处理。</li><li>A 回收后，旧地址访问被阻止；若遗漏失效，旧映射仍可能访问 A。</li><li>同一 IOVA 重新映射到 B，同步完成后，DMA 改为访问 B。</li></ol>
+    <p>启用 JavaScript 后可逐步比较两种场景。</p>
+  </div>
+</section>

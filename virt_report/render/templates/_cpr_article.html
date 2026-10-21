@@ -43,7 +43,6 @@
   <p>main 连接就绪后，<code>migrate_fd_connect()</code> 对 CPR 模式先调用 <code>migration_stop_vm()</code>，将源虚拟机置于 finish-migrate，再创建迁移线程。此后保存的 CPU 和设备状态对应停止后的执行点。CPR 在保存内存状态前停止客户机，不依赖运行期间的脏页迭代。</p>
   <p><code>migrate_ram_is_ignored()</code> 对 cpr-transfer 返回 true，普通 RAM 数据不再按预拷贝方式发送。CPU 与设备状态仍需经过 VMState 保存和恢复；目标为新建的 KVM vCPU 写回寄存器等状态，恢复中断路由与后端关系。主迁移流的分段和设备状态编码见<a href="qemu-migration-stream.html">QEMU 迁移流格式与状态恢复</a>。</p>
   <p>完成交接时，源端保持 postmigrate，目标按照原运行状态与 autostart 设置决定是否执行。只有目标恢复完成并允许启动后，客户机才由新 QEMU 继续运行。源进程短暂保留用于管理和清理，不意味着可以重新执行同一份共享内存里的客户机。</p>
-  <p>VFIO / IOMMUFD 还涉及设备 fd、已固定页、中断 eventfd 和 DMA 关联。该版本有相应的 CPR 支持：保留设备资源，调整旧 KVM 的中断连接，再在目标恢复路由；已进入旧 LAPIC 的待处理中断也要随 CPU 状态恢复。不能把设备 fd 复制成功等同于 DMA、中断和管理关系都已切换。地址与 DMA 对应关系见<a href="qemu-vfio-dma.html">VFIO 设备直通的 DMA 地址转换与隔离</a>。</p>
 </section>
 
 <section id="structures" class="mechanism-section">
@@ -123,6 +122,7 @@ TARGET_PID=$!</code></pre>
 <section id="boundaries" class="mechanism-section">
   <h2>兼容性、停机时间与失败边界</h2>
   <p>同机更新仍使用迁移兼容约定。新进程需要创建对应的机器、CPU 和设备配置，能够读取源端状态版本；资源名称和设备拓扑也要匹配。共享 RAM 解决了内存搬运问题，无法替不兼容的 VMState 或不同设备布局自动转换状态。</p>
+  <p>前面的最小示例没有直通设备。扩展到 VFIO / IOMMUFD 时，还要交接设备 fd、已固定页、中断 eventfd 和 DMA 关联。该版本的相应 CPR 路径会保留设备资源，调整旧 KVM 的中断连接，再在目标恢复路由；已进入旧 LAPIC 的待处理中断随 CPU 状态恢复。因此除了共享 RAM 与 VMState，还需逐项检查物理设备的资源和通知路径。地址与 DMA 对应关系见<a href="qemu-vfio-dma.html">VFIO 设备直通的 DMA 地址转换与隔离</a>。</p>
   <p>停机窗口从源端停止执行延续到目标客户机恢复，包括状态保存与加载、资源激活、寄存器同步和必要的线程调度。fd 预交接和一部分目标初始化在停机前完成。即使 RAM 数据没有复制，目标页表建立、KVM 映射恢复和后端重连仍可能带来成本，应分别测量准备时间、客户机停顿和恢复后的尾延迟。</p>
   <table><thead><tr><th scope="col">失败阶段</th><th scope="col">需要判断的事实</th><th scope="col">处理边界</th></tr></thead><tbody>
     <tr><td>资源预交接或 main 连接之前</td><td>旧客户机可能仍在运行；目标可能仅持有 fd 引用</td><td>检查实际运行状态与目标清理结果，不把连接失败当作客户机必然已停机</td></tr>

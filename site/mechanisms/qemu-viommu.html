@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>vIOMMU：客户机 DMA 映射与失效同步 - virt-report</title>
+  <meta name="description" content="沿同一 IOVA 从缓冲区 A 切换到 B，分析客户机页表、QEMU 合成映射、宿主 IOTLB 的同步，以及硬件嵌套转换的演进。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
+  <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=f8df58691fc2">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=f8df58691fc2">
+<link rel="stylesheet" href="../assets/viommu-lab.css?v=f8df58691fc2"></head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=85f3a75ef38f" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="device-virtualization.html">设备与 I/O 虚拟化</a></div>
+    <h1>vIOMMU：客户机 DMA 映射与失效同步</h1>
+    <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、客户机管理的 DMA 地址空间</a></li><li><a href="#addresses">二、一个缓冲区对应三种地址</a></li><li><a href="#mapping">三、从客户机页表更新到可用的 DMA 映射</a></li><li><a href="#invalidation">四、撤销映射与复用 IOVA 的顺序</a></li><li><a href="#interactive">五、映射与缓存的交互演示</a></li><li><a href="#implementation">六、QEMU 中的页表同步路径</a></li><li><a href="#evolution">七、从软件合成到硬件嵌套转换</a></li><li><a href="#summary">八、总结与进一步阅读</a></li><li><a href="#sources">九、参考资料</a></li></ol></nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+<h2><span class="mechanism-heading-number">一、</span>客户机管理的 DMA 地址空间</h2>
+<p>虚拟机使用直通网卡时，网卡直接读写客户机 RAM 的宿主后备页。宿主 IOMMU 负责限制物理设备可访问的内存；客户机启用 vIOMMU 后，还可以为设备分配自己的 DMA 地址、设置访问权限，并在缓冲区回收时撤销映射。QEMU 需要把客户机维护的映射落实到物理设备实际使用的转换路径中。</p>
+<p>本文以一块直通网卡 VF 的接收缓冲区为例，采用 q35、Intel vIOMMU 的传统页表模式和软件合成映射路径，启用 <code>caching-mode</code>，不启用设备 ATS。先跟踪一页缓冲区的建立、DMA 写入和撤销，再分析相同 IOVA 重新用于另一页时的同步要求。客户机使用 4 KiB I/O 页；地址值用于说明映射关系。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p>
+</section>
+<section id="addresses" class="mechanism-section">
+<h2><span class="mechanism-heading-number">二、</span>一个缓冲区对应三种地址</h2>
+<p>客户机为网卡准备缓冲区 A，它位于 GPA <code>0x40000000</code>。客户机 IOMMU 驱动选取 IOVA <code>0x00800000</code>，把这一页映射到 A；设备驱动将这个 IOVA 写入接收描述符。宿主把 A 的后备页放在 HPA <code>0x120000000</code>。网卡向页内偏移 <code>0x80</code> 写入 64 字节时，对应关系如下。</p>
+<table>
+<thead>
+<tr>
+<th scope="col">地址层次</th>
+<th scope="col">示例地址</th>
+<th scope="col">谁使用它</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>客户机 IOVA</td>
+<td><code>0x00800080</code></td>
+<td>网卡从描述符取得的 DMA 地址</td>
+</tr>
+<tr>
+<td>客户机物理地址 GPA</td>
+<td><code>0x40000080</code></td>
+<td>客户机 I/O 页表中的目标页加偏移</td>
+</tr>
+<tr>
+<td>宿主物理地址 HPA</td>
+<td><code>0x120000080</code></td>
+<td>宿主 IOMMU 转换后的实际内存位置</td>
+</tr>
+</tbody>
+</table>
+<p>客户机 I/O 页表保存 <strong>IOVA → GPA</strong>。QEMU 根据 GPA 找到 RAM 对应的宿主虚拟地址 HVA，交给 VFIO 后端；宿主内核获取后备页，建立 <strong>IOVA → HPA</strong> 的硬件映射。HVA 用于管理内存，网卡的 DMA 请求不携带 QEMU 的进程地址。</p>
+<p>这条软件合成路径把两段关系合并成宿主 IOMMU 的一段映射。正常 DMA 到达宿主 IOMMU 后，可以直接使用合成结果；每个数据包都不必再进入 QEMU 遍历客户机页表。vIOMMU 的成本主要出现在映射变更、失效通知和相关的页表维护中。</p>
+<figure class="mechanism-diagram" data-diagram="viommu-shadow-path" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>客户机映射与物理设备使用的合成映射</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看客户机映射与物理设备使用的合成映射" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="客户机映射与物理设备使用的合成映射">
+    <img src="../assets/viommu-shadow-path.svg?v=f8df58691fc2" alt="上方控制路径把 IOVA→GPA 与客户机 RAM 后备关系合成到宿主页表；下方数据路径直接使用宿主 IOMMU。两条路径在页表处汇合，QEMU 不转发每一笔直通 DMA。" loading="lazy">
+  </div>
+  <figcaption>上方控制路径把 IOVA→GPA 与客户机 RAM 后备关系合成到宿主页表；下方数据路径直接使用宿主 IOMMU。两条路径在页表处汇合，QEMU 不转发每一笔直通 DMA。 <a href="../assets/viommu-shadow-path.svg?v=f8df58691fc2" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+    accTitle: vIOMMU 软件合成映射的控制路径与 DMA 数据路径
+    accDescr: 客户机 I/O 页表给出 IOVA 到 GPA，QEMU 查找 RAM 后备并通过 VFIO 将合成结果写入宿主 IOMMU 页表。物理网卡的正常 DMA 经宿主 IOMMU 直接访问 HPA，不经过 QEMU。
+    subgraph C[&#34;控制路径：映射变化时&#34;]
+      G[&#34;客户机页表&lt;br/&gt;IOVA 0x00800000 → GPA 0x40000000&#34;]
+      Q[&#34;QEMU vIOMMU&lt;br/&gt;扫描页表并发送 MAP / UNMAP&#34;]
+      R[&#34;RAM 后备关系&lt;br/&gt;GPA → QEMU HVA → 宿主页&#34;]
+      F[&#34;VFIO 后端与宿主内核&lt;br/&gt;建立合成映射&#34;]
+      G --&gt;|失效请求触发同步| Q
+      Q --&gt; F
+      R --&gt; F
+    end
+    subgraph D[&#34;数据路径：每笔 DMA&#34;]
+      N[&#34;物理网卡 VF&lt;br/&gt;DMA 写 IOVA 0x00800080&#34;]
+      H[&#34;宿主 IOMMU 页表 / IOTLB&lt;br/&gt;IOVA 0x00800000 → HPA 0x120000000&#34;]
+      M[&#34;RAM 后备页 A&lt;br/&gt;写入 HPA 0x120000080&#34;]
+      N --&gt; H --&gt;|权限允许| M
+    end
+    F --&gt;|配置与失效| H
+    classDef control fill:#eaf0f6,stroke:#8198ac,color:#263c4c
+    classDef data fill:#e4f1ec,stroke:#438575,color:#173e34
+    class G,Q,R,F control
+    class N,H,M data
+</code></pre></details>
+</figure>
+<p>EPT 服务于客户机 CPU 的 GPA 访问；这里的宿主 I/O 页表服务于设备 DMA。两者可能最终指向相同 RAM 后备页，但通过不同硬件入口、权限与失效机制维护。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/listener.c#L125-L193">VFIO 的 vIOMMU 映射处理</a></p>
+</section>
+<section id="mapping" class="mechanism-section">
+<h2><span class="mechanism-heading-number">三、</span>从客户机页表更新到可用的 DMA 映射</h2>
+<p>在本例的传统 Intel VT-d 模式下，设备的 Requester ID 选择 root/context 表中的设备上下文，context 指向 I/O 页表并关联 domain。页表的叶子项给出 GPA 和读写权限；多个设备能否共享映射，由其 domain 关系及宿主隔离约束共同决定。</p>
+<p>客户机把页表写在 RAM 中，这些内存写入不会逐笔通知 QEMU。QEMU 需要一个明确的同步入口，才能知道哪些转换关系发生了变化。<code>caching-mode=on</code> 为本例提供这一约定：客户机 IOMMU 驱动在新增 DMA 映射后也执行同步的 IOTLB invalidation，等待完成，再允许设备使用这个地址。QEMU 在处理失效时扫描相关页表范围，建立或更新宿主映射。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qemu-options.hx#L1202-L1208">固定版本的 caching-mode 说明</a></p>
+<p>完整建立过程分为四步：</p>
+<ol>
+<li>客户机驱动申请缓冲区 A，调用 DMA API 建立映射。客户机 IOMMU 驱动分配 IOVA，写入 <code>IOVA 0x00800000 → GPA 0x40000000</code>，并发布页表更新。</li>
+<li>客户机向虚拟 VT-d 提交失效请求。QEMU 根据 domain、IOVA 和范围找到对应地址空间，遍历客户机页表。</li>
+<li>QEMU 产生 IOMMU MAP 通知。VFIO listener 把目标 GPA 换算成 RAM 后备地址，调用宿主映射接口，建立 <code>IOVA 0x00800000 → HPA 0x120000000</code>。</li>
+<li>DMA API 完成映射并返回后，客户机驱动才向网卡发布接收描述符。网卡发出 DMA，宿主 IOMMU 检查转换与权限，写入 A。</li>
+</ol>
+<p>这里的 invalidation 同时承担了通知 VMM 更新合成映射的作用。<strong>客户机写完页表与物理设备可使用新映射，是两个不同的完成点。</strong> 如果过早提交 DMA，宿主可能还没有对应映射，访问就可能失败。若宿主建图失败，页表内容和客户机侧完成信息也不足以证明设备已可用；还要结合 QEMU 的映射错误和宿主 IOMMU 故障判断。</p>
+<p>模拟设备采用另一条执行路径：QEMU 在设备访问内存时可以调用 <code>IOMMUMemoryRegion.translate</code>，在软件中取得 GPA。直通设备的请求绕过 QEMU，因此需要提前维护上述硬件映射。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/intel_iommu.c#L3943-L3983">软件转换入口</a></p>
+</section>
+<section id="invalidation" class="mechanism-section">
+<h2><span class="mechanism-heading-number">四、</span>撤销映射与复用 IOVA 的顺序</h2>
+<p>映射生效后，宿主 IOMMU 可以把转换结果缓存在 IOTLB 中。客户机随后清除自己的页表项，并不会自动删除合成页表，也不会自动清空宿主 IOTLB。释放缓冲区必须把设备使用结束、页表撤销和失效完成连成一条顺序。</p>
+<figure class="mechanism-diagram" data-diagram="viommu-map-lifecycle" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>缓冲区 A 的撤销与缓冲区 B 的接入</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看缓冲区 A 的撤销与缓冲区 B 的接入" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="缓冲区 A 的撤销与缓冲区 B 的接入">
+    <img src="../assets/viommu-map-lifecycle.svg?v=f8df58691fc2" alt="先按设备协议完成旧请求，再撤销 A 的映射并等待同步。旧 IOVA 可以在完成撤销后复用，新映射也要完成同步，才能交给设备。示意采用同步回收；实际驱动可以批处理，但必须保持相同的生命周期约束。" loading="lazy">
+  </div>
+  <figcaption>先按设备协议完成旧请求，再撤销 A 的映射并等待同步。旧 IOVA 可以在完成撤销后复用，新映射也要完成同步，才能交给设备。示意采用同步回收；实际驱动可以批处理，但必须保持相同的生命周期约束。 <a href="../assets/viommu-map-lifecycle.svg?v=f8df58691fc2" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
+    accTitle: 同一 IOVA 从缓冲区 A 撤销后重新映射到 B
+    accDescr: 客户机先确认设备请求完成，清除 A 的页表项并提交失效。QEMU 同步宿主 UNMAP 并完成缓存处理，然后客户机释放 A。B 的新映射经过相同同步路径后，设备才能使用复用的 IOVA。
+    participant G as 客户机驱动 / IOMMU
+    participant Q as QEMU vIOMMU / VFIO
+    participant H as 宿主内核 / IOMMU
+    participant D as 物理设备
+    G-&gt;&gt;Q: 写 A 的 PTE，提交失效并等待
+    Q-&gt;&gt;H: 合成 MAP：IOVA → A 的 HPA
+    H--&gt;&gt;Q: 建图完成
+    Q--&gt;&gt;G: 本次同步完成
+    G-&gt;&gt;D: 发布指向 IOVA 的接收描述符
+    D-&gt;&gt;H: DMA 写，转换到 A
+    D--&gt;&gt;G: 按设备协议报告请求完成
+    G-&gt;&gt;Q: 清除 A 的 PTE，提交失效并等待
+    Q-&gt;&gt;H: UNMAP，撤销宿主映射与旧转换缓存
+    H--&gt;&gt;Q: 撤销完成
+    Q--&gt;&gt;G: 本次同步完成
+    Note over G,H: A 可回收；失效不替代设备请求完成
+    G-&gt;&gt;Q: 同一 IOVA 指向 B，提交失效并等待
+    Q-&gt;&gt;H: 合成 MAP：IOVA → B 的 HPA
+    H--&gt;&gt;Q: 建图完成
+    Q--&gt;&gt;G: 本次同步完成
+    G-&gt;&gt;D: 发布 B 的新描述符
+    D-&gt;&gt;H: 同一 DMA 地址，此时转换到 B
+</code></pre></details>
+</figure>
+<p>A 使用结束时，客户机驱动先确认相应接收请求不再由设备持有，再撤销 DMA 映射。QEMU 处理失效请求时读到无效页表项，向 VFIO 发出 UNMAP；宿主删除硬件映射、处理相应转换缓存及后备页引用。完成撤销后，客户机才能将 A 用于其他用途，并安全复用原 IOVA。</p>
+<p>随后准备缓冲区 B：GPA 为 <code>0x50000000</code>，HPA 为 <code>0x140000000</code>，仍使用 IOVA <code>0x00800000</code>。新映射完成同步后，相同 DMA 地址 <code>0x00800080</code> 的目标变为 <code>0x140000080</code>。设备只看到相同 IOVA，背后的页面已经改变。</p>
+<table>
+<thead>
+<tr>
+<th scope="col">阶段</th>
+<th scope="col">客户机页表</th>
+<th scope="col">宿主有效映射</th>
+<th scope="col">缓冲区处理要求</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A 正在使用</td>
+<td>指向 A</td>
+<td>指向 A，IOTLB 也可能缓存 A</td>
+<td>保持 A 有效</td>
+</tr>
+<tr>
+<td>已清除客户机 PTE，尚未同步</td>
+<td>无映射</td>
+<td>仍可能指向 A</td>
+<td>不可据此认为旧访问已被阻断</td>
+</tr>
+<tr>
+<td>UNMAP 与失效已完成</td>
+<td>无映射</td>
+<td>无映射，旧缓存已处理</td>
+<td>结合设备完成条件回收 A</td>
+</tr>
+<tr>
+<td>B 的映射已同步</td>
+<td>指向 B</td>
+<td>指向 B</td>
+<td>可以向设备提交 B</td>
+</tr>
+</tbody>
+</table>
+<p>失效处理负责转换关系，设备协议负责已经提交的工作。<strong>IOTLB 失效不能代替等待旧请求完成。</strong> 更早已经通过地址转换的 DMA 也要按设备和平台的完成语义处理。本例先确认旧请求完成，再撤销映射；设备复位、异常队列和批量延迟回收需要另外维护相应边界。</p>
+</section>
+<section id="interactive" class="mechanism-section">
+<h2><span class="mechanism-heading-number">五、</span>映射与缓存的交互演示</h2>
+<p>逐步操作同一个 IOVA，观察客户机页表、宿主合成页表和 IOTLB 的差异。“遗漏失效”场景故意在客户机只清除 PTE 后复用 A，并发出一笔违规的迟到 DMA，用来展示仍有效的旧映射；它没有执行宿主 UNMAP。正常场景在撤销完成后探测同一地址，访问被阻止。</p>
+<section class="viommu-lab" data-viommu-lab data-mechanism-view="lab" aria-labelledby="viommu-lab-title">
+  <div class="mechanism-view-heading">
+    <h3 id="viommu-lab-title">同一 DMA 地址从 A 切换到 B</h3>
+    <button type="button" data-mechanism-expand hidden>全屏显示</button>
+  </div>
+  <p>IOVA 固定为 <code>0x00800000</code>。逐步更新映射，观察客户机页表、宿主页表与缓存的同步，以及实际 DMA 写入哪一页。</p>
+  <div class="viommu-controls" data-viommu-controls hidden>
+    <label for="viommu-scenario">执行场景
+      <select id="viommu-scenario" data-viommu-scenario>
+        <option value="correct">正常同步与回收</option>
+        <option value="missing-invalidation">错误示例：遗漏客户机失效</option>
+      </select>
+    </label>
+    <div class="viommu-actions" role="group" aria-label="vIOMMU 映射过程控制">
+      <button type="button" data-viommu-back>上一步</button>
+      <button type="button" data-viommu-next>下一步</button>
+      <button type="button" data-viommu-reset>重置</button>
+    </div>
+  </div>
+  <p class="viommu-status" data-viommu-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <div class="viommu-layers" aria-label="三处转换状态">
+    <section data-viommu-layer="guest"><h4>客户机 I/O 页表</h4><p data-viommu-guest>无映射</p><small>由客户机驱动写入 · IOVA → GPA</small></section>
+    <section data-viommu-layer="host"><h4>宿主合成页表</h4><p data-viommu-host>无映射</p><small>通过 VFIO 后端同步 · IOVA → HPA</small></section>
+    <section data-viommu-layer="cache"><h4>宿主 IOTLB</h4><p data-viommu-cache>未缓存转换</p><small>硬件复用的转换结果</small></section>
+  </div>
+  <p class="viommu-sync" data-viommu-sync>本步无待同步的页表修改</p>
+  <div class="viommu-dma-path">
+    <div class="viommu-device"><strong>物理网卡 VF</strong><span>写 IOVA 0x00800080 · 64 B</span></div>
+    <p data-viommu-route>等待下一笔 DMA</p>
+    <div class="viommu-pages">
+      <section data-viommu-page="A"><h4>页 A</h4><p data-viommu-a-owner>接收缓冲区 A</p><code>GPA 0x40000000<br>HPA 0x120000000</code><small data-viommu-a-writes>累计 DMA 写入 0 次</small></section>
+      <section data-viommu-page="B"><h4>页 B</h4><p>新的接收缓冲区 B</p><code>GPA 0x50000000<br>HPA 0x140000000</code><small data-viommu-b-writes>累计 DMA 写入 0 次</small></section>
+    </div>
+  </div>
+  <div class="viommu-explanation" data-viommu-explanation hidden><p data-viommu-detail></p><small data-viommu-queue></small></div>
+  <p class="viommu-note">错误分支仅清除客户机 PTE，没有调用宿主 UNMAP。正常 UNMAP 完成的步骤已包含缓存处理。故意发出的迟到探测用于比较旧映射是否仍可访问，不代表设备协议允许继续使用已回收缓冲区。</p>
+  <div data-viommu-fallback>
+    <ol><li>客户机写入 A 的映射，提交失效，QEMU 同步宿主映射后开始 DMA。</li><li>旧请求完成后清除客户机 PTE，再完成宿主 UNMAP 与转换缓存处理。</li><li>A 回收后，旧地址访问被阻止；若遗漏失效，旧映射仍可能访问 A。</li><li>同一 IOVA 重新映射到 B，同步完成后，DMA 改为访问 B。</li></ol>
+    <p>启用 JavaScript 后可逐步比较两种场景。</p>
+  </div>
+</section>
+<p>两种场景最终都会重新建立 B 的映射。错误场景中的旧页写入不会因之后补做失效而被撤回；它说明缓冲区生命周期必须在交接时保证正确。演示不模拟设备队列内部、ATS 或已经通过 IOMMU 的在途事务。</p>
+</section>
+<section id="implementation" class="mechanism-section">
+<h2><span class="mechanism-heading-number">六、</span>QEMU 中的页表同步路径</h2>
+<p>前面的建立和撤销共用一条通知链。QEMU 为设备维护 <code>VTDAddressSpace</code>，其中的 <code>IOMMUMemoryRegion</code> 表示设备侧地址空间；<code>iova_tree</code> 记录已经通知后端的映射范围。扫描客户机页表时，QEMU 将新结果与已知映射比较，避免重复通知，并找出需要撤销或新增的区间。</p>
+<table>
+<thead>
+<tr>
+<th scope="col">结构</th>
+<th scope="col">保存的内容</th>
+<th scope="col">在本例中的作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>客户机 root/context 与 I/O 页表</td>
+<td>设备上下文、domain、IOVA→GPA、权限</td>
+<td>客户机希望设备看到的 DMA 地址空间</td>
+</tr>
+<tr>
+<td><code>VTDAddressSpace</code> / <code>iova_tree</code></td>
+<td>设备侧 QEMU 地址空间、已通知的映射范围</td>
+<td>比较和同步变更；它不等同宿主硬件 IOTLB</td>
+</tr>
+<tr>
+<td><code>IOMMUTLBEntry</code> / <code>IOMMUTLBEvent</code></td>
+<td>IOVA、目标地址空间、translated_addr、范围与权限</td>
+<td>向后端传递 MAP / UNMAP 结果</td>
+</tr>
+<tr>
+<td><code>VFIOGuestIOMMU</code> / <code>IOMMUNotifier</code></td>
+<td>VFIO 后端与 QEMU IOMMU 地址空间的关联</td>
+<td>把通知转成宿主映射操作</td>
+</tr>
+<tr>
+<td>宿主 I/O 页表及 IOTLB</td>
+<td>IOVA→HPA 及缓存的转换结果</td>
+<td>物理设备 DMA 实际使用的转换</td>
+</tr>
+</tbody>
+</table>
+<p>以页粒度的 queued invalidation 为例，主要调用关系如下。domain 或全局失效覆盖的范围更大，但最终仍需使客户机声明的转换变化与后端一致。</p>
+<pre><code class="language-text">客户机更新 I/O 页表，提交 IOTLB invalidation
+  vtd_process_iotlb_desc()
+    vtd_iotlb_page_invalidate()
+      vtd_iotlb_page_invalidate_notify()
+        vtd_sync_shadow_page_table_range()
+          vtd_page_walk() → vtd_page_walk_one()
+            MAP / UNMAP → memory_region_notify_iommu()
+              vfio_iommu_map_notify()
+                MAP: GPA → RAM 后备地址 → vfio_container_dma_map()
+                UNMAP: vfio_container_dma_unmap()
+</code></pre>
+<p><code>vfio_iommu_map_notify()</code> 只接受目标为系统内存的转换。MAP 分支取得对应 RAM 区域和宿主地址，同时检查设备写权限及 RAM 是否只读；UNMAP 分支撤销对应 IOVA 范围。实际 ioctl 由选定的 VFIO 后端实现：传统 Type1 和 IOMMUFD 接收相同的上层映射意图，但使用不同管理接口。</p>
+<table>
+<thead>
+<tr>
+<th scope="col">源码入口</th>
+<th scope="col">阅读重点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/intel_iommu.c#L1268-L1347"><code>vtd_page_walk_one()</code></a></td>
+<td>比较既有映射，发送撤销或新增通知</td>
+</tr>
+<tr>
+<td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/intel_iommu.c#L1631-L1685"><code>vtd_sync_shadow_page_table_range()</code></a></td>
+<td>建立扫描范围和通知回调；处理地址空间同步</td>
+</tr>
+<tr>
+<td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/intel_iommu.c#L2467-L2529"><code>vtd_iotlb_page_invalidate_notify()</code></a></td>
+<td>根据 domain、PASID 和后端能力选择同步方式</td>
+</tr>
+<tr>
+<td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/listener.c#L125-L193"><code>vfio_iommu_map_notify()</code></a></td>
+<td>GPA 后备页解析、权限传播及宿主 MAP / UNMAP</td>
+</tr>
+<tr>
+<td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/listener.c#L520-L565">VFIO notifier 注册与 replay</a></td>
+<td>后端接入时重新发布现有映射，而非仅等待下一次变化</td>
+</tr>
+</tbody>
+</table>
+<p>源码对直接把同一 IOVA 从 A 改成 B 的情况采用撤销旧映射再建立新映射，并注明这会留下短暂的无映射窗口。因此，客户机需要按设备和 DMA API 的约定完成旧请求与映射交接；不能依赖一次 PTE 改写实现正在使用的缓冲区原子切换。</p>
+</section>
+<section id="evolution" class="mechanism-section">
+<h2><span class="mechanism-heading-number">七、</span>从软件合成到硬件嵌套转换</h2>
+<p>无客户机 vIOMMU 的常见直通配置，使用 GPA 作为设备 DMA 地址，宿主集中维护 GPA→HPA。它的映射关系相对稳定；客户机对设备 DMA 地址空间的控制也较少。加入 vIOMMU 后，客户机可以像物理系统一样选择 DMA 地址和隔离范围，宿主则要承担同步这些变化的成本。</p>
+<p>软件合成映射兼容较广的宿主硬件，代价是每次相关映射变动都可能经过客户机失效、QEMU 页表扫描和宿主映射接口。频繁短生命周期缓冲区会放大控制路径开销；批量映射、复用缓冲区和批量失效可以减少更新次数，但延迟回收期间必须继续保留正确的页引用和 IOVA 生命周期。</p>
+<p>硬件嵌套转换把客户机 IOVA→GPA 与宿主 GPA→HPA 分开交给 IOMMU 执行。客户机维护第一阶段页表，宿主管理第二阶段的可访问内存范围；VMM 仍需配置两阶段关系、传播失效并处理异常。它可以减少软件合成映射的工作，同时引入两阶段页表遍历、缓存一致性和硬件兼容要求。</p>
+<table>
+<thead>
+<tr>
+<th scope="col">路径</th>
+<th scope="col">转换关系的维护</th>
+<th scope="col">主要成本与边界</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>无客户机 vIOMMU</td>
+<td>宿主映射 GPA→HPA</td>
+<td>配置简单；客户机没有独立的 DMA 转换视图</td>
+</tr>
+<tr>
+<td>vIOMMU + 软件合成</td>
+<td>客户机 IOVA→GPA 经 QEMU 合成为 IOVA→HPA</td>
+<td>映射变更需同步到宿主；正常 DMA 使用合成结果</td>
+</tr>
+<tr>
+<td>vIOMMU + 硬件嵌套</td>
+<td>第一阶段 IOVA→GPA，第二阶段 GPA→HPA</td>
+<td>依赖 IOMMU、驱动与 VMM 配套；仍需失效与生命周期管理</td>
+</tr>
+</tbody>
+</table>
+<p>Linux 6.18 的 IOMMUFD 以 <code>HWPT_NESTED</code> 和父 <code>HWPT_PAGING</code> 表达两阶段关系。QEMU 10.2 的 Intel vIOMMU 代码也区分传统影子同步与 scalable/first-stage 相关路径；启用 vIOMMU 并不自动选择硬件嵌套。具体设备和平台能否使用，需要核对完整的能力与配置组合。<a href="https://docs.kernel.org/6.18/userspace-api/iommufd.html#user-visible-objects">IOMMUFD 的嵌套页表对象</a></p>
+<p>此外，IOMMUFD 中名为 <code>VIOMMU</code> 的对象表示某个物理 IOMMU 的虚拟化资源切片，与客户机看到的一整个虚拟 IOMMU 不必一一对应。区分接口对象和客户机设备模型，有助于阅读跨多个物理 IOMMU 的部署路径。</p>
+<p>设备迁移还有独立的兼容性限制：QEMU 10.2 的 <code>vfio_migration_realize()</code> 检测到 VFIO 设备启用 vIOMMU 时，会阻止该配置迁移。即使设备具有状态保存能力，也不能据此把本文的 vIOMMU 路径与设备热迁移直接组合。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L1205-L1209">固定版本的迁移限制</a>；未启用 vIOMMU 的设备迁移过程见 <a href="vfio-device-migration.html">VFIO 设备热迁移</a>。</p>
+</section>
+<section id="summary" class="mechanism-section">
+<h2><span class="mechanism-heading-number">八、</span>总结与进一步阅读</h2>
+<p>本例围绕同一个 IOVA 完成了 A 到 B 的交接：客户机建立映射，QEMU 同步合成页表，物理设备通过宿主 IOMMU 访问 RAM；旧请求结束后撤销映射，再把地址交给新的缓冲区。页表内容、转换缓存和设备正在使用的请求分别有自己的状态，正确交接依赖它们按顺序收敛。</p>
+<p>排查问题时可以沿这条路径逐层核对：客户机 DMA API 返回的地址与权限、失效是否完成、QEMU 的 MAP / UNMAP 错误、宿主 IOMMU 故障，以及设备描述符是否已经回收。性能评估则需要把映射建立和回收开销，与正常 DMA 的吞吐和延迟分开测量。</p>
+<ul>
+<li><a href="iommu-dma.html">IOMMU：DMA 地址转换、缓存与失效</a>：设备标识、页表遍历与缓存的基础机制。</li>
+<li><a href="iommufd.html">IOMMUFD：设备绑定与 I/O 地址空间管理</a>：宿主侧 IOAS、HWPT 及设备附着的生命周期。</li>
+<li><a href="qemu-vfio-dma.html">VFIO 设备直通与 DMA 地址转换</a>：设备区域、内存后备和地址转换的完整关系。</li>
+</ul>
+</section>
+<section id="sources" class="mechanism-section">
+<h2><span class="mechanism-heading-number">九、</span>参考资料</h2>
+<ul>
+<li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/intel_iommu.c">QEMU 10.2：Intel IOMMU 模型</a>：客户机页表扫描、影子映射同步与失效处理。</li>
+<li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/listener.c">QEMU 10.2：VFIO MemoryListener</a>：IOMMU 通知、RAM 后备解析与映射接口。</li>
+<li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qemu-options.hx#L1183-L1221">QEMU 10.2：Intel IOMMU 参数</a>：caching-mode、device-iotlb 与地址宽度。</li>
+<li><a href="https://docs.kernel.org/6.18/userspace-api/iommufd.html">Linux 6.18：IOMMUFD</a>：逻辑地址空间、硬件嵌套页表及 VIOMMU 对象。</li>
+<li><a href="https://docs.kernel.org/6.18/core-api/dma-api-howto.html">Linux：DMA API 使用指南</a>：DMA 地址、缓冲区映射与设备使用结束后的回收。</li>
+</ul>
+</section>
+</div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#device-virtualization">设备与 I/O 虚拟化原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=85f3a75ef38f"></script>
+<script src="../assets/mechanism-viewer.js?v=f8df58691fc2" defer></script>
+<script src="../assets/viommu-lab.js?v=f8df58691fc2" defer></script></body>
+</html>

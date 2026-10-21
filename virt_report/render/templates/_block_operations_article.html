@@ -38,7 +38,7 @@
 
 <section id="stream" class="mechanism-section">
   <h2>stream 把下层仍需读取的数据补入上层</h2>
-  <p>继续从 <code>A ← B ← C</code> 出发。若希望当前磁盘独立于历史链，可以把 A、B 中仍被 C 引用的数据复制进 C，完成后解除 C 的 backing。客户机原本就写 C，复制过程只填充缺失的逻辑区域，不能用下层旧数据覆盖客户机已经写入的 v3。</p>
+  <p>以下几种操作分别以快照后的 <code>A ← B ← C</code> 为起点，比较不同管理目标，彼此不接续执行。stream 的目标是让当前磁盘独立于历史链：把 A、B 中仍被 C 引用的数据复制进 C，完成后解除 C 的 backing。客户机原本就写 C，复制过程只填充缺失的逻辑区域，不能用下层旧数据覆盖客户机已经写入的 v3。</p>
   <pre><code>{"execute":"block-stream","arguments":{
   "job-id":"flatten-C","device":"node-C","auto-dismiss":false
 }}</code></pre>
@@ -50,7 +50,7 @@
 
 <section id="commit" class="mechanism-section">
   <h2>commit 向下合并与历史内容更新</h2>
-  <p>另一种缩链方式是把 B 的有效数据写进 A，随后让 C 直接引用 A，得到 <code>A′ ← C</code>。在前面的偏移示例中，A 从 v1 改为 v2；C 仍保存 v3，当前客户机视图保持 v3，但原来只含 A 的历史视图已经改变。中间镜像及依赖旧 A 的其他分支也可能失去原语义，不能把 base 当作可随意覆盖的公共模板。</p>
+  <p>仍从未经 stream 的 <code>A ← B ← C</code> 出发，commit 选择相反的数据流向：把 B 的有效数据写进 A，随后让 C 直接引用 A，得到 <code>A′ ← C</code>。在偏移 <code>0x1000</code>，A 从 v1 改为 v2；C 仍保存 v3，当前客户机视图保持 v3，但原来只含 A 的历史视图已经改变。中间镜像及依赖旧 A 的其他分支也可能失去原语义，不能把 base 当作可随意覆盖的公共模板。</p>
   <pre><code>{"execute":"block-commit","arguments":{
   "job-id":"merge-B","device":"node-C",
   "top-node":"node-B","base-node":"node-A","auto-dismiss":false
@@ -61,7 +61,7 @@
 
 <section id="mirror" class="mechanism-section">
   <h2>mirror 增量追赶与活动磁盘切换</h2>
-  <p>把活动盘迁到另一个存储时，准备目标节点 T，将当前 <code>A + B + C</code> 的完整逻辑视图复制过去，并追踪复制期间的写入。<code>sync:full</code> 复制完整可见磁盘，<code>sync:top</code> 与 <code>none</code> 则有不同的下层依赖，不能拿局部同步目标当作独立完整磁盘。</p>
+  <p>stream 和 commit 调整原有链的依赖；迁往另一个存储则要建立新的活动入口。这里重新以 <code>A ← B ← C</code> 为源链，准备目标节点 T，将当前 <code>A + B + C</code> 的完整逻辑视图复制过去，并追踪复制期间的写入。<code>sync:full</code> 复制完整可见磁盘，<code>sync:top</code> 与 <code>none</code> 则有不同的下层依赖，不能拿局部同步目标当作独立完整磁盘。</p>
   <p>假设已通过 <code>blockdev-add</code> 打开一个可写、容量匹配、没有其他使用者也未连接客户机的目标 <code>node-T</code>，并正确配置其底层文件，发起独立的 mirror 作业：</p>
   <pre><code>{"execute":"blockdev-mirror","arguments":{
   "job-id":"move-disk","device":"node-C","target":"node-T",
@@ -81,7 +81,7 @@
 
 <section id="backup" class="mechanism-section">
   <h2>backup 与启动时刻的数据视图</h2>
-  <p>mirror 的目标持续追赶源盘，backup 则固定一个时间点。仍看偏移 <code>0x1000</code>：若 full backup 启动时 C 中为 v3，客户机随后要写 v4，而后台还没复制该位置，就先通过 copy-before-write 把 v3 保存到备份目标，再放行覆盖。完成后活动盘读到 v4，备份视图仍读到 v3；mirror 若完成切换，目标则需要包含最终同步后的 v4。</p>
+  <p>mirror 的目标持续追赶源盘，backup 则固定一个时间点。这是与 mirror 并列的另一个场景，客户机仍使用活动层 C，没有发生向 T 的切换。观察偏移 <code>0x1000</code>：若 full backup 启动时 C 中为 v3，客户机随后要写 v4，而后台还没复制该位置，就先通过 copy-before-write 把 v3 保存到备份目标，再放行覆盖。完成后活动盘读到 v4，备份视图仍读到 v3；mirror 若完成切换，目标则需要包含最终同步后的 v4。</p>
   <table><thead><tr><th scope="col">操作</th><th scope="col">目标内容</th><th scope="col">客户机入口</th></tr></thead><tbody>
     <tr><td>外部快照</td><td>旧链保存切换时视图，新 overlay 保存后续变化</td><td>立即改到新 overlay</td></tr>
     <tr><td>mirror</td><td>持续追赶，完成切换时与源视图一致</td><td>READY 时不变，显式完成后切换到目标</td></tr>

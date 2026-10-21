@@ -1,0 +1,30 @@
+sequenceDiagram
+    accTitle: 单个 VF 的 IOMMUFD 生命周期
+    accDescr: QEMU 先绑定 VFIO 设备，再分配 IOAS 和 HWPT，附着设备，映射 RAM；设备使用映射进行 DMA。停止队列和在途 DMA 后，解除关联、撤销映射并回收对象及文件描述符。
+    participant Q as QEMU
+    participant V as VFIO 设备 fd
+    participant I as IOMMUFD / IOMMU
+    participant D as 网卡 VF 与 RAM
+    Q->>V: BIND_IOMMUFD(iommufd)
+    V->>I: 检查 DMA 所有权并绑定设备
+    I-->>Q: DEVICE ID
+    Q->>I: IOAS_ALLOC → IOAS 10
+    Q->>I: HWPT_ALLOC(dev_id, IOAS 10)
+    I-->>Q: HWPT 20
+    Q->>V: ATTACH_IOMMUFD_PT(HWPT 20)
+    V->>I: 设备附着到硬件页表
+    Note over I,D: IOAS 尚无目标映射<br/>不能访问该 RAM 区间
+    Q->>I: IOAS_MAP(IOVA, HVA, 长度, 权限)
+    I->>D: 固定后备页并建立硬件映射
+    Note over Q,D: 客户机驱动准备队列并开始提交请求
+    D->>I: 设备 DMA 地址与权限检查
+    I-->>D: 转换成功，访问目标 RAM
+    Note over Q,D: 回收前停止设备队列<br/>并处理在途 DMA
+    Q->>V: DETACH_IOMMUFD_PT
+    V->>I: 脱离 HWPT 20
+    Q->>I: DESTROY(HWPT 20)
+    Q->>I: IOAS_UNMAP(目标区间)
+    I->>D: 撤销映射并释放页引用
+    Q->>I: DESTROY(IOAS 10)
+    Q->>V: close(devfd) → 解绑设备
+    Q->>I: close(iommufd)

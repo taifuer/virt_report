@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=64313220e987">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=64313220e987">
-<link rel="stylesheet" href="../assets/vfio-dma.css?v=64313220e987"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=f8df58691fc2">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=f8df58691fc2">
+<link rel="stylesheet" href="../assets/vfio-dma.css?v=f8df58691fc2"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -75,9 +75,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看CPU 与设备 DMA 的地址转换" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="CPU 与设备 DMA 的地址转换">
-    <img src="../assets/vfio-address-paths.svg?v=64313220e987" alt="两条访问路径指向同一后备页。虚线表示映射配置，实线表示地址转换关系；本例未配置客户机 IOMMU，设备 IOVA 与 GPA 数值相同。" loading="lazy">
+    <img src="../assets/vfio-address-paths.svg?v=f8df58691fc2" alt="两条访问路径指向同一后备页。虚线表示映射配置，实线表示地址转换关系；本例未配置客户机 IOMMU，设备 IOVA 与 GPA 数值相同。" loading="lazy">
   </div>
-  <figcaption>两条访问路径指向同一后备页。虚线表示映射配置，实线表示地址转换关系；本例未配置客户机 IOMMU，设备 IOVA 与 GPA 数值相同。 <a href="../assets/vfio-address-paths.svg?v=64313220e987" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>两条访问路径指向同一后备页。虚线表示映射配置，实线表示地址转换关系；本例未配置客户机 IOMMU，设备 IOVA 与 GPA 数值相同。 <a href="../assets/vfio-address-paths.svg?v=f8df58691fc2" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: CPU 与设备 DMA 访问同一客户机后备页
     accDescr: 客户机 CPU 经客户机页表与 EPT 或 NPT 完成地址转换，物理设备经宿主 IOMMU 完成 DMA 地址转换。QEMU 的 HVA 用于配置后备内存，内核固定页面并建立 IOVA 到 HPA 的映射，HVA 不随设备 DMA 请求传输。
@@ -162,6 +162,7 @@
 
 <section id="isolation" class="mechanism-section">
   <h2><span class="mechanism-heading-number">四、</span>隔离与映射生命周期</h2>
+  <p>设备访问时的上下文选择、IOTLB 命中和撤销同步，在<a href="iommu-dma.html">IOMMU：DMA 地址转换、缓存与失效</a>中沿同一个接收缓冲区展开。</p>
   <h3 id="isolation-part-1"><span class="mechanism-heading-number">1. </span>IOMMU group 的隔离边界</h3>
   <p>I/O 页表限制设备到内存的访问，但实际隔离还取决于 PCIe 拓扑。某些多功能设备、桥或缺少合适 ACS 能力的路径，可能允许事务在到达 IOMMU 前发生重定向。内核据此把无法独立隔离的设备归入同一 IOMMU group，作为 DMA 所有权的边界。</p>
   <p>IOMMUFD 的设备 cdev 接口按设备提供文件描述符，同时检查整个 group 的所有权。同组设备共享硬件隔离边界，由同一 DMA 所有者管理。映射接口接收用户态提供的后备内存，由内核验证并固定页面，再建立设备可访问的范围。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/driver-api/vfio.rst">VFIO group 与设备 cdev</a></p>
@@ -211,6 +212,7 @@ IOMMUFD：iommufd_ioas_map()
 
 <section id="evolution" class="mechanism-section">
   <h2><span class="mechanism-heading-number">七、</span>从 VFIO Container 到 IOMMUFD</h2>
+  <p>本节比较接口分工。设备绑定、IOAS 与 HWPT 的创建、附着及释放过程，见<a href="iommufd.html">IOMMUFD：设备绑定与 I/O 地址空间管理</a>。</p>
   <h3 id="evolution-part-1"><span class="mechanism-heading-number">1. </span>以 group 和 container 组织 DMA</h3>
   <p>传统 VFIO 将设备访问、硬件隔离组和 IOMMU 管理组织成 device、group、container 三层。应用先把 group 加入 container，再配置 IOMMU 后端，最后通过 group 获取设备文件描述符。多个可兼容的 group 可以共享 container 中的映射，减少重复的页表维护。</p>
   <p>这种结构支撑了长期使用的设备直通路径，但 I/O 地址空间管理与 VFIO container 接口紧密绑定。随着嵌套转换、不同硬件页表类型和更细粒度设备绑定的需求出现，用户态需要更直接地表达地址空间、硬件页表及它们与设备的关联。</p>
@@ -225,6 +227,8 @@ IOMMUFD：iommufd_ioas_map()
 <section id="sources" class="mechanism-section">
   <h2><span class="mechanism-heading-number">八、</span>参考资料</h2>
   <ul class="mechanism-sources">
+    <li><a href="qemu-viommu.html">vIOMMU：客户机 DMA 映射与失效同步</a>：客户机启用虚拟 IOMMU 后，IOVA 映射的建立、撤销与缓存一致性。</li>
+    <li><a href="vfio-device-migration.html">VFIO 设备热迁移：设备状态与 DMA 交接</a>：设备迁移能力、DMA 脏页跟踪与停机交接。</li>
     <li>QEMU：<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/listener.c">VFIO MemoryListener</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/container.c">公共映射分派</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/container-legacy.c">传统 container</a>。</li>
     <li>QEMU：<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/iommufd.c">VFIO IOMMUFD 后端</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/backends/iommufd.c">IOMMUFD ioctl 封装</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/vfio-iommufd.rst">后端设计说明</a>。</li>
     <li>Linux：<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vfio/vfio_iommu_type1.c">Type1 映射实现</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/iommufd/ioas.c">IOAS 管理</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/driver-api/vfio.rst">VFIO 设备与隔离组</a>。</li>
@@ -238,6 +242,6 @@ IOMMUFD：iommufd_ioas_map()
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=64313220e987" defer></script>
-<script src="../assets/vfio-dma.js?v=64313220e987" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=f8df58691fc2" defer></script>
+<script src="../assets/vfio-dma.js?v=f8df58691fc2" defer></script></body>
 </html>

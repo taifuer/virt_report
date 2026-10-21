@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import calendar as _pycal
 import hashlib
+import re
 import shutil
 from datetime import datetime, timedelta
 from functools import lru_cache
@@ -15,10 +16,12 @@ from virt_report.config import Config
 from virt_report.report_links import prepare_report_links
 from virt_report.render.calendar import build_archive_index, build_archive_views
 from virt_report.render.article_outline import prepare_outline
+from virt_report.render.article_markdown import render_article_markdown
 from virt_report.summarize import periods, report as report_builder
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 ASSETS_DIR = Path(__file__).parent / "assets"
+ARTICLES_DIR = ASSETS_DIR.parents[1] / "content" / "articles"
 HOME_REPORT_LIMITS = {"daily": 15, "weekly": 9, "monthly": 6}
 STATIC_ASSET_NAMES = ("brand-mark.png", "site.css", "site.js")
 FAVICON_ASSET_NAMES = ("favicon-32.png", "favicon.ico")
@@ -44,7 +47,8 @@ MECHANISM_DIAGRAM_NAMES = (
     "kvm-halt-wakeup", "kvm-hugepage-lifecycle",
     "tcg-translation-pipeline", "tcg-tb-lifecycle",
     "virtualization-system-overview", "cpu-execution-overview", "memory-address-overview",
-    "device-backend-overview", "interrupt-delivery-overview", "kvm-eventfd-comparison", "kvm-irqfd-comparison",
+    "device-backend-overview", "interrupt-delivery-overview", "interrupt-software-delivery",
+    "kvm-eventfd-comparison", "kvm-irqfd-comparison",
     "dpdk-vhost-data-path", "dpdk-buffer-ownership", "dpdk-vhost-completion",
     "startup-overview-handoff", "migration-overview-handoff",
     "hotplug-overview-lifecycle",
@@ -61,6 +65,12 @@ MECHANISM_DIAGRAM_NAMES = (
     "libvirt-migration-phases",
     "block-live-operations", "block-job-pivot",
     "vdpa-control-data", "vdpa-shadow-sequence",
+    "iommu-address-path", "iommu-buffer-lifetime",
+    "iommufd-objects", "iommufd-lifecycle",
+    "virtio-gpu-resources", "virtio-gpu-update-sequence",
+    "viommu-shadow-path", "viommu-map-lifecycle",
+    "vfio-migration-consistency", "vfio-migration-handoff",
+    "nested-vmx-controls", "nested-vmx-exit-path",
 )
 MECHANISM_LAYOUT_NAMES = ("migration-wire-layout",)
 MECHANISM_ASSET_NAMES = ("mechanisms.css", "mechanisms.js", "precopy-lab.css",
@@ -73,6 +83,12 @@ MECHANISM_ASSET_NAMES = ("mechanisms.css", "mechanisms.js", "precopy-lab.css",
                          "postcopy.css", "postcopy.js", "vfio-dma.css", "vfio-dma.js",
                          "memory-map.css", "memory-map.js", "virtio-mem.css", "virtio-mem.js",
                          "qcow2-map.css", "qcow2-map.js", "halt-poll.css", "halt-poll.js",
+                         "iommu-lab.css", "iommu-lab.js",
+                         "iommufd-lab.css", "iommufd-lab.js",
+                         "virtio-gpu-lab.css", "virtio-gpu-lab.js",
+                         "viommu-lab.css", "viommu-lab.js",
+                         "vfio-migration-lab.css", "vfio-migration-lab.js",
+                         "nested-vmx-lab.css", "nested-vmx-lab.js",
                          "hugepage-map.css", "hugepage-map.js", "tcg-tb.css", "tcg-tb.js", *(
     f"{name}.svg" for name in (*MECHANISM_DIAGRAM_NAMES, *MECHANISM_LAYOUT_NAMES)
 ))
@@ -362,7 +378,26 @@ def _render_mechanism_page(site_name: str, slug: str | None) -> str | None:
         ).read_text(encoding="utf-8")} for name in MECHANISM_DIAGRAM_NAMES} if article else {},
     )
     if article:
-        body = _env().get_template(article["template"]).render(**context)
+        if article.get("source"):
+            source = article["source"]
+            if not re.fullmatch(r"[a-z0-9-]+\.md", source) or article.get("template"):
+                raise ValueError("An article must select one local Markdown source or HTML template")
+            env = _env()
+            component_names = article.get("components", [])
+            if any(not re.fullmatch(r"_[a-z0-9_]+_lab\.html", name) for name in component_names):
+                raise ValueError("Markdown components must be local lab templates")
+            diagram = env.get_template("_mechanism_diagram.html").make_module(context).diagram
+            body = render_article_markdown(
+                (ARTICLES_DIR / source).read_text(encoding="utf-8"),
+                baselines=env.get_template("_mechanism_baselines.html").render(**context),
+                diagrams={name: (lambda title, description, name=name:
+                                 diagram(name, title, description))
+                          for name in MECHANISM_DIAGRAM_NAMES},
+                components={name: (lambda name=name: env.get_template(name).render(**context))
+                            for name in component_names},
+            )
+        else:
+            body = _env().get_template(article["template"]).render(**context)
         # URL fragments never reach the HTTP server. Preserve legacy anchors in
         # the destination so both HTTP and static redirects retain their meaning.
         for redirect in mechanisms.redirects():

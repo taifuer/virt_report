@@ -10,7 +10,7 @@
   <link rel="shortcut icon" href="favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="assets/mechanisms.css?v=64313220e987"></head>
+<link rel="stylesheet" href="assets/mechanisms.css?v=f8df58691fc2"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -48,9 +48,9 @@
         <span class="mechanism-directory-label" id="directory-foundations">基础机制</span>
         <ul aria-labelledby="directory-foundations">
           <li><a href="#virtualization-basics"><span>虚拟化基础</span><span class="mechanism-directory-count">1<span class="sr-only"> 篇文章</span></span></a></li>
-          <li><a href="#cpu-virtualization"><span>CPU 虚拟化</span><span class="mechanism-directory-count">5<span class="sr-only"> 篇文章</span></span></a></li>
+          <li><a href="#cpu-virtualization"><span>CPU 虚拟化</span><span class="mechanism-directory-count">6<span class="sr-only"> 篇文章</span></span></a></li>
           <li><a href="#memory-virtualization"><span>内存虚拟化</span><span class="mechanism-directory-count">5<span class="sr-only"> 篇文章</span></span></a></li>
-          <li><a href="#device-virtualization"><span>设备与 I/O 虚拟化</span><span class="mechanism-directory-count">11<span class="sr-only"> 篇文章</span></span></a></li>
+          <li><a href="#device-virtualization"><span>设备与 I/O 虚拟化</span><span class="mechanism-directory-count">15<span class="sr-only"> 篇文章</span></span></a></li>
           <li><a href="#interrupt-virtualization"><span>中断虚拟化</span><span class="mechanism-directory-count">2<span class="sr-only"> 篇文章</span></span></a></li>
         </ul>
       </div>
@@ -58,7 +58,7 @@
         <span class="mechanism-directory-label" id="directory-operations">关键操作</span>
         <ul aria-labelledby="directory-operations">
           <li><a href="#vm-startup"><span>虚拟机启动</span><span class="mechanism-directory-count">2<span class="sr-only"> 篇文章</span></span></a></li>
-          <li><a href="#migration"><span>热迁移</span><span class="mechanism-directory-count">6<span class="sr-only"> 篇文章</span></span></a></li>
+          <li><a href="#migration"><span>热迁移</span><span class="mechanism-directory-count">7<span class="sr-only"> 篇文章</span></span></a></li>
           <li><a href="#hotplug"><span>热插拔</span><span class="mechanism-directory-count">4<span class="sr-only"> 篇文章</span></span></a></li>
           <li><a href="#live-upgrade"><span>热升级</span><span class="mechanism-directory-count">1<span class="sr-only"> 篇文章</span></span></a></li>
         </ul>
@@ -93,6 +93,9 @@
         <h4><a href="mechanisms/qemu-tcg.html">QEMU TCG 的翻译块与执行循环</a></h4>
         <p>从客户机指令到宿主代码，分析 TCG 中间表示、翻译块缓存、直接链接、代码失效与异常状态恢复。</p>
       </article><article class="mechanism-list-item">
+        <h4><a href="mechanisms/kvm-nested-vmx.html">KVM 嵌套虚拟化：VMCS 合成与退出转发</a></h4>
+        <p>沿 L1 启动 L2 和一次端口写，解释 VMCS01、VMCS12、VMCS02 的状态合成，比较向 L1 转发、L0 内核处理和外层 QEMU 模拟三条路径。</p>
+      </article><article class="mechanism-list-item">
         <h4><a href="mechanisms/cpu-model-migration.html">虚拟 CPU 模型与迁移兼容性</a></h4>
         <p>从两台 x86 主机的指令差异出发，说明 CPU 模型、运行状态与机器类型的约束，以及兼容基线的选择和检查。</p>
       </article>    </div>
@@ -115,7 +118,7 @@
       </article>    </div>
   </section>
   <section class="mechanism-topic" id="device-virtualization" aria-labelledby="mechanism-topic-device-virtualization">
-<span id="io-virtualization" class="mechanism-topic-alias" aria-hidden="true"></span>    <header class="mechanism-topic-header"><h3 id="mechanism-topic-device-virtualization"><a href="mechanisms/device-virtualization.html">设备与 I/O 虚拟化</a></h3><p>从设备初始化、特性协商和 virtqueue 到 vhost 后端、DMA 地址转换与设备直通。</p></header>
+<span id="io-virtualization" class="mechanism-topic-alias" aria-hidden="true"></span>    <header class="mechanism-topic-header"><h3 id="mechanism-topic-device-virtualization"><a href="mechanisms/device-virtualization.html">设备与 I/O 虚拟化</a></h3><p>从 virtqueue 与网络、存储、图形设备，到 vhost 后端、IOMMU 地址转换及直通设备管理。</p></header>
     <div class="mechanism-list">
 <article class="mechanism-list-item">
         <h4><a href="mechanisms/virtio-device-initialization.html">virtio 设备初始化与特性协商</a></h4>
@@ -135,6 +138,18 @@
       </article><article class="mechanism-list-item">
         <h4><a href="mechanisms/qemu-vfio-dma.html">VFIO 设备直通的 DMA 地址转换与隔离</a></h4>
         <p>从客户机缓冲区到宿主物理页，分析 DMA 映射、IOMMU 权限检查，以及 VFIO Container 与 IOMMUFD 的分工。</p>
+      </article><article class="mechanism-list-item">
+        <h4><a href="mechanisms/iommu-dma.html">IOMMU：DMA 地址转换、缓存与失效</a></h4>
+        <p>沿一块网卡的接收缓冲区，解释设备上下文、I/O 页表、IOTLB、权限检查与安全回收，区分数据访问和映射管理的成本。</p>
+      </article><article class="mechanism-list-item">
+        <h4><a href="mechanisms/iommufd.html">IOMMUFD：设备绑定与 I/O 地址空间管理</a></h4>
+        <p>沿一块 VF 的接入与回收，解释设备 fd、DEVICE、IOAS 和 HWPT 的关系，以及附着、映射、共享和失败回滚。</p>
+      </article><article class="mechanism-list-item">
+        <h4><a href="mechanisms/qemu-viommu.html">vIOMMU：客户机 DMA 映射与失效同步</a></h4>
+        <p>沿同一 IOVA 从缓冲区 A 切换到 B，分析客户机页表、QEMU 合成映射、宿主 IOTLB 的同步，以及硬件嵌套转换的演进。</p>
+      </article><article class="mechanism-list-item">
+        <h4><a href="mechanisms/virtio-gpu.html">virtio-gpu：二维资源与画面更新</a></h4>
+        <p>以一幅画面的局部更新，串起客户机 backing、QEMU 图像、scanout、TRANSFER 与 FLUSH，并比较二维显示与三维加速路径。</p>
       </article><article class="mechanism-list-item">
         <h4><a href="mechanisms/qemu-virtio-blk.html">virtio-blk 的请求处理与写入完成</a></h4>
         <p>从一次 4 KiB 写入跟踪描述符链、块后端和完成回调，说明请求合并、缓存刷新与持久化之间的关系。</p>
@@ -183,6 +198,9 @@
       </article><article class="mechanism-list-item">
         <h4><a href="mechanisms/qemu-postcopy.html">QEMU 后拷贝迁移的缺页处理与页面传输</a></h4>
         <p>分析目的端接管后的缺页请求、页面安装、线程唤醒与后台传输，以及后拷贝的收敛收益和故障代价。</p>
+      </article><article class="mechanism-list-item">
+        <h4><a href="mechanisms/vfio-device-migration.html">VFIO 设备热迁移：设备状态与 DMA 交接</a></h4>
+        <p>跟踪直通网卡在源端和目的端之间的状态交接，区分 RAM 脏页与设备内部状态，分析预拷贝、停止 DMA、恢复校验和失败边界。</p>
       </article><article class="mechanism-list-item">
         <h4><a href="mechanisms/libvirt-live-migration.html">Libvirt 热迁移的阶段协调与失败恢复</a></h4>
         <p>沿 Begin、Prepare、Perform、Finish、Confirm 追踪双端交接，比较客户端与 p2p 协调，解释断线确认、存储归属与 postcopy 恢复边界。</p>

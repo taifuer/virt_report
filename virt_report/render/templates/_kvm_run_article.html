@@ -102,6 +102,22 @@ mmio.data[0..3]   = 78 56 34 12</code></pre>
   <p>内核的 <code>struct kvm_vcpu</code> 则保存 vCPU ID、待处理请求、执行模式及架构状态，<code>run</code> 指向共享区。<code>mmio_needed</code>、<code>mmio_fragments</code> 和 <code>mmio_cur_fragment</code> 跟踪尚待完成的 MMIO；<code>arch.complete_userspace_io</code> 保存重新进入内核后的继续处理函数。这些属于内核内部状态，不能用共享区中的一个 exit_reason 代替。<a href="{{ linux_source }}include/linux/kvm_host.h#L330-L389">内核 vCPU 对象</a></p>
 </section>
 
+<section id="completion" class="mechanism-section">
+  <h2>暂停边界：完成当前 I/O 后停止执行</h2>
+  <p>前面的读取沿“返回 MMIO 请求 → QEMU 填入结果 → 再次 KVM_RUN”完成。管理线程若在这个往返中要求暂停，仍需走完当前指令的交接，随后停止执行新的客户机指令。对于 KVM_EXIT_IO、KVM_EXIT_MMIO 等接口，设备回调结束时，内核可能还保留尚未完成的指令模拟；KVM API 要求重新进入 KVM_RUN，才能把这部分客户机状态视为一致。这个顺序直接影响暂停、快照与热迁移。</p>
+  <table><thead><tr><th scope="col">阶段</th><th scope="col">共享区</th><th scope="col">内核中的读取状态</th></tr></thead><tbody>
+    <tr><td>请求返回</td><td>MMIO 地址、长度及读方向有效</td><td>等待用户态提供读结果，指令未完成</td></tr>
+    <tr><td>QEMU 设备回调完成</td><td>data 中已有读取结果</td><td>仍待下一次进入；内核尚未消费结果</td></tr>
+    <tr><td>下一次 KVM_RUN</td><td>内核读取 data；必要时发布下一个片段</td><td>消费结果、推进片段或完成指令</td></tr>
+    <tr><td>完成后继续执行或返回</td><td>随后一次返回按新的原因解释</td><td>可以进入客户机；也可以响应暂停而不执行新指令</td></tr>
+  </tbody></table>
+  <h3>设备已经返回数据，管理线程同时请求暂停</h3>
+  <p>假设 QEMU 已把上例的 <code>78 56 34 12</code> 写入共享区，此时收到暂停请求。若直接保存 CPU 状态，内核中的 MMIO 指令仍未完成；若直接恢复正常运行，客户机又可能执行更多指令。需要的动作是：重新进入 KVM，消费这次读取结果，随后停在下一条客户机指令执行之前。</p>
+  <p><code>immediate_exit = 1</code> 提供这个“完成待处理操作后立即返回”的入口。Linux 6.18 在 KVM_RUN 入口采样该字段，记录 <code>wants_to_run = false</code>；x86 路径先调用 <code>arch.complete_userspace_io</code> 指向的继续处理函数，再检查 wants_to_run。单片段读取完成后，KVM 以 <code>-EINTR</code> 返回，期间不执行新的客户机指令。多片段 I/O 若还需用户态提供数据，会先发布下一片段；调用方要继续交接，直到整个操作完成。<a href="{{ linux_source }}virt/kvm/kvm_main.c#L4475-L4478">入口采样</a>、<a href="{{ linux_source }}arch/x86/kvm/x86.c#L11936-L11952">完成与退出的顺序</a></p>
+  <p>这个字段在入口读取一次。单独改写它不会使一个已经在客户机中运行的 vCPU 立即退出；QEMU 结合信号 kick 让线程离开运行路径，并在必要的重新进入中完成 I/O。<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L3179-L3198">QEMU 的重新进入与 kick</a>、<a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L6693-L6707">I/O 完成约定</a></p>
+  <p>调用方要先检查 KVM_RUN 的返回值。常规返回值为 0 时才按 exit_reason 分派请求；信号等错误返回要走对应处理分支，不能重复消费共享区里上一次的 MMIO 数据。</p>
+</section>
+
 <section id="notifications" class="mechanism-section">
   <h2>通知优化：ioeventfd 与 irqfd 的处理路径</h2>
   <p>上例的寄存器读取需要设备返回 4 字节结果，vCPU 必须等待这次读取完成。virtio 的队列 doorbell 写入则只表示“队列里有新请求”：描述符和缓冲区已经由客户机写入共享内存，后端可以异步处理。KVM 因而可以用事件通知替代这次通用用户态寄存器回调。</p>
@@ -118,22 +134,6 @@ mmio.data[0..3]   = 78 56 34 12</code></pre>
     <tr><td>irqfd</td><td>后端完成事件 → KVM 中断路由 → 客户机</td><td>经 QEMU 中转完成通知与显式注入的步骤</td><td>发布完成、路由、注入资格判断及可能的唤醒</td></tr>
   </tbody></table>
   <p>eventfd 中不传网包、磁盘数据或描述符链。提交方向由后端读取 avail 和描述符，完成方向由客户机读取 used；双方还须遵守队列的内存顺序。通知次数可以因批处理或通知抑制而少于请求数。队列的具体布局见<a href="qemu-network-tx.html#virtqueue">virtqueue 数据结构与发包过程</a>。</p>
-</section>
-
-<section id="completion" class="mechanism-section">
-  <h2>暂停边界：完成当前 I/O 后停止执行</h2>
-  <p>用户态设备回调完成时，内核可能仍保留尚未结束的指令模拟。对于 KVM_EXIT_IO、KVM_EXIT_MMIO 等接口，KVM API 要求重新进入 KVM_RUN，让内核完成交接，再把客户机状态视为一致。这个顺序直接影响暂停、快照与热迁移。</p>
-  <table><thead><tr><th scope="col">阶段</th><th scope="col">共享区</th><th scope="col">内核中的读取状态</th></tr></thead><tbody>
-    <tr><td>请求返回</td><td>MMIO 地址、长度及读方向有效</td><td>等待用户态提供读结果，指令未完成</td></tr>
-    <tr><td>QEMU 设备回调完成</td><td>data 中已有读取结果</td><td>仍待下一次进入；内核尚未消费结果</td></tr>
-    <tr><td>下一次 KVM_RUN</td><td>内核读取 data；必要时发布下一个片段</td><td>消费结果、推进片段或完成指令</td></tr>
-    <tr><td>完成后继续执行或返回</td><td>随后一次返回按新的原因解释</td><td>可以进入客户机；也可以响应暂停而不执行新指令</td></tr>
-  </tbody></table>
-  <h3>设备已经返回数据，管理线程同时请求暂停</h3>
-  <p>假设 QEMU 已把上例的 <code>78 56 34 12</code> 写入共享区，此时收到暂停请求。若直接保存 CPU 状态，内核中的 MMIO 指令仍未完成；若直接恢复正常运行，客户机又可能执行更多指令。需要的动作是：重新进入 KVM，消费这次读取结果，随后停在下一条客户机指令执行之前。</p>
-  <p><code>immediate_exit = 1</code> 提供这个“完成待处理操作后立即返回”的入口。Linux 6.18 在 KVM_RUN 入口采样该字段，记录 <code>wants_to_run = false</code>；x86 路径先调用 <code>arch.complete_userspace_io</code> 指向的继续处理函数，再检查 wants_to_run。单片段读取完成后，KVM 以 <code>-EINTR</code> 返回，期间不执行新的客户机指令。多片段 I/O 若还需用户态提供数据，会先发布下一片段；调用方要继续交接，直到整个操作完成。<a href="{{ linux_source }}virt/kvm/kvm_main.c#L4475-L4478">入口采样</a>、<a href="{{ linux_source }}arch/x86/kvm/x86.c#L11936-L11952">完成与退出的顺序</a></p>
-  <p>这个字段在入口读取一次。单独改写它不会使一个已经在客户机中运行的 vCPU 立即退出；QEMU 结合信号 kick 让线程离开运行路径，并在必要的重新进入中完成 I/O。<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L3179-L3198">QEMU 的重新进入与 kick</a>、<a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L6693-L6707">I/O 完成约定</a></p>
-  <p>调用方要先检查 KVM_RUN 的返回值。常规返回值为 0 时才按 exit_reason 分派请求；信号等错误返回要走对应处理分支，不能重复消费共享区里上一次的 MMIO 数据。</p>
 </section>
 
 <section id="implementation" class="mechanism-section">

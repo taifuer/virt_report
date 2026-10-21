@@ -50,9 +50,9 @@ def test_directory_has_reading_order_and_real_anchors_only():
 
 def test_directory_counts_primary_articles_without_extra_related_rows():
     counts = {topic['slug']: len(topic['articles']) for topic in mechanisms.topics()}
-    assert counts == {'virtualization-basics': 1, 'cpu-virtualization': 5, 'memory-virtualization': 5,
-                      'device-virtualization': 11, 'interrupt-virtualization': 2,
-                      'vm-startup': 2, 'migration': 6, 'hotplug': 4,
+    assert counts == {'virtualization-basics': 1, 'cpu-virtualization': 6, 'memory-virtualization': 5,
+                      'device-virtualization': 15, 'interrupt-virtualization': 2,
+                      'vm-startup': 2, 'migration': 7, 'hotplug': 4,
                       'live-upgrade': 1, 'qemu-internals': 6, 'libvirt-internals': 2,
                       'kvm-internals': 2}
     assert [article['slug'] for article in
@@ -78,6 +78,7 @@ def test_merged_io_topic_keeps_legacy_anchor_without_duplicate_articles():
         'device-virtualization',
         'virtio-device-initialization',
         'qemu-network-tx', 'qemu-vhost-net', 'dpdk-vhost-user-net', 'spdk-vhost-user-blk', 'qemu-vfio-dma',
+        'iommu-dma', 'iommufd', 'qemu-viommu', 'virtio-gpu',
         'qemu-virtio-blk', 'virtio-net-rx', 'packed-virtqueue', 'vhost-vdpa',
     ]
     page = render.render_mechanisms_html(Config())

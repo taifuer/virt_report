@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>virtio-gpu：二维资源与画面更新 - virt-report</title>
+  <meta name="description" content="以一幅画面的局部更新，串起客户机 backing、QEMU 图像、scanout、TRANSFER 与 FLUSH，并比较二维显示与三维加速路径。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
+  <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=f8df58691fc2">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=f8df58691fc2">
+<link rel="stylesheet" href="../assets/virtio-gpu-lab.css?v=f8df58691fc2"></head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=85f3a75ef38f" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="device-virtualization.html">设备与 I/O 虚拟化</a></div>
+    <h1>virtio-gpu：二维资源与画面更新</h1>
+    <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、从客户机像素到显示输出</a></li><li><a href="#resources">二、图像资源、后备内存与显示输出</a></li><li><a href="#update-flow">三、一幅画面的建立与局部更新</a><ol><li><a href="#update-flow-part-1">1. 建立资源和初始画面</a></li><li><a href="#update-flow-part-2">2. 更新一个 128 × 64 的矩形</a></li></ol></li><li><a href="#interactive">四、资源更新的交互演示</a></li><li><a href="#commands">五、控制命令与 QEMU 处理路径</a><ol><li><a href="#commands-part-1">1. 描述符链承载命令和响应</a></li><li><a href="#commands-part-2">2. 从队列通知到更新显示</a></li></ol></li><li><a href="#completion">六、完成语义与资源回收</a></li><li><a href="#evolution">七、从二维像素传输到三维加速</a></li><li><a href="#summary">八、总结与进一步阅读</a></li><li><a href="#references">九、参考资料</a></li></ol></nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+<h2><span class="mechanism-heading-number">一、</span>从客户机像素到显示输出</h2>
+<p>虚拟机中的桌面程序把窗口画进客户机内存，QEMU 则需要把这些像素交给宿主的显示窗口或远程显示服务。virtio-gpu 用资源编号、内存列表和更新命令连接这两端：客户机管理自己的绘图缓冲区，设备端保存图像资源，scanout 选择其中一块区域作为显示输出。</p>
+<p>本文沿着一幅 1024 × 768 画面的更新过程，分析 QEMU 的普通二维后端。先建立完整画面，再只修改其中一个 128 × 64 的矩形。这条路径包含资源创建、内存关联、像素传输、输出绑定和更新通知，也能说明三维加速后来改变了哪些环节。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p>
+</section>
+<section id="resources" class="mechanism-section">
+<h2><span class="mechanism-heading-number">二、</span>图像资源、后备内存与显示输出</h2>
+<p>一幅画面在这条路径中涉及三组对象。**客户机后备内存（backing）**保存客户机写入的像素；**资源（resource）**是设备通过 <code>resource_id</code> 管理的图像对象；<strong>scanout</strong>表示一个显示输出及其选中的资源区域。QEMU 普通二维后端给资源分配 pixman 图像，像素传输时把 backing 中的数据复制到这张图像中。</p>
+<p>scanout 不要求再保存一份完整像素。QEMU 创建的 <code>DisplaySurface</code> 可以直接引用 pixman 图像的相应区域。后续 <code>RESOURCE_FLUSH</code> 告诉显示后端哪些区域更新了，显示后端再按自身方式处理窗口重绘或远程传输。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/hw/virtio/virtio-gpu.h#L45">资源与输出结构</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/display/virtio-gpu.c#L655">显示表面的建立</a>。</p>
+<figure class="mechanism-diagram" data-diagram="virtio-gpu-resources" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>二维资源的内存与输出关系</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看二维资源的内存与输出关系" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="二维资源的内存与输出关系">
+    <img src="../assets/virtio-gpu-resources.svg?v=f8df58691fc2" alt="命令通过 controlq 到达 QEMU；像素由 TRANSFER 从客户机 backing 复制到 pixman 图像。scanout 引用资源区域，FLUSH 提交显示更新，cursorq 单独处理光标。" loading="lazy">
+  </div>
+  <figcaption>命令通过 controlq 到达 QEMU；像素由 TRANSFER 从客户机 backing 复制到 pixman 图像。scanout 引用资源区域，FLUSH 提交显示更新，cursorq 单独处理光标。 <a href="../assets/virtio-gpu-resources.svg?v=f8df58691fc2" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+    accTitle: virtio-gpu 二维资源、后备内存与输出
+    accDescr: 客户机驱动通过 controlq 管理资源，通过 cursorq 更新光标。TRANSFER 将客户机 backing 的像素复制到 QEMU pixman 图像，scanout 表面引用图像区域，FLUSH 通知显示后端。
+    subgraph guest[客户机]
+        direction LR
+        driver[virtio-gpu 驱动]
+        pages[backing 内存段列表&lt;br/&gt;像素由客户机写入]
+        driver --- pages
+    end
+    subgraph queues[共享 virtqueue]
+        direction LR
+        ctrl[controlq&lt;br/&gt;命令 + 响应]
+        cursor[cursorq&lt;br/&gt;光标选择与移动]
+    end
+    subgraph host[QEMU 二维后端]
+        direction LR
+        resource[resource 7&lt;br/&gt;iov + pixman image]
+        scanout[scanout 0&lt;br/&gt;资源编号 + 可见矩形]
+        resource -. 表面引用像素区域 .-&gt; scanout
+    end
+    output[显示后端&lt;br/&gt;窗口 / 远程显示服务]
+    driver --&gt; ctrl
+    driver --&gt; cursor
+    ctrl --&gt;|资源和输出命令| resource
+    pages ==&gt;|TRANSFER：逐行复制像素| resource
+    cursor --&gt;|光标更新| output
+    scanout --&gt;|FLUSH：通知更新矩形| output
+</code></pre></details>
+</figure>
+<p>图中的 controlq 和 cursorq 都是 virtqueue。controlq 承载创建资源、关联内存、传输和显示设置等命令；cursorq 承载光标图像选择与位置移动。光标单独排队，有助于避免其操作排在大量普通控制请求之后。不过，光标图像本身仍要先在 controlq 上准备好，再通知 cursorq 使用，跨队列依赖需要明确同步。</p>
+<p>下面的例子使用资源 7、输出 0，像素格式为 <code>VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM</code>，每像素 4 字节。其中 X 字节不表示透明度。画面每行占 4096 字节，总计 3 MiB。客户机 backing 可以由不连续的内存段组成，设备按内存列表的顺序把它们视为一段逻辑字节序列。</p>
+</section>
+<section id="update-flow" class="mechanism-section">
+<h2><span class="mechanism-heading-number">三、</span>一幅画面的建立与局部更新</h2>
+<h3 id="update-flow-part-1"><span class="mechanism-heading-number">1. </span>建立资源和初始画面</h3>
+<p>客户机先发出 <code>RESOURCE_CREATE_2D</code>，提供资源编号、格式和尺寸。QEMU 分配 <code>virtio_gpu_simple_resource</code>，建立 pixman 图像，保存到资源列表。此时图像对象已经存在，客户机尚未把 backing 告诉设备，初始像素也还没有传过来。</p>
+<p><code>RESOURCE_ATTACH_BACKING</code> 随后提供一组 <code>virtio_gpu_mem_entry</code>。QEMU 用设备的 DMA 地址空间解析这些地址，建立 <code>res-&gt;iov</code>。普通、未使用客户机 IOMMU 的配置下，列表中的地址对应 GPA；启用相关地址转换功能时，应按设备可访问的 DMA 地址理解。关联 backing 建立访问关系，不会在这一操作中复制整幅图像。</p>
+<p>本例接着传输完整的 1024 × 768 画面，再通过 <code>SET_SCANOUT</code> 把输出 0 关联到资源 7 的完整区域，最后发送 <code>RESOURCE_FLUSH</code>。先填好图像再接入显示可以避免展示未准备好的内容。资源和输出建立后，后续更新不必重复 CREATE、ATTACH 和 SET_SCANOUT。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/display/virtio-gpu.c#L242">创建资源</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/display/virtio-gpu.c#L909">关联 backing</a>。</p>
+<h3 id="update-flow-part-2"><span class="mechanism-heading-number">2. </span>更新一个 128 × 64 的矩形</h3>
+<p>现在客户机只修改 <code>(x=128, y=96)</code> 开始的矩形。写入 backing 后，设备端 pixman 图像仍保留旧像素。客户机提交 <code>TRANSFER_TO_HOST_2D</code>，带上资源编号、矩形和 backing 中的起始偏移：</p>
+<pre><code class="language-text">画面：1024 × 768，每像素 4 字节
+行跨度 stride = 1024 × 4 = 4096 B
+矩形 r = { x: 128, y: 96, width: 128, height: 64 }
+offset = 96 × 4096 + 128 × 4 = 393728 B
+每行复制 = 128 × 4 = 512 B
+本次有效像素 = 512 × 64 = 32768 B = 32 KiB
+</code></pre>
+<p>QEMU 对这个窄于整幅画面的矩形逐行复制。第 <code>h</code> 行的源偏移是 <code>offset + stride × h</code>，目的偏移是 <code>(y + h) × stride + x × 4</code>。因此每行跳过的未更新像素不会被误当成连续的矩形数据；<code>offset</code> 是 backing 字节流内的偏移，<code>r.x/r.y</code> 则指定资源图像中的位置。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/display/virtio-gpu.c#L433">实际复制循环</a>。</p>
+<p>传输完成后，客户机对同一区域发出 <code>RESOURCE_FLUSH</code>。QEMU 查找引用资源 7 的输出，把更新矩形与各输出的可见区域求交，再调用 <code>dpy_gfx_update()</code>。如果 scanout 只显示资源的一个子区域，坐标还要转换为该输出内部的坐标。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/display/virtio-gpu.c#L558">区域更新</a>。</p>
+<figure class="mechanism-diagram" data-diagram="virtio-gpu-update-sequence" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>从初始画面到局部更新的命令顺序</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看从初始画面到局部更新的命令顺序" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="从初始画面到局部更新的命令顺序">
+    <img src="../assets/virtio-gpu-update-sequence.svg?v=f8df58691fc2" alt="初始化阶段建立 backing、资源与输出的关系；运行阶段重复客户机写像素、TRANSFER 和 FLUSH。图中只展开最后一条命令的带 fence 响应，显示端消费更新独立发生。" loading="lazy">
+  </div>
+  <figcaption>初始化阶段建立 backing、资源与输出的关系；运行阶段重复客户机写像素、TRANSFER 和 FLUSH。图中只展开最后一条命令的带 fence 响应，显示端消费更新独立发生。 <a href="../assets/virtio-gpu-update-sequence.svg?v=f8df58691fc2" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
+    accTitle: virtio-gpu 资源初始化与局部更新顺序
+    accDescr: 驱动创建资源并关联 backing，传输完整初始画面，设置 scanout 并刷新；随后更新一个矩形，传输并刷新该矩形。命令的 fence 完成与显示端消费是独立的进度。
+    participant G as 客户机驱动 / backing
+    participant Q as QEMU 二维资源
+    participant D as 显示后端
+    G-&gt;&gt;Q: RESOURCE_CREATE_2D：资源 7，1024×768
+    G-&gt;&gt;Q: RESOURCE_ATTACH_BACKING：内存段列表
+    Note over G: 准备初始像素
+    G-&gt;&gt;Q: TRANSFER_TO_HOST_2D：完整画面，3 MiB
+    Note over Q: iov → pixman image
+    G-&gt;&gt;Q: SET_SCANOUT：输出 0 → 资源 7
+    Q-&gt;&gt;D: 接入资源图像的可见区域
+    G-&gt;&gt;Q: RESOURCE_FLUSH：完整画面
+    Q-&gt;&gt;D: 提交初始更新
+    Note over G: 修改 (128,96) 开始的&lt;br/&gt;128×64 矩形
+    G-&gt;&gt;Q: TRANSFER_TO_HOST_2D：矩形，32 KiB
+    Note over Q: 逐行更新 pixman 像素
+    G-&gt;&gt;Q: RESOURCE_FLUSH：同一矩形，带 FENCE
+    Q-&gt;&gt;D: dpy_gfx_update：更新区域
+    Q--&gt;&gt;G: 响应 + 对应 fence_id&lt;br/&gt;发布 used 并通知驱动
+    Note over D: 独立消费更新&lt;br/&gt;最终呈现时刻不由此 fence 保证
+</code></pre></details>
+</figure>
+</section>
+<section id="interactive" class="mechanism-section">
+<h2><span class="mechanism-heading-number">四、</span>资源更新的交互演示</h2>
+<p>依次点击下一步，可以观察客户机 backing、QEMU 图像与显示后端的变化。初始化完成后，矩形先出现在客户机内存中，再经 TRANSFER 进入 QEMU 图像，最后通过 FLUSH 通知显示端。可以切换更新区域大小，对比有效像素量。</p>
+<section class="virtio-gpu-lab" data-virtio-gpu-lab data-mechanism-view="lab" aria-labelledby="virtio-gpu-lab-title">
+  <div class="mechanism-view-heading"><h3 id="virtio-gpu-lab-title">二维资源与局部画面更新</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <p>1024 × 768 · 每像素 4 B · 资源 7 · 输出 0</p>
+  <div class="virtio-gpu-controls" data-gpu-controls hidden>
+    <label for="gpu-update-size">更新矩形<select id="gpu-update-size" data-gpu-size><option value="small">128 × 64 · 32 KiB</option><option value="large">256 × 128 · 128 KiB</option></select></label>
+    <div class="virtio-gpu-actions" role="group" aria-label="图像更新演示控制"><button type="button" data-gpu-back>上一步</button><button type="button" data-gpu-next>下一步</button><button type="button" data-gpu-reset>重置</button></div>
+  </div>
+  <p class="virtio-gpu-status" data-gpu-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <div class="virtio-gpu-scenes">
+    <section data-gpu-node="guest"><h4>客户机 backing</h4><div class="virtio-gpu-screen" data-gpu-image="guest"><span class="virtio-gpu-window"></span><span class="virtio-gpu-patch"></span></div><p data-gpu-guest-state>初始像素 A 已准备</p><small>客户机内存 · 行跨度 4096 B</small></section>
+    <section data-gpu-node="host"><h4>QEMU 图像资源</h4><div class="virtio-gpu-screen" data-gpu-image="host" data-version="none"><span class="virtio-gpu-window"></span><span class="virtio-gpu-patch"></span></div><p data-gpu-host-state>尚未创建资源</p><small data-gpu-backing-state>等待 CREATE 和 ATTACH</small></section>
+    <section data-gpu-node="display"><h4>显示后端示意</h4><div class="virtio-gpu-screen" data-gpu-image="display" data-version="none"><span class="virtio-gpu-window"></span><span class="virtio-gpu-patch"></span></div><p data-gpu-display-state>尚未接入输出</p><small data-gpu-scanout-state>等待 SET_SCANOUT</small></section>
+  </div>
+  <div class="virtio-gpu-transport" aria-label="数据与控制路径"><span data-gpu-copy>backing → TRANSFER → pixman</span><span data-gpu-flush>scanout 引用图像 · FLUSH 通知显示端</span></div>
+  <div class="virtio-gpu-details">
+    <section><h4>controlq · 当前操作</h4><code data-gpu-command>等待创建资源</code><p data-gpu-fields>resource_id = 7</p><p data-gpu-response>尚无命令响应</p></section>
+    <section><h4>数据与输出状态</h4><dl><div><dt>本步复制</dt><dd data-gpu-bytes>0 B</dd></div><div><dt>局部更新</dt><dd data-gpu-rect>128 × 64 · offset 393728 B</dd></div><div><dt>显示通知</dt><dd data-gpu-notify>尚未发出</dd></div></dl></section>
+  </div>
+  <p class="virtio-gpu-explanation" data-gpu-detail>先创建资源、关联 backing，再把完整初始画面传给 QEMU。</p>
+  <p class="virtio-gpu-note">右侧表示显示后端最近消费的画面更新。scanout 表面可以直接引用 QEMU 图像，并非额外复制的一份 framebuffer；此处不模拟物理屏幕的刷新时刻。</p>
+  <div data-gpu-fallback><ol><li>CREATE 建立设备端资源，ATTACH 关联客户机 backing。</li><li>TRANSFER 复制完整初始画面，SET_SCANOUT 绑定输出，FLUSH 通知显示更新。</li><li>客户机修改矩形后，再次 TRANSFER 和 FLUSH；带 fence 响应与最终呈现分别推进。</li></ol><p>启用 JavaScript 可逐步查看三处画面变化，并切换更新矩形大小。</p></div>
+</section>
+<p>演示把显示后端消费更新单独列成一步，以便区分命令完成与画面呈现。真实的 scanout 表面可以与 QEMU 图像共享像素；右侧画面表示显示端最近处理的更新，不表示 QEMU 又分配了第三份 framebuffer，也不模拟显示器的刷新时刻。</p>
+</section>
+<section id="commands" class="mechanism-section">
+<h2><span class="mechanism-heading-number">五、</span>控制命令与 QEMU 处理路径</h2>
+<h3 id="commands-part-1"><span class="mechanism-heading-number">1. </span>描述符链承载命令和响应</h3>
+<p>驱动把命令头和参数放在设备可读的描述符中，把响应缓冲区放在设备可写的描述符中，再发布到 controlq。ATTACH 命令后跟内存段列表，像素则留在列表描述的 backing 中。普通 TRANSFER 命令只携带资源、矩形和偏移，不需要把整幅图像塞进命令队列。</p>
+<table>
+<thead>
+<tr>
+<th scope="col">结构</th>
+<th scope="col">关键字段</th>
+<th scope="col">本例中的含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>virtio_gpu_ctrl_hdr</code>，24 B</td>
+<td><code>type</code>、<code>flags</code>、<code>fence_id</code>、<code>ctx_id</code>、<code>ring_idx</code></td>
+<td>标识命令及同步信息；二维基础命令不使用三维渲染上下文</td>
+</tr>
+<tr>
+<td><code>virtio_gpu_rect</code>，16 B</td>
+<td><code>x</code>、<code>y</code>、<code>width</code>、<code>height</code></td>
+<td>资源内的矩形坐标</td>
+</tr>
+<tr>
+<td><code>virtio_gpu_mem_entry</code>，16 B</td>
+<td><code>addr</code>、<code>length</code>、padding</td>
+<td>一段客户机后备内存；列表按顺序组成 backing</td>
+</tr>
+<tr>
+<td><code>virtio_gpu_transfer_to_host_2d</code>，56 B</td>
+<td>命令头、矩形、<code>offset</code>、<code>resource_id</code>、padding</td>
+<td>从 backing 偏移 393728 B 读取资源 7 的更新像素</td>
+</tr>
+<tr>
+<td>QEMU <code>virtio_gpu_simple_resource</code></td>
+<td><code>resource_id</code>、<code>iov</code>、<code>image</code>、<code>scanout_bitmask</code></td>
+<td>联系客户机内存、设备端图像与引用它的输出</td>
+</tr>
+</tbody>
+</table>
+<p>协议中的多字节整数字段采用小端序。<code>resource_id</code> 是客户机与设备之间使用的对象编号，与像素的地址和 virtqueue 描述符编号各自独立。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/standard-headers/linux/virtio_gpu.h#L137">协议结构定义</a>。</p>
+<h3 id="commands-part-2"><span class="mechanism-heading-number">2. </span>从队列通知到更新显示</h3>
+<p>QEMU 收到 controlq 通知后，<code>virtio_gpu_handle_ctrl_cb()</code> 调度 bottom half；<code>virtio_gpu_handle_ctrl()</code> 取出描述符链并加入内部 <code>cmdq</code>；<code>virtio_gpu_process_cmdq()</code> 再调用所选后端的处理函数。普通二维后端按命令类型分派到创建资源、复制像素和刷新区域等函数。这条软件路径由 QEMU 执行，不要求客户机取得一块物理 GPU 的所有权。</p>
+<p>请求处理结束后，QEMU 把响应写入描述符链中的可写部分，发布 used 记录，并通过 virtio 通知机制提示驱动。错误响应同样需要检查：不存在的资源编号、缺失 backing、越界矩形或内存分配失败，都不能作为正常画面更新继续处理。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/display/virtio-gpu.c#L1021">队列入口与分派</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/display/virtio-gpu.c#L160">响应与 used 发布</a>。</p>
+</section>
+<section id="completion" class="mechanism-section">
+<h2><span class="mechanism-heading-number">六、</span>完成语义与资源回收</h2>
+<p>virtio-gpu 允许控制命令采用异步处理。驱动需要确认命令处理已经完成时，在命令头设置 <code>VIRTIO_GPU_FLAG_FENCE</code>；设备在满足该命令的完成条件后返回携带对应 <code>fence_id</code> 的响应。普通二维复制通常直接在 QEMU 软件处理路径内完成，而加速后端还可能等待渲染器完成操作。<code>fence_id</code> 用来对应请求和完成，不能仅凭普通 used 记录就推广出所有后端的渲染完成保证。<a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">Virtio 1.2，第 5.7.6.5 节：命令生命周期与 fence</a>。</p>
+<p>这里需要区分三个进度：客户机的像素写入已经完成、设备对命令的处理已经完成、显示后端已经消费更新并最终呈现。FLUSH 的带 fence 响应也不能证明远程客户端已经收到图像，或物理显示器已经扫描到那一行。评估桌面延迟时，需要把这些阶段分别观察。</p>
+<p>释放资源时同样要处理依赖关系。驱动先停止对资源的继续提交，并确保仍在使用 backing 的工作完成；输出可以用 <code>SET_SCANOUT(resource_id=0)</code> 关闭，或改绑其他资源。之后解除 backing、释放资源，并在相应操作完成后回收客户机内存。QEMU 的资源销毁函数会清理关联输出、pixman 引用和映射，驱动仍需遵守命令的完成顺序，不能在设备继续访问时复用 backing。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/display/virtio-gpu.c#L388">资源销毁</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/display/virtio-gpu.c#L881">映射清理</a>。</p>
+</section>
+<section id="evolution" class="mechanism-section">
+<h2><span class="mechanism-heading-number">七、</span>从二维像素传输到三维加速</h2>
+<p>二维资源路径把客户机绘图和宿主显示分开，命令少、状态关系清楚，适合普通控制台与基本桌面。但绘制工作仍在客户机软件栈中完成，更新画面还要经过像素复制。1024 × 768 的 32 位画面若每秒完整传输 60 次，仅有效像素量就约为 180 MiB/s；这还没有计入内存读写流量、队列处理和显示编码。局部更新把本例一次传输从 3 MiB 减到 32 KiB，适合变化区域较小的界面；全屏视频和复杂三维场景难以仅靠这种办法降本。</p>
+<p>后续扩展分别针对渲染、资源共享和进程隔离展开：</p>
+<table>
+<thead>
+<tr>
+<th scope="col">路径或能力</th>
+<th scope="col">主要变化</th>
+<th scope="col">引入的条件与代价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>普通二维后端</td>
+<td>客户机形成像素，QEMU 复制并通知显示</td>
+<td>无需宿主三维渲染器；客户机软件绘制与像素复制仍占用 CPU 和带宽</td>
+</tr>
+<tr>
+<td>virgl / virglrenderer</td>
+<td>客户机发送图形命令表示，宿主渲染器调用图形 API</td>
+<td>依赖客户机 Mesa、协议能力和宿主渲染栈的兼容性；增加渲染上下文及同步状态</td>
+</tr>
+<tr>
+<td>Venus</td>
+<td>通过 virtio-gpu 承载 Vulkan 协议</td>
+<td>需要相应 capset、上下文初始化及 host blob 等能力；不能由普通二维后端自动获得</td>
+</tr>
+<tr>
+<td>resource blob / host-visible memory</td>
+<td>扩展资源的内存表示与映射，服务共享和加速路径</td>
+<td>需协商功能并满足后端、内核和内存映射条件；是否减少复制取决于具体路径</td>
+</tr>
+<tr>
+<td>rutabaga_gfx / gfxstream</td>
+<td>提供另一套渲染与跨域集成后端</td>
+<td>按 capset 接入相应渲染、显示能力，与 virglrenderer 属于不同实现选择</td>
+</tr>
+<tr>
+<td>vhost-user-gpu</td>
+<td>把图形设备后端移到独立进程</td>
+<td>改变进程边界和通信方式；渲染能力取决于实际后端</td>
+</tr>
+</tbody>
+</table>
+<p>这些能力可以组合，优化目标也不同：三维命令处理减少客户机软件渲染负担，资源共享降低某些路径上的复制成本，独立后端进程调整隔离边界。无论选择哪种实现，都仍需维护资源的所有权、完成顺序和显示输出关系。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/system/devices/virtio/virtio-gpu.rst#L18">QEMU 10.2 的设备后端说明</a>、<a href="https://docs.mesa3d.org/drivers/venus.html">Mesa Venus</a>。</p>
+</section>
+<section id="summary" class="mechanism-section">
+<h2><span class="mechanism-heading-number">八、</span>总结与进一步阅读</h2>
+<p>普通二维 virtio-gpu 的主线可以归纳为：建立资源及 backing，选择输出，再反复执行像素写入、TRANSFER 和 FLUSH。资源编号解决对象引用，内存段列表解决 backing 的访问，矩形解决更新范围，fence 解决命令处理的同步。这几组关系清楚之后，便能沿着同一条路径分析画面未更新、局部内容错误或显示延迟等问题。</p>
+<ul>
+<li><a href="virtio-device-initialization.html">virtio 设备初始化</a>：功能协商、队列配置和设备状态。</li>
+<li><a href="qemu-network-tx.html">QEMU 的 virtio-net 发送路径</a>：描述符链、avail 与 used 的交接。</li>
+<li><a href="qemu-vfio-dma.html">VFIO 设备直通与 DMA</a>：物理设备分配与 DMA 地址转换，理解另一类设备使用方式。</li>
+</ul>
+</section>
+<section id="references" class="mechanism-section">
+<h2><span class="mechanism-heading-number">九、</span>参考资料</h2>
+<ul>
+<li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">Virtio 1.2，第 5.7 节 GPU Device</a>：资源、输出、队列与控制命令。</li>
+<li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/display/virtio-gpu.c#L242">QEMU 10.2：virtio-gpu.c</a>：二维资源、数据复制、输出绑定与命令完成。</li>
+<li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/hw/virtio/virtio-gpu.h#L45">QEMU 10.2：virtio-gpu.h</a>：QEMU 内部资源和 scanout 结构。</li>
+<li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/system/devices/virtio/virtio-gpu.rst#L45">QEMU 10.2：VirtIO GPU 设备文档</a>：二维、virgl、Venus 和 rutabaga 后端。</li>
+<li><a href="https://docs.mesa3d.org/drivers/venus.html">Mesa：Virtio-GPU Venus</a>：Vulkan 协议及渲染栈要求。</li>
+</ul>
+</section>
+</div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#device-virtualization">设备与 I/O 虚拟化原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=85f3a75ef38f"></script>
+<script src="../assets/mechanism-viewer.js?v=f8df58691fc2" defer></script>
+<script src="../assets/virtio-gpu-lab.js?v=f8df58691fc2" defer></script></body>
+</html>

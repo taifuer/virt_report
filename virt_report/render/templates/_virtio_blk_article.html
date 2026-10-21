@@ -52,7 +52,6 @@
         异步完成 → virtio_blk_rw_complete(req, ret)</code></pre>
   <p><code>BlockBackend</code>提供设备访问入口；raw 文件示例继续经过格式节点和文件协议节点。<a href="qemu-qcow2.html">qcow2 的地址映射与写时复制</a>还会处理簇分配、映射与元数据，不能把客户机磁盘偏移直接当作镜像文件偏移。<code>blk_aio_pwritev()</code>接受完成回调，内部进入协程执行块操作；即使操作立即完成，也通过延后回调避免在提交尚未返回时归还请求。<a href="{{ qemu_source }}block/block-backend.c#L1563-L1634">异步接口与回调安排</a></p>
   <p>此时链头 5 已从队列取出，块后端接受了偏移 1 MiB 的写入，原链尚未发布 used。异步请求等待完成期间，缓冲区仍由这次请求占用；后端回调通过保存的请求对象找回它。</p>
-  <p>请求处理可以运行在配置的 IOThread 中。QEMU 10.2 使用逐队列的 <code>vq_aio_context</code>映射，多个队列可以分配给不同线程。队列数量描述客户机的提交通道，IOThread 数描述宿主的处理线程，后端能力决定实际可推进的 I/O 并发。协程和线程的执行关系见<a href="qemu-aio-iothread.html">《QEMU AioContext、协程与 IOThread》</a>。</p>
 </section>
 
 <section id="completion" class="mechanism-section">
@@ -113,6 +112,7 @@ len = 设备写入的缓冲区长度，本次只有 status 的 1 字节</code></
   <h2>多队列与 IOThread 的收益和代价</h2>
   <p>virtio-blk 将命令、数据和完成组织为共享队列，减少了逐个模拟传统磁盘寄存器的工作。批量消费和相邻请求合并继续降低每次提交的开销，但共享队列和单线程处理也会成为高 IOPS 设备的瓶颈。多队列让客户机分散提交；IOThread 将处理工作从主事件循环中分离。</p>
   <p>单个设备的多条队列若仍归同一 IOThread，宿主侧处理仍集中于一条线程。QEMU 引入 <code>iothread-vq-mapping</code>后，可按队列分配多个 IOThread；QEMU 10.2 的设备直接维护 <code>vq_aio_context[]</code>，块请求和重试路径也相应处理多线程访问。<a href="https://github.com/qemu/qemu/commit/b6948ab01df068bef591868c22d1f873d2d05cde">引入逐队列线程映射的提交</a>、<a href="{{ qemu_source }}hw/block/virtio-blk.c#L1425-L1480">当前映射初始化</a></p>
+  <p>以链头 5 的请求为例，处理入口改由配置的 IOThread 调度，仍经同一个请求对象关联后端回调，最后发布 status 和 used。线程调整不会改变前面的完成与刷新语义。队列数量描述客户机的提交通道，IOThread 数描述宿主的处理线程，后端能力决定实际可推进的 I/O 并发。协程和线程的执行关系见<a href="qemu-aio-iothread.html">《QEMU AioContext、协程与 IOThread》</a>。</p>
   <p>更多队列增加并发机会，也会带来线程调度、缓存竞争和 NUMA 访问成本；零散的小请求还可能降低合并机会。应结合客户机负载、请求深度、后端延迟和处理线程占用选择配置。性能比较尤其要保持缓存与刷新语义一致，否则降低持久化要求得到的延迟改善，无法说明队列路径本身变快了。</p>
 </section>
 

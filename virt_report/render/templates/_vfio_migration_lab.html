@@ -1,0 +1,56 @@
+<section class="vfio-migration-lab" data-vfio-migration-lab data-mechanism-view="lab" aria-labelledby="vfio-migration-lab-title">
+  <div class="mechanism-view-heading">
+    <h3 id="vfio-migration-lab-title">源端与目的端的状态交接</h3>
+    <button type="button" data-mechanism-expand hidden>全屏显示</button>
+  </div>
+  <p>分别观察 RAM 和设备状态的传输，以及两端 vCPU、VF 和 DMA 的变化。四个方块代表客户机 RAM 中的示例页面，版本号表示内容变化。</p>
+  <div class="vfio-migration-controls" data-vfio-migration-controls hidden>
+    <label for="vfio-migration-scenario">迁移场景
+      <select id="vfio-migration-scenario" data-vfio-migration-scenario>
+        <option value="precopy">设备支持预拷贝</option>
+        <option value="stopcopy">设备仅支持停机拷贝</option>
+        <option value="cancel">运行中取消预拷贝</option>
+      </select>
+    </label>
+    <div class="vfio-migration-actions" role="group" aria-label="VFIO 迁移过程控制">
+      <button type="button" data-vfio-migration-back>上一步</button>
+      <button type="button" data-vfio-migration-next>下一步</button>
+      <button type="button" data-vfio-migration-reset>重置</button>
+    </div>
+  </div>
+  <p class="vfio-migration-status" data-vfio-migration-status role="status" aria-live="polite" aria-atomic="true" hidden></p>
+  <p class="vfio-migration-authority" data-vfio-migration-authority>运行权：源端；目的端不执行客户机业务</p>
+  <div class="vfio-migration-hosts">
+    <section class="vfio-migration-host" data-vfio-migration-source data-running="true" aria-label="源端状态">
+      <h4>源端</h4><p class="vfio-migration-cpu" data-vfio-migration-source-cpu>vCPU 运行中</p>
+      <div class="vfio-migration-device"><span>网卡 VF</span><strong data-vfio-migration-source-device>RUNNING</strong><small data-vfio-migration-source-dma>DMA 可继续写入 RAM</small></div>
+      <div class="vfio-migration-dma-arrow" data-vfio-migration-source-arrow aria-hidden="true">↓ DMA</div>
+      <div class="vfio-migration-ram" data-vfio-migration-source-ram aria-label="源端代表页面">
+        <div data-page="0"><strong>v1</strong><small>描述符页 A</small></div><div data-page="1"><strong>v1</strong><small>接收页 B</small></div><div data-page="2"><strong>v1</strong><small>接收页 C</small></div><div data-page="3"><strong>v1</strong><small>应用页 D</small></div>
+      </div>
+      <div class="vfio-migration-state"><span>设备内部状态</span><p data-vfio-migration-source-state>当前状态 · 持续更新</p></div>
+    </section>
+    <div class="vfio-migration-flows" aria-label="两类迁移数据">
+      <div data-vfio-migration-ram-flow><strong>RAM 页面</strong><span class="vfio-migration-flow-arrow" aria-hidden="true">→</span><small data-vfio-migration-ram-progress>尚未传输</small></div>
+      <div data-vfio-migration-device-flow><strong>设备状态字节流</strong><span class="vfio-migration-flow-arrow" aria-hidden="true">→</span><small data-vfio-migration-device-progress>尚未传输</small></div>
+    </div>
+    <section class="vfio-migration-host" data-vfio-migration-target data-running="false" aria-label="目的端状态">
+      <h4>目的端</h4><p class="vfio-migration-cpu" data-vfio-migration-target-cpu>vCPU 未运行</p>
+      <div class="vfio-migration-device"><span>兼容的网卡 VF</span><strong data-vfio-migration-target-device>STOP</strong><small data-vfio-migration-target-dma>无客户机 DMA</small></div>
+      <div class="vfio-migration-dma-arrow" data-vfio-migration-target-arrow aria-hidden="true">— DMA 停止</div>
+      <div class="vfio-migration-ram" data-vfio-migration-target-ram aria-label="目的端代表页面">
+        <div data-page="0"><strong>未接收</strong><small>描述符页 A</small></div><div data-page="1"><strong>未接收</strong><small>接收页 B</small></div><div data-page="2"><strong>未接收</strong><small>接收页 C</small></div><div data-page="3"><strong>未接收</strong><small>应用页 D</small></div>
+      </div>
+      <div class="vfio-migration-state"><span>设备内部状态</span><p data-vfio-migration-target-state>尚未加载</p></div>
+    </section>
+  </div>
+  <p class="vfio-migration-ack" data-vfio-migration-ack>等待初始加载确认</p>
+  <div class="vfio-migration-explanation" data-vfio-migration-explanation hidden>
+    <strong data-vfio-migration-title></strong><code data-vfio-migration-action></code><p data-vfio-migration-detail></p>
+  </div>
+  <p class="vfio-migration-note">演示把停止转换和恢复校验拆成逻辑步骤，便于观察屏障；RAM 与设备尾部的实际发送可交错。数据流标签为示意，未模拟真实硬件格式、耗时或外部网络切换。</p>
+  <div data-vfio-migration-fallback>
+    <ol><li>源端继续运行，迭代 RAM；设备支持时，同时预拷贝设备状态。</li><li>暂停源端 vCPU，完成设备停止，再同步最终 DMA 脏页和设备状态。</li><li>目的端恢复全部状态并校验，通过后接管执行，源端保持停止。</li><li>运行中取消时，清理目的端恢复会话，源端结束预拷贝并继续运行。</li></ol>
+    <p>启用 JavaScript 后可以逐步操作并切换场景。</p>
+  </div>
+</section>

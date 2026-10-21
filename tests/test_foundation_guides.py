@@ -28,7 +28,7 @@ def test_foundation_guides_introduce_principles_before_examples_and_tradeoffs(sl
 
 def test_interrupt_guide_compares_distinct_layers_and_preserves_previous_anchors():
     page = render.render_mechanisms_html(Config(), 'interrupt-virtualization')
-    for name in ('interrupt-controller-paths', 'interrupt-acceleration-layers',
+    for name in ('interrupt-controller-paths', 'interrupt-acceleration-layers', 'interrupt-software-delivery',
                  'interrupt-delivery-overview'):
         assert f'data-diagram="{name}"' in page
     for anchor in ('preface', 'path', 'example', 'evolution', 'evaluation', 'reading', 'sources'):
@@ -37,6 +37,39 @@ def test_interrupt_guide_compares_distinct_layers_and_preserves_previous_anchors
                     'irqfd', 'APICv', 'AVIC', 'VT-d', 'IRR', 'EOI', 'NAPI'):
         assert concept in page
     assert 'lwn.net/Articles/329837/' in page
+
+
+def test_interrupt_guide_traces_software_delivery_before_acceleration():
+    page = render.render_mechanisms_html(Config(), 'interrupt-virtualization')
+    baseline = re.search(r'<section id="path".*?</section>', page, re.S).group()
+    stages = ('id="path-part-1"', 'id="path-software-delivery"',
+              'id="path-guest-accept"', 'id="path-part-2"')
+    assert [baseline.index(stage) for stage in stages] == sorted(
+        baseline.index(stage) for stage in stages)
+    for concept in ('KVM_SIGNAL_MSI', 'IRR[0x51]', 'ISR[0x51]', 'IDT', 'EOI'):
+        assert concept in baseline
+    assert page.index('data-diagram="interrupt-software-delivery"') < page.index('id="acceleration"')
+    # Message semantics and host event delivery must not be taught as one layer.
+    assert 'MSI-X / irqfd 路由' not in page
+    assert '现在把收包处理从 QEMU 切换到 vhost-net' in page
+    assert '换成 VFIO 分配的物理网卡后' in page
+    source = (render.ASSETS_DIR.parents[1] / 'content/diagrams'
+              / 'interrupt-software-delivery.mmd').read_text()
+    assert source.index('Linux 边沿应答') < source.index('V->>K: EOI') < source.index('驱动回调 → NAPI')
+
+
+@pytest.mark.parametrize('slug,sequence', [
+    ('kvm-vcpu-run', ['paths', 'structures', 'completion', 'notifications']),
+    ('kvm-virtio-interrupt', ['notification', 'msix', 'delivery', 'structures', 'irqfd']),
+    ('libvirt-rpc', ['layers', 'framing', 'dispatch', 'responses']),
+])
+def test_request_walkthrough_finishes_baseline_before_comparisons(slug, sequence):
+    article = mechanisms.get_article(slug)
+    section_ids = [section['id'] for section in article['sections']]
+    assert [item for item in section_ids if item in sequence] == sequence
+    page = render.render_mechanisms_html(Config(), slug)
+    offsets = [page.index(f'<section id="{section}"') for section in sequence]
+    assert offsets == sorted(offsets)
 
 
 def test_directory_links_do_not_underline_but_keep_focus_feedback():

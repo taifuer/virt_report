@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=85f3a75ef38f">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=85f3a75ef38f">
   <link rel="stylesheet" href="../assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=64313220e987">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=64313220e987">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=f8df58691fc2">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=f8df58691fc2">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -48,7 +48,7 @@
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、Libvirt RPC 与跨进程状态查询</a></li><li><a href="#layers">二、从驱动接口到 RPC 请求</a></li><li><a href="#dispatch">三、服务端分发与对象查询</a></li><li><a href="#framing">四、示例：56 字节请求与 60 字节响应</a></li><li><a href="#responses">五、响应匹配与错误分类</a></li><li><a href="#evolution">六、协议复用、接口扩展与兼容成本</a></li><li><a href="#sources">七、参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、Libvirt RPC 与跨进程状态查询</a></li><li><a href="#layers">二、从驱动接口到 RPC 请求</a></li><li><a href="#framing">三、示例：56 字节请求与 60 字节响应</a></li><li><a href="#dispatch">四、服务端分发与对象查询</a></li><li><a href="#responses">五、响应匹配与错误分类</a></li><li><a href="#evolution">六、协议复用、接口扩展与兼容成本</a></li><li><a href="#sources">七、参考资料</a></li></ol></nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>Libvirt RPC 与跨进程状态查询</h2>
@@ -67,49 +67,11 @@
     <tr><td><code>virNetMessage</code></td><td>两端 RPC 层</td><td>解码后的头、字节缓冲区、长度与当前位置，负责消息读写</td></tr>
     <tr><td><code>virDomainObj</code></td><td>服务端 QEMU 驱动</td><td>定义、运行状态、进程 PID、作业与驱动私有数据；由驱动按 UUID 查找</td></tr>
   </tbody></table>
-</section>
-
-<section id="dispatch" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">三、</span>服务端分发与对象查询</h2>
   <p>客户端 <code>callFull()</code> 递增连接上的计数器，假设为 demo 的本次查询取得 serial 42，再由 <code>virNetClientProgramCall()</code> 填充头、编码参数并等待响应。等待期间释放 remote 驱动锁，使事件与流数据的处理不被这把锁阻塞。调用记录与消息仍保留，后续收到 serial 42 的响应才能继续完成这次 API 调用。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/remote/remote_driver.c#L6117-L6157">调用入口</a></p>
-  <figure class="mechanism-diagram" data-diagram="libvirt-rpc-dispatch" data-mechanism-view="diagram">
-  <div class="mechanism-view-heading">
-    <span data-mechanism-title>一次 virDomainGetInfo 调用的往返</span>
-    <button type="button" data-mechanism-expand aria-label="放大查看一次 virDomainGetInfo 调用的往返" hidden>放大查看</button>
-  </div>
-  <div class="mechanism-diagram-scroll" role="region" aria-label="一次 virDomainGetInfo 调用的往返">
-    <img src="../assets/libvirt-rpc-dispatch.svg?v=64313220e987" alt="客户端和服务端分别绑定 remote 与 QEMU 驱动。UUID 用于定位服务端对象，响应通过同一连接上的 program、version、serial 匹配等待者。" loading="lazy">
-  </div>
-  <figcaption>客户端和服务端分别绑定 remote 与 QEMU 驱动。UUID 用于定位服务端对象，响应通过同一连接上的 program、version、serial 匹配等待者。 <a href="../assets/libvirt-rpc-dispatch.svg?v=64313220e987" target="_blank" rel="noopener">打开原图</a></figcaption>
-  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
-  accTitle: 一次 virDomainGetInfo 调用的往返
-  accDescr: 客户端公开 API 经 remote 驱动编码请求；服务端 RPC 分发到 QEMU 驱动，按 UUID 查找对象并读取信息；结果携带相同 serial 返回给对应等待调用。
-  participant A as 应用与客户端 API
-  participant C as remote 驱动与 RPC 客户端
-  participant S as 守护进程 RPC 分发
-  participant D as 服务端 QEMU 驱动
-  A-&gt;&gt;C: virDomainGetInfo(domain, info)
-  C-&gt;&gt;C: 编码 domain 标识，分配 serial=42
-  C-&gt;&gt;S: CALL / proc=16 / serial=42
-  S-&gt;&gt;S: 定位程序与过程，认证，XDR 解码
-  S-&gt;&gt;D: 服务端 virDomainGetInfo → qemuDomainGetInfo
-  D-&gt;&gt;D: 按 UUID 查找并锁住 virDomainObj
-  D-&gt;&gt;D: 对象 ACL；读状态、内存、vCPU、进程 CPU 时间
-  D--&gt;&gt;S: 填充 virDomainInfo，释放对象引用与锁
-  S--&gt;&gt;C: REPLY / OK / serial=42 + XDR 返回值
-  C-&gt;&gt;C: prog、vers、serial 匹配等待者，再检查 proc
-  C--&gt;&gt;A: 解码为本地 info，返回 0
-  Note over C,S: 异步 MESSAGE 经另一条分发路径处理，不占用普通 API 返回值
-</code></pre></details>
-</figure>
-  <p>服务端按 program/version 找程序，按 proc 找 <code>virNetServerProgramProc</code>。该表项包含处理函数、参数与返回结构大小、XDR 过滤函数和认证要求。通用分发器检查认证，解码参数，设置当前客户端身份，再调用过程处理函数；QEMU 驱动随后执行对象级 ACL 检查。认证通过只说明客户端身份可被接受，仍需判断它能否读取目标虚拟机。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/rpc/virnetserverprogram.c#L360-L423">通用分发</a></p>
-  <p>生成的 <code>remoteDispatchDomainGetInfo()</code> 从客户端上下文取得服务端连接，把 <code>name/uuid/id</code> 转成本地句柄，再调用公开 API。QEMU 驱动通过 UUID 查找并锁住 <code>virDomainObj</code>。这段代码位于 Libvirt 守护进程中，从管理对象取得状态、内存和 vCPU 信息；对活跃实例，再按其 QEMU PID 读取宿主进程 CPU 时间。RPC 的实际工作因而包含对象查询与宿主统计读取，而不要求每项字段都另发 QMP。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_domain.c#L427-L453">对象查找</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L2438-L2490">GetInfo 实现</a></p>
-  <p>名称便于展示，运行时 ID 随实例启动而分配，UUID 则用于这里的对象定位。客户端持有旧句柄时，服务端对象可能已经删除或状态改变，因此发送一个曾经有效的 ID 不能跳过查找与权限检查。获得句柄和执行查询属于不同时间点，对象锁只保护本次访问的一致性。</p>
-  <p>返回值填入 <code>remote_domain_get_info_ret</code>，RPC 层复用请求头，只把 type 改为 REPLY、status 改为 OK，再编码载荷并加入发送队列。此时服务端查询已经完成，客户端仍要等待收齐并解码响应。下面将这次 demo / serial 42 的往返展开为具体报文，再看客户端怎样找回等待者。两端样板代码由<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/rpc/gendispatch.pl">协议生成器</a>维护。</p>
 </section>
 
 <section id="framing" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">四、</span>示例：56 字节请求与 60 字节响应</h2>
+  <h2><span class="mechanism-heading-number">三、</span>示例：56 字节请求与 60 字节响应</h2>
   <p>UNIX stream socket 和 TCP 都提供字节流，单次读取可能只得到半条消息，也可能带来多条消息的数据。Libvirt 先读取 4 字节长度，再按长度接收其余部分。长度包含自身，后接固定 24 字节头与过程专用载荷；接收端检查长度边界后才扩展缓冲区。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/rpc/virnetprotocol.x#L65-L118">线格式</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/rpc/virnetmessage.c#L133-L176">长度解码</a></p>
   <table><thead><tr><th scope="col">字节偏移</th><th scope="col">字段</th><th scope="col">本次 CALL 的值</th><th scope="col">含义</th></tr></thead><tbody>
     <tr><td>0–3</td><td><code>length</code></td><td>56</td><td>完整消息长度，含前面的 4 字节</td></tr>
@@ -128,9 +90,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看Libvirt RPC 的报文组成" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="Libvirt RPC 的报文组成">
-    <img src="../assets/libvirt-rpc-framing.svg?v=64313220e987" alt="长度与六个头字段构成 28 字节公共部分；type 和 status 决定后面的载荷类型。正常响应沿用请求的 program、version、procedure 和 serial。" loading="lazy">
+    <img src="../assets/libvirt-rpc-framing.svg?v=f8df58691fc2" alt="长度与六个头字段构成 28 字节公共部分；type 和 status 决定后面的载荷类型。正常响应沿用请求的 program、version、procedure 和 serial。" loading="lazy">
   </div>
-  <figcaption>长度与六个头字段构成 28 字节公共部分；type 和 status 决定后面的载荷类型。正常响应沿用请求的 program、version、procedure 和 serial。 <a href="../assets/libvirt-rpc-framing.svg?v=64313220e987" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>长度与六个头字段构成 28 字节公共部分；type 和 status 决定后面的载荷类型。正常响应沿用请求的 program、version、procedure 和 serial。 <a href="../assets/libvirt-rpc-framing.svg?v=f8df58691fc2" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: Libvirt RPC 的报文组成
   accDescr: 一条 RPC 消息先有四字节总长度，再有二十四字节公共头，然后按消息类型和状态携带调用参数、返回值、错误或事件。GetInfo 示例请求五十六字节，响应六十字节。
@@ -160,6 +122,44 @@
 示例：state=RUNNING，maxMem=8388608 KiB，memory=8388608 KiB
       nrVirtCpu=4，cpuTime=2500000000 ns</code></pre>
   <p>返回载荷共 32 字节，完整响应是 60 字节。<code>maxMem</code> 与 <code>memory</code> 的单位是 KiB，<code>cpuTime</code> 的单位是纳秒。实际值由驱动查询得出，上例只展示编码关系。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/remote/remote_protocol.x#L962-L972">返回结构</a></p>
+</section>
+
+<section id="dispatch" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">四、</span>服务端分发与对象查询</h2>
+  <figure class="mechanism-diagram" data-diagram="libvirt-rpc-dispatch" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>一次 virDomainGetInfo 调用的往返</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看一次 virDomainGetInfo 调用的往返" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="一次 virDomainGetInfo 调用的往返">
+    <img src="../assets/libvirt-rpc-dispatch.svg?v=f8df58691fc2" alt="客户端和服务端分别绑定 remote 与 QEMU 驱动。UUID 用于定位服务端对象，响应通过同一连接上的 program、version、serial 匹配等待者。" loading="lazy">
+  </div>
+  <figcaption>客户端和服务端分别绑定 remote 与 QEMU 驱动。UUID 用于定位服务端对象，响应通过同一连接上的 program、version、serial 匹配等待者。 <a href="../assets/libvirt-rpc-dispatch.svg?v=f8df58691fc2" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
+  accTitle: 一次 virDomainGetInfo 调用的往返
+  accDescr: 客户端公开 API 经 remote 驱动编码请求；服务端 RPC 分发到 QEMU 驱动，按 UUID 查找对象并读取信息；结果携带相同 serial 返回给对应等待调用。
+  participant A as 应用与客户端 API
+  participant C as remote 驱动与 RPC 客户端
+  participant S as 守护进程 RPC 分发
+  participant D as 服务端 QEMU 驱动
+  A-&gt;&gt;C: virDomainGetInfo(domain, info)
+  C-&gt;&gt;C: 编码 domain 标识，分配 serial=42
+  C-&gt;&gt;S: CALL / proc=16 / serial=42
+  S-&gt;&gt;S: 定位程序与过程，认证，XDR 解码
+  S-&gt;&gt;D: 服务端 virDomainGetInfo → qemuDomainGetInfo
+  D-&gt;&gt;D: 按 UUID 查找并锁住 virDomainObj
+  D-&gt;&gt;D: 对象 ACL；读状态、内存、vCPU、进程 CPU 时间
+  D--&gt;&gt;S: 填充 virDomainInfo，释放对象引用与锁
+  S--&gt;&gt;C: REPLY / OK / serial=42 + XDR 返回值
+  C-&gt;&gt;C: prog、vers、serial 匹配等待者，再检查 proc
+  C--&gt;&gt;A: 解码为本地 info，返回 0
+  Note over C,S: 异步 MESSAGE 经另一条分发路径处理，不占用普通 API 返回值
+</code></pre></details>
+</figure>
+  <p>服务端按 program/version 找程序，按 proc 找 <code>virNetServerProgramProc</code>。该表项包含处理函数、参数与返回结构大小、XDR 过滤函数和认证要求。通用分发器检查认证，解码参数，设置当前客户端身份，再调用过程处理函数；QEMU 驱动随后执行对象级 ACL 检查。认证通过只说明客户端身份可被接受，仍需判断它能否读取目标虚拟机。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/rpc/virnetserverprogram.c#L360-L423">通用分发</a></p>
+  <p>生成的 <code>remoteDispatchDomainGetInfo()</code> 从客户端上下文取得服务端连接，把 <code>name/uuid/id</code> 转成本地句柄，再调用公开 API。QEMU 驱动通过 UUID 查找并锁住 <code>virDomainObj</code>。这段代码位于 Libvirt 守护进程中，从管理对象取得状态、内存和 vCPU 信息；对活跃实例，再按其 QEMU PID 读取宿主进程 CPU 时间。RPC 的实际工作因而包含对象查询与宿主统计读取，而不要求每项字段都另发 QMP。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_domain.c#L427-L453">对象查找</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L2438-L2490">GetInfo 实现</a></p>
+  <p>名称便于展示，运行时 ID 随实例启动而分配，UUID 则用于这里的对象定位。客户端持有旧句柄时，服务端对象可能已经删除或状态改变，因此发送一个曾经有效的 ID 不能跳过查找与权限检查。获得句柄和执行查询属于不同时间点，对象锁只保护本次访问的一致性。</p>
+  <p>返回值填入 <code>remote_domain_get_info_ret</code>，RPC 层复用请求头，只把 type 改为 REPLY、status 改为 OK，再编码载荷并加入发送队列。本例由此生成前节的 60 字节响应，保留 serial 42。服务端查询已结束，客户端仍需收齐消息、找到原等待者并解码结果，才能完成这次 API 调用。两端样板代码由<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/rpc/gendispatch.pl">协议生成器</a>维护。</p>
 </section>
 
 <section id="responses" class="mechanism-section">
@@ -194,6 +194,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=85f3a75ef38f"></script>
-<script src="../assets/mechanism-viewer.js?v=64313220e987" defer></script>
+<script src="../assets/mechanism-viewer.js?v=f8df58691fc2" defer></script>
 </body>
 </html>

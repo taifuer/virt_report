@@ -50,6 +50,7 @@
 
 <section id="isolation" class="mechanism-section">
   <h2>隔离与映射生命周期</h2>
+  <p>设备访问时的上下文选择、IOTLB 命中和撤销同步，在<a href="iommu-dma.html">IOMMU：DMA 地址转换、缓存与失效</a>中沿同一个接收缓冲区展开。</p>
   <h3>IOMMU group 的隔离边界</h3>
   <p>I/O 页表限制设备到内存的访问，但实际隔离还取决于 PCIe 拓扑。某些多功能设备、桥或缺少合适 ACS 能力的路径，可能允许事务在到达 IOMMU 前发生重定向。内核据此把无法独立隔离的设备归入同一 IOMMU group，作为 DMA 所有权的边界。</p>
   <p>IOMMUFD 的设备 cdev 接口按设备提供文件描述符，同时检查整个 group 的所有权。同组设备共享硬件隔离边界，由同一 DMA 所有者管理。映射接口接收用户态提供的后备内存，由内核验证并固定页面，再建立设备可访问的范围。<a href="{{ kernel_source }}Documentation/driver-api/vfio.rst">VFIO group 与设备 cdev</a></p>
@@ -99,6 +100,7 @@ IOMMUFD：iommufd_ioas_map()
 
 <section id="evolution" class="mechanism-section">
   <h2>从 VFIO Container 到 IOMMUFD</h2>
+  <p>本节比较接口分工。设备绑定、IOAS 与 HWPT 的创建、附着及释放过程，见<a href="iommufd.html">IOMMUFD：设备绑定与 I/O 地址空间管理</a>。</p>
   <h3>以 group 和 container 组织 DMA</h3>
   <p>传统 VFIO 将设备访问、硬件隔离组和 IOMMU 管理组织成 device、group、container 三层。应用先把 group 加入 container，再配置 IOMMU 后端，最后通过 group 获取设备文件描述符。多个可兼容的 group 可以共享 container 中的映射，减少重复的页表维护。</p>
   <p>这种结构支撑了长期使用的设备直通路径，但 I/O 地址空间管理与 VFIO container 接口紧密绑定。随着嵌套转换、不同硬件页表类型和更细粒度设备绑定的需求出现，用户态需要更直接地表达地址空间、硬件页表及它们与设备的关联。</p>
@@ -113,6 +115,8 @@ IOMMUFD：iommufd_ioas_map()
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul class="mechanism-sources">
+    <li><a href="qemu-viommu.html">vIOMMU：客户机 DMA 映射与失效同步</a>：客户机启用虚拟 IOMMU 后，IOVA 映射的建立、撤销与缓存一致性。</li>
+    <li><a href="vfio-device-migration.html">VFIO 设备热迁移：设备状态与 DMA 交接</a>：设备迁移能力、DMA 脏页跟踪与停机交接。</li>
     <li>QEMU：<a href="{{ qemu_source }}hw/vfio/listener.c">VFIO MemoryListener</a>、<a href="{{ qemu_source }}hw/vfio/container.c">公共映射分派</a>、<a href="{{ qemu_source }}hw/vfio/container-legacy.c">传统 container</a>。</li>
     <li>QEMU：<a href="{{ qemu_source }}hw/vfio/iommufd.c">VFIO IOMMUFD 后端</a>、<a href="{{ qemu_source }}backends/iommufd.c">IOMMUFD ioctl 封装</a>、<a href="{{ qemu_source }}docs/devel/vfio-iommufd.rst">后端设计说明</a>。</li>
     <li>Linux：<a href="{{ kernel_source }}drivers/vfio/vfio_iommu_type1.c">Type1 映射实现</a>、<a href="{{ kernel_source }}drivers/iommu/iommufd/ioas.c">IOAS 管理</a>、<a href="{{ kernel_source }}Documentation/driver-api/vfio.rst">VFIO 设备与隔离组</a>。</li>

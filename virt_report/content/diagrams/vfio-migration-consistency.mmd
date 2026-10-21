@@ -1,0 +1,14 @@
+flowchart TB
+    accTitle: VFIO 迁移中的 RAM 与设备状态
+    accDescr: 客户机 CPU 和网卡 DMA 分别写入客户机 RAM，KVM 与设备或 IOMMU 脏页跟踪把变化交给 RAM 迁移。网卡内部状态通过另一条 VFIO 数据流迁移。源端停止所有相关写入后，目的端同时完成 RAM、CPU 和设备状态恢复，才可以运行。
+    CPU[客户机 CPU<br/>更新描述符与应用数据] -->|CPU 写入| RAM[客户机 RAM<br/>描述符、报文、完成记录]
+    VF[源端网卡 VF<br/>队列进度与内部状态] -->|DMA 写入报文| RAM
+    CPU -.->|KVM 脏页日志| MERGE[RAM 脏页集合]
+    VF -.->|设备或 IOMMU DMA 日志| MERGE
+    RAM -->|按脏页集合发送| COPY[RAM 迁移流]
+    MERGE --> COPY
+    VF -->|迁移 data_fd<br/>不透明设备状态| DEV[设备状态迁移流]
+    COPY --> RESTORE[目的端恢复点<br/>完整 RAM、CPU 与设备状态]
+    DEV --> RESTORE
+    PAUSE[源端 vCPU 暂停<br/>设备停止 DMA 与内部更新] -.->|最终同步边界| RESTORE
+    RESTORE --> RUN[目的端取得运行权<br/>源端继续保持停止]

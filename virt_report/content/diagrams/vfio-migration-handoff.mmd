@@ -1,0 +1,34 @@
+sequenceDiagram
+    accTitle: 单块 VF 在源端与目的端之间的迁移交接
+    accDescr: 源端继续运行时迭代 RAM，可选地预拷贝设备状态。目的端处于 RESUMING，并确认初始数据加载。源端暂停 vCPU 并停止设备 DMA 后，完成最终 RAM 和设备状态传输。目的端校验全部恢复状态后才能运行，源端不再执行。
+    participant S as 源端 QEMU / vCPU
+    participant V as 源端 VF
+    participant T as 目的端 QEMU / RAM
+    participant D as 目的端 VF
+    T->>D: 进入 RESUMING，准备加载
+    opt 支持设备 PRE_COPY
+        S->>V: RUNNING → PRE_COPY
+        V-->>S: data_fd 导出初始及增量状态
+        S->>T: 设备状态数据
+        T->>D: 按顺序写入 data_fd
+        opt 启用 switchover-ack
+            T-->>S: 初始数据加载确认
+        end
+    end
+    loop 源端仍处理业务
+        V->>S: DMA 修改 RAM
+        S->>T: RAM 迭代，包含 CPU 与 DMA 写脏页
+    end
+    Note over S,V: 暂停 vCPU，完成设备停止转换<br/>确认不再产生 DMA 和内部更新
+    S->>V: 进入 STOP_COPY，或 STOP 后进入 STOP_COPY
+    par 共同完成条件：最终 RAM
+        S->>T: 同步并发送剩余 RAM 与 CPU 状态
+    and 共同完成条件：设备状态
+        V-->>S: 剩余设备状态，直到永久 EOF
+        S->>T: 设备尾部及配置
+        T->>D: 按顺序写入剩余状态
+    end
+    Note over T,D: RAM、CPU、配置及内部状态均就绪
+    T->>D: 结束 RESUMING 并校验，转换至 RUNNING
+    Note over T,D: 目的端设备和 vCPU 开始执行
+    Note over S,V: 源端保持停止并清理迁移会话
