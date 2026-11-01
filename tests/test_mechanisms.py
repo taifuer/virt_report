@@ -27,7 +27,7 @@ class PageParser(HTMLParser):
             self.ids.append(attributes["id"])
         if tag == "a":
             self.links.append(attributes.get("href", ""))
-        if tag == "script":
+        if tag == "script" and attributes.get("type") != "application/json":
             self.scripts.append(attributes.get("src", ""))
         if tag == "h1":
             self.headings.append(tag)
@@ -95,7 +95,8 @@ def test_article_has_matching_toc_source_evidence_and_no_inline_scripts(slug):
     assert len(parsed.ids) == len(set(parsed.ids))
     assert len(parsed.headings) == 1
     assert f'{article["title"]} - virt-report' in page
-    notice = '<p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>'
+    kind = '本演示' if article.get('presentation') == 'walkthrough' else '本文'
+    notice = f'<p class="mechanism-authorship">{kind}由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>'
     assert page.count(notice) == 1
     assert page.index('</h1>') < page.index(notice) < page.index('id="preface"')
     headings = re.findall(r'<h[23][^>]*>(.*?)</h[23]>', page, re.DOTALL)
@@ -122,7 +123,9 @@ def test_article_has_matching_toc_source_evidence_and_no_inline_scripts(slug):
             f'assets/{article["script"]}?v=')
     assert f'../mechanisms.html#{article["topic"]}' in parsed.links
     topic = mechanisms.get_topic(article["topic"])
-    assert f'{topic["title"]}原理</a>' in page
+    related = ('交互演示目录' if article.get('presentation') == 'walkthrough'
+               else f'{topic["title"]}原理')
+    assert f'{related}</a>' in page
     for link in topic.get("related", []):
         assert f'../{link["path"]}' in parsed.links
         assert f'{link["label"]}</a>' in page

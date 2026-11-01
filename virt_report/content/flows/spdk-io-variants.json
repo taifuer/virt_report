@@ -1,0 +1,2289 @@
+{
+  "schemaVersion": 1,
+  "routes": [
+    {
+      "id": "spdk-blk",
+      "label": "virtio-blk · SPDK / NVMe",
+      "baselines": [
+        {
+          "project": "SPDK",
+          "version": "25.09",
+          "commit": "a2f2a0b2794366fe1e42b97061782aae25119457",
+          "url": "https://github.com/spdk/spdk/tree/a2f2a0b2794366fe1e42b97061782aae25119457"
+        }
+      ],
+      "sources": {
+        "spdk-avail": {
+          "project": "SPDK",
+          "path": "lib/vhost/rte_vhost_user.c",
+          "symbol": "vhost_vq_avail_ring_get",
+          "line": 139,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/rte_vhost_user.c#L139"
+        },
+        "spdk-suppress-kick": {
+          "project": "SPDK",
+          "path": "lib/vhost/rte_vhost_user.c",
+          "symbol": "VRING_USED_F_NO_NOTIFY 设置",
+          "line": 1106,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/rte_vhost_user.c#L1106"
+        },
+        "spdk-used": {
+          "project": "SPDK",
+          "path": "lib/vhost/rte_vhost_user.c",
+          "symbol": "vhost_vq_used_ring_enqueue",
+          "line": 443,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/rte_vhost_user.c#L443"
+        },
+        "spdk-signal": {
+          "project": "SPDK",
+          "path": "lib/vhost/rte_vhost_user.c",
+          "symbol": "vhost_session_vq_used_signal",
+          "line": 401,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/rte_vhost_user.c#L401"
+        },
+        "spdk-callfd": {
+          "project": "SPDK",
+          "path": "lib/vhost/rte_vhost_user.c",
+          "symbol": "vhost_vq_used_signal",
+          "line": 323,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/rte_vhost_user.c#L323"
+        },
+        "spdk-blk-poll": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_blk.c",
+          "symbol": "_vdev_vq_worker",
+          "line": 915,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L915"
+        },
+        "spdk-blk-vq": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_blk.c",
+          "symbol": "process_vq",
+          "line": 861,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L861"
+        },
+        "spdk-blk-task": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_blk.c",
+          "symbol": "process_blk_task",
+          "line": 652,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L652"
+        },
+        "spdk-blk-map": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_blk.c",
+          "symbol": "blk_iovs_split_queue_setup",
+          "line": 199,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L199"
+        },
+        "spdk-blk-parse": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_blk.c",
+          "symbol": "virtio_blk_process_request",
+          "line": 464,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L464"
+        },
+        "spdk-blk-done": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_blk.c",
+          "symbol": "blk_request_complete_cb",
+          "line": 421,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L421"
+        },
+        "spdk-blk-status": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_blk.c",
+          "symbol": "blk_request_finish",
+          "line": 181,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L181"
+        },
+        "spdk-blk-finish": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_blk.c",
+          "symbol": "vhost_user_blk_request_finish",
+          "line": 167,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L167"
+        },
+        "spdk-bdev-read": {
+          "project": "SPDK",
+          "path": "lib/bdev/bdev.c",
+          "symbol": "spdk_bdev_readv",
+          "line": 5863,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/bdev/bdev.c#L5863"
+        },
+        "spdk-bdev-write": {
+          "project": "SPDK",
+          "path": "lib/bdev/bdev.c",
+          "symbol": "spdk_bdev_writev",
+          "line": 6175,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/bdev/bdev.c#L6175"
+        },
+        "spdk-bdev-complete": {
+          "project": "SPDK",
+          "path": "lib/bdev/bdev.c",
+          "symbol": "bdev_io_complete",
+          "line": 7794,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/bdev/bdev.c#L7794"
+        },
+        "spdk-nvme-dispatch": {
+          "project": "SPDK",
+          "path": "module/bdev/nvme/bdev_nvme.c",
+          "symbol": "_bdev_nvme_submit_request",
+          "line": 3292,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/module/bdev/nvme/bdev_nvme.c#L3292"
+        },
+        "spdk-nvme-read": {
+          "project": "SPDK",
+          "path": "module/bdev/nvme/bdev_nvme.c",
+          "symbol": "bdev_nvme_readv",
+          "line": 8378,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/module/bdev/nvme/bdev_nvme.c#L8378"
+        },
+        "spdk-nvme-write": {
+          "project": "SPDK",
+          "path": "module/bdev/nvme/bdev_nvme.c",
+          "symbol": "bdev_nvme_writev",
+          "line": 8431,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/module/bdev/nvme/bdev_nvme.c#L8431"
+        },
+        "spdk-nvme-read-command": {
+          "project": "SPDK",
+          "path": "lib/nvme/nvme_ns_cmd.c",
+          "symbol": "spdk_nvme_ns_cmd_read_with_md",
+          "line": 672,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/nvme/nvme_ns_cmd.c#L672"
+        },
+        "spdk-nvme-write-command": {
+          "project": "SPDK",
+          "path": "lib/nvme/nvme_ns_cmd.c",
+          "symbol": "spdk_nvme_ns_cmd_write_with_md",
+          "line": 1036,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/nvme/nvme_ns_cmd.c#L1036"
+        },
+        "spdk-nvme-submit": {
+          "project": "SPDK",
+          "path": "lib/nvme/nvme_pcie_common.c",
+          "symbol": "nvme_pcie_qpair_submit_tracker",
+          "line": 659,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/nvme/nvme_pcie_common.c#L659"
+        },
+        "spdk-nvme-poll": {
+          "project": "SPDK",
+          "path": "module/bdev/nvme/bdev_nvme.c",
+          "symbol": "bdev_nvme_poll",
+          "line": 1818,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/module/bdev/nvme/bdev_nvme.c#L1818"
+        },
+        "spdk-nvme-cq": {
+          "project": "SPDK",
+          "path": "lib/nvme/nvme_pcie_common.c",
+          "symbol": "nvme_pcie_qpair_process_completions",
+          "line": 865,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/nvme/nvme_pcie_common.c#L865"
+        },
+        "spdk-nvme-complete": {
+          "project": "SPDK",
+          "path": "lib/nvme/nvme_pcie_common.c",
+          "symbol": "nvme_pcie_qpair_complete_tracker",
+          "line": 705,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/nvme/nvme_pcie_common.c#L705"
+        },
+        "spdk-nvme-read-done": {
+          "project": "SPDK",
+          "path": "module/bdev/nvme/bdev_nvme.c",
+          "symbol": "bdev_nvme_readv_done",
+          "line": 7966,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/module/bdev/nvme/bdev_nvme.c#L7966"
+        },
+        "spdk-nvme-write-done": {
+          "project": "SPDK",
+          "path": "module/bdev/nvme/bdev_nvme.c",
+          "symbol": "bdev_nvme_writev_done",
+          "line": 7997,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/module/bdev/nvme/bdev_nvme.c#L7997"
+        },
+        "spdk-scsi-poll": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_scsi.c",
+          "symbol": "vdev_worker",
+          "line": 823,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_scsi.c#L823"
+        },
+        "spdk-scsi-vq": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_scsi.c",
+          "symbol": "process_vq",
+          "line": 770,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_scsi.c#L770"
+        },
+        "spdk-scsi-layout": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_scsi.c",
+          "symbol": "task_data_setup",
+          "line": 527,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_scsi.c#L527"
+        },
+        "spdk-scsi-parse": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_scsi.c",
+          "symbol": "process_request",
+          "line": 664,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_scsi.c#L664"
+        },
+        "spdk-scsi-submit": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_scsi.c",
+          "symbol": "task_submit",
+          "line": 370,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_scsi.c#L370"
+        },
+        "spdk-scsi-dev": {
+          "project": "SPDK",
+          "path": "lib/scsi/dev.c",
+          "symbol": "spdk_scsi_dev_queue_task",
+          "line": 286,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/scsi/dev.c#L286"
+        },
+        "spdk-scsi-cdb": {
+          "project": "SPDK",
+          "path": "lib/scsi/scsi_bdev.c",
+          "symbol": "bdev_scsi_process_block",
+          "line": 1660,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/scsi/scsi_bdev.c#L1660"
+        },
+        "spdk-scsi-rw": {
+          "project": "SPDK",
+          "path": "lib/scsi/scsi_bdev.c",
+          "symbol": "bdev_scsi_readwrite",
+          "line": 1237,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/scsi/scsi_bdev.c#L1237"
+        },
+        "spdk-bdev-read-blocks": {
+          "project": "SPDK",
+          "path": "lib/bdev/bdev.c",
+          "symbol": "spdk_bdev_readv_blocks",
+          "line": 5929,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/bdev/bdev.c#L5929"
+        },
+        "spdk-bdev-write-blocks": {
+          "project": "SPDK",
+          "path": "lib/bdev/bdev.c",
+          "symbol": "spdk_bdev_writev_blocks",
+          "line": 6190,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/bdev/bdev.c#L6190"
+        },
+        "spdk-scsi-read-done": {
+          "project": "SPDK",
+          "path": "lib/scsi/scsi_bdev.c",
+          "symbol": "bdev_scsi_read_task_complete_cmd",
+          "line": 1124,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/scsi/scsi_bdev.c#L1124"
+        },
+        "spdk-scsi-write-done": {
+          "project": "SPDK",
+          "path": "lib/scsi/scsi_bdev.c",
+          "symbol": "bdev_scsi_task_complete_cmd",
+          "line": 1109,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/scsi/scsi_bdev.c#L1109"
+        },
+        "spdk-scsi-lun-done": {
+          "project": "SPDK",
+          "path": "lib/scsi/lun.c",
+          "symbol": "scsi_lun_complete_task",
+          "line": 18,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/scsi/lun.c#L18"
+        },
+        "spdk-scsi-response": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_scsi.c",
+          "symbol": "vhost_scsi_task_cpl",
+          "line": 348,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_scsi.c#L348"
+        },
+        "spdk-scsi-used": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_scsi.c",
+          "symbol": "submit_completion",
+          "line": 328,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_scsi.c#L328"
+        },
+        "spdk-guest-scsi-queue": {
+          "project": "Linux",
+          "path": "drivers/scsi/scsi_lib.c",
+          "symbol": "scsi_queue_rq",
+          "line": 1807,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/scsi_lib.c#L1807"
+        },
+        "spdk-guest-scsi-cdb": {
+          "project": "Linux",
+          "path": "drivers/scsi/sd.c",
+          "symbol": "sd_setup_rw10_cmnd",
+          "line": 1231,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/sd.c#L1231"
+        },
+        "spdk-guest-scsi-driver": {
+          "project": "Linux",
+          "path": "drivers/scsi/virtio_scsi.c",
+          "symbol": "virtscsi_queuecommand",
+          "line": 564,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/virtio_scsi.c#L564"
+        },
+        "spdk-guest-scsi-sg": {
+          "project": "Linux",
+          "path": "drivers/scsi/virtio_scsi.c",
+          "symbol": "__virtscsi_add_cmd",
+          "line": 428,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/virtio_scsi.c#L428"
+        },
+        "spdk-guest-scsi-kick": {
+          "project": "Linux",
+          "path": "drivers/scsi/virtio_scsi.c",
+          "symbol": "virtscsi_add_cmd",
+          "line": 494,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/virtio_scsi.c#L494"
+        },
+        "spdk-guest-scsi-notice": {
+          "project": "Linux",
+          "path": "drivers/scsi/virtio_scsi.c",
+          "symbol": "virtscsi_req_done",
+          "line": 194,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/virtio_scsi.c#L194"
+        },
+        "spdk-guest-scsi-reclaim": {
+          "project": "Linux",
+          "path": "drivers/scsi/virtio_scsi.c",
+          "symbol": "virtscsi_vq_done",
+          "line": 175,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/virtio_scsi.c#L175"
+        },
+        "spdk-guest-scsi-response": {
+          "project": "Linux",
+          "path": "drivers/scsi/virtio_scsi.c",
+          "symbol": "virtscsi_complete_cmd",
+          "line": 114,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/virtio_scsi.c#L114"
+        },
+        "spdk-guest-scsi-done": {
+          "project": "Linux",
+          "path": "drivers/scsi/scsi_lib.c",
+          "symbol": "scsi_done",
+          "line": 1736,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/scsi_lib.c#L1736"
+        },
+        "spdk-guest-scsi-end": {
+          "project": "Linux",
+          "path": "drivers/scsi/scsi_lib.c",
+          "symbol": "scsi_end_request",
+          "line": 630,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/scsi_lib.c#L630"
+        },
+        "spdk-guest-scsi-io-completion": {
+          "project": "Linux",
+          "path": "drivers/scsi/scsi_lib.c",
+          "symbol": "scsi_io_completion",
+          "line": 1056,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/scsi_lib.c#L1056"
+        }
+      },
+      "common": {
+        "title": "一次 virtio-blk / SPDK 读取",
+        "summary": "Guest 读取经 SPDK 轮询、bdev 与 NVMe 完成，再通过 KVM 中断返回应用；QEMU 仅负责控制面。",
+        "assumptions": [
+          "基线为 Linux 6.18、QEMU 10.2.0 和 SPDK 25.09；x86 VMX、in-kernel LAPIC、MSI-X/irqfd 已初始化，关闭 APICv/posted interrupt。",
+          "现代 virtio PCI + split ring，队列大小 8、直接三描述符链；无 indirect、EVENT_IDX 或 Guest vIOMMU。",
+          "SPDK 持续轮询，VRING_USED_F_NO_NOTIFY 抑制 Guest kick；不使用 SPDK interrupt mode。notified 仅表示 poller 已观察到 available，不表示 eventfd 已触发。",
+          "QEMU 已通过 vhost-user 交换共享 RAM、vring、kickfd/callfd 并建立路由；本次数据面不调用 QEMU virtio-blk 设备模拟或文件后端。",
+          "Guest 对 /dev/vda 做对齐 4 KiB、偏移 1 MiB 的 O_DIRECT 同步 I/O；固定单页、单 bio、单请求、单数据段，不拆分、合并或走文件系统页缓存。",
+          "SPDK bdev 直接对应一个 PCIe NVMe namespace，逻辑块 512 B；映射、注册和 DMA/IOMMU 条件已满足，无 bounce buffer、加密、校验元数据或额外复制路径。",
+          "固定单 iovec，无 memory-domain/加速序列与 metadata，NVMe 非延迟提交；提交和完成 poller 是逻辑上下文，不承诺与 Guest 队列一一对应。",
+          "只展示成功路径，无资源不足、重试、设备移除或重置；完成通知未抑制、通知合并关闭，Guest 可接收中断。",
+          "本次无 FLUSH、FUA、O_SYNC/O_DSYNC；写入完成只表示命令成功，不承诺掉电持久性。",
+          "地址与执行顺序是教学示例。控制器内部 DMA/存储行为按接口语义展示，不伪称由 SPDK 源码揭示固件内部每一步。"
+        ],
+        "request": {
+          "interface": "virtio-blk",
+          "backend": "spdk-blk",
+          "headerBytes": 16,
+          "responseBytes": 1,
+          "usedLength": 4097,
+          "command": "VIRTIO_BLK_T_IN"
+        },
+        "presentation": {
+          "deviceDomain": "SPDK",
+          "deviceContext": "宿主用户态 · vhost poller",
+          "deviceTitle": "vhost-blk",
+          "storageTitle": "NVMe",
+          "storageContext": "SPDK bdev / PCIe NVMe",
+          "storageSummary": "bdev 转为 NVMe 命令；SQ 提交与 CQ 完成分开。",
+          "controlPlane": "QEMU 仅负责设备与 vhost-user 控制面：初始化共享内存、vring 和 eventfd 路由，不消费本例数据请求。",
+          "notificationMode": "poll",
+          "queueTitle": "virtqueue 0"
+        },
+        "lanes": [
+          {
+            "id": "guest-user",
+            "title": "Guest 用户态",
+            "subtitle": "应用 · 同步直接 I/O"
+          },
+          {
+            "id": "guest",
+            "title": "Guest 内核态",
+            "subtitle": "块层与 virtio 驱动"
+          },
+          {
+            "id": "kvm",
+            "title": "KVM",
+            "subtitle": "宿主内核 · 完成中断路由与注入"
+          },
+          {
+            "id": "qemu",
+            "title": "QEMU 控制面",
+            "subtitle": "已完成共享内存、vring 与 eventfd 初始化"
+          },
+          {
+            "id": "spdk",
+            "title": "SPDK",
+            "subtitle": "宿主用户态 · vhost / bdev / NVMe"
+          },
+          {
+            "id": "backend",
+            "title": "PCIe NVMe",
+            "subtitle": "命令执行与 DMA · 协议边界"
+          },
+          {
+            "id": "memory",
+            "title": "共享 Guest RAM",
+            "subtitle": "队列与用户缓冲区"
+          }
+        ],
+        "phasePatches": {
+          "notify": {
+            "title": "轮询发现",
+            "summary": "Guest kick 被抑制；SPDK poller 直接观察共享 available。"
+          },
+          "consume": {
+            "summary": "SPDK 消费链头、转换 GPA 映射并解析请求，不进入 QEMU 数据面。"
+          },
+          "read": {
+            "title": "NVMe 读写",
+            "summary": "bdev 提交 NVMe SQ；设备执行后，poller 消费 CQ 并调用完成回调。"
+          },
+          "complete": {
+            "summary": "SPDK 写回协议响应及 used 项，经屏障发布 used.idx。"
+          }
+        },
+        "removeSteps": [
+          "write-doorbell",
+          "signal-ioeventfd",
+          "dispatch-queue"
+        ],
+        "stepPatches": {
+          "map-direct-buffer": {
+            "detail": "Guest 直接 I/O 固定用户页，SPDK 通过已共享的 RAM 映射访问其后备内存。本例没有文件系统数据路径、宿主页缓存文件后端或额外 bounce buffer；这些前提不适用于所有 SPDK 配置。"
+          },
+          "ready": {
+            "detail": "Guest 保存 virtblk_req，SPDK 保存自己的 vhost task；R1 是逻辑关联标记，不是跨进程共享的 C 指针。"
+          },
+          "prepare-buffers": {
+            "detail": "sector 单位是 512 B；SPDK 将描述符 GPA 转换为其进程地址视图。固定用户页与共享 RAM 为同一后备内存，不经 vhost-user socket 复制数据。"
+          },
+          "publish-available": {
+            "detail": "先写描述符及 available 项，再以 virtio_wmb 发布索引。SPDK poller 可直接观察共享 RAM；发布完成不要求每请求通知 QEMU。"
+          },
+          "check-kick": {
+            "title": "Guest 跳过被抑制的 kick",
+            "description": "驱动检查后端通知条件，SPDK 已设置 NO_NOTIFY，本例不写 PCI 通知地址。",
+            "detail": "固定未协商 EVENT_IDX 的 split-ring 分支；virtqueue_kick_prepare_split 观察 used.flags。本步是 Guest 的通知决策，SPDK 轮询发现请求是另一个执行上下文。",
+            "sourceIds": [
+              "kick-check",
+              "spdk-suppress-kick"
+            ],
+            "active": [
+              "driver",
+              "queue"
+            ],
+            "edge": {
+              "from": "driver",
+              "to": "queue",
+              "kind": "metadata",
+              "label": "NO_NOTIFY：跳过 kick"
+            }
+          },
+          "consume-chain": {
+            "title": "SPDK 取出链头并映射 Guest RAM",
+            "actor": "spdk",
+            "description": "SPDK 消费 avail.ring[0]，为链头 0 取得本地 task，并把描述符 GPA 转换为可访问的 iovec。",
+            "detail": "process_vq 使用 vhost_vq_avail_ring_get；随后 process_blk_task / blk_iovs_split_queue_setup 校验并建立映射。available 消费位置推进到 1，used.idx 仍为 0。",
+            "sourceIds": [
+              "spdk-blk-vq",
+              "spdk-avail",
+              "spdk-blk-task",
+              "spdk-blk-map"
+            ],
+            "active": [
+              "device",
+              "queue"
+            ],
+            "edge": {
+              "from": "queue",
+              "to": "device",
+              "kind": "metadata",
+              "label": "共享队列 → SPDK"
+            }
+          },
+          "parse-read": {
+            "title": "SPDK 解析 IN 与结果缓冲区",
+            "actor": "spdk",
+            "description": "virtio_blk_process_request 校验 16 B 头、末尾 1 B status 和 4096 B 数据范围，识别 IN。",
+            "detail": "本例 task.used_len=4096+1。SPDK 保存 Guest 链头与 iovec；这是 vhost-blk 解析器，不调用 QEMU virtio_blk_handle_request。",
+            "sourceIds": [
+              "spdk-blk-parse"
+            ],
+            "active": [
+              "device",
+              "buffer"
+            ],
+            "edge": {
+              "from": "device",
+              "to": "buffer",
+              "kind": "metadata",
+              "label": "解析设备可写数据区"
+            }
+          },
+          "submit-read": {
+            "title": "SPDK 提交 bdev 读取",
+            "actor": "spdk",
+            "description": "spdk_bdev_readv 接收偏移 1 MiB、4096 B iovec 及 blk_request_complete_cb，进入选定的 NVMe bdev。",
+            "detail": "bdev 为异步提交接口；返回成功不表示硬件已完成。本例直连 NVMe、无转换模块、队列资源充足且无请求拆分。",
+            "sourceIds": [
+              "spdk-blk-parse",
+              "spdk-bdev-read",
+              "spdk-nvme-dispatch"
+            ],
+            "active": [
+              "device",
+              "storage"
+            ],
+            "edge": {
+              "from": "device",
+              "to": "storage",
+              "kind": "metadata",
+              "label": "bdev READ"
+            }
+          },
+          "read-data": {
+            "title": "NVMe 设备执行读取与数据搬运",
+            "actor": "backend",
+            "description": "本步示意控制器执行 READ、通过 DMA 向已映射的 Guest 用户页传输数据；SPDK 尚未确认完成，缓冲区仍显示等待结果。",
+            "detail": "控制器完成命令后会形成 CQ 项，下一步由 SPDK 轮询确认并更新结果状态。本图不模拟 DMA 的逐字节进度，也不把控制器内部行为当成 SPDK C 函数。源码只用于核验 SQ 提交与 CQ 处理边界；本例映射满足直接 DMA 条件，不推广为所有配置都零拷贝。",
+            "sourceIds": [
+              "spdk-nvme-submit",
+              "spdk-nvme-cq"
+            ],
+            "active": [
+              "storage",
+              "buffer"
+            ],
+            "edge": {
+              "from": "storage",
+              "to": "buffer",
+              "kind": "data",
+              "label": "NVMe → 4096 B 用户页"
+            },
+            "changes": {}
+          },
+          "write-status": {
+            "title": "SPDK 回调写入成功状态",
+            "actor": "spdk",
+            "description": "bdev 成功回调进入 blk_request_complete_cb，释放 bdev_io，再由 blk_request_finish 写入 VIRTIO_BLK_S_OK。",
+            "detail": "随后 vhost_user_blk_request_finish 调用 blk_task_enqueue。响应写回和 used 发布是连续但不同的操作；Guest 此时仍不能仅凭状态字节回收链。",
+            "sourceIds": [
+              "spdk-blk-done",
+              "spdk-blk-status",
+              "spdk-blk-finish"
+            ],
+            "active": [
+              "device",
+              "completion"
+            ],
+            "edge": {
+              "from": "device",
+              "to": "completion",
+              "kind": "metadata",
+              "label": "status = OK"
+            }
+          },
+          "write-used": {
+            "actor": "spdk",
+            "description": "SPDK 向 used.ring[0] 写入链头 id=0、len=4097，关联同一 R1。",
+            "detail": "读成功长度为 4096 B 数据加 1 B 状态，来自 virtio_blk_process_request 的 used_len。vhost_vq_used_ring_enqueue 写记录后才发布索引；不是每个字段各发一条消息。",
+            "sourceIds": [
+              "spdk-blk-parse",
+              "spdk-used"
+            ]
+          },
+          "publish-used": {
+            "actor": "spdk",
+            "detail": "vhost_vq_used_ring_enqueue 先写 id/len，执行 spdk_smp_wmb，再更新 used.idx；这些是同一函数内部的发布阶段。poller 稍后决定是否发 callfd 通知。",
+            "sourceIds": [
+              "spdk-used"
+            ]
+          },
+          "signal-irqfd": {
+            "title": "SPDK 通过 callfd 发送完成通知",
+            "actor": "spdk",
+            "description": "本例允许完成中断且关闭通知合并，SPDK poller 检查新 used 后通过 callfd 触发已连接的 KVM irqfd。",
+            "detail": "vhost_session_vq_used_signal → vhost_vq_used_signal → DPDK rte_vhost_vring_call_nonblock。callfd 只通知，不携带 payload；QEMU 已完成路由初始化，不在这次数据完成回调栈里。",
+            "sourceIds": [
+              "spdk-signal",
+              "spdk-callfd"
+            ],
+            "active": [
+              "device",
+              "interrupt"
+            ],
+            "edge": {
+              "from": "device",
+              "to": "interrupt",
+              "kind": "notification",
+              "label": "callfd → irqfd"
+            }
+          }
+        },
+        "insertSteps": [
+          {
+            "after": "check-kick",
+            "step": {
+              "id": "spdk-poll-available",
+              "phase": "notify",
+              "title": "SPDK poller 观察到新 available",
+              "actor": "spdk",
+              "description": "SPDK 的持续轮询发现 avail.idx=1，不等待 QEMU 用户态处理通知。",
+              "detail": "vhost_vq_avail_ring_get 先取索引并执行读屏障。演示分开显示“发现”和“消费”，源码读取/推进发生在同一次 poll 调用中；notified 在本变体只表示后端已观察到发布。",
+              "sourceIds": [
+                "spdk-blk-poll",
+                "spdk-avail"
+              ],
+              "active": [
+                "device",
+                "queue"
+              ],
+              "edge": {
+                "from": "queue",
+                "to": "device",
+                "kind": "metadata",
+                "label": "poll available"
+              },
+              "changes": {
+                "notified": true
+              }
+            }
+          },
+          {
+            "after": "submit-read",
+            "step": {
+              "id": "spdk-nvme-submit",
+              "phase": "read",
+              "title": "构造 NVMe READ 并写入 SQ",
+              "actor": "spdk",
+              "description": "NVMe bdev 把 4 KiB 读取转换为 LBA=2048、8 个 512 B 块的 NVMe 命令，写 SQ 并通知物理控制器。",
+              "detail": "固定单 iovec、md=NULL、无 memory-domain/加速序列，实际调用 spdk_nvme_ns_cmd_read_with_md。关闭 delay_cmd_submit 后，nvme_pcie_qpair_submit_tracker 写 SQ 并敲 doorbell；不是 Guest 的 virtio kick。",
+              "sourceIds": [
+                "spdk-nvme-read",
+                "spdk-nvme-read-command",
+                "spdk-nvme-submit"
+              ],
+              "active": [
+                "device",
+                "storage"
+              ],
+              "edge": {
+                "from": "device",
+                "to": "storage",
+                "kind": "metadata",
+                "label": "NVMe SQ / READ"
+              },
+              "changes": {}
+            }
+          },
+          {
+            "after": "read-data",
+            "step": {
+              "id": "spdk-nvme-poll-completion",
+              "phase": "read",
+              "title": "轮询 NVMe CQ 并返回 bdev 完成",
+              "actor": "spdk",
+              "description": "SPDK NVMe poller 读取 CQ、识别 CID，触发 NVMe 回调并向 bdev 返回成功；结果现在由软件完成路径确认。",
+              "detail": "bdev_nvme_poll 推进完成队列，经 nvme_pcie_qpair_complete_tracker → bdev_nvme_readv_done → bdev 完成回调。提交和完成不在同一同步栈，随后才进入 vhost 的协议响应阶段。",
+              "sourceIds": [
+                "spdk-nvme-poll",
+                "spdk-nvme-cq",
+                "spdk-nvme-complete",
+                "spdk-nvme-read-done",
+                "spdk-bdev-complete"
+              ],
+              "active": [
+                "storage",
+                "device",
+                "buffer"
+              ],
+              "edge": {
+                "from": "storage",
+                "to": "device",
+                "kind": "notification",
+                "label": "NVMe CQ → bdev callback"
+              },
+              "changes": {
+                "dataReady": true,
+                "bufferReady": true
+              }
+            }
+          }
+        ],
+        "callPaths": [
+          {
+            "id": "guest-submission",
+            "title": "Guest 系统调用与 virtio 提交",
+            "context": "Guest 原调用线程 · 内核态",
+            "sourceIds": [
+              "guest-pread",
+              "guest-vfs-read",
+              "guest-sync-read",
+              "guest-read-iter",
+              "guest-direct-read",
+              "guest-bio-wait",
+              "guest-bio-submit",
+              "guest-submit",
+              "guest-sg",
+              "ring-add",
+              "ring-publish",
+              "kick-check"
+            ],
+            "boundary": "列关键执行阶段，不表示全部直接嵌套。用户页固定后发布 available；本例 SPDK 轮询并抑制 kick，因此没有每请求的 PCI 门铃、KVM ioeventfd 或 QEMU 队列回调。"
+          },
+          {
+            "id": "spdk-submission",
+            "title": "SPDK 轮询、解析与 bdev 提交",
+            "context": "SPDK vhost poller · 宿主用户态",
+            "sourceIds": [
+              "spdk-blk-poll",
+              "spdk-blk-vq",
+              "spdk-avail",
+              "spdk-blk-task",
+              "spdk-blk-map",
+              "spdk-blk-parse",
+              "spdk-bdev-read"
+            ],
+            "boundary": "SPDK 从共享 RAM 消费队列并取得用户页映射，QEMU 只保留已建立的控制面。bdev 异步接口返回不等于 NVMe 完成；内存传输不经 Unix socket 或 QEMU 文件后端。"
+          },
+          {
+            "id": "spdk-nvme-submit",
+            "title": "NVMe 命令提交",
+            "context": "SPDK bdev / NVMe 驱动 · 宿主用户态",
+            "sourceIds": [
+              "spdk-nvme-dispatch",
+              "spdk-nvme-read",
+              "spdk-nvme-read-command",
+              "spdk-nvme-submit"
+            ],
+            "boundary": "固定 PCIe NVMe、512 B LBA、单 iovec、无 metadata/memory-domain/加速序列、关闭延迟提交。该分支使用 read_with_md(md=NULL)，写 SQ 并敲物理控制器门铃；NVMe SQ 不是 Guest virtqueue。"
+          },
+          {
+            "id": "spdk-nvme-completion",
+            "title": "NVMe CQ 轮询与 bdev 回调",
+            "context": "SPDK NVMe poller · 与提交分开的完成路径",
+            "sourceIds": [
+              "spdk-nvme-poll",
+              "spdk-nvme-cq",
+              "spdk-nvme-complete",
+              "spdk-nvme-read-done",
+              "spdk-bdev-complete"
+            ],
+            "boundary": "硬件完成和软件轮询是不同事件。NVMe poller 消费 CQ，按 CID 找回上下文，再经 bdev 回调返回 vhost；控制器内部 DMA/固件过程不是这些宿主函数的同步调用栈。"
+          },
+          {
+            "id": "spdk-completion",
+            "title": "SPDK 响应、used 与 callfd",
+            "context": "SPDK vhost 完成回调 / poller",
+            "sourceIds": [
+              "spdk-blk-done",
+              "spdk-blk-status",
+              "spdk-blk-finish",
+              "spdk-used",
+              "spdk-signal",
+              "spdk-callfd"
+            ],
+            "boundary": "先写响应，再在同一 enqueue 内写 used 项、屏障及 used.idx。本例关闭通知合并、Guest 未抑制完成通知；poller 通过 DPDK callfd 通知 KVM irqfd，发布 used 不代表中断已经注入。"
+          },
+          {
+            "id": "kvm-completion-irq",
+            "title": "中断路由与 LAPIC 挂起",
+            "context": "KVM irqfd 唤醒路径",
+            "sourceIds": [
+              "irqfd-route",
+              "msi-route",
+              "lapic-accept",
+              "vmx-pending"
+            ],
+            "boundary": "QEMU 初始化时已配置 MSI-X/irqfd 路由；日常 callfd 通知进入 KVM。关闭 APICv 后设置 LAPIC IRR 与事件请求，此刻仍不是 Guest 中断处理。"
+          },
+          {
+            "id": "kvm-vmentry-injection",
+            "title": "VM-entry 注入",
+            "context": "KVM 目标 vCPU 运行路径",
+            "sourceIds": [
+              "event-inject",
+              "vmx-inject",
+              "vmx-entry"
+            ],
+            "boundary": "可注入条件满足后写 VM-entry 中断信息；本例 VM-entry 成功，再由 Guest 执行处理函数。"
+          },
+          {
+            "id": "guest-interrupt",
+            "title": "Guest 队列回收",
+            "context": "Guest virtqueue 中断上下文",
+            "sourceIds": [
+              "guest-irq",
+              "guest-done",
+              "guest-reclaim"
+            ],
+            "boundary": "Guest 仍使用 virtio-blk 驱动，不因外部后端为 SPDK 而改变其协议；先按 used 取回请求，再结束上层 I/O。"
+          },
+          {
+            "id": "guest-bio-completion",
+            "title": "Guest bio 与块请求完成",
+            "context": "Guest 块层完成上下文",
+            "sourceIds": [
+              "guest-end",
+              "guest-block-end",
+              "guest-block-update",
+              "guest-bio-end",
+              "guest-wait-complete"
+            ],
+            "boundary": "bio 完成满足同步等待条件，完成侧继续清理；它不是对用户程序的普通函数调用。"
+          },
+          {
+            "id": "application-resume",
+            "title": "应用等待返回",
+            "context": "Guest 原调用线程 · 返回方向",
+            "sourceIds": [
+              "guest-bio-wait",
+              "guest-direct-read",
+              "guest-read-iter",
+              "guest-sync-read",
+              "guest-vfs-read",
+              "guest-pread"
+            ],
+            "boundary": "按返回方向列出等待、页面引用释放和系统调用返回。返回 4096 是应用传输字节数，不等于 used.len。"
+          }
+        ]
+      },
+      "operations": {
+        "read": {},
+        "write": {
+          "title": "一次 virtio-blk / SPDK 写入",
+          "summary": "Guest 写入经 SPDK 轮询、bdev 与 NVMe 完成，再通过 KVM 中断返回应用；QEMU 仅负责控制面，写入完成不等于持久化。",
+          "request": {
+            "command": "VIRTIO_BLK_T_OUT",
+            "usedLength": 1
+          },
+          "sourceMap": {
+            "guest-pread": "guest-pwrite",
+            "guest-vfs-read": "guest-vfs-write",
+            "guest-sync-read": "guest-sync-write",
+            "guest-read-iter": "guest-write-iter",
+            "spdk-bdev-read": "spdk-bdev-write",
+            "spdk-nvme-read": "spdk-nvme-write",
+            "spdk-nvme-read-command": "spdk-nvme-write-command",
+            "spdk-nvme-read-done": "spdk-nvme-write-done"
+          },
+          "phasePatches": {
+            "read": {
+              "title": "NVMe 写入",
+              "summary": "SPDK 提交 NVMe WRITE；控制器成功后经 CQ 轮询和 bdev 回调返回。"
+            }
+          },
+          "stepPatches": {
+            "ready": {
+              "detail": "Guest virtblk_req 与 SPDK vhost task 是不同本地对象。用户页已有待写数据，SPDK 尚未消费；R1 不代表跨进程指针。"
+            },
+            "prepare-buffers": {
+              "detail": "OUT 请求头和 payload 对设备只读；末尾 1 B status 可写。SPDK 访问已共享、注册的同一用户页，磁盘写方向与描述符 WRITE 权限不同。"
+            },
+            "parse-read": {
+              "title": "SPDK 解析 OUT 与只读 payload",
+              "description": "SPDK 校验 16 B 头、4096 B 设备可读数据和 1 B 状态，识别 OUT，预设 used_len=1。",
+              "detail": "virtio_blk_process_request 的 OUT 分支调用 spdk_bdev_writev；payload 是设备读取的数据，不计入设备可写完成长度。"
+            },
+            "submit-read": {
+              "title": "SPDK 提交 bdev 写入",
+              "description": "spdk_bdev_writev 提交偏移 1 MiB、4 KiB 用户数据及完成回调，进入 NVMe bdev。",
+              "detail": "无 FLUSH/FUA；bdev 返回表示提交成功，不表示 CQ 完成或掉电持久化。"
+            },
+            "spdk-nvme-submit": {
+              "title": "构造 NVMe WRITE 并写入 SQ",
+              "description": "单 iovec 经 spdk_nvme_ns_cmd_write_with_md(md=NULL) 转为 LBA=2048、8 块的 WRITE，写 SQ 并敲物理 doorbell。",
+              "detail": "本例无 metadata、memory-domain、加速序列、拆分、FUA 或延迟提交。NVMe SQ/doorbell 与 Guest virtqueue/kick 是两组不同接口。",
+              "edge": {
+                "from": "device",
+                "to": "storage",
+                "kind": "metadata",
+                "label": "NVMe SQ / WRITE"
+              }
+            },
+            "read-data": {
+              "title": "NVMe 设备读取用户页并执行写入",
+              "description": "本步示意控制器通过已映射的 DMA 地址读取 4 KiB payload 并执行 WRITE；SPDK 尚未确认完成，不向 Guest 写回新的 payload。",
+              "detail": "控制器完成命令后形成 CQ 项，下一步由 SPDK 轮询确认。本图不模拟控制器固件或介质内部行为。未请求 FLUSH/FUA，即使确认写命令成功，也不能额外保证掉电持久性。",
+              "edge": {
+                "from": "buffer",
+                "to": "storage",
+                "kind": "data",
+                "label": "4096 B 用户页 → NVMe"
+              },
+              "changes": {}
+            },
+            "spdk-nvme-poll-completion": {
+              "detail": "NVMe poller 处理 CQ，经过 bdev_nvme_writev_done 返回成功。dataReady 在 WRITE 中表示后端消费成功；bufferReady 表示应用原有数据，不表示读取了新数据。"
+            },
+            "write-status": {
+              "description": "NVMe/bdev 成功后进入 blk_request_complete_cb，再由 blk_request_finish 写入 VIRTIO_BLK_S_OK。",
+              "detail": "SPDK 只向 Guest 写入 1 B 状态，不把写入 payload 再复制回来。随后发布 used；状态或 used 完成都不自动代表持久化。"
+            },
+            "write-used": {
+              "description": "SPDK 写 used.ring[0]={id:0,len:1}，只计入设备写入的 1 B 状态。",
+              "detail": "virtio_blk_process_request 的 OUT 分支设 used_len=sizeof(status)。4096 B 是设备读取的用户数据，不计入 used.len。",
+              "changes": {
+                "usedWritten": true,
+                "usedId": 0,
+                "usedLength": 1
+              }
+            },
+            "return-to-user": {
+              "detail": "同步等待结束并释放固定用户页引用，pwrite 返回 4096。完成的是应用请求字节数，不是 used.len；此路径没有 FLUSH/FUA 的持久化承诺。"
+            }
+          },
+          "callPathPatches": {
+            "guest-submission": {
+              "title": "Guest pwrite 与 virtio 提交",
+              "sourceIds": [
+                "guest-pwrite",
+                "guest-vfs-write",
+                "guest-sync-write",
+                "guest-write-iter",
+                "guest-direct-write",
+                "guest-direct-read",
+                "guest-bio-wait",
+                "guest-bio-submit",
+                "guest-submit",
+                "guest-sg",
+                "ring-add",
+                "ring-publish",
+                "kick-check"
+              ]
+            },
+            "spdk-submission": {
+              "title": "SPDK 解析 OUT 与 bdev 写入"
+            },
+            "spdk-nvme-submit": {
+              "boundary": "固定 PCIe NVMe、512 B LBA、单 iovec、md=NULL、无 memory-domain/加速序列。该分支调用 write_with_md，写 SQ 并敲物理控制器门铃；没有 FLUSH/FUA，不承诺掉电持久化。"
+            },
+            "application-resume": {
+              "title": "pwrite 等待返回",
+              "sourceIds": [
+                "guest-bio-wait",
+                "guest-direct-read",
+                "guest-direct-write",
+                "guest-write-iter",
+                "guest-sync-write",
+                "guest-vfs-write",
+                "guest-pwrite"
+              ],
+              "boundary": "按返回方向列出等待、页面引用释放及写入一致性收尾，pwrite 返回 4096 后可复用缓冲区；普通成功完成不表示已持久化。"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "spdk-scsi",
+      "label": "virtio-scsi · SPDK / NVMe",
+      "baselines": [
+        {
+          "project": "SPDK",
+          "version": "25.09",
+          "commit": "a2f2a0b2794366fe1e42b97061782aae25119457",
+          "url": "https://github.com/spdk/spdk/tree/a2f2a0b2794366fe1e42b97061782aae25119457"
+        }
+      ],
+      "sources": {
+        "spdk-avail": {
+          "project": "SPDK",
+          "path": "lib/vhost/rte_vhost_user.c",
+          "symbol": "vhost_vq_avail_ring_get",
+          "line": 139,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/rte_vhost_user.c#L139"
+        },
+        "spdk-suppress-kick": {
+          "project": "SPDK",
+          "path": "lib/vhost/rte_vhost_user.c",
+          "symbol": "VRING_USED_F_NO_NOTIFY 设置",
+          "line": 1106,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/rte_vhost_user.c#L1106"
+        },
+        "spdk-used": {
+          "project": "SPDK",
+          "path": "lib/vhost/rte_vhost_user.c",
+          "symbol": "vhost_vq_used_ring_enqueue",
+          "line": 443,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/rte_vhost_user.c#L443"
+        },
+        "spdk-signal": {
+          "project": "SPDK",
+          "path": "lib/vhost/rte_vhost_user.c",
+          "symbol": "vhost_session_vq_used_signal",
+          "line": 401,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/rte_vhost_user.c#L401"
+        },
+        "spdk-callfd": {
+          "project": "SPDK",
+          "path": "lib/vhost/rte_vhost_user.c",
+          "symbol": "vhost_vq_used_signal",
+          "line": 323,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/rte_vhost_user.c#L323"
+        },
+        "spdk-blk-poll": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_blk.c",
+          "symbol": "_vdev_vq_worker",
+          "line": 915,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L915"
+        },
+        "spdk-blk-vq": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_blk.c",
+          "symbol": "process_vq",
+          "line": 861,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L861"
+        },
+        "spdk-blk-task": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_blk.c",
+          "symbol": "process_blk_task",
+          "line": 652,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L652"
+        },
+        "spdk-blk-map": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_blk.c",
+          "symbol": "blk_iovs_split_queue_setup",
+          "line": 199,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L199"
+        },
+        "spdk-blk-parse": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_blk.c",
+          "symbol": "virtio_blk_process_request",
+          "line": 464,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L464"
+        },
+        "spdk-blk-done": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_blk.c",
+          "symbol": "blk_request_complete_cb",
+          "line": 421,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L421"
+        },
+        "spdk-blk-status": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_blk.c",
+          "symbol": "blk_request_finish",
+          "line": 181,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L181"
+        },
+        "spdk-blk-finish": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_blk.c",
+          "symbol": "vhost_user_blk_request_finish",
+          "line": 167,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_blk.c#L167"
+        },
+        "spdk-bdev-read": {
+          "project": "SPDK",
+          "path": "lib/bdev/bdev.c",
+          "symbol": "spdk_bdev_readv",
+          "line": 5863,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/bdev/bdev.c#L5863"
+        },
+        "spdk-bdev-write": {
+          "project": "SPDK",
+          "path": "lib/bdev/bdev.c",
+          "symbol": "spdk_bdev_writev",
+          "line": 6175,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/bdev/bdev.c#L6175"
+        },
+        "spdk-bdev-complete": {
+          "project": "SPDK",
+          "path": "lib/bdev/bdev.c",
+          "symbol": "bdev_io_complete",
+          "line": 7794,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/bdev/bdev.c#L7794"
+        },
+        "spdk-nvme-dispatch": {
+          "project": "SPDK",
+          "path": "module/bdev/nvme/bdev_nvme.c",
+          "symbol": "_bdev_nvme_submit_request",
+          "line": 3292,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/module/bdev/nvme/bdev_nvme.c#L3292"
+        },
+        "spdk-nvme-read": {
+          "project": "SPDK",
+          "path": "module/bdev/nvme/bdev_nvme.c",
+          "symbol": "bdev_nvme_readv",
+          "line": 8378,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/module/bdev/nvme/bdev_nvme.c#L8378"
+        },
+        "spdk-nvme-write": {
+          "project": "SPDK",
+          "path": "module/bdev/nvme/bdev_nvme.c",
+          "symbol": "bdev_nvme_writev",
+          "line": 8431,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/module/bdev/nvme/bdev_nvme.c#L8431"
+        },
+        "spdk-nvme-read-command": {
+          "project": "SPDK",
+          "path": "lib/nvme/nvme_ns_cmd.c",
+          "symbol": "spdk_nvme_ns_cmd_read_with_md",
+          "line": 672,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/nvme/nvme_ns_cmd.c#L672"
+        },
+        "spdk-nvme-write-command": {
+          "project": "SPDK",
+          "path": "lib/nvme/nvme_ns_cmd.c",
+          "symbol": "spdk_nvme_ns_cmd_write_with_md",
+          "line": 1036,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/nvme/nvme_ns_cmd.c#L1036"
+        },
+        "spdk-nvme-submit": {
+          "project": "SPDK",
+          "path": "lib/nvme/nvme_pcie_common.c",
+          "symbol": "nvme_pcie_qpair_submit_tracker",
+          "line": 659,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/nvme/nvme_pcie_common.c#L659"
+        },
+        "spdk-nvme-poll": {
+          "project": "SPDK",
+          "path": "module/bdev/nvme/bdev_nvme.c",
+          "symbol": "bdev_nvme_poll",
+          "line": 1818,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/module/bdev/nvme/bdev_nvme.c#L1818"
+        },
+        "spdk-nvme-cq": {
+          "project": "SPDK",
+          "path": "lib/nvme/nvme_pcie_common.c",
+          "symbol": "nvme_pcie_qpair_process_completions",
+          "line": 865,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/nvme/nvme_pcie_common.c#L865"
+        },
+        "spdk-nvme-complete": {
+          "project": "SPDK",
+          "path": "lib/nvme/nvme_pcie_common.c",
+          "symbol": "nvme_pcie_qpair_complete_tracker",
+          "line": 705,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/nvme/nvme_pcie_common.c#L705"
+        },
+        "spdk-nvme-read-done": {
+          "project": "SPDK",
+          "path": "module/bdev/nvme/bdev_nvme.c",
+          "symbol": "bdev_nvme_readv_done",
+          "line": 7966,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/module/bdev/nvme/bdev_nvme.c#L7966"
+        },
+        "spdk-nvme-write-done": {
+          "project": "SPDK",
+          "path": "module/bdev/nvme/bdev_nvme.c",
+          "symbol": "bdev_nvme_writev_done",
+          "line": 7997,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/module/bdev/nvme/bdev_nvme.c#L7997"
+        },
+        "spdk-scsi-poll": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_scsi.c",
+          "symbol": "vdev_worker",
+          "line": 823,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_scsi.c#L823"
+        },
+        "spdk-scsi-vq": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_scsi.c",
+          "symbol": "process_vq",
+          "line": 770,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_scsi.c#L770"
+        },
+        "spdk-scsi-layout": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_scsi.c",
+          "symbol": "task_data_setup",
+          "line": 527,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_scsi.c#L527"
+        },
+        "spdk-scsi-parse": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_scsi.c",
+          "symbol": "process_request",
+          "line": 664,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_scsi.c#L664"
+        },
+        "spdk-scsi-submit": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_scsi.c",
+          "symbol": "task_submit",
+          "line": 370,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_scsi.c#L370"
+        },
+        "spdk-scsi-dev": {
+          "project": "SPDK",
+          "path": "lib/scsi/dev.c",
+          "symbol": "spdk_scsi_dev_queue_task",
+          "line": 286,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/scsi/dev.c#L286"
+        },
+        "spdk-scsi-cdb": {
+          "project": "SPDK",
+          "path": "lib/scsi/scsi_bdev.c",
+          "symbol": "bdev_scsi_process_block",
+          "line": 1660,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/scsi/scsi_bdev.c#L1660"
+        },
+        "spdk-scsi-rw": {
+          "project": "SPDK",
+          "path": "lib/scsi/scsi_bdev.c",
+          "symbol": "bdev_scsi_readwrite",
+          "line": 1237,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/scsi/scsi_bdev.c#L1237"
+        },
+        "spdk-bdev-read-blocks": {
+          "project": "SPDK",
+          "path": "lib/bdev/bdev.c",
+          "symbol": "spdk_bdev_readv_blocks",
+          "line": 5929,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/bdev/bdev.c#L5929"
+        },
+        "spdk-bdev-write-blocks": {
+          "project": "SPDK",
+          "path": "lib/bdev/bdev.c",
+          "symbol": "spdk_bdev_writev_blocks",
+          "line": 6190,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/bdev/bdev.c#L6190"
+        },
+        "spdk-scsi-read-done": {
+          "project": "SPDK",
+          "path": "lib/scsi/scsi_bdev.c",
+          "symbol": "bdev_scsi_read_task_complete_cmd",
+          "line": 1124,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/scsi/scsi_bdev.c#L1124"
+        },
+        "spdk-scsi-write-done": {
+          "project": "SPDK",
+          "path": "lib/scsi/scsi_bdev.c",
+          "symbol": "bdev_scsi_task_complete_cmd",
+          "line": 1109,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/scsi/scsi_bdev.c#L1109"
+        },
+        "spdk-scsi-lun-done": {
+          "project": "SPDK",
+          "path": "lib/scsi/lun.c",
+          "symbol": "scsi_lun_complete_task",
+          "line": 18,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/scsi/lun.c#L18"
+        },
+        "spdk-scsi-response": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_scsi.c",
+          "symbol": "vhost_scsi_task_cpl",
+          "line": 348,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_scsi.c#L348"
+        },
+        "spdk-scsi-used": {
+          "project": "SPDK",
+          "path": "lib/vhost/vhost_scsi.c",
+          "symbol": "submit_completion",
+          "line": 328,
+          "url": "https://github.com/spdk/spdk/blob/a2f2a0b2794366fe1e42b97061782aae25119457/lib/vhost/vhost_scsi.c#L328"
+        },
+        "spdk-guest-scsi-queue": {
+          "project": "Linux",
+          "path": "drivers/scsi/scsi_lib.c",
+          "symbol": "scsi_queue_rq",
+          "line": 1807,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/scsi_lib.c#L1807"
+        },
+        "spdk-guest-scsi-cdb": {
+          "project": "Linux",
+          "path": "drivers/scsi/sd.c",
+          "symbol": "sd_setup_rw10_cmnd",
+          "line": 1231,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/sd.c#L1231"
+        },
+        "spdk-guest-scsi-driver": {
+          "project": "Linux",
+          "path": "drivers/scsi/virtio_scsi.c",
+          "symbol": "virtscsi_queuecommand",
+          "line": 564,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/virtio_scsi.c#L564"
+        },
+        "spdk-guest-scsi-sg": {
+          "project": "Linux",
+          "path": "drivers/scsi/virtio_scsi.c",
+          "symbol": "__virtscsi_add_cmd",
+          "line": 428,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/virtio_scsi.c#L428"
+        },
+        "spdk-guest-scsi-kick": {
+          "project": "Linux",
+          "path": "drivers/scsi/virtio_scsi.c",
+          "symbol": "virtscsi_add_cmd",
+          "line": 494,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/virtio_scsi.c#L494"
+        },
+        "spdk-guest-scsi-notice": {
+          "project": "Linux",
+          "path": "drivers/scsi/virtio_scsi.c",
+          "symbol": "virtscsi_req_done",
+          "line": 194,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/virtio_scsi.c#L194"
+        },
+        "spdk-guest-scsi-reclaim": {
+          "project": "Linux",
+          "path": "drivers/scsi/virtio_scsi.c",
+          "symbol": "virtscsi_vq_done",
+          "line": 175,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/virtio_scsi.c#L175"
+        },
+        "spdk-guest-scsi-response": {
+          "project": "Linux",
+          "path": "drivers/scsi/virtio_scsi.c",
+          "symbol": "virtscsi_complete_cmd",
+          "line": 114,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/virtio_scsi.c#L114"
+        },
+        "spdk-guest-scsi-done": {
+          "project": "Linux",
+          "path": "drivers/scsi/scsi_lib.c",
+          "symbol": "scsi_done",
+          "line": 1736,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/scsi_lib.c#L1736"
+        },
+        "spdk-guest-scsi-end": {
+          "project": "Linux",
+          "path": "drivers/scsi/scsi_lib.c",
+          "symbol": "scsi_end_request",
+          "line": 630,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/scsi_lib.c#L630"
+        },
+        "spdk-guest-scsi-io-completion": {
+          "project": "Linux",
+          "path": "drivers/scsi/scsi_lib.c",
+          "symbol": "scsi_io_completion",
+          "line": 1056,
+          "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/scsi_lib.c#L1056"
+        }
+      },
+      "common": {
+        "title": "一次 virtio-scsi / SPDK 读取",
+        "summary": "Guest SCSI 读取经 SPDK vhost-scsi、bdev 与 NVMe 完成，再经中断返回应用；QEMU 仅负责控制面。",
+        "assumptions": [
+          "基线为 Linux 6.18、QEMU 10.2.0 和 SPDK 25.09；x86 VMX、in-kernel LAPIC、MSI-X/irqfd 已初始化，关闭 APICv/posted interrupt。",
+          "现代 virtio PCI + split ring，队列大小 8、直接三描述符链；无 indirect、EVENT_IDX 或 Guest vIOMMU。",
+          "SPDK 持续轮询，VRING_USED_F_NO_NOTIFY 抑制 Guest kick；不使用 SPDK interrupt mode。notified 仅表示 poller 已观察到 available，不表示 eventfd 已触发。",
+          "QEMU 已通过 vhost-user 交换共享 RAM、vring、kickfd/callfd 并建立路由；本次数据面不调用 QEMU SCSI 设备模拟或文件后端。",
+          "Guest 对 /dev/sda 做对齐 4 KiB、偏移 1 MiB 的 O_DIRECT 同步 I/O；固定单页、单 bio、单请求、单数据段，不拆分、合并或走文件系统页缓存。",
+          "SPDK bdev 直接对应一个 PCIe NVMe namespace，逻辑块 512 B；映射、注册和 DMA/IOMMU 条件已满足，无 bounce buffer、加密、校验元数据或额外复制路径。",
+          "固定单 iovec，无 memory-domain/加速序列与 metadata，NVMe 非延迟提交；提交和完成 poller 是逻辑上下文，不承诺与 Guest 队列一一对应。",
+          "只展示成功路径，无资源不足、重试、设备移除或重置；完成通知未抑制、通知合并关闭，Guest 可接收中断。",
+          "本次无 FLUSH、FUA、O_SYNC/O_DSYNC；写入完成只表示命令成功，不承诺掉电持久性。",
+          "地址与执行顺序是教学示例。控制器内部 DMA/存储行为按接口语义展示，不伪称由 SPDK 源码揭示固件内部每一步。",
+          "只用 request queue 2，control/event 队列不承载本次普通读写；target/LUN 已存在，无双向 I/O、T10 PI 或 sense 错误路径。",
+          "固定 CDB 配置区 32 B、sense 配置区 96 B：packed 请求=8+8+1+1+1+32=51 B，响应=4+4+2+1+1+96=108 B。READ/WRITE(10) 的有效 CDB 为 10 B，不代表请求头只有 10 B。",
+          "固定 Guest sd 的 use_10_for_rw=1、use_16_for_rw=0，512 B 逻辑块；LBA=2048、8 块。否则 Linux 也可能选择 READ/WRITE(6) 或 (16)。",
+          "本例响应区初始清零且无 sense 错误。SPDK 成功回调写 status 与 resid；response=OK 在 task_submit 先行设置，不把每个响应字段都虚构成完成时重新写入。"
+        ],
+        "request": {
+          "interface": "virtio-scsi",
+          "backend": "spdk-scsi",
+          "headerBytes": 51,
+          "responseBytes": 108,
+          "usedLength": 4204,
+          "command": "READ(10)",
+          "cdbBytes": 32,
+          "senseBytes": 96,
+          "lun": 0,
+          "logicalBlockBytes": 512,
+          "descriptors": [
+            {
+              "id": 0,
+              "addr": "0x1000",
+              "len": 51,
+              "flags": [
+                "NEXT"
+              ],
+              "next": 1,
+              "role": "LUN / tag / CDB · 设备读"
+            },
+            {
+              "id": 1,
+              "addr": "0x3000",
+              "len": 108,
+              "flags": [
+                "NEXT",
+                "WRITE"
+              ],
+              "next": 2,
+              "role": "SCSI 响应 · 设备写"
+            },
+            {
+              "id": 2,
+              "addr": "0x2000",
+              "len": 4096,
+              "flags": [
+                "WRITE"
+              ],
+              "next": null,
+              "role": "读结果缓冲区 · 设备写"
+            }
+          ]
+        },
+        "presentation": {
+          "deviceDomain": "SPDK",
+          "deviceContext": "宿主用户态 · vhost poller",
+          "deviceTitle": "vhost-scsi",
+          "storageTitle": "NVMe",
+          "storageContext": "SPDK bdev / PCIe NVMe",
+          "storageSummary": "bdev 转为 NVMe 命令；SQ 提交与 CQ 完成分开。",
+          "controlPlane": "QEMU 仅负责设备与 vhost-user 控制面：初始化共享内存、vring 和 eventfd 路由，不消费本例数据请求。",
+          "notificationMode": "poll",
+          "queueTitle": "request queue 2"
+        },
+        "lanes": [
+          {
+            "id": "guest-user",
+            "title": "Guest 用户态",
+            "subtitle": "应用 · 同步直接 I/O"
+          },
+          {
+            "id": "guest",
+            "title": "Guest 内核态",
+            "subtitle": "块层与 virtio 驱动"
+          },
+          {
+            "id": "kvm",
+            "title": "KVM",
+            "subtitle": "宿主内核 · 完成中断路由与注入"
+          },
+          {
+            "id": "qemu",
+            "title": "QEMU 控制面",
+            "subtitle": "已完成共享内存、vring 与 eventfd 初始化"
+          },
+          {
+            "id": "spdk",
+            "title": "SPDK",
+            "subtitle": "宿主用户态 · vhost / bdev / NVMe"
+          },
+          {
+            "id": "backend",
+            "title": "PCIe NVMe",
+            "subtitle": "命令执行与 DMA · 协议边界"
+          },
+          {
+            "id": "memory",
+            "title": "共享 Guest RAM",
+            "subtitle": "队列与用户缓冲区"
+          }
+        ],
+        "phasePatches": {
+          "notify": {
+            "title": "轮询发现",
+            "summary": "Guest kick 被抑制；SPDK poller 直接观察共享 available。"
+          },
+          "consume": {
+            "summary": "SPDK 消费链头、转换 GPA 映射并解析请求，不进入 QEMU 数据面。"
+          },
+          "read": {
+            "title": "NVMe 读写",
+            "summary": "bdev 提交 NVMe SQ；设备执行后，poller 消费 CQ 并调用完成回调。"
+          },
+          "complete": {
+            "summary": "SPDK 写回协议响应及 used 项，经屏障发布 used.idx。"
+          }
+        },
+        "removeSteps": [
+          "write-doorbell",
+          "signal-ioeventfd",
+          "dispatch-queue"
+        ],
+        "stepPatches": {
+          "map-direct-buffer": {
+            "detail": "Guest 直接 I/O 固定用户页，SPDK 通过已共享的 RAM 映射访问其后备内存。本例没有文件系统数据路径、宿主页缓存文件后端或额外 bounce buffer；这些前提不适用于所有 SPDK 配置。"
+          },
+          "ready": {
+            "title": "SCSI 请求与 READ(10) 已形成",
+            "description": "Guest sd 为 512 B 逻辑块的 LUN 形成 READ(10)：LBA=2048，传输 8 块。",
+            "detail": "sd_setup_rw10_cmnd 构造 10 B 有效 CDB，virtscsi_queuecommand 把它复制到 32 B CDB 配置区。Guest 保留 scsi_cmnd / virtio_scsi_cmd，SPDK 另有自己的 SCSI task。",
+            "sourceIds": [
+              "spdk-guest-scsi-cdb",
+              "spdk-guest-scsi-driver"
+            ]
+          },
+          "prepare-buffers": {
+            "title": "准备 51 B 请求与 108 B 响应区",
+            "description": "virtio-scsi 请求携带 LUN、tag 和 CDB，另有固定响应结构及 4096 B 设备可写数据区。",
+            "detail": "默认 CDB=32 B、sense=96 B；无 T10 PI 时请求51 B，响应108 B。响应中的 response/status/resid/sense 与 virtio-blk 单字节 status 不同；SPDK 按 LUN 选择后端。",
+            "sourceIds": [
+              "spdk-guest-scsi-driver",
+              "spdk-guest-scsi-sg",
+              "spdk-scsi-layout"
+            ]
+          },
+          "publish-available": {
+            "detail": "先写描述符及 available 项，再以 virtio_wmb 发布索引。SPDK poller 可直接观察共享 RAM；发布完成不要求每请求通知 QEMU。"
+          },
+          "check-kick": {
+            "title": "Guest 跳过被抑制的 kick",
+            "description": "virtio-scsi 发布 request queue 后检查通知条件，SPDK 的 NO_NOTIFY 使本例跳过 PCI kick。",
+            "detail": "固定 split ring、未启用 EVENT_IDX。请求的实际消费者是 SPDK poller，不需要每请求进入 KVM ioeventfd 或 QEMU 用户态。",
+            "sourceIds": [
+              "spdk-guest-scsi-kick",
+              "kick-check",
+              "spdk-suppress-kick"
+            ],
+            "active": [
+              "driver",
+              "queue"
+            ],
+            "edge": {
+              "from": "driver",
+              "to": "queue",
+              "kind": "metadata",
+              "label": "NO_NOTIFY：跳过 kick"
+            }
+          },
+          "consume-chain": {
+            "title": "SPDK 轮询 request queue 并映射链",
+            "actor": "spdk",
+            "description": "vdev_worker 轮询 request queue 2，经 process_vq 取出链头 0，建立 SCSI task 和 Guest 内存映射。",
+            "detail": "control queue 0 与 event queue 1 有不同处理用途，不属于本次普通读写。process_request / task_data_setup 读取 request、response 及 payload，并推进本地 available 消费位置。",
+            "sourceIds": [
+              "spdk-scsi-poll",
+              "spdk-scsi-vq",
+              "spdk-avail",
+              "spdk-scsi-layout"
+            ],
+            "active": [
+              "device",
+              "queue"
+            ],
+            "edge": {
+              "from": "queue",
+              "to": "device",
+              "kind": "metadata",
+              "label": "request queue → SPDK"
+            }
+          },
+          "parse-read": {
+            "title": "SPDK 解析 LUN、CDB 与 READ 布局",
+            "actor": "spdk",
+            "description": "process_request 查找 target/LUN 并把 CDB 交给 SCSI task；READ 数据区为设备可写，used_len 设为108+4096。",
+            "detail": "task_data_setup 先识别51 B request，再取得108 B response，最后映射 data-in。4204 来自这份实现的响应结构大小加数据描述符长度，不能使用 virtio-blk 的4097。",
+            "sourceIds": [
+              "spdk-scsi-layout",
+              "spdk-scsi-parse"
+            ],
+            "active": [
+              "device",
+              "buffer"
+            ],
+            "edge": {
+              "from": "device",
+              "to": "buffer",
+              "kind": "metadata",
+              "label": "解析 READ(10) / LUN"
+            }
+          },
+          "submit-read": {
+            "title": "SPDK SCSI 层转换为 bdev 读取",
+            "actor": "spdk",
+            "description": "task_submit 先设置 response=OK，经 spdk_scsi_dev_queue_task；SCSI 层解析 READ(10)，以8个块提交 spdk_bdev_readv_blocks。",
+            "detail": "bdev_scsi_process_block 提取 CDB 的 LBA/长度，bdev_scsi_readwrite 进入 bdev。response=OK 的早期写入仅表示传输请求已接受，不能在 used 发布前把它当作 I/O 完成。",
+            "sourceIds": [
+              "spdk-scsi-submit",
+              "spdk-scsi-dev",
+              "spdk-scsi-cdb",
+              "spdk-scsi-rw",
+              "spdk-bdev-read-blocks"
+            ],
+            "active": [
+              "device",
+              "storage"
+            ],
+            "edge": {
+              "from": "device",
+              "to": "storage",
+              "kind": "metadata",
+              "label": "SCSI READ → bdev blocks"
+            }
+          },
+          "read-data": {
+            "title": "NVMe 设备执行读取与数据搬运",
+            "actor": "backend",
+            "description": "本步示意控制器执行 READ、通过 DMA 向已映射的 Guest 用户页传输数据；SPDK 尚未确认完成，缓冲区仍显示等待结果。",
+            "detail": "控制器完成命令后会形成 CQ 项，下一步由 SPDK 轮询确认并更新结果状态。本图不模拟 DMA 的逐字节进度，也不把控制器内部行为当成 SPDK C 函数。源码只用于核验 SQ 提交与 CQ 处理边界；本例映射满足直接 DMA 条件，不推广为所有配置都零拷贝。",
+            "sourceIds": [
+              "spdk-nvme-submit",
+              "spdk-nvme-cq"
+            ],
+            "active": [
+              "storage",
+              "buffer"
+            ],
+            "edge": {
+              "from": "storage",
+              "to": "buffer",
+              "kind": "data",
+              "label": "NVMe → 4096 B 用户页"
+            },
+            "changes": {}
+          },
+          "write-status": {
+            "title": "SPDK 回调更新 SCSI 响应",
+            "actor": "spdk",
+            "description": "bdev/SCSI task 成功后进入 vhost_scsi_task_cpl，写 status=GOOD 与 resid=0，再提交该链的 used 完成。",
+            "detail": "READ 回调 bdev_scsi_read_task_complete_cmd 经 scsi_lun_complete_task 返回 vhost。response=OK 已在 task_submit 设置；本例无 sense，响应初始清零。不是写入一个 virtio-blk status 字节。",
+            "sourceIds": [
+              "spdk-scsi-read-done",
+              "spdk-scsi-lun-done",
+              "spdk-scsi-response"
+            ],
+            "active": [
+              "device",
+              "completion"
+            ],
+            "edge": {
+              "from": "device",
+              "to": "completion",
+              "kind": "metadata",
+              "label": "SCSI status / resid"
+            },
+            "changes": {
+              "statusWritten": true,
+              "statusByte": "0x00"
+            }
+          },
+          "write-used": {
+            "actor": "spdk",
+            "description": "submit_completion 写 used.ring[0]={id:0,len:4204}，由108 B响应空间加4096 B data-in组成。",
+            "detail": "SPDK task_data_setup 的 FROM_DEV 分支设 used_len=sizeof(virtio_scsi_cmd_resp)+len；这不是有效CDB长度、sense有效长度或应用返回值。数据位于desc[2]，响应位于desc[1]。",
+            "sourceIds": [
+              "spdk-scsi-layout",
+              "spdk-scsi-used",
+              "spdk-used"
+            ],
+            "changes": {
+              "usedWritten": true,
+              "usedId": 0,
+              "usedLength": 4204
+            }
+          },
+          "publish-used": {
+            "actor": "spdk",
+            "detail": "vhost_vq_used_ring_enqueue 先写 id/len，执行 spdk_smp_wmb，再更新 used.idx；这些是同一函数内部的发布阶段。poller 稍后决定是否发 callfd 通知。",
+            "sourceIds": [
+              "spdk-used"
+            ]
+          },
+          "signal-irqfd": {
+            "title": "SPDK 通过 callfd 发送完成通知",
+            "actor": "spdk",
+            "description": "本例允许完成中断且关闭通知合并，SPDK poller 检查新 used 后通过 callfd 触发已连接的 KVM irqfd。",
+            "detail": "vhost_session_vq_used_signal → vhost_vq_used_signal → DPDK rte_vhost_vring_call_nonblock。callfd 只通知，不携带 payload；QEMU 已完成路由初始化，不在这次数据完成回调栈里。",
+            "sourceIds": [
+              "spdk-signal",
+              "spdk-callfd"
+            ],
+            "active": [
+              "device",
+              "interrupt"
+            ],
+            "edge": {
+              "from": "device",
+              "to": "interrupt",
+              "kind": "notification",
+              "label": "callfd → irqfd"
+            }
+          },
+          "application-ready": {
+            "description": "Guest 应用以 O_DIRECT 打开 /dev/sda，准备读取偏移 1 MiB 的 4 KiB。",
+            "detail": "固定单页、单 bio、单 SCSI 命令和单 request-queue 链；不经过 Guest 文件系统数据路径。本例 sd 明确选择 READ(10)。"
+          },
+          "submit-bio": {
+            "description": "submit_bio_wait 提交 READ bio；blk-mq 经 SCSI 队列准备 CDB，再派发给 virtio-scsi。",
+            "detail": "scsi_queue_rq 走 SCSI 中间层，不调用 virtio_queue_rq。固定无重试、无请求拆分，原线程在提交后同步等待完成。",
+            "sourceIds": [
+              "guest-bio-wait",
+              "guest-bio-submit",
+              "spdk-guest-scsi-queue",
+              "spdk-guest-scsi-driver"
+            ]
+          },
+          "prepare-descriptors": {
+            "description": "READ 的直接链为 desc[0] 请求51 B → desc[1] 响应108 B → desc[2] 数据4096 B。",
+            "detail": "__virtscsi_add_cmd 先放 request，再放可写 response，最后是 data-in；因此数据并不是总在 desc[1]。SPDK task_data_setup 的 FROM_DEV 分支按同一顺序解释链。",
+            "sourceIds": [
+              "spdk-guest-scsi-sg",
+              "ring-add",
+              "spdk-scsi-layout"
+            ]
+          },
+          "guest-notice": {
+            "title": "Guest virtio-scsi 检查 used 队列",
+            "description": "vring_interrupt 进入 request queue 的 virtscsi_req_done，再由 virtscsi_vq_done 检查完成。",
+            "detail": "驱动暂时关闭回调，循环取 used 并重新启用/复查；这条路径不是 virtblk_done。中断只表示需要查看队列，不承载 payload。",
+            "sourceIds": [
+              "guest-irq",
+              "spdk-guest-scsi-notice",
+              "spdk-guest-scsi-reclaim"
+            ]
+          },
+          "reclaim-chain": {
+            "description": "virtqueue_get_buf 按 used.id=0 找回 virtio_scsi_cmd，归还三个描述符并推进驱动完成消费位置。",
+            "detail": "virtscsi_vq_done 得到原来的 cmd 上下文后调用 virtscsi_complete_cmd。响应解释、scsi_done 和 bio 完成属于后续边界，不能把回收链直接等同于应用返回。",
+            "sourceIds": [
+              "guest-reclaim",
+              "spdk-guest-scsi-reclaim"
+            ]
+          },
+          "complete-bio": {
+            "description": "成功 SCSI 完成经 scsi_done / 块层完成上下文进入 scsi_io_completion，scsi_end_request 通过 blk_update_request 完成 bio。",
+            "detail": "virtscsi_complete_cmd 解释 response/status/resid 后调用 scsi_done，不调用 virtblk_request_done。bio_endio 的同步等待回调满足原线程的等待条件；完成可由块层调度，不承诺全部在同一中断栈。",
+            "sourceIds": [
+              "spdk-guest-scsi-response",
+              "spdk-guest-scsi-done",
+              "spdk-guest-scsi-io-completion",
+              "spdk-guest-scsi-end",
+              "guest-block-update",
+              "guest-bio-end",
+              "guest-wait-complete"
+            ]
+          },
+          "finish-request": {
+            "description": "scsi_end_request 在更新 bio 后清理 SCSI 命令，再通过 __blk_mq_end_request 结束块请求。",
+            "detail": "这是 SCSI 的块请求收尾，不经过 virtio-blk 完成函数。本例选择完成侧清理后恢复原等待线程，不声称它们不可并发。",
+            "sourceIds": [
+              "spdk-guest-scsi-end"
+            ]
+          },
+          "return-to-user": {
+            "detail": "等待满足并释放用户页引用，pread 返回4096。SPDK此请求的used.len=4204包含108 B响应空间，不等于应用实际读取字节数；结果已在原用户页。"
+          }
+        },
+        "insertSteps": [
+          {
+            "after": "check-kick",
+            "step": {
+              "id": "spdk-poll-available",
+              "phase": "notify",
+              "title": "SPDK poller 观察到新 available",
+              "actor": "spdk",
+              "description": "SPDK 的持续轮询发现 avail.idx=1，不等待 QEMU 用户态处理通知。",
+              "detail": "vhost_vq_avail_ring_get 先取索引并执行读屏障。演示分开显示“发现”和“消费”，源码读取/推进发生在同一次 poll 调用中；notified 在本变体只表示后端已观察到发布。",
+              "sourceIds": [
+                "spdk-scsi-poll",
+                "spdk-avail"
+              ],
+              "active": [
+                "device",
+                "queue"
+              ],
+              "edge": {
+                "from": "queue",
+                "to": "device",
+                "kind": "metadata",
+                "label": "poll available"
+              },
+              "changes": {
+                "notified": true
+              }
+            }
+          },
+          {
+            "after": "submit-read",
+            "step": {
+              "id": "spdk-nvme-submit",
+              "phase": "read",
+              "title": "构造 NVMe READ 并写入 SQ",
+              "actor": "spdk",
+              "description": "NVMe bdev 把 4 KiB 读取转换为 LBA=2048、8 个 512 B 块的 NVMe 命令，写 SQ 并通知物理控制器。",
+              "detail": "固定单 iovec、md=NULL、无 memory-domain/加速序列，实际调用 spdk_nvme_ns_cmd_read_with_md。关闭 delay_cmd_submit 后，nvme_pcie_qpair_submit_tracker 写 SQ 并敲 doorbell；不是 Guest 的 virtio kick。",
+              "sourceIds": [
+                "spdk-nvme-read",
+                "spdk-nvme-read-command",
+                "spdk-nvme-submit"
+              ],
+              "active": [
+                "device",
+                "storage"
+              ],
+              "edge": {
+                "from": "device",
+                "to": "storage",
+                "kind": "metadata",
+                "label": "NVMe SQ / READ"
+              },
+              "changes": {}
+            }
+          },
+          {
+            "after": "read-data",
+            "step": {
+              "id": "spdk-nvme-poll-completion",
+              "phase": "read",
+              "title": "轮询 NVMe CQ 并返回 bdev 完成",
+              "actor": "spdk",
+              "description": "SPDK NVMe poller 读取 CQ、识别 CID，触发 NVMe 回调并向 bdev 返回成功；结果现在由软件完成路径确认。",
+              "detail": "bdev_nvme_poll 推进完成队列，经 nvme_pcie_qpair_complete_tracker → bdev_nvme_readv_done → bdev 完成回调。提交和完成不在同一同步栈，随后才进入 vhost 的协议响应阶段。",
+              "sourceIds": [
+                "spdk-nvme-poll",
+                "spdk-nvme-cq",
+                "spdk-nvme-complete",
+                "spdk-nvme-read-done",
+                "spdk-bdev-complete"
+              ],
+              "active": [
+                "storage",
+                "device",
+                "buffer"
+              ],
+              "edge": {
+                "from": "storage",
+                "to": "device",
+                "kind": "notification",
+                "label": "NVMe CQ → bdev callback"
+              },
+              "changes": {
+                "dataReady": true,
+                "bufferReady": true
+              }
+            }
+          },
+          {
+            "after": "reclaim-chain",
+            "step": {
+              "id": "spdk-guest-scsi-response",
+              "phase": "reclaim",
+              "title": "Guest 解释 SCSI 响应再调用 scsi_done",
+              "actor": "guest",
+              "description": "virtscsi_complete_cmd 检查 response/status/resid，并在本例无错误时向 SCSI 中间层报告成功。",
+              "detail": "sense 空间是协议响应的一部分，但成功路径不展示虚构的sense错误。scsi_done 进入块层完成调度，与取回virtqueue描述符、结束bio和用户态返回分开。",
+              "sourceIds": [
+                "spdk-guest-scsi-response",
+                "spdk-guest-scsi-done"
+              ],
+              "active": [
+                "reclaim",
+                "driver"
+              ],
+              "edge": {
+                "from": "completion",
+                "to": "reclaim",
+                "kind": "metadata",
+                "label": "response / status / resid"
+              },
+              "changes": {}
+            }
+          }
+        ],
+        "callPaths": [
+          {
+            "id": "guest-submission",
+            "title": "Guest SCSI CDB 与 request queue",
+            "context": "Guest 原调用线程 · 内核态",
+            "sourceIds": [
+              "guest-pread",
+              "guest-vfs-read",
+              "guest-sync-read",
+              "guest-read-iter",
+              "guest-direct-read",
+              "guest-bio-wait",
+              "guest-bio-submit",
+              "spdk-guest-scsi-queue",
+              "spdk-guest-scsi-cdb",
+              "spdk-guest-scsi-driver",
+              "spdk-guest-scsi-sg",
+              "ring-add",
+              "ring-publish",
+              "spdk-guest-scsi-kick"
+            ],
+            "boundary": "sd 生成 READ(10)，virtio-scsi 把 LUN/tag/CDB 与 response/data-in 排入共享队列；本例NO_NOTIFY抑制kick。CDB构造、描述符发布和等待是关键阶段，不是全部直接嵌套调用。"
+          },
+          {
+            "id": "spdk-submission",
+            "title": "SPDK vhost-scsi 与 SCSI/bdev 提交",
+            "context": "SPDK vhost poller · 宿主用户态",
+            "sourceIds": [
+              "spdk-scsi-poll",
+              "spdk-scsi-vq",
+              "spdk-avail",
+              "spdk-scsi-parse",
+              "spdk-scsi-layout",
+              "spdk-scsi-submit",
+              "spdk-scsi-dev",
+              "spdk-scsi-cdb",
+              "spdk-scsi-rw",
+              "spdk-bdev-read-blocks"
+            ],
+            "boundary": "先解析virtio-scsi传输布局并选择LUN，再解释SCSI CDB的LBA/块数。QEMU只负责先前的控制面，不运行scsi-hd、virtio_scsi_handle_cmd_req或文件后端。"
+          },
+          {
+            "id": "spdk-nvme-submit",
+            "title": "NVMe 命令提交",
+            "context": "SPDK bdev / NVMe 驱动 · 宿主用户态",
+            "sourceIds": [
+              "spdk-nvme-dispatch",
+              "spdk-nvme-read",
+              "spdk-nvme-read-command",
+              "spdk-nvme-submit"
+            ],
+            "boundary": "固定 PCIe NVMe、512 B LBA、单 iovec、无 metadata/memory-domain/加速序列、关闭延迟提交。该分支使用 read_with_md(md=NULL)，写 SQ 并敲物理控制器门铃；NVMe SQ 不是 Guest virtqueue。"
+          },
+          {
+            "id": "spdk-nvme-completion",
+            "title": "NVMe CQ 轮询与 bdev 回调",
+            "context": "SPDK NVMe poller · 与提交分开的完成路径",
+            "sourceIds": [
+              "spdk-nvme-poll",
+              "spdk-nvme-cq",
+              "spdk-nvme-complete",
+              "spdk-nvme-read-done",
+              "spdk-bdev-complete"
+            ],
+            "boundary": "硬件完成和软件轮询是不同事件。NVMe poller 消费 CQ，按 CID 找回上下文，再经 bdev 回调返回 vhost；控制器内部 DMA/固件过程不是这些宿主函数的同步调用栈。"
+          },
+          {
+            "id": "spdk-completion",
+            "title": "SPDK SCSI 响应与 used 发布",
+            "context": "SPDK vhost 完成回调 / poller",
+            "sourceIds": [
+              "spdk-scsi-read-done",
+              "spdk-scsi-lun-done",
+              "spdk-scsi-response",
+              "spdk-scsi-used",
+              "spdk-used",
+              "spdk-signal",
+              "spdk-callfd"
+            ],
+            "boundary": "bdev/SCSI回调更新status与resid，再由submit_completion发布used。成功READ的used_len=108+4096；完成通知通过callfd进入KVM，不经QEMU SCSI设备模拟。"
+          },
+          {
+            "id": "kvm-completion-irq",
+            "title": "中断路由与 LAPIC 挂起",
+            "context": "KVM irqfd 唤醒路径",
+            "sourceIds": [
+              "irqfd-route",
+              "msi-route",
+              "lapic-accept",
+              "vmx-pending"
+            ],
+            "boundary": "QEMU 初始化时已配置 MSI-X/irqfd 路由；日常 callfd 通知进入 KVM。关闭 APICv 后设置 LAPIC IRR 与事件请求，此刻仍不是 Guest 中断处理。"
+          },
+          {
+            "id": "kvm-vmentry-injection",
+            "title": "VM-entry 注入",
+            "context": "KVM 目标 vCPU 运行路径",
+            "sourceIds": [
+              "event-inject",
+              "vmx-inject",
+              "vmx-entry"
+            ],
+            "boundary": "可注入条件满足后写 VM-entry 中断信息；本例 VM-entry 成功，再由 Guest 执行处理函数。"
+          },
+          {
+            "id": "guest-interrupt",
+            "title": "Guest virtio-scsi 回收与响应解释",
+            "context": "Guest virtqueue 中断上下文",
+            "sourceIds": [
+              "guest-irq",
+              "spdk-guest-scsi-notice",
+              "spdk-guest-scsi-reclaim",
+              "guest-reclaim",
+              "spdk-guest-scsi-response",
+              "spdk-guest-scsi-done"
+            ],
+            "boundary": "request queue回调取回virtio_scsi_cmd，解释response/status/resid后调用scsi_done。并不经过virtblk_done或virtblk_request_done；上层完成可被块层调度。"
+          },
+          {
+            "id": "guest-bio-completion",
+            "title": "Guest SCSI 与 bio 完成",
+            "context": "Guest 块层完成上下文",
+            "sourceIds": [
+              "spdk-guest-scsi-io-completion",
+              "spdk-guest-scsi-end",
+              "guest-block-update",
+              "guest-bio-end",
+              "guest-wait-complete"
+            ],
+            "boundary": "scsi_end_request先通过blk_update_request完成bio，再清理命令并调用__blk_mq_end_request。满足同步等待和实际恢复应用是不同调度事件。"
+          },
+          {
+            "id": "application-resume",
+            "title": "应用等待返回",
+            "context": "Guest 原调用线程 · 返回方向",
+            "sourceIds": [
+              "guest-bio-wait",
+              "guest-direct-read",
+              "guest-read-iter",
+              "guest-sync-read",
+              "guest-vfs-read",
+              "guest-pread"
+            ],
+            "boundary": "按返回方向列出等待、页面引用释放和系统调用返回。返回 4096 是应用传输字节数，不等于 used.len。"
+          }
+        ],
+        "sourceMap": {
+          "guest-submit": "spdk-guest-scsi-driver",
+          "guest-header": "spdk-guest-scsi-cdb",
+          "guest-sg": "spdk-guest-scsi-sg",
+          "guest-done": "spdk-guest-scsi-reclaim",
+          "guest-end": "spdk-guest-scsi-end"
+        }
+      },
+      "operations": {
+        "read": {},
+        "write": {
+          "title": "一次 virtio-scsi / SPDK 写入",
+          "summary": "Guest SCSI 写入经 SPDK vhost-scsi、bdev 与 NVMe 完成，再经中断返回应用；QEMU 仅负责控制面，写入完成不等于持久化。",
+          "request": {
+            "command": "WRITE(10)",
+            "usedLength": 108,
+            "descriptors": [
+              {
+                "id": 0,
+                "addr": "0x1000",
+                "len": 51,
+                "flags": [
+                  "NEXT"
+                ],
+                "next": 1,
+                "role": "LUN / tag / CDB · 设备读"
+              },
+              {
+                "id": 1,
+                "addr": "0x2000",
+                "len": 4096,
+                "flags": [
+                  "NEXT"
+                ],
+                "next": 2,
+                "role": "写入数据 · 设备读"
+              },
+              {
+                "id": 2,
+                "addr": "0x3000",
+                "len": 108,
+                "flags": [
+                  "WRITE"
+                ],
+                "next": null,
+                "role": "SCSI 响应 · 设备写"
+              }
+            ]
+          },
+          "sourceMap": {
+            "guest-pread": "guest-pwrite",
+            "guest-vfs-read": "guest-vfs-write",
+            "guest-sync-read": "guest-sync-write",
+            "guest-read-iter": "guest-write-iter",
+            "spdk-bdev-read": "spdk-bdev-write",
+            "spdk-nvme-read": "spdk-nvme-write",
+            "spdk-nvme-read-command": "spdk-nvme-write-command",
+            "spdk-nvme-read-done": "spdk-nvme-write-done",
+            "spdk-bdev-read-blocks": "spdk-bdev-write-blocks",
+            "spdk-scsi-read-done": "spdk-scsi-write-done"
+          },
+          "phasePatches": {
+            "read": {
+              "title": "NVMe 写入",
+              "summary": "SPDK 提交 NVMe WRITE；控制器成功后经 CQ 轮询和 bdev 回调返回。"
+            }
+          },
+          "stepPatches": {
+            "ready": {
+              "title": "SCSI WRITE(10) 请求已形成",
+              "description": "Guest sd形成LBA=2048、8块的WRITE(10)，用户页已有4 KiB数据，request queue尚未发布。",
+              "detail": "有效CDB10 B放入32 B CDB区；LUN/tag由virtio-scsi头承载。Guest scsi_cmnd与SPDK task不是同一个对象。",
+              "sourceIds": [
+                "spdk-guest-scsi-cdb",
+                "spdk-guest-scsi-driver"
+              ]
+            },
+            "prepare-buffers": {
+              "title": "准备 WRITE(10)、payload 与响应区",
+              "description": "准备51 B请求、4096 B设备可读payload和108 B设备可写SCSI响应区。",
+              "detail": "WRITE表示存储写入，payload描述符因此没有WRITE权限；response描述符才带WRITE。响应不是virtio-blk的一字节status。",
+              "sourceIds": [
+                "spdk-guest-scsi-driver",
+                "spdk-guest-scsi-sg",
+                "spdk-scsi-layout"
+              ]
+            },
+            "parse-read": {
+              "title": "SPDK 解析 WRITE(10) 与 data-out",
+              "description": "SPDK校验LUN和请求链，解析WRITE(10)；payload为设备只读，最后的108 B响应区为设备可写。",
+              "detail": "task_data_setup的TO_DEV分支设used_len=sizeof(virtio_scsi_cmd_resp)=108；4096 B写payload不计入used.len。",
+              "sourceIds": [
+                "spdk-scsi-layout",
+                "spdk-scsi-parse"
+              ]
+            },
+            "submit-read": {
+              "title": "SPDK SCSI 层提交 bdev 写入",
+              "description": "task_submit设置response=OK，SCSI层解释WRITE(10)的LBA/长度，经spdk_bdev_writev_blocks提交8块数据。",
+              "detail": "只有完成回调和used发布后Guest才可消费结果。没有FLUSH/FUA；SCSI接受请求、NVMe完成和掉电持久性是不同边界。",
+              "sourceIds": [
+                "spdk-scsi-submit",
+                "spdk-scsi-dev",
+                "spdk-scsi-cdb",
+                "spdk-scsi-rw",
+                "spdk-bdev-write-blocks"
+              ]
+            },
+            "spdk-nvme-submit": {
+              "title": "构造 NVMe WRITE 并写入 SQ",
+              "description": "单 iovec 经 spdk_nvme_ns_cmd_write_with_md(md=NULL) 转为 LBA=2048、8 块的 WRITE，写 SQ 并敲物理 doorbell。",
+              "detail": "本例无 metadata、memory-domain、加速序列、拆分、FUA 或延迟提交。NVMe SQ/doorbell 与 Guest virtqueue/kick 是两组不同接口。",
+              "edge": {
+                "from": "device",
+                "to": "storage",
+                "kind": "metadata",
+                "label": "NVMe SQ / WRITE"
+              }
+            },
+            "read-data": {
+              "title": "NVMe 设备读取用户页并执行写入",
+              "description": "本步示意控制器通过已映射的 DMA 地址读取 4 KiB payload 并执行 WRITE；SPDK 尚未确认完成，不向 Guest 写回新的 payload。",
+              "detail": "控制器完成命令后形成 CQ 项，下一步由 SPDK 轮询确认。本图不模拟控制器固件或介质内部行为。未请求 FLUSH/FUA，即使确认写命令成功，也不能额外保证掉电持久性。",
+              "edge": {
+                "from": "buffer",
+                "to": "storage",
+                "kind": "data",
+                "label": "4096 B 用户页 → NVMe"
+              },
+              "changes": {}
+            },
+            "spdk-nvme-poll-completion": {
+              "detail": "NVMe poller 处理 CQ，经过 bdev_nvme_writev_done 返回成功。dataReady 在 WRITE 中表示后端消费成功；bufferReady 表示应用原有数据，不表示读取了新数据。"
+            },
+            "write-status": {
+              "title": "SPDK 更新写入的 SCSI 响应",
+              "description": "bdev写入完成经bdev_scsi_task_complete_cmd和SCSI task返回vhost_scsi_task_cpl，写status=GOOD、resid=0。",
+              "detail": "response=OK已在task_submit设置，本例无sense错误。Guest收到的是108 B结构中的SCSI完成字段，不是virtio-blk status字节，也不是重新返回4 KiB payload。",
+              "sourceIds": [
+                "spdk-scsi-write-done",
+                "spdk-scsi-lun-done",
+                "spdk-scsi-response"
+              ],
+              "changes": {
+                "statusWritten": true,
+                "statusByte": "0x00"
+              }
+            },
+            "write-used": {
+              "description": "SPDK发布used.ring[0]={id:0,len:108}，只计入固定SCSI响应空间。",
+              "detail": "SPDK TO_DEV分支在task_data_setup设置used_len=sizeof(response)。data-out是设备读取的4096 B，不计入设备可写长度；仍不能据此承诺持久化。",
+              "sourceIds": [
+                "spdk-scsi-layout",
+                "spdk-scsi-used",
+                "spdk-used"
+              ],
+              "changes": {
+                "usedWritten": true,
+                "usedId": 0,
+                "usedLength": 108
+              }
+            },
+            "return-to-user": {
+              "detail": "SCSI/bio成功完成并释放用户页引用，pwrite返回4096。该返回值不是used.len=108；本路径未执行FLUSH/FUA，普通完成不保证掉电数据可恢复。"
+            },
+            "application-ready": {
+              "description": "Guest 应用以 O_DIRECT 打开可写的 /dev/sda，准备向偏移1 MiB写入4 KiB；本例无O_SYNC/O_DSYNC。",
+              "detail": "固定单页、单bio、单SCSI命令，sd明确选择WRITE(10)、FUA=0；用户页数据先准备好再提交。"
+            },
+            "submit-bio": {
+              "description": "同步直接I/O提交WRITE bio，经blk-mq和SCSI中间层构造WRITE(10)，派发给virtio-scsi。",
+              "detail": "固定use_10_for_rw=1、512 B逻辑块、8块payload；无拆分/合并。不会调用virtio-blk的virtio_queue_rq。",
+              "sourceIds": [
+                "guest-bio-wait",
+                "guest-bio-submit",
+                "spdk-guest-scsi-queue",
+                "spdk-guest-scsi-driver"
+              ]
+            },
+            "prepare-descriptors": {
+              "description": "WRITE链为desc[0]请求51 B → desc[1]数据4096 B → desc[2]响应108 B；只有响应可被设备写入。",
+              "detail": "Linux __virtscsi_add_cmd先放request和data-out，再放response；SPDK TO_DEV分支遍历只读payload，最后取得可写response并设used_len=108。",
+              "sourceIds": [
+                "spdk-guest-scsi-sg",
+                "ring-add",
+                "spdk-scsi-layout"
+              ]
+            }
+          },
+          "callPathPatches": {
+            "guest-submission": {
+              "title": "Guest pwrite 与 SCSI WRITE(10)",
+              "sourceIds": [
+                "guest-pwrite",
+                "guest-vfs-write",
+                "guest-sync-write",
+                "guest-write-iter",
+                "guest-direct-write",
+                "guest-direct-read",
+                "guest-bio-wait",
+                "guest-bio-submit",
+                "spdk-guest-scsi-queue",
+                "spdk-guest-scsi-cdb",
+                "spdk-guest-scsi-driver",
+                "spdk-guest-scsi-sg",
+                "ring-add",
+                "ring-publish",
+                "spdk-guest-scsi-kick"
+              ],
+              "boundary": "应用先准备payload；SCSI中间层形成WRITE(10)，virtio-scsi按request/data-out/response发布链。NO_NOTIFY抑制提交kick，SPDK直接轮询。"
+            },
+            "spdk-submission": {
+              "title": "SPDK 解析 WRITE(10) 与 bdev 写入"
+            },
+            "spdk-nvme-submit": {
+              "boundary": "固定 PCIe NVMe、512 B LBA、单 iovec、md=NULL、无 memory-domain/加速序列。该分支调用 write_with_md，写 SQ 并敲物理控制器门铃；没有 FLUSH/FUA，不承诺掉电持久化。"
+            },
+            "application-resume": {
+              "title": "pwrite 等待返回",
+              "sourceIds": [
+                "guest-bio-wait",
+                "guest-direct-read",
+                "guest-direct-write",
+                "guest-write-iter",
+                "guest-sync-write",
+                "guest-vfs-write",
+                "guest-pwrite"
+              ],
+              "boundary": "按返回方向列出等待、页面引用释放及写入一致性收尾，pwrite 返回 4096 后可复用缓冲区；普通成功完成不表示已持久化。"
+            },
+            "spdk-completion": {
+              "boundary": "bdev_scsi_task_complete_cmd经SCSI task更新response的status/resid，再发布used.len=108。写入payload是设备读内存，不计入used；callfd只触发完成通知，不代表持久化。"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

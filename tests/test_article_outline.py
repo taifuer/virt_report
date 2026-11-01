@@ -85,7 +85,9 @@ def test_explicit_heading_ids_cannot_collide(first, second):
 @pytest.mark.parametrize("article", mechanisms.articles(), ids=lambda article: article["slug"])
 def test_published_outline_matches_section_and_subsection_numbers_without_js(article):
     page = render.render_mechanisms_html(Config(), article["slug"])
-    toc = re.search(r'<nav class="mechanism-toc".*?</nav>', page, re.S).group()
+    toc_class = ("mechanism-walkthrough-nav" if article.get("presentation") == "walkthrough"
+                 else "mechanism-toc")
+    toc = re.search(rf'<nav class="{toc_class}".*?</nav>', page, re.S).group()
     for number, section in enumerate(article["sections"], 1):
         label = chinese_number(number) + "、"
         assert f'href="#{section["id"]}">{label}{section["title"]}</a>' in toc
@@ -101,7 +103,10 @@ def test_every_topic_has_a_complete_intro_and_detail_links():
         assert overview and overview["slug"] == topic["overview"]
         assert f'<a href="mechanisms/{overview["slug"]}.html">{topic["title"]}</a>' in index
         page = render.render_mechanisms_html(Config(), overview["slug"])
-        for section in ("evolution", "reading", "sources"):
+        sections = (("walkthrough", "comparison", "sources")
+                    if overview.get("presentation") == "walkthrough"
+                    else ("evolution", "reading", "sources"))
+        for section in sections:
             assert f'id="{section}"' in page
         for article in topic["detail_articles"]:
             assert f'href="{article["slug"]}.html"' in page

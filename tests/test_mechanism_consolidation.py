@@ -77,7 +77,7 @@ def _request(path, method):
 
 def test_consolidated_catalogue_has_unique_canonical_articles():
     slugs = [article["slug"] for article in mechanisms.articles()]
-    assert len(slugs) == len(set(slugs)) == 53
+    assert len(slugs) == len(set(slugs)) == 54
     assert set(slugs).isdisjoint(MERGES)
     assert {entry["slug"]: entry["target"] for entry in mechanisms.redirects()} == MERGES
     catalogue = LinksAndIds(render.render_mechanisms_html(Config()))

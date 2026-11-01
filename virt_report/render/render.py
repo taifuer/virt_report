@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import calendar as _pycal
 import hashlib
+import json
 import re
 import shutil
 from datetime import datetime, timedelta
@@ -78,6 +79,7 @@ MECHANISM_ASSET_NAMES = ("mechanisms.css", "mechanisms.js", "precopy-lab.css",
                          "mechanism-viewer.css", "mechanism-viewer.js",
                          "migration-stream.css", "migration-stream.js",
                          "multifd.css", "multifd.js", "device-tx.css", "device-tx.js",
+                         "virtio-blk-read.css", "virtio-blk-read-model.js", "virtio-blk-read.js",
                          "packed-virtqueue.css", "packed-virtqueue.js",
                          "vhost-path.css", "vhost-path.js", "dirty-ring.css", "dirty-ring.js",
                          "postcopy.css", "postcopy.js", "vfio-dma.css", "vfio-dma.js",
@@ -367,8 +369,17 @@ def _render_mechanism_page(site_name: str, slug: str | None) -> str | None:
     digest = hashlib.sha256()
     for filename in MECHANISM_ASSET_NAMES:
         digest.update((ASSETS_DIR / filename).read_bytes())
+    flow = mechanisms.get_flow(article["flow"]) if article and article.get("flow") else None
+    if article and article.get("flow") and flow is None:
+        raise ValueError("An interactive article must use a registered flow")
+    if flow is not None:
+        digest.update(json.dumps(flow, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    io_scenarios = mechanisms.get_io_scenarios() if article and article.get("scenario_catalog") else None
+    if io_scenarios is not None:
+        digest.update(json.dumps(io_scenarios, ensure_ascii=False, sort_keys=True).encode("utf-8"))
     context = dict(
         article=article, articles=mechanisms.articles(), topics=mechanisms.topics(),
+        flow=flow, io_scenarios=io_scenarios,
         topic_groups=mechanisms.topic_groups() if article is None else (),
         topic=mechanisms.get_topic(article["topic"]) if article else None,
         root="../" if article else "",

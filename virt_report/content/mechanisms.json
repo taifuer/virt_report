@@ -11,6 +11,10 @@
     {
       "slug": "internals",
       "title": "内部机制"
+    },
+    {
+      "slug": "walkthroughs",
+      "title": "交互演示"
     }
   ],
   "topics": [
@@ -112,6 +116,13 @@
       "group": "internals",
       "title": "Libvirt 内部机制",
       "summary": "守护进程启动、连接与驱动选择、RPC 编解码和调用分发。"
+    },
+    {
+      "slug": "block-io-walkthrough",
+      "group": "walkthroughs",
+      "title": "块 I/O 读写过程",
+      "overview": "virtio-blk-read",
+      "summary": "选择设备接口、存储后端与读写操作，逐步观察一次请求的跨层交接、队列状态和中断注入。"
     }
   ],
   "articles": [
@@ -2161,6 +2172,52 @@
         {"id": "evolution", "title": "从二维像素传输到三维加速"},
         {"id": "summary", "title": "总结与进一步阅读"},
         {"id": "references", "title": "参考资料"}
+      ]
+    },
+    {
+      "slug": "virtio-blk-read",
+      "topic": "block-io-walkthrough",
+      "title": "块 I/O 读写过程",
+      "summary": "选择 virtio-blk 或 virtio-scsi、本地文件、Ceph RBD 或 SPDK 后端，交互查看一次 4 KiB 读写请求的跨层处理、队列变化、中断注入与源码路径。",
+      "reviewed_on": "2026-10-31",
+      "template": "_virtio_blk_read_article.html",
+      "presentation": "walkthrough",
+      "scenario_catalog": true,
+      "flow": "virtio-blk-read",
+      "stylesheet": "virtio-blk-read.css",
+      "model_script": "virtio-blk-read-model.js",
+      "script": "virtio-blk-read.js",
+      "baselines": [
+        {
+          "project": "QEMU",
+          "version": "10.2.0",
+          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
+          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
+        },
+        {
+          "project": "Linux",
+          "version": "6.18",
+          "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+          "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"
+        }
+      ],
+      "sections": [
+        {
+          "id": "preface",
+          "title": "场景与边界"
+        },
+        {
+          "id": "walkthrough",
+          "title": "逐步演示"
+        },
+        {
+          "id": "comparison",
+          "title": "普通文件与写入的差异"
+        },
+        {
+          "id": "sources",
+          "title": "源码与相关内容"
+        }
       ]
     },
     {

@@ -33,12 +33,14 @@ def test_directory_has_reading_order_and_real_anchors_only():
         'cpu-virtualization', 'memory-virtualization', 'device-virtualization',
         'interrupt-virtualization', 'vm-startup', 'migration', 'hotplug',
         'live-upgrade', 'qemu-internals', 'kvm-internals', 'libvirt-internals',
+        'block-io-walkthrough',
     ]
     assert re.findall(r'<section class="mechanism-topic" id="([^"]+)"', page) == [
         'virtualization-basics',
         'cpu-virtualization', 'memory-virtualization', 'device-virtualization',
         'interrupt-virtualization', 'vm-startup', 'migration', 'hotplug',
         'live-upgrade', 'qemu-internals', 'kvm-internals', 'libvirt-internals',
+        'block-io-walkthrough',
     ]
     for slug in re.findall(r'href="#([^"]+)"', directory):
         assert f'id="{slug}"' in page
@@ -54,7 +56,7 @@ def test_directory_counts_primary_articles_without_extra_related_rows():
                       'device-virtualization': 15, 'interrupt-virtualization': 2,
                       'vm-startup': 2, 'migration': 7, 'hotplug': 4,
                       'live-upgrade': 1, 'qemu-internals': 6, 'libvirt-internals': 2,
-                      'kvm-internals': 2}
+                      'kvm-internals': 2, 'block-io-walkthrough': 1}
     assert [article['slug'] for article in
             mechanisms.get_topic('memory-virtualization')['articles']] == [
                 'memory-virtualization', 'kvm-ept-fault', 'kvm-hugepages', 'kvm-dirty-ring',
@@ -85,6 +87,20 @@ def test_merged_io_topic_keeps_legacy_anchor_without_duplicate_articles():
     assert page.count('id="io-virtualization"') == 1
     assert 'href="#io-virtualization"' not in page
     assert page.index('id="device-virtualization"') < page.index('id="io-virtualization"')
+
+
+def test_walkthroughs_have_their_own_group_without_duplicating_mechanism_articles():
+    topic = mechanisms.get_topic('block-io-walkthrough')
+    assert topic['group'] == 'walkthroughs'
+    assert topic['overview'] == 'virtio-blk-read'
+    assert topic['overview_article']['presentation'] == 'walkthrough'
+    page = render.render_mechanisms_html(Config())
+    assert page.count('href="mechanisms/virtio-blk-read.html"') == 1
+    assert 'id="group-walkthroughs"' in page
+    device = re.search(r'<section class="mechanism-topic" id="device-virtualization".*?</section>',
+                       page, re.S).group()
+    assert 'virtio-blk-read.html' not in device
+    assert 'qemu-virtio-blk.html' in device
 
 
 def test_planned_topic_becomes_published_without_manual_counts(monkeypatch):

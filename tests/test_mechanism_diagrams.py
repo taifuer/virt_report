@@ -69,11 +69,18 @@ def test_inline_diagrams_do_not_upscale_or_fill_multiple_screens():
 @pytest.mark.parametrize("slug", [article['slug'] for article in mechanisms.articles()])
 def test_article_diagrams_are_local_with_progressive_fullscreen_controls(slug):
     page = render.render_mechanisms_html(Config(), slug)
-    assert 'data-mechanism-view="diagram"' in page
-    assert 'data-mechanism-expand' in page
-    assert 'data-mechanism-title' in page
-    assert 'Mermaid 源码' in page
-    assert '打开原图</a>' in page
+    if mechanisms.get_article(slug).get("presentation") == "walkthrough":
+        # Native responsive diagrams replace scaled Mermaid images in a walkthrough.
+        assert 'data-vbr-board' in page and 'data-vbr-connections' in page
+        assert 'data-vbr-fallback' in page
+        assert 'type="application/json"' in page
+        assert 'assets/virtio-blk-read-model.js?v=' in page
+    else:
+        assert 'data-mechanism-view="diagram"' in page
+        assert 'data-mechanism-expand' in page
+        assert 'data-mechanism-title' in page
+        assert 'Mermaid 源码' in page
+        assert '打开原图</a>' in page
     # Mermaid is a build-time authoring tool, never a reader's network dependency.
     assert 'mermaid.min.js' not in page
     assert 'cdn.jsdelivr.net' not in page
