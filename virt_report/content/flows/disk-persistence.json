@@ -1,0 +1,1620 @@
+{
+  "id": "disk-persistence",
+  "title": "写入完成与持久化",
+  "defaultScenario": "write-cache",
+  "sources": {
+    "cache-contract": {
+      "label": "Linux 6.18：FLUSH 与 FUA 的完成契约",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/block/writeback_cache_control.rst#L8-L38"
+    },
+    "linux-direct": {
+      "label": "Linux 6.18：直接写入的 REQ_FUA 标志",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/block/fops.c#L28-L36"
+    },
+    "linux-fsync": {
+      "label": "Linux 6.18：块设备 fsync 与 blkdev_issue_flush",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/block/fops.c#L617-L636"
+    },
+    "linux-blk-command": {
+      "label": "Linux 6.18：virtio-blk WRITE / FLUSH 命令",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/block/virtio_blk.c#L250-L264"
+    },
+    "linux-blk-cache": {
+      "label": "Linux 6.18：virtio-blk write cache 特性",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/block/virtio_blk.c#L1495-L1502"
+    },
+    "linux-postflush": {
+      "label": "Linux 6.18：无原生 FUA 时安排 POSTFLUSH",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/block/blk-flush.c#L390-L411"
+    },
+    "linux-scsi-fua": {
+      "label": "Linux 6.18：SCSI 请求的 FUA 位",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/sd.c#L1368-L1380"
+    },
+    "linux-scsi-cdb": {
+      "label": "Linux 6.18：WRITE(10/16) CDB",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/scsi/sd.c#L1216-L1243"
+    },
+    "qemu-write": {
+      "label": "QEMU 10.2：virtio-blk 提交写入",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c#L250-L257"
+    },
+    "qemu-complete": {
+      "label": "QEMU 10.2：status、used 与完成通知",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c#L54-L66"
+    },
+    "qemu-flush": {
+      "label": "QEMU 10.2：virtio-blk FLUSH 提交",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c#L334-L347"
+    },
+    "qemu-flush-complete": {
+      "label": "QEMU 10.2：FLUSH 完成回调",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c#L135-L146"
+    },
+    "qemu-scsi-fua": {
+      "label": "QEMU 10.2：SCSI FUA 转为 BDRV_REQ_FUA",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/scsi/scsi-disk.c#L3110-L3117"
+    },
+    "qemu-scsi-detect": {
+      "label": "QEMU 10.2：识别 WRITE CDB 的 FUA 位",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/scsi/scsi-disk.c#L366-L389"
+    },
+    "qemu-scsi-complete": {
+      "label": "QEMU 10.2：SCSI 数据请求完成",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/scsi/scsi-disk.c#L392-L421"
+    },
+    "qemu-scsi-used": {
+      "label": "QEMU 10.2：virtio-scsi 响应与 used 发布",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/scsi/virtio-scsi.c#L106-L129"
+    },
+    "qemu-writeback": {
+      "label": "QEMU 10.2：writeback 写完成与掉电边界",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qemu-options.hx#L1725-L1736"
+    },
+    "qemu-file-fua": {
+      "label": "QEMU 10.2：threads 文件后端写入后刷新",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/file-posix.c#L2616-L2633"
+    },
+    "qemu-file-sync": {
+      "label": "QEMU 10.2：文件后端 fdatasync",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/file-posix.c#L1728-L1760"
+    },
+    "qemu-flush-layers": {
+      "label": "QEMU 10.2：刷新后端层与 no-flush 分支",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/io.c#L3041-L3117"
+    },
+    "qemu-no-flush": {
+      "label": "QEMU 10.2：no-flush 会清除 FUA 要求",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/io.c#L1061-L1068"
+    },
+    "qemu-cache-options": {
+      "label": "QEMU 10.2：writeback、direct 与 no-flush",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qemu-options.hx#L1651-L1670"
+    },
+    "linux-write-iter": {
+      "label": "Linux 6.18：块设备直接写与后续同步",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/block/fops.c#L793-L811"
+    }
+  },
+  "scenarios": [
+    {
+      "id": "write-cache",
+      "label": "普通 WRITE",
+      "summary": "观察宿主页缓存接受数据后，普通写如何完成并返回应用；本场景未请求持久化。",
+      "assumptions": [
+        "x86 / KVM；Guest Linux 6.18，QEMU 10.2.0；队列、设备、文件与映射均已就绪。",
+        "固定偏移 1 MiB 的 4 KiB 写入，缓冲区已对齐，旧内容 A、新内容 B；只有本次数据写，无拆分、合并、并发或错误。",
+        "Guest O_DIRECT 绕过 Guest 页缓存；宿主 raw 文件固定 aio=threads、cache.writeback=on、cache.direct=off、cache.no-flush=off。",
+        "宿主页缓存和设备写缓存均可易失；下层正确遵守 flush / 同步完成契约。稳定存储代表掉电后仍可恢复的承诺边界，不限定硬件内部实现。",
+        "缓存中 A / B 的位置是选定执行顺序下的教学状态，不是实际磁盘追踪，不模拟写入原子性或真实耗时。"
+      ],
+      "nodes": [
+        {
+          "id": "application",
+          "label": "应用 · 用户态",
+          "role": "guest",
+          "initial": "用户缓冲区为 B，尚未调用"
+        },
+        {
+          "id": "guest",
+          "label": "块层与设备驱动",
+          "role": "guest",
+          "initial": "尚无本次请求"
+        },
+        {
+          "id": "queue",
+          "label": "Guest RAM · 请求与完成",
+          "role": "memory",
+          "initial": "尚未发布命令"
+        },
+        {
+          "id": "qemu",
+          "label": "QEMU 设备与块层",
+          "role": "userspace",
+          "initial": "等待 Guest 请求"
+        },
+        {
+          "id": "host-cache",
+          "label": "宿主页缓存",
+          "role": "kernel",
+          "initial": "本次 B 尚未写入"
+        },
+        {
+          "id": "device-cache",
+          "label": "设备易失写缓存",
+          "role": "device",
+          "initial": "本次 B 尚未写入"
+        },
+        {
+          "id": "stable",
+          "label": "稳定存储",
+          "role": "device",
+          "initial": "旧数据 A"
+        }
+      ],
+      "links": [
+        {
+          "id": "syscall",
+          "from": "application",
+          "to": "guest",
+          "label": "系统调用与同步要求",
+          "kind": "control"
+        },
+        {
+          "id": "publish",
+          "from": "guest",
+          "to": "queue",
+          "label": "发布设备请求",
+          "kind": "control"
+        },
+        {
+          "id": "consume",
+          "from": "queue",
+          "to": "qemu",
+          "label": "读取命令与写入数据",
+          "kind": "data"
+        },
+        {
+          "id": "file-write",
+          "from": "qemu",
+          "to": "host-cache",
+          "label": "写入后端文件",
+          "kind": "data"
+        },
+        {
+          "id": "writeback",
+          "from": "host-cache",
+          "to": "device-cache",
+          "label": "宿主写回数据",
+          "kind": "data"
+        },
+        {
+          "id": "persist",
+          "from": "device-cache",
+          "to": "stable",
+          "label": "满足稳定存储要求",
+          "kind": "data"
+        },
+        {
+          "id": "sync",
+          "from": "qemu",
+          "to": "host-cache",
+          "label": "fdatasync 等待持久化",
+          "kind": "control"
+        },
+        {
+          "id": "complete",
+          "from": "qemu",
+          "to": "queue",
+          "label": "状态与 used 完成",
+          "kind": "control"
+        },
+        {
+          "id": "reclaim",
+          "from": "queue",
+          "to": "guest",
+          "label": "消费完成",
+          "kind": "notification"
+        },
+        {
+          "id": "return",
+          "from": "guest",
+          "to": "application",
+          "label": "系统调用返回",
+          "kind": "control"
+        }
+      ],
+      "structures": [
+        {
+          "id": "request",
+          "title": "请求与完成",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "command",
+              "label": "设备命令",
+              "initial": "尚未发布"
+            },
+            {
+              "key": "writeRange",
+              "label": "数据范围",
+              "initial": "偏移 1 MiB · 4096 B，旧值 A → 新值 B"
+            },
+            {
+              "key": "publishedCount",
+              "label": "已发布请求",
+              "initial": "0"
+            },
+            {
+              "key": "completedCount",
+              "label": "已完成请求",
+              "initial": "0"
+            },
+            {
+              "key": "requestStatus",
+              "label": "完成状态",
+              "initial": "尚无完成"
+            }
+          ]
+        },
+        {
+          "id": "cache-state",
+          "title": "数据所在层级",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "guestCache",
+              "label": "Guest 页缓存",
+              "initial": "O_DIRECT：本次数据不经 Guest 页缓存"
+            },
+            {
+              "key": "hostCache",
+              "label": "宿主页缓存",
+              "initial": "本次 B 尚未写入"
+            },
+            {
+              "key": "deviceCache",
+              "label": "设备易失缓存",
+              "initial": "本次 B 尚未写入"
+            },
+            {
+              "key": "stableData",
+              "label": "稳定存储内容",
+              "initial": "A"
+            },
+            {
+              "key": "persistence",
+              "label": "本次 B 的持久化确认",
+              "initial": "未确认"
+            }
+          ]
+        },
+        {
+          "id": "application-state",
+          "title": "应用与同步语义",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "userBuffer",
+              "label": "用户缓冲区",
+              "initial": "4096 B 新值 B，等待提交"
+            },
+            {
+              "key": "writeReturn",
+              "label": "写调用返回",
+              "initial": "尚未调用"
+            },
+            {
+              "key": "syncReturn",
+              "label": "fsync 返回",
+              "initial": "尚未调用"
+            },
+            {
+              "key": "priorWrites",
+              "label": "前序写入",
+              "initial": "本例无并发写入"
+            }
+          ]
+        },
+        {
+          "id": "policy",
+          "title": "缓存配置",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "guestOpen",
+              "label": "Guest 打开标志",
+              "initial": "O_DIRECT"
+            },
+            {
+              "key": "qemuCache",
+              "label": "QEMU 后端缓存",
+              "initial": "writeback=on · direct=off · no-flush=off"
+            },
+            {
+              "key": "hostIo",
+              "label": "后端实现",
+              "initial": "raw 文件 · aio=threads"
+            },
+            {
+              "key": "deviceWce",
+              "label": "设备能力",
+              "initial": "virtio-blk；writeback 与 FLUSH 已协商"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "initial",
+          "title": "初始状态",
+          "actor": "应用与存储",
+          "description": "稳定存储已有 A，应用缓冲区准备了 4096 B 的 B。",
+          "detail": "应用以 O_DIRECT 打开虚拟块设备，尚未提交写入。该标志本身不附加持久化要求。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "cache-contract",
+            "qemu-cache-options"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-call",
+          "title": "提交直接写",
+          "actor": "Guest 应用 / 块层",
+          "description": "pwrite(fd, B, 4096, 1048576) 开始，Guest 块层形成普通写请求。",
+          "detail": "O_DIRECT 约束 Guest 缓存路径；本次调用没有 O_DSYNC、REQ_FUA 或同步刷新要求。用户缓冲区在写调用返回前保持有效。",
+          "active": [
+            "application",
+            "guest"
+          ],
+          "links": [
+            "syscall"
+          ],
+          "changes": {
+            "writeReturn": "等待写完成",
+            "userBuffer": "B 正在用于本次写；尚不可复用"
+          },
+          "nodeStates": {
+            "application": "写调用：等待写完成"
+          },
+          "sourceIds": [
+            "linux-direct"
+          ],
+          "focus": false
+        },
+        {
+          "id": "write-publish",
+          "title": "发布 WRITE",
+          "actor": "Guest virtio-blk 驱动",
+          "description": "发布 VIRTIO_BLK_T_OUT，数据方向为设备读取 Guest 缓冲区。",
+          "detail": "这是数据写请求，QEMU 从共享队列取出命令与 4096 B 数据。普通 OUT 不携带原生 FUA 命令或 FUA 位。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "command": "VIRTIO_BLK_T_OUT · 4096 B",
+            "publishedCount": "1",
+            "requestStatus": "WRITE 等待完成"
+          },
+          "nodeStates": {
+            "queue": "VIRTIO_BLK_T_OUT · 4096 B",
+            "qemu": "WRITE 等待完成"
+          },
+          "sourceIds": [
+            "linux-blk-command",
+            "linux-blk-cache"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-cached",
+          "title": "后端接受数据",
+          "actor": "QEMU / 宿主文件系统",
+          "description": "QEMU 将 B 写入 raw 文件的宿主页缓存；普通文件写操作完成。",
+          "detail": "固定 writeback=on、direct=off。选择后台回写尚未发生的时刻，B 可停留在宿主 RAM；此时文件写成功无需等待稳定存储更新。",
+          "active": [
+            "queue",
+            "qemu",
+            "host-cache"
+          ],
+          "links": [
+            "consume",
+            "file-write"
+          ],
+          "changes": {
+            "hostCache": "B：脏数据，等待回写",
+            "deviceCache": "本次 B 尚未收到",
+            "stableData": "A",
+            "persistence": "未确认；B 尚可仅在易失缓存"
+          },
+          "nodeStates": {
+            "host-cache": "B：脏数据，等待回写",
+            "device-cache": "本次 B 尚未收到",
+            "stable": "数据 A"
+          },
+          "sourceIds": [
+            "qemu-write",
+            "qemu-cache-options",
+            "qemu-writeback"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-complete",
+          "title": "发布写完成",
+          "actor": "QEMU virtio-blk",
+          "description": "后端普通写成功后，设备写入 OK 状态并发布 used。",
+          "detail": "完成结束了设备对这条 Guest 缓冲区的使用。writeback 模式下，这个 OK 表示请求处理成功，不增加掉电持久化承诺。",
+          "active": [
+            "qemu",
+            "queue"
+          ],
+          "links": [
+            "complete"
+          ],
+          "changes": {
+            "requestStatus": "WRITE：VIRTIO_BLK_S_OK",
+            "completedCount": "1"
+          },
+          "nodeStates": {
+            "qemu": "WRITE：VIRTIO_BLK_S_OK"
+          },
+          "sourceIds": [
+            "qemu-complete",
+            "qemu-cache-options",
+            "qemu-writeback"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-return",
+          "title": "写调用返回",
+          "actor": "Guest 完成路径 / 应用",
+          "description": "Guest 消费完成，pwrite 返回 4096，应用可以复用 B 的用户缓冲区。",
+          "detail": "返回值表示这次写入被接受。没有同步操作时，掉电后是否保留 B 尚未得到保证；本例选定的缓存状态中稳定存储仍为 A。",
+          "active": [
+            "queue",
+            "guest",
+            "application"
+          ],
+          "links": [
+            "reclaim",
+            "return"
+          ],
+          "changes": {
+            "writeReturn": "4096",
+            "userBuffer": "本次写已返回；应用可复用"
+          },
+          "nodeStates": {
+            "application": "写调用：4096"
+          },
+          "sourceIds": [
+            "cache-contract",
+            "qemu-cache-options",
+            "qemu-writeback"
+          ],
+          "focus": false
+        },
+        {
+          "id": "write-boundary",
+          "title": "确认完成边界",
+          "actor": "应用与存储契约",
+          "description": "应用已得到成功返回，B 的稳定存储状态仍未确认。",
+          "detail": "后台写回可能随后推进；本演示停在尚未回写的一个合法时刻。宿主掉电时不能依靠这次普通返回证明 B 可恢复。",
+          "active": [],
+          "links": [],
+          "changes": {
+            "syncReturn": "未执行 FLUSH / fsync"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "cache-contract",
+            "qemu-cache-options",
+            "qemu-writeback"
+          ],
+          "focus": true
+        }
+      ]
+    },
+    {
+      "id": "write-flush",
+      "label": "WRITE 后 FLUSH",
+      "summary": "先等待普通 WRITE 完成，再执行 fsync；观察刷新如何把完成边界推进到稳定存储。",
+      "assumptions": [
+        "x86 / KVM；Guest Linux 6.18，QEMU 10.2.0；队列、设备、文件与映射均已就绪。",
+        "固定偏移 1 MiB 的 4 KiB 写入，缓冲区已对齐，旧内容 A、新内容 B；只有本次数据写，无拆分、合并、并发或错误。",
+        "Guest O_DIRECT 绕过 Guest 页缓存；宿主 raw 文件固定 aio=threads、cache.writeback=on、cache.direct=off、cache.no-flush=off。",
+        "宿主页缓存和设备写缓存均可易失；下层正确遵守 flush / 同步完成契约。稳定存储代表掉电后仍可恢复的承诺边界，不限定硬件内部实现。",
+        "缓存中 A / B 的位置是选定执行顺序下的教学状态，不是实际磁盘追踪，不模拟写入原子性或真实耗时。",
+        "应用先等待 pwrite 成功，再在同一块设备 fd 上调用 fsync；设备已协商 FLUSH，所有层都报告成功。"
+      ],
+      "nodes": [
+        {
+          "id": "application",
+          "label": "应用 · 用户态",
+          "role": "guest",
+          "initial": "用户缓冲区为 B，尚未调用"
+        },
+        {
+          "id": "guest",
+          "label": "块层与设备驱动",
+          "role": "guest",
+          "initial": "尚无本次请求"
+        },
+        {
+          "id": "queue",
+          "label": "Guest RAM · 请求与完成",
+          "role": "memory",
+          "initial": "尚未发布命令"
+        },
+        {
+          "id": "qemu",
+          "label": "QEMU 设备与块层",
+          "role": "userspace",
+          "initial": "等待 Guest 请求"
+        },
+        {
+          "id": "host-cache",
+          "label": "宿主页缓存",
+          "role": "kernel",
+          "initial": "本次 B 尚未写入"
+        },
+        {
+          "id": "device-cache",
+          "label": "设备易失写缓存",
+          "role": "device",
+          "initial": "本次 B 尚未写入"
+        },
+        {
+          "id": "stable",
+          "label": "稳定存储",
+          "role": "device",
+          "initial": "旧数据 A"
+        }
+      ],
+      "links": [
+        {
+          "id": "syscall",
+          "from": "application",
+          "to": "guest",
+          "label": "系统调用与同步要求",
+          "kind": "control"
+        },
+        {
+          "id": "publish",
+          "from": "guest",
+          "to": "queue",
+          "label": "发布设备请求",
+          "kind": "control"
+        },
+        {
+          "id": "consume",
+          "from": "queue",
+          "to": "qemu",
+          "label": "读取命令与写入数据",
+          "kind": "data"
+        },
+        {
+          "id": "file-write",
+          "from": "qemu",
+          "to": "host-cache",
+          "label": "写入后端文件",
+          "kind": "data"
+        },
+        {
+          "id": "writeback",
+          "from": "host-cache",
+          "to": "device-cache",
+          "label": "宿主写回数据",
+          "kind": "data"
+        },
+        {
+          "id": "persist",
+          "from": "device-cache",
+          "to": "stable",
+          "label": "满足稳定存储要求",
+          "kind": "data"
+        },
+        {
+          "id": "sync",
+          "from": "qemu",
+          "to": "host-cache",
+          "label": "fdatasync 等待持久化",
+          "kind": "control"
+        },
+        {
+          "id": "complete",
+          "from": "qemu",
+          "to": "queue",
+          "label": "状态与 used 完成",
+          "kind": "control"
+        },
+        {
+          "id": "reclaim",
+          "from": "queue",
+          "to": "guest",
+          "label": "消费完成",
+          "kind": "notification"
+        },
+        {
+          "id": "return",
+          "from": "guest",
+          "to": "application",
+          "label": "系统调用返回",
+          "kind": "control"
+        }
+      ],
+      "structures": [
+        {
+          "id": "request",
+          "title": "请求与完成",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "command",
+              "label": "设备命令",
+              "initial": "尚未发布"
+            },
+            {
+              "key": "writeRange",
+              "label": "数据范围",
+              "initial": "偏移 1 MiB · 4096 B，旧值 A → 新值 B"
+            },
+            {
+              "key": "publishedCount",
+              "label": "已发布请求",
+              "initial": "0"
+            },
+            {
+              "key": "completedCount",
+              "label": "已完成请求",
+              "initial": "0"
+            },
+            {
+              "key": "requestStatus",
+              "label": "完成状态",
+              "initial": "尚无完成"
+            }
+          ]
+        },
+        {
+          "id": "cache-state",
+          "title": "数据所在层级",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "guestCache",
+              "label": "Guest 页缓存",
+              "initial": "O_DIRECT：本次数据不经 Guest 页缓存"
+            },
+            {
+              "key": "hostCache",
+              "label": "宿主页缓存",
+              "initial": "本次 B 尚未写入"
+            },
+            {
+              "key": "deviceCache",
+              "label": "设备易失缓存",
+              "initial": "本次 B 尚未写入"
+            },
+            {
+              "key": "stableData",
+              "label": "稳定存储内容",
+              "initial": "A"
+            },
+            {
+              "key": "persistence",
+              "label": "本次 B 的持久化确认",
+              "initial": "未确认"
+            }
+          ]
+        },
+        {
+          "id": "application-state",
+          "title": "应用与同步语义",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "userBuffer",
+              "label": "用户缓冲区",
+              "initial": "4096 B 新值 B，等待提交"
+            },
+            {
+              "key": "writeReturn",
+              "label": "写调用返回",
+              "initial": "尚未调用"
+            },
+            {
+              "key": "syncReturn",
+              "label": "fsync 返回",
+              "initial": "尚未调用"
+            },
+            {
+              "key": "priorWrites",
+              "label": "前序写入",
+              "initial": "本例无并发写入"
+            }
+          ]
+        },
+        {
+          "id": "policy",
+          "title": "缓存配置",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "guestOpen",
+              "label": "Guest 打开标志",
+              "initial": "O_DIRECT"
+            },
+            {
+              "key": "qemuCache",
+              "label": "QEMU 后端缓存",
+              "initial": "writeback=on · direct=off · no-flush=off"
+            },
+            {
+              "key": "hostIo",
+              "label": "后端实现",
+              "initial": "raw 文件 · aio=threads"
+            },
+            {
+              "key": "deviceWce",
+              "label": "设备能力",
+              "initial": "virtio-blk；writeback 与 FLUSH 已协商"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "initial",
+          "title": "初始状态",
+          "actor": "应用与存储",
+          "description": "稳定存储已有 A，应用缓冲区准备了 4096 B 的 B。",
+          "detail": "应用以 O_DIRECT 打开虚拟块设备，尚未提交写入。该标志本身不附加持久化要求。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "cache-contract",
+            "qemu-cache-options"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-call",
+          "title": "提交直接写",
+          "actor": "Guest 应用 / 块层",
+          "description": "pwrite(fd, B, 4096, 1048576) 开始，Guest 块层形成普通写请求。",
+          "detail": "O_DIRECT 约束 Guest 缓存路径；本次调用没有 O_DSYNC、REQ_FUA 或同步刷新要求。用户缓冲区在写调用返回前保持有效。",
+          "active": [
+            "application",
+            "guest"
+          ],
+          "links": [
+            "syscall"
+          ],
+          "changes": {
+            "writeReturn": "等待写完成",
+            "userBuffer": "B 正在用于本次写；尚不可复用"
+          },
+          "nodeStates": {
+            "application": "写调用：等待写完成"
+          },
+          "sourceIds": [
+            "linux-direct"
+          ],
+          "focus": false
+        },
+        {
+          "id": "write-publish",
+          "title": "发布 WRITE",
+          "actor": "Guest virtio-blk 驱动",
+          "description": "发布 VIRTIO_BLK_T_OUT，数据方向为设备读取 Guest 缓冲区。",
+          "detail": "这是数据写请求，QEMU 从共享队列取出命令与 4096 B 数据。普通 OUT 不携带原生 FUA 命令或 FUA 位。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "command": "VIRTIO_BLK_T_OUT · 4096 B",
+            "publishedCount": "1",
+            "requestStatus": "WRITE 等待完成"
+          },
+          "nodeStates": {
+            "queue": "VIRTIO_BLK_T_OUT · 4096 B",
+            "qemu": "WRITE 等待完成"
+          },
+          "sourceIds": [
+            "linux-blk-command",
+            "linux-blk-cache"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-cached",
+          "title": "后端接受数据",
+          "actor": "QEMU / 宿主文件系统",
+          "description": "QEMU 将 B 写入 raw 文件的宿主页缓存；普通文件写操作完成。",
+          "detail": "固定 writeback=on、direct=off。选择后台回写尚未发生的时刻，B 可停留在宿主 RAM；此时文件写成功无需等待稳定存储更新。",
+          "active": [
+            "queue",
+            "qemu",
+            "host-cache"
+          ],
+          "links": [
+            "consume",
+            "file-write"
+          ],
+          "changes": {
+            "hostCache": "B：脏数据，等待回写",
+            "deviceCache": "本次 B 尚未收到",
+            "stableData": "A",
+            "persistence": "未确认；B 尚可仅在易失缓存"
+          },
+          "nodeStates": {
+            "host-cache": "B：脏数据，等待回写",
+            "device-cache": "本次 B 尚未收到",
+            "stable": "数据 A"
+          },
+          "sourceIds": [
+            "qemu-write",
+            "qemu-cache-options",
+            "qemu-writeback"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-complete",
+          "title": "发布写完成",
+          "actor": "QEMU virtio-blk",
+          "description": "后端普通写成功后，设备写入 OK 状态并发布 used。",
+          "detail": "完成结束了设备对这条 Guest 缓冲区的使用。writeback 模式下，这个 OK 表示请求处理成功，不增加掉电持久化承诺。",
+          "active": [
+            "qemu",
+            "queue"
+          ],
+          "links": [
+            "complete"
+          ],
+          "changes": {
+            "requestStatus": "WRITE：VIRTIO_BLK_S_OK",
+            "completedCount": "1"
+          },
+          "nodeStates": {
+            "qemu": "WRITE：VIRTIO_BLK_S_OK"
+          },
+          "sourceIds": [
+            "qemu-complete",
+            "qemu-cache-options",
+            "qemu-writeback"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-return",
+          "title": "写调用返回",
+          "actor": "Guest 完成路径 / 应用",
+          "description": "Guest 消费完成，pwrite 返回 4096，应用可以复用 B 的用户缓冲区。",
+          "detail": "返回值表示这次写入被接受。没有同步操作时，掉电后是否保留 B 尚未得到保证；本例选定的缓存状态中稳定存储仍为 A。",
+          "active": [
+            "queue",
+            "guest",
+            "application"
+          ],
+          "links": [
+            "reclaim",
+            "return"
+          ],
+          "changes": {
+            "writeReturn": "4096",
+            "userBuffer": "本次写已返回；应用可复用"
+          },
+          "nodeStates": {
+            "application": "写调用：4096"
+          },
+          "sourceIds": [
+            "cache-contract",
+            "qemu-cache-options",
+            "qemu-writeback"
+          ],
+          "focus": false
+        },
+        {
+          "id": "sync-call",
+          "title": "发起显式同步",
+          "actor": "Guest 应用 / 块层",
+          "description": "pwrite 返回后，应用对同一块设备调用 fsync(fd)。",
+          "detail": "Linux 块设备 fsync 路径调用 blkdev_issue_flush()。本例没有 Guest 脏页需要回写，刷新作用于此前已完成的数据写。",
+          "active": [
+            "application",
+            "guest"
+          ],
+          "links": [
+            "syscall"
+          ],
+          "changes": {
+            "syncReturn": "等待刷新完成"
+          },
+          "nodeStates": {
+            "application": "fsync：等待刷新完成"
+          },
+          "sourceIds": [
+            "linux-fsync",
+            "cache-contract"
+          ],
+          "focus": false
+        },
+        {
+          "id": "flush-publish",
+          "title": "发布 FLUSH",
+          "actor": "Guest virtio-blk 驱动",
+          "description": "提交独立 VIRTIO_BLK_T_FLUSH，请求不携带新的 4096 B 数据。",
+          "detail": "Guest 队列中这是第二条命令。先前 WRITE 已完成，FLUSH 将确认它所覆盖的已完成写入满足持久化要求。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "command": "VIRTIO_BLK_T_FLUSH · 无数据载荷",
+            "publishedCount": "2",
+            "requestStatus": "WRITE 已完成；FLUSH 待完成"
+          },
+          "nodeStates": {
+            "queue": "VIRTIO_BLK_T_FLUSH · 无数据载荷",
+            "qemu": "WRITE 已完成；FLUSH 待完成"
+          },
+          "sourceIds": [
+            "linux-blk-command",
+            "cache-contract"
+          ],
+          "focus": true
+        },
+        {
+          "id": "flush-submit",
+          "title": "刷新后端文件",
+          "actor": "QEMU 块层 / 文件后端",
+          "description": "QEMU 处理 FLUSH，经 blk_aio_flush() 和文件后端调用 fdatasync。",
+          "detail": "cache.no-flush=off，刷新不能被配置跳过。aio=threads 下文件后端在工作线程执行 fdatasync，QEMU 等待结果后再完成 Guest 请求。",
+          "active": [
+            "queue",
+            "qemu",
+            "host-cache"
+          ],
+          "links": [
+            "consume",
+            "sync"
+          ],
+          "changes": {
+            "persistence": "刷新处理中；尚未确认"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-flush",
+            "qemu-file-sync",
+            "qemu-flush-layers"
+          ],
+          "focus": true
+        },
+        {
+          "id": "host-writeback",
+          "title": "回写宿主脏数据",
+          "actor": "宿主文件系统 / 块层",
+          "description": "宿主把 B 送向下层存储，设备写缓存暂时持有 B。",
+          "detail": "图中分开表示宿主页缓存与设备易失缓存。fdatasync 的成功返回还要满足下层持久化契约，不能止于设备仅接收数据。具体 flush / FUA 命令由宿主存储栈与设备能力决定。",
+          "active": [
+            "host-cache",
+            "device-cache"
+          ],
+          "links": [
+            "writeback"
+          ],
+          "changes": {
+            "hostCache": "B 正在回写；同步仍等待",
+            "deviceCache": "B：已接收，稳定性尚未确认",
+            "stableData": "A"
+          },
+          "nodeStates": {
+            "host-cache": "B 正在回写；同步仍等待",
+            "device-cache": "B：已接收，稳定性尚未确认",
+            "stable": "数据 A"
+          },
+          "sourceIds": [
+            "qemu-file-sync",
+            "cache-contract"
+          ],
+          "focus": true
+        },
+        {
+          "id": "stable-confirm",
+          "title": "达到稳定存储边界",
+          "actor": "宿主存储栈 / 设备",
+          "description": "下层确认 B 已满足掉电后可恢复的存储要求。",
+          "detail": "可由非易失介质或具备可靠掉电保护的存储实现。这里按下层契约展示完成条件，不构造硬件内部缓存刷写过程。",
+          "active": [
+            "device-cache",
+            "stable"
+          ],
+          "links": [
+            "persist"
+          ],
+          "changes": {
+            "hostCache": "B：本次回写与同步完成",
+            "deviceCache": "B：相关持久化要求已满足",
+            "stableData": "B",
+            "persistence": "已确认：本次 WRITE 由 FLUSH 覆盖"
+          },
+          "nodeStates": {
+            "host-cache": "B：本次回写与同步完成",
+            "device-cache": "B：相关持久化要求已满足",
+            "stable": "数据 B"
+          },
+          "sourceIds": [
+            "cache-contract",
+            "qemu-file-sync"
+          ],
+          "focus": true
+        },
+        {
+          "id": "flush-complete",
+          "title": "发布 FLUSH 完成",
+          "actor": "QEMU virtio-blk",
+          "description": "后端刷新成功，QEMU 为第二条命令发布 OK 与 used。",
+          "detail": "只有成功的刷新结果才能支撑这个完成边界；实际程序仍需检查错误，不能把失败返回当作持久化成功。",
+          "active": [
+            "qemu",
+            "queue"
+          ],
+          "links": [
+            "complete"
+          ],
+          "changes": {
+            "requestStatus": "WRITE + FLUSH：均成功",
+            "completedCount": "2"
+          },
+          "nodeStates": {
+            "qemu": "WRITE + FLUSH：均成功"
+          },
+          "sourceIds": [
+            "qemu-flush-complete",
+            "qemu-complete"
+          ],
+          "focus": true
+        },
+        {
+          "id": "sync-return",
+          "title": "fsync 返回",
+          "actor": "Guest 完成路径 / 应用",
+          "description": "Guest 消费 FLUSH 完成，fsync 返回 0。",
+          "detail": "先前普通写的 B 现在获得同步完成承诺。该示例处理块设备数据，不涵盖文件创建、目录项、文件系统事务或跨设备原子性。",
+          "active": [
+            "queue",
+            "guest",
+            "application"
+          ],
+          "links": [
+            "reclaim",
+            "return"
+          ],
+          "changes": {
+            "syncReturn": "0：本次数据持久化已确认"
+          },
+          "nodeStates": {
+            "application": "fsync：0：本次数据持久化已确认"
+          },
+          "sourceIds": [
+            "linux-fsync",
+            "cache-contract"
+          ],
+          "focus": false
+        }
+      ]
+    },
+    {
+      "id": "write-fua",
+      "label": "virtio-scsi WRITE FUA",
+      "summary": "从已带 REQ_FUA 的块请求开始，观察该写在稳定存储确认后完成；外层调用的其他同步不计入本场景。",
+      "assumptions": [
+        "x86 / KVM；Guest Linux 6.18，QEMU 10.2.0；队列、设备、文件与映射均已就绪。",
+        "固定偏移 1 MiB 的 4 KiB 写入，缓冲区已对齐，旧内容 A、新内容 B；只有本次数据写，无拆分、合并、并发或错误。",
+        "Guest O_DIRECT 绕过 Guest 页缓存；宿主 raw 文件固定 aio=threads、cache.writeback=on、cache.direct=off、cache.no-flush=off。",
+        "宿主页缓存和设备写缓存均可易失；下层正确遵守 flush / 同步完成契约。稳定存储代表掉电后仍可恢复的承诺边界，不限定硬件内部实现。",
+        "缓存中 A / B 的位置是选定执行顺序下的教学状态，不是实际磁盘追踪，不模拟写入原子性或真实耗时。",
+        "FUA 场景从上层已形成的 REQ_FUA 块请求开始；virtio-scsi + scsi-hd 宣告 WCE 与 DPOFUA，Linux 使用支持 FUA 的 WRITE(10/16)。",
+        "固定 QEMU raw + aio=threads 路径以写后刷新实现 BDRV_REQ_FUA；跟踪的一条 Guest WRITE FUA 不拆成额外 Guest FLUSH。外层系统调用可能另有同步，不计入本场景。"
+      ],
+      "nodes": [
+        {
+          "id": "application",
+          "label": "上层同步请求",
+          "role": "guest",
+          "initial": "请求数据 B，等待本次块 I/O"
+        },
+        {
+          "id": "guest",
+          "label": "块层与设备驱动",
+          "role": "guest",
+          "initial": "尚无本次请求"
+        },
+        {
+          "id": "queue",
+          "label": "Guest RAM · 请求与完成",
+          "role": "memory",
+          "initial": "尚未发布命令"
+        },
+        {
+          "id": "qemu",
+          "label": "QEMU 设备与块层",
+          "role": "userspace",
+          "initial": "等待 Guest 请求"
+        },
+        {
+          "id": "host-cache",
+          "label": "宿主页缓存",
+          "role": "kernel",
+          "initial": "本次 B 尚未写入"
+        },
+        {
+          "id": "device-cache",
+          "label": "设备易失写缓存",
+          "role": "device",
+          "initial": "本次 B 尚未写入"
+        },
+        {
+          "id": "stable",
+          "label": "稳定存储",
+          "role": "device",
+          "initial": "旧数据 A"
+        }
+      ],
+      "links": [
+        {
+          "id": "syscall",
+          "from": "application",
+          "to": "guest",
+          "label": "提交上层 REQ_FUA 写",
+          "kind": "control"
+        },
+        {
+          "id": "publish",
+          "from": "guest",
+          "to": "queue",
+          "label": "发布设备请求",
+          "kind": "control"
+        },
+        {
+          "id": "consume",
+          "from": "queue",
+          "to": "qemu",
+          "label": "读取命令与写入数据",
+          "kind": "data"
+        },
+        {
+          "id": "file-write",
+          "from": "qemu",
+          "to": "host-cache",
+          "label": "写入后端文件",
+          "kind": "data"
+        },
+        {
+          "id": "writeback",
+          "from": "host-cache",
+          "to": "device-cache",
+          "label": "宿主写回数据",
+          "kind": "data"
+        },
+        {
+          "id": "persist",
+          "from": "device-cache",
+          "to": "stable",
+          "label": "满足稳定存储要求",
+          "kind": "data"
+        },
+        {
+          "id": "sync",
+          "from": "qemu",
+          "to": "host-cache",
+          "label": "fdatasync 等待持久化",
+          "kind": "control"
+        },
+        {
+          "id": "complete",
+          "from": "qemu",
+          "to": "queue",
+          "label": "状态与 used 完成",
+          "kind": "control"
+        },
+        {
+          "id": "reclaim",
+          "from": "queue",
+          "to": "guest",
+          "label": "消费完成",
+          "kind": "notification"
+        },
+        {
+          "id": "return",
+          "from": "guest",
+          "to": "application",
+          "label": "报告本次块 I/O 完成",
+          "kind": "control"
+        }
+      ],
+      "structures": [
+        {
+          "id": "request",
+          "title": "请求与完成",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "command",
+              "label": "设备命令",
+              "initial": "尚未发布"
+            },
+            {
+              "key": "writeRange",
+              "label": "数据范围",
+              "initial": "偏移 1 MiB · 4096 B，旧值 A → 新值 B"
+            },
+            {
+              "key": "publishedCount",
+              "label": "已发布请求",
+              "initial": "0"
+            },
+            {
+              "key": "completedCount",
+              "label": "已完成请求",
+              "initial": "0"
+            },
+            {
+              "key": "requestStatus",
+              "label": "完成状态",
+              "initial": "尚无完成"
+            }
+          ]
+        },
+        {
+          "id": "cache-state",
+          "title": "数据所在层级",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "guestCache",
+              "label": "Guest 页缓存",
+              "initial": "O_DIRECT：本次数据不经 Guest 页缓存"
+            },
+            {
+              "key": "hostCache",
+              "label": "宿主页缓存",
+              "initial": "本次 B 尚未写入"
+            },
+            {
+              "key": "deviceCache",
+              "label": "设备易失缓存",
+              "initial": "本次 B 尚未写入"
+            },
+            {
+              "key": "stableData",
+              "label": "稳定存储内容",
+              "initial": "A"
+            },
+            {
+              "key": "persistence",
+              "label": "本次 B 的持久化确认",
+              "initial": "未确认"
+            }
+          ]
+        },
+        {
+          "id": "application-state",
+          "title": "应用与同步语义",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "userBuffer",
+              "label": "请求数据",
+              "initial": "4096 B 新值 B，等待提交"
+            },
+            {
+              "key": "writeReturn",
+              "label": "本次 I/O 完成",
+              "initial": "尚未调用"
+            },
+            {
+              "key": "syncReturn",
+              "label": "独立 Guest FLUSH",
+              "initial": "本次块请求无需独立 Guest FLUSH"
+            },
+            {
+              "key": "priorWrites",
+              "label": "前序写入",
+              "initial": "FUA 仅约束该写；不自动约束所有前序写入"
+            }
+          ]
+        },
+        {
+          "id": "policy",
+          "title": "缓存配置",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "guestOpen",
+              "label": "Guest 请求范围",
+              "initial": "已形成的 REQ_FUA 写；不统计外层调用"
+            },
+            {
+              "key": "qemuCache",
+              "label": "QEMU 后端缓存",
+              "initial": "writeback=on · direct=off · no-flush=off"
+            },
+            {
+              "key": "hostIo",
+              "label": "后端实现",
+              "initial": "raw 文件 · aio=threads"
+            },
+            {
+              "key": "deviceWce",
+              "label": "设备能力",
+              "initial": "virtio-scsi / scsi-hd；WCE=1、DPOFUA=1"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "initial",
+          "title": "初始状态",
+          "actor": "上层请求与存储",
+          "description": "稳定存储已有 A，上层准备了一笔 4096 B 的 B 写入。",
+          "detail": "从已经形成的 REQ_FUA 块请求开始；scsi-hd 暴露写缓存与 FUA 能力，跟踪该命令的完成边界。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "cache-contract",
+            "qemu-cache-options"
+          ],
+          "focus": true
+        },
+        {
+          "id": "sync-write-call",
+          "title": "提交 REQ_FUA 写",
+          "actor": "Guest 上层请求方 / 块层",
+          "description": "上层将带 REQ_FUA 的 4 KiB 数据写交给块层，等待该请求完成。",
+          "detail": "同步直接 I/O 等路径可以设置 REQ_FUA，Linux dio_bio_write_op() 是一个入口。本场景从块请求开始；完整系统调用还可能有其他同步，例如同步块设备写在 write_iter 末尾经过 generic_write_sync()。",
+          "active": [
+            "application",
+            "guest"
+          ],
+          "links": [
+            "syscall"
+          ],
+          "changes": {
+            "writeReturn": "等待本次 REQ_FUA 写完成",
+            "userBuffer": "B 由本次写使用；完成前保持有效"
+          },
+          "nodeStates": {
+            "application": "等待本次 REQ_FUA 写完成"
+          },
+          "sourceIds": [
+            "linux-direct",
+            "linux-write-iter",
+            "cache-contract"
+          ],
+          "focus": false
+        },
+        {
+          "id": "fua-publish",
+          "title": "发布 WRITE FUA",
+          "actor": "Guest SCSI / virtio-scsi",
+          "description": "SCSI 驱动将 REQ_FUA 编码到 WRITE CDB 的 FUA 位，经 virtio-scsi 命令队列提交。",
+          "detail": "本例 scsi-hd 宣告支持 FUA。该位属于 SCSI WRITE 命令；virtio-blk 的 OUT 格式没有这里的原生 FUA 位。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "command": "SCSI WRITE(10/16) · FUA=1 · 4096 B",
+            "publishedCount": "1",
+            "requestStatus": "WRITE FUA 等待完成"
+          },
+          "nodeStates": {
+            "queue": "SCSI WRITE(10/16) · FUA=1 · 4096 B",
+            "qemu": "WRITE FUA 等待完成"
+          },
+          "sourceIds": [
+            "linux-scsi-fua",
+            "linux-scsi-cdb",
+            "qemu-scsi-detect"
+          ],
+          "focus": true
+        },
+        {
+          "id": "fua-cached",
+          "title": "写入宿主页缓存",
+          "actor": "QEMU scsi-hd / 文件后端",
+          "description": "QEMU 将 CDB 的 FUA 要求转为 BDRV_REQ_FUA，文件写入先把 B 放入宿主页缓存。",
+          "detail": "即使这一阶段普通写已成功，WRITE FUA 仍不可完成。flags 随请求传至后端；本例 file-posix threads 路径接着执行刷新。",
+          "active": [
+            "queue",
+            "qemu",
+            "host-cache"
+          ],
+          "links": [
+            "consume",
+            "file-write"
+          ],
+          "changes": {
+            "hostCache": "B：已写入，等待同步",
+            "deviceCache": "本次 B 尚未收到",
+            "stableData": "A",
+            "persistence": "FUA 尚未满足；禁止提前报告成功"
+          },
+          "nodeStates": {
+            "host-cache": "B：已写入，等待同步",
+            "device-cache": "本次 B 尚未收到",
+            "stable": "数据 A"
+          },
+          "sourceIds": [
+            "qemu-scsi-fua",
+            "qemu-file-fua"
+          ],
+          "focus": true
+        },
+        {
+          "id": "fua-backend-sync",
+          "title": "落实 FUA 要求",
+          "actor": "QEMU 文件后端",
+          "description": "raw threads 写操作成功后执行 bdrv_co_flush()，等待 fdatasync 完成。",
+          "detail": "这是选定后端对 FUA 的实现。Guest 队列仍只有一条 WRITE FUA；支持原生 FUA 的其他后端可采用不同实现，不能据此假定所有 FUA 都会发送独立 FLUSH。",
+          "active": [
+            "qemu",
+            "host-cache"
+          ],
+          "links": [
+            "sync"
+          ],
+          "changes": {
+            "requestStatus": "WRITE FUA：等待后端同步"
+          },
+          "nodeStates": {
+            "qemu": "WRITE FUA：等待后端同步"
+          },
+          "sourceIds": [
+            "qemu-file-fua",
+            "qemu-file-sync"
+          ],
+          "focus": true
+        },
+        {
+          "id": "fua-writeback",
+          "title": "同步下层数据",
+          "actor": "宿主文件系统 / 块层",
+          "description": "宿主回写 B，设备缓存接受数据，写请求仍保持未完成。",
+          "detail": "设备接收数据与满足稳定存储条件是两个观察点。aio=threads 的这次 fdatasync 可能覆盖更大的范围，但 Guest 的 FUA 契约只要求本次写的数据持久化。",
+          "active": [
+            "host-cache",
+            "device-cache"
+          ],
+          "links": [
+            "writeback"
+          ],
+          "changes": {
+            "hostCache": "B 正在回写；同步仍等待",
+            "deviceCache": "B：已接收，稳定性尚未确认"
+          },
+          "nodeStates": {
+            "host-cache": "B 正在回写；同步仍等待",
+            "device-cache": "B：已接收，稳定性尚未确认"
+          },
+          "sourceIds": [
+            "qemu-file-sync",
+            "cache-contract"
+          ],
+          "focus": true
+        },
+        {
+          "id": "fua-stable",
+          "title": "本次数据持久化",
+          "actor": "宿主存储栈 / 设备",
+          "description": "B 已满足稳定存储条件，后端同步成功。",
+          "detail": "FUA 保证该写在成功完成时持久化；不自动成为所有前序写入的全局屏障。需要先保证其他已完成写入时，还需根据上层协议使用 PREFLUSH / FLUSH。",
+          "active": [
+            "device-cache",
+            "stable"
+          ],
+          "links": [
+            "persist"
+          ],
+          "changes": {
+            "hostCache": "B：本次回写与同步完成",
+            "deviceCache": "B：相关持久化要求已满足",
+            "stableData": "B",
+            "persistence": "已确认：FUA 约束的本次写"
+          },
+          "nodeStates": {
+            "host-cache": "B：本次回写与同步完成",
+            "device-cache": "B：相关持久化要求已满足",
+            "stable": "数据 B"
+          },
+          "sourceIds": [
+            "cache-contract"
+          ],
+          "focus": true
+        },
+        {
+          "id": "fua-complete",
+          "title": "发布 SCSI 完成",
+          "actor": "QEMU scsi-hd / virtio-scsi",
+          "description": "后端写入与 FUA 要求均成功后，SCSI 返回 GOOD，再通过 virtio-scsi 完成命令。",
+          "detail": "这一场景的 used 返回已经包含本次写的持久化条件，与普通 writeback WRITE 的完成含义不同。完成语义取决于命令、配置和下层兑现的契约。",
+          "active": [
+            "qemu",
+            "queue"
+          ],
+          "links": [
+            "complete"
+          ],
+          "changes": {
+            "requestStatus": "SCSI GOOD；WRITE FUA 成功",
+            "completedCount": "1"
+          },
+          "nodeStates": {
+            "qemu": "SCSI GOOD；WRITE FUA 成功"
+          },
+          "sourceIds": [
+            "qemu-scsi-complete",
+            "qemu-scsi-used",
+            "qemu-file-fua"
+          ],
+          "focus": true
+        },
+        {
+          "id": "fua-return",
+          "title": "完成本次块请求",
+          "actor": "Guest 完成路径 / 上层请求方",
+          "description": "Guest 消费完成，上层收到该块请求成功完成的结果，并可回收本次请求的数据缓冲区。",
+          "detail": "此时本次 B 已获得 FUA 保证。该块请求的完成不代表外层系统调用已经结束其他同步。FUA 不承诺一组写入的原子性，也不替代文件系统事务或目录同步。",
+          "active": [
+            "queue",
+            "guest",
+            "application"
+          ],
+          "links": [
+            "reclaim",
+            "return"
+          ],
+          "changes": {
+            "writeReturn": "成功：本次写的 FUA 已满足",
+            "userBuffer": "本次块请求完成；数据缓冲区可回收"
+          },
+          "nodeStates": {
+            "application": "本次 REQ_FUA 写已成功完成"
+          },
+          "sourceIds": [
+            "cache-contract",
+            "linux-write-iter"
+          ],
+          "focus": false
+        }
+      ]
+    }
+  ]
+}

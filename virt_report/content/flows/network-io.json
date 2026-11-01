@@ -1,0 +1,6353 @@
+{
+  "id": "network-io",
+  "title": "网络 I/O 收发过程",
+  "defaultScenario": "qemu-tx",
+  "sources": {
+    "virtio-net-spec": {
+      "label": "VIRTIO 1.2：网络设备与收发队列（§5.1）",
+      "url": "https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html"
+    },
+    "virtio-ring-spec": {
+      "label": "VIRTIO 1.2：split virtqueue（§2.7）",
+      "url": "https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html"
+    },
+    "qemu-tx": {
+      "label": "QEMU 10.2：virtio_net_flush_tx 与异步完成",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/virtio-net.c#L2683-L2810"
+    },
+    "qemu-rx": {
+      "label": "QEMU 10.2：virtio_net_receive_rcu 接收与完成",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/virtio-net.c#L1903-L2043"
+    },
+    "qemu-rx-buffer": {
+      "label": "QEMU 10.2：接收空间检查和通知恢复",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/virtio-net.c#L1651-L1677"
+    },
+    "qemu-tap": {
+      "label": "QEMU 10.2：TAP 写入背压、读取与恢复",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/net/tap.c#L115-L225"
+    },
+    "vhost-setup": {
+      "label": "QEMU 10.2：vhost 队列地址、kick / call 配置",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/vhost.c#L1256-L1367"
+    },
+    "vhost-user": {
+      "label": "QEMU 10.2：vhost-user 控制协议职责",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/vhost-user.rst#L19-L39"
+    },
+    "vhost-tx": {
+      "label": "Linux 6.18：vhost-net 普通复制发送",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vhost/net.c#L754-L855"
+    },
+    "vhost-used": {
+      "label": "Linux 6.18：vhost used 发布及条件通知",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vhost/vhost.c#L2929-L3021"
+    },
+    "guest-rx": {
+      "label": "Linux 6.18：接收、refill 与 NAPI poll",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/net/virtio_net.c#L3022-L3154"
+    },
+    "dpdk-copy": {
+      "label": "DPDK 24.11：描述符数据复制为 mbuf",
+      "url": "https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/vhost/virtio_net.c#L2883-L3010"
+    },
+    "dpdk-tx": {
+      "label": "DPDK 24.11：split TX dequeue 与 used 发布",
+      "url": "https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/vhost/virtio_net.c#L3092-L3184"
+    },
+    "dpdk-api": {
+      "label": "DPDK 24.11：vhost enqueue / dequeue API",
+      "url": "https://doc.dpdk.org/guides-24.11/prog_guide/vhost_lib.html#vhost-api-overview"
+    },
+    "dpdk-pmd-tx": {
+      "label": "DPDK 24.11：ethdev TX 接受数量与 mbuf 生命周期",
+      "url": "https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/ethdev/rte_ethdev.h#L6533-L6607"
+    },
+    "dpdk-pmd-rx": {
+      "label": "DPDK 24.11：ethdev 收发 API 与 RX mbuf 交接",
+      "url": "https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/ethdev/rte_ethdev.h#L6174-L6264"
+    },
+    "vdpa-model": {
+      "label": "QEMU 10.2：vDPA 的 virtio 数据面和控制面",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/vhost-vdpa.rst#L5-L15"
+    },
+    "vdpa-map": {
+      "label": "QEMU 10.2：vhost-vDPA IOTLB 更新与失效",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/vhost-vdpa.c#L94-L143"
+    },
+    "dpdk-rx": {
+      "label": "DPDK 24.11：split RX enqueue、复制与完成发布",
+      "url": "https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/vhost/virtio_net.c#L1392-L1447"
+    },
+    "dpdk-used": {
+      "label": "DPDK 24.11：split used 发布的 release 顺序",
+      "url": "https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/vhost/virtio_net.c#L253-L304"
+    },
+    "vhost-rx": {
+      "label": "Linux 6.18：vhost-net 可写链、recvmsg 与接收完成",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vhost/net.c#L1133-L1288"
+    },
+    "guest-sendto": {
+      "label": "Linux 6.18：sendto 系统调用与用户缓冲区",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/socket.c#L2209-L2252"
+    },
+    "guest-recvfrom": {
+      "label": "Linux 6.18：recvfrom 系统调用与返回",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/socket.c#L2269-L2303"
+    },
+    "guest-udp-send": {
+      "label": "Linux 6.18：UDP 无 cork 发送与成功返回长度",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/ipv4/udp.c#L1469-L1540"
+    },
+    "guest-copy-send": {
+      "label": "Linux 6.18：普通发送从用户迭代器复制至 skb",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/ipv4/ip_output.c#L932-L948"
+    },
+    "guest-ip-output": {
+      "label": "Linux 6.18：IPv4 邻居输出",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/ipv4/ip_output.c#L200-L244"
+    },
+    "guest-virtio-send": {
+      "label": "Linux 6.18：skb 交给 virtqueue 并返回驱动调用",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/net/virtio_net.c#L3315-L3430"
+    },
+    "guest-udp-enqueue": {
+      "label": "Linux 6.18：UDP socket 接收排队与唤醒",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/ipv4/udp.c#L1699-L1814"
+    },
+    "guest-udp-wait": {
+      "label": "Linux 6.18：UDP reader queue 与等待数据",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/ipv4/udp.c#L1952-L2020"
+    },
+    "guest-udp-recv": {
+      "label": "Linux 6.18：UDP 载荷复制和数据报消费",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/ipv4/udp.c#L2053-L2149"
+    },
+    "send-api": {
+      "label": "Linux send(2)：成功返回不保证网络交付",
+      "url": "https://man7.org/linux/man-pages/man2/send.2.html"
+    },
+    "recv-api": {
+      "label": "Linux recv(2)：阻塞接收与返回长度",
+      "url": "https://man7.org/linux/man-pages/man2/recv.2.html"
+    },
+    "guest-napi-input": {
+      "label": "Linux 6.18：virtio-net 将接收 skb 交给 NAPI",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/net/virtio_net.c#L2588-L2611"
+    },
+    "guest-gro-normal": {
+      "label": "Linux 6.18：GRO_NORMAL 进入普通接收列表",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/core/gro.c#L598-L604"
+    },
+    "guest-napi-complete": {
+      "label": "Linux 6.18：NAPI 完成与普通列表刷新",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/core/dev.c#L6649-L6681"
+    }
+  },
+  "scenarios": [
+    {
+      "id": "qemu-tx",
+      "label": "QEMU + TAP · TX",
+      "summary": "18 B UDP 载荷经客户机协议栈形成 60 B 帧，交给 virtio-net 与所选后端；分别观察 sendto 返回、队列归还与本地发送。",
+      "assumptions": [
+        "x86 + KVM；QEMU 10.2.0 / Linux 6.18；modern virtio-net、split ring、单队列对。",
+        "P1 为 60 B 以太网帧（不含 FCS），virtio-net 基础头为 12 B；不启用分段、校验和卸载、合并 RX 缓冲区或间接描述符。",
+        "QEMU 设备与 TAP FD 已连接。",
+        "Guest 回收与宿主后续转发可以并行；播放顺序展示一种可观察的执行顺序。",
+        "UDP/IPv4 小数据报：用户载荷 virt-report-demo01 为 18 B；8 B UDP + 20 B IPv4 + 14 B Ethernet，共 60 B 帧；virtio-net 另加 12 B 头。无 IP 选项、VLAN 或分片。",
+        "普通 sendto(..., 18, 0, ...)，无 UDP_CORK、MSG_MORE 或 MSG_ZEROCOPY；路由、邻居及 socket 已就绪，发送预算与客户机 TX 队列均有空间，本次直接走到驱动。",
+        "virtqueue 发布后，Guest 返回与后端处理可并发。本次先展示 sendto 返回；后端也可能更早消费队列，TX used、线路发送与返回没有固定总顺序。"
+      ],
+      "nodes": [
+        {
+          "id": "application",
+          "label": "应用 · 用户态",
+          "role": "guest"
+        },
+        {
+          "id": "stack",
+          "label": "UDP/IP · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "guest",
+          "label": "virtio-net · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "queue",
+          "label": "Guest RAM · TX 队列 1",
+          "role": "memory"
+        },
+        {
+          "id": "backend",
+          "label": "QEMU virtio-net",
+          "role": "userspace"
+        },
+        {
+          "id": "port",
+          "label": "TAP · 宿主网络",
+          "role": "kernel"
+        },
+        {
+          "id": "network",
+          "label": "外部网络",
+          "role": "external"
+        }
+      ],
+      "links": [
+        {
+          "id": "publish",
+          "from": "guest",
+          "to": "queue",
+          "label": "发布描述符链",
+          "kind": "control"
+        },
+        {
+          "id": "consume",
+          "from": "queue",
+          "to": "backend",
+          "label": "读取描述符与帧",
+          "kind": "data"
+        },
+        {
+          "id": "complete",
+          "from": "backend",
+          "to": "queue",
+          "label": "发布 used",
+          "kind": "control"
+        },
+        {
+          "id": "notify",
+          "from": "backend",
+          "to": "guest",
+          "label": "按需完成通知",
+          "kind": "notification"
+        },
+        {
+          "id": "reclaim",
+          "from": "queue",
+          "to": "guest",
+          "label": "回收链与缓冲区",
+          "kind": "control"
+        },
+        {
+          "id": "forward",
+          "from": "backend",
+          "to": "port",
+          "label": "交付本地出口",
+          "kind": "data"
+        },
+        {
+          "id": "wire",
+          "from": "port",
+          "to": "network",
+          "label": "后续链路发送",
+          "kind": "data"
+        },
+        {
+          "id": "syscall",
+          "from": "application",
+          "to": "stack",
+          "label": "sendto 调用",
+          "kind": "control"
+        },
+        {
+          "id": "copy-from-user",
+          "from": "application",
+          "to": "stack",
+          "label": "18 B 用户载荷复制",
+          "kind": "data"
+        },
+        {
+          "id": "stack-output",
+          "from": "stack",
+          "to": "guest",
+          "label": "60 B Ethernet 帧",
+          "kind": "data"
+        },
+        {
+          "id": "syscall-return",
+          "from": "stack",
+          "to": "application",
+          "label": "sendto 返回（独立分支）",
+          "kind": "control"
+        }
+      ],
+      "structures": [
+        {
+          "id": "virtqueue",
+          "title": "TX split virtqueue · 大小 8",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "desc",
+              "label": "desc 链",
+              "initial": "未填写"
+            },
+            {
+              "key": "availHead",
+              "label": "avail.ring",
+              "initial": "空"
+            },
+            {
+              "key": "availIdx",
+              "label": "avail.idx",
+              "initial": "0"
+            },
+            {
+              "key": "consumedIdx",
+              "label": "设备消费位置",
+              "initial": "0"
+            },
+            {
+              "key": "usedEntry",
+              "label": "used.ring",
+              "initial": "空"
+            },
+            {
+              "key": "usedIdx",
+              "label": "used.idx",
+              "initial": "0"
+            },
+            {
+              "key": "reclaimedIdx",
+              "label": "驱动回收位置",
+              "initial": "0"
+            }
+          ]
+        },
+        {
+          "id": "buffer",
+          "title": "Guest 缓冲区与通知",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "guestBufferOwner",
+              "label": "缓冲区访问权",
+              "initial": "驱动持有，尚未发布"
+            },
+            {
+              "key": "payload",
+              "label": "缓冲区内容",
+              "initial": "P1 尚未关联描述符"
+            },
+            {
+              "key": "notification",
+              "label": "通知状态",
+              "initial": "无新通知"
+            }
+          ]
+        },
+        {
+          "id": "path",
+          "title": "后端与交付状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "backendState",
+              "label": "后端状态",
+              "initial": "队列已启用，等待工作"
+            },
+            {
+              "key": "networkStage",
+              "label": "网络阶段",
+              "initial": "P1 尚未进入后端"
+            },
+            {
+              "key": "delivery",
+              "label": "交付范围",
+              "initial": "远端是否收到：未确认"
+            }
+          ]
+        },
+        {
+          "id": "application",
+          "title": "用户缓冲区、socket 与 Guest skb",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "userBuffer",
+              "label": "用户缓冲区",
+              "initial": "U0：18 B 载荷，仍由应用持有"
+            },
+            {
+              "key": "applicationCall",
+              "label": "系统调用",
+              "initial": "尚未调用"
+            },
+            {
+              "key": "applicationResult",
+              "label": "应用返回值",
+              "initial": "尚未返回"
+            },
+            {
+              "key": "socketBuffers",
+              "label": "socket 缓冲/计账",
+              "initial": "发送预算充足；尚未分配本次 skb"
+            },
+            {
+              "key": "guestSkb",
+              "label": "Guest skb",
+              "initial": "尚未构建"
+            },
+            {
+              "key": "applicationProgress",
+              "label": "应用处理",
+              "initial": "准备提交 18 B UDP 载荷"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "initial",
+          "title": "初始状态",
+          "actor": "队列与后端",
+          "description": "应用持有 18 B 载荷，网络设备和队列已就绪，本次 sendto 尚未调用。",
+          "detail": "队列、socket 与用户缓冲区分别显示初始状态；没有处理者正在推进本次数据报。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "sendto",
+          "title": "调用 sendto",
+          "actor": "Guest 用户态应用",
+          "description": "应用用 U0 提交 18 B UDP 载荷，目标地址交给 socket 层。",
+          "detail": "__sys_sendto() 导入用户缓冲区并构造 msghdr，随后分派到 IPv4 UDP。系统调用改变客户机内的执行特权级；本步不要求退出到 QEMU 处理。",
+          "active": [
+            "application",
+            "stack"
+          ],
+          "links": [
+            "syscall"
+          ],
+          "changes": {
+            "applicationCall": "sendto(fd, U0, 18, 0, ...)",
+            "applicationResult": "内核处理中",
+            "applicationProgress": "本线程进入 Guest 内核"
+          },
+          "nodeStates": {
+            "application": "sendto 尚未返回",
+            "stack": "处理 UDP 发送"
+          },
+          "sourceIds": [
+            "guest-sendto"
+          ],
+          "focus": false
+        },
+        {
+          "id": "udp-output",
+          "title": "构造 UDP/IP 报文",
+          "actor": "Guest UDP/IP 协议栈",
+          "description": "普通复制路径把 18 B 用户数据复制入 skb，并完成 UDP、IPv4 与链路层封装。",
+          "detail": "UDP 无 cork 路径通过 ip_make_skb() 构建 skb；ip_generic_getfrag() 执行用户数据复制。邻居已解析，本例在客户机发送路径形成 14 + 20 + 8 + 18 = 60 B 帧。U0 与 skb 数据是不同的存储对象。",
+          "active": [
+            "application",
+            "stack"
+          ],
+          "links": [
+            "copy-from-user"
+          ],
+          "changes": {
+            "guestSkb": "S1：18 B 数据 + UDP 8 B + IPv4 20 B + Ethernet 14 B = 60 B",
+            "socketBuffers": "skb 使用发送内存预算；普通 UDP 不建立可靠重传队列",
+            "applicationProgress": "载荷已复制，原 U0 仍归应用"
+          },
+          "nodeStates": {
+            "stack": "S1 已封装，准备交给网卡"
+          },
+          "sourceIds": [
+            "guest-udp-send",
+            "guest-copy-send",
+            "guest-ip-output"
+          ],
+          "focus": false
+        },
+        {
+          "id": "driver-submit",
+          "title": "交给 virtio-net",
+          "actor": "Guest 网络发送路径",
+          "description": "网络层把 skb S1 交给 virtio-net 的 start_xmit()。",
+          "detail": "本例 qdisc 与驱动队列有空间，当前调用推进到驱动提交。start_xmit() 通过 xmit_skb() 组织 virtio 网络头与 skb 分散表。其他配置下，skb 可以先在客户机排队，系统调用返回并不要求每次都已发布 virtqueue。",
+          "active": [
+            "stack",
+            "guest"
+          ],
+          "links": [
+            "stack-output"
+          ],
+          "changes": {
+            "guestSkb": "S1 已交给 virtio-net；帧长 60 B",
+            "applicationProgress": "驱动准备发布本次 TX"
+          },
+          "nodeStates": {
+            "stack": "网卡发送调用中",
+            "guest": "准备 S1 的设备可读链"
+          },
+          "sourceIds": [
+            "guest-virtio-send"
+          ],
+          "focus": false
+        },
+        {
+          "id": "prepare",
+          "title": "准备描述符",
+          "actor": "Guest virtio-net 驱动",
+          "description": "将 12 B 网络头和 60 B 帧 P1 组织为链 0 → 2。",
+          "detail": "desc[0] 的 NEXT 指向 desc[2]，两个缓冲区均为设备可读。此时 avail.idx 尚未增加，后端不能据此消费本次请求。 这里的 60 B 来自 S1，virtio 网络头是设备接口附加的 12 B，不会交给远端 UDP 应用。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [],
+          "changes": {
+            "desc": "0 → 2：12 B 头（NEXT）+ 60 B 帧（设备读）",
+            "payload": "12 B 头 + P1（60 B）"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "publish",
+          "title": "发布 TX 链",
+          "actor": "Guest virtio-net 驱动",
+          "description": "先写描述符和 avail.ring[0]，再发布 avail.idx = 1。",
+          "detail": "内存顺序保证后端观察到新索引时可以读取完整的链。驱动在发布索引后检查通知条件，按协商的通知抑制规则决定是否 kick。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "availHead": "slot 0 → head 0",
+            "availIdx": "1",
+            "guestBufferOwner": "设备可读；驱动暂不修改",
+            "notification": "按需 kick，提示后端检查"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "sendto-return",
+          "title": "sendto 返回",
+          "actor": "Guest 系统调用返回路径",
+          "description": "本次 sendto 成功返回 18，应用可以继续执行并复用 U0。",
+          "detail": "18 是提交的 UDP 载荷字节数，未包含协议头。成功不保证交付；本例只确认本机发送路径接受请求，不等待 TX used、本地物理发送或远端接收。Guest 返回与后端消费从发布处分成两条分支，这里展示返回先发生的一种调度顺序。",
+          "active": [
+            "stack",
+            "application"
+          ],
+          "links": [
+            "syscall-return"
+          ],
+          "changes": {
+            "applicationResult": "18",
+            "applicationProgress": "应用恢复执行，U0 可复用",
+            "userBuffer": "U0 已可由应用复用；skb S1 仍有独立副本",
+            "socketBuffers": "skb 可仍在发送路径；socket 计账与设备缓冲区生命周期分别处理"
+          },
+          "nodeStates": {
+            "application": "已返回 18，可继续运行",
+            "stack": "sendto 调用已结束"
+          },
+          "sourceIds": [
+            "guest-udp-send",
+            "guest-virtio-send",
+            "send-api"
+          ],
+          "focus": false
+        },
+        {
+          "id": "consume",
+          "title": "取得描述符链",
+          "actor": "QEMU 用户态",
+          "description": "后端读取 available，取得链头 0 并检查设备可读区域。",
+          "detail": "virtio_net_flush_tx() 调用 virtqueue_pop()，解析可读 iovec 与网络头。",
+          "active": [
+            "queue",
+            "backend"
+          ],
+          "links": [
+            "consume"
+          ],
+          "changes": {
+            "consumedIdx": "1",
+            "backendState": "正在处理链头 0"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-tx"
+          ],
+          "focus": true
+        },
+        {
+          "id": "transfer",
+          "title": "交给 TAP",
+          "actor": "QEMU 用户态",
+          "description": "QEMU 网络层将 P1 通过 TAP FD 交给宿主网络。",
+          "detail": "qemu_sendv_packet_async() 经 TAP 后端调用 writev()；本例立即成功接受。返回 0 的异步排队情况另见 TX 背压场景。",
+          "active": [
+            "backend",
+            "port"
+          ],
+          "links": [
+            "forward"
+          ],
+          "changes": {
+            "backendState": "本地 TAP 已接受 P1",
+            "networkStage": "TAP 已接受；后续转发仍独立进行"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-tx",
+            "qemu-tap"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used",
+          "title": "发布 TX 完成",
+          "actor": "QEMU 用户态",
+          "description": "将链头 0 写入 used，used.idx 从 0 增至 1。",
+          "detail": "used = {id: 0, len: 0} 表示设备已经结束对本链的使用。驱动观察到完成后可以回收原缓冲区；这一记录不能证明远端已经收到 P1。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "complete"
+          ],
+          "changes": {
+            "usedEntry": "slot 0 → { id: 0, len: 0 }",
+            "usedIdx": "1",
+            "guestBufferOwner": "设备已归还，等待驱动观察",
+            "backendState": "本链队列处理完成"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-tx",
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify",
+          "title": "提示客户机",
+          "actor": "QEMU 用户态",
+          "description": "按通知条件提示客户机检查 used ring。",
+          "detail": "QEMU 的 virtio_notify() 检查通知条件，经已配置的虚拟中断路径通知 Guest。",
+          "active": [
+            "backend",
+            "guest"
+          ],
+          "links": [
+            "notify"
+          ],
+          "changes": {
+            "notification": "本例发出完成通知；used 已可见"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-tx",
+            "virtio-ring-spec"
+          ],
+          "focus": false
+        },
+        {
+          "id": "reclaim",
+          "title": "回收 TX 链",
+          "actor": "Guest virtio-net 驱动",
+          "description": "驱动消费 used 项，找到链头 0 并释放本次发送引用。",
+          "detail": "回收位置更新为 1。Guest 链和原始发送缓冲区现在可以复用；描述符槽中的旧值无需清零，是否有效由环索引决定。 应用 U0 早已独立可用。socket 发送计账可能随 skb_orphan() 提前解除，也可能在 skb 释放时回收，不能与 used.idx 简单等同。",
+          "active": [
+            "queue",
+            "guest"
+          ],
+          "links": [
+            "reclaim"
+          ],
+          "changes": {
+            "reclaimedIdx": "1",
+            "guestBufferOwner": "驱动已回收，可复用",
+            "desc": "链 0 → 2 已回收（旧字段可保留）",
+            "guestSkb": "S1 的设备发送引用已释放，可回收相应存储"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec",
+            "guest-virtio-send"
+          ],
+          "focus": true
+        },
+        {
+          "id": "egress",
+          "title": "继续网络转发",
+          "actor": "宿主网络",
+          "description": "P1 沿本地出口继续发送，虚拟队列已可承接下一帧。",
+          "detail": "路径中的排队、交换、丢包和远端处理不由本次 used 项报告。演示展示本地交付边界，未模拟对端协议栈或确认报文。 此处整理出口状态，与 Guest 返回及回收可交错；演示未收到对端确认，UDP 本身也不提供可靠交付确认。",
+          "active": [
+            "port"
+          ],
+          "links": [
+            "wire"
+          ],
+          "changes": {
+            "networkStage": "继续本地网络转发；远端未确认"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-tx",
+            "virtio-net-spec"
+          ],
+          "focus": false
+        }
+      ]
+    },
+    {
+      "id": "qemu-rx",
+      "label": "QEMU + TAP · RX",
+      "summary": "从 RX 空缓冲区开始，跟踪 UDP 帧进入客户机协议栈、socket 接收队列，直到 recvfrom 把 18 B 载荷交给应用。",
+      "assumptions": [
+        "x86 + KVM；QEMU 10.2.0 / Linux 6.18；modern virtio-net、split ring、单队列对。",
+        "P1 为 60 B 以太网帧（不含 FCS），virtio-net 基础头为 12 B；不启用分段、校验和卸载、合并 RX 缓冲区或间接描述符。",
+        "QEMU 设备与 TAP FD 已连接。",
+        "用一条 2048 B 可写描述符链表示接收空间；实际驱动可把头与数据分散在多个描述符中。",
+        "UDP/IPv4 小数据报：用户载荷 virt-report-demo01 为 18 B；8 B UDP + 20 B IPv4 + 14 B Ethernet，共 60 B 帧；virtio-net 另加 12 B 头。无 IP 选项、VLAN 或分片。",
+        "普通阻塞 recvfrom(..., 128, 0, ...)，无 MSG_PEEK、MSG_TRUNC；socket 已绑定，路由、校验与接收内存预算满足本次报文，应用缓冲区容量足够。",
+        "本例只收一帧，received 小于 NAPI budget；GRO_NORMAL 普通列表尚未达到提前刷新条件。驱动先 refill，随后在 NAPI 完成阶段将列表交给协议栈；补充空间无需等待 recvfrom 返回。"
+      ],
+      "nodes": [
+        {
+          "id": "application",
+          "label": "应用 · 用户态",
+          "role": "guest"
+        },
+        {
+          "id": "stack",
+          "label": "UDP/IP · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "guest",
+          "label": "virtio-net · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "queue",
+          "label": "Guest RAM · RX 队列 0",
+          "role": "memory"
+        },
+        {
+          "id": "backend",
+          "label": "QEMU virtio-net",
+          "role": "userspace"
+        },
+        {
+          "id": "port",
+          "label": "TAP · 宿主网络",
+          "role": "kernel"
+        },
+        {
+          "id": "network",
+          "label": "外部网络",
+          "role": "external"
+        }
+      ],
+      "links": [
+        {
+          "id": "publish",
+          "from": "guest",
+          "to": "queue",
+          "label": "发布描述符链",
+          "kind": "control"
+        },
+        {
+          "id": "consume",
+          "from": "queue",
+          "to": "backend",
+          "label": "取得可写空间",
+          "kind": "control"
+        },
+        {
+          "id": "complete",
+          "from": "backend",
+          "to": "queue",
+          "label": "发布 used",
+          "kind": "control"
+        },
+        {
+          "id": "notify",
+          "from": "backend",
+          "to": "guest",
+          "label": "按需完成通知",
+          "kind": "notification"
+        },
+        {
+          "id": "reclaim",
+          "from": "queue",
+          "to": "guest",
+          "label": "读取报文与回收链",
+          "kind": "data"
+        },
+        {
+          "id": "wire",
+          "from": "network",
+          "to": "port",
+          "label": "帧到达",
+          "kind": "data"
+        },
+        {
+          "id": "forward",
+          "from": "port",
+          "to": "backend",
+          "label": "交付收到的帧",
+          "kind": "data"
+        },
+        {
+          "id": "copy",
+          "from": "backend",
+          "to": "queue",
+          "label": "写入头与帧",
+          "kind": "data"
+        },
+        {
+          "id": "syscall",
+          "from": "application",
+          "to": "stack",
+          "label": "recvfrom 调用",
+          "kind": "control"
+        },
+        {
+          "id": "stack-input",
+          "from": "guest",
+          "to": "stack",
+          "label": "NAPI 列表交给协议栈",
+          "kind": "data"
+        },
+        {
+          "id": "socket-ready",
+          "from": "stack",
+          "to": "application",
+          "label": "数据入 socket，唤醒等待者",
+          "kind": "notification"
+        },
+        {
+          "id": "copy-to-user",
+          "from": "stack",
+          "to": "application",
+          "label": "复制 18 B UDP 载荷",
+          "kind": "data"
+        },
+        {
+          "id": "syscall-return",
+          "from": "stack",
+          "to": "application",
+          "label": "recvfrom 返回",
+          "kind": "control"
+        }
+      ],
+      "structures": [
+        {
+          "id": "virtqueue",
+          "title": "RX split virtqueue · 大小 8",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "desc",
+              "label": "desc 链",
+              "initial": "未填写"
+            },
+            {
+              "key": "availHead",
+              "label": "avail.ring",
+              "initial": "空"
+            },
+            {
+              "key": "availIdx",
+              "label": "avail.idx",
+              "initial": "0"
+            },
+            {
+              "key": "consumedIdx",
+              "label": "设备消费位置",
+              "initial": "0"
+            },
+            {
+              "key": "usedEntry",
+              "label": "used.ring",
+              "initial": "空"
+            },
+            {
+              "key": "usedIdx",
+              "label": "used.idx",
+              "initial": "0"
+            },
+            {
+              "key": "reclaimedIdx",
+              "label": "驱动回收位置",
+              "initial": "0"
+            }
+          ]
+        },
+        {
+          "id": "buffer",
+          "title": "Guest 缓冲区与通知",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "guestBufferOwner",
+              "label": "缓冲区访问权",
+              "initial": "驱动持有，尚未发布"
+            },
+            {
+              "key": "payload",
+              "label": "缓冲区内容",
+              "initial": "空，可准备接收"
+            },
+            {
+              "key": "notification",
+              "label": "通知状态",
+              "initial": "无新通知"
+            }
+          ]
+        },
+        {
+          "id": "path",
+          "title": "后端与交付状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "backendState",
+              "label": "后端状态",
+              "initial": "队列已启用，等待工作"
+            },
+            {
+              "key": "networkStage",
+              "label": "网络阶段",
+              "initial": "P1 尚未到达"
+            },
+            {
+              "key": "delivery",
+              "label": "交付范围",
+              "initial": "尚未交给 Guest 协议栈"
+            }
+          ]
+        },
+        {
+          "id": "application",
+          "title": "用户缓冲区、socket 与 Guest skb",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "userBuffer",
+              "label": "用户缓冲区",
+              "initial": "U1：128 B 可写空间，尚无本次数据"
+            },
+            {
+              "key": "applicationCall",
+              "label": "系统调用",
+              "initial": "尚未调用"
+            },
+            {
+              "key": "applicationResult",
+              "label": "应用返回值",
+              "initial": "尚未返回"
+            },
+            {
+              "key": "socketBuffers",
+              "label": "socket 缓冲/计账",
+              "initial": "接收队列为空；预算充足"
+            },
+            {
+              "key": "guestSkb",
+              "label": "Guest skb",
+              "initial": "尚未交付驱动"
+            },
+            {
+              "key": "applicationProgress",
+              "label": "应用处理",
+              "initial": "准备接收一个 UDP 数据报"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "initial",
+          "title": "初始状态",
+          "actor": "队列与后端",
+          "description": "应用有 128 B 接收空间，socket 和网络设备已就绪，本次数据报尚未到达。",
+          "detail": "队列、socket 与用户缓冲区分别显示初始状态；没有处理者正在推进本次数据报。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "recvfrom-wait",
+          "title": "等待 UDP 数据报",
+          "actor": "Guest 用户态应用 / UDP socket",
+          "description": "应用调用 recvfrom(fd, U1, 128, 0, ...)，当前 socket 无数据，进入等待。",
+          "detail": "__sys_recvfrom() 导入可写用户缓冲区；udp_recvmsg() 从 UDP 接收队列取报文。阻塞调用暂时睡眠，驱动和后端仍可接收、回收并补充队列。",
+          "active": [
+            "application",
+            "stack"
+          ],
+          "links": [
+            "syscall"
+          ],
+          "changes": {
+            "applicationCall": "recvfrom(fd, U1, 128, 0, ...)",
+            "applicationResult": "等待可读数据",
+            "applicationProgress": "线程睡眠，等待 socket 数据",
+            "socketBuffers": "接收队列为空；等待条件已建立"
+          },
+          "nodeStates": {
+            "application": "阻塞等待数据",
+            "stack": "UDP 接收队列暂空"
+          },
+          "sourceIds": [
+            "guest-recvfrom",
+            "guest-udp-wait",
+            "recv-api"
+          ],
+          "focus": false
+        },
+        {
+          "id": "publish-buffer",
+          "title": "发布 RX 空间",
+          "actor": "Guest virtio-net 驱动",
+          "description": "准备一条 2048 B 可写链，发布 head 2，avail.idx = 1。",
+          "detail": "RX 描述符带 WRITE，允许设备写入头和报文。空缓冲区在来包之前提供；available 记录表示空间已准备好，不代表里面已经有新帧。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "desc": "head 2：2048 B，WRITE（设备可写）",
+            "availHead": "slot 0 → head 2",
+            "availIdx": "1",
+            "guestBufferOwner": "设备可写；驱动等待归还",
+            "payload": "2048 B 空间，尚无 P1",
+            "notification": "按需提示 RX 缓冲区已补充"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "arrive",
+          "title": "报文到达",
+          "actor": "宿主网络",
+          "description": "P1 经宿主网络送到 TAP，后端获得一个待交付的帧。",
+          "detail": "TAP 读事件触发 tap_send()，读取报文后将其交给 QEMU 网络层。",
+          "active": [
+            "network",
+            "port",
+            "backend"
+          ],
+          "links": [
+            "wire",
+            "forward"
+          ],
+          "changes": {
+            "networkStage": "P1 已到达本地后端"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-rx",
+            "qemu-tap"
+          ],
+          "focus": false
+        },
+        {
+          "id": "take-buffer",
+          "title": "取得可写链",
+          "actor": "QEMU 用户态",
+          "description": "后端观察到 avail.idx = 1，取出 head 2 并检查容量和 WRITE 权限。",
+          "detail": "virtio_net_has_buffers() 确认空间，virtqueue_pop() 取出可写描述符。本例 2048 B 足以容纳 72 B 头与帧。",
+          "active": [
+            "queue",
+            "backend"
+          ],
+          "links": [
+            "consume"
+          ],
+          "changes": {
+            "consumedIdx": "1",
+            "backendState": "已取得 head 2，可写容量 2048 B"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-rx",
+            "qemu-rx-buffer"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-buffer",
+          "title": "写入报文",
+          "actor": "QEMU 用户态",
+          "description": "向 Guest 缓冲区写入 12 B 网络头和 P1 的 60 B 帧内容。",
+          "detail": "QEMU 通过 iovec 复制头和报文，写入量为 12 + 60 = 72 B，余下容量不属于本帧。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "copy"
+          ],
+          "changes": {
+            "payload": "12 B 头 + P1（60 B），已写入 72 B",
+            "backendState": "数据写入完成，等待发布 used"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-rx"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used",
+          "title": "发布 RX 完成",
+          "actor": "QEMU 用户态",
+          "description": "发布 used = {id: 2, len: 72}，used.idx = 1。",
+          "detail": "完成记录包含本次实际写入量 72 B，容量仍是 2048 B。数据写入必须先于完成进度对驱动可见，驱动据此判断缓冲区可读。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "complete"
+          ],
+          "changes": {
+            "usedEntry": "slot 0 → { id: 2, len: 72 }",
+            "usedIdx": "1",
+            "guestBufferOwner": "设备已归还，等待驱动读取",
+            "backendState": "本帧 RX 队列处理完成"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-rx",
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify",
+          "title": "提示 Guest 接收",
+          "actor": "QEMU 用户态",
+          "description": "在需要通知的条件下，提示客户机 RX 队列有完成。",
+          "detail": "通知路径可经过 call eventfd 与配置的虚拟中断；具体是否发送取决于队列通知规则。used 内容独立保存完成记录。",
+          "active": [
+            "backend",
+            "guest"
+          ],
+          "links": [
+            "notify"
+          ],
+          "changes": {
+            "notification": "本例触发 RX 完成通知"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-rx",
+            "virtio-ring-spec"
+          ],
+          "focus": false
+        },
+        {
+          "id": "receive",
+          "title": "回收 RX 链并交给 NAPI",
+          "actor": "Guest virtio-net / NAPI",
+          "description": "驱动消费 head 2，去掉 12 B virtio-net 头，将 60 B 帧交给 NAPI 接收处理。",
+          "detail": "驱动回收描述符后，napi_gro_receive() 接管接收 skb。本例单帧走 GRO_NORMAL，普通接收列表尚未达到提前刷新条件，UDP socket 此时仍为空。描述符槽可以复用，旧数据页继续由接收路径持有。",
+          "active": [
+            "queue",
+            "guest"
+          ],
+          "links": [
+            "reclaim"
+          ],
+          "changes": {
+            "reclaimedIdx": "1",
+            "guestBufferOwner": "NAPI 接收路径持有本帧引用",
+            "delivery": "60 B 帧已交 NAPI；尚未进入 UDP socket",
+            "guestSkb": "S1：已去掉 12 B virtio 头，在 NAPI 普通接收列表等待交付"
+          },
+          "nodeStates": {
+            "guest": "已回收 RX 链，skb 等待 NAPI 批量交付",
+            "stack": "本帧尚未进入 IPv4 / UDP 处理"
+          },
+          "sourceIds": [
+            "guest-rx",
+            "guest-napi-input",
+            "guest-gro-normal"
+          ],
+          "focus": true
+        },
+        {
+          "id": "refill",
+          "title": "补充下一块 RX 空间",
+          "actor": "Guest virtio-net 驱动",
+          "description": "复用已经回收的描述符槽，关联另一块可用缓冲区，再发布一次 available。",
+          "detail": "virtnet_receive() 消费当前批次后检查空闲描述符并调用 try_fill_recv()。本例分配成功，示意一条新链写入 slot 1，使 avail.idx = 2；实际驱动可批量补入更多缓冲区。旧 P1 仍由 NAPI 接收路径持有，新空间无需等待 socket 入队或 recvfrom 返回。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "desc": "head 2：新的 2048 B 可写缓冲区",
+            "availHead": "slot 1 → head 2（新缓冲区）",
+            "availIdx": "2",
+            "guestBufferOwner": "新缓冲区供设备写；旧 P1 引用仍由 NAPI 接收路径管理",
+            "payload": "新空间无 P1；旧 P1 随 skb 生命周期保留",
+            "notification": "按需提示新 RX 空间"
+          },
+          "nodeStates": {
+            "guest": "已补充新 RX 空间，准备完成本轮 NAPI"
+          },
+          "sourceIds": [
+            "guest-rx",
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "socket-enqueue",
+          "title": "送入 UDP socket",
+          "actor": "Guest IPv4 / UDP 协议栈",
+          "description": "本轮 NAPI 完成后，普通列表交给 IPv4 / UDP 协议栈，校验并分发 P1，将 18 B 载荷排入目标 socket。",
+          "detail": "本例 received 小于 budget，virtnet_poll() 经 virtqueue_napi_complete() 调用 napi_complete_done()，由 gro_flush_normal() 刷新普通列表。UDP 根据地址和端口查找 socket，接收预算足够时排队并通知等待者。Linux 6.18 可能经 producer queue 归并，再由 reader_queue 供 recvmsg 消费；这里显示逻辑上一个待收数据报。唤醒只使线程可运行。",
+          "active": [
+            "guest",
+            "stack",
+            "application"
+          ],
+          "links": [
+            "stack-input",
+            "socket-ready"
+          ],
+          "changes": {
+            "socketBuffers": "接收队列：1 个 UDP 数据报（载荷 18 B）",
+            "guestSkb": "S1 由 socket 接收路径持有，载荷 18 B",
+            "applicationProgress": "数据已就绪；等待线程获得 CPU",
+            "delivery": "UDP 数据报已进入 Guest socket；尚未复制到用户",
+            "guestBufferOwner": "新缓冲区供设备写；旧 P1 引用由 socket 接收路径管理"
+          },
+          "nodeStates": {
+            "stack": "已为 socket 排队 1 个数据报",
+            "application": "已唤醒，尚未读取"
+          },
+          "sourceIds": [
+            "guest-rx",
+            "guest-napi-complete",
+            "guest-udp-enqueue",
+            "guest-udp-wait"
+          ],
+          "focus": false
+        },
+        {
+          "id": "copy-to-user",
+          "title": "复制 UDP 载荷",
+          "actor": "Guest recvfrom / UDP 接收路径",
+          "description": "应用线程获得 CPU，udp_recvmsg() 从队列取出一份数据报，把 18 B 载荷复制到 U1。",
+          "detail": "本例容量 128 B 足够，无 MSG_PEEK 或截断。UDP/IP/Ethernet 头及 virtio 网络头均不复制给普通 UDP 应用；源地址通过 recvfrom 的独立地址参数返回。skb 消费完毕后释放相应引用，其他引用仍遵守各自生命周期。",
+          "active": [
+            "stack",
+            "application"
+          ],
+          "links": [
+            "copy-to-user"
+          ],
+          "changes": {
+            "userBuffer": "U1[0..17] = virt-report-demo01；其余容量未使用",
+            "socketBuffers": "本次数据报已取走；逻辑接收队列为空",
+            "guestSkb": "本次接收 skb 已消费，释放对应数据引用",
+            "applicationProgress": "18 B 载荷已复制；准备返回",
+            "delivery": "18 B UDP 载荷已复制到 Guest 用户缓冲区",
+            "guestBufferOwner": "新缓冲区供设备写；旧 P1 的本次接收引用已释放"
+          },
+          "nodeStates": {
+            "stack": "已复制并消费本次 UDP 数据报",
+            "application": "用户缓冲区已有 18 B 载荷"
+          },
+          "sourceIds": [
+            "guest-udp-recv",
+            "guest-recvfrom"
+          ],
+          "focus": false
+        },
+        {
+          "id": "recvfrom-return",
+          "title": "recvfrom 返回",
+          "actor": "Guest 系统调用返回路径",
+          "description": "recvfrom 返回 18，应用开始处理 U1 中的 UDP 数据。",
+          "detail": "返回值为本次复制的载荷长度，128 B 是容量，60 B 是链路层帧长，72 B 是 virtio RX 的写入长度。RX 描述符回收与新缓冲区补充已独立进行，应用读取没有为设备发布新的 used。",
+          "active": [
+            "stack",
+            "application"
+          ],
+          "links": [
+            "syscall-return"
+          ],
+          "changes": {
+            "applicationResult": "18",
+            "applicationProgress": "应用恢复执行，处理 18 B UDP 载荷",
+            "delivery": "本次 UDP 载荷已由 Guest recvfrom 返回"
+          },
+          "nodeStates": {
+            "application": "已返回 18，用户态继续执行",
+            "stack": "本次 recvfrom 已结束"
+          },
+          "sourceIds": [
+            "guest-recvfrom",
+            "guest-udp-recv",
+            "recv-api"
+          ],
+          "focus": false
+        }
+      ]
+    },
+    {
+      "id": "vhost-tx",
+      "label": "vhost-net + TAP · TX",
+      "summary": "18 B UDP 载荷经客户机协议栈形成 60 B 帧，交给 virtio-net 与所选后端；分别观察 sendto 返回、队列归还与本地发送。",
+      "assumptions": [
+        "x86 + KVM；QEMU 10.2.0 / Linux 6.18；modern virtio-net、split ring、单队列对。",
+        "P1 为 60 B 以太网帧（不含 FCS），virtio-net 基础头为 12 B；不启用分段、校验和卸载、合并 RX 缓冲区或间接描述符。",
+        "QEMU 已向 vhost-net 配置内存、队列、kick/call 和 TAP 后端；使用普通复制路径。",
+        "Guest 回收与宿主后续转发可以并行；播放顺序展示一种可观察的执行顺序。",
+        "UDP/IPv4 小数据报：用户载荷 virt-report-demo01 为 18 B；8 B UDP + 20 B IPv4 + 14 B Ethernet，共 60 B 帧；virtio-net 另加 12 B 头。无 IP 选项、VLAN 或分片。",
+        "普通 sendto(..., 18, 0, ...)，无 UDP_CORK、MSG_MORE 或 MSG_ZEROCOPY；路由、邻居及 socket 已就绪，发送预算与客户机 TX 队列均有空间，本次直接走到驱动。",
+        "virtqueue 发布后，Guest 返回与后端处理可并发。本次先展示 sendto 返回；后端也可能更早消费队列，TX used、线路发送与返回没有固定总顺序。"
+      ],
+      "nodes": [
+        {
+          "id": "application",
+          "label": "应用 · 用户态",
+          "role": "guest"
+        },
+        {
+          "id": "stack",
+          "label": "UDP/IP · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "guest",
+          "label": "virtio-net · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "queue",
+          "label": "Guest RAM · TX 队列 1",
+          "role": "memory"
+        },
+        {
+          "id": "backend",
+          "label": "内核 vhost-net",
+          "role": "kernel"
+        },
+        {
+          "id": "port",
+          "label": "TAP · 宿主网络",
+          "role": "kernel"
+        },
+        {
+          "id": "network",
+          "label": "外部网络",
+          "role": "external"
+        },
+        {
+          "id": "control",
+          "label": "QEMU · 配置控制",
+          "role": "control"
+        }
+      ],
+      "links": [
+        {
+          "id": "publish",
+          "from": "guest",
+          "to": "queue",
+          "label": "发布描述符链",
+          "kind": "control"
+        },
+        {
+          "id": "consume",
+          "from": "queue",
+          "to": "backend",
+          "label": "读取描述符与帧",
+          "kind": "data"
+        },
+        {
+          "id": "complete",
+          "from": "backend",
+          "to": "queue",
+          "label": "发布 used",
+          "kind": "control"
+        },
+        {
+          "id": "notify",
+          "from": "backend",
+          "to": "guest",
+          "label": "按需完成通知",
+          "kind": "notification"
+        },
+        {
+          "id": "reclaim",
+          "from": "queue",
+          "to": "guest",
+          "label": "回收链与缓冲区",
+          "kind": "control"
+        },
+        {
+          "id": "forward",
+          "from": "backend",
+          "to": "port",
+          "label": "交付本地出口",
+          "kind": "data"
+        },
+        {
+          "id": "wire",
+          "from": "port",
+          "to": "network",
+          "label": "后续链路发送",
+          "kind": "data"
+        },
+        {
+          "id": "setup",
+          "from": "control",
+          "to": "backend",
+          "label": "队列、内存、通知配置",
+          "kind": "control"
+        },
+        {
+          "id": "syscall",
+          "from": "application",
+          "to": "stack",
+          "label": "sendto 调用",
+          "kind": "control"
+        },
+        {
+          "id": "copy-from-user",
+          "from": "application",
+          "to": "stack",
+          "label": "18 B 用户载荷复制",
+          "kind": "data"
+        },
+        {
+          "id": "stack-output",
+          "from": "stack",
+          "to": "guest",
+          "label": "60 B Ethernet 帧",
+          "kind": "data"
+        },
+        {
+          "id": "syscall-return",
+          "from": "stack",
+          "to": "application",
+          "label": "sendto 返回（独立分支）",
+          "kind": "control"
+        }
+      ],
+      "structures": [
+        {
+          "id": "virtqueue",
+          "title": "TX split virtqueue · 大小 8",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "desc",
+              "label": "desc 链",
+              "initial": "未填写"
+            },
+            {
+              "key": "availHead",
+              "label": "avail.ring",
+              "initial": "空"
+            },
+            {
+              "key": "availIdx",
+              "label": "avail.idx",
+              "initial": "0"
+            },
+            {
+              "key": "consumedIdx",
+              "label": "设备消费位置",
+              "initial": "0"
+            },
+            {
+              "key": "usedEntry",
+              "label": "used.ring",
+              "initial": "空"
+            },
+            {
+              "key": "usedIdx",
+              "label": "used.idx",
+              "initial": "0"
+            },
+            {
+              "key": "reclaimedIdx",
+              "label": "驱动回收位置",
+              "initial": "0"
+            }
+          ]
+        },
+        {
+          "id": "buffer",
+          "title": "Guest 缓冲区与通知",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "guestBufferOwner",
+              "label": "缓冲区访问权",
+              "initial": "驱动持有，尚未发布"
+            },
+            {
+              "key": "payload",
+              "label": "缓冲区内容",
+              "initial": "P1 尚未关联描述符"
+            },
+            {
+              "key": "notification",
+              "label": "通知状态",
+              "initial": "无新通知"
+            }
+          ]
+        },
+        {
+          "id": "path",
+          "title": "后端与交付状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "backendState",
+              "label": "后端状态",
+              "initial": "队列已启用，等待工作"
+            },
+            {
+              "key": "networkStage",
+              "label": "网络阶段",
+              "initial": "P1 尚未进入后端"
+            },
+            {
+              "key": "delivery",
+              "label": "交付范围",
+              "initial": "远端是否收到：未确认"
+            }
+          ]
+        },
+        {
+          "id": "application",
+          "title": "用户缓冲区、socket 与 Guest skb",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "userBuffer",
+              "label": "用户缓冲区",
+              "initial": "U0：18 B 载荷，仍由应用持有"
+            },
+            {
+              "key": "applicationCall",
+              "label": "系统调用",
+              "initial": "尚未调用"
+            },
+            {
+              "key": "applicationResult",
+              "label": "应用返回值",
+              "initial": "尚未返回"
+            },
+            {
+              "key": "socketBuffers",
+              "label": "socket 缓冲/计账",
+              "initial": "发送预算充足；尚未分配本次 skb"
+            },
+            {
+              "key": "guestSkb",
+              "label": "Guest skb",
+              "initial": "尚未构建"
+            },
+            {
+              "key": "applicationProgress",
+              "label": "应用处理",
+              "initial": "准备提交 18 B UDP 载荷"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "initial",
+          "title": "初始状态",
+          "actor": "队列与后端",
+          "description": "应用持有 18 B 载荷，网络设备和队列已就绪，本次 sendto 尚未调用。",
+          "detail": "队列、socket 与用户缓冲区分别显示初始状态；没有处理者正在推进本次数据报。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "sendto",
+          "title": "调用 sendto",
+          "actor": "Guest 用户态应用",
+          "description": "应用用 U0 提交 18 B UDP 载荷，目标地址交给 socket 层。",
+          "detail": "__sys_sendto() 导入用户缓冲区并构造 msghdr，随后分派到 IPv4 UDP。系统调用改变客户机内的执行特权级；本步不要求退出到 QEMU 处理。",
+          "active": [
+            "application",
+            "stack"
+          ],
+          "links": [
+            "syscall"
+          ],
+          "changes": {
+            "applicationCall": "sendto(fd, U0, 18, 0, ...)",
+            "applicationResult": "内核处理中",
+            "applicationProgress": "本线程进入 Guest 内核"
+          },
+          "nodeStates": {
+            "application": "sendto 尚未返回",
+            "stack": "处理 UDP 发送"
+          },
+          "sourceIds": [
+            "guest-sendto"
+          ],
+          "focus": false
+        },
+        {
+          "id": "udp-output",
+          "title": "构造 UDP/IP 报文",
+          "actor": "Guest UDP/IP 协议栈",
+          "description": "普通复制路径把 18 B 用户数据复制入 skb，并完成 UDP、IPv4 与链路层封装。",
+          "detail": "UDP 无 cork 路径通过 ip_make_skb() 构建 skb；ip_generic_getfrag() 执行用户数据复制。邻居已解析，本例在客户机发送路径形成 14 + 20 + 8 + 18 = 60 B 帧。U0 与 skb 数据是不同的存储对象。",
+          "active": [
+            "application",
+            "stack"
+          ],
+          "links": [
+            "copy-from-user"
+          ],
+          "changes": {
+            "guestSkb": "S1：18 B 数据 + UDP 8 B + IPv4 20 B + Ethernet 14 B = 60 B",
+            "socketBuffers": "skb 使用发送内存预算；普通 UDP 不建立可靠重传队列",
+            "applicationProgress": "载荷已复制，原 U0 仍归应用"
+          },
+          "nodeStates": {
+            "stack": "S1 已封装，准备交给网卡"
+          },
+          "sourceIds": [
+            "guest-udp-send",
+            "guest-copy-send",
+            "guest-ip-output"
+          ],
+          "focus": false
+        },
+        {
+          "id": "driver-submit",
+          "title": "交给 virtio-net",
+          "actor": "Guest 网络发送路径",
+          "description": "网络层把 skb S1 交给 virtio-net 的 start_xmit()。",
+          "detail": "本例 qdisc 与驱动队列有空间，当前调用推进到驱动提交。start_xmit() 通过 xmit_skb() 组织 virtio 网络头与 skb 分散表。其他配置下，skb 可以先在客户机排队，系统调用返回并不要求每次都已发布 virtqueue。",
+          "active": [
+            "stack",
+            "guest"
+          ],
+          "links": [
+            "stack-output"
+          ],
+          "changes": {
+            "guestSkb": "S1 已交给 virtio-net；帧长 60 B",
+            "applicationProgress": "驱动准备发布本次 TX"
+          },
+          "nodeStates": {
+            "stack": "网卡发送调用中",
+            "guest": "准备 S1 的设备可读链"
+          },
+          "sourceIds": [
+            "guest-virtio-send"
+          ],
+          "focus": false
+        },
+        {
+          "id": "prepare",
+          "title": "准备描述符",
+          "actor": "Guest virtio-net 驱动",
+          "description": "将 12 B 网络头和 60 B 帧 P1 组织为链 0 → 2。",
+          "detail": "desc[0] 的 NEXT 指向 desc[2]，两个缓冲区均为设备可读。此时 avail.idx 尚未增加，后端不能据此消费本次请求。 这里的 60 B 来自 S1，virtio 网络头是设备接口附加的 12 B，不会交给远端 UDP 应用。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [],
+          "changes": {
+            "desc": "0 → 2：12 B 头（NEXT）+ 60 B 帧（设备读）",
+            "payload": "12 B 头 + P1（60 B）"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "publish",
+          "title": "发布 TX 链",
+          "actor": "Guest virtio-net 驱动",
+          "description": "先写描述符和 avail.ring[0]，再发布 avail.idx = 1。",
+          "detail": "内存顺序保证后端观察到新索引时可以读取完整的链。驱动在发布索引后检查通知条件，按协商的通知抑制规则决定是否 kick。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "availHead": "slot 0 → head 0",
+            "availIdx": "1",
+            "guestBufferOwner": "设备可读；驱动暂不修改",
+            "notification": "按需 kick，提示后端检查"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "sendto-return",
+          "title": "sendto 返回",
+          "actor": "Guest 系统调用返回路径",
+          "description": "本次 sendto 成功返回 18，应用可以继续执行并复用 U0。",
+          "detail": "18 是提交的 UDP 载荷字节数，未包含协议头。成功不保证交付；本例只确认本机发送路径接受请求，不等待 TX used、本地物理发送或远端接收。Guest 返回与后端消费从发布处分成两条分支，这里展示返回先发生的一种调度顺序。",
+          "active": [
+            "stack",
+            "application"
+          ],
+          "links": [
+            "syscall-return"
+          ],
+          "changes": {
+            "applicationResult": "18",
+            "applicationProgress": "应用恢复执行，U0 可复用",
+            "userBuffer": "U0 已可由应用复用；skb S1 仍有独立副本",
+            "socketBuffers": "skb 可仍在发送路径；socket 计账与设备缓冲区生命周期分别处理"
+          },
+          "nodeStates": {
+            "application": "已返回 18，可继续运行",
+            "stack": "sendto 调用已结束"
+          },
+          "sourceIds": [
+            "guest-udp-send",
+            "guest-virtio-send",
+            "send-api"
+          ],
+          "focus": false
+        },
+        {
+          "id": "consume",
+          "title": "取得描述符链",
+          "actor": "宿主内核 vhost-net",
+          "description": "后端读取 available，取得链头 0 并检查设备可读区域。",
+          "detail": "handle_tx() 选择本例的 handle_tx_copy()，vhost 获取可读 iovec，正常收发不需要 QEMU 逐包参与。",
+          "active": [
+            "queue",
+            "backend"
+          ],
+          "links": [
+            "consume"
+          ],
+          "changes": {
+            "consumedIdx": "1",
+            "backendState": "正在处理链头 0"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "vhost-tx"
+          ],
+          "focus": true
+        },
+        {
+          "id": "transfer",
+          "title": "交给 TAP",
+          "actor": "宿主内核 vhost-net",
+          "description": "vhost-net 在宿主内核中将 P1 交给 TAP 对应的 socket。",
+          "detail": "普通复制发送路径通过 socket sendmsg 或相应批处理交付报文；本例成功接受。零拷贝分支需要等待不同的缓冲区释放条件。",
+          "active": [
+            "backend",
+            "port"
+          ],
+          "links": [
+            "forward"
+          ],
+          "changes": {
+            "backendState": "本地 TAP 已接受 P1",
+            "networkStage": "TAP 已接受；后续转发仍独立进行"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "vhost-tx"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used",
+          "title": "发布 TX 完成",
+          "actor": "宿主内核 vhost-net",
+          "description": "将链头 0 写入 used，used.idx 从 0 增至 1。",
+          "detail": "used = {id: 0, len: 0} 表示设备已经结束对本链的使用。驱动观察到完成后可以回收原缓冲区；这一记录不能证明远端已经收到 P1。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "complete"
+          ],
+          "changes": {
+            "usedEntry": "slot 0 → { id: 0, len: 0 }",
+            "usedIdx": "1",
+            "guestBufferOwner": "设备已归还，等待驱动观察",
+            "backendState": "本链队列处理完成"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "vhost-tx",
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify",
+          "title": "提示客户机",
+          "actor": "宿主内核 vhost-net",
+          "description": "按通知条件提示客户机检查 used ring。",
+          "detail": "后端通过配置好的 call / 中断通路提示 Guest。通知可以被合并或抑制，驱动也可以主动检查 used；通知数量与报文数量不要求一一对应。",
+          "active": [
+            "backend",
+            "guest"
+          ],
+          "links": [
+            "notify"
+          ],
+          "changes": {
+            "notification": "本例发出完成通知；used 已可见"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "vhost-tx",
+            "virtio-ring-spec"
+          ],
+          "focus": false
+        },
+        {
+          "id": "reclaim",
+          "title": "回收 TX 链",
+          "actor": "Guest virtio-net 驱动",
+          "description": "驱动消费 used 项，找到链头 0 并释放本次发送引用。",
+          "detail": "回收位置更新为 1。Guest 链和原始发送缓冲区现在可以复用；描述符槽中的旧值无需清零，是否有效由环索引决定。 应用 U0 早已独立可用。socket 发送计账可能随 skb_orphan() 提前解除，也可能在 skb 释放时回收，不能与 used.idx 简单等同。",
+          "active": [
+            "queue",
+            "guest"
+          ],
+          "links": [
+            "reclaim"
+          ],
+          "changes": {
+            "reclaimedIdx": "1",
+            "guestBufferOwner": "驱动已回收，可复用",
+            "desc": "链 0 → 2 已回收（旧字段可保留）",
+            "guestSkb": "S1 的设备发送引用已释放，可回收相应存储"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec",
+            "guest-virtio-send"
+          ],
+          "focus": true
+        },
+        {
+          "id": "egress",
+          "title": "继续网络转发",
+          "actor": "宿主网络",
+          "description": "P1 沿本地出口继续发送，虚拟队列已可承接下一帧。",
+          "detail": "路径中的排队、交换、丢包和远端处理不由本次 used 项报告。演示展示本地交付边界，未模拟对端协议栈或确认报文。 此处整理出口状态，与 Guest 返回及回收可交错；演示未收到对端确认，UDP 本身也不提供可靠交付确认。",
+          "active": [
+            "port"
+          ],
+          "links": [
+            "wire"
+          ],
+          "changes": {
+            "networkStage": "继续本地网络转发；远端未确认"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "vhost-tx",
+            "virtio-net-spec"
+          ],
+          "focus": false
+        }
+      ]
+    },
+    {
+      "id": "vhost-rx",
+      "label": "vhost-net + TAP · RX",
+      "summary": "从 RX 空缓冲区开始，跟踪 UDP 帧进入客户机协议栈、socket 接收队列，直到 recvfrom 把 18 B 载荷交给应用。",
+      "assumptions": [
+        "x86 + KVM；QEMU 10.2.0 / Linux 6.18；modern virtio-net、split ring、单队列对。",
+        "P1 为 60 B 以太网帧（不含 FCS），virtio-net 基础头为 12 B；不启用分段、校验和卸载、合并 RX 缓冲区或间接描述符。",
+        "QEMU 已向 vhost-net 配置内存、队列、kick/call 和 TAP 后端；使用普通复制路径。",
+        "用一条 2048 B 可写描述符链表示接收空间；实际驱动可把头与数据分散在多个描述符中。",
+        "UDP/IPv4 小数据报：用户载荷 virt-report-demo01 为 18 B；8 B UDP + 20 B IPv4 + 14 B Ethernet，共 60 B 帧；virtio-net 另加 12 B 头。无 IP 选项、VLAN 或分片。",
+        "普通阻塞 recvfrom(..., 128, 0, ...)，无 MSG_PEEK、MSG_TRUNC；socket 已绑定，路由、校验与接收内存预算满足本次报文，应用缓冲区容量足够。",
+        "本例只收一帧，received 小于 NAPI budget；GRO_NORMAL 普通列表尚未达到提前刷新条件。驱动先 refill，随后在 NAPI 完成阶段将列表交给协议栈；补充空间无需等待 recvfrom 返回。"
+      ],
+      "nodes": [
+        {
+          "id": "application",
+          "label": "应用 · 用户态",
+          "role": "guest"
+        },
+        {
+          "id": "stack",
+          "label": "UDP/IP · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "guest",
+          "label": "virtio-net · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "queue",
+          "label": "Guest RAM · RX 队列 0",
+          "role": "memory"
+        },
+        {
+          "id": "backend",
+          "label": "内核 vhost-net",
+          "role": "kernel"
+        },
+        {
+          "id": "port",
+          "label": "TAP · 宿主网络",
+          "role": "kernel"
+        },
+        {
+          "id": "network",
+          "label": "外部网络",
+          "role": "external"
+        },
+        {
+          "id": "control",
+          "label": "QEMU · 配置控制",
+          "role": "control"
+        }
+      ],
+      "links": [
+        {
+          "id": "publish",
+          "from": "guest",
+          "to": "queue",
+          "label": "发布描述符链",
+          "kind": "control"
+        },
+        {
+          "id": "consume",
+          "from": "queue",
+          "to": "backend",
+          "label": "取得可写空间",
+          "kind": "control"
+        },
+        {
+          "id": "complete",
+          "from": "backend",
+          "to": "queue",
+          "label": "发布 used",
+          "kind": "control"
+        },
+        {
+          "id": "notify",
+          "from": "backend",
+          "to": "guest",
+          "label": "按需完成通知",
+          "kind": "notification"
+        },
+        {
+          "id": "reclaim",
+          "from": "queue",
+          "to": "guest",
+          "label": "读取报文与回收链",
+          "kind": "data"
+        },
+        {
+          "id": "wire",
+          "from": "network",
+          "to": "port",
+          "label": "帧到达",
+          "kind": "data"
+        },
+        {
+          "id": "forward",
+          "from": "port",
+          "to": "backend",
+          "label": "交付收到的帧",
+          "kind": "data"
+        },
+        {
+          "id": "copy",
+          "from": "backend",
+          "to": "queue",
+          "label": "写入头与帧",
+          "kind": "data"
+        },
+        {
+          "id": "setup",
+          "from": "control",
+          "to": "backend",
+          "label": "队列、内存、通知配置",
+          "kind": "control"
+        },
+        {
+          "id": "syscall",
+          "from": "application",
+          "to": "stack",
+          "label": "recvfrom 调用",
+          "kind": "control"
+        },
+        {
+          "id": "stack-input",
+          "from": "guest",
+          "to": "stack",
+          "label": "NAPI 列表交给协议栈",
+          "kind": "data"
+        },
+        {
+          "id": "socket-ready",
+          "from": "stack",
+          "to": "application",
+          "label": "数据入 socket，唤醒等待者",
+          "kind": "notification"
+        },
+        {
+          "id": "copy-to-user",
+          "from": "stack",
+          "to": "application",
+          "label": "复制 18 B UDP 载荷",
+          "kind": "data"
+        },
+        {
+          "id": "syscall-return",
+          "from": "stack",
+          "to": "application",
+          "label": "recvfrom 返回",
+          "kind": "control"
+        }
+      ],
+      "structures": [
+        {
+          "id": "virtqueue",
+          "title": "RX split virtqueue · 大小 8",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "desc",
+              "label": "desc 链",
+              "initial": "未填写"
+            },
+            {
+              "key": "availHead",
+              "label": "avail.ring",
+              "initial": "空"
+            },
+            {
+              "key": "availIdx",
+              "label": "avail.idx",
+              "initial": "0"
+            },
+            {
+              "key": "consumedIdx",
+              "label": "设备消费位置",
+              "initial": "0"
+            },
+            {
+              "key": "usedEntry",
+              "label": "used.ring",
+              "initial": "空"
+            },
+            {
+              "key": "usedIdx",
+              "label": "used.idx",
+              "initial": "0"
+            },
+            {
+              "key": "reclaimedIdx",
+              "label": "驱动回收位置",
+              "initial": "0"
+            }
+          ]
+        },
+        {
+          "id": "buffer",
+          "title": "Guest 缓冲区与通知",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "guestBufferOwner",
+              "label": "缓冲区访问权",
+              "initial": "驱动持有，尚未发布"
+            },
+            {
+              "key": "payload",
+              "label": "缓冲区内容",
+              "initial": "空，可准备接收"
+            },
+            {
+              "key": "notification",
+              "label": "通知状态",
+              "initial": "无新通知"
+            }
+          ]
+        },
+        {
+          "id": "path",
+          "title": "后端与交付状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "backendState",
+              "label": "后端状态",
+              "initial": "队列已启用，等待工作"
+            },
+            {
+              "key": "networkStage",
+              "label": "网络阶段",
+              "initial": "P1 尚未到达"
+            },
+            {
+              "key": "delivery",
+              "label": "交付范围",
+              "initial": "尚未交给 Guest 协议栈"
+            }
+          ]
+        },
+        {
+          "id": "application",
+          "title": "用户缓冲区、socket 与 Guest skb",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "userBuffer",
+              "label": "用户缓冲区",
+              "initial": "U1：128 B 可写空间，尚无本次数据"
+            },
+            {
+              "key": "applicationCall",
+              "label": "系统调用",
+              "initial": "尚未调用"
+            },
+            {
+              "key": "applicationResult",
+              "label": "应用返回值",
+              "initial": "尚未返回"
+            },
+            {
+              "key": "socketBuffers",
+              "label": "socket 缓冲/计账",
+              "initial": "接收队列为空；预算充足"
+            },
+            {
+              "key": "guestSkb",
+              "label": "Guest skb",
+              "initial": "尚未交付驱动"
+            },
+            {
+              "key": "applicationProgress",
+              "label": "应用处理",
+              "initial": "准备接收一个 UDP 数据报"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "initial",
+          "title": "初始状态",
+          "actor": "队列与后端",
+          "description": "应用有 128 B 接收空间，socket 和网络设备已就绪，本次数据报尚未到达。",
+          "detail": "队列、socket 与用户缓冲区分别显示初始状态；没有处理者正在推进本次数据报。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "recvfrom-wait",
+          "title": "等待 UDP 数据报",
+          "actor": "Guest 用户态应用 / UDP socket",
+          "description": "应用调用 recvfrom(fd, U1, 128, 0, ...)，当前 socket 无数据，进入等待。",
+          "detail": "__sys_recvfrom() 导入可写用户缓冲区；udp_recvmsg() 从 UDP 接收队列取报文。阻塞调用暂时睡眠，驱动和后端仍可接收、回收并补充队列。",
+          "active": [
+            "application",
+            "stack"
+          ],
+          "links": [
+            "syscall"
+          ],
+          "changes": {
+            "applicationCall": "recvfrom(fd, U1, 128, 0, ...)",
+            "applicationResult": "等待可读数据",
+            "applicationProgress": "线程睡眠，等待 socket 数据",
+            "socketBuffers": "接收队列为空；等待条件已建立"
+          },
+          "nodeStates": {
+            "application": "阻塞等待数据",
+            "stack": "UDP 接收队列暂空"
+          },
+          "sourceIds": [
+            "guest-recvfrom",
+            "guest-udp-wait",
+            "recv-api"
+          ],
+          "focus": false
+        },
+        {
+          "id": "publish-buffer",
+          "title": "发布 RX 空间",
+          "actor": "Guest virtio-net 驱动",
+          "description": "准备一条 2048 B 可写链，发布 head 2，avail.idx = 1。",
+          "detail": "RX 描述符带 WRITE，允许设备写入头和报文。空缓冲区在来包之前提供；available 记录表示空间已准备好，不代表里面已经有新帧。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "desc": "head 2：2048 B，WRITE（设备可写）",
+            "availHead": "slot 0 → head 2",
+            "availIdx": "1",
+            "guestBufferOwner": "设备可写；驱动等待归还",
+            "payload": "2048 B 空间，尚无 P1",
+            "notification": "按需提示 RX 缓冲区已补充"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "arrive",
+          "title": "报文到达",
+          "actor": "宿主网络",
+          "description": "P1 经宿主网络送到 TAP，后端获得一个待交付的帧。",
+          "detail": "本例仅跟踪已经通过接收过滤、将交给此虚拟机的普通帧。",
+          "active": [
+            "network",
+            "port",
+            "backend"
+          ],
+          "links": [
+            "wire",
+            "forward"
+          ],
+          "changes": {
+            "networkStage": "P1 已到达本地后端"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "vhost-rx"
+          ],
+          "focus": false
+        },
+        {
+          "id": "take-buffer",
+          "title": "取得可写链",
+          "actor": "宿主内核 vhost-net",
+          "description": "后端观察到 avail.idx = 1，取出 head 2 并检查容量和 WRITE 权限。",
+          "detail": "handle_rx() 通过 get_rx_bufs() 获取可写 iovec，再从 TAP socket 接收数据。",
+          "active": [
+            "queue",
+            "backend"
+          ],
+          "links": [
+            "consume"
+          ],
+          "changes": {
+            "consumedIdx": "1",
+            "backendState": "已取得 head 2，可写容量 2048 B"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "vhost-rx"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-buffer",
+          "title": "写入报文",
+          "actor": "宿主内核 vhost-net",
+          "description": "向 Guest 缓冲区写入 12 B 网络头和 P1 的 60 B 帧内容。",
+          "detail": "recvmsg() 的目标 iovec 来自 Guest 可写链；vhost-net 按协商结果处理网络头。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "copy"
+          ],
+          "changes": {
+            "payload": "12 B 头 + P1（60 B），已写入 72 B",
+            "backendState": "数据写入完成，等待发布 used"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "vhost-rx"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used",
+          "title": "发布 RX 完成",
+          "actor": "宿主内核 vhost-net",
+          "description": "发布 used = {id: 2, len: 72}，used.idx = 1。",
+          "detail": "完成记录包含本次实际写入量 72 B，容量仍是 2048 B。数据写入必须先于完成进度对驱动可见，驱动据此判断缓冲区可读。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "complete"
+          ],
+          "changes": {
+            "usedEntry": "slot 0 → { id: 2, len: 72 }",
+            "usedIdx": "1",
+            "guestBufferOwner": "设备已归还，等待驱动读取",
+            "backendState": "本帧 RX 队列处理完成"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "vhost-rx",
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify",
+          "title": "提示 Guest 接收",
+          "actor": "宿主内核 vhost-net",
+          "description": "在需要通知的条件下，提示客户机 RX 队列有完成。",
+          "detail": "通知路径可经过 call eventfd 与配置的虚拟中断；具体是否发送取决于队列通知规则。used 内容独立保存完成记录。",
+          "active": [
+            "backend",
+            "guest"
+          ],
+          "links": [
+            "notify"
+          ],
+          "changes": {
+            "notification": "本例触发 RX 完成通知"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "vhost-rx",
+            "virtio-ring-spec"
+          ],
+          "focus": false
+        },
+        {
+          "id": "receive",
+          "title": "回收 RX 链并交给 NAPI",
+          "actor": "Guest virtio-net / NAPI",
+          "description": "驱动消费 head 2，去掉 12 B virtio-net 头，将 60 B 帧交给 NAPI 接收处理。",
+          "detail": "驱动回收描述符后，napi_gro_receive() 接管接收 skb。本例单帧走 GRO_NORMAL，普通接收列表尚未达到提前刷新条件，UDP socket 此时仍为空。描述符槽可以复用，旧数据页继续由接收路径持有。",
+          "active": [
+            "queue",
+            "guest"
+          ],
+          "links": [
+            "reclaim"
+          ],
+          "changes": {
+            "reclaimedIdx": "1",
+            "guestBufferOwner": "NAPI 接收路径持有本帧引用",
+            "delivery": "60 B 帧已交 NAPI；尚未进入 UDP socket",
+            "guestSkb": "S1：已去掉 12 B virtio 头，在 NAPI 普通接收列表等待交付"
+          },
+          "nodeStates": {
+            "guest": "已回收 RX 链，skb 等待 NAPI 批量交付",
+            "stack": "本帧尚未进入 IPv4 / UDP 处理"
+          },
+          "sourceIds": [
+            "guest-rx",
+            "guest-napi-input",
+            "guest-gro-normal"
+          ],
+          "focus": true
+        },
+        {
+          "id": "refill",
+          "title": "补充下一块 RX 空间",
+          "actor": "Guest virtio-net 驱动",
+          "description": "复用已经回收的描述符槽，关联另一块可用缓冲区，再发布一次 available。",
+          "detail": "virtnet_receive() 消费当前批次后检查空闲描述符并调用 try_fill_recv()。本例分配成功，示意一条新链写入 slot 1，使 avail.idx = 2；实际驱动可批量补入更多缓冲区。旧 P1 仍由 NAPI 接收路径持有，新空间无需等待 socket 入队或 recvfrom 返回。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "desc": "head 2：新的 2048 B 可写缓冲区",
+            "availHead": "slot 1 → head 2（新缓冲区）",
+            "availIdx": "2",
+            "guestBufferOwner": "新缓冲区供设备写；旧 P1 引用仍由 NAPI 接收路径管理",
+            "payload": "新空间无 P1；旧 P1 随 skb 生命周期保留",
+            "notification": "按需提示新 RX 空间"
+          },
+          "nodeStates": {
+            "guest": "已补充新 RX 空间，准备完成本轮 NAPI"
+          },
+          "sourceIds": [
+            "guest-rx",
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "socket-enqueue",
+          "title": "送入 UDP socket",
+          "actor": "Guest IPv4 / UDP 协议栈",
+          "description": "本轮 NAPI 完成后，普通列表交给 IPv4 / UDP 协议栈，校验并分发 P1，将 18 B 载荷排入目标 socket。",
+          "detail": "本例 received 小于 budget，virtnet_poll() 经 virtqueue_napi_complete() 调用 napi_complete_done()，由 gro_flush_normal() 刷新普通列表。UDP 根据地址和端口查找 socket，接收预算足够时排队并通知等待者。Linux 6.18 可能经 producer queue 归并，再由 reader_queue 供 recvmsg 消费；这里显示逻辑上一个待收数据报。唤醒只使线程可运行。",
+          "active": [
+            "guest",
+            "stack",
+            "application"
+          ],
+          "links": [
+            "stack-input",
+            "socket-ready"
+          ],
+          "changes": {
+            "socketBuffers": "接收队列：1 个 UDP 数据报（载荷 18 B）",
+            "guestSkb": "S1 由 socket 接收路径持有，载荷 18 B",
+            "applicationProgress": "数据已就绪；等待线程获得 CPU",
+            "delivery": "UDP 数据报已进入 Guest socket；尚未复制到用户",
+            "guestBufferOwner": "新缓冲区供设备写；旧 P1 引用由 socket 接收路径管理"
+          },
+          "nodeStates": {
+            "stack": "已为 socket 排队 1 个数据报",
+            "application": "已唤醒，尚未读取"
+          },
+          "sourceIds": [
+            "guest-rx",
+            "guest-napi-complete",
+            "guest-udp-enqueue",
+            "guest-udp-wait"
+          ],
+          "focus": false
+        },
+        {
+          "id": "copy-to-user",
+          "title": "复制 UDP 载荷",
+          "actor": "Guest recvfrom / UDP 接收路径",
+          "description": "应用线程获得 CPU，udp_recvmsg() 从队列取出一份数据报，把 18 B 载荷复制到 U1。",
+          "detail": "本例容量 128 B 足够，无 MSG_PEEK 或截断。UDP/IP/Ethernet 头及 virtio 网络头均不复制给普通 UDP 应用；源地址通过 recvfrom 的独立地址参数返回。skb 消费完毕后释放相应引用，其他引用仍遵守各自生命周期。",
+          "active": [
+            "stack",
+            "application"
+          ],
+          "links": [
+            "copy-to-user"
+          ],
+          "changes": {
+            "userBuffer": "U1[0..17] = virt-report-demo01；其余容量未使用",
+            "socketBuffers": "本次数据报已取走；逻辑接收队列为空",
+            "guestSkb": "本次接收 skb 已消费，释放对应数据引用",
+            "applicationProgress": "18 B 载荷已复制；准备返回",
+            "delivery": "18 B UDP 载荷已复制到 Guest 用户缓冲区",
+            "guestBufferOwner": "新缓冲区供设备写；旧 P1 的本次接收引用已释放"
+          },
+          "nodeStates": {
+            "stack": "已复制并消费本次 UDP 数据报",
+            "application": "用户缓冲区已有 18 B 载荷"
+          },
+          "sourceIds": [
+            "guest-udp-recv",
+            "guest-recvfrom"
+          ],
+          "focus": false
+        },
+        {
+          "id": "recvfrom-return",
+          "title": "recvfrom 返回",
+          "actor": "Guest 系统调用返回路径",
+          "description": "recvfrom 返回 18，应用开始处理 U1 中的 UDP 数据。",
+          "detail": "返回值为本次复制的载荷长度，128 B 是容量，60 B 是链路层帧长，72 B 是 virtio RX 的写入长度。RX 描述符回收与新缓冲区补充已独立进行，应用读取没有为设备发布新的 used。",
+          "active": [
+            "stack",
+            "application"
+          ],
+          "links": [
+            "syscall-return"
+          ],
+          "changes": {
+            "applicationResult": "18",
+            "applicationProgress": "应用恢复执行，处理 18 B UDP 载荷",
+            "delivery": "本次 UDP 载荷已由 Guest recvfrom 返回"
+          },
+          "nodeStates": {
+            "application": "已返回 18，用户态继续执行",
+            "stack": "本次 recvfrom 已结束"
+          },
+          "sourceIds": [
+            "guest-recvfrom",
+            "guest-udp-recv",
+            "recv-api"
+          ],
+          "focus": false
+        }
+      ]
+    },
+    {
+      "id": "dpdk-tx",
+      "label": "DPDK vhost-user · TX",
+      "summary": "18 B UDP 载荷经客户机协议栈形成 60 B 帧，交给 virtio-net 与所选后端；分别观察 sendto 返回、队列归还与本地发送。",
+      "assumptions": [
+        "x86 + KVM；QEMU 10.2.0 / Linux 6.18；modern virtio-net、split ring、单队列对。",
+        "P1 为 60 B 以太网帧（不含 FCS），virtio-net 基础头为 12 B；不启用分段、校验和卸载、合并 RX 缓冲区或间接描述符。",
+        "DPDK 24.11 同步复制路径；共享 RAM、virtqueue、PMD 队列已配置，vhost-user socket 仅承担控制面。",
+        "Guest 回收与宿主后续转发可以并行；播放顺序展示一种可观察的执行顺序。",
+        "UDP/IPv4 小数据报：用户载荷 virt-report-demo01 为 18 B；8 B UDP + 20 B IPv4 + 14 B Ethernet，共 60 B 帧；virtio-net 另加 12 B 头。无 IP 选项、VLAN 或分片。",
+        "普通 sendto(..., 18, 0, ...)，无 UDP_CORK、MSG_MORE 或 MSG_ZEROCOPY；路由、邻居及 socket 已就绪，发送预算与客户机 TX 队列均有空间，本次直接走到驱动。",
+        "virtqueue 发布后，Guest 返回与后端处理可并发。本次先展示 sendto 返回；后端也可能更早消费队列，TX used、线路发送与返回没有固定总顺序。"
+      ],
+      "nodes": [
+        {
+          "id": "application",
+          "label": "应用 · 用户态",
+          "role": "guest"
+        },
+        {
+          "id": "stack",
+          "label": "UDP/IP · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "guest",
+          "label": "virtio-net · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "queue",
+          "label": "Guest RAM · TX 队列 1",
+          "role": "memory"
+        },
+        {
+          "id": "backend",
+          "label": "DPDK vhost",
+          "role": "userspace"
+        },
+        {
+          "id": "port",
+          "label": "PMD · 物理网卡",
+          "role": "device"
+        },
+        {
+          "id": "network",
+          "label": "外部网络",
+          "role": "external"
+        },
+        {
+          "id": "control",
+          "label": "QEMU · 配置控制",
+          "role": "control"
+        }
+      ],
+      "links": [
+        {
+          "id": "publish",
+          "from": "guest",
+          "to": "queue",
+          "label": "发布描述符链",
+          "kind": "control"
+        },
+        {
+          "id": "consume",
+          "from": "queue",
+          "to": "backend",
+          "label": "读取描述符与帧",
+          "kind": "data"
+        },
+        {
+          "id": "complete",
+          "from": "backend",
+          "to": "queue",
+          "label": "发布 used",
+          "kind": "control"
+        },
+        {
+          "id": "notify",
+          "from": "backend",
+          "to": "guest",
+          "label": "按需完成通知",
+          "kind": "notification"
+        },
+        {
+          "id": "reclaim",
+          "from": "queue",
+          "to": "guest",
+          "label": "回收链与缓冲区",
+          "kind": "control"
+        },
+        {
+          "id": "forward",
+          "from": "backend",
+          "to": "port",
+          "label": "提交 mbuf",
+          "kind": "data"
+        },
+        {
+          "id": "wire",
+          "from": "port",
+          "to": "network",
+          "label": "后续链路发送",
+          "kind": "data"
+        },
+        {
+          "id": "setup",
+          "from": "control",
+          "to": "backend",
+          "label": "vhost-user 控制连接",
+          "kind": "control"
+        },
+        {
+          "id": "syscall",
+          "from": "application",
+          "to": "stack",
+          "label": "sendto 调用",
+          "kind": "control"
+        },
+        {
+          "id": "copy-from-user",
+          "from": "application",
+          "to": "stack",
+          "label": "18 B 用户载荷复制",
+          "kind": "data"
+        },
+        {
+          "id": "stack-output",
+          "from": "stack",
+          "to": "guest",
+          "label": "60 B Ethernet 帧",
+          "kind": "data"
+        },
+        {
+          "id": "syscall-return",
+          "from": "stack",
+          "to": "application",
+          "label": "sendto 返回（独立分支）",
+          "kind": "control"
+        }
+      ],
+      "structures": [
+        {
+          "id": "virtqueue",
+          "title": "TX split virtqueue · 大小 8",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "desc",
+              "label": "desc 链",
+              "initial": "未填写"
+            },
+            {
+              "key": "availHead",
+              "label": "avail.ring",
+              "initial": "空"
+            },
+            {
+              "key": "availIdx",
+              "label": "avail.idx",
+              "initial": "0"
+            },
+            {
+              "key": "consumedIdx",
+              "label": "设备消费位置",
+              "initial": "0"
+            },
+            {
+              "key": "usedEntry",
+              "label": "used.ring",
+              "initial": "空"
+            },
+            {
+              "key": "usedIdx",
+              "label": "used.idx",
+              "initial": "0"
+            },
+            {
+              "key": "reclaimedIdx",
+              "label": "驱动回收位置",
+              "initial": "0"
+            }
+          ]
+        },
+        {
+          "id": "buffer",
+          "title": "Guest 缓冲区与通知",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "guestBufferOwner",
+              "label": "缓冲区访问权",
+              "initial": "驱动持有，尚未发布"
+            },
+            {
+              "key": "payload",
+              "label": "缓冲区内容",
+              "initial": "P1 尚未关联描述符"
+            },
+            {
+              "key": "notification",
+              "label": "通知状态",
+              "initial": "无新通知"
+            }
+          ]
+        },
+        {
+          "id": "path",
+          "title": "后端与交付状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "backendState",
+              "label": "后端状态",
+              "initial": "队列已启用，等待工作"
+            },
+            {
+              "key": "networkStage",
+              "label": "网络阶段",
+              "initial": "P1 尚未进入后端"
+            },
+            {
+              "key": "delivery",
+              "label": "交付范围",
+              "initial": "远端是否收到：未确认"
+            }
+          ]
+        },
+        {
+          "id": "mbuf",
+          "title": "DPDK 独立报文对象",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "mbufOwner",
+              "label": "mbuf 访问权",
+              "initial": "尚未分配"
+            },
+            {
+              "key": "mbufPayload",
+              "label": "mbuf 内容",
+              "initial": "无 P1"
+            },
+            {
+              "key": "pmdQueue",
+              "label": "PMD 队列",
+              "initial": "TX 尚未提交 P1"
+            }
+          ]
+        },
+        {
+          "id": "application",
+          "title": "用户缓冲区、socket 与 Guest skb",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "userBuffer",
+              "label": "用户缓冲区",
+              "initial": "U0：18 B 载荷，仍由应用持有"
+            },
+            {
+              "key": "applicationCall",
+              "label": "系统调用",
+              "initial": "尚未调用"
+            },
+            {
+              "key": "applicationResult",
+              "label": "应用返回值",
+              "initial": "尚未返回"
+            },
+            {
+              "key": "socketBuffers",
+              "label": "socket 缓冲/计账",
+              "initial": "发送预算充足；尚未分配本次 skb"
+            },
+            {
+              "key": "guestSkb",
+              "label": "Guest skb",
+              "initial": "尚未构建"
+            },
+            {
+              "key": "applicationProgress",
+              "label": "应用处理",
+              "initial": "准备提交 18 B UDP 载荷"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "initial",
+          "title": "初始状态",
+          "actor": "队列与后端",
+          "description": "应用持有 18 B 载荷，网络设备和队列已就绪，本次 sendto 尚未调用。",
+          "detail": "队列、socket 与用户缓冲区分别显示初始状态；没有处理者正在推进本次数据报。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "sendto",
+          "title": "调用 sendto",
+          "actor": "Guest 用户态应用",
+          "description": "应用用 U0 提交 18 B UDP 载荷，目标地址交给 socket 层。",
+          "detail": "__sys_sendto() 导入用户缓冲区并构造 msghdr，随后分派到 IPv4 UDP。系统调用改变客户机内的执行特权级；本步不要求退出到 QEMU 处理。",
+          "active": [
+            "application",
+            "stack"
+          ],
+          "links": [
+            "syscall"
+          ],
+          "changes": {
+            "applicationCall": "sendto(fd, U0, 18, 0, ...)",
+            "applicationResult": "内核处理中",
+            "applicationProgress": "本线程进入 Guest 内核"
+          },
+          "nodeStates": {
+            "application": "sendto 尚未返回",
+            "stack": "处理 UDP 发送"
+          },
+          "sourceIds": [
+            "guest-sendto"
+          ],
+          "focus": false
+        },
+        {
+          "id": "udp-output",
+          "title": "构造 UDP/IP 报文",
+          "actor": "Guest UDP/IP 协议栈",
+          "description": "普通复制路径把 18 B 用户数据复制入 skb，并完成 UDP、IPv4 与链路层封装。",
+          "detail": "UDP 无 cork 路径通过 ip_make_skb() 构建 skb；ip_generic_getfrag() 执行用户数据复制。邻居已解析，本例在客户机发送路径形成 14 + 20 + 8 + 18 = 60 B 帧。U0 与 skb 数据是不同的存储对象。",
+          "active": [
+            "application",
+            "stack"
+          ],
+          "links": [
+            "copy-from-user"
+          ],
+          "changes": {
+            "guestSkb": "S1：18 B 数据 + UDP 8 B + IPv4 20 B + Ethernet 14 B = 60 B",
+            "socketBuffers": "skb 使用发送内存预算；普通 UDP 不建立可靠重传队列",
+            "applicationProgress": "载荷已复制，原 U0 仍归应用"
+          },
+          "nodeStates": {
+            "stack": "S1 已封装，准备交给网卡"
+          },
+          "sourceIds": [
+            "guest-udp-send",
+            "guest-copy-send",
+            "guest-ip-output"
+          ],
+          "focus": false
+        },
+        {
+          "id": "driver-submit",
+          "title": "交给 virtio-net",
+          "actor": "Guest 网络发送路径",
+          "description": "网络层把 skb S1 交给 virtio-net 的 start_xmit()。",
+          "detail": "本例 qdisc 与驱动队列有空间，当前调用推进到驱动提交。start_xmit() 通过 xmit_skb() 组织 virtio 网络头与 skb 分散表。其他配置下，skb 可以先在客户机排队，系统调用返回并不要求每次都已发布 virtqueue。",
+          "active": [
+            "stack",
+            "guest"
+          ],
+          "links": [
+            "stack-output"
+          ],
+          "changes": {
+            "guestSkb": "S1 已交给 virtio-net；帧长 60 B",
+            "applicationProgress": "驱动准备发布本次 TX"
+          },
+          "nodeStates": {
+            "stack": "网卡发送调用中",
+            "guest": "准备 S1 的设备可读链"
+          },
+          "sourceIds": [
+            "guest-virtio-send"
+          ],
+          "focus": false
+        },
+        {
+          "id": "prepare",
+          "title": "准备描述符",
+          "actor": "Guest virtio-net 驱动",
+          "description": "将 12 B 网络头和 60 B 帧 P1 组织为链 0 → 2。",
+          "detail": "desc[0] 的 NEXT 指向 desc[2]，两个缓冲区均为设备可读。此时 avail.idx 尚未增加，后端不能据此消费本次请求。 这里的 60 B 来自 S1，virtio 网络头是设备接口附加的 12 B，不会交给远端 UDP 应用。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [],
+          "changes": {
+            "desc": "0 → 2：12 B 头（NEXT）+ 60 B 帧（设备读）",
+            "payload": "12 B 头 + P1（60 B）"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "publish",
+          "title": "发布 TX 链",
+          "actor": "Guest virtio-net 驱动",
+          "description": "先写描述符和 avail.ring[0]，再发布 avail.idx = 1。",
+          "detail": "内存顺序保证后端观察到新索引时可以读取完整的链。本例由 DPDK 数据线程轮询 available，后端可按协议请求抑制 kick；驱动仍先发布索引，再检查通知条件。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "availHead": "slot 0 → head 0",
+            "availIdx": "1",
+            "guestBufferOwner": "设备可读；驱动暂不修改",
+            "notification": "后端轮询 avail；可抑制 kick"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "sendto-return",
+          "title": "sendto 返回",
+          "actor": "Guest 系统调用返回路径",
+          "description": "本次 sendto 成功返回 18，应用可以继续执行并复用 U0。",
+          "detail": "18 是提交的 UDP 载荷字节数，未包含协议头。成功不保证交付；本例只确认本机发送路径接受请求，不等待 TX used、本地物理发送或远端接收。Guest 返回与后端消费从发布处分成两条分支，这里展示返回先发生的一种调度顺序。",
+          "active": [
+            "stack",
+            "application"
+          ],
+          "links": [
+            "syscall-return"
+          ],
+          "changes": {
+            "applicationResult": "18",
+            "applicationProgress": "应用恢复执行，U0 可复用",
+            "userBuffer": "U0 已可由应用复用；skb S1 仍有独立副本",
+            "socketBuffers": "skb 可仍在发送路径；socket 计账与设备缓冲区生命周期分别处理"
+          },
+          "nodeStates": {
+            "application": "已返回 18，可继续运行",
+            "stack": "sendto 调用已结束"
+          },
+          "sourceIds": [
+            "guest-udp-send",
+            "guest-virtio-send",
+            "send-api"
+          ],
+          "focus": false
+        },
+        {
+          "id": "consume",
+          "title": "取得描述符链",
+          "actor": "DPDK 数据线程",
+          "description": "后端读取 available，取得链头 0 并检查设备可读区域。",
+          "detail": "应用调用 rte_vhost_dequeue_burst(vid, 1, ...) 从 Guest TX 队列取包；队列地址通过共享内存映射解释。",
+          "active": [
+            "queue",
+            "backend"
+          ],
+          "links": [
+            "consume"
+          ],
+          "changes": {
+            "consumedIdx": "1",
+            "backendState": "正在处理链头 0"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "dpdk-tx"
+          ],
+          "focus": true
+        },
+        {
+          "id": "transfer",
+          "title": "复制到 mbuf",
+          "actor": "DPDK 数据线程",
+          "description": "DPDK 分配独立 mbuf M，将 P1 的 60 B 帧内容复制进去。",
+          "detail": "desc_to_mbuf() 解析 12 B virtio-net 头，但 mbuf 的 Ethernet 数据长为 60 B。普通同步复制完成后，后续转发可以使用 M，Guest 原缓冲区与 M 的生命周期从此分开。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "consume"
+          ],
+          "changes": {
+            "mbufOwner": "DPDK 应用持有 M",
+            "mbufPayload": "P1 · pkt_len = 60 B",
+            "backendState": "同步复制完成，等待发布 used",
+            "networkStage": "P1 已复制到应用 mbuf"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "dpdk-tx",
+            "dpdk-copy"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used",
+          "title": "发布 TX 完成",
+          "actor": "DPDK 数据线程",
+          "description": "将链头 0 写入 used，used.idx 从 0 增至 1。",
+          "detail": "used = {id: 0, len: 0} 表示设备已经结束对本链的使用。驱动观察到完成后可以回收原缓冲区；这一记录不能证明远端已经收到 P1。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "complete"
+          ],
+          "changes": {
+            "usedEntry": "slot 0 → { id: 0, len: 0 }",
+            "usedIdx": "1",
+            "guestBufferOwner": "设备已归还，等待驱动观察",
+            "backendState": "本链队列处理完成"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "dpdk-tx",
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify",
+          "title": "提示客户机",
+          "actor": "DPDK 数据线程",
+          "description": "按通知条件提示客户机检查 used ring。",
+          "detail": "后端通过配置好的 call / 中断通路提示 Guest。通知可以被合并或抑制，驱动也可以主动检查 used；通知数量与报文数量不要求一一对应。",
+          "active": [
+            "backend",
+            "guest"
+          ],
+          "links": [
+            "notify"
+          ],
+          "changes": {
+            "notification": "本例发出完成通知；used 已可见"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "dpdk-tx",
+            "virtio-ring-spec"
+          ],
+          "focus": false
+        },
+        {
+          "id": "reclaim",
+          "title": "回收 TX 链",
+          "actor": "Guest virtio-net 驱动",
+          "description": "驱动消费 used 项，找到链头 0 并释放本次发送引用。",
+          "detail": "回收位置更新为 1。Guest 链和原始发送缓冲区现在可以复用；描述符槽中的旧值无需清零，是否有效由环索引决定。 应用 U0 早已独立可用。socket 发送计账可能随 skb_orphan() 提前解除，也可能在 skb 释放时回收，不能与 used.idx 简单等同。",
+          "active": [
+            "queue",
+            "guest"
+          ],
+          "links": [
+            "reclaim"
+          ],
+          "changes": {
+            "reclaimedIdx": "1",
+            "guestBufferOwner": "驱动已回收，可复用",
+            "desc": "链 0 → 2 已回收（旧字段可保留）",
+            "guestSkb": "S1 的设备发送引用已释放，可回收相应存储"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec",
+            "guest-virtio-send"
+          ],
+          "focus": true
+        },
+        {
+          "id": "pmd",
+          "title": "提交 PMD",
+          "actor": "DPDK 应用",
+          "description": "调用 rte_eth_tx_burst()，本例返回 1，PMD 接受 M。",
+          "detail": "返回数量决定哪些 mbuf 的访问权交给 PMD。如果返回 0，M 仍由应用持有，应重试或释放；之前发布的 Guest used 无需也不能撤销。",
+          "active": [
+            "backend",
+            "port"
+          ],
+          "links": [
+            "forward"
+          ],
+          "changes": {
+            "mbufOwner": "PMD 持有 M",
+            "pmdQueue": "TX 接受 1 个 mbuf",
+            "networkStage": "本地 PMD 已接受；远端未确认"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "dpdk-pmd-tx"
+          ],
+          "focus": false
+        },
+        {
+          "id": "pmd-cleanup",
+          "title": "完成本地发送",
+          "actor": "PMD / 物理网卡",
+          "description": "PMD 观察到网卡完成对 M 的使用，随后可回收 mbuf。",
+          "detail": "具体网卡可能批量清理 TX 描述符。本地 TX 完成与对端协议栈、应用接收分别属于不同观察点，远端送达需要上层协议确认。 此处整理出口状态，与 Guest 返回及回收可交错；演示未收到对端确认，UDP 本身也不提供可靠交付确认。",
+          "active": [
+            "port"
+          ],
+          "links": [
+            "wire"
+          ],
+          "changes": {
+            "mbufOwner": "网卡完成后由 PMD 清理并归还池",
+            "pmdQueue": "本地 TX 完成，可批量清理",
+            "networkStage": "本地发送已完成；远端未确认"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "dpdk-pmd-tx"
+          ],
+          "focus": false
+        }
+      ]
+    },
+    {
+      "id": "dpdk-rx",
+      "label": "DPDK vhost-user · RX",
+      "summary": "从 RX 空缓冲区开始，跟踪 UDP 帧进入客户机协议栈、socket 接收队列，直到 recvfrom 把 18 B 载荷交给应用。",
+      "assumptions": [
+        "x86 + KVM；QEMU 10.2.0 / Linux 6.18；modern virtio-net、split ring、单队列对。",
+        "P1 为 60 B 以太网帧（不含 FCS），virtio-net 基础头为 12 B；不启用分段、校验和卸载、合并 RX 缓冲区或间接描述符。",
+        "DPDK 24.11 同步复制路径；共享 RAM、virtqueue、PMD 队列已配置，vhost-user socket 仅承担控制面。",
+        "用一条 2048 B 可写描述符链表示接收空间；实际驱动可把头与数据分散在多个描述符中。",
+        "UDP/IPv4 小数据报：用户载荷 virt-report-demo01 为 18 B；8 B UDP + 20 B IPv4 + 14 B Ethernet，共 60 B 帧；virtio-net 另加 12 B 头。无 IP 选项、VLAN 或分片。",
+        "普通阻塞 recvfrom(..., 128, 0, ...)，无 MSG_PEEK、MSG_TRUNC；socket 已绑定，路由、校验与接收内存预算满足本次报文，应用缓冲区容量足够。",
+        "本例只收一帧，received 小于 NAPI budget；GRO_NORMAL 普通列表尚未达到提前刷新条件。驱动先 refill，随后在 NAPI 完成阶段将列表交给协议栈；补充空间无需等待 recvfrom 返回。"
+      ],
+      "nodes": [
+        {
+          "id": "application",
+          "label": "应用 · 用户态",
+          "role": "guest"
+        },
+        {
+          "id": "stack",
+          "label": "UDP/IP · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "guest",
+          "label": "virtio-net · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "queue",
+          "label": "Guest RAM · RX 队列 0",
+          "role": "memory"
+        },
+        {
+          "id": "backend",
+          "label": "DPDK vhost",
+          "role": "userspace"
+        },
+        {
+          "id": "port",
+          "label": "PMD · 物理网卡",
+          "role": "device"
+        },
+        {
+          "id": "network",
+          "label": "外部网络",
+          "role": "external"
+        },
+        {
+          "id": "control",
+          "label": "QEMU · 配置控制",
+          "role": "control"
+        }
+      ],
+      "links": [
+        {
+          "id": "publish",
+          "from": "guest",
+          "to": "queue",
+          "label": "发布描述符链",
+          "kind": "control"
+        },
+        {
+          "id": "consume",
+          "from": "queue",
+          "to": "backend",
+          "label": "取得可写空间",
+          "kind": "control"
+        },
+        {
+          "id": "complete",
+          "from": "backend",
+          "to": "queue",
+          "label": "发布 used",
+          "kind": "control"
+        },
+        {
+          "id": "notify",
+          "from": "backend",
+          "to": "guest",
+          "label": "按需完成通知",
+          "kind": "notification"
+        },
+        {
+          "id": "reclaim",
+          "from": "queue",
+          "to": "guest",
+          "label": "读取报文与回收链",
+          "kind": "data"
+        },
+        {
+          "id": "wire",
+          "from": "network",
+          "to": "port",
+          "label": "帧到达",
+          "kind": "data"
+        },
+        {
+          "id": "forward",
+          "from": "port",
+          "to": "backend",
+          "label": "交付收到的帧",
+          "kind": "data"
+        },
+        {
+          "id": "copy",
+          "from": "backend",
+          "to": "queue",
+          "label": "写入头与帧",
+          "kind": "data"
+        },
+        {
+          "id": "setup",
+          "from": "control",
+          "to": "backend",
+          "label": "vhost-user 控制连接",
+          "kind": "control"
+        },
+        {
+          "id": "syscall",
+          "from": "application",
+          "to": "stack",
+          "label": "recvfrom 调用",
+          "kind": "control"
+        },
+        {
+          "id": "stack-input",
+          "from": "guest",
+          "to": "stack",
+          "label": "NAPI 列表交给协议栈",
+          "kind": "data"
+        },
+        {
+          "id": "socket-ready",
+          "from": "stack",
+          "to": "application",
+          "label": "数据入 socket，唤醒等待者",
+          "kind": "notification"
+        },
+        {
+          "id": "copy-to-user",
+          "from": "stack",
+          "to": "application",
+          "label": "复制 18 B UDP 载荷",
+          "kind": "data"
+        },
+        {
+          "id": "syscall-return",
+          "from": "stack",
+          "to": "application",
+          "label": "recvfrom 返回",
+          "kind": "control"
+        }
+      ],
+      "structures": [
+        {
+          "id": "virtqueue",
+          "title": "RX split virtqueue · 大小 8",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "desc",
+              "label": "desc 链",
+              "initial": "未填写"
+            },
+            {
+              "key": "availHead",
+              "label": "avail.ring",
+              "initial": "空"
+            },
+            {
+              "key": "availIdx",
+              "label": "avail.idx",
+              "initial": "0"
+            },
+            {
+              "key": "consumedIdx",
+              "label": "设备消费位置",
+              "initial": "0"
+            },
+            {
+              "key": "usedEntry",
+              "label": "used.ring",
+              "initial": "空"
+            },
+            {
+              "key": "usedIdx",
+              "label": "used.idx",
+              "initial": "0"
+            },
+            {
+              "key": "reclaimedIdx",
+              "label": "驱动回收位置",
+              "initial": "0"
+            }
+          ]
+        },
+        {
+          "id": "buffer",
+          "title": "Guest 缓冲区与通知",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "guestBufferOwner",
+              "label": "缓冲区访问权",
+              "initial": "驱动持有，尚未发布"
+            },
+            {
+              "key": "payload",
+              "label": "缓冲区内容",
+              "initial": "空，可准备接收"
+            },
+            {
+              "key": "notification",
+              "label": "通知状态",
+              "initial": "无新通知"
+            }
+          ]
+        },
+        {
+          "id": "path",
+          "title": "后端与交付状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "backendState",
+              "label": "后端状态",
+              "initial": "队列已启用，等待工作"
+            },
+            {
+              "key": "networkStage",
+              "label": "网络阶段",
+              "initial": "P1 尚未到达"
+            },
+            {
+              "key": "delivery",
+              "label": "交付范围",
+              "initial": "尚未交给 Guest 协议栈"
+            }
+          ]
+        },
+        {
+          "id": "mbuf",
+          "title": "DPDK 独立报文对象",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "mbufOwner",
+              "label": "mbuf 访问权",
+              "initial": "PMD 管理接收缓冲区"
+            },
+            {
+              "key": "mbufPayload",
+              "label": "mbuf 内容",
+              "initial": "无 P1"
+            },
+            {
+              "key": "pmdQueue",
+              "label": "PMD 队列",
+              "initial": "RX 缓冲区已经准备"
+            }
+          ]
+        },
+        {
+          "id": "application",
+          "title": "用户缓冲区、socket 与 Guest skb",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "userBuffer",
+              "label": "用户缓冲区",
+              "initial": "U1：128 B 可写空间，尚无本次数据"
+            },
+            {
+              "key": "applicationCall",
+              "label": "系统调用",
+              "initial": "尚未调用"
+            },
+            {
+              "key": "applicationResult",
+              "label": "应用返回值",
+              "initial": "尚未返回"
+            },
+            {
+              "key": "socketBuffers",
+              "label": "socket 缓冲/计账",
+              "initial": "接收队列为空；预算充足"
+            },
+            {
+              "key": "guestSkb",
+              "label": "Guest skb",
+              "initial": "尚未交付驱动"
+            },
+            {
+              "key": "applicationProgress",
+              "label": "应用处理",
+              "initial": "准备接收一个 UDP 数据报"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "initial",
+          "title": "初始状态",
+          "actor": "队列与后端",
+          "description": "应用有 128 B 接收空间，socket 和网络设备已就绪，本次数据报尚未到达。",
+          "detail": "队列、socket 与用户缓冲区分别显示初始状态；没有处理者正在推进本次数据报。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "recvfrom-wait",
+          "title": "等待 UDP 数据报",
+          "actor": "Guest 用户态应用 / UDP socket",
+          "description": "应用调用 recvfrom(fd, U1, 128, 0, ...)，当前 socket 无数据，进入等待。",
+          "detail": "__sys_recvfrom() 导入可写用户缓冲区；udp_recvmsg() 从 UDP 接收队列取报文。阻塞调用暂时睡眠，驱动和后端仍可接收、回收并补充队列。",
+          "active": [
+            "application",
+            "stack"
+          ],
+          "links": [
+            "syscall"
+          ],
+          "changes": {
+            "applicationCall": "recvfrom(fd, U1, 128, 0, ...)",
+            "applicationResult": "等待可读数据",
+            "applicationProgress": "线程睡眠，等待 socket 数据",
+            "socketBuffers": "接收队列为空；等待条件已建立"
+          },
+          "nodeStates": {
+            "application": "阻塞等待数据",
+            "stack": "UDP 接收队列暂空"
+          },
+          "sourceIds": [
+            "guest-recvfrom",
+            "guest-udp-wait",
+            "recv-api"
+          ],
+          "focus": false
+        },
+        {
+          "id": "publish-buffer",
+          "title": "发布 RX 空间",
+          "actor": "Guest virtio-net 驱动",
+          "description": "准备一条 2048 B 可写链，发布 head 2，avail.idx = 1。",
+          "detail": "RX 描述符带 WRITE，允许设备写入头和报文。空缓冲区在来包之前提供；available 记录表示空间已准备好，不代表里面已经有新帧。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "desc": "head 2：2048 B，WRITE（设备可写）",
+            "availHead": "slot 0 → head 2",
+            "availIdx": "1",
+            "guestBufferOwner": "设备可写；驱动等待归还",
+            "payload": "2048 B 空间，尚无 P1",
+            "notification": "按需提示 RX 缓冲区已补充"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "arrive",
+          "title": "报文到达",
+          "actor": "PMD / DPDK 应用",
+          "description": "网卡接收到 P1，rte_eth_rx_burst() 向应用交付承载它的 mbuf M。",
+          "detail": "PMD 管理自己的 RX 描述符和 mbuf 池。返回给应用的 M 与 Guest 可写缓冲区是不同存储对象；PMD 补入物理 RX 空间，与 Guest refill 分开进行。",
+          "active": [
+            "network",
+            "port",
+            "backend"
+          ],
+          "links": [
+            "wire",
+            "forward"
+          ],
+          "changes": {
+            "networkStage": "P1 已到达本地后端",
+            "mbufOwner": "DPDK 应用持有 RX mbuf M",
+            "mbufPayload": "P1 · pkt_len = 60 B",
+            "pmdQueue": "RX 返回 1 个 mbuf；物理队列另行补充"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "dpdk-rx",
+            "dpdk-pmd-rx"
+          ],
+          "focus": false
+        },
+        {
+          "id": "take-buffer",
+          "title": "取得可写链",
+          "actor": "DPDK 数据线程",
+          "description": "后端观察到 avail.idx = 1，取出 head 2 并检查容量和 WRITE 权限。",
+          "detail": "应用调用 rte_vhost_enqueue_burst(vid, 0, &M, 1)，向 Guest RX 队列放入报文；vhost 先预留足够的可写空间。",
+          "active": [
+            "queue",
+            "backend"
+          ],
+          "links": [
+            "consume"
+          ],
+          "changes": {
+            "consumedIdx": "1",
+            "backendState": "已取得 head 2，可写容量 2048 B"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "dpdk-rx"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-buffer",
+          "title": "写入报文",
+          "actor": "DPDK 数据线程",
+          "description": "向 Guest 缓冲区写入 12 B 网络头和 P1 的 60 B 帧内容。",
+          "detail": "同步 enqueue 将 mbuf M 的帧数据复制到 Guest 可写区域。M 仍由应用管理；本次复制结束后不再借用 M 的数据。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "copy"
+          ],
+          "changes": {
+            "payload": "12 B 头 + P1（60 B），已写入 72 B",
+            "backendState": "数据写入完成，等待发布 used"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "dpdk-rx"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used",
+          "title": "发布 RX 完成",
+          "actor": "DPDK 数据线程",
+          "description": "发布 used = {id: 2, len: 72}，used.idx = 1。",
+          "detail": "完成记录包含本次实际写入量 72 B，容量仍是 2048 B。数据写入必须先于完成进度对驱动可见，驱动据此判断缓冲区可读。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "complete"
+          ],
+          "changes": {
+            "usedEntry": "slot 0 → { id: 2, len: 72 }",
+            "usedIdx": "1",
+            "guestBufferOwner": "设备已归还，等待驱动读取",
+            "backendState": "本帧 RX 队列处理完成"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "dpdk-rx",
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify",
+          "title": "提示 Guest 接收",
+          "actor": "DPDK 数据线程",
+          "description": "在需要通知的条件下，提示客户机 RX 队列有完成。",
+          "detail": "通知路径可经过 call eventfd 与配置的虚拟中断；具体是否发送取决于队列通知规则。used 内容独立保存完成记录。",
+          "active": [
+            "backend",
+            "guest"
+          ],
+          "links": [
+            "notify"
+          ],
+          "changes": {
+            "notification": "本例触发 RX 完成通知"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "dpdk-rx",
+            "virtio-ring-spec"
+          ],
+          "focus": false
+        },
+        {
+          "id": "free-mbuf",
+          "title": "释放宿主 mbuf",
+          "actor": "DPDK 应用",
+          "description": "同步 enqueue 返回已接受 1 帧，应用释放本次转发引用。",
+          "detail": "普通复制已经把帧放入 Guest RAM，应用可以把 M 归还 mempool；Guest 稍后处理自己的副本。若 enqueue 未接受，应用必须自行重试或丢弃并释放 M。",
+          "active": [
+            "backend"
+          ],
+          "links": [],
+          "changes": {
+            "mbufOwner": "应用释放 M，归还 mempool",
+            "mbufPayload": "P1 已复制至 Guest；M 可复用"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "dpdk-rx",
+            "dpdk-api"
+          ],
+          "focus": false
+        },
+        {
+          "id": "receive",
+          "title": "回收 RX 链并交给 NAPI",
+          "actor": "Guest virtio-net / NAPI",
+          "description": "驱动消费 head 2，去掉 12 B virtio-net 头，将 60 B 帧交给 NAPI 接收处理。",
+          "detail": "驱动回收描述符后，napi_gro_receive() 接管接收 skb。本例单帧走 GRO_NORMAL，普通接收列表尚未达到提前刷新条件，UDP socket 此时仍为空。描述符槽可以复用，旧数据页继续由接收路径持有。",
+          "active": [
+            "queue",
+            "guest"
+          ],
+          "links": [
+            "reclaim"
+          ],
+          "changes": {
+            "reclaimedIdx": "1",
+            "guestBufferOwner": "NAPI 接收路径持有本帧引用",
+            "delivery": "60 B 帧已交 NAPI；尚未进入 UDP socket",
+            "guestSkb": "S1：已去掉 12 B virtio 头，在 NAPI 普通接收列表等待交付"
+          },
+          "nodeStates": {
+            "guest": "已回收 RX 链，skb 等待 NAPI 批量交付",
+            "stack": "本帧尚未进入 IPv4 / UDP 处理"
+          },
+          "sourceIds": [
+            "guest-rx",
+            "guest-napi-input",
+            "guest-gro-normal"
+          ],
+          "focus": true
+        },
+        {
+          "id": "refill",
+          "title": "补充下一块 RX 空间",
+          "actor": "Guest virtio-net 驱动",
+          "description": "复用已经回收的描述符槽，关联另一块可用缓冲区，再发布一次 available。",
+          "detail": "virtnet_receive() 消费当前批次后检查空闲描述符并调用 try_fill_recv()。本例分配成功，示意一条新链写入 slot 1，使 avail.idx = 2；实际驱动可批量补入更多缓冲区。旧 P1 仍由 NAPI 接收路径持有，新空间无需等待 socket 入队或 recvfrom 返回。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "desc": "head 2：新的 2048 B 可写缓冲区",
+            "availHead": "slot 1 → head 2（新缓冲区）",
+            "availIdx": "2",
+            "guestBufferOwner": "新缓冲区供设备写；旧 P1 引用仍由 NAPI 接收路径管理",
+            "payload": "新空间无 P1；旧 P1 随 skb 生命周期保留",
+            "notification": "按需提示新 RX 空间"
+          },
+          "nodeStates": {
+            "guest": "已补充新 RX 空间，准备完成本轮 NAPI"
+          },
+          "sourceIds": [
+            "guest-rx",
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "socket-enqueue",
+          "title": "送入 UDP socket",
+          "actor": "Guest IPv4 / UDP 协议栈",
+          "description": "本轮 NAPI 完成后，普通列表交给 IPv4 / UDP 协议栈，校验并分发 P1，将 18 B 载荷排入目标 socket。",
+          "detail": "本例 received 小于 budget，virtnet_poll() 经 virtqueue_napi_complete() 调用 napi_complete_done()，由 gro_flush_normal() 刷新普通列表。UDP 根据地址和端口查找 socket，接收预算足够时排队并通知等待者。Linux 6.18 可能经 producer queue 归并，再由 reader_queue 供 recvmsg 消费；这里显示逻辑上一个待收数据报。唤醒只使线程可运行。",
+          "active": [
+            "guest",
+            "stack",
+            "application"
+          ],
+          "links": [
+            "stack-input",
+            "socket-ready"
+          ],
+          "changes": {
+            "socketBuffers": "接收队列：1 个 UDP 数据报（载荷 18 B）",
+            "guestSkb": "S1 由 socket 接收路径持有，载荷 18 B",
+            "applicationProgress": "数据已就绪；等待线程获得 CPU",
+            "delivery": "UDP 数据报已进入 Guest socket；尚未复制到用户",
+            "guestBufferOwner": "新缓冲区供设备写；旧 P1 引用由 socket 接收路径管理"
+          },
+          "nodeStates": {
+            "stack": "已为 socket 排队 1 个数据报",
+            "application": "已唤醒，尚未读取"
+          },
+          "sourceIds": [
+            "guest-rx",
+            "guest-napi-complete",
+            "guest-udp-enqueue",
+            "guest-udp-wait"
+          ],
+          "focus": false
+        },
+        {
+          "id": "copy-to-user",
+          "title": "复制 UDP 载荷",
+          "actor": "Guest recvfrom / UDP 接收路径",
+          "description": "应用线程获得 CPU，udp_recvmsg() 从队列取出一份数据报，把 18 B 载荷复制到 U1。",
+          "detail": "本例容量 128 B 足够，无 MSG_PEEK 或截断。UDP/IP/Ethernet 头及 virtio 网络头均不复制给普通 UDP 应用；源地址通过 recvfrom 的独立地址参数返回。skb 消费完毕后释放相应引用，其他引用仍遵守各自生命周期。",
+          "active": [
+            "stack",
+            "application"
+          ],
+          "links": [
+            "copy-to-user"
+          ],
+          "changes": {
+            "userBuffer": "U1[0..17] = virt-report-demo01；其余容量未使用",
+            "socketBuffers": "本次数据报已取走；逻辑接收队列为空",
+            "guestSkb": "本次接收 skb 已消费，释放对应数据引用",
+            "applicationProgress": "18 B 载荷已复制；准备返回",
+            "delivery": "18 B UDP 载荷已复制到 Guest 用户缓冲区",
+            "guestBufferOwner": "新缓冲区供设备写；旧 P1 的本次接收引用已释放"
+          },
+          "nodeStates": {
+            "stack": "已复制并消费本次 UDP 数据报",
+            "application": "用户缓冲区已有 18 B 载荷"
+          },
+          "sourceIds": [
+            "guest-udp-recv",
+            "guest-recvfrom"
+          ],
+          "focus": false
+        },
+        {
+          "id": "recvfrom-return",
+          "title": "recvfrom 返回",
+          "actor": "Guest 系统调用返回路径",
+          "description": "recvfrom 返回 18，应用开始处理 U1 中的 UDP 数据。",
+          "detail": "返回值为本次复制的载荷长度，128 B 是容量，60 B 是链路层帧长，72 B 是 virtio RX 的写入长度。RX 描述符回收与新缓冲区补充已独立进行，应用读取没有为设备发布新的 used。",
+          "active": [
+            "stack",
+            "application"
+          ],
+          "links": [
+            "syscall-return"
+          ],
+          "changes": {
+            "applicationResult": "18",
+            "applicationProgress": "应用恢复执行，处理 18 B UDP 载荷",
+            "delivery": "本次 UDP 载荷已由 Guest recvfrom 返回"
+          },
+          "nodeStates": {
+            "application": "已返回 18，用户态继续执行",
+            "stack": "本次 recvfrom 已结束"
+          },
+          "sourceIds": [
+            "guest-recvfrom",
+            "guest-udp-recv",
+            "recv-api"
+          ],
+          "focus": false
+        }
+      ]
+    },
+    {
+      "id": "vdpa-tx",
+      "label": "硬件 vhost-vDPA · TX",
+      "summary": "18 B UDP 载荷经客户机协议栈形成 60 B 帧，交给 virtio-net 与所选后端；分别观察 sendto 返回、队列归还与本地发送。",
+      "assumptions": [
+        "x86 + KVM；QEMU 10.2.0 / Linux 6.18；modern virtio-net、split ring、单队列对。",
+        "P1 为 60 B 以太网帧（不含 FCS），virtio-net 基础头为 12 B；不启用分段、校验和卸载、合并 RX 缓冲区或间接描述符。",
+        "硬件 vhost-vDPA direct 模式，不启用 SVQ；DMA 映射和队列已经建立，无客户机 vIOMMU。",
+        "Guest 回收与宿主后续转发可以并行；播放顺序展示一种可观察的执行顺序。",
+        "UDP/IPv4 小数据报：用户载荷 virt-report-demo01 为 18 B；8 B UDP + 20 B IPv4 + 14 B Ethernet，共 60 B 帧；virtio-net 另加 12 B 头。无 IP 选项、VLAN 或分片。",
+        "普通 sendto(..., 18, 0, ...)，无 UDP_CORK、MSG_MORE 或 MSG_ZEROCOPY；路由、邻居及 socket 已就绪，发送预算与客户机 TX 队列均有空间，本次直接走到驱动。",
+        "virtqueue 发布后，Guest 返回与后端处理可并发。本次先展示 sendto 返回；后端也可能更早消费队列，TX used、线路发送与返回没有固定总顺序。"
+      ],
+      "nodes": [
+        {
+          "id": "application",
+          "label": "应用 · 用户态",
+          "role": "guest"
+        },
+        {
+          "id": "stack",
+          "label": "UDP/IP · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "guest",
+          "label": "virtio-net · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "queue",
+          "label": "Guest RAM · TX 队列 1",
+          "role": "memory"
+        },
+        {
+          "id": "backend",
+          "label": "硬件 virtio 数据面",
+          "role": "device"
+        },
+        {
+          "id": "port",
+          "label": "设备物理端口",
+          "role": "device"
+        },
+        {
+          "id": "network",
+          "label": "外部网络",
+          "role": "external"
+        },
+        {
+          "id": "control",
+          "label": "QEMU · 配置控制",
+          "role": "control"
+        }
+      ],
+      "links": [
+        {
+          "id": "publish",
+          "from": "guest",
+          "to": "queue",
+          "label": "发布描述符链",
+          "kind": "control"
+        },
+        {
+          "id": "consume",
+          "from": "queue",
+          "to": "backend",
+          "label": "读取描述符与帧",
+          "kind": "data"
+        },
+        {
+          "id": "complete",
+          "from": "backend",
+          "to": "queue",
+          "label": "发布 used",
+          "kind": "control"
+        },
+        {
+          "id": "notify",
+          "from": "backend",
+          "to": "guest",
+          "label": "按需完成通知",
+          "kind": "notification"
+        },
+        {
+          "id": "reclaim",
+          "from": "queue",
+          "to": "guest",
+          "label": "回收链与缓冲区",
+          "kind": "control"
+        },
+        {
+          "id": "forward",
+          "from": "backend",
+          "to": "port",
+          "label": "交付本地出口",
+          "kind": "data"
+        },
+        {
+          "id": "wire",
+          "from": "port",
+          "to": "network",
+          "label": "后续链路发送",
+          "kind": "data"
+        },
+        {
+          "id": "setup",
+          "from": "control",
+          "to": "backend",
+          "label": "队列、内存、通知配置",
+          "kind": "control"
+        },
+        {
+          "id": "syscall",
+          "from": "application",
+          "to": "stack",
+          "label": "sendto 调用",
+          "kind": "control"
+        },
+        {
+          "id": "copy-from-user",
+          "from": "application",
+          "to": "stack",
+          "label": "18 B 用户载荷复制",
+          "kind": "data"
+        },
+        {
+          "id": "stack-output",
+          "from": "stack",
+          "to": "guest",
+          "label": "60 B Ethernet 帧",
+          "kind": "data"
+        },
+        {
+          "id": "syscall-return",
+          "from": "stack",
+          "to": "application",
+          "label": "sendto 返回（独立分支）",
+          "kind": "control"
+        }
+      ],
+      "structures": [
+        {
+          "id": "virtqueue",
+          "title": "TX split virtqueue · 大小 8",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "desc",
+              "label": "desc 链",
+              "initial": "未填写"
+            },
+            {
+              "key": "availHead",
+              "label": "avail.ring",
+              "initial": "空"
+            },
+            {
+              "key": "availIdx",
+              "label": "avail.idx",
+              "initial": "0"
+            },
+            {
+              "key": "consumedIdx",
+              "label": "设备消费位置",
+              "initial": "0"
+            },
+            {
+              "key": "usedEntry",
+              "label": "used.ring",
+              "initial": "空"
+            },
+            {
+              "key": "usedIdx",
+              "label": "used.idx",
+              "initial": "0"
+            },
+            {
+              "key": "reclaimedIdx",
+              "label": "驱动回收位置",
+              "initial": "0"
+            }
+          ]
+        },
+        {
+          "id": "buffer",
+          "title": "Guest 缓冲区与通知",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "guestBufferOwner",
+              "label": "缓冲区访问权",
+              "initial": "驱动持有，尚未发布"
+            },
+            {
+              "key": "payload",
+              "label": "缓冲区内容",
+              "initial": "P1 尚未关联描述符"
+            },
+            {
+              "key": "notification",
+              "label": "通知状态",
+              "initial": "无新通知"
+            }
+          ]
+        },
+        {
+          "id": "path",
+          "title": "后端与交付状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "backendState",
+              "label": "后端状态",
+              "initial": "队列已启用，等待工作"
+            },
+            {
+              "key": "networkStage",
+              "label": "网络阶段",
+              "initial": "P1 尚未进入后端"
+            },
+            {
+              "key": "delivery",
+              "label": "交付范围",
+              "initial": "远端是否收到：未确认"
+            }
+          ]
+        },
+        {
+          "id": "dma",
+          "title": "已建立的 DMA 关系",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "dmaMap",
+              "label": "映射",
+              "initial": "GPA / IOVA → 已映射的 Guest RAM"
+            },
+            {
+              "key": "svq",
+              "label": "SVQ",
+              "initial": "关闭；硬件直接访问 Guest virtqueue"
+            }
+          ]
+        },
+        {
+          "id": "application",
+          "title": "用户缓冲区、socket 与 Guest skb",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "userBuffer",
+              "label": "用户缓冲区",
+              "initial": "U0：18 B 载荷，仍由应用持有"
+            },
+            {
+              "key": "applicationCall",
+              "label": "系统调用",
+              "initial": "尚未调用"
+            },
+            {
+              "key": "applicationResult",
+              "label": "应用返回值",
+              "initial": "尚未返回"
+            },
+            {
+              "key": "socketBuffers",
+              "label": "socket 缓冲/计账",
+              "initial": "发送预算充足；尚未分配本次 skb"
+            },
+            {
+              "key": "guestSkb",
+              "label": "Guest skb",
+              "initial": "尚未构建"
+            },
+            {
+              "key": "applicationProgress",
+              "label": "应用处理",
+              "initial": "准备提交 18 B UDP 载荷"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "initial",
+          "title": "初始状态",
+          "actor": "队列与后端",
+          "description": "应用持有 18 B 载荷，网络设备和队列已就绪，本次 sendto 尚未调用。",
+          "detail": "队列、socket 与用户缓冲区分别显示初始状态；没有处理者正在推进本次数据报。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "sendto",
+          "title": "调用 sendto",
+          "actor": "Guest 用户态应用",
+          "description": "应用用 U0 提交 18 B UDP 载荷，目标地址交给 socket 层。",
+          "detail": "__sys_sendto() 导入用户缓冲区并构造 msghdr，随后分派到 IPv4 UDP。系统调用改变客户机内的执行特权级；本步不要求退出到 QEMU 处理。",
+          "active": [
+            "application",
+            "stack"
+          ],
+          "links": [
+            "syscall"
+          ],
+          "changes": {
+            "applicationCall": "sendto(fd, U0, 18, 0, ...)",
+            "applicationResult": "内核处理中",
+            "applicationProgress": "本线程进入 Guest 内核"
+          },
+          "nodeStates": {
+            "application": "sendto 尚未返回",
+            "stack": "处理 UDP 发送"
+          },
+          "sourceIds": [
+            "guest-sendto"
+          ],
+          "focus": false
+        },
+        {
+          "id": "udp-output",
+          "title": "构造 UDP/IP 报文",
+          "actor": "Guest UDP/IP 协议栈",
+          "description": "普通复制路径把 18 B 用户数据复制入 skb，并完成 UDP、IPv4 与链路层封装。",
+          "detail": "UDP 无 cork 路径通过 ip_make_skb() 构建 skb；ip_generic_getfrag() 执行用户数据复制。邻居已解析，本例在客户机发送路径形成 14 + 20 + 8 + 18 = 60 B 帧。U0 与 skb 数据是不同的存储对象。",
+          "active": [
+            "application",
+            "stack"
+          ],
+          "links": [
+            "copy-from-user"
+          ],
+          "changes": {
+            "guestSkb": "S1：18 B 数据 + UDP 8 B + IPv4 20 B + Ethernet 14 B = 60 B",
+            "socketBuffers": "skb 使用发送内存预算；普通 UDP 不建立可靠重传队列",
+            "applicationProgress": "载荷已复制，原 U0 仍归应用"
+          },
+          "nodeStates": {
+            "stack": "S1 已封装，准备交给网卡"
+          },
+          "sourceIds": [
+            "guest-udp-send",
+            "guest-copy-send",
+            "guest-ip-output"
+          ],
+          "focus": false
+        },
+        {
+          "id": "driver-submit",
+          "title": "交给 virtio-net",
+          "actor": "Guest 网络发送路径",
+          "description": "网络层把 skb S1 交给 virtio-net 的 start_xmit()。",
+          "detail": "本例 qdisc 与驱动队列有空间，当前调用推进到驱动提交。start_xmit() 通过 xmit_skb() 组织 virtio 网络头与 skb 分散表。其他配置下，skb 可以先在客户机排队，系统调用返回并不要求每次都已发布 virtqueue。",
+          "active": [
+            "stack",
+            "guest"
+          ],
+          "links": [
+            "stack-output"
+          ],
+          "changes": {
+            "guestSkb": "S1 已交给 virtio-net；帧长 60 B",
+            "applicationProgress": "驱动准备发布本次 TX"
+          },
+          "nodeStates": {
+            "stack": "网卡发送调用中",
+            "guest": "准备 S1 的设备可读链"
+          },
+          "sourceIds": [
+            "guest-virtio-send"
+          ],
+          "focus": false
+        },
+        {
+          "id": "prepare",
+          "title": "准备描述符",
+          "actor": "Guest virtio-net 驱动",
+          "description": "将 12 B 网络头和 60 B 帧 P1 组织为链 0 → 2。",
+          "detail": "desc[0] 的 NEXT 指向 desc[2]，两个缓冲区均为设备可读。此时 avail.idx 尚未增加，后端不能据此消费本次请求。 这里的 60 B 来自 S1，virtio 网络头是设备接口附加的 12 B，不会交给远端 UDP 应用。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [],
+          "changes": {
+            "desc": "0 → 2：12 B 头（NEXT）+ 60 B 帧（设备读）",
+            "payload": "12 B 头 + P1（60 B）"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "publish",
+          "title": "发布 TX 链",
+          "actor": "Guest virtio-net 驱动",
+          "description": "先写描述符和 avail.ring[0]，再发布 avail.idx = 1。",
+          "detail": "内存顺序保证后端观察到新索引时可以读取完整的链。驱动在发布索引后检查通知条件，按协商的通知抑制规则决定是否 kick。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "availHead": "slot 0 → head 0",
+            "availIdx": "1",
+            "guestBufferOwner": "设备可读；驱动暂不修改",
+            "notification": "按需 kick，提示后端检查"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "sendto-return",
+          "title": "sendto 返回",
+          "actor": "Guest 系统调用返回路径",
+          "description": "本次 sendto 成功返回 18，应用可以继续执行并复用 U0。",
+          "detail": "18 是提交的 UDP 载荷字节数，未包含协议头。成功不保证交付；本例只确认本机发送路径接受请求，不等待 TX used、本地物理发送或远端接收。Guest 返回与后端消费从发布处分成两条分支，这里展示返回先发生的一种调度顺序。",
+          "active": [
+            "stack",
+            "application"
+          ],
+          "links": [
+            "syscall-return"
+          ],
+          "changes": {
+            "applicationResult": "18",
+            "applicationProgress": "应用恢复执行，U0 可复用",
+            "userBuffer": "U0 已可由应用复用；skb S1 仍有独立副本",
+            "socketBuffers": "skb 可仍在发送路径；socket 计账与设备缓冲区生命周期分别处理"
+          },
+          "nodeStates": {
+            "application": "已返回 18，可继续运行",
+            "stack": "sendto 调用已结束"
+          },
+          "sourceIds": [
+            "guest-udp-send",
+            "guest-virtio-send",
+            "send-api"
+          ],
+          "focus": false
+        },
+        {
+          "id": "consume",
+          "title": "取得描述符链",
+          "actor": "vDPA 硬件设备",
+          "description": "后端读取 available，取得链头 0 并检查设备可读区域。",
+          "detail": "硬件按照协商后的 virtio 队列格式读取描述符，设备地址经过已建立的 DMA 映射。此处不展开厂商内部调度。",
+          "active": [
+            "queue",
+            "backend"
+          ],
+          "links": [
+            "consume"
+          ],
+          "changes": {
+            "consumedIdx": "1",
+            "backendState": "正在处理链头 0"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec",
+            "vdpa-map"
+          ],
+          "focus": true
+        },
+        {
+          "id": "transfer",
+          "title": "DMA 读取帧",
+          "actor": "vDPA 硬件设备",
+          "description": "设备通过 DMA 读取头和 P1，将报文交给自己的发送数据面。",
+          "detail": "DMA 访问受已建立的映射和权限约束。设备必须结束对 Guest 缓冲区的使用，才能把对应链发布为 used；内部缓存、流水线和线速发送安排由硬件实现决定。",
+          "active": [
+            "backend",
+            "port"
+          ],
+          "links": [
+            "consume",
+            "forward"
+          ],
+          "changes": {
+            "backendState": "已取得 P1；结束本链的 Guest 内存访问",
+            "networkStage": "设备发送数据面已接收 P1"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used",
+          "title": "发布 TX 完成",
+          "actor": "vDPA 硬件设备",
+          "description": "将链头 0 写入 used，used.idx 从 0 增至 1。",
+          "detail": "used = {id: 0, len: 0} 表示设备已经结束对本链的使用。驱动观察到完成后可以回收原缓冲区；这一记录不能证明远端已经收到 P1。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "complete"
+          ],
+          "changes": {
+            "usedEntry": "slot 0 → { id: 0, len: 0 }",
+            "usedIdx": "1",
+            "guestBufferOwner": "设备已归还，等待驱动观察",
+            "backendState": "本链队列处理完成"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec",
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify",
+          "title": "提示客户机",
+          "actor": "vDPA 硬件设备",
+          "description": "按通知条件提示客户机检查 used ring。",
+          "detail": "后端通过配置好的 call / 中断通路提示 Guest。通知可以被合并或抑制，驱动也可以主动检查 used；通知数量与报文数量不要求一一对应。",
+          "active": [
+            "backend",
+            "guest"
+          ],
+          "links": [
+            "notify"
+          ],
+          "changes": {
+            "notification": "本例发出完成通知；used 已可见"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec",
+            "virtio-ring-spec"
+          ],
+          "focus": false
+        },
+        {
+          "id": "reclaim",
+          "title": "回收 TX 链",
+          "actor": "Guest virtio-net 驱动",
+          "description": "驱动消费 used 项，找到链头 0 并释放本次发送引用。",
+          "detail": "回收位置更新为 1。Guest 链和原始发送缓冲区现在可以复用；描述符槽中的旧值无需清零，是否有效由环索引决定。 应用 U0 早已独立可用。socket 发送计账可能随 skb_orphan() 提前解除，也可能在 skb 释放时回收，不能与 used.idx 简单等同。",
+          "active": [
+            "queue",
+            "guest"
+          ],
+          "links": [
+            "reclaim"
+          ],
+          "changes": {
+            "reclaimedIdx": "1",
+            "guestBufferOwner": "驱动已回收，可复用",
+            "desc": "链 0 → 2 已回收（旧字段可保留）",
+            "guestSkb": "S1 的设备发送引用已释放，可回收相应存储"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec",
+            "guest-virtio-send"
+          ],
+          "focus": true
+        },
+        {
+          "id": "egress",
+          "title": "继续网络转发",
+          "actor": "设备网络出口",
+          "description": "P1 沿本地出口继续发送，虚拟队列已可承接下一帧。",
+          "detail": "路径中的排队、交换、丢包和远端处理不由本次 used 项报告。演示展示本地交付边界，未模拟对端协议栈或确认报文。 此处整理出口状态，与 Guest 返回及回收可交错；演示未收到对端确认，UDP 本身也不提供可靠交付确认。",
+          "active": [
+            "port"
+          ],
+          "links": [
+            "wire"
+          ],
+          "changes": {
+            "networkStage": "继续本地网络转发；远端未确认"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec",
+            "virtio-net-spec"
+          ],
+          "focus": false
+        }
+      ]
+    },
+    {
+      "id": "vdpa-rx",
+      "label": "硬件 vhost-vDPA · RX",
+      "summary": "从 RX 空缓冲区开始，跟踪 UDP 帧进入客户机协议栈、socket 接收队列，直到 recvfrom 把 18 B 载荷交给应用。",
+      "assumptions": [
+        "x86 + KVM；QEMU 10.2.0 / Linux 6.18；modern virtio-net、split ring、单队列对。",
+        "P1 为 60 B 以太网帧（不含 FCS），virtio-net 基础头为 12 B；不启用分段、校验和卸载、合并 RX 缓冲区或间接描述符。",
+        "硬件 vhost-vDPA direct 模式，不启用 SVQ；DMA 映射和队列已经建立，无客户机 vIOMMU。",
+        "用一条 2048 B 可写描述符链表示接收空间；实际驱动可把头与数据分散在多个描述符中。",
+        "UDP/IPv4 小数据报：用户载荷 virt-report-demo01 为 18 B；8 B UDP + 20 B IPv4 + 14 B Ethernet，共 60 B 帧；virtio-net 另加 12 B 头。无 IP 选项、VLAN 或分片。",
+        "普通阻塞 recvfrom(..., 128, 0, ...)，无 MSG_PEEK、MSG_TRUNC；socket 已绑定，路由、校验与接收内存预算满足本次报文，应用缓冲区容量足够。",
+        "本例只收一帧，received 小于 NAPI budget；GRO_NORMAL 普通列表尚未达到提前刷新条件。驱动先 refill，随后在 NAPI 完成阶段将列表交给协议栈；补充空间无需等待 recvfrom 返回。"
+      ],
+      "nodes": [
+        {
+          "id": "application",
+          "label": "应用 · 用户态",
+          "role": "guest"
+        },
+        {
+          "id": "stack",
+          "label": "UDP/IP · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "guest",
+          "label": "virtio-net · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "queue",
+          "label": "Guest RAM · RX 队列 0",
+          "role": "memory"
+        },
+        {
+          "id": "backend",
+          "label": "硬件 virtio 数据面",
+          "role": "device"
+        },
+        {
+          "id": "port",
+          "label": "设备物理端口",
+          "role": "device"
+        },
+        {
+          "id": "network",
+          "label": "外部网络",
+          "role": "external"
+        },
+        {
+          "id": "control",
+          "label": "QEMU · 配置控制",
+          "role": "control"
+        }
+      ],
+      "links": [
+        {
+          "id": "publish",
+          "from": "guest",
+          "to": "queue",
+          "label": "发布描述符链",
+          "kind": "control"
+        },
+        {
+          "id": "consume",
+          "from": "queue",
+          "to": "backend",
+          "label": "取得可写空间",
+          "kind": "control"
+        },
+        {
+          "id": "complete",
+          "from": "backend",
+          "to": "queue",
+          "label": "发布 used",
+          "kind": "control"
+        },
+        {
+          "id": "notify",
+          "from": "backend",
+          "to": "guest",
+          "label": "按需完成通知",
+          "kind": "notification"
+        },
+        {
+          "id": "reclaim",
+          "from": "queue",
+          "to": "guest",
+          "label": "读取报文与回收链",
+          "kind": "data"
+        },
+        {
+          "id": "wire",
+          "from": "network",
+          "to": "port",
+          "label": "帧到达",
+          "kind": "data"
+        },
+        {
+          "id": "forward",
+          "from": "port",
+          "to": "backend",
+          "label": "交付收到的帧",
+          "kind": "data"
+        },
+        {
+          "id": "copy",
+          "from": "backend",
+          "to": "queue",
+          "label": "DMA 写入缓冲区",
+          "kind": "data"
+        },
+        {
+          "id": "setup",
+          "from": "control",
+          "to": "backend",
+          "label": "队列、内存、通知配置",
+          "kind": "control"
+        },
+        {
+          "id": "syscall",
+          "from": "application",
+          "to": "stack",
+          "label": "recvfrom 调用",
+          "kind": "control"
+        },
+        {
+          "id": "stack-input",
+          "from": "guest",
+          "to": "stack",
+          "label": "NAPI 列表交给协议栈",
+          "kind": "data"
+        },
+        {
+          "id": "socket-ready",
+          "from": "stack",
+          "to": "application",
+          "label": "数据入 socket，唤醒等待者",
+          "kind": "notification"
+        },
+        {
+          "id": "copy-to-user",
+          "from": "stack",
+          "to": "application",
+          "label": "复制 18 B UDP 载荷",
+          "kind": "data"
+        },
+        {
+          "id": "syscall-return",
+          "from": "stack",
+          "to": "application",
+          "label": "recvfrom 返回",
+          "kind": "control"
+        }
+      ],
+      "structures": [
+        {
+          "id": "virtqueue",
+          "title": "RX split virtqueue · 大小 8",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "desc",
+              "label": "desc 链",
+              "initial": "未填写"
+            },
+            {
+              "key": "availHead",
+              "label": "avail.ring",
+              "initial": "空"
+            },
+            {
+              "key": "availIdx",
+              "label": "avail.idx",
+              "initial": "0"
+            },
+            {
+              "key": "consumedIdx",
+              "label": "设备消费位置",
+              "initial": "0"
+            },
+            {
+              "key": "usedEntry",
+              "label": "used.ring",
+              "initial": "空"
+            },
+            {
+              "key": "usedIdx",
+              "label": "used.idx",
+              "initial": "0"
+            },
+            {
+              "key": "reclaimedIdx",
+              "label": "驱动回收位置",
+              "initial": "0"
+            }
+          ]
+        },
+        {
+          "id": "buffer",
+          "title": "Guest 缓冲区与通知",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "guestBufferOwner",
+              "label": "缓冲区访问权",
+              "initial": "驱动持有，尚未发布"
+            },
+            {
+              "key": "payload",
+              "label": "缓冲区内容",
+              "initial": "空，可准备接收"
+            },
+            {
+              "key": "notification",
+              "label": "通知状态",
+              "initial": "无新通知"
+            }
+          ]
+        },
+        {
+          "id": "path",
+          "title": "后端与交付状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "backendState",
+              "label": "后端状态",
+              "initial": "队列已启用，等待工作"
+            },
+            {
+              "key": "networkStage",
+              "label": "网络阶段",
+              "initial": "P1 尚未到达"
+            },
+            {
+              "key": "delivery",
+              "label": "交付范围",
+              "initial": "尚未交给 Guest 协议栈"
+            }
+          ]
+        },
+        {
+          "id": "dma",
+          "title": "已建立的 DMA 关系",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "dmaMap",
+              "label": "映射",
+              "initial": "GPA / IOVA → 已映射的 Guest RAM"
+            },
+            {
+              "key": "svq",
+              "label": "SVQ",
+              "initial": "关闭；硬件直接访问 Guest virtqueue"
+            }
+          ]
+        },
+        {
+          "id": "application",
+          "title": "用户缓冲区、socket 与 Guest skb",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "userBuffer",
+              "label": "用户缓冲区",
+              "initial": "U1：128 B 可写空间，尚无本次数据"
+            },
+            {
+              "key": "applicationCall",
+              "label": "系统调用",
+              "initial": "尚未调用"
+            },
+            {
+              "key": "applicationResult",
+              "label": "应用返回值",
+              "initial": "尚未返回"
+            },
+            {
+              "key": "socketBuffers",
+              "label": "socket 缓冲/计账",
+              "initial": "接收队列为空；预算充足"
+            },
+            {
+              "key": "guestSkb",
+              "label": "Guest skb",
+              "initial": "尚未交付驱动"
+            },
+            {
+              "key": "applicationProgress",
+              "label": "应用处理",
+              "initial": "准备接收一个 UDP 数据报"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "initial",
+          "title": "初始状态",
+          "actor": "队列与后端",
+          "description": "应用有 128 B 接收空间，socket 和网络设备已就绪，本次数据报尚未到达。",
+          "detail": "队列、socket 与用户缓冲区分别显示初始状态；没有处理者正在推进本次数据报。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "recvfrom-wait",
+          "title": "等待 UDP 数据报",
+          "actor": "Guest 用户态应用 / UDP socket",
+          "description": "应用调用 recvfrom(fd, U1, 128, 0, ...)，当前 socket 无数据，进入等待。",
+          "detail": "__sys_recvfrom() 导入可写用户缓冲区；udp_recvmsg() 从 UDP 接收队列取报文。阻塞调用暂时睡眠，驱动和后端仍可接收、回收并补充队列。",
+          "active": [
+            "application",
+            "stack"
+          ],
+          "links": [
+            "syscall"
+          ],
+          "changes": {
+            "applicationCall": "recvfrom(fd, U1, 128, 0, ...)",
+            "applicationResult": "等待可读数据",
+            "applicationProgress": "线程睡眠，等待 socket 数据",
+            "socketBuffers": "接收队列为空；等待条件已建立"
+          },
+          "nodeStates": {
+            "application": "阻塞等待数据",
+            "stack": "UDP 接收队列暂空"
+          },
+          "sourceIds": [
+            "guest-recvfrom",
+            "guest-udp-wait",
+            "recv-api"
+          ],
+          "focus": false
+        },
+        {
+          "id": "publish-buffer",
+          "title": "发布 RX 空间",
+          "actor": "Guest virtio-net 驱动",
+          "description": "准备一条 2048 B 可写链，发布 head 2，avail.idx = 1。",
+          "detail": "RX 描述符带 WRITE，允许设备写入头和报文。空缓冲区在来包之前提供；available 记录表示空间已准备好，不代表里面已经有新帧。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "desc": "head 2：2048 B，WRITE（设备可写）",
+            "availHead": "slot 0 → head 2",
+            "availIdx": "1",
+            "guestBufferOwner": "设备可写；驱动等待归还",
+            "payload": "2048 B 空间，尚无 P1",
+            "notification": "按需提示 RX 缓冲区已补充"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "arrive",
+          "title": "报文到达",
+          "actor": "设备网络入口",
+          "description": "设备物理入口收到 P1，进入硬件 virtio 接收数据面。",
+          "detail": "本例仅跟踪已经通过接收过滤、将交给此虚拟机的普通帧。",
+          "active": [
+            "network",
+            "port",
+            "backend"
+          ],
+          "links": [
+            "wire",
+            "forward"
+          ],
+          "changes": {
+            "networkStage": "P1 已到达本地后端"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec"
+          ],
+          "focus": false
+        },
+        {
+          "id": "take-buffer",
+          "title": "取得可写链",
+          "actor": "vDPA 硬件设备",
+          "description": "后端观察到 avail.idx = 1，取出 head 2 并检查容量和 WRITE 权限。",
+          "detail": "设备读取 RX 队列，并依照已有 DMA 映射访问 Guest 可写缓冲区；控制面没有逐包转发。",
+          "active": [
+            "queue",
+            "backend"
+          ],
+          "links": [
+            "consume"
+          ],
+          "changes": {
+            "consumedIdx": "1",
+            "backendState": "已取得 head 2，可写容量 2048 B"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-buffer",
+          "title": "DMA 写入报文",
+          "actor": "vDPA 硬件设备",
+          "description": "向 Guest 缓冲区写入 12 B 网络头和 P1 的 60 B 帧内容。",
+          "detail": "硬件按协议完成 DMA 写入，随后才能发布完成进度。设备内部包缓存的组织不影响 Guest 可见的队列约定。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "copy"
+          ],
+          "changes": {
+            "payload": "12 B 头 + P1（60 B），已写入 72 B",
+            "backendState": "数据写入完成，等待发布 used"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used",
+          "title": "发布 RX 完成",
+          "actor": "vDPA 硬件设备",
+          "description": "发布 used = {id: 2, len: 72}，used.idx = 1。",
+          "detail": "完成记录包含本次实际写入量 72 B，容量仍是 2048 B。数据写入必须先于完成进度对驱动可见，驱动据此判断缓冲区可读。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "complete"
+          ],
+          "changes": {
+            "usedEntry": "slot 0 → { id: 2, len: 72 }",
+            "usedIdx": "1",
+            "guestBufferOwner": "设备已归还，等待驱动读取",
+            "backendState": "本帧 RX 队列处理完成"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec",
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify",
+          "title": "提示 Guest 接收",
+          "actor": "vDPA 硬件设备",
+          "description": "在需要通知的条件下，提示客户机 RX 队列有完成。",
+          "detail": "通知路径可经过 call eventfd 与配置的虚拟中断；具体是否发送取决于队列通知规则。used 内容独立保存完成记录。",
+          "active": [
+            "backend",
+            "guest"
+          ],
+          "links": [
+            "notify"
+          ],
+          "changes": {
+            "notification": "本例触发 RX 完成通知"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec",
+            "virtio-ring-spec"
+          ],
+          "focus": false
+        },
+        {
+          "id": "receive",
+          "title": "回收 RX 链并交给 NAPI",
+          "actor": "Guest virtio-net / NAPI",
+          "description": "驱动消费 head 2，去掉 12 B virtio-net 头，将 60 B 帧交给 NAPI 接收处理。",
+          "detail": "驱动回收描述符后，napi_gro_receive() 接管接收 skb。本例单帧走 GRO_NORMAL，普通接收列表尚未达到提前刷新条件，UDP socket 此时仍为空。描述符槽可以复用，旧数据页继续由接收路径持有。",
+          "active": [
+            "queue",
+            "guest"
+          ],
+          "links": [
+            "reclaim"
+          ],
+          "changes": {
+            "reclaimedIdx": "1",
+            "guestBufferOwner": "NAPI 接收路径持有本帧引用",
+            "delivery": "60 B 帧已交 NAPI；尚未进入 UDP socket",
+            "guestSkb": "S1：已去掉 12 B virtio 头，在 NAPI 普通接收列表等待交付"
+          },
+          "nodeStates": {
+            "guest": "已回收 RX 链，skb 等待 NAPI 批量交付",
+            "stack": "本帧尚未进入 IPv4 / UDP 处理"
+          },
+          "sourceIds": [
+            "guest-rx",
+            "guest-napi-input",
+            "guest-gro-normal"
+          ],
+          "focus": true
+        },
+        {
+          "id": "refill",
+          "title": "补充下一块 RX 空间",
+          "actor": "Guest virtio-net 驱动",
+          "description": "复用已经回收的描述符槽，关联另一块可用缓冲区，再发布一次 available。",
+          "detail": "virtnet_receive() 消费当前批次后检查空闲描述符并调用 try_fill_recv()。本例分配成功，示意一条新链写入 slot 1，使 avail.idx = 2；实际驱动可批量补入更多缓冲区。旧 P1 仍由 NAPI 接收路径持有，新空间无需等待 socket 入队或 recvfrom 返回。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "desc": "head 2：新的 2048 B 可写缓冲区",
+            "availHead": "slot 1 → head 2（新缓冲区）",
+            "availIdx": "2",
+            "guestBufferOwner": "新缓冲区供设备写；旧 P1 引用仍由 NAPI 接收路径管理",
+            "payload": "新空间无 P1；旧 P1 随 skb 生命周期保留",
+            "notification": "按需提示新 RX 空间"
+          },
+          "nodeStates": {
+            "guest": "已补充新 RX 空间，准备完成本轮 NAPI"
+          },
+          "sourceIds": [
+            "guest-rx",
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "socket-enqueue",
+          "title": "送入 UDP socket",
+          "actor": "Guest IPv4 / UDP 协议栈",
+          "description": "本轮 NAPI 完成后，普通列表交给 IPv4 / UDP 协议栈，校验并分发 P1，将 18 B 载荷排入目标 socket。",
+          "detail": "本例 received 小于 budget，virtnet_poll() 经 virtqueue_napi_complete() 调用 napi_complete_done()，由 gro_flush_normal() 刷新普通列表。UDP 根据地址和端口查找 socket，接收预算足够时排队并通知等待者。Linux 6.18 可能经 producer queue 归并，再由 reader_queue 供 recvmsg 消费；这里显示逻辑上一个待收数据报。唤醒只使线程可运行。",
+          "active": [
+            "guest",
+            "stack",
+            "application"
+          ],
+          "links": [
+            "stack-input",
+            "socket-ready"
+          ],
+          "changes": {
+            "socketBuffers": "接收队列：1 个 UDP 数据报（载荷 18 B）",
+            "guestSkb": "S1 由 socket 接收路径持有，载荷 18 B",
+            "applicationProgress": "数据已就绪；等待线程获得 CPU",
+            "delivery": "UDP 数据报已进入 Guest socket；尚未复制到用户",
+            "guestBufferOwner": "新缓冲区供设备写；旧 P1 引用由 socket 接收路径管理"
+          },
+          "nodeStates": {
+            "stack": "已为 socket 排队 1 个数据报",
+            "application": "已唤醒，尚未读取"
+          },
+          "sourceIds": [
+            "guest-rx",
+            "guest-napi-complete",
+            "guest-udp-enqueue",
+            "guest-udp-wait"
+          ],
+          "focus": false
+        },
+        {
+          "id": "copy-to-user",
+          "title": "复制 UDP 载荷",
+          "actor": "Guest recvfrom / UDP 接收路径",
+          "description": "应用线程获得 CPU，udp_recvmsg() 从队列取出一份数据报，把 18 B 载荷复制到 U1。",
+          "detail": "本例容量 128 B 足够，无 MSG_PEEK 或截断。UDP/IP/Ethernet 头及 virtio 网络头均不复制给普通 UDP 应用；源地址通过 recvfrom 的独立地址参数返回。skb 消费完毕后释放相应引用，其他引用仍遵守各自生命周期。",
+          "active": [
+            "stack",
+            "application"
+          ],
+          "links": [
+            "copy-to-user"
+          ],
+          "changes": {
+            "userBuffer": "U1[0..17] = virt-report-demo01；其余容量未使用",
+            "socketBuffers": "本次数据报已取走；逻辑接收队列为空",
+            "guestSkb": "本次接收 skb 已消费，释放对应数据引用",
+            "applicationProgress": "18 B 载荷已复制；准备返回",
+            "delivery": "18 B UDP 载荷已复制到 Guest 用户缓冲区",
+            "guestBufferOwner": "新缓冲区供设备写；旧 P1 的本次接收引用已释放"
+          },
+          "nodeStates": {
+            "stack": "已复制并消费本次 UDP 数据报",
+            "application": "用户缓冲区已有 18 B 载荷"
+          },
+          "sourceIds": [
+            "guest-udp-recv",
+            "guest-recvfrom"
+          ],
+          "focus": false
+        },
+        {
+          "id": "recvfrom-return",
+          "title": "recvfrom 返回",
+          "actor": "Guest 系统调用返回路径",
+          "description": "recvfrom 返回 18，应用开始处理 U1 中的 UDP 数据。",
+          "detail": "返回值为本次复制的载荷长度，128 B 是容量，60 B 是链路层帧长，72 B 是 virtio RX 的写入长度。RX 描述符回收与新缓冲区补充已独立进行，应用读取没有为设备发布新的 used。",
+          "active": [
+            "stack",
+            "application"
+          ],
+          "links": [
+            "syscall-return"
+          ],
+          "changes": {
+            "applicationResult": "18",
+            "applicationProgress": "应用恢复执行，处理 18 B UDP 载荷",
+            "delivery": "本次 UDP 载荷已由 Guest recvfrom 返回"
+          },
+          "nodeStates": {
+            "application": "已返回 18，用户态继续执行",
+            "stack": "本次 recvfrom 已结束"
+          },
+          "sourceIds": [
+            "guest-recvfrom",
+            "guest-udp-recv",
+            "recv-api"
+          ],
+          "focus": false
+        }
+      ]
+    },
+    {
+      "id": "qemu-tx-backpressure",
+      "label": "QEMU TX · TAP 背压",
+      "summary": "18 B UDP 载荷经客户机协议栈形成 60 B 帧，交给 virtio-net 与所选后端；分别观察 sendto 返回、队列归还与本地发送。",
+      "assumptions": [
+        "x86 + KVM；QEMU 10.2.0 / Linux 6.18；modern virtio-net、split ring、单队列对。",
+        "P1 为 60 B 以太网帧（不含 FCS），virtio-net 基础头为 12 B；不启用分段、校验和卸载、合并 RX 缓冲区或间接描述符。",
+        "QEMU 设备与 TAP FD 已连接。",
+        "Guest 回收与宿主后续转发可以并行；播放顺序展示一种可观察的执行顺序。",
+        "仅模拟一次暂时 EAGAIN，随后 TAP 恢复可写；未模拟永久断链或上游丢包。",
+        "UDP/IPv4 小数据报：用户载荷 virt-report-demo01 为 18 B；8 B UDP + 20 B IPv4 + 14 B Ethernet，共 60 B 帧；virtio-net 另加 12 B 头。无 IP 选项、VLAN 或分片。",
+        "普通 sendto(..., 18, 0, ...)，无 UDP_CORK、MSG_MORE 或 MSG_ZEROCOPY；路由、邻居及 socket 已就绪，发送预算与客户机 TX 队列均有空间，本次直接走到驱动。",
+        "virtqueue 发布后，Guest 返回与后端处理可并发。本次先展示 sendto 返回；后端也可能更早消费队列，TX used、线路发送与返回没有固定总顺序。"
+      ],
+      "nodes": [
+        {
+          "id": "application",
+          "label": "应用 · 用户态",
+          "role": "guest"
+        },
+        {
+          "id": "stack",
+          "label": "UDP/IP · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "guest",
+          "label": "virtio-net · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "queue",
+          "label": "Guest RAM · TX 队列 1",
+          "role": "memory"
+        },
+        {
+          "id": "backend",
+          "label": "QEMU virtio-net",
+          "role": "userspace"
+        },
+        {
+          "id": "port",
+          "label": "TAP · 宿主网络",
+          "role": "kernel"
+        },
+        {
+          "id": "network",
+          "label": "外部网络",
+          "role": "external"
+        }
+      ],
+      "links": [
+        {
+          "id": "publish",
+          "from": "guest",
+          "to": "queue",
+          "label": "发布描述符链",
+          "kind": "control"
+        },
+        {
+          "id": "consume",
+          "from": "queue",
+          "to": "backend",
+          "label": "读取描述符与帧",
+          "kind": "data"
+        },
+        {
+          "id": "complete",
+          "from": "backend",
+          "to": "queue",
+          "label": "发布 used",
+          "kind": "control"
+        },
+        {
+          "id": "notify",
+          "from": "backend",
+          "to": "guest",
+          "label": "按需完成通知",
+          "kind": "notification"
+        },
+        {
+          "id": "reclaim",
+          "from": "queue",
+          "to": "guest",
+          "label": "回收链与缓冲区",
+          "kind": "control"
+        },
+        {
+          "id": "forward",
+          "from": "backend",
+          "to": "port",
+          "label": "交付本地出口",
+          "kind": "data"
+        },
+        {
+          "id": "wire",
+          "from": "port",
+          "to": "network",
+          "label": "后续链路发送",
+          "kind": "data"
+        },
+        {
+          "id": "syscall",
+          "from": "application",
+          "to": "stack",
+          "label": "sendto 调用",
+          "kind": "control"
+        },
+        {
+          "id": "copy-from-user",
+          "from": "application",
+          "to": "stack",
+          "label": "18 B 用户载荷复制",
+          "kind": "data"
+        },
+        {
+          "id": "stack-output",
+          "from": "stack",
+          "to": "guest",
+          "label": "60 B Ethernet 帧",
+          "kind": "data"
+        },
+        {
+          "id": "syscall-return",
+          "from": "stack",
+          "to": "application",
+          "label": "sendto 返回（独立分支）",
+          "kind": "control"
+        }
+      ],
+      "structures": [
+        {
+          "id": "virtqueue",
+          "title": "TX split virtqueue · 大小 8",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "desc",
+              "label": "desc 链",
+              "initial": "未填写"
+            },
+            {
+              "key": "availHead",
+              "label": "avail.ring",
+              "initial": "空"
+            },
+            {
+              "key": "availIdx",
+              "label": "avail.idx",
+              "initial": "0"
+            },
+            {
+              "key": "consumedIdx",
+              "label": "设备消费位置",
+              "initial": "0"
+            },
+            {
+              "key": "usedEntry",
+              "label": "used.ring",
+              "initial": "空"
+            },
+            {
+              "key": "usedIdx",
+              "label": "used.idx",
+              "initial": "0"
+            },
+            {
+              "key": "reclaimedIdx",
+              "label": "驱动回收位置",
+              "initial": "0"
+            }
+          ]
+        },
+        {
+          "id": "buffer",
+          "title": "Guest 缓冲区与通知",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "guestBufferOwner",
+              "label": "缓冲区访问权",
+              "initial": "驱动持有，尚未发布"
+            },
+            {
+              "key": "payload",
+              "label": "缓冲区内容",
+              "initial": "P1 尚未关联描述符"
+            },
+            {
+              "key": "notification",
+              "label": "通知状态",
+              "initial": "无新通知"
+            }
+          ]
+        },
+        {
+          "id": "path",
+          "title": "后端与交付状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "backendState",
+              "label": "后端状态",
+              "initial": "队列已启用，等待工作"
+            },
+            {
+              "key": "networkStage",
+              "label": "网络阶段",
+              "initial": "P1 尚未进入后端"
+            },
+            {
+              "key": "delivery",
+              "label": "交付范围",
+              "initial": "远端是否收到：未确认"
+            }
+          ]
+        },
+        {
+          "id": "application",
+          "title": "用户缓冲区、socket 与 Guest skb",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "userBuffer",
+              "label": "用户缓冲区",
+              "initial": "U0：18 B 载荷，仍由应用持有"
+            },
+            {
+              "key": "applicationCall",
+              "label": "系统调用",
+              "initial": "尚未调用"
+            },
+            {
+              "key": "applicationResult",
+              "label": "应用返回值",
+              "initial": "尚未返回"
+            },
+            {
+              "key": "socketBuffers",
+              "label": "socket 缓冲/计账",
+              "initial": "发送预算充足；尚未分配本次 skb"
+            },
+            {
+              "key": "guestSkb",
+              "label": "Guest skb",
+              "initial": "尚未构建"
+            },
+            {
+              "key": "applicationProgress",
+              "label": "应用处理",
+              "initial": "准备提交 18 B UDP 载荷"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "initial",
+          "title": "初始状态",
+          "actor": "队列与后端",
+          "description": "应用持有 18 B 载荷，网络设备和队列已就绪，本次 sendto 尚未调用。",
+          "detail": "队列、socket 与用户缓冲区分别显示初始状态；没有处理者正在推进本次数据报。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "sendto",
+          "title": "调用 sendto",
+          "actor": "Guest 用户态应用",
+          "description": "应用用 U0 提交 18 B UDP 载荷，目标地址交给 socket 层。",
+          "detail": "__sys_sendto() 导入用户缓冲区并构造 msghdr，随后分派到 IPv4 UDP。系统调用改变客户机内的执行特权级；本步不要求退出到 QEMU 处理。",
+          "active": [
+            "application",
+            "stack"
+          ],
+          "links": [
+            "syscall"
+          ],
+          "changes": {
+            "applicationCall": "sendto(fd, U0, 18, 0, ...)",
+            "applicationResult": "内核处理中",
+            "applicationProgress": "本线程进入 Guest 内核"
+          },
+          "nodeStates": {
+            "application": "sendto 尚未返回",
+            "stack": "处理 UDP 发送"
+          },
+          "sourceIds": [
+            "guest-sendto"
+          ],
+          "focus": false
+        },
+        {
+          "id": "udp-output",
+          "title": "构造 UDP/IP 报文",
+          "actor": "Guest UDP/IP 协议栈",
+          "description": "普通复制路径把 18 B 用户数据复制入 skb，并完成 UDP、IPv4 与链路层封装。",
+          "detail": "UDP 无 cork 路径通过 ip_make_skb() 构建 skb；ip_generic_getfrag() 执行用户数据复制。邻居已解析，本例在客户机发送路径形成 14 + 20 + 8 + 18 = 60 B 帧。U0 与 skb 数据是不同的存储对象。",
+          "active": [
+            "application",
+            "stack"
+          ],
+          "links": [
+            "copy-from-user"
+          ],
+          "changes": {
+            "guestSkb": "S1：18 B 数据 + UDP 8 B + IPv4 20 B + Ethernet 14 B = 60 B",
+            "socketBuffers": "skb 使用发送内存预算；普通 UDP 不建立可靠重传队列",
+            "applicationProgress": "载荷已复制，原 U0 仍归应用"
+          },
+          "nodeStates": {
+            "stack": "S1 已封装，准备交给网卡"
+          },
+          "sourceIds": [
+            "guest-udp-send",
+            "guest-copy-send",
+            "guest-ip-output"
+          ],
+          "focus": false
+        },
+        {
+          "id": "driver-submit",
+          "title": "交给 virtio-net",
+          "actor": "Guest 网络发送路径",
+          "description": "网络层把 skb S1 交给 virtio-net 的 start_xmit()。",
+          "detail": "本例 qdisc 与驱动队列有空间，当前调用推进到驱动提交。start_xmit() 通过 xmit_skb() 组织 virtio 网络头与 skb 分散表。其他配置下，skb 可以先在客户机排队，系统调用返回并不要求每次都已发布 virtqueue。",
+          "active": [
+            "stack",
+            "guest"
+          ],
+          "links": [
+            "stack-output"
+          ],
+          "changes": {
+            "guestSkb": "S1 已交给 virtio-net；帧长 60 B",
+            "applicationProgress": "驱动准备发布本次 TX"
+          },
+          "nodeStates": {
+            "stack": "网卡发送调用中",
+            "guest": "准备 S1 的设备可读链"
+          },
+          "sourceIds": [
+            "guest-virtio-send"
+          ],
+          "focus": false
+        },
+        {
+          "id": "prepare",
+          "title": "准备描述符",
+          "actor": "Guest virtio-net 驱动",
+          "description": "将 12 B 网络头和 60 B 帧 P1 组织为链 0 → 2。",
+          "detail": "desc[0] 的 NEXT 指向 desc[2]，两个缓冲区均为设备可读。此时 avail.idx 尚未增加，后端不能据此消费本次请求。 这里的 60 B 来自 S1，virtio 网络头是设备接口附加的 12 B，不会交给远端 UDP 应用。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [],
+          "changes": {
+            "desc": "0 → 2：12 B 头（NEXT）+ 60 B 帧（设备读）",
+            "payload": "12 B 头 + P1（60 B）"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "publish",
+          "title": "发布 TX 链",
+          "actor": "Guest virtio-net 驱动",
+          "description": "先写描述符和 avail.ring[0]，再发布 avail.idx = 1。",
+          "detail": "内存顺序保证后端观察到新索引时可以读取完整的链。驱动在发布索引后检查通知条件，按协商的通知抑制规则决定是否 kick。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "availHead": "slot 0 → head 0",
+            "availIdx": "1",
+            "guestBufferOwner": "设备可读；驱动暂不修改",
+            "notification": "按需 kick，提示后端检查"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "sendto-return",
+          "title": "sendto 返回",
+          "actor": "Guest 系统调用返回路径",
+          "description": "本次 sendto 成功返回 18，应用可以继续执行并复用 U0。",
+          "detail": "18 是提交的 UDP 载荷字节数，未包含协议头。成功不保证交付；本例只确认本机发送路径接受请求，不等待 TX used、本地物理发送或远端接收。Guest 返回与后端消费从发布处分成两条分支，这里展示返回先发生的一种调度顺序。",
+          "active": [
+            "stack",
+            "application"
+          ],
+          "links": [
+            "syscall-return"
+          ],
+          "changes": {
+            "applicationResult": "18",
+            "applicationProgress": "应用恢复执行，U0 可复用",
+            "userBuffer": "U0 已可由应用复用；skb S1 仍有独立副本",
+            "socketBuffers": "skb 可仍在发送路径；socket 计账与设备缓冲区生命周期分别处理"
+          },
+          "nodeStates": {
+            "application": "已返回 18，可继续运行",
+            "stack": "sendto 调用已结束"
+          },
+          "sourceIds": [
+            "guest-udp-send",
+            "guest-virtio-send",
+            "send-api"
+          ],
+          "focus": false
+        },
+        {
+          "id": "consume",
+          "title": "取得描述符链",
+          "actor": "QEMU 用户态",
+          "description": "后端读取 available，取得链头 0 并检查设备可读区域。",
+          "detail": "virtio_net_flush_tx() 调用 virtqueue_pop()，解析可读 iovec 与网络头。",
+          "active": [
+            "queue",
+            "backend"
+          ],
+          "links": [
+            "consume"
+          ],
+          "changes": {
+            "consumedIdx": "1",
+            "backendState": "正在处理链头 0"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-tx"
+          ],
+          "focus": true
+        },
+        {
+          "id": "blocked",
+          "title": "TAP 暂不可写",
+          "actor": "QEMU TAP 后端",
+          "description": "writev() 遇到 EAGAIN，网络层返回 0，暂未发布 TX 完成。",
+          "detail": "QEMU 开启 TAP 可写事件监听，保存 async_tx.elem 并暂缓继续弹出 TX 链。used.idx 保持 0，驱动仍不能复用这条链的缓冲区。",
+          "active": [
+            "backend",
+            "port"
+          ],
+          "links": [
+            "forward"
+          ],
+          "changes": {
+            "backendState": "async_tx.elem = head 0；等待 TAP 可写",
+            "networkStage": "本地排队，尚未被 TAP 接受",
+            "guestBufferOwner": "在途链仍由设备持有",
+            "notification": "暂停继续处理 TX，等待可写事件"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-tap",
+            "qemu-tx"
+          ],
+          "focus": true
+        },
+        {
+          "id": "retry",
+          "title": "恢复写入",
+          "actor": "QEMU TAP 后端",
+          "description": "TAP 再次可写，QEMU 刷新排队报文，本次写入成功。",
+          "detail": "网络层触发 virtio_net_tx_complete() 回调；只有这时才归还保存的 VirtQueueElement。一次背压不会凭空增加 used.idx。",
+          "active": [
+            "port",
+            "backend"
+          ],
+          "links": [
+            "forward"
+          ],
+          "changes": {
+            "backendState": "异步报文已被接受，进入完成回调",
+            "networkStage": "TAP 已接受；后续网络转发独立"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-tap",
+            "qemu-tx"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used",
+          "title": "发布 TX 完成",
+          "actor": "QEMU 用户态",
+          "description": "将链头 0 写入 used，used.idx 从 0 增至 1。",
+          "detail": "virtio_net_tx_complete() 发布 used、判断通知并清除 async_tx.elem，随后可以恢复处理其他 TX 链。used 表示本地缓冲区归还，不证明远端收到 P1。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "complete"
+          ],
+          "changes": {
+            "usedEntry": "slot 0 → { id: 0, len: 0 }",
+            "usedIdx": "1",
+            "guestBufferOwner": "设备已归还，等待驱动观察",
+            "backendState": "本链队列处理完成"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-tx",
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify",
+          "title": "提示客户机",
+          "actor": "QEMU 用户态",
+          "description": "按通知条件提示客户机检查 used ring。",
+          "detail": "QEMU 的 virtio_notify() 检查通知条件，经已配置的虚拟中断路径通知 Guest。",
+          "active": [
+            "backend",
+            "guest"
+          ],
+          "links": [
+            "notify"
+          ],
+          "changes": {
+            "notification": "本例发出完成通知；used 已可见"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-tx",
+            "virtio-ring-spec"
+          ],
+          "focus": false
+        },
+        {
+          "id": "reclaim",
+          "title": "回收 TX 链",
+          "actor": "Guest virtio-net 驱动",
+          "description": "驱动消费 used 项，找到链头 0 并释放本次发送引用。",
+          "detail": "回收位置更新为 1。Guest 链和原始发送缓冲区现在可以复用；描述符槽中的旧值无需清零，是否有效由环索引决定。 应用 U0 早已独立可用。socket 发送计账可能随 skb_orphan() 提前解除，也可能在 skb 释放时回收，不能与 used.idx 简单等同。",
+          "active": [
+            "queue",
+            "guest"
+          ],
+          "links": [
+            "reclaim"
+          ],
+          "changes": {
+            "reclaimedIdx": "1",
+            "guestBufferOwner": "驱动已回收，可复用",
+            "desc": "链 0 → 2 已回收（旧字段可保留）",
+            "guestSkb": "S1 的设备发送引用已释放，可回收相应存储"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec",
+            "guest-virtio-send"
+          ],
+          "focus": true
+        },
+        {
+          "id": "egress",
+          "title": "继续网络转发",
+          "actor": "宿主网络",
+          "description": "P1 沿本地出口继续发送，虚拟队列已可承接下一帧。",
+          "detail": "路径中的排队、交换、丢包和远端处理不由本次 used 项报告。演示展示本地交付边界，未模拟对端协议栈或确认报文。 此处整理出口状态，与 Guest 返回及回收可交错；演示未收到对端确认，UDP 本身也不提供可靠交付确认。",
+          "active": [
+            "port"
+          ],
+          "links": [
+            "wire"
+          ],
+          "changes": {
+            "networkStage": "继续本地网络转发；远端未确认"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-tx",
+            "virtio-net-spec"
+          ],
+          "focus": false
+        }
+      ]
+    },
+    {
+      "id": "qemu-rx-no-buffer",
+      "label": "QEMU RX · 缓冲区不足",
+      "summary": "从 RX 空缓冲区开始，跟踪 UDP 帧进入客户机协议栈、socket 接收队列，直到 recvfrom 把 18 B 载荷交给应用。",
+      "assumptions": [
+        "x86 + KVM；QEMU 10.2.0 / Linux 6.18；modern virtio-net、split ring、单队列对。",
+        "P1 为 60 B 以太网帧（不含 FCS），virtio-net 基础头为 12 B；不启用分段、校验和卸载、合并 RX 缓冲区或间接描述符。",
+        "QEMU 设备与 TAP FD 已连接。",
+        "用一条 2048 B 可写描述符链表示接收空间；实际驱动可把头与数据分散在多个描述符中。",
+        "本例保留一帧并等待补充，随后恢复成功；实际路径有有限队列，持续拥塞仍可能丢包。",
+        "UDP/IPv4 小数据报：用户载荷 virt-report-demo01 为 18 B；8 B UDP + 20 B IPv4 + 14 B Ethernet，共 60 B 帧；virtio-net 另加 12 B 头。无 IP 选项、VLAN 或分片。",
+        "普通阻塞 recvfrom(..., 128, 0, ...)，无 MSG_PEEK、MSG_TRUNC；socket 已绑定，路由、校验与接收内存预算满足本次报文，应用缓冲区容量足够。",
+        "本例只收一帧，received 小于 NAPI budget；GRO_NORMAL 普通列表尚未达到提前刷新条件。驱动先 refill，随后在 NAPI 完成阶段将列表交给协议栈；补充空间无需等待 recvfrom 返回。"
+      ],
+      "nodes": [
+        {
+          "id": "application",
+          "label": "应用 · 用户态",
+          "role": "guest"
+        },
+        {
+          "id": "stack",
+          "label": "UDP/IP · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "guest",
+          "label": "virtio-net · 内核态",
+          "role": "guest"
+        },
+        {
+          "id": "queue",
+          "label": "Guest RAM · RX 队列 0",
+          "role": "memory"
+        },
+        {
+          "id": "backend",
+          "label": "QEMU virtio-net",
+          "role": "userspace"
+        },
+        {
+          "id": "port",
+          "label": "TAP · 宿主网络",
+          "role": "kernel"
+        },
+        {
+          "id": "network",
+          "label": "外部网络",
+          "role": "external"
+        }
+      ],
+      "links": [
+        {
+          "id": "publish",
+          "from": "guest",
+          "to": "queue",
+          "label": "发布描述符链",
+          "kind": "control"
+        },
+        {
+          "id": "consume",
+          "from": "queue",
+          "to": "backend",
+          "label": "取得可写空间",
+          "kind": "control"
+        },
+        {
+          "id": "complete",
+          "from": "backend",
+          "to": "queue",
+          "label": "发布 used",
+          "kind": "control"
+        },
+        {
+          "id": "notify",
+          "from": "backend",
+          "to": "guest",
+          "label": "按需完成通知",
+          "kind": "notification"
+        },
+        {
+          "id": "reclaim",
+          "from": "queue",
+          "to": "guest",
+          "label": "读取报文与回收链",
+          "kind": "data"
+        },
+        {
+          "id": "wire",
+          "from": "network",
+          "to": "port",
+          "label": "帧到达",
+          "kind": "data"
+        },
+        {
+          "id": "forward",
+          "from": "port",
+          "to": "backend",
+          "label": "交付收到的帧",
+          "kind": "data"
+        },
+        {
+          "id": "copy",
+          "from": "backend",
+          "to": "queue",
+          "label": "写入头与帧",
+          "kind": "data"
+        },
+        {
+          "id": "syscall",
+          "from": "application",
+          "to": "stack",
+          "label": "recvfrom 调用",
+          "kind": "control"
+        },
+        {
+          "id": "stack-input",
+          "from": "guest",
+          "to": "stack",
+          "label": "NAPI 列表交给协议栈",
+          "kind": "data"
+        },
+        {
+          "id": "socket-ready",
+          "from": "stack",
+          "to": "application",
+          "label": "数据入 socket，唤醒等待者",
+          "kind": "notification"
+        },
+        {
+          "id": "copy-to-user",
+          "from": "stack",
+          "to": "application",
+          "label": "复制 18 B UDP 载荷",
+          "kind": "data"
+        },
+        {
+          "id": "syscall-return",
+          "from": "stack",
+          "to": "application",
+          "label": "recvfrom 返回",
+          "kind": "control"
+        }
+      ],
+      "structures": [
+        {
+          "id": "virtqueue",
+          "title": "RX split virtqueue · 大小 8",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "desc",
+              "label": "desc 链",
+              "initial": "未填写"
+            },
+            {
+              "key": "availHead",
+              "label": "avail.ring",
+              "initial": "空"
+            },
+            {
+              "key": "availIdx",
+              "label": "avail.idx",
+              "initial": "0"
+            },
+            {
+              "key": "consumedIdx",
+              "label": "设备消费位置",
+              "initial": "0"
+            },
+            {
+              "key": "usedEntry",
+              "label": "used.ring",
+              "initial": "空"
+            },
+            {
+              "key": "usedIdx",
+              "label": "used.idx",
+              "initial": "0"
+            },
+            {
+              "key": "reclaimedIdx",
+              "label": "驱动回收位置",
+              "initial": "0"
+            }
+          ]
+        },
+        {
+          "id": "buffer",
+          "title": "Guest 缓冲区与通知",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "guestBufferOwner",
+              "label": "缓冲区访问权",
+              "initial": "驱动持有，尚未发布"
+            },
+            {
+              "key": "payload",
+              "label": "缓冲区内容",
+              "initial": "空，可准备接收"
+            },
+            {
+              "key": "notification",
+              "label": "通知状态",
+              "initial": "无新通知"
+            }
+          ]
+        },
+        {
+          "id": "path",
+          "title": "后端与交付状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "backendState",
+              "label": "后端状态",
+              "initial": "队列已启用，等待工作"
+            },
+            {
+              "key": "networkStage",
+              "label": "网络阶段",
+              "initial": "P1 尚未到达"
+            },
+            {
+              "key": "delivery",
+              "label": "交付范围",
+              "initial": "尚未交给 Guest 协议栈"
+            }
+          ]
+        },
+        {
+          "id": "application",
+          "title": "用户缓冲区、socket 与 Guest skb",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "userBuffer",
+              "label": "用户缓冲区",
+              "initial": "U1：128 B 可写空间，尚无本次数据"
+            },
+            {
+              "key": "applicationCall",
+              "label": "系统调用",
+              "initial": "尚未调用"
+            },
+            {
+              "key": "applicationResult",
+              "label": "应用返回值",
+              "initial": "尚未返回"
+            },
+            {
+              "key": "socketBuffers",
+              "label": "socket 缓冲/计账",
+              "initial": "接收队列为空；预算充足"
+            },
+            {
+              "key": "guestSkb",
+              "label": "Guest skb",
+              "initial": "尚未交付驱动"
+            },
+            {
+              "key": "applicationProgress",
+              "label": "应用处理",
+              "initial": "准备接收一个 UDP 数据报"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "initial",
+          "title": "初始状态",
+          "actor": "队列与后端",
+          "description": "应用有 128 B 接收空间，socket 和网络设备已就绪，本次数据报尚未到达。",
+          "detail": "队列、socket 与用户缓冲区分别显示初始状态；没有处理者正在推进本次数据报。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "recvfrom-wait",
+          "title": "等待 UDP 数据报",
+          "actor": "Guest 用户态应用 / UDP socket",
+          "description": "应用调用 recvfrom(fd, U1, 128, 0, ...)，当前 socket 无数据，进入等待。",
+          "detail": "__sys_recvfrom() 导入可写用户缓冲区；udp_recvmsg() 从 UDP 接收队列取报文。阻塞调用暂时睡眠，驱动和后端仍可接收、回收并补充队列。",
+          "active": [
+            "application",
+            "stack"
+          ],
+          "links": [
+            "syscall"
+          ],
+          "changes": {
+            "applicationCall": "recvfrom(fd, U1, 128, 0, ...)",
+            "applicationResult": "等待可读数据",
+            "applicationProgress": "线程睡眠，等待 socket 数据",
+            "socketBuffers": "接收队列为空；等待条件已建立"
+          },
+          "nodeStates": {
+            "application": "阻塞等待数据",
+            "stack": "UDP 接收队列暂空"
+          },
+          "sourceIds": [
+            "guest-recvfrom",
+            "guest-udp-wait",
+            "recv-api"
+          ],
+          "focus": false
+        },
+        {
+          "id": "arrive",
+          "title": "报文到达",
+          "actor": "宿主网络",
+          "description": "P1 经宿主网络送到 TAP，后端获得一个待交付的帧。",
+          "detail": "TAP 读事件触发 tap_send()，读取报文后将其交给 QEMU 网络层。",
+          "active": [
+            "network",
+            "port",
+            "backend"
+          ],
+          "links": [
+            "wire",
+            "forward"
+          ],
+          "changes": {
+            "networkStage": "P1 已到达本地后端"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-rx",
+            "qemu-tap"
+          ],
+          "focus": false
+        },
+        {
+          "id": "no-buffer",
+          "title": "等待 RX 空间",
+          "actor": "QEMU virtio-net",
+          "description": "RX available 为空，virtio_net_has_buffers() 返回 0。",
+          "detail": "QEMU 启用缓冲区到达通知并复查。确认仍无空间后，网络层保留本例待交付帧，TAP 暂停读取；没有可写链就不修改 Guest 数据，也不发布 used。",
+          "active": [
+            "backend",
+            "queue",
+            "port"
+          ],
+          "links": [],
+          "changes": {
+            "backendState": "缺少可写 RX 链；等待 Guest 补充",
+            "networkStage": "P1 暂存本地队列；TAP 暂停读取",
+            "notification": "启用 RX 缓冲区到达通知，已复查"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-rx-buffer",
+            "qemu-tap"
+          ],
+          "focus": true
+        },
+        {
+          "id": "replenish",
+          "title": "Guest 补充缓冲区",
+          "actor": "Guest virtio-net 驱动",
+          "description": "准备一条 2048 B 可写链，发布 head 2，avail.idx = 1。",
+          "detail": "驱动现在准备 head 2 的可写空间并推进 avail.idx。QEMU 已请求缓冲区到达通知，本例 kick 使等待的报文重新获得交付机会。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "desc": "head 2：2048 B，WRITE（设备可写）",
+            "availHead": "slot 0 → head 2",
+            "availIdx": "1",
+            "guestBufferOwner": "设备可写；驱动等待归还",
+            "payload": "2048 B 空间，尚无 P1",
+            "notification": "RX 补充通知到达，触发重试"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "virtio-net-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "retry",
+          "title": "恢复接收",
+          "actor": "QEMU 用户态",
+          "description": "后端观察到 avail.idx = 1，取出 head 2 并检查容量和 WRITE 权限。",
+          "detail": "QEMU 重新检查队列，取得 head 2。后续填充和完成成功后，tap_send_completed() 恢复 TAP 读取；接收可以继续。",
+          "active": [
+            "queue",
+            "backend"
+          ],
+          "links": [
+            "consume"
+          ],
+          "changes": {
+            "consumedIdx": "1",
+            "backendState": "已取得 head 2，可写容量 2048 B"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-rx",
+            "qemu-rx-buffer"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-buffer",
+          "title": "写入报文",
+          "actor": "QEMU 用户态",
+          "description": "向 Guest 缓冲区写入 12 B 网络头和 P1 的 60 B 帧内容。",
+          "detail": "QEMU 通过 iovec 复制头和报文，写入量为 12 + 60 = 72 B，余下容量不属于本帧。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "copy"
+          ],
+          "changes": {
+            "payload": "12 B 头 + P1（60 B），已写入 72 B",
+            "backendState": "数据写入完成，等待发布 used"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-rx"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used",
+          "title": "发布 RX 完成",
+          "actor": "QEMU 用户态",
+          "description": "发布 used = {id: 2, len: 72}，used.idx = 1。",
+          "detail": "完成记录包含本次实际写入量 72 B，容量仍是 2048 B。数据写入必须先于完成进度对驱动可见，驱动据此判断缓冲区可读。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "complete"
+          ],
+          "changes": {
+            "usedEntry": "slot 0 → { id: 2, len: 72 }",
+            "usedIdx": "1",
+            "guestBufferOwner": "设备已归还，等待驱动读取",
+            "backendState": "本帧 RX 队列处理完成",
+            "networkStage": "本例待收帧完成交付，TAP 可恢复读取"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-rx",
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify",
+          "title": "提示 Guest 接收",
+          "actor": "QEMU 用户态",
+          "description": "在需要通知的条件下，提示客户机 RX 队列有完成。",
+          "detail": "通知路径可经过 call eventfd 与配置的虚拟中断；具体是否发送取决于队列通知规则。used 内容独立保存完成记录。",
+          "active": [
+            "backend",
+            "guest"
+          ],
+          "links": [
+            "notify"
+          ],
+          "changes": {
+            "notification": "本例触发 RX 完成通知"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-rx",
+            "virtio-ring-spec"
+          ],
+          "focus": false
+        },
+        {
+          "id": "receive",
+          "title": "回收 RX 链并交给 NAPI",
+          "actor": "Guest virtio-net / NAPI",
+          "description": "驱动消费 head 2，去掉 12 B virtio-net 头，将 60 B 帧交给 NAPI 接收处理。",
+          "detail": "驱动回收描述符后，napi_gro_receive() 接管接收 skb。本例单帧走 GRO_NORMAL，普通接收列表尚未达到提前刷新条件，UDP socket 此时仍为空。描述符槽可以复用，旧数据页继续由接收路径持有。",
+          "active": [
+            "queue",
+            "guest"
+          ],
+          "links": [
+            "reclaim"
+          ],
+          "changes": {
+            "reclaimedIdx": "1",
+            "guestBufferOwner": "NAPI 接收路径持有本帧引用",
+            "delivery": "60 B 帧已交 NAPI；尚未进入 UDP socket",
+            "guestSkb": "S1：已去掉 12 B virtio 头，在 NAPI 普通接收列表等待交付"
+          },
+          "nodeStates": {
+            "guest": "已回收 RX 链，skb 等待 NAPI 批量交付",
+            "stack": "本帧尚未进入 IPv4 / UDP 处理"
+          },
+          "sourceIds": [
+            "guest-rx",
+            "guest-napi-input",
+            "guest-gro-normal"
+          ],
+          "focus": true
+        },
+        {
+          "id": "refill",
+          "title": "补充下一块 RX 空间",
+          "actor": "Guest virtio-net 驱动",
+          "description": "复用已经回收的描述符槽，关联另一块可用缓冲区，再发布一次 available。",
+          "detail": "virtnet_receive() 消费当前批次后检查空闲描述符并调用 try_fill_recv()。本例分配成功，示意一条新链写入 slot 1，使 avail.idx = 2；实际驱动可批量补入更多缓冲区。旧 P1 仍由 NAPI 接收路径持有，新空间无需等待 socket 入队或 recvfrom 返回。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "publish"
+          ],
+          "changes": {
+            "desc": "head 2：新的 2048 B 可写缓冲区",
+            "availHead": "slot 1 → head 2（新缓冲区）",
+            "availIdx": "2",
+            "guestBufferOwner": "新缓冲区供设备写；旧 P1 引用仍由 NAPI 接收路径管理",
+            "payload": "新空间无 P1；旧 P1 随 skb 生命周期保留",
+            "notification": "按需提示新 RX 空间"
+          },
+          "nodeStates": {
+            "guest": "已补充新 RX 空间，准备完成本轮 NAPI"
+          },
+          "sourceIds": [
+            "guest-rx",
+            "virtio-ring-spec"
+          ],
+          "focus": true
+        },
+        {
+          "id": "socket-enqueue",
+          "title": "送入 UDP socket",
+          "actor": "Guest IPv4 / UDP 协议栈",
+          "description": "本轮 NAPI 完成后，普通列表交给 IPv4 / UDP 协议栈，校验并分发 P1，将 18 B 载荷排入目标 socket。",
+          "detail": "本例 received 小于 budget，virtnet_poll() 经 virtqueue_napi_complete() 调用 napi_complete_done()，由 gro_flush_normal() 刷新普通列表。UDP 根据地址和端口查找 socket，接收预算足够时排队并通知等待者。Linux 6.18 可能经 producer queue 归并，再由 reader_queue 供 recvmsg 消费；这里显示逻辑上一个待收数据报。唤醒只使线程可运行。",
+          "active": [
+            "guest",
+            "stack",
+            "application"
+          ],
+          "links": [
+            "stack-input",
+            "socket-ready"
+          ],
+          "changes": {
+            "socketBuffers": "接收队列：1 个 UDP 数据报（载荷 18 B）",
+            "guestSkb": "S1 由 socket 接收路径持有，载荷 18 B",
+            "applicationProgress": "数据已就绪；等待线程获得 CPU",
+            "delivery": "UDP 数据报已进入 Guest socket；尚未复制到用户",
+            "guestBufferOwner": "新缓冲区供设备写；旧 P1 引用由 socket 接收路径管理"
+          },
+          "nodeStates": {
+            "stack": "已为 socket 排队 1 个数据报",
+            "application": "已唤醒，尚未读取"
+          },
+          "sourceIds": [
+            "guest-rx",
+            "guest-napi-complete",
+            "guest-udp-enqueue",
+            "guest-udp-wait"
+          ],
+          "focus": false
+        },
+        {
+          "id": "copy-to-user",
+          "title": "复制 UDP 载荷",
+          "actor": "Guest recvfrom / UDP 接收路径",
+          "description": "应用线程获得 CPU，udp_recvmsg() 从队列取出一份数据报，把 18 B 载荷复制到 U1。",
+          "detail": "本例容量 128 B 足够，无 MSG_PEEK 或截断。UDP/IP/Ethernet 头及 virtio 网络头均不复制给普通 UDP 应用；源地址通过 recvfrom 的独立地址参数返回。skb 消费完毕后释放相应引用，其他引用仍遵守各自生命周期。",
+          "active": [
+            "stack",
+            "application"
+          ],
+          "links": [
+            "copy-to-user"
+          ],
+          "changes": {
+            "userBuffer": "U1[0..17] = virt-report-demo01；其余容量未使用",
+            "socketBuffers": "本次数据报已取走；逻辑接收队列为空",
+            "guestSkb": "本次接收 skb 已消费，释放对应数据引用",
+            "applicationProgress": "18 B 载荷已复制；准备返回",
+            "delivery": "18 B UDP 载荷已复制到 Guest 用户缓冲区",
+            "guestBufferOwner": "新缓冲区供设备写；旧 P1 的本次接收引用已释放"
+          },
+          "nodeStates": {
+            "stack": "已复制并消费本次 UDP 数据报",
+            "application": "用户缓冲区已有 18 B 载荷"
+          },
+          "sourceIds": [
+            "guest-udp-recv",
+            "guest-recvfrom"
+          ],
+          "focus": false
+        },
+        {
+          "id": "recvfrom-return",
+          "title": "recvfrom 返回",
+          "actor": "Guest 系统调用返回路径",
+          "description": "recvfrom 返回 18，应用开始处理 U1 中的 UDP 数据。",
+          "detail": "返回值为本次复制的载荷长度，128 B 是容量，60 B 是链路层帧长，72 B 是 virtio RX 的写入长度。RX 描述符回收与新缓冲区补充已独立进行，应用读取没有为设备发布新的 used。",
+          "active": [
+            "stack",
+            "application"
+          ],
+          "links": [
+            "syscall-return"
+          ],
+          "changes": {
+            "applicationResult": "18",
+            "applicationProgress": "应用恢复执行，处理 18 B UDP 载荷",
+            "delivery": "本次 UDP 载荷已由 Guest recvfrom 返回"
+          },
+          "nodeStates": {
+            "application": "已返回 18，用户态继续执行",
+            "stack": "本次 recvfrom 已结束"
+          },
+          "sourceIds": [
+            "guest-recvfrom",
+            "guest-udp-recv",
+            "recv-api"
+          ],
+          "focus": false
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1980 @@
+{
+  "id": "vm-lifecycle",
+  "title": "虚拟机生命周期",
+  "defaultScenario": "cold-start",
+  "sources": {
+    "libvirt-start": {
+      "label": "Libvirt 12.0：启动 API 与启动作业",
+      "url": "https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L6327-L6453"
+    },
+    "libvirt-prepare": {
+      "label": "Libvirt 12.0：冷启动的准备、启动与失败处理",
+      "url": "https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8602-L8707"
+    },
+    "libvirt-launch": {
+      "label": "Libvirt 12.0：fork/exec 握手与 monitor 连接",
+      "url": "https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8248-L8384"
+    },
+    "libvirt-cont": {
+      "label": "Libvirt 12.0：放行 CPU 与完成启动",
+      "url": "https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8566-L8597"
+    },
+    "libvirt-state": {
+      "label": "Libvirt 12.0：QMP STOP / RESUME 事件处理",
+      "url": "https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L817-L918"
+    },
+    "qemu-kvm": {
+      "label": "QEMU 10.2：KVM_CREATE_VM",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L2493-L2536"
+    },
+    "qemu-vcpu": {
+      "label": "QEMU 10.2：创建 vCPU FD 与映射 kvm_run",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L456-L627"
+    },
+    "qemu-ram": {
+      "label": "QEMU 10.2：RAM 更新与 KVM 内存槽",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L1505-L1687"
+    },
+    "qemu-board": {
+      "label": "QEMU 10.2：Q35 的 CPU、内存与芯片组创建",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/pc_q35.c#L131-L336"
+    },
+    "qemu-devices": {
+      "label": "QEMU 10.2：板级初始化与命令行设备创建",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/vl.c#L2708-L2839"
+    },
+    "qemu-boot": {
+      "label": "QEMU 10.2：固件使用的 bootindex 启动顺序",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/system/bootindex.rst"
+    },
+    "guest-init": {
+      "label": "Linux 6.18：内核初始化与首个用户态进程",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/init/main.c#L1474-L1546"
+    },
+    "guest-virtio": {
+      "label": "Linux 6.18：virtio 特性协商、驱动 probe 与 DRIVER_OK",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio.c#L270-L366"
+    },
+    "shutdown-api": {
+      "label": "Libvirt API：shutdown 的异步完成语义",
+      "url": "https://www.libvirt.org/html/libvirt-libvirt-domain.html#virDomainShutdown"
+    },
+    "libvirt-shutdown": {
+      "label": "Libvirt 12.0：ACPI 关机请求",
+      "url": "https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L1760-L1844"
+    },
+    "qemu-powerdown": {
+      "label": "QEMU 10.2：system_powerdown 只提出电源按钮请求",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/core/machine-qmp-cmds.c#L303-L311"
+    },
+    "qemu-acpi-button": {
+      "label": "QEMU 10.2：ICH9 电源按钮与 SCI 通知",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/acpi/ich9.c#L274-L289"
+    },
+    "qemu-acpi-off": {
+      "label": "QEMU 10.2：ACPI 关机写入转成 shutdown 请求",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/acpi/core.c#L584-L609"
+    },
+    "libvirt-no-shutdown": {
+      "label": "Libvirt 12.0：启动时使用 -no-shutdown",
+      "url": "https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_command.c#L6144-L6161"
+    },
+    "libvirt-shutdown-event": {
+      "label": "Libvirt 12.0：SHUTDOWN 事件与终止策略",
+      "url": "https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L646-L810"
+    },
+    "qemu-exit": {
+      "label": "QEMU 10.2：信号、关机事件与主循环退出",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/runstate.c#L772-L896"
+    },
+    "qemu-cleanup": {
+      "label": "QEMU 10.2：停止执行、排空块请求与后端清理",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/runstate.c#L959-L1007"
+    },
+    "kvm-release": {
+      "label": "Linux 6.18：VM 引用释放与最终销毁",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L1272-L1378"
+    },
+    "libvirt-cleanup": {
+      "label": "Libvirt 12.0：进程退出后的宿主资源清理",
+      "url": "https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L9056-L9374"
+    },
+    "libvirt-destroy": {
+      "label": "Libvirt 12.0：destroy 的停止作业与事件",
+      "url": "https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L2016-L2094"
+    },
+    "libvirt-kill": {
+      "label": "Libvirt 12.0：停止作业终止 QEMU 进程",
+      "url": "https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8962-L9046"
+    },
+    "libvirt-signals": {
+      "label": "Libvirt 12.0：先 SIGTERM、超时后可升级 SIGKILL",
+      "url": "https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/util/virprocess.c#L374-L432"
+    },
+    "libvirt-pause": {
+      "label": "Libvirt 12.0：suspend 与 resume API",
+      "url": "https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L1621-L1722"
+    },
+    "libvirt-pause-control": {
+      "label": "Libvirt 12.0：CPU 停止、恢复及网络/锁管理",
+      "url": "https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L3398-L3490"
+    },
+    "qemu-stop-cont": {
+      "label": "QEMU 10.2：QMP stop / cont",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/monitor/qmp-cmds.c#L50-L114"
+    },
+    "qemu-vm-stop": {
+      "label": "QEMU 10.2：暂停 CPU、排空并刷新已提交的块请求",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/cpus.c#L294-L329"
+    },
+    "qemu-pause-cpus": {
+      "label": "QEMU 10.2：等待全部 vCPU 暂停",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/cpus.c#L642-L675"
+    }
+  },
+  "scenarios": [
+    {
+      "id": "cold-start",
+      "label": "冷启动",
+      "summary": "从 virsh start 到客户机应用就绪，观察宿主资源、QEMU 进程、KVM 对象和 Guest 引导依次建立。",
+      "assumptions": [
+        "x86-64 / KVM，Q35，Libvirt 12.0.0、QEMU 10.2.0、Linux 6.18；4 vCPU、8 GiB、virtio 系统盘与桥接 virtio 网卡",
+        "持久虚拟机 demo 已定义且关闭，没有 managed save；普通启动，Libvirt 先用 -S 暂停客户机，再发送 cont",
+        "磁盘与网络配置有效；RAM 按需后备；示例客户机成功引导，应用就绪由独立健康检查确认"
+      ],
+      "nodes": [
+        {
+          "id": "manager",
+          "label": "Libvirt QEMU 驱动",
+          "role": "宿主管理进程",
+          "initial": "持久定义已保存"
+        },
+        {
+          "id": "qemu",
+          "label": "QEMU 主线程 / 设备模型",
+          "role": "宿主用户态",
+          "initial": "尚未创建进程"
+        },
+        {
+          "id": "vcpu",
+          "label": "QEMU vCPU 线程",
+          "role": "宿主用户态 / KVM_RUN",
+          "initial": "尚未创建线程"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM VM / vCPU 对象",
+          "role": "宿主内核",
+          "initial": "尚未创建 VM 对象"
+        },
+        {
+          "id": "firmware",
+          "label": "固件 / 引导程序",
+          "role": "Guest 引导阶段",
+          "initial": "尚未执行"
+        },
+        {
+          "id": "guest",
+          "label": "客户机内核 / 驱动",
+          "role": "Guest 内核态",
+          "initial": "尚未引导"
+        },
+        {
+          "id": "app",
+          "label": "客户机应用",
+          "role": "Guest 用户态",
+          "initial": "尚未启动"
+        },
+        {
+          "id": "resources",
+          "label": "RAM / 磁盘 / TAP",
+          "role": "宿主资源",
+          "initial": "系统盘存在；运行资源未创建"
+        }
+      ],
+      "structures": [
+        {
+          "id": "management",
+          "title": "管理与进程状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "domainState",
+              "label": "Libvirt 状态",
+              "initial": "SHUTOFF，持久定义存在"
+            },
+            {
+              "key": "processState",
+              "label": "QEMU 进程",
+              "initial": "无 QEMU 进程"
+            },
+            {
+              "key": "apiResult",
+              "label": "管理 API",
+              "initial": "尚未调用 start"
+            },
+            {
+              "key": "eventState",
+              "label": "生命周期事件",
+              "initial": "无新事件"
+            }
+          ]
+        },
+        {
+          "id": "execution",
+          "title": "客户机执行状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "vcpuState",
+              "label": "vCPU",
+              "initial": "未创建"
+            },
+            {
+              "key": "guestState",
+              "label": "Guest 系统",
+              "initial": "尚未引导"
+            },
+            {
+              "key": "applicationState",
+              "label": "应用就绪",
+              "initial": "未启动"
+            }
+          ]
+        },
+        {
+          "id": "resources",
+          "title": "资源与持久状态",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "kvmObjects",
+              "label": "KVM VM / vCPU",
+              "initial": "无运行实例"
+            },
+            {
+              "key": "ramState",
+              "label": "RAM",
+              "initial": "配置 8 GiB；未建立本次映射"
+            },
+            {
+              "key": "deviceState",
+              "label": "磁盘 / 网卡",
+              "initial": "系统盘存在；运行设备未创建"
+            },
+            {
+              "key": "hostHandles",
+              "label": "FD 与隔离资源",
+              "initial": "未持有本次运行 FD"
+            },
+            {
+              "key": "persistentState",
+              "label": "持久定义 / 系统盘",
+              "initial": "XML 与系统盘已保存"
+            },
+            {
+              "key": "dataState",
+              "label": "数据持久化",
+              "initial": "保留上次关闭后的系统盘内容"
+            }
+          ]
+        }
+      ],
+      "links": [
+        {
+          "id": "prepare",
+          "from": "manager",
+          "to": "resources",
+          "label": "准备宿主资源",
+          "kind": "control"
+        },
+        {
+          "id": "launch",
+          "from": "manager",
+          "to": "qemu",
+          "label": "fork / exec",
+          "kind": "control"
+        },
+        {
+          "id": "create-vm",
+          "from": "qemu",
+          "to": "kvm",
+          "label": "KVM_CREATE_VM",
+          "kind": "control"
+        },
+        {
+          "id": "create-vcpu",
+          "from": "vcpu",
+          "to": "kvm",
+          "label": "KVM_CREATE_VCPU",
+          "kind": "control"
+        },
+        {
+          "id": "map-ram",
+          "from": "resources",
+          "to": "kvm",
+          "label": "注册 KVM 内存槽",
+          "kind": "data"
+        },
+        {
+          "id": "devices",
+          "from": "qemu",
+          "to": "resources",
+          "label": "连接块后端与 TAP",
+          "kind": "data"
+        },
+        {
+          "id": "qmp",
+          "from": "manager",
+          "to": "qemu",
+          "label": "QMP 协商 / cont",
+          "kind": "control"
+        },
+        {
+          "id": "resume",
+          "from": "qemu",
+          "to": "vcpu",
+          "label": "放行 vCPU",
+          "kind": "control"
+        },
+        {
+          "id": "run",
+          "from": "vcpu",
+          "to": "kvm",
+          "label": "KVM_RUN",
+          "kind": "control"
+        },
+        {
+          "id": "firmware",
+          "from": "kvm",
+          "to": "firmware",
+          "label": "执行固件",
+          "kind": "control"
+        },
+        {
+          "id": "boot",
+          "from": "firmware",
+          "to": "guest",
+          "label": "装载并进入客户机内核",
+          "kind": "control"
+        },
+        {
+          "id": "drivers",
+          "from": "guest",
+          "to": "qemu",
+          "label": "枚举设备与协商 virtio",
+          "kind": "control"
+        },
+        {
+          "id": "services",
+          "from": "guest",
+          "to": "app",
+          "label": "启动用户态服务",
+          "kind": "control"
+        }
+      ],
+      "steps": [
+        {
+          "id": "initial",
+          "title": "启动前",
+          "actor": "持久虚拟机 demo",
+          "description": "XML 与系统盘已存在，本次 QEMU 进程和运行资源尚未创建。",
+          "detail": "这里展示关闭状态下的持久虚拟机；重新启动会创建新的运行实例。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "libvirt-start"
+          ],
+          "focus": true
+        },
+        {
+          "id": "start-job",
+          "title": "建立启动作业",
+          "actor": "Libvirt QEMU 驱动",
+          "description": "收到 start 请求后，检查权限与配置，建立启动作业并生成本次运行定义。",
+          "detail": "qemuProcessInit 可先把管理状态设为 PAUSED / STARTING_UP。这个状态出现时，QEMU 进程还未必存在。",
+          "active": [
+            "manager"
+          ],
+          "links": [],
+          "changes": {
+            "domainState": "PAUSED / STARTING_UP",
+            "apiResult": "start 调用处理中"
+          },
+          "nodeStates": {
+            "manager": "检查配置并管理启动作业"
+          },
+          "sourceIds": [
+            "libvirt-start",
+            "libvirt-prepare"
+          ],
+          "focus": true
+        },
+        {
+          "id": "prepare-host",
+          "title": "准备宿主资源",
+          "actor": "Libvirt QEMU 驱动",
+          "description": "检查系统盘及访问权限，准备网络、运行目录、安全标签和进程隔离条件。",
+          "detail": "桥接网卡的 TAP 连接在命令构造阶段完成，所需 FD 随进程启动传给 QEMU；块后端还要由 QEMU 建立。",
+          "active": [
+            "manager",
+            "resources"
+          ],
+          "links": [
+            "prepare"
+          ],
+          "changes": {
+            "hostHandles": "准备 TAP FD、运行路径与隔离配置",
+            "deviceState": "存储访问已检查；网络连接已准备"
+          },
+          "nodeStates": {
+            "manager": "生成 QEMU 参数与继承 FD",
+            "resources": "磁盘可访问；TAP 接入宿主桥"
+          },
+          "sourceIds": [
+            "libvirt-prepare",
+            "libvirt-launch"
+          ],
+          "focus": true
+        },
+        {
+          "id": "launch-qemu",
+          "title": "启动 QEMU 进程",
+          "actor": "Libvirt → QEMU",
+          "description": "子进程完成 exec 前握手，父进程设置隔离后放行，随后执行 QEMU。",
+          "detail": "QEMU 参数中的 -S 保持客户机 CPU 暂停。此时宿主进程开始初始化，客户机内核尚未执行。",
+          "active": [
+            "manager",
+            "qemu"
+          ],
+          "links": [
+            "launch"
+          ],
+          "changes": {
+            "processState": "QEMU 进程已创建，正在初始化",
+            "hostHandles": "继承的 TAP FD 与隔离配置生效"
+          },
+          "nodeStates": {
+            "manager": "等待 QMP 可用",
+            "qemu": "解析参数并创建机器"
+          },
+          "sourceIds": [
+            "libvirt-launch"
+          ],
+          "focus": true
+        },
+        {
+          "id": "create-vm",
+          "title": "创建 KVM 虚拟机",
+          "actor": "QEMU → KVM",
+          "description": "QEMU 打开 /dev/kvm，通过 KVM_CREATE_VM 取得 VM FD。",
+          "detail": "VM FD 关联本次内核虚拟机对象；客户机 RAM、vCPU 与设备状态还需要分别建立。",
+          "active": [
+            "qemu",
+            "kvm"
+          ],
+          "links": [
+            "create-vm"
+          ],
+          "changes": {
+            "kvmObjects": "VM 对象与 VM FD 已建立",
+            "hostHandles": "持有 /dev/kvm、VM 与 TAP FD"
+          },
+          "nodeStates": {
+            "kvm": "VM 对象存在，等待 vCPU 与内存配置"
+          },
+          "sourceIds": [
+            "qemu-kvm"
+          ],
+          "focus": true
+        },
+        {
+          "id": "create-vcpus",
+          "title": "创建 vCPU 对象与线程",
+          "actor": "QEMU vCPU 线程 → KVM",
+          "description": "Q35 初始化 CPU 对象；执行线程为各 vCPU 创建 FD，并映射共享 kvm_run。",
+          "detail": "KVM_CREATE_VCPU 建立可运行的内核对象。-S 仍然生效，vCPU 线程不会因此开始执行客户机代码。",
+          "active": [
+            "qemu",
+            "vcpu",
+            "kvm"
+          ],
+          "links": [
+            "create-vcpu"
+          ],
+          "changes": {
+            "vcpuState": "4 个 vCPU 已创建，保持暂停",
+            "kvmObjects": "VM 与 4 个 vCPU 对象存在",
+            "hostHandles": "VM / vCPU FD 与 kvm_run 映射已建立"
+          },
+          "nodeStates": {
+            "vcpu": "执行线程存在，等待放行",
+            "kvm": "vCPU 对象及共享运行区已建立"
+          },
+          "sourceIds": [
+            "qemu-board",
+            "qemu-vcpu"
+          ],
+          "focus": true
+        },
+        {
+          "id": "map-ram",
+          "title": "建立 RAM 与内存槽",
+          "actor": "QEMU 内存系统 → KVM",
+          "description": "QEMU 建立 8 GiB RAM 后备映射和客户机物理地址布局，再向 KVM 注册可访问的内存槽。",
+          "detail": "内存槽关联 GPA 范围与 QEMU 用户态地址。按需后备模式下，建立映射不代表 8 GiB 宿主页已经全部驻留。",
+          "active": [
+            "qemu",
+            "resources",
+            "kvm"
+          ],
+          "links": [
+            "map-ram"
+          ],
+          "changes": {
+            "ramState": "8 GiB 地址布局、后备映射与 KVM 内存槽已建立"
+          },
+          "nodeStates": {
+            "resources": "RAM 后备映射可用",
+            "kvm": "客户机 RAM 范围已注册"
+          },
+          "sourceIds": [
+            "qemu-board",
+            "qemu-ram"
+          ],
+          "focus": true
+        },
+        {
+          "id": "realize-devices",
+          "title": "建立磁盘与网卡",
+          "actor": "QEMU 机器与设备模型",
+          "description": "QEMU 完成芯片组及命令行设备创建，把 virtio 磁盘接到块后端，把网卡接到 TAP 后端。",
+          "detail": "设备模型和后端已经存在；Guest 自己的 virtio 驱动、队列与网络地址仍需等客户机引导后初始化。",
+          "active": [
+            "qemu",
+            "resources"
+          ],
+          "links": [
+            "devices"
+          ],
+          "changes": {
+            "deviceState": "virtio 设备与后端已创建；Guest 队列尚未启用",
+            "processState": "QEMU 建机完成，客户机 CPU 暂停"
+          },
+          "nodeStates": {
+            "qemu": "CPU、RAM、磁盘与网卡已建立",
+            "resources": "磁盘和 TAP 后端已连接"
+          },
+          "sourceIds": [
+            "qemu-board",
+            "qemu-devices"
+          ],
+          "focus": true
+        },
+        {
+          "id": "configure-qmp",
+          "title": "完成运行前配置",
+          "actor": "Libvirt ↔ QEMU",
+          "description": "Libvirt 连接 QMP 并完成能力协商，查询实际线程与设备，再设置亲和性、链路和运行参数。",
+          "detail": "进程与虚拟硬件已可管理。显式 start --paused 会在完成配置后保留暂停状态，等待另一次 resume。",
+          "active": [
+            "manager",
+            "qemu"
+          ],
+          "links": [
+            "qmp"
+          ],
+          "changes": {
+            "processState": "QEMU 进程存活，QMP 可用",
+            "hostHandles": "KVM、磁盘、TAP FD 和隔离资源在用"
+          },
+          "nodeStates": {
+            "manager": "运行前配置完成",
+            "qemu": "QMP 可用，等待 cont"
+          },
+          "sourceIds": [
+            "libvirt-launch",
+            "libvirt-cont"
+          ],
+          "focus": true
+        },
+        {
+          "id": "start-cpus",
+          "title": "允许客户机执行",
+          "actor": "Libvirt → QEMU → KVM",
+          "description": "普通启动发送 cont，QEMU 放行 vCPU；RESUME 事件使 Libvirt 更新运行状态。",
+          "detail": "start API 等待宿主侧启动操作完成，不等待客户机服务。API 响应、事件处理和随后客户机引导可以交错进行；辅助 CPU 仍按客户机启动协议被唤醒。",
+          "active": [
+            "manager",
+            "qemu",
+            "vcpu",
+            "kvm"
+          ],
+          "links": [
+            "qmp",
+            "resume",
+            "run"
+          ],
+          "changes": {
+            "domainState": "RUNNING / BOOTED",
+            "vcpuState": "允许运行；辅助 CPU 等待启动协议",
+            "apiResult": "start 成功；不等待客户机应用",
+            "eventState": "RESUME、STARTED / BOOTED",
+            "guestState": "开始客户机引导"
+          },
+          "nodeStates": {
+            "manager": "实例进入运行状态",
+            "vcpu": "通过 KVM_RUN 执行 Guest",
+            "kvm": "装载客户机执行上下文"
+          },
+          "sourceIds": [
+            "libvirt-cont",
+            "libvirt-state"
+          ],
+          "focus": true
+        },
+        {
+          "id": "boot-firmware",
+          "title": "执行固件与引导程序",
+          "actor": "客户机固件",
+          "description": "引导 CPU 从复位状态执行固件，枚举虚拟硬件，并按启动顺序读取系统盘。",
+          "detail": "固件和引导程序在客户机上下文中运行。磁盘后端已连接后，启动项、固件驱动与引导文件仍会影响能否进入内核。",
+          "active": [
+            "vcpu",
+            "kvm",
+            "firmware"
+          ],
+          "links": [
+            "run",
+            "firmware"
+          ],
+          "changes": {
+            "guestState": "固件与引导程序执行中"
+          },
+          "nodeStates": {
+            "firmware": "按启动顺序装载内核"
+          },
+          "sourceIds": [
+            "qemu-board",
+            "qemu-boot"
+          ],
+          "focus": true
+        },
+        {
+          "id": "boot-kernel",
+          "title": "进入客户机内核",
+          "actor": "固件 / 引导程序 → Guest Linux",
+          "description": "引导程序交出控制权，客户机内核初始化自己的内存管理、中断、调度与设备总线。",
+          "detail": "Guest Linux 在自己的地址空间和权限体系内运行。宿主 KVM 提供执行条件，Guest 内核负责自己的驱动与用户态。",
+          "active": [
+            "firmware",
+            "guest"
+          ],
+          "links": [
+            "boot"
+          ],
+          "changes": {
+            "guestState": "客户机内核初始化中",
+            "vcpuState": "由 Guest SMP 启动与调度管理"
+          },
+          "nodeStates": {
+            "firmware": "已交出控制权",
+            "guest": "初始化内核与设备总线"
+          },
+          "sourceIds": [
+            "guest-init"
+          ],
+          "focus": true
+        },
+        {
+          "id": "probe-virtio",
+          "title": "初始化客户机设备驱动",
+          "actor": "Guest Linux → virtio 设备",
+          "description": "客户机 virtio 驱动协商特性、建立队列并设置 DRIVER_OK，接管系统盘与网卡。",
+          "detail": "驱动可内建在内核或由 initramfs 加载。系统盘可访问后才能继续根文件系统启动；网卡就绪后还需要配置网络。",
+          "active": [
+            "guest",
+            "qemu",
+            "resources"
+          ],
+          "links": [
+            "drivers"
+          ],
+          "changes": {
+            "guestState": "驱动与根文件系统就绪，启动用户态",
+            "deviceState": "Guest virtio 队列已启用",
+            "applicationState": "用户态服务启动中"
+          },
+          "nodeStates": {
+            "guest": "磁盘与网卡驱动可用",
+            "qemu": "处理 Guest 设备请求"
+          },
+          "sourceIds": [
+            "guest-virtio",
+            "guest-init"
+          ],
+          "focus": true
+        },
+        {
+          "id": "application-ready",
+          "title": "确认应用就绪",
+          "actor": "客户机用户态服务",
+          "description": "客户机启动所需服务，网络配置完成，应用健康检查成功。",
+          "detail": "这是业务可用的观察点。Libvirt 的 RUNNING 状态在前面已经成立，应用失败或启动缓慢不会自动改变这个管理状态。",
+          "active": [
+            "guest",
+            "app"
+          ],
+          "links": [
+            "services"
+          ],
+          "changes": {
+            "guestState": "客户机系统运行中",
+            "applicationState": "示例健康检查成功",
+            "dataState": "应用开始运行；持久化遵循应用与存储协议"
+          },
+          "nodeStates": {
+            "guest": "客户机系统就绪",
+            "app": "应用可提供服务"
+          },
+          "sourceIds": [
+            "guest-init",
+            "libvirt-cont"
+          ],
+          "focus": true
+        }
+      ]
+    },
+    {
+      "id": "acpi-shutdown",
+      "label": "正常关机 · ACPI",
+      "summary": "发出电源按钮请求后，等待客户机完成关机，再观察 QEMU 进程与宿主资源的回收。",
+      "assumptions": [
+        "x86-64 / KVM，Q35，Libvirt 12.0.0、QEMU 10.2.0、Linux 6.18；4 vCPU、8 GiB、virtio 系统盘与桥接 virtio 网卡",
+        "virsh shutdown demo --mode acpi；持久虚拟机，on_poweroff=destroy，无需要保留 QEMU 的备份作业",
+        "本例 Guest 的电源按钮策略执行关机，服务正常退出；QEMU 响应终止请求。实际 Guest 可忽略请求或停在关机阶段"
+      ],
+      "nodes": [
+        {
+          "id": "manager",
+          "label": "Libvirt QEMU 驱动",
+          "role": "宿主管理进程",
+          "initial": "RUNNING，管理连接正常"
+        },
+        {
+          "id": "qemu",
+          "label": "QEMU 主线程 / 设备模型",
+          "role": "宿主用户态",
+          "initial": "进程存活，QMP 可用"
+        },
+        {
+          "id": "vcpu",
+          "label": "QEMU vCPU 线程",
+          "role": "宿主用户态 / KVM_RUN",
+          "initial": "允许运行 Guest"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM VM / vCPU 对象",
+          "role": "宿主内核",
+          "initial": "VM / vCPU 对象存在"
+        },
+        {
+          "id": "guest",
+          "label": "客户机内核 / 驱动",
+          "role": "Guest 内核态",
+          "initial": "内核和驱动运行中"
+        },
+        {
+          "id": "app",
+          "label": "客户机应用",
+          "role": "Guest 用户态",
+          "initial": "服务运行中"
+        },
+        {
+          "id": "resources",
+          "label": "RAM / 磁盘 / TAP",
+          "role": "宿主资源",
+          "initial": "RAM、磁盘和 TAP 已连接"
+        }
+      ],
+      "structures": [
+        {
+          "id": "management",
+          "title": "管理与进程状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "domainState",
+              "label": "Libvirt 状态",
+              "initial": "RUNNING"
+            },
+            {
+              "key": "processState",
+              "label": "QEMU 进程",
+              "initial": "QEMU 进程存活，QMP 可用"
+            },
+            {
+              "key": "apiResult",
+              "label": "管理 API",
+              "initial": "尚未发起本次操作"
+            },
+            {
+              "key": "eventState",
+              "label": "生命周期事件",
+              "initial": "无新事件"
+            }
+          ]
+        },
+        {
+          "id": "execution",
+          "title": "客户机执行状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "vcpuState",
+              "label": "vCPU",
+              "initial": "允许运行"
+            },
+            {
+              "key": "guestState",
+              "label": "Guest 系统",
+              "initial": "内核与驱动运行中"
+            },
+            {
+              "key": "applicationState",
+              "label": "应用就绪",
+              "initial": "服务运行中"
+            }
+          ]
+        },
+        {
+          "id": "resources",
+          "title": "资源与持久状态",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "kvmObjects",
+              "label": "KVM VM / vCPU",
+              "initial": "VM 与 4 个 vCPU 对象存在"
+            },
+            {
+              "key": "ramState",
+              "label": "RAM",
+              "initial": "8 GiB 后备映射保留"
+            },
+            {
+              "key": "deviceState",
+              "label": "磁盘 / 网卡",
+              "initial": "virtio 磁盘与网卡已启用"
+            },
+            {
+              "key": "hostHandles",
+              "label": "FD 与隔离资源",
+              "initial": "KVM、磁盘、TAP FD 和隔离资源在用"
+            },
+            {
+              "key": "persistentState",
+              "label": "持久定义 / 系统盘",
+              "initial": "XML 与系统盘保留"
+            },
+            {
+              "key": "dataState",
+              "label": "数据持久化",
+              "initial": "应用与 Guest 仍可能有未持久化数据"
+            }
+          ]
+        }
+      ],
+      "links": [
+        {
+          "id": "request",
+          "from": "manager",
+          "to": "qemu",
+          "label": "QMP system_powerdown",
+          "kind": "control"
+        },
+        {
+          "id": "acpi",
+          "from": "qemu",
+          "to": "guest",
+          "label": "ACPI 电源按钮 / SCI",
+          "kind": "notification"
+        },
+        {
+          "id": "stop-services",
+          "from": "guest",
+          "to": "app",
+          "label": "停止服务",
+          "kind": "control"
+        },
+        {
+          "id": "guest-poweroff",
+          "from": "guest",
+          "to": "qemu",
+          "label": "ACPI S5 关机请求",
+          "kind": "control"
+        },
+        {
+          "id": "event",
+          "from": "qemu",
+          "to": "manager",
+          "label": "QMP SHUTDOWN",
+          "kind": "notification"
+        },
+        {
+          "id": "terminate",
+          "from": "manager",
+          "to": "qemu",
+          "label": "终止 VMM 进程",
+          "kind": "control"
+        },
+        {
+          "id": "stop-cpus",
+          "from": "qemu",
+          "to": "vcpu",
+          "label": "停止 vCPU",
+          "kind": "control"
+        },
+        {
+          "id": "close-backends",
+          "from": "qemu",
+          "to": "resources",
+          "label": "排空并关闭后端",
+          "kind": "data"
+        },
+        {
+          "id": "release-kvm",
+          "from": "qemu",
+          "to": "kvm",
+          "label": "关闭 FD / 解除映射",
+          "kind": "control"
+        },
+        {
+          "id": "cleanup",
+          "from": "manager",
+          "to": "resources",
+          "label": "清理运行资源",
+          "kind": "control"
+        }
+      ],
+      "steps": [
+        {
+          "id": "initial",
+          "title": "运行中",
+          "actor": "虚拟机 demo",
+          "description": "客户机内核与应用正在运行，QEMU、KVM 对象和宿主资源均存在。",
+          "detail": "正常关机需要 Guest 配合；管理侧请求成功和客户机已经关闭是两个观察点。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "shutdown-api"
+          ],
+          "focus": true
+        },
+        {
+          "id": "request-powerdown",
+          "title": "提交关机请求",
+          "actor": "Libvirt → QEMU",
+          "description": "指定 ACPI 模式后，Libvirt 通过 QMP 发送 system_powerdown。",
+          "detail": "命令成功表示电源按钮请求已被接受。shutdown API 随后可返回，客户机仍需按自己的策略响应。",
+          "active": [
+            "manager",
+            "qemu"
+          ],
+          "links": [
+            "request"
+          ],
+          "changes": {
+            "apiResult": "shutdown 请求成功；未等待客户机停机"
+          },
+          "nodeStates": {
+            "manager": "关机请求已发出",
+            "qemu": "待处理电源按钮请求"
+          },
+          "sourceIds": [
+            "libvirt-shutdown",
+            "qemu-powerdown",
+            "shutdown-api"
+          ],
+          "focus": true
+        },
+        {
+          "id": "deliver-button",
+          "title": "递送电源按钮事件",
+          "actor": "QEMU ICH9 ACPI → Guest",
+          "description": "QEMU 设置 ACPI 电源按钮状态，并通过 SCI 通知客户机。",
+          "detail": "客户机电源管理程序决定如何响应。若策略忽略按钮、系统失去响应或服务停止失败，虚拟机可能继续运行。",
+          "active": [
+            "qemu",
+            "guest"
+          ],
+          "links": [
+            "acpi"
+          ],
+          "changes": {
+            "eventState": "POWERDOWN：电源按钮通知",
+            "guestState": "客户机收到 ACPI 电源按钮事件"
+          },
+          "nodeStates": {
+            "qemu": "电源按钮事件已递送",
+            "guest": "按电源策略进入关机"
+          },
+          "sourceIds": [
+            "qemu-acpi-button",
+            "shutdown-api"
+          ],
+          "focus": true
+        },
+        {
+          "id": "guest-shutdown",
+          "title": "客户机停止服务",
+          "actor": "Guest 操作系统与应用",
+          "description": "本例客户机接受请求，停止服务并执行文件系统与设备的关机收尾。",
+          "detail": "应用事务是否完成由应用停机逻辑决定；Guest 同步与设备刷新仍依赖存储后端正确兑现持久化语义。",
+          "active": [
+            "guest",
+            "app",
+            "resources"
+          ],
+          "links": [
+            "stop-services"
+          ],
+          "changes": {
+            "guestState": "客户机执行关机流程",
+            "applicationState": "服务停止并完成本例收尾",
+            "dataState": "按本例应用与 Guest 关机流程同步数据"
+          },
+          "nodeStates": {
+            "guest": "停止服务并同步文件系统",
+            "app": "应用停止"
+          },
+          "sourceIds": [
+            "shutdown-api",
+            "guest-virtio"
+          ],
+          "focus": true
+        },
+        {
+          "id": "guest-poweroff",
+          "title": "客户机请求断电",
+          "actor": "Guest → QEMU ACPI",
+          "description": "客户机向 ACPI 控制寄存器写入 S5 关机值，QEMU 记录 Guest shutdown 请求。",
+          "detail": "至此才出现客户机实际关机的信号。此前电源按钮请求被接受，并不意味着已经到达这里。",
+          "active": [
+            "guest",
+            "qemu"
+          ],
+          "links": [
+            "guest-poweroff"
+          ],
+          "changes": {
+            "guestState": "客户机已发出 S5 关机请求"
+          },
+          "nodeStates": {
+            "guest": "完成关机并请求断电",
+            "qemu": "收到 Guest shutdown 请求"
+          },
+          "sourceIds": [
+            "qemu-acpi-off"
+          ],
+          "focus": true
+        },
+        {
+          "id": "shutdown-event",
+          "title": "确认 Guest 关机",
+          "actor": "QEMU → Libvirt",
+          "description": "QEMU 发送 SHUTDOWN；-no-shutdown 路径保留进程并停止客户机执行。Libvirt 记录 SHUTDOWN 状态。",
+          "detail": "Libvirt 用生命周期事件确定后续动作。本例 on_poweroff=destroy，随后终止运行实例；SHUTDOWN 仍不同于最终 SHUTOFF。",
+          "active": [
+            "qemu",
+            "vcpu",
+            "manager"
+          ],
+          "links": [
+            "event",
+            "stop-cpus"
+          ],
+          "changes": {
+            "domainState": "SHUTDOWN",
+            "vcpuState": "客户机执行已停止",
+            "processState": "QEMU 进程仍存在，Guest 已关闭",
+            "eventState": "SHUTDOWN：Guest 关机",
+            "guestState": "客户机已关闭"
+          },
+          "nodeStates": {
+            "qemu": "Guest 已关闭，保留管理进程",
+            "vcpu": "停止客户机执行",
+            "guest": "客户机已关闭",
+            "manager": "按 on_poweroff 执行停止策略"
+          },
+          "sourceIds": [
+            "libvirt-no-shutdown",
+            "qemu-exit",
+            "libvirt-shutdown-event"
+          ],
+          "focus": true
+        },
+        {
+          "id": "exit-qemu",
+          "title": "终止 QEMU 并清理后端",
+          "actor": "Libvirt → QEMU",
+          "description": "Libvirt 请求终止 QEMU。QEMU 的正常退出路径停止执行，排空块层操作并关闭后端。",
+          "detail": "Guest 已经完成关机；这一阶段处理的是宿主 VMM 与后端资源。信号触发的 QEMU 清理与 Guest 应用停机属于不同层次。",
+          "active": [
+            "manager",
+            "qemu",
+            "vcpu",
+            "resources"
+          ],
+          "links": [
+            "terminate",
+            "stop-cpus",
+            "close-backends"
+          ],
+          "changes": {
+            "processState": "QEMU 正常退出处理中",
+            "deviceState": "QEMU 排空并关闭磁盘 / 网络后端"
+          },
+          "nodeStates": {
+            "qemu": "结束主循环并执行清理",
+            "resources": "QEMU 后端正在关闭"
+          },
+          "sourceIds": [
+            "libvirt-shutdown-event",
+            "qemu-exit",
+            "qemu-cleanup"
+          ],
+          "focus": true
+        },
+        {
+          "id": "release-instance",
+          "title": "释放运行实例",
+          "actor": "宿主内核",
+          "description": "QEMU 退出后，所属 FD 与映射解除；KVM 对象在最后的相关引用释放后销毁。",
+          "detail": "VM、vCPU FD 和相关映射共同影响引用生命周期。宿主 RAM 后备被释放不代表删除系统盘；Libvirt 还需清理自己的运行资源。",
+          "active": [
+            "qemu",
+            "kvm",
+            "resources"
+          ],
+          "links": [
+            "release-kvm"
+          ],
+          "changes": {
+            "processState": "QEMU 进程已退出",
+            "vcpuState": "执行线程已结束",
+            "kvmObjects": "相关引用已释放，VM / vCPU 对象销毁",
+            "ramState": "本次 RAM 后备映射释放",
+            "hostHandles": "QEMU FD 已关闭；Libvirt 清理待完成"
+          },
+          "nodeStates": {
+            "qemu": "进程已退出",
+            "vcpu": "线程已结束",
+            "kvm": "本次 VM 对象已销毁",
+            "resources": "QEMU 资源释放"
+          },
+          "sourceIds": [
+            "kvm-release",
+            "qemu-cleanup"
+          ],
+          "focus": true
+        },
+        {
+          "id": "shutoff",
+          "title": "完成宿主清理",
+          "actor": "Libvirt QEMU 驱动",
+          "description": "Libvirt 关闭管理连接，清理 TAP、隔离与运行文件，并把实例标记为 SHUTOFF。",
+          "detail": "demo 是持久虚拟机，XML 和系统盘保留，可以再次冷启动。停止事件和实际状态查询用来确认关机完成。",
+          "active": [
+            "manager",
+            "resources"
+          ],
+          "links": [
+            "cleanup"
+          ],
+          "changes": {
+            "domainState": "SHUTOFF / SHUTDOWN",
+            "apiResult": "此前 shutdown 已返回；现在确认关机完成",
+            "eventState": "STOPPED / SHUTDOWN",
+            "deviceState": "本次虚拟设备已销毁",
+            "hostHandles": "运行 FD、TAP 与隔离资源已清理"
+          },
+          "nodeStates": {
+            "manager": "SHUTOFF，持久定义保留",
+            "resources": "运行资源清理完成；系统盘保留"
+          },
+          "sourceIds": [
+            "libvirt-cleanup",
+            "shutdown-api"
+          ],
+          "focus": true
+        }
+      ]
+    },
+    {
+      "id": "force-stop",
+      "label": "强制停止 · destroy",
+      "summary": "直接终止运行实例，区分 QEMU 的退出清理、Guest 的正常关机与尚未持久化的应用数据。",
+      "assumptions": [
+        "x86-64 / KVM，Q35，Libvirt 12.0.0、QEMU 10.2.0、Linux 6.18；4 vCPU、8 GiB、virtio 系统盘与桥接 virtio 网卡",
+        "virsh destroy demo；持久虚拟机。示例 QEMU 能响应 SIGTERM 并走正常进程清理路径",
+        "Guest 不执行正常关机流程；不包含宿主崩溃、不可中断内核等待或终止失败场景"
+      ],
+      "nodes": [
+        {
+          "id": "manager",
+          "label": "Libvirt QEMU 驱动",
+          "role": "宿主管理进程",
+          "initial": "RUNNING，管理连接正常"
+        },
+        {
+          "id": "qemu",
+          "label": "QEMU 主线程 / 设备模型",
+          "role": "宿主用户态",
+          "initial": "进程存活，QMP 可用"
+        },
+        {
+          "id": "vcpu",
+          "label": "QEMU vCPU 线程",
+          "role": "宿主用户态 / KVM_RUN",
+          "initial": "允许运行 Guest"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM VM / vCPU 对象",
+          "role": "宿主内核",
+          "initial": "VM / vCPU 对象存在"
+        },
+        {
+          "id": "guest",
+          "label": "客户机内核 / 驱动",
+          "role": "Guest 内核态",
+          "initial": "内核和驱动运行中"
+        },
+        {
+          "id": "app",
+          "label": "客户机应用",
+          "role": "Guest 用户态",
+          "initial": "服务运行中"
+        },
+        {
+          "id": "resources",
+          "label": "RAM / 磁盘 / TAP",
+          "role": "宿主资源",
+          "initial": "RAM、磁盘和 TAP 已连接"
+        }
+      ],
+      "structures": [
+        {
+          "id": "management",
+          "title": "管理与进程状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "domainState",
+              "label": "Libvirt 状态",
+              "initial": "RUNNING"
+            },
+            {
+              "key": "processState",
+              "label": "QEMU 进程",
+              "initial": "QEMU 进程存活，QMP 可用"
+            },
+            {
+              "key": "apiResult",
+              "label": "管理 API",
+              "initial": "尚未发起本次操作"
+            },
+            {
+              "key": "eventState",
+              "label": "生命周期事件",
+              "initial": "无新事件"
+            }
+          ]
+        },
+        {
+          "id": "execution",
+          "title": "客户机执行状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "vcpuState",
+              "label": "vCPU",
+              "initial": "允许运行"
+            },
+            {
+              "key": "guestState",
+              "label": "Guest 系统",
+              "initial": "内核与驱动运行中"
+            },
+            {
+              "key": "applicationState",
+              "label": "应用就绪",
+              "initial": "服务运行中"
+            }
+          ]
+        },
+        {
+          "id": "resources",
+          "title": "资源与持久状态",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "kvmObjects",
+              "label": "KVM VM / vCPU",
+              "initial": "VM 与 4 个 vCPU 对象存在"
+            },
+            {
+              "key": "ramState",
+              "label": "RAM",
+              "initial": "8 GiB 后备映射保留"
+            },
+            {
+              "key": "deviceState",
+              "label": "磁盘 / 网卡",
+              "initial": "virtio 磁盘与网卡已启用"
+            },
+            {
+              "key": "hostHandles",
+              "label": "FD 与隔离资源",
+              "initial": "KVM、磁盘、TAP FD 和隔离资源在用"
+            },
+            {
+              "key": "persistentState",
+              "label": "持久定义 / 系统盘",
+              "initial": "XML 与系统盘保留"
+            },
+            {
+              "key": "dataState",
+              "label": "数据持久化",
+              "initial": "应用与 Guest 仍可能有未持久化数据"
+            }
+          ]
+        }
+      ],
+      "links": [
+        {
+          "id": "terminate",
+          "from": "manager",
+          "to": "qemu",
+          "label": "终止 VMM 进程",
+          "kind": "control"
+        },
+        {
+          "id": "stop-cpus",
+          "from": "qemu",
+          "to": "vcpu",
+          "label": "停止 vCPU",
+          "kind": "control"
+        },
+        {
+          "id": "close-backends",
+          "from": "qemu",
+          "to": "resources",
+          "label": "排空并关闭后端",
+          "kind": "data"
+        },
+        {
+          "id": "release-kvm",
+          "from": "qemu",
+          "to": "kvm",
+          "label": "关闭 FD / 解除映射",
+          "kind": "control"
+        },
+        {
+          "id": "cleanup",
+          "from": "manager",
+          "to": "resources",
+          "label": "清理运行资源",
+          "kind": "control"
+        }
+      ],
+      "steps": [
+        {
+          "id": "initial",
+          "title": "运行中",
+          "actor": "虚拟机 demo",
+          "description": "客户机系统和应用仍在运行，可能存在只保存在应用或 Guest 内存中的数据。",
+          "detail": "本场景停止整个运行实例，不发送客户机电源按钮请求。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "libvirt-destroy"
+          ],
+          "focus": true
+        },
+        {
+          "id": "destroy-job",
+          "title": "建立销毁作业",
+          "actor": "Libvirt QEMU 驱动",
+          "description": "destroy 路径检查活动实例并建立停止作业，协调正在处理的管理操作。",
+          "detail": "管理侧记录 beingDestroyed，避免 monitor EOF 与主动销毁路径重复清理或产生混淆事件。",
+          "active": [
+            "manager"
+          ],
+          "links": [],
+          "changes": {
+            "apiResult": "destroy 调用处理中"
+          },
+          "nodeStates": {
+            "manager": "协调停止作业"
+          },
+          "sourceIds": [
+            "libvirt-destroy",
+            "libvirt-kill"
+          ],
+          "focus": true
+        },
+        {
+          "id": "signal-vmm",
+          "title": "请求终止 VMM",
+          "actor": "Libvirt → QEMU",
+          "description": "Libvirt 默认先向 QEMU 发送 SIGTERM，并等待进程退出。",
+          "detail": "QEMU 不退出时，默认 destroy 可在等待后升级 SIGKILL；--graceful 禁止这种升级。这里的 graceful 指 VMM 终止方式，Guest 并未获得正常关机机会。",
+          "active": [
+            "manager",
+            "qemu"
+          ],
+          "links": [
+            "terminate"
+          ],
+          "changes": {
+            "processState": "收到 SIGTERM，开始终止",
+            "applicationState": "未执行 Guest 应用收尾",
+            "dataState": "Guest 内存中的未持久化数据面临丢失"
+          },
+          "nodeStates": {
+            "qemu": "处理宿主终止信号",
+            "manager": "等待 QEMU 退出"
+          },
+          "sourceIds": [
+            "libvirt-kill",
+            "libvirt-signals",
+            "qemu-exit"
+          ],
+          "focus": true
+        },
+        {
+          "id": "quiesce-vmm",
+          "title": "停止执行并清理后端",
+          "actor": "QEMU",
+          "description": "响应信号的 QEMU 结束主循环，停止 vCPU，排空并关闭已经交给块后端的请求。",
+          "detail": "QEMU 可以处理自己已经收到的 I/O，无法替客户机提交仍留在 Guest 页缓存或应用缓冲区中的数据。SIGKILL 路径也不会执行这些用户态清理。",
+          "active": [
+            "qemu",
+            "vcpu",
+            "guest",
+            "app",
+            "resources"
+          ],
+          "links": [
+            "stop-cpus",
+            "close-backends"
+          ],
+          "changes": {
+            "vcpuState": "客户机执行被停止",
+            "guestState": "客户机未执行正常关机",
+            "applicationState": "应用执行被停止，未完成有序收尾",
+            "deviceState": "QEMU 正在关闭后端",
+            "dataState": "只处理已提交到 QEMU 的 I/O；不保证应用持久化"
+          },
+          "nodeStates": {
+            "vcpu": "停止客户机执行",
+            "guest": "执行被终止",
+            "app": "应用未有序退出",
+            "qemu": "执行 VMM 清理"
+          },
+          "sourceIds": [
+            "qemu-exit",
+            "qemu-cleanup"
+          ],
+          "focus": true
+        },
+        {
+          "id": "release-instance",
+          "title": "释放进程与内核对象",
+          "actor": "宿主内核",
+          "description": "QEMU 退出，进程 FD 与 RAM 映射释放；最后的相关引用归还后，KVM 销毁本次 VM。",
+          "detail": "这里丢弃客户机 RAM 中的运行状态。系统盘保留已有写入，之后再次启动可能需要文件系统或应用恢复。",
+          "active": [
+            "qemu",
+            "kvm",
+            "resources"
+          ],
+          "links": [
+            "release-kvm"
+          ],
+          "changes": {
+            "processState": "QEMU 进程已退出",
+            "vcpuState": "执行线程已结束",
+            "kvmObjects": "相关引用释放，VM / vCPU 对象销毁",
+            "ramState": "客户机运行内存释放",
+            "hostHandles": "QEMU FD 已关闭；Libvirt 清理待完成",
+            "dataState": "Guest 未完成关机；应用持久化状态未知"
+          },
+          "nodeStates": {
+            "qemu": "进程已退出",
+            "vcpu": "线程已结束",
+            "kvm": "本次 VM 对象已销毁",
+            "resources": "运行内存释放，系统盘保留"
+          },
+          "sourceIds": [
+            "kvm-release"
+          ],
+          "focus": true
+        },
+        {
+          "id": "destroyed",
+          "title": "完成销毁操作",
+          "actor": "Libvirt QEMU 驱动",
+          "description": "Libvirt 完成宿主资源清理，记录 SHUTOFF / DESTROYED，并返回 destroy 成功。",
+          "detail": "destroy 终止运行实例，不删除这个持久虚拟机的 XML 或系统盘。是否可以直接恢复业务，需要另外检查客户机和应用的数据状态。",
+          "active": [
+            "manager",
+            "resources"
+          ],
+          "links": [
+            "cleanup"
+          ],
+          "changes": {
+            "domainState": "SHUTOFF / DESTROYED",
+            "apiResult": "destroy 成功",
+            "eventState": "STOPPED / DESTROYED",
+            "deviceState": "本次虚拟设备已销毁",
+            "hostHandles": "运行 FD、TAP 与隔离资源已清理"
+          },
+          "nodeStates": {
+            "manager": "SHUTOFF / DESTROYED",
+            "resources": "运行资源清理完成"
+          },
+          "sourceIds": [
+            "libvirt-destroy",
+            "libvirt-cleanup"
+          ],
+          "focus": true
+        }
+      ]
+    },
+    {
+      "id": "pause-resume",
+      "label": "暂停与恢复",
+      "summary": "停止和恢复客户机执行，同时观察 QEMU 进程、RAM 与 KVM 对象如何继续保留。",
+      "assumptions": [
+        "x86-64 / KVM，Q35，Libvirt 12.0.0、QEMU 10.2.0、Linux 6.18；4 vCPU、8 GiB、virtio 系统盘与桥接 virtio 网卡",
+        "virsh suspend demo，随后 virsh resume demo；普通运行实例，无迁移、转储或暂停失败",
+        "演示管理侧暂停，未调用 Guest S3/S4 睡眠、save 或 managedsave；保留的运行状态仍位于当前宿主"
+      ],
+      "nodes": [
+        {
+          "id": "manager",
+          "label": "Libvirt QEMU 驱动",
+          "role": "宿主管理进程",
+          "initial": "RUNNING，管理连接正常"
+        },
+        {
+          "id": "qemu",
+          "label": "QEMU 主线程 / 设备模型",
+          "role": "宿主用户态",
+          "initial": "进程存活，QMP 可用"
+        },
+        {
+          "id": "vcpu",
+          "label": "QEMU vCPU 线程",
+          "role": "宿主用户态 / KVM_RUN",
+          "initial": "允许运行 Guest"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM VM / vCPU 对象",
+          "role": "宿主内核",
+          "initial": "VM / vCPU 对象存在"
+        },
+        {
+          "id": "guest",
+          "label": "客户机内核 / 驱动",
+          "role": "Guest 内核态",
+          "initial": "内核和驱动运行中"
+        },
+        {
+          "id": "app",
+          "label": "客户机应用",
+          "role": "Guest 用户态",
+          "initial": "服务运行中"
+        },
+        {
+          "id": "resources",
+          "label": "RAM / 磁盘 / TAP",
+          "role": "宿主资源",
+          "initial": "RAM、磁盘和 TAP 已连接"
+        }
+      ],
+      "structures": [
+        {
+          "id": "management",
+          "title": "管理与进程状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "domainState",
+              "label": "Libvirt 状态",
+              "initial": "RUNNING"
+            },
+            {
+              "key": "processState",
+              "label": "QEMU 进程",
+              "initial": "QEMU 进程存活，QMP 可用"
+            },
+            {
+              "key": "apiResult",
+              "label": "管理 API",
+              "initial": "尚未发起本次操作"
+            },
+            {
+              "key": "eventState",
+              "label": "生命周期事件",
+              "initial": "无新事件"
+            }
+          ]
+        },
+        {
+          "id": "execution",
+          "title": "客户机执行状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "vcpuState",
+              "label": "vCPU",
+              "initial": "允许运行"
+            },
+            {
+              "key": "guestState",
+              "label": "Guest 系统",
+              "initial": "内核与驱动运行中"
+            },
+            {
+              "key": "applicationState",
+              "label": "应用就绪",
+              "initial": "服务运行中"
+            }
+          ]
+        },
+        {
+          "id": "resources",
+          "title": "资源与持久状态",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "kvmObjects",
+              "label": "KVM VM / vCPU",
+              "initial": "VM 与 4 个 vCPU 对象存在"
+            },
+            {
+              "key": "ramState",
+              "label": "RAM",
+              "initial": "8 GiB 后备映射保留"
+            },
+            {
+              "key": "deviceState",
+              "label": "磁盘 / 网卡",
+              "initial": "virtio 磁盘与网卡已启用"
+            },
+            {
+              "key": "hostHandles",
+              "label": "FD 与隔离资源",
+              "initial": "KVM、磁盘、TAP FD 和隔离资源在用"
+            },
+            {
+              "key": "persistentState",
+              "label": "持久定义 / 系统盘",
+              "initial": "XML 与系统盘保留"
+            },
+            {
+              "key": "dataState",
+              "label": "数据持久化",
+              "initial": "应用与 Guest 仍可能有未持久化数据"
+            }
+          ]
+        }
+      ],
+      "links": [
+        {
+          "id": "stop",
+          "from": "manager",
+          "to": "qemu",
+          "label": "QMP stop",
+          "kind": "control"
+        },
+        {
+          "id": "pause",
+          "from": "qemu",
+          "to": "vcpu",
+          "label": "暂停全部 vCPU",
+          "kind": "control"
+        },
+        {
+          "id": "backend",
+          "from": "qemu",
+          "to": "resources",
+          "label": "排空并刷新已提交的块请求",
+          "kind": "data"
+        },
+        {
+          "id": "stop-event",
+          "from": "qemu",
+          "to": "manager",
+          "label": "STOP",
+          "kind": "notification"
+        },
+        {
+          "id": "cont",
+          "from": "manager",
+          "to": "qemu",
+          "label": "QMP cont",
+          "kind": "control"
+        },
+        {
+          "id": "resume",
+          "from": "qemu",
+          "to": "vcpu",
+          "label": "恢复 vCPU",
+          "kind": "control"
+        },
+        {
+          "id": "run",
+          "from": "vcpu",
+          "to": "kvm",
+          "label": "KVM_RUN",
+          "kind": "control"
+        },
+        {
+          "id": "guest",
+          "from": "kvm",
+          "to": "guest",
+          "label": "继续 Guest 执行",
+          "kind": "control"
+        },
+        {
+          "id": "app",
+          "from": "guest",
+          "to": "app",
+          "label": "继续客户机任务",
+          "kind": "control"
+        },
+        {
+          "id": "resume-event",
+          "from": "qemu",
+          "to": "manager",
+          "label": "RESUME",
+          "kind": "notification"
+        }
+      ],
+      "steps": [
+        {
+          "id": "initial",
+          "title": "运行中",
+          "actor": "虚拟机 demo",
+          "description": "QEMU 进程与客户机应用正在运行，RAM 和 KVM 对象已经建立。",
+          "detail": "暂停操作会改变执行状态；本例继续使用同一进程、同一份客户机内存和同一组 KVM 对象。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "libvirt-pause"
+          ],
+          "focus": true
+        },
+        {
+          "id": "request-pause",
+          "title": "提交暂停请求",
+          "actor": "Libvirt → QEMU",
+          "description": "Libvirt 的 suspend 路径通过 monitor 发送 stop。",
+          "detail": "QMP stop 针对虚拟机执行状态，不会让 QEMU 管理进程整体停止；管理通道仍可处理后续命令。",
+          "active": [
+            "manager",
+            "qemu"
+          ],
+          "links": [
+            "stop"
+          ],
+          "changes": {
+            "apiResult": "suspend 调用处理中"
+          },
+          "nodeStates": {
+            "manager": "请求暂停客户机",
+            "qemu": "执行 QMP stop"
+          },
+          "sourceIds": [
+            "libvirt-pause",
+            "qemu-stop-cont"
+          ],
+          "focus": true
+        },
+        {
+          "id": "pause-cpus",
+          "title": "暂停 vCPU 并收束 I/O",
+          "actor": "QEMU",
+          "description": "QEMU 请求所有 vCPU 停止执行，等待它们到达暂停点，再排空并刷新已提交的块请求。",
+          "detail": "已停下的 vCPU 保留寄存器与内存状态。块层刷新覆盖已交给 QEMU 的请求，应用和 Guest 自己的缓存仍保存在客户机内存中。",
+          "active": [
+            "qemu",
+            "vcpu",
+            "resources"
+          ],
+          "links": [
+            "pause",
+            "backend"
+          ],
+          "changes": {
+            "vcpuState": "全部 vCPU 暂停",
+            "guestState": "客户机执行暂停，内核状态保留",
+            "applicationState": "应用执行暂停，内存状态保留",
+            "dataState": "已提交到 QEMU 的块请求收束；Guest 缓存仍在 RAM",
+            "eventState": "STOP 已发送；块层收束与管理事件处理可能交错"
+          },
+          "nodeStates": {
+            "vcpu": "暂停点等待",
+            "guest": "内核执行暂停",
+            "app": "应用执行暂停",
+            "qemu": "管理进程保持可用"
+          },
+          "sourceIds": [
+            "qemu-vm-stop",
+            "qemu-pause-cpus"
+          ],
+          "focus": true
+        },
+        {
+          "id": "paused",
+          "title": "确认暂停状态",
+          "actor": "QEMU → Libvirt",
+          "description": "STOP 事件使 Libvirt 记录 PAUSED / USER；管理命令完成后，suspend 返回成功。",
+          "detail": "STOP 可先于块层排空和刷新发送；成功的 stop 命令响应才说明这段处理已经返回。QEMU、KVM 对象和 RAM 继续保留；此状态没有生成持久化保存文件，宿主故障仍会丢失内存中的运行状态。",
+          "active": [
+            "qemu",
+            "manager"
+          ],
+          "links": [
+            "stop-event"
+          ],
+          "changes": {
+            "domainState": "PAUSED / USER",
+            "apiResult": "suspend 成功",
+            "eventState": "STOP / SUSPENDED",
+            "processState": "同一 QEMU 进程存活，QMP 可用"
+          },
+          "nodeStates": {
+            "manager": "PAUSED / USER",
+            "resources": "RAM、磁盘和 FD 继续保留",
+            "kvm": "VM / vCPU 对象保留"
+          },
+          "sourceIds": [
+            "libvirt-state",
+            "libvirt-pause-control"
+          ],
+          "focus": true
+        },
+        {
+          "id": "request-resume",
+          "title": "提交恢复请求",
+          "actor": "Libvirt → QEMU",
+          "description": "resume 路径准备网络和锁管理状态，再通过 QMP 发送 cont。",
+          "detail": "沿用已有虚拟机状态。这个操作不会重新创建 QEMU，也不会从固件或内核入口重新引导。",
+          "active": [
+            "manager",
+            "qemu"
+          ],
+          "links": [
+            "cont"
+          ],
+          "changes": {
+            "apiResult": "resume 调用处理中"
+          },
+          "nodeStates": {
+            "manager": "恢复运行条件",
+            "qemu": "执行 QMP cont"
+          },
+          "sourceIds": [
+            "libvirt-pause-control",
+            "qemu-stop-cont"
+          ],
+          "focus": true
+        },
+        {
+          "id": "resume-cpus",
+          "title": "恢复客户机执行",
+          "actor": "QEMU → KVM → Guest",
+          "description": "QEMU 重新放行 vCPU，客户机从保留的执行状态继续；RESUME 事件使 Libvirt 更新为 RUNNING。",
+          "detail": "vCPU 获准运行后仍受宿主调度影响。寄存器、RAM 和设备状态沿用暂停前的实例。",
+          "active": [
+            "qemu",
+            "vcpu",
+            "kvm",
+            "guest",
+            "manager"
+          ],
+          "links": [
+            "resume",
+            "run",
+            "guest",
+            "resume-event"
+          ],
+          "changes": {
+            "domainState": "RUNNING / UNPAUSED",
+            "vcpuState": "允许运行，沿用原执行状态",
+            "guestState": "客户机继续运行",
+            "apiResult": "resume 成功",
+            "eventState": "RESUME / RESUMED",
+            "applicationState": "客户机任务可继续调度"
+          },
+          "nodeStates": {
+            "manager": "RUNNING / UNPAUSED",
+            "qemu": "客户机已恢复，QMP 可用",
+            "vcpu": "继续原 vCPU 执行",
+            "kvm": "使用原 VM / vCPU 对象",
+            "guest": "继续原内核状态"
+          },
+          "sourceIds": [
+            "libvirt-pause",
+            "libvirt-state",
+            "qemu-stop-cont"
+          ],
+          "focus": true
+        },
+        {
+          "id": "continue-service",
+          "title": "检查业务恢复",
+          "actor": "客户机应用",
+          "description": "应用继续处理任务，并检查连接、超时与外部依赖。",
+          "detail": "暂停期间外部系统仍在运行，连接可能超时。恢复 CPU 执行与业务重新可用需要分别确认。",
+          "active": [
+            "guest",
+            "app"
+          ],
+          "links": [
+            "app"
+          ],
+          "changes": {
+            "applicationState": "恢复执行；业务可用性单独检查",
+            "dataState": "原 Guest 内存保留；持久化继续按应用协议进行"
+          },
+          "nodeStates": {
+            "app": "继续任务并检查外部连接"
+          },
+          "sourceIds": [
+            "libvirt-pause",
+            "qemu-stop-cont"
+          ],
+          "focus": true
+        }
+      ]
+    }
+  ]
+}

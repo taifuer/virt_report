@@ -1,0 +1,14 @@
+<section id="lifecycle" class="mechanism-section">
+  <h2>生命周期交互总览</h2>
+  <p>同一台虚拟机有几组需要分别观察的状态：Libvirt 的管理状态、QEMU 进程、客户机执行与应用可用性。下面沿冷启动、正常关机、强制停止和暂停恢复四条路径，查看这些状态及其持有的宿主资源。</p>
+  {% include '_execution_lab.html' %}
+  <table>
+    <thead><tr><th>操作完成</th><th>已确认的结果</th><th>仍需另外确认</th></tr></thead>
+    <tbody>
+      <tr><td><code>start</code></td><td>宿主侧启动操作完成；普通启动放行客户机 CPU</td><td>客户机引导、网络配置和应用就绪</td></tr>
+      <tr><td><code>shutdown</code></td><td>关机请求已接受</td><td>Guest 是否实际关机，以及最终 <code>SHUTOFF</code> 状态</td></tr>
+      <tr><td><code>destroy</code></td><td>运行实例已停止，宿主资源已清理</td><td>文件系统与应用数据是否需要恢复；持久定义与系统盘仍保留</td></tr>
+      <tr><td><code>suspend</code> / <code>resume</code></td><td>客户机执行暂停或恢复，沿用同一运行实例</td><td>内存占用、外部连接与业务恢复；暂停不产生持久保存文件</td></tr>
+    </tbody>
+  </table>
+</section>

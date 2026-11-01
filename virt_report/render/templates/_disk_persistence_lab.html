@@ -1,0 +1,23 @@
+<section id="persistence" class="mechanism-section">
+  <h2>写入完成与持久化</h2>
+  <p>同样写入 4 KiB 数据，普通 WRITE、写后 FLUSH 和 WRITE FUA 的完成条件不同。下面沿用偏移 1 MiB 的块设备写入，把旧值 A 更新为 B，分别观察应用返回、Guest 队列完成、宿主缓存和稳定存储。原有读写演示用于查看完整设备路径，这里集中展示同步要求如何改变完成边界。</p>
+  <p>三种场景固定使用 QEMU 的 raw 文件后端、<code>aio=threads</code> 和 writeback 模式。普通 WRITE 与写后 FLUSH 从应用的 <code>O_DIRECT</code> 块设备写入开始，宿主仍使用自己的页缓存；FUA 对照从已经带 <code>REQ_FUA</code> 的块请求开始，只观察这一命令。WRITE 后 FLUSH 场景另外提交一条刷新命令。缓存状态用于解释接口契约，不表示真实硬件内部时序或耗时。</p>
+  {% include '_execution_lab.html' %}
+  <h3>区分缓存路径与同步要求</h3>
+  <table>
+    <thead><tr><th scope="col">配置或操作</th><th scope="col">控制范围</th><th scope="col">完成保证</th></tr></thead>
+    <tbody>
+      <tr><td>Guest O_DIRECT</td><td>本次 I/O 绕过 Guest 页缓存</td><td>单独使用不保证掉电持久化，也不控制宿主页缓存</td></tr>
+      <tr><td>QEMU cache.direct=on</td><td>尽量绕过宿主页缓存</td><td>设备仍可能有易失写缓存；direct 不等于同步持久化</td></tr>
+      <tr><td>writeback=on 的普通 WRITE</td><td>允许下层在缓存接受数据后报告完成</td><td>应用可回收本次缓冲区，稳定存储状态尚未由该操作确认</td></tr>
+      <tr><td>WRITE 完成后执行 FLUSH</td><td>确认此前已完成、属于刷新范围的写入</td><td>刷新成功后，这些数据达到下层承诺的稳定存储边界</td></tr>
+      <tr><td>WRITE FUA</td><td>约束本次写的完成条件</td><td>本次数据持久化后才完成，不自动保证所有前序写入</td></tr>
+      <tr><td>QEMU cache.no-flush=on</td><td>允许跳过向存储落实的刷新；也会清除下传的 FUA 要求</td><td>不能沿用本演示的持久化保证</td></tr>
+    </tbody>
+  </table>
+  <p><code>cache=none</code> 对应 writeback=on、direct=on、no-flush=off，仍需要 Guest 正确发起同步。<code>cache=unsafe</code> 则允许忽略刷新。这些参数和 Guest 打开文件时的标志属于不同层，不能只凭“direct”或“无缓存”的名称判断数据安全。<a href="{{ demo.sources['qemu-cache-options'].url }}">QEMU 缓存模式定义</a>。</p>
+  <h3>FUA 在两种设备接口中的实现</h3>
+  <p>Linux 6.18 的块设备同步直接写可产生 <code>REQ_FUA</code>。virtio-scsi 在目标支持时把它编码到 SCSI WRITE 的 FUA 位；QEMU <code>scsi-hd</code> 再转换成 <code>BDRV_REQ_FUA</code>。本例的 raw threads 后端先完成文件写入，再执行刷新，最后才向 Guest 完成这条 SCSI 命令。其他后端可以直接支持 FUA，具体实现需分别检查。<a href="{{ demo.sources['qemu-file-fua'].url }}">文件后端实现</a>。完整系统调用还可能安排其他同步：例如同步块设备写在 <code>write_iter</code> 末尾还会经过 <code>generic_write_sync()</code>，不能把这里的一条命令直接当作完整调用的全部设备请求。<a href="{{ demo.sources['linux-write-iter'].url }}">Linux 调用边界</a>。</p>
+  <p>virtio-blk 的普通 OUT 命令没有这里的原生 FUA 位。固定版本的 Linux 驱动声明写缓存能力而不声明 <code>BLK_FEAT_FUA</code>，块层会为需要 FUA 的写入安排写后 FLUSH。它与应用先完成普通写、再显式调用 <code>fsync()</code> 的外部调用顺序不同；共同要求是同步操作不能在所需刷新完成前成功返回。<a href="{{ demo.sources['linux-blk-cache'].url }}">驱动能力</a>、<a href="{{ demo.sources['linux-postflush'].url }}">块层 POSTFLUSH</a>。</p>
+  <p>需要同时约束前序数据和当前写时，上层可以组合 PREFLUSH 与 FUA。FUA 的契约只覆盖该写；某个后端用较大范围刷新来实现它，也不应让应用依赖额外的前序顺序保证。持久化还不同于原子性：本例不保证一组写入整体生效，也不涵盖文件创建、目录项或跨设备事务。<a href="{{ demo.sources['cache-contract'].url }}">Linux 写缓存控制契约</a>。</p>
+</section>

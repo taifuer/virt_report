@@ -1,34 +1,36 @@
 <section id="preface" class="mechanism-section">
   <h2>场景与边界</h2>
-  <p>从虚机内的应用开始：程序对已用 <code>O_DIRECT</code> 打开的块设备执行 <code>pread(fd, buf, 4096, 1048576)</code> 或 <code>pwrite()</code>，读取或写入偏移 1 MiB 处的 4 KiB 数据。在演示顶部选择设备接口、后端与读写操作，观察对应的系统调用、Guest 内核、共享队列、后端处理与 KVM 中断注入，直到结果返回应用。</p>
-  <p>为看清设备路径，本例不经过 Guest 文件系统与页缓存：缓冲区已按 4 KiB 对齐，固定为一个页面、一个 bio 和一个块请求 <strong>R1</strong>，不发生拆分、合并或错误。Guest 内核固定用户页并建立 I/O 映射；读取时后端填充这份内存，写入时后端读取其内容，并不是把数据在每一层都复制一次。普通文件读写的差异见后文。</p>
+  <p>从虚机内的应用开始：程序对虚拟磁盘的块设备执行 <code>pread(fd, buf, 4096, 1048576)</code> 或 <code>pwrite()</code>，读取或写入偏移 1 MiB 处的 4 KiB 数据。设备已用 <code>O_DIRECT</code> 打开。在演示顶部选择设备接口、后端与读写操作，观察对应的系统调用、Guest 内核、共享队列、后端处理与 KVM 中断注入，直到结果返回应用。</p>
+  <p>为看清设备路径，本例不经过 Guest 文件系统与页缓存：缓冲区已按 4 KiB 对齐，固定为一个页面、一个 bio 和一个块请求 <strong>R1</strong>，不发生拆分、合并或错误。Guest 内核固定用户页并建立 I/O 映射；读取时后端填充这份内存，写入时后端读取其内容，各层通过映射访问同一份缓冲区。普通文件读写的差异见后文。</p>
   <p>共同前提是 x86 / KVM、modern virtio PCI 与 split ring；队列大小为 8，本次使用 3 个直接描述符，未启用 Guest vIOMMU。不同后端采用各自的执行上下文、通知与完成路径；具体配置随选择一起更新。本地文件可能命中宿主页缓存，SPDK 场景固定为轮询与 NVMe 后端，Ceph 展示到 QEMU / librbd 的异步接口边界，不展开集群内部协议。</p>
+  <p>演示从设备已就绪开始。队列建立过程见<a href="virtio-device-initialization.html">设备初始化与特性协商</a>，另一种队列布局见 <a href="packed-virtqueue.html">Packed virtqueue</a>。</p>
 </section>
 <section id="walkthrough" class="mechanism-section">
   <h2>逐步演示</h2>
-  <div class="vbr-lab" data-vbr-lab aria-label="块 I/O 读写的分层交互演示">
-    <div class="vbr-operation" data-vbr-operation-controls hidden role="group" aria-label="选择演示场景">
-      <label class="vbr-backend-label" for="vbr-backend">设备与后端</label>
-      <select id="vbr-backend" class="vbr-backend-select" data-vbr-backend-select aria-label="设备接口与存储后端">{% for route in io_scenarios.routes %}<option value="{{ route.id }}">{{ route.label }}</option>{% endfor %}</select>
+  <div class="vbr-lab walkthrough-lab" data-vbr-lab data-walkthrough-lab aria-label="磁盘 I/O 读写的分层交互演示">
+    <div class="vbr-operation walkthrough-selection" data-vbr-operation-controls hidden role="group" aria-label="选择演示场景">
+      <div class="walkthrough-choice"><label for="vbr-backend">设备与后端</label>
+      <select id="vbr-backend" class="vbr-backend-select" data-vbr-backend-select aria-label="设备接口与存储后端">{% for route in io_scenarios.routes %}<option value="{{ route.id }}">{{ route.label }}</option>{% endfor %}</select></div>
       <div class="vbr-operation-buttons" role="group" aria-label="读写操作"><button type="button" data-vbr-operation="read" aria-pressed="true">读取</button><button type="button" data-vbr-operation="write" aria-pressed="false">写入</button></div>
       <span data-vbr-operation-note>4 KiB · 单请求成功路径</span>
+      <button type="button" class="walkthrough-expand" data-walkthrough-expand aria-pressed="false">放大演示</button>
     </div>
-    <p class="vbr-scenario-note" data-vbr-scenario-summary hidden></p>
-    <div class="vbr-toolbar" data-vbr-controls hidden>
-      <div class="vbr-views" role="group" aria-label="查看粒度">
+    <p class="vbr-scenario-note walkthrough-summary" data-vbr-scenario-summary hidden></p>
+    <div class="vbr-toolbar walkthrough-toolbar" data-vbr-controls hidden>
+      <div class="vbr-views walkthrough-tabs" role="group" aria-label="查看粒度">
         <button type="button" data-vbr-view="overview" aria-pressed="true">流程总览</button><button type="button" data-vbr-view="mechanism" aria-pressed="false">队列机制</button><button type="button" data-vbr-view="source" aria-pressed="false">源码路径</button>
       </div>
-      <div class="vbr-controls" role="group" aria-label="演示播放控制">
-        <button type="button" data-vbr-prev aria-label="上一步">上一步</button><button type="button" data-vbr-play aria-pressed="false">播放</button><button type="button" data-vbr-next aria-label="下一步">下一步</button><button type="button" data-vbr-reset>重置</button>
+      <div class="vbr-controls walkthrough-controls" role="group" aria-label="演示播放控制">
+        <button type="button" data-vbr-prev aria-label="上一步">上一步</button><button type="button" data-vbr-play data-walkthrough-play aria-pressed="false">播放</button><button type="button" data-vbr-next aria-label="下一步">下一步</button><button type="button" data-vbr-reset>重置</button>
         <label>速度<select data-vbr-speed aria-label="播放速度"><option value="3200">慢速</option><option value="2200" selected>标准</option><option value="1200">快速</option></select></label>
       </div>
     </div>
-    <p class="vbr-note" data-vbr-help hidden>流程总览按阶段查看请求跨层流转；队列机制逐步展示描述符与缓冲区变化；源码路径定位关键函数及异步边界。切换保留当前进度。</p>
+    <p class="vbr-note" data-vbr-help hidden>流程总览查看请求跨层流转；队列机制用 8 个步骤展示描述符准备、请求交接与回收；源码路径定位关键函数及异步边界。切换视图时按当前进度定位。</p>
     <p class="sr-only" data-vbr-announcement role="status" aria-live="polite" aria-atomic="true"></p>
-    <nav class="vbr-progress" data-vbr-progress aria-label="演示阶段" hidden>
+    <nav class="vbr-progress walkthrough-progress" data-vbr-progress aria-label="演示阶段" hidden>
       {% for phase in flow.phases %}<button type="button" data-vbr-phase="{{ phase.id }}"><span>{{ '%02d'|format(loop.index) }}</span><strong>{{ phase.title }}</strong></button>{% endfor %}
     </nav>
-    <div class="vbr-workspace">
+    <div class="vbr-workspace walkthrough-workspace">
       <div class="vbr-visual">
         <div class="vbr-board" data-vbr-board>
           <svg class="vbr-connections" data-vbr-connections aria-hidden="true"><defs><marker id="vbr-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9" fill="none" stroke="currentColor" stroke-width="1.6"/></marker></defs><path class="vbr-edge" data-vbr-edge fill="none" marker-end="url(#vbr-arrow)"/><circle class="vbr-traveler" data-vbr-traveler r="4" hidden/></svg>
@@ -65,7 +67,7 @@
         <div class="vbr-interrupt-path" data-vbr-interrupt-path aria-label="中断递送状态"><span data-vbr-irq-stage="signal">irqfd 通知</span><span data-vbr-irq-stage="pending">vLAPIC 待注入</span><span data-vbr-irq-stage="injected">VM-entry 注入</span><span data-vbr-irq-stage="handled">Guest 处理</span></div>
         <p class="vbr-legend" data-vbr-legend>实线：数据或队列访问 · 虚线：通知。KVM 不转发每个数据字节；各区域也不代表固定的串行流水线。</p>
       </div>
-      <aside class="vbr-inspector" aria-labelledby="vbr-step-title">
+      <aside class="vbr-inspector walkthrough-inspector" aria-labelledby="vbr-step-title">
         <p class="vbr-step-counter" data-vbr-counter>请求 R1</p><p class="vbr-actor" data-vbr-actor>Guest · 用户态应用</p>
         <h3 id="vbr-step-title" data-vbr-title>{{ flow.steps[0].title }}</h3>
         <p data-vbr-description>{{ flow.steps[0].description }}</p><p data-vbr-detail hidden></p>
@@ -79,11 +81,11 @@
     <p class="vbr-note">这是固定配置下的成功路径，不是运行中的虚拟机追踪，也不模拟真实时间、CPU 内部微操作或物理设备行为。完成发布与完成通知是不同步骤；通知的发送取决于协商能力和抑制条件。</p>
     <p class="vbr-note">中断展示固定为 x86 VMX 软件注入路径，不启用 APICv / posted interrupt。irqfd 通知、虚拟 APIC 中断挂起、VM-entry 注入与 Guest 执行处理函数是不同阶段。</p>
     <p class="vbr-note">地址为教学示例：应用 buf 是 Guest 虚拟地址，数据描述符 0x2000 是其后备页的 Guest 物理地址，后端通过宿主虚拟地址访问同一份后备内存。WRITE 标志指设备可写 Guest 内存，不表示磁盘写入。</p>
-    <details class="vbr-configuration" data-vbr-configuration hidden><summary>当前场景配置与源码版本</summary><p data-vbr-control-plane hidden></p><ul data-vbr-assumptions></ul><p data-vbr-baselines></p></details>
+    <details class="vbr-configuration walkthrough-configuration" data-vbr-configuration hidden><summary>当前场景配置与源码版本</summary><p data-vbr-control-plane hidden></p><ul data-vbr-assumptions></ul><p data-vbr-baselines></p></details>
   </div>
 </section>
 <section id="comparison" class="mechanism-section">
-  <h2>普通文件与写入的差异</h2>
+  <h2>缓存与持久化</h2>
   <p>演示覆盖块设备直接读写，不代表所有应用 I/O。普通文件、缓存与持久化还涉及以下区别：</p>
   <table><thead><tr><th>场景</th><th>Guest 内部</th><th>设备与完成语义</th></tr></thead><tbody>
     <tr><td>块设备直接读（本例）</td><td>固定用户页，经 bio / blk-mq 提交。一次应用调用形成一个 R1 是本例的前提。</td><td>数据描述符带 WRITE，设备把 4096 B 结果写入 Guest 缓冲区；完成结构与 used.len 随设备接口和实现变化，见队列机制视图。</td></tr>
@@ -93,15 +95,24 @@
   </tbody></table>
   <p>进一步阅读：<a href="qemu-virtio-blk.html">virtio-blk 写入、完成与持久化</a>。原理文章解释协议与设计取舍，本页用于观察一次请求的状态变化，两者互相补充。</p>
 </section>
+{% include '_disk_persistence_lab.html' %}
 <section id="sources" class="mechanism-section"><h2>源码与相关内容</h2>
-  <p>“源码路径”按执行上下文列出关键函数路径，并高亮当前步骤涉及的函数，辅助调用已省略。跨越 Guest 和宿主边界的是共享队列与通知，不是跨进程的普通函数调用；异步提交与完成回调也分开展示。示例中的 R1 用来关联两端各自保存的请求对象。</p>
+  <p>“源码路径”按执行上下文列出关键函数路径，并高亮当前步骤涉及的函数，辅助调用已省略。Guest 与宿主通过共享队列和通知协作；异步提交与完成回调分开展示。示例中的 R1 用来关联两端各自保存的请求对象，具体源码随设备与后端选择更新。</p>
   <ul class="mechanism-sources">
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/block/virtio_blk.c#L139-L157" target="_blank" rel="noopener noreferrer">Linux virtio_blk.c</a>：请求组装、提交、完成回调与回收。</li>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_ring.c#L674-L686" target="_blank" rel="noopener noreferrer">Linux virtio_ring.c</a>：描述符、available 发布顺序与通知条件。</li>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/eventfd.c#L804-L815" target="_blank" rel="noopener noreferrer">KVM eventfd.c</a>：匹配队列门铃写入并触发 ioeventfd。</li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c#L54-L66" target="_blank" rel="noopener noreferrer">QEMU virtio-blk.c</a>：读取、回调以及 status、used 和通知的顺序。</li>
+    {% for route_id, source_id, label, description in [
+      ('local-scsi', 'scsi-qemu-vq', 'QEMU virtio-scsi.c', '命令队列处理与 SCSI 请求分派。'),
+      ('rbd-blk', 'rbd-submit', 'QEMU rbd.c', '向 librbd 提交异步读写并等待完成。'),
+      ('spdk-blk', 'spdk-blk-vq', 'SPDK vhost_blk.c', '轮询共享队列，提交块请求并回写完成。'),
+      ('spdk-scsi', 'spdk-scsi-vq', 'SPDK vhost_scsi.c', '消费 SCSI 命令队列并建立后端任务。')
+    ] %}{% set route = io_scenarios.routes|selectattr('id', 'equalto', route_id)|first %}{% set source = route.scenarios.read.sources[source_id] %}
+    <li><a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ label }}</a>：{{ description }}</li>
+    {% endfor %}
   </ul>
-  <p>继续阅读：<a href="qemu-virtio-blk.html">写入完成与持久化</a> · <a href="qemu-aio-iothread.html">AioContext、协程与 IOThread</a> · <a href="kvm-virtio-interrupt.html">完成通知与中断注入</a> · <a href="qemu-network-tx.html">网络发送与共享队列</a>。</p>
+  <p>继续阅读：<a href="qemu-virtio-blk.html">写入完成与持久化</a> · <a href="spdk-vhost-user-blk.html">SPDK 的 virtqueue、bdev 与 NVMe</a> · <a href="qemu-aio-iothread.html">AioContext、协程与 IOThread</a> · <a href="kvm-virtio-interrupt.html">完成通知与中断注入</a> · <a href="qemu-network-tx.html">网络发送与共享队列</a>。</p>
 </section>
 <script id="virtio-blk-read-data" type="application/json">{{ flow|tojson }}</script>
 <script id="block-io-scenarios-data" type="application/json">{{ io_scenarios|tojson }}</script>

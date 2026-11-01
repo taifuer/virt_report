@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {validateScenario, buildTrace, getScenario} = require('../virt_report/render/assets/virtio-blk-read-model.js');
+const {validateScenario, buildTrace, buildQueueTrace, getScenario} = require('../virt_report/render/assets/virtio-blk-read-model.js');
 const source = JSON.parse(fs.readFileSync(path.join(__dirname,
   '../virt_report/content/flows/virtio-blk-read.json'), 'utf8'));
 const fresh = () => structuredClone(source);
@@ -63,6 +63,103 @@ test('full backend catalogs provide independent read and write scenes without ch
     }
   }
   assert.equal(JSON.stringify(catalog), before);
+});
+
+test('all ten backend-operation combinations project eight ordered queue snapshots', () => {
+  const catalog = fakeCatalog();
+  const milestones = ['prepared', 'published', 'consumed', 'dataReady',
+    'statusWritten', 'usedWritten', 'usedPublished', 'reclaimed'];
+  for (const backend of ['local-blk', ...catalog.routes.map(route => route.id)]) {
+    for (const operation of ['read', 'write']) {
+      const scene = getScenario(source, operation, backend, catalog);
+      const before = JSON.stringify(scene);
+      const full = buildTrace(scene), queue = buildQueueTrace(scene);
+      assert.equal(queue.length, 8, `${backend}/${operation}`);
+      for (const [position, item] of queue.entries()) {
+        const {queueIndex, queueTitle, queueDescription, queueDetail, ...original} = item;
+        assert.equal(queueIndex, position);
+        assert.deepEqual(original, full[item.index], 'state and source evidence stay unchanged');
+        assert.equal(item.changes[milestones[position]], true);
+        assert(queueTitle && queueDescription && queueDetail);
+        assert(!/syscall|VM-entry|LAPIC|irqfd|NVMe/.test(queueDescription + queueDetail));
+        if (position) assert(item.index > queue[position - 1].index);
+      }
+      assert.equal(queue[0].id, 'prepare-descriptors');
+      assert.equal(queue[0].state.prepared, true);
+      assert.equal(queue[0].state.published, false);
+      assert.equal(queue.at(-1).id, 'reclaim-chain');
+      assert.equal(queue.at(-1).state.reclaimed, true);
+      assert.equal(queue.at(-1).state.userReturned, false);
+      assert.equal(queue.at(-1).state.completed, false);
+      assert.equal(full.at(-1).state.userReturned, true, 'full path retains application return');
+      assert.equal(JSON.stringify(scene), before);
+    }
+  }
+});
+
+test('queue milestones locate state transitions after backend-specific inserted work', () => {
+  const scene = catalogScene('spdk-blk', 'read');
+  const data = step(scene, 'read-data');
+  const position = scene.steps.indexOf(data);
+  scene.steps.splice(position, 0, {...structuredClone(data), id: 'backend-data-inflight',
+    title: 'Backend work still pending', changes: {}});
+  data.id = 'spdk-nvme-poll-completion';
+  const queue = buildQueueTrace(scene);
+  assert.equal(queue.length, 8);
+  assert.equal(queue[3].id, 'spdk-nvme-poll-completion');
+  assert.equal(queue[3].state.dataReady, true);
+  assert.equal(queue[3].index, position + 1);
+  assert.equal(queue[3].state.statusWritten, false);
+  assert.match(queue[2].queueDetail, /SPDK 轮询/);
+  assert(!/kick/.test(queue[2].queueDetail));
+});
+
+test('queue explanations keep read/write permissions, publication and ownership distinct', () => {
+  const read = buildQueueTrace(getScenario(source));
+  const write = buildQueueTrace(getScenario(source, 'write'));
+  assert.match(read[0].queueDetail, /数据区和响应区带 WRITE/);
+  assert.match(write[0].queueDetail, /仅响应区带 WRITE/);
+  assert.match(read[1].queueDescription, /发布屏障/);
+  assert.match(read[2].queueDetail, /kick.*通知只提示有工作/);
+  assert.match(read[2].queueDetail, /仍被占用/);
+  assert.match(read[3].queueDescription, /写入 desc\[1\]/);
+  assert.match(write[3].queueDescription, /读取 desc\[1\]/);
+  assert.match(write[3].queueDetail, /不保证.*持久性/);
+  assert.equal(read[5].state.usedWritten, true);
+  assert.equal(read[5].state.usedPublished, false);
+  assert.match(read[5].queueDescription, /id: 0, len: 4097/);
+  assert.match(write[5].queueDescription, /id: 0, len: 1/);
+  assert.match(read[6].queueDescription, /写屏障/);
+  assert.match(read[7].queueDescription, /读屏障/);
+  assert.match(read[7].queueDetail, /旧的 available 与 used 槽内容可以保留/);
+});
+
+test('queue SCSI explanations preserve response layout and backend-specific used lengths', () => {
+  const read = catalogScene('local-scsi', 'read', 'virtio-scsi');
+  const write = catalogScene('local-scsi', 'write', 'virtio-scsi');
+  write.request.usedLength = 4204;
+  write.request.usedLengthNote = 'QEMU 报告 4204，实际可写区域为响应 108 B；不代表写回数据。';
+  step(write, 'write-used').changes.usedLength = 4204;
+  const a = buildQueueTrace(read), b = buildQueueTrace(write);
+  assert.match(a[0].queueDetail, /desc\[2\].*数据区，desc\[1\].*响应区/);
+  assert.match(b[0].queueDetail, /desc\[1\].*数据区，desc\[2\].*响应区/);
+  assert.match(a[4].queueDescription, /SCSI 响应.*status=GOOD/);
+  assert.match(b[5].queueDescription, /len: 4204/);
+  assert.match(b[5].queueDetail, /实际可写区域为响应 108 B/);
+});
+
+test('queue projections are deterministic independent snapshots for backward replay', () => {
+  const scene = getScenario(source), before = JSON.stringify(scene);
+  const queue = buildQueueTrace(scene), next = buildQueueTrace(scene);
+  assert.deepEqual(queue, next);
+  queue[1].state.availIndex = 90;
+  queue[1].changes.published = false;
+  queue[1].sourceIds.push('bad');
+  queue[1].edge.label = 'changed';
+  assert.equal(queue[2].state.availIndex, 1);
+  assert.equal(next[1].state.availIndex, 1);
+  assert.equal(JSON.stringify(scene), before);
+  assert.deepEqual(buildQueueTrace(scene), next);
 });
 
 test('SCSI uses request/response/data order for READ and request/data/response for WRITE', () => {
@@ -469,6 +566,11 @@ test('browser module exports the same pure API without DOM or network access', (
   vm.runInContext(`const sample = ${JSON.stringify(source)};
     if (!VirtioBlkReadModel.validateScenario(sample)) throw new Error('invalid');
     if (!VirtioBlkReadModel.buildTrace(sample).at(-1).state.userReturned) throw new Error('unfinished');
+    const queue = VirtioBlkReadModel.buildQueueTrace(sample);
+    const initial = VirtioBlkReadModel.buildQueueInitial(sample);
+    if (initial.state.prepared || initial.state.published || initial.state.freeDescriptors !== 8
+      || initial.queueIndex !== -1 || initial.index >= queue[0].index) throw new Error('initial queue');
+    if (queue.length !== 8 || !queue.at(-1).state.reclaimed || queue.at(-1).state.userReturned) throw new Error('queue');
     const write = VirtioBlkReadModel.getScenario(sample, 'write');
     if (VirtioBlkReadModel.buildTrace(write).at(-1).state.usedLength !== 1) throw new Error('write');`, context);
 });

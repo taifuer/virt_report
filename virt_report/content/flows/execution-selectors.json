@@ -1,0 +1,142 @@
+{
+  "network-io": {
+    "categoryLabel": "网络后端",
+    "scenarioLabel": "处理条件",
+    "operations": [{"id": "tx", "label": "发送 TX"}, {"id": "rx", "label": "接收 RX"}],
+    "categories": [
+      {"id": "qemu", "label": "QEMU + TAP", "groups": [
+        {"label": "发送", "operation": "tx", "scenarios": [
+          {"id": "qemu-tx", "label": "正常发送"},
+          {"id": "qemu-tx-backpressure", "label": "TAP 暂不可写"}
+        ]},
+        {"label": "接收", "operation": "rx", "scenarios": [
+          {"id": "qemu-rx", "label": "正常接收"},
+          {"id": "qemu-rx-no-buffer", "label": "RX 缓冲区不足"}
+        ]}
+      ]},
+      {"id": "vhost", "label": "vhost-net + TAP", "groups": [
+        {"label": "发送", "operation": "tx", "scenarios": [{"id": "vhost-tx", "label": "正常发送"}]},
+        {"label": "接收", "operation": "rx", "scenarios": [{"id": "vhost-rx", "label": "正常接收"}]}
+      ]},
+      {"id": "dpdk", "label": "DPDK vhost-user", "groups": [
+        {"label": "发送", "operation": "tx", "scenarios": [{"id": "dpdk-tx", "label": "正常发送"}]},
+        {"label": "接收", "operation": "rx", "scenarios": [{"id": "dpdk-rx", "label": "正常接收"}]}
+      ]},
+      {"id": "vdpa", "label": "硬件 vhost-vDPA", "groups": [
+        {"label": "发送", "operation": "tx", "scenarios": [{"id": "vdpa-tx", "label": "正常发送"}]},
+        {"label": "接收", "operation": "rx", "scenarios": [{"id": "vdpa-rx", "label": "正常接收"}]}
+      ]}
+    ]
+  },
+  "memory-access": {
+    "categoryLabel": "访问对象",
+    "scenarioLabel": "演示场景",
+    "categories": [
+      {"id": "ram", "label": "RAM 内存", "groups": [
+        {"label": "正常访问", "scenarios": [
+          {"id": "ram-hit", "label": "转换缓存命中"},
+          {"id": "tlb-miss", "label": "TLB 未命中，页表有效"}
+        ]},
+        {"label": "Guest 缺页", "scenarios": [
+          {"id": "guest-page-fault", "label": "匿名页按需分配"}
+        ]},
+        {"label": "宿主处理", "scenarios": [
+          {"id": "ept-missing", "label": "EPT 映射尚未建立"},
+          {"id": "host-page-fault", "label": "宿主后备页换入"},
+          {"id": "dirty-write-protect", "label": "脏页跟踪写保护"}
+        ]}
+      ]},
+      {"id": "mmio", "label": "MMIO 设备寄存器", "groups": [
+        {"label": "QEMU 模拟设备", "scenarios": [{"id": "mmio-read", "label": "读取设备寄存器"}]}
+      ]}
+    ]
+  },
+  "cpu-execution": {
+    "scenarioLabel": "演示场景",
+    "groups": [
+      {"label": "Guest 直接执行", "scenarios": [
+        {"id": "ordinary-add", "label": "ADD 寄存器加法"},
+        {"id": "guest-syscall", "label": "SYSCALL 客户机权限切换"}
+      ]},
+      {"label": "KVM 内核处理", "scenarios": [{"id": "cpuid-kernel", "label": "CPUID 虚拟 CPU 信息"}]},
+      {"label": "QEMU 设备处理", "scenarios": [{"id": "mmio-userspace", "label": "MMIO 模拟设备读取"}]},
+      {"label": "等待与唤醒", "scenarios": [
+        {"id": "hlt-wakeup", "label": "HLT 空闲等待"},
+        {"id": "sleep-other-task", "label": "定时休眠：继续执行其他任务"},
+        {"id": "sleep-idle-vcpu", "label": "定时休眠：vCPU 空闲与唤醒"}
+      ]}
+    ]
+  },
+  "interrupt-delivery": {
+    "scenarioLabel": "演示场景",
+    "groups": [
+      {"label": "通知路径", "scenarios": [
+        {"id": "msix-software", "label": "QEMU 直接提交 MSI-X"},
+        {"id": "irqfd", "label": "irqfd 事件通知"}
+      ]},
+      {"label": "屏蔽与等待", "scenarios": [
+        {"id": "msix-masked", "label": "MSI-X 屏蔽与 PBA"},
+        {"id": "if-masked", "label": "Guest IF 关闭与延迟交付"}
+      ]},
+      {"label": "硬件递送", "scenarios": [{"id": "apicv-posted", "label": "APICv Posted Interrupt"}]}
+    ]
+  },
+  "disk-persistence": {
+    "scenarioLabel": "持久化方式",
+    "groups": [
+      {
+        "label": "virtio-blk",
+        "scenarios": [
+          {
+            "id": "write-cache",
+            "label": "普通 WRITE"
+          },
+          {
+            "id": "write-flush",
+            "label": "WRITE 后 FLUSH"
+          }
+        ]
+      },
+      {
+        "label": "virtio-scsi",
+        "scenarios": [
+          {
+            "id": "write-fua",
+            "label": "WRITE FUA"
+          }
+        ]
+      }
+    ]
+  },
+  "vm-lifecycle": {
+    "scenarioLabel": "生命周期操作",
+    "groups": [
+      {
+        "label": "启动与停止",
+        "scenarios": [
+          {
+            "id": "cold-start",
+            "label": "冷启动"
+          },
+          {
+            "id": "acpi-shutdown",
+            "label": "正常关机 · ACPI"
+          },
+          {
+            "id": "force-stop",
+            "label": "强制停止 · destroy"
+          }
+        ]
+      },
+      {
+        "label": "保留运行实例",
+        "scenarios": [
+          {
+            "id": "pause-resume",
+            "label": "暂停与恢复"
+          }
+        ]
+      }
+    ]
+  }
+}

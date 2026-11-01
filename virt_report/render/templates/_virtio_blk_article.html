@@ -5,7 +5,7 @@
 <section id="preface" class="mechanism-section">
   <h2>virtio-blk 写入与缓冲区回收</h2>
   <p>应用写文件后，客户机文件系统和块层会把需要下发的数据组织成块请求。本文从 Linux 块层把一次写请求交给 virtio-blk 驱动开始：驱动发布命令和数据缓冲区，QEMU 交给块后端，异步完成后再回到客户机结束原请求。应用写入、设备请求完成和数据持久化分别发生在这条路径的不同位置。</p>
-  <p>也可以先查看<a href="virtio-blk-read.html">块 I/O 读写过程的交互演示</a>，逐步观察 Guest、KVM、QEMU 和块后端的交接，再对照本文的写入与刷新语义。</p>
+  <p>也可以先查看<a href="virtio-blk-read.html">磁盘 I/O 读写过程的交互演示</a>，逐步观察 Guest、KVM、QEMU 和块后端的交接，再对照本文的写入与刷新语义。</p>
   <p>本文使用 QEMU 10.2.0 的现代 virtio PCI 接口和 split virtqueue，跟踪向 raw 文件写入 4 KiB 的过程。客户机采用 Linux 6.18 的普通中断完成队列；设备为 writeback 模式，已协商 FLUSH。先看普通写完成，再看刷新如何建立持久化边界。队列的基本结构可结合<a href="qemu-network-tx.html#virtqueue">描述符表、available ring 与 used ring</a>阅读。</p>
   <p>这次写入有两次需要分清的完成：OUT 成功后，设备已不再使用本次数据缓冲区，驱动可以回收；随后 FLUSH 成功，才满足这组写入要求的持久化边界。全文沿同一条 <code>5 → 9 → 12</code> 描述符链，从命令解析跟踪到 used 回写，再检查刷新和错误策略如何改变完成条件。</p>
   {% include '_mechanism_baselines.html' %}

@@ -1,0 +1,71 @@
+<div class="execution-lab walkthrough-lab{% if article.presentation != 'walkthrough' %} execution-lab--embedded{% endif %}" data-execution-lab data-walkthrough-lab{% if article.flow %} data-execution-url-prefix="persistence-"{% endif %} aria-label="{{ demo.title }}">
+  <script type="application/json" id="execution-demo-data">{{ demo|tojson }}</script>
+  <div data-execution-controls hidden>
+    <div class="walkthrough-selection">
+      {% if demo.selector.categories %}
+      <div class="walkthrough-choice"><label for="execution-category">{{ demo.selector.categoryLabel }}</label>
+        <select id="execution-category" data-execution-category>{% for category in demo.selector.categories %}<option value="{{ category.id }}">{{ category.label }}</option>{% endfor %}</select>
+      </div>
+      {% endif %}
+      {% if demo.selector.operations %}
+      <div class="walkthrough-operations" role="group" aria-label="网络收发方向">
+        {% for operation in demo.selector.operations %}<button type="button" data-execution-operation="{{ operation.id }}" aria-pressed="false">{{ operation.label }}</button>{% endfor %}
+      </div>
+      {% endif %}
+      <div class="walkthrough-choice" data-execution-scenario-choice><label for="execution-scenario">{{ demo.selector.scenarioLabel }}</label>
+        <select id="execution-scenario" data-execution-scenario></select>
+      </div>
+      <button type="button" class="walkthrough-expand" data-execution-expand data-walkthrough-expand aria-pressed="false">放大演示</button>
+    </div>
+    <p class="execution-summary walkthrough-summary" data-execution-summary></p>
+    <div class="walkthrough-toolbar">
+      <div class="walkthrough-tabs" role="group" aria-label="演示视图">
+        <button type="button" data-execution-view="overview" aria-pressed="true">流程总览</button>
+        <button type="button" data-execution-view="structure" aria-pressed="false">关键结构</button>
+        <button type="button" data-execution-view="source" aria-pressed="false">源码路径</button>
+      </div>
+      <div class="walkthrough-controls" role="group" aria-label="演示播放控制">
+        <button type="button" data-execution-prev aria-label="上一步">上一步</button>
+        <button type="button" data-execution-play data-walkthrough-play aria-pressed="false">播放</button>
+        <button type="button" data-execution-next aria-label="下一步">下一步</button>
+        <button type="button" data-execution-reset>重置</button>
+        <label>速度<select data-execution-speed aria-label="播放速度"><option value="3200">慢速</option><option value="2200" selected>标准</option><option value="1200">快速</option></select></label>
+      </div>
+    </div>
+    <p class="execution-view-help walkthrough-help" data-execution-help></p>
+    <nav class="walkthrough-progress" data-execution-progress aria-label="演示步骤"></nav>
+    <div class="execution-stage walkthrough-workspace">
+      <div class="execution-canvas" tabindex="0" aria-label="演示区域，可用左右方向键切换步骤">
+        <div data-execution-overview>
+          <div class="execution-nodes" data-execution-nodes></div>
+          <div class="execution-connections" data-execution-connections aria-label="组件之间的交接"></div>
+        </div>
+        <div data-execution-structures class="execution-structures" hidden></div>
+        <div data-execution-sources class="execution-source-path" hidden></div>
+        <p class="execution-key">浅色高亮与圆点表示本步操作；其余结构保留上一步状态。</p>
+      </div>
+      <aside class="execution-inspector walkthrough-inspector" aria-label="当前步骤解释">
+        <p class="execution-counter" data-execution-counter></p>
+        <p class="execution-actor" data-execution-actor></p>
+        <h3 data-execution-title></h3>
+        <p data-execution-description></p>
+        <p data-execution-detail></p>
+        <ul class="execution-source-links" data-execution-source-links></ul>
+      </aside>
+    </div>
+    <details class="walkthrough-configuration"><summary>当前场景配置与源码版本</summary><ul data-execution-assumptions></ul>{% include '_mechanism_baselines.html' %}</details>
+    <p class="sr-only" role="status" aria-live="polite" data-execution-status></p>
+  </div>
+  <div class="execution-fallback" data-execution-fallback>
+    <p>以下按场景列出处理顺序。启用 JavaScript 后可逐步观察结构与状态变化。</p>
+    {% for scene in demo.scenarios %}
+    <details{% if scene.id == demo.defaultScenario %} open{% endif %}>
+      <summary>{{ scene.label }}</summary>
+      <p>{{ scene.summary }}</p>
+      <ul>{% for assumption in scene.assumptions %}<li>{{ assumption }}</li>{% endfor %}</ul>
+      <ol>{% for step in scene.steps %}<li><strong>{{ step.title }}</strong> · {{ step.actor }}<p>{{ step.description }} {{ step.detail }}</p>
+        {% for source_id in step.sourceIds %}<a href="{{ demo.sources[source_id].url }}" target="_blank" rel="noopener noreferrer">{{ demo.sources[source_id].label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</li>{% endfor %}</ol>
+    </details>
+    {% endfor %}
+  </div>
+</div>

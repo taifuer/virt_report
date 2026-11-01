@@ -7,6 +7,7 @@
   <p>使用 QEMU virtio-blk 时，设备请求由 QEMU 解析，再交给块后端。换成 vhost-user-blk 后，客户机仍使用 virtio-blk 驱动，QEMU 负责 PCI 设备呈现与控制连接，独立的 SPDK 进程消费共享队列，并把请求提交给存储设备。</p>
   <p>本文跟踪一次 4 KiB 写入：x86 / KVM 客户机、现代 virtio PCI 接口、split virtqueue，以及 SPDK 轮询模式。SPDK 的块设备抽象 bdev 直接连接本地 PCIe NVMe namespace，其逻辑块为 4 KiB，不叠加加密、压缩或其他虚拟 bdev。协议初始化可结合<a href="qemu-vhost-net.html">vhost-user 的共享内存与通知机制</a>阅读；这里重点分析 SPDK 内部的请求、线程和完成路径。</p>
   <p>本例的控制器由一个 SPDK 线程推进：它轮询客户机队列提交写入，也通过关联的 NVMe 完成轮询处理返回结果。请求先沿 virtqueue → bdev → NVMe 逐层提交，再沿回调返回原来的描述符链。后面介绍多队列时，再展开这个线程同时管理哪些资源。</p>
+  <p>配套<a href="virtio-blk-read.html?backend=spdk-blk&amp;operation=write#walkthrough">交互演示</a>可逐步查看 SPDK 后端的写入过程，也可切换到队列机制视图观察请求发布与描述符回收。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 

@@ -1,0 +1,66 @@
+<section id="preface" class="mechanism-section">
+  <h2>场景与边界</h2>
+  <p>客户机应用调用 <code>sendto()</code> 后，UDP/IP 协议栈把用户数据封装为网络帧，再由 virtio-net 驱动交给后端。接收方向则从后端写入 RX 缓冲区开始，经过驱动、协议栈和 socket 排队，最后由 <code>recvfrom()</code> 把 UDP 载荷复制给应用。QEMU、内核 vhost-net、DPDK vhost-user 与硬件 vDPA 使用相同的客户机设备接口，数据处理位置和缓冲区交接方式各有不同。</p>
+  <p>示例发送 ASCII 字符串 <code>virt-report-demo01</code>，共 18 B。加上 8 B UDP 头、20 B IPv4 头和 14 B Ethernet 头，得到 60 B 帧 P1；virtio-net 另外使用 12 B 网络头，设备 RX 的实际写入量为 72 B。接收应用提供 128 B 缓冲区，成功时 <code>recvfrom()</code> 返回 18。</p>
+  <p>演示采用 x86 + KVM、QEMU 10.2.0、Linux 6.18；DPDK 路径采用 24.11。设备为 modern virtio-net，使用 split ring 和一个队列对：队列 0 接收，队列 1 发送。路由、邻居、设备协商与内存映射已经就绪；使用普通 UDP 复制路径，关闭分段、校验和卸载、合并 RX 缓冲区、UDP cork 和零拷贝发送。报文不带 IP 选项或 VLAN，也无需分片。</p>
+  {% include '_mechanism_baselines.html' %}
+  <p>先选择后端及 TX / RX，再逐步观察处理者与字段变化。流程总览从应用调用开始，包含协议栈、队列、后端和返回；关键结构只保留队列相关步骤，仍显示用户缓冲区、socket、Guest skb 与 DPDK mbuf 的当前状态。额外两个场景演示 TAP 背压与 RX 空间不足。队列基本布局可结合<a href="qemu-network-tx.html#virtqueue">virtqueue 数据结构</a>阅读。</p>
+</section>
+
+<section id="walkthrough" class="mechanism-section">
+  <h2>逐步演示</h2>
+  {% include '_execution_lab.html' %}
+</section>
+
+<section id="completion" class="mechanism-section">
+  <h2>缓冲区与完成语义</h2>
+  <p>普通发送会把用户数据复制到客户机内核的 skb。应用缓冲区 U0、内核 skb S1、设备描述符，以及 DPDK 路径中的宿主 mbuf 是不同对象。<code>sendto()</code> 返回后，应用可以复用 U0，已经复制出的数据仍可沿后续路径转发。UDP 发送内存预算用于约束本地资源使用；普通无 cork UDP 不会像 TCP 那样保留可靠重传队列。</p>
+  <p>TX 发布的是已准备好的帧，后端获得设备可读的缓冲区；RX 提前发布空闲空间，后端获得设备可写的缓冲区。两种方向都先写内容或描述符，再发布索引。通知只提示另一端检查队列，完成记录由 used 保存，多个报文可以共用一次通知。</p>
+  <table>
+    <thead><tr><th scope="col">观察点</th><th scope="col">已经完成</th><th scope="col">后续工作</th></tr></thead>
+    <tbody>
+      <tr><td>sendto 返回 18</td><td>本例的本机发送路径接受了 18 B UDP 载荷，应用可复用用户缓冲区</td><td>不保证交付，不等待 TX used、物理发送或远端响应</td></tr>
+      <tr><td>TX used</td><td>设备结束对该 Guest 链的使用，驱动可回收缓冲区</td><td>本地网络排队、链路发送与远端接收可能尚未结束</td></tr>
+      <tr><td>本地网卡 TX 完成</td><td>网卡结束对相应发送缓冲区的使用</td><td>远端协议栈与应用接收仍需独立确认；UDP 自身不提供可靠送达确认</td></tr>
+      <tr><td>RX used</td><td>帧已写入 Guest 可写空间，实际写入量可见</td><td>客户机还要消费队列、处理协议，再交给应用</td></tr>
+      <tr><td>DPDK TX 提交</td><td>返回数量对应的 mbuf 交给 PMD</td><td>网卡完成使用后，PMD 才能清理这些 mbuf</td></tr>
+      <tr><td>Guest RX 回收</td><td>描述符槽可重新关联可用空间</td><td>旧数据页可能仍被 skb 引用，补充空间要遵守引用生命周期</td></tr>
+      <tr><td>recvfrom 返回 18</td><td>18 B UDP 载荷已复制到应用的 128 B 缓冲区</td><td>应用继续处理数据；新的 RX 缓冲区可以早已发布</td></tr>
+    </tbody>
+  </table>
+  <p>发送在队列发布后分成并行的两条路径：Guest 沿系统调用返回，宿主后端消费已发布的链。本页展示先返回、后处理的一种调度顺序，后端也可能更早运行。图中返回边直接连接客户机协议栈和应用，设备完成不会作为 <code>sendto()</code> 返回的前置条件。真实系统若先把 skb 排入客户机 qdisc，返回还可能早于 virtqueue 发布。</p>
+  <p>RX 演示选取单帧接收路径：驱动回收 used 链，把 skb 交给 NAPI；<code>GRO_NORMAL</code> 普通列表尚未达到提前刷新条件，驱动先补充新 RX 空间。本轮处理量小于 budget，随后在 NAPI 完成阶段由 <code>gro_flush_normal()</code> 把普通列表交给协议栈。IPv4 / UDP 校验与分发完成后，数据才进入 socket。批量阈值或处理预算不同，协议交付与 refill 可以交错；补充新空间始终不以应用读完旧数据为前提。</p>
+  <p>数据进入 socket 后，等待的应用变为可运行；获得 CPU 后才能复制载荷并返回。设备完成也不保证数据能进入 socket：协议校验、接收预算和应用消费速度都可能成为后续限制。本例选择空间充足、校验通过的一条成功路径。</p>
+  <p>DPDK 的普通同步路径有两份独立存储。TX 将 Guest 帧复制为 mbuf，归还 Guest 链后仍可继续转发这个 mbuf；RX 则从 mbuf 复制到 Guest 空间，成功返回后应用可释放宿主 mbuf。<code>rte_vhost_dequeue_burst()</code> 从 Guest 取包，<code>rte_vhost_enqueue_burst()</code> 向 Guest 送包。两个名字以 vhost 接口为视角。</p>
+  <p>队列空间和网络交付能力也应分别观察。TX 的 TAP 暂不可写时，QEMU 保留异步请求，写入恢复后才归还链。RX 没有可写缓冲区时，QEMU 等待 refill 并暂停上游交付；本例演示恢复成功，持续超载仍受有限队列约束，可能丢包。有关 NAPI、缓冲区补充与竞态的细节见<a href="virtio-net-rx.html">virtio-net 接收路径</a>。</p>
+</section>
+
+<section id="evolution" class="mechanism-section">
+  <h2>后端演进与取舍</h2>
+  <p>这些路径保留相同的客户机设备接口，把不同部分放到更合适的执行位置。优化应同时观察吞吐、尾延迟、CPU 消耗，以及迁移和维护能力，单看少经过一个进程无法判断最终效果。</p>
+  <table>
+    <thead><tr><th scope="col">后端</th><th scope="col">数据面变化</th><th scope="col">代价与适用条件</th></tr></thead>
+    <tbody>
+      <tr><td>QEMU + TAP</td><td>QEMU 解析队列，并通过 TAP 连接宿主网络</td><td>路径集中、易于观察；逐包处理和跨用户态边界会消耗 CPU</td></tr>
+      <tr><td>内核 vhost-net</td><td>队列处理接入宿主内核，减少 QEMU 的逐包往返</td><td>仍受内核调度、网络栈、内存访问与 CPU 亲和性影响</td></tr>
+      <tr><td>DPDK vhost-user</td><td>独立用户态进程通过轮询、批处理和 PMD 组织数据面</td><td>需要配置数据线程、内存及 NUMA；持续轮询消耗 CPU，普通路径仍有复制</td></tr>
+      <tr><td>硬件 vhost-vDPA</td><td>设备通过 DMA 处理 Guest 队列，减少宿主软件逐包参与</td><td>依赖硬件能力、映射和设备状态管理；迁移与可观测性需要额外支持</td></tr>
+    </tbody>
+  </table>
+  <p>vhost-user 的 Unix socket 负责共享内存、队列和通知配置，逐包数据通过共享内存访问。vDPA 也包括软件实现；本页固定为硬件 direct 模式，关闭 Shadow Virtqueue（SVQ）。启用 SVQ 后，QEMU 会参与队列转接，不能沿用本页的直接访问路径。对应实现分别见<a href="qemu-vhost-net.html">vhost-net 与 vhost-user</a>、<a href="dpdk-vhost-user-net.html">DPDK 网络转发</a>和<a href="vhost-vdpa.html">vhost-vDPA 与 SVQ</a>。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>源码与相关内容</h2>
+  <p>演示每一步均附相应源码或规范。客户机发送从 <code>__sys_sendto() → udp_sendmsg() → ip_make_skb()</code> 进入网络输出，再由 <code>start_xmit()</code> 提交给 virtio 队列。接收由驱动进入 UDP socket 排队，<code>__sys_recvfrom() → udp_recvmsg()</code> 在读取时复制载荷。QEMU 路径跟踪 <code>virtio_net_flush_tx()</code>、<code>virtio_net_receive_rcu()</code> 和 TAP 回调；vhost-net 跟踪 <code>handle_tx_copy()</code>、<code>handle_rx()</code>；DPDK 跟踪 split 队列消费、复制与 used 发布。</p>
+  <ul>
+    <li><a href="{{ demo.sources['guest-sendto'].url }}">Linux 6.18 sendto</a>、<a href="{{ demo.sources['guest-recvfrom'].url }}">recvfrom</a>与<a href="{{ demo.sources['guest-udp-recv'].url }}">UDP 载荷复制</a>：客户机应用入口和返回。</li>
+    <li><a href="{{ demo.sources['guest-copy-send'].url }}">用户数据复制</a>与<a href="{{ demo.sources['guest-udp-enqueue'].url }}">UDP socket 排队和唤醒</a>：用户缓冲区与内核 skb 的交接。</li>
+    <li><a href="{{ demo.sources['guest-rx'].url }}">virtio-net 接收与 refill</a>、<a href="{{ demo.sources['guest-gro-normal'].url }}">GRO_NORMAL 普通接收列表</a>与<a href="{{ demo.sources['guest-napi-complete'].url }}">NAPI 完成</a>：驱动回收和协议交付的分界。</li>
+    <li><a href="{{ demo.sources['virtio-net-spec'].url }}">VIRTIO 网络设备规范</a>：收发队列、网络头与缓冲区方向。</li>
+    <li><a href="{{ demo.sources['qemu-tx'].url }}">QEMU 10.2.0 TX</a>、<a href="{{ demo.sources['qemu-rx'].url }}">RX</a>与<a href="{{ demo.sources['qemu-tap'].url }}">TAP</a>：交付、背压及完成。</li>
+    <li><a href="{{ demo.sources['vhost-tx'].url }}">Linux 6.18 vhost-net TX</a>与<a href="{{ demo.sources['vhost-rx'].url }}">RX</a>：宿主内核中的队列处理。</li>
+    <li><a href="{{ demo.sources['dpdk-tx'].url }}">DPDK 24.11 dequeue</a>与<a href="{{ demo.sources['dpdk-rx'].url }}">enqueue</a>：同步复制及完成发布。</li>
+    <li><a href="kvm-virtio-interrupt.html">virtio 完成通知</a>：从队列通知到 KVM 中断交付。</li>
+  </ul>
+</section>

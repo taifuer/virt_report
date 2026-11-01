@@ -347,5 +347,99 @@
     });
   }
 
-  return {validateScenario, buildTrace, getScenario};
+  // A queue view is a projection of the complete causal trace. Skipped syscall,
+  // backend and interrupt work still contributes to each retained snapshot.
+  function buildQueueTrace(scenario) {
+    const trace = buildTrace(scenario);
+    const request = scenario.request;
+    const writing = request.operation === 'write';
+    const scsi = request.interface === 'virtio-scsi';
+    const polling = scenario.presentation?.notificationMode === 'poll';
+    const data = request.descriptors.find(descriptor => descriptor.len === request.bytes);
+    const response = request.descriptors[scsi && !writing ? 1 : 2];
+    const head = request.head;
+    const layout = requestLayout(request);
+    const steps = [
+      {
+        flag: 'prepared', title: '准备描述符',
+        description: 'R1 与缓冲区已准备。驱动填写直接描述符链 0 → 1 → 2，占用三个描述符。',
+        detail: `desc[${data.id}] 指向 ${request.bytes} B 数据区，desc[${response.id}] 指向响应区。`
+          + (writing ? '设备读取命令与待写数据，仅响应区带 WRITE 标志。'
+            : '设备读取命令，数据区和响应区带 WRITE 标志。')
+          + 'WRITE 表示设备对 Guest 内存的写权限；此时设备还不能消费这条链。',
+      },
+      {
+        flag: 'published', title: '发布请求',
+        description: `将链头 ${head} 写入 avail.ring[0]，执行发布屏障，再把 avail.idx 从 0 推进到 1。`,
+        detail: '描述符和 available 项先准备好，再发布新索引。available 只保存链头编号，'
+          + '命令与数据仍在描述符指向的 Guest 内存中；驱动须保持这些缓冲区有效。',
+      },
+      {
+        flag: 'consumed', title: '设备取链',
+        description: `设备发现新的 avail.idx，读取链头 ${head} 并沿 next 取出描述符，消费位置从 0 推进到 1。`,
+        detail: (polling ? '本场景由 SPDK 轮询共享队列，不发送提交通知。'
+          : '本场景检查通知条件后发送 kick，唤醒后端检查队列；通知只提示有工作。')
+          + '取走 available 项后，请求仍在处理中，三个描述符仍被占用。',
+      },
+      {
+        flag: 'dataReady', title: '读写缓冲区',
+        description: writing
+          ? `后端读取 desc[${data.id}] 指向的 ${request.bytes} B 数据并完成本次 I/O，响应和 used 尚未发布。`
+          : `后端把 ${request.bytes} B 读取结果写入 desc[${data.id}] 指向的缓冲区，响应和 used 尚未发布。`,
+        detail: '数据通过描述符指向的缓冲区交接，available 与 used 保存请求及完成元数据。'
+          + (writing ? '本例没有执行 flush 或 FUA，普通写入完成不保证掉电后的持久性。'
+            : '数据已经写入用户页，驱动仍需取得完成记录，应用调用随后才能返回。'),
+      },
+      {
+        flag: 'statusWritten', title: '写回响应',
+        description: scsi
+          ? `设备写入 desc[${response.id}] 的 SCSI 响应：response=OK、status=GOOD、resid=0、sense_len=0。`
+          : `设备向 desc[${response.id}] 的状态字节写入 VIRTIO_BLK_S_OK（0）。`,
+        detail: '这一步写回请求的处理结果，used 完成项尚未填写，used.idx 仍为 0。'
+          + '驱动不能仅凭缓冲区内容变化就回收请求。',
+      },
+      {
+        flag: 'usedWritten', title: '填写完成项',
+        description: `设备写入 used.ring[0] = { id: ${head}, len: ${layout.usedLength} }，used.idx 暂不改变。`,
+        detail: `used.id 保存原描述符链头 ${head}，驱动用它找回请求。`
+          + (request.usedLengthNote || (writing
+            ? `used.len=${layout.usedLength}，本场景仅回写响应；待写数据由设备读取。`
+            : `used.len=${layout.usedLength}，包含读取数据与响应的完成长度。`))
+          + '记录已填写但尚未发布，驱动仍需等待新索引。',
+      },
+      {
+        flag: 'usedPublished', title: '发布完成',
+        description: '设备执行写屏障，再把 used.idx 从 0 推进到 1，向驱动发布完成记录。',
+        detail: '数据、响应和 used 项先于新索引可见。驱动现在可以按协议检查完成；'
+          + '是否发送完成通知取决于通知条件，本场景随后发送通知。',
+      },
+      {
+        flag: 'reclaimed', title: '回收描述符',
+        description: `驱动发现新的 used.idx，经过读屏障后取出 used 项，以 id=${head} 找回原链并归还三个描述符。`,
+        detail: '驱动消费位置推进到 1，可用描述符恢复为 8。旧的 available 与 used 槽内容可以保留，'
+          + '消费位置避免重复处理；队列回收完成后，块层收尾与应用返回继续由完整流程展示。',
+      },
+    ];
+    let previousIndex = -1;
+    return steps.map((step, queueIndex) => {
+      // Match state transitions, not implementation-specific function/step IDs:
+      // SPDK, for example, observes data completion in its NVMe completion poll.
+      const frame = trace.find(item => item.changes[step.flag] === true);
+      requireThat(Boolean(frame) && frame.index > previousIndex, 'queue milestone order');
+      previousIndex = frame.index;
+      return {...frame, queueIndex, queueTitle: step.title,
+        queueDescription: step.description, queueDetail: step.detail};
+    });
+  }
+
+  function buildQueueInitial(scenario) {
+    const trace = buildTrace(scenario);
+    const prepared = trace.findIndex(frame => frame.changes.prepared === true);
+    requireThat(prepared > 0, 'queue preparation requires an initial snapshot');
+    return {...trace[prepared - 1], changes: {}, queueIndex: -1, queueTitle: '准备前',
+      queueDescription: '请求与缓冲区已就绪，描述符尚未填写，队列索引均为 0。',
+      queueDetail: '点击下一步准备描述符。浅色表示当前操作，已占用但本步未操作的结构保持中性；旧记录在回收后淡化显示。'};
+  }
+
+  return {validateScenario, buildTrace, buildQueueTrace, buildQueueInitial, getScenario};
 });

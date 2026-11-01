@@ -80,6 +80,9 @@ MECHANISM_ASSET_NAMES = ("mechanisms.css", "mechanisms.js", "precopy-lab.css",
                          "migration-stream.css", "migration-stream.js",
                          "multifd.css", "multifd.js", "device-tx.css", "device-tx.js",
                          "virtio-blk-read.css", "virtio-blk-read-model.js", "virtio-blk-read.js",
+                         "execution-demo.css", "execution-model.js", "execution-demo.js",
+                         "walkthrough.css", "walkthrough-fullscreen.js",
+                         "walkthrough-routing.js",
                          "packed-virtqueue.css", "packed-virtqueue.js",
                          "vhost-path.css", "vhost-path.js", "dirty-ring.css", "dirty-ring.js",
                          "postcopy.css", "postcopy.js", "vfio-dma.css", "vfio-dma.js",
@@ -377,9 +380,16 @@ def _render_mechanism_page(site_name: str, slug: str | None) -> str | None:
     io_scenarios = mechanisms.get_io_scenarios() if article and article.get("scenario_catalog") else None
     if io_scenarios is not None:
         digest.update(json.dumps(io_scenarios, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    demo = None
+    if article and article.get("execution_demo"):
+        from virt_report.execution_demos import get_demo
+        demo = get_demo(article["execution_demo"])
+        if demo is None:
+            raise ValueError("An interactive article must use a registered execution demo")
+        digest.update(json.dumps(demo, ensure_ascii=False, sort_keys=True).encode("utf-8"))
     context = dict(
         article=article, articles=mechanisms.articles(), topics=mechanisms.topics(),
-        flow=flow, io_scenarios=io_scenarios,
+        flow=flow, io_scenarios=io_scenarios, demo=demo,
         topic_groups=mechanisms.topic_groups() if article is None else (),
         topic=mechanisms.get_topic(article["topic"]) if article else None,
         root="../" if article else "",

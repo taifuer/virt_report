@@ -1,0 +1,52 @@
+<section id="preface" class="mechanism-section">
+  <h2>场景与边界</h2>
+  <p>一条客户机访存指令可以直接由硬件完成，也可能停在客户机页表、EPT 或宿主后备页这几个不同位置。演示沿同一组 RAM 地址切换条件，观察由哪一层处理、修改哪份结构，以及原指令在何时完成。</p>
+  <p>RAM 示例沿用<a href="kvm-ept-fault.html">EPT 缺页处理</a>中的地址：<code>GVA 0x40203080 → GPA 0x00403080 → HPA 0x21000080</code>，页大小为 4 KiB。内存槽从 GPA <code>0x00400000</code> 开始、长度为 2 MiB，后备 HVA 基址为 <code>0x7f0000000000</code>。因此目标页是槽内第 3 页，对应后备页 HVA <code>0x7f0000003000</code>。</p>
+  <p>硬件执行两级转换；HVA 则用于 KVM 向宿主内存管理查询后备页。映射建立后，正常访存不会逐次经过 QEMU 的 HVA 查询。MMIO 场景另外读取 GPA <code>0xf0001000</code> 的模拟设备寄存器，避免将设备地址与 RAM 后备混在一起。</p>
+  <p>先选择 RAM 或 MMIO，再观察具体条件下的处理过程。RAM 的场景分为正常访问、Guest 缺页与宿主处理：例如，转换缓存未命中后，硬件遍历中还可能遇到页表缺项；KVM 建立 EPT 时，也可能需要等待宿主后备页。一次访问可以经过多个环节，下面的示例分别固定其他前提，展示各处的状态变化。</p>
+  <p>源码采用 QEMU 10.2.0、Linux 6.18，处理器采用 Intel VMX / EPT。普通 RAM 场景均使用 HVA 后备内存，未加入嵌套虚拟化或私有内存。具体前提位于演示下方的“当前场景配置与源码版本”；步骤间隔不表示实际时延。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+
+<section id="walkthrough" class="mechanism-section">
+  <h2>逐步演示</h2>
+  {% include '_execution_lab.html' %}
+</section>
+
+<section id="comparison" class="mechanism-section">
+  <h2>异常处理的分工</h2>
+  <p>判断一次访存的处理路径，可以先看阻塞位置，再看需要修改的结构。Guest 的页表缺项、KVM 的 EPT 缺项和宿主页未驻留，对应不同的处理者。</p>
+  <table>
+    <thead><tr><th scope="col">场景</th><th scope="col">处理者与结构变化</th><th scope="col">原指令如何继续</th></tr></thead>
+    <tbody>
+      <tr><td>转换缓存命中</td><td>CPU 使用有效的地址转换和权限</td><td>硬件读取 RAM；无访存引起的 VM-Exit</td></tr>
+      <tr><td>TLB 未命中、页表有效</td><td>CPU 遍历 Guest 页表与 EPT</td><td>得到有效转换后完成读取；无需软件缺页处理</td></tr>
+      <tr><td>Guest #PF</td><td>Guest Linux 检查 VMA，分配页面并填写 Guest PTE</td><td>异常返回后重试；本例不退出到 KVM</td></tr>
+      <tr><td>EPT 映射缺失</td><td>KVM 查 memslot、取得 PFN、建立 EPT 叶子</td><td>VM-entry 后重试；无需返回 QEMU</td></tr>
+      <tr><td>宿主后备页未驻留</td><td>宿主内存管理提供页面，KVM 再建立 EPT</td><td>本例 vCPU 线程等待换入，再进入 Guest 重试</td></tr>
+      <tr><td>QEMU 模拟设备 MMIO</td><td>KVM 返回退出信息，QEMU 设备回调填入读值</td><td>再次 KVM_RUN，完成待决模拟后恢复 Guest</td></tr>
+      <tr><td>脏页记录写保护</td><td>KVM 恢复 EPT 写权限并标记脏页</td><td>VM-entry 后重试写入；Guest PTE 保持不变</td></tr>
+    </tbody>
+  </table>
+  <p>普通 TLB miss 只说明转换缓存没有可用条目。Guest 页表和 EPT 都有效时，硬件能够自行完成遍历。CPU 数据缓存则保存数据或指令，其命中情况与转换缓存要分别观察。</p>
+  <p>Guest #PF 示例选用合法匿名映射的首次写入；非法地址与权限错误可能终止应用。宿主缺页示例选用未启用 KVM 异步缺页协议的同步换入；在其他配置中，KVM 可以把等待转成异步处理。两者都不能简单归结为“缺页就调用 QEMU”。</p>
+  <p>MMIO 的读值填写与指令完成尤其需要分开：<code>kvm_run.mmio.data</code> 已填好时，Guest 寄存器仍可能保留旧值。KVM API 要求用户态重新进入 <code>KVM_RUN</code>，由内核先完成待决操作。相关执行循环见<a href="kvm-vcpu-run.html">KVM vCPU 运行与退出</a>。</p>
+</section>
+
+<section id="evolution" class="mechanism-section">
+  <h2>映射管理与取舍</h2>
+  <p>影子页表把 Guest 虚拟地址到宿主物理地址的关系合并到一套硬件可用的映射中，KVM 需要跟踪 Guest 页表的修改。EPT 将第二级转换交给硬件，使 Guest 更直接地管理自己的页表；新增的转换层级也带来页表遍历和缓存压力。TLB、页表遍历缓存与大页共同降低重复转换成本，代价涉及缓存失效、页粒度与内存布局。</p>
+  <p>按需建立 EPT 可以避免启动时为未访问页面做全部工作，首次访问则需要承担建图开销。宿主继续管理后备页，使换出、迁移和内存回收能够生效；这些变化要求 KVM 撤销旧映射，防止 Guest 沿失效 HPA 继续访问。映射生命周期见<a href="kvm-ept-fault.html">EPT 缺页与宿主后备页</a>，QEMU 的 RAM 注册过程见<a href="qemu-memory-region.html">MemoryRegion 与地址空间</a>。</p>
+  <p>迁移期间还需要知道哪些页面被修改。演示选择软件写保护与位图这一条路径，优点是按页发现首次写入，代价是额外退出、记录与下一轮跟踪。硬件 PML 和 Dirty Ring 分别改变脏页发现或交付方式，不能直接套用本例的每一步行为。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>源码与相关内容</h2>
+  <p>演示中的源码链接分别定位 Guest 缺页入口、VMX 退出、KVM 后备页解析、EPT 建图和用户态 MMIO 完成边界。源码视图只展开当前场景涉及的路径。</p>
+  <ul class="mechanism-sources">
+    {% for source_id in ['address-model', 'guest-fault', 'vmx-exceptions', 'ept-exit', 'ept-map', 'faultin-io', 'backing-page', 'dirty-fault', 'mmio-qemu', 'mmio-completion'] %}
+    <li><a href="{{ demo.sources[source_id].url }}" target="_blank" rel="noopener noreferrer">{{ demo.sources[source_id].label }}</a></li>
+    {% endfor %}
+  </ul>
+  <p>继续阅读：<a href="memory-virtualization.html">内存虚拟化</a>、<a href="kvm-ept-fault.html">EPT 缺页处理</a>、<a href="qemu-memory-region.html">QEMU MemoryRegion</a>、<a href="kvm-vcpu-run.html">KVM vCPU 运行与退出</a>。</p>
+</section>

@@ -1,0 +1,71 @@
+{% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
+{% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
+
+<section id="preface" class="mechanism-section">
+  <h2>场景与边界</h2>
+  <p>使用 KVM 时，QEMU 的 vCPU 线程通过 <code>KVM_RUN</code> 进入宿主内核，再由 VM Entry 开始执行客户机指令。普通加法、客户机内核中的大量代码都可以由物理处理器直接完成。CPUID、模拟设备访问和空闲等待则需要不同的处理路径。</p>
+  <p>下面用指令、设备访问和定时休眠几个例子观察执行位置、状态变化与控制权交接。硬件路径采用 x86-64、Intel VMX 与 EPT，源码对应 QEMU 10.2.0 和 Linux 6.18。各场景分别列出使用的拦截、设备和中断配置。</p>
+  <p>先看“普通 ADD”，再切换到“CPUID 内核处理”和“MMIO 返回 QEMU”：三者依次展示直接执行、内核处理和用户态设备交接。“Guest SYSCALL”区分客户机权限切换与虚拟化退出；“HLT 空闲等待”展示 vCPU 阻塞。两个定时休眠场景再用同一次 <code>nanosleep</code> 对比：客户机继续执行其他任务，或者进入空闲、等待定时器唤醒。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+
+<section id="walkthrough" class="mechanism-section">
+  <h2>逐步演示</h2>
+  {% include '_execution_lab.html' %}
+  <p>寄存器值和地址用于说明状态变化，步骤间隔不表示真实执行时间。SYSCALL 等指令的一次架构操作可以拆成多个展示步骤，这些步骤之间不能插入其他客户机指令。完整流程中未加入无关的异步事件。</p>
+</section>
+
+<section id="comparison" class="mechanism-section">
+  <h2>执行路径的差异</h2>
+  <p>每个例子都可以沿三条边界判断：是否从客户机退出到 KVM，是否结束本次 KVM_RUN 返回 QEMU，以及宿主调度器是否切换了正在运行的线程。它们对应不同的状态和开销。</p>
+  <table>
+    <thead><tr><th scope="col">例子</th><th scope="col">VM Exit</th><th scope="col">返回 QEMU</th><th scope="col">关键状态</th></tr></thead>
+    <tbody>
+      <tr><td>普通 ADD</td><td>示例中无退出</td><td>不需要</td><td>Guest EAX 与 RIP 前进</td></tr>
+      <tr><td>Guest SYSCALL</td><td>权限切换本身不要求退出</td><td>不需要</td><td>Guest CPL 3 → 0 → 3，使用客户机 LSTAR</td></tr>
+      <tr><td>CPUID</td><td>有，进入内核 CPUID 处理</td><td>常规路径不需要</td><td>KVM 写回虚拟 CPU 信息并推进 RIP</td></tr>
+      <tr><td>QEMU 模拟 MMIO 读</td><td>有，分析设备访问</td><td>需要一次请求交接</td><td><code>kvm_run.mmio</code> 传递读请求；再入后完成指令</td></tr>
+      <tr><td>内核 LAPIC 下的 HLT</td><td>本例拦截 HLT</td><td>常规等待不需要</td><td><code>mp_state</code> 与宿主 task 状态分别变化</td></tr>
+    </tbody>
+  </table>
+  <p>CPUID 的结果由虚拟 CPU 配置决定，KVM 在内核中完成查询。MMIO 示例需要设备模型提供读结果：第一次 KVM_RUN 返回请求，QEMU 填入数据，第二次进入内核才消费数据并完成指令。<a href="{{ linux }}arch/x86/kvm/cpuid.c#L2090-L2105">CPUID 处理</a>与<a href="{{ linux }}arch/x86/kvm/x86.c#L11936-L11958">用户态 I/O 继续处理</a>分别体现了这两种分工。</p>
+  <p>HLT 场景又增加一层：客户机已进入空闲，宿主线程可以继续短暂轮询，也可以真正睡眠。后端事件到达后，线程先变为可运行，随后才有机会被调度。<code>TASK_RUNNING</code> 同时覆盖运行队列中的等待者和当前执行者，分析延迟时还要观察调度事件。</p>
+  <h3>任务休眠与两层调度</h3>
+  <p>定时休眠示例中，任务 A 请求等待 1 ms。Guest 内核创建 <code>hrtimer_sleeper</code>，登记到期回调，再把 A 交给调度器等待。如果任务 B 可以运行，Guest 就选择 B，vCPU 继续执行指令；没有其他可运行的普通任务时，Guest 进入 idle，本例通过 HLT 把等待机会交给 KVM。这样，同一个应用请求会对应两条不同的 vCPU 路径。</p>
+  <table>
+    <thead><tr><th scope="col">观察时刻</th><th scope="col">Guest 中的任务 A</th><th scope="col">vCPU 与宿主线程</th></tr></thead>
+    <tbody>
+      <tr><td>A 已休眠，B 可以运行</td><td>阻塞，尚未返回系统调用</td><td>Guest 运行 B，vCPU 保持 RUNNABLE</td></tr>
+      <tr><td>宿主抢占正在执行 B 的 vCPU</td><td>仍在阻塞</td><td>宿主线程仍为 TASK_RUNNING，等待物理 CPU；B 的执行暂时停下</td></tr>
+      <tr><td>A 休眠后只有 Guest idle</td><td>仍在阻塞</td><td>HLT 使 vCPU 进入 HALTED；KVM 发布等待者后，宿主线程才睡眠</td></tr>
+      <tr><td>宿主定时器到期并唤醒线程</td><td>Guest 尚未处理到期回调</td><td>宿主线程进入运行队列，仍需获得 CPU 才能继续处理虚拟中断</td></tr>
+      <tr><td>Guest 到期回调唤醒 A</td><td>TASK_RUNNING，等待 Guest 调度</td><td>vCPU 已恢复 Guest 执行，可能仍在中断或其他任务上下文</td></tr>
+      <tr><td>Guest 调度器选中 A</td><td>恢复内核执行，再从 nanosleep 返回</td><td>vCPU 继续执行 A</td></tr>
+    </tbody>
+  </table>
+  <p>Guest 调度器选择客户机任务，宿主调度器选择包括 vCPU 线程在内的宿主任务。这两个选择可以独立发生。正在运行 B 的 vCPU 被宿主抢占时，Guest 不需要执行一次 A、B 之间的切换；反过来，Guest 从 A 切到 B，也不要求宿主更换 vCPU 线程。演示分别显示任务状态、当前执行者与宿主执行上下文，保留这两层关系。</p>
+  <h3>从定时到期到应用继续执行</h3>
+  <p>两个示例使用 Guest TSC-deadline clockevent 和 KVM 的宿主软件 hrtimer 分支。Guest 选定下一次时钟事件 D，KVM 将虚拟 LAPIC 的 deadline 转为宿主定时器。宿主回调到期后，先增加 <code>lapic_timer.pending</code> 并请求唤醒；vCPU 执行循环随后把事件提交给虚拟 LAPIC。客户机接受定时中断、运行自己的 hrtimer 队列后，<code>hrtimer_wakeup()</code> 才清除 sleeper 中的任务指针并唤醒 A。<a href="{{ linux }}arch/x86/kvm/lapic.c#L1976-L2044">宿主定时器与 pending 标记</a>、<a href="{{ linux }}kernel/time/hrtimer.c#L2005-L2016">Guest 到期回调</a>对应这两端的处理。</p>
+  <p>在 HLT 场景中，宿主线程被唤醒后，<code>mp_state</code> 仍可暂时为 HALTED。线程先恢复 KVM 执行，把待处理定时事件转为 LAPIC 中断，再由运行循环检查可接受事件、恢复 RUNNABLE。接着才是 Guest 中断处理、A 进入 Guest 运行队列以及 A 被真正调度。演示把这些阶段分开，便于区分“到期”“可运行”和“正在执行”。</p>
+  <p>1 ms 是应用提交的休眠时长。实际 clockevent D 还受 Guest 当前时间、timer slack 和定时器安排影响；D 之后，宿主运行队列等待、虚拟中断递送和 Guest 调度还可能继续增加返回延迟。本例不加入信号打断，最终返回值为 0。播放速度只控制讲解节奏，不模拟这些延迟的实际长度。</p>
+</section>
+
+<section id="evolution" class="mechanism-section">
+  <h2>退出处理与优化</h2>
+  <p>硬件辅助虚拟化把大量客户机代码交给处理器直接执行，同时把需要控制的操作交回宿主。KVM 把 CPU、内存和中断的高频处理放在内核，QEMU 保留机器与设备模型。这个分工让 CPUID 等常见操作只经过内核，设备回调仍可复用完整的用户态实现。</p>
+  <p>设备通知还可以缩短路径。virtio 驱动先把描述符放入共享队列，再写 doorbell 提醒后端。匹配 <code>ioeventfd</code> 的通知写入可由 KVM 直接触发事件，省去一次通用用户态 MMIO 回调；它通常仍需要 VM Exit。后端完成方向的 <code>irqfd</code> 则把 eventfd 接到 KVM 中断路由。同步设备寄存器读取仍需返回实际值，不能直接替换成无数据的通知。</p>
+  <p>空闲等待可以使用有限 halt polling，以宿主 CPU 时间换取较低的短等待延迟；长时间等待应及时睡眠。优化前先按路径区分 VM Exit、用户态返回和调度等待，再对齐请求延迟与 CPU 消耗，避免仅根据退出次数判断收益。</p>
+  <p>定时事件也有不同实现：硬件定时辅助、定时器提前量和中断加速可以减少部分处理或交付延迟，但不能保证宿主与 Guest 调度器立即选中相应任务。定位定时唤醒抖动时，可以沿宿主定时回调、vCPU 唤醒与切入、Guest 中断、任务 A 唤醒与切入逐段对齐时间，再判断延迟主要来自哪一层。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>源码与相关内容</h2>
+  <ul>
+    <li><a href="{{ qemu }}accel/kvm/kvm-all.c#L3179-L3254">QEMU：KVM_RUN 调用与用户态 I/O 分派</a>；<a href="{{ linux }}arch/x86/kvm/vmx/vmx.c#L6109-L6130">Linux：VMX 退出分发表</a>。</li>
+    <li><a href="{{ linux }}virt/kvm/kvm_main.c#L3644-L3678">Linux：等待者发布、条件复查与 schedule</a>；<a href="https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html">Intel SDM：指令语义、权限与 VMX</a>。</li>
+    <li><a href="{{ linux }}kernel/time/hrtimer.c#L2107-L2199">Guest：nanosleep 与 hrtimer_sleeper</a>；<a href="{{ linux }}arch/x86/kvm/x86.c#L11605-L11643">KVM：等待后的定时事件处理</a>；<a href="{{ linux }}kernel/sched/core.c#L6784-L6910">Linux：阻塞、抢占与任务切换</a>。</li>
+    <li><a href="kvm-vcpu-run.html">KVM vCPU 的运行循环与用户态交接</a>：对象、调用链、MMIO 收尾及 ioeventfd / irqfd。</li>
+    <li><a href="kvm-vcpu-halt.html">KVM 的空闲等待与唤醒</a>：轮询预算、阻塞竞态与调度延迟；<a href="kvm-virtual-time.html">客户机时钟与运行时间</a>：运行与等待时间的计量。</li>
+    <li><a href="memory-access.html">内存访问与异常处理</a>、<a href="interrupt-delivery.html">中断递送与客户机响应</a>：继续查看地址转换和事件交付。</li>
+  </ul>
+</section>

@@ -103,6 +103,16 @@ def test_complete_catalog_validates_and_replays_in_browser_model(base):
           const trace = model.buildTrace(actual);
           assert(trace.at(-1).state.userReturned);
           assert(trace.at(-1).state.irqInjected);
+          const queue = model.buildQueueTrace(actual);
+          assert.equal(queue.length, 8);
+          queue.forEach((frame, number) => {
+            assert.equal(frame.queueIndex, number);
+            assert.deepEqual(frame.state, trace[frame.index].state);
+            assert.equal(frame.id, trace[frame.index].id);
+            if (number) assert(frame.index > queue[number - 1].index);
+          });
+          assert(queue[0].state.prepared && !queue[0].state.published);
+          assert(queue.at(-1).state.reclaimed && !queue.at(-1).state.userReturned);
           const before = JSON.stringify(expected);
           trace[1].state.freeDescriptors = 100;
           assert.equal(JSON.stringify(expected), before);

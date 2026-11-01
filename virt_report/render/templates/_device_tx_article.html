@@ -8,6 +8,7 @@
   <p>客户机 RAM 保存报文和共享队列，QEMU 进程读取这些内存，TAP 连接宿主网络。virtio-net 用描述符记录缓冲区地址和长度，用 available ring 发布请求，再用 used ring 归还请求。kick 面向 QEMU，完成中断面向客户机，两者都提示接收方检查队列。</p>
   <p>本文分析 x86 / KVM 下的 QEMU 用户态网卡路径：e1000 与 modern virtio-net PCI 设备使用相同的 TAP 后端，关闭 vhost；virtio-net 采用 split virtqueue。示例只发送一个普通以太网帧，省略校验和与分段卸载，不配置客户机 IOMMU。涉及 DMA 地址的实际系统，还需按平台配置完成地址转换。</p>
   {% include '_mechanism_baselines.html' %}
+  <p><a href="network-io.html">网络 I/O 收发演示</a>进一步比较 QEMU、内核 vhost-net、DPDK vhost-user 与硬件 vDPA 的 TX/RX 路径，包括队列缺少缓冲区和发送背压。</p>
 </section>
 
 <section id="interfaces" class="mechanism-section">

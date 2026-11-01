@@ -1,0 +1,1007 @@
+{
+  "network-io": {
+    "qemu-tx": {
+      "domains": [
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "用户态应用 · 内核协议栈与驱动",
+          "nodes": [
+            "application",
+            "stack",
+            "guest"
+          ]
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "宿主用户态 · 设备模型",
+          "nodes": [
+            "backend"
+          ]
+        },
+        {
+          "id": "host-network",
+          "title": "TAP / 宿主网络",
+          "context": "宿主内核 · 网络接口",
+          "nodes": [
+            "port"
+          ]
+        },
+        {
+          "id": "external",
+          "title": "外部网络",
+          "context": "本机之外的网络路径",
+          "nodes": [
+            "network"
+          ]
+        }
+      ],
+      "memory": {
+        "title": "Guest RAM",
+        "description": "共享队列与报文缓冲区，驱动和后端按协议交接；应用缓冲区、socket skb 与设备缓冲区分别交接",
+        "nodes": [
+          "queue"
+        ]
+      }
+    },
+    "qemu-rx": {
+      "domains": [
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "用户态应用 · 内核协议栈与驱动",
+          "nodes": [
+            "application",
+            "stack",
+            "guest"
+          ]
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "宿主用户态 · 设备模型",
+          "nodes": [
+            "backend"
+          ]
+        },
+        {
+          "id": "host-network",
+          "title": "TAP / 宿主网络",
+          "context": "宿主内核 · 网络接口",
+          "nodes": [
+            "port"
+          ]
+        },
+        {
+          "id": "external",
+          "title": "外部网络",
+          "context": "本机之外的网络路径",
+          "nodes": [
+            "network"
+          ]
+        }
+      ],
+      "memory": {
+        "title": "Guest RAM",
+        "description": "接收队列与可写缓冲区，由驱动发布、后端填充；应用缓冲区、socket skb 与设备缓冲区分别交接",
+        "nodes": [
+          "queue"
+        ]
+      }
+    },
+    "vhost-tx": {
+      "domains": [
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "用户态应用 · 内核协议栈与驱动",
+          "nodes": [
+            "application",
+            "stack",
+            "guest"
+          ]
+        },
+        {
+          "id": "host-network",
+          "title": "vhost / 宿主网络",
+          "context": "宿主内核 · 数据路径",
+          "nodes": [
+            "backend",
+            "port"
+          ]
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "宿主用户态 · 配置控制",
+          "nodes": [
+            "control"
+          ]
+        },
+        {
+          "id": "external",
+          "title": "外部网络",
+          "context": "本机之外的网络路径",
+          "nodes": [
+            "network"
+          ]
+        }
+      ],
+      "memory": {
+        "title": "Guest RAM",
+        "description": "共享 TX 队列与报文缓冲区，vhost 读取已发布的链；应用缓冲区、socket skb 与设备缓冲区分别交接",
+        "nodes": [
+          "queue"
+        ]
+      }
+    },
+    "vhost-rx": {
+      "domains": [
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "用户态应用 · 内核协议栈与驱动",
+          "nodes": [
+            "application",
+            "stack",
+            "guest"
+          ]
+        },
+        {
+          "id": "host-network",
+          "title": "vhost / 宿主网络",
+          "context": "宿主内核 · 数据路径",
+          "nodes": [
+            "backend",
+            "port"
+          ]
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "宿主用户态 · 配置控制",
+          "nodes": [
+            "control"
+          ]
+        },
+        {
+          "id": "external",
+          "title": "外部网络",
+          "context": "本机之外的网络路径",
+          "nodes": [
+            "network"
+          ]
+        }
+      ],
+      "memory": {
+        "title": "Guest RAM",
+        "description": "共享 RX 队列与可写缓冲区，vhost 填充并发布完成；应用缓冲区、socket skb 与设备缓冲区分别交接",
+        "nodes": [
+          "queue"
+        ]
+      }
+    },
+    "dpdk-tx": {
+      "domains": [
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "用户态应用 · 内核协议栈与驱动",
+          "nodes": [
+            "application",
+            "stack",
+            "guest"
+          ]
+        },
+        {
+          "id": "userspace",
+          "title": "QEMU / DPDK",
+          "context": "宿主用户态 · 控制面与数据面",
+          "nodes": [
+            "control",
+            "backend"
+          ]
+        },
+        {
+          "id": "port",
+          "title": "PMD / 网卡",
+          "context": "用户态轮询驱动与物理设备",
+          "nodes": [
+            "port"
+          ]
+        },
+        {
+          "id": "external",
+          "title": "外部网络",
+          "context": "本机之外的网络路径",
+          "nodes": [
+            "network"
+          ]
+        }
+      ],
+      "memory": {
+        "title": "Guest RAM",
+        "description": "Guest TX 缓冲区与 DPDK mbuf 分属不同生命周期；应用缓冲区、socket skb 与设备缓冲区分别交接",
+        "nodes": [
+          "queue"
+        ]
+      }
+    },
+    "dpdk-rx": {
+      "domains": [
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "用户态应用 · 内核协议栈与驱动",
+          "nodes": [
+            "application",
+            "stack",
+            "guest"
+          ]
+        },
+        {
+          "id": "userspace",
+          "title": "QEMU / DPDK",
+          "context": "宿主用户态 · 控制面与数据面",
+          "nodes": [
+            "control",
+            "backend"
+          ]
+        },
+        {
+          "id": "port",
+          "title": "PMD / 网卡",
+          "context": "用户态轮询驱动与物理设备",
+          "nodes": [
+            "port"
+          ]
+        },
+        {
+          "id": "external",
+          "title": "外部网络",
+          "context": "本机之外的网络路径",
+          "nodes": [
+            "network"
+          ]
+        }
+      ],
+      "memory": {
+        "title": "Guest RAM",
+        "description": "报文从宿主 mbuf 复制到 Guest 已发布的接收缓冲区；应用缓冲区、socket skb 与设备缓冲区分别交接",
+        "nodes": [
+          "queue"
+        ]
+      }
+    },
+    "vdpa-tx": {
+      "domains": [
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "用户态应用 · 内核协议栈与驱动",
+          "nodes": [
+            "application",
+            "stack",
+            "guest"
+          ]
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "宿主用户态 · 配置控制",
+          "nodes": [
+            "control"
+          ]
+        },
+        {
+          "id": "device",
+          "title": "vDPA 设备",
+          "context": "硬件数据面 · direct 模式",
+          "nodes": [
+            "backend",
+            "port"
+          ]
+        },
+        {
+          "id": "external",
+          "title": "外部网络",
+          "context": "本机之外的网络路径",
+          "nodes": [
+            "network"
+          ]
+        }
+      ],
+      "memory": {
+        "title": "Guest RAM",
+        "description": "已建立 DMA 映射的共享队列与 TX 缓冲区；应用缓冲区、socket skb 与设备缓冲区分别交接",
+        "nodes": [
+          "queue"
+        ]
+      }
+    },
+    "vdpa-rx": {
+      "domains": [
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "用户态应用 · 内核协议栈与驱动",
+          "nodes": [
+            "application",
+            "stack",
+            "guest"
+          ]
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "宿主用户态 · 配置控制",
+          "nodes": [
+            "control"
+          ]
+        },
+        {
+          "id": "device",
+          "title": "vDPA 设备",
+          "context": "硬件数据面 · direct 模式",
+          "nodes": [
+            "backend",
+            "port"
+          ]
+        },
+        {
+          "id": "external",
+          "title": "外部网络",
+          "context": "本机之外的网络路径",
+          "nodes": [
+            "network"
+          ]
+        }
+      ],
+      "memory": {
+        "title": "Guest RAM",
+        "description": "设备通过 DMA 写入已映射的 Guest 接收缓冲区；应用缓冲区、socket skb 与设备缓冲区分别交接",
+        "nodes": [
+          "queue"
+        ]
+      }
+    },
+    "qemu-tx-backpressure": {
+      "domains": [
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "用户态应用 · 内核协议栈与驱动",
+          "nodes": [
+            "application",
+            "stack",
+            "guest"
+          ]
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "宿主用户态 · 设备模型",
+          "nodes": [
+            "backend"
+          ]
+        },
+        {
+          "id": "host-network",
+          "title": "TAP / 宿主网络",
+          "context": "宿主内核 · 发送背压",
+          "nodes": [
+            "port"
+          ]
+        },
+        {
+          "id": "external",
+          "title": "外部网络",
+          "context": "本机之外的网络路径",
+          "nodes": [
+            "network"
+          ]
+        }
+      ],
+      "memory": {
+        "title": "Guest RAM",
+        "description": "后端等待 TAP 可写期间，原描述符链仍被占用；应用缓冲区、socket skb 与设备缓冲区分别交接",
+        "nodes": [
+          "queue"
+        ]
+      }
+    },
+    "qemu-rx-no-buffer": {
+      "domains": [
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "用户态应用 · 内核协议栈与驱动",
+          "nodes": [
+            "application",
+            "stack",
+            "guest"
+          ]
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "宿主用户态 · 设备模型",
+          "nodes": [
+            "backend"
+          ]
+        },
+        {
+          "id": "host-network",
+          "title": "TAP / 宿主网络",
+          "context": "宿主内核 · 接收等待",
+          "nodes": [
+            "port"
+          ]
+        },
+        {
+          "id": "external",
+          "title": "外部网络",
+          "context": "本机之外的网络路径",
+          "nodes": [
+            "network"
+          ]
+        }
+      ],
+      "memory": {
+        "title": "Guest RAM",
+        "description": "驱动补充可写 RX 缓冲区后，后端才能继续交付报文；应用缓冲区、socket skb 与设备缓冲区分别交接",
+        "nodes": [
+          "queue"
+        ]
+      }
+    }
+  },
+  "memory-access": {
+    "ram-hit": {
+      "domains": [
+        {"id": "guest", "title": "Guest", "context": "客户机用户态", "nodes": ["guest"]},
+        {"id": "hardware", "title": "CPU / MMU", "context": "硬件执行与地址转换", "nodes": ["mmu"]},
+        {"id": "kernel", "title": "KVM", "context": "宿主内核 · 本次不介入", "nodes": ["kvm"]},
+        {"id": "userspace", "title": "QEMU", "context": "宿主用户态 · RAM 已注册", "nodes": ["qemu"]}
+      ],
+      "memory": {"title": "RAM 后备页", "description": "客户机 RAM 对应的宿主物理内存；本例读取地址 HPA 0x21000080", "nodes": ["ram"]}
+    },
+    "tlb-miss": {
+      "domains": [
+        {"id": "guest", "title": "Guest", "context": "客户机指令与客户机页表", "nodes": ["guest", "gpt"]},
+        {"id": "hardware", "title": "CPU / MMU", "context": "硬件页表遍历", "nodes": ["mmu"]},
+        {"id": "host", "title": "宿主映射", "context": "宿主维护 EPT；本次由硬件读取", "nodes": ["ept", "kvm"]}
+      ],
+      "memory": {"title": "RAM 后备页", "description": "经过两级转换后访问的宿主物理内存", "nodes": ["ram"]}
+    },
+    "guest-page-fault": {
+      "domains": [
+        {"id": "guest", "title": "Guest", "context": "客户机应用、内核与页表", "nodes": ["guest", "guest-os", "gpt"]},
+        {"id": "hardware", "title": "CPU / MMU", "context": "硬件权限检查与异常递送", "nodes": ["mmu"]},
+        {"id": "host", "title": "KVM / QEMU", "context": "宿主软件 · 本次不介入", "nodes": ["kvm"]}
+      ],
+      "memory": {"title": "已映射的 RAM", "description": "本例 EPT 与宿主后备页已就绪，Guest Linux 处理自己的页表缺项", "nodes": ["ram"]}
+    },
+    "ept-missing": {
+      "domains": [
+        {"id": "guest", "title": "Guest", "context": "客户机用户态", "nodes": ["guest"]},
+        {"id": "hardware", "title": "CPU / EPT", "context": "硬件第二级转换", "nodes": ["mmu"]},
+        {"id": "kernel", "title": "KVM / 宿主内存", "context": "宿主内核 · 解析后备页并建图", "nodes": ["kvm", "host-mm"]},
+        {"id": "userspace", "title": "QEMU", "context": "宿主用户态 · memslot 已登记", "nodes": ["qemu"]}
+      ],
+      "memory": {"title": "RAM 后备页", "description": "已驻留的宿主物理页；建立 EPT 后由 Guest 直接访问", "nodes": ["ram"]}
+    },
+    "host-page-fault": {
+      "domains": [
+        {"id": "guest", "title": "Guest", "context": "客户机用户态", "nodes": ["guest"]},
+        {"id": "hardware", "title": "CPU / EPT", "context": "硬件第二级转换", "nodes": ["mmu"]},
+        {"id": "kernel", "title": "KVM / 宿主内存", "context": "宿主内核 · 取页与等待", "nodes": ["kvm", "host-mm"]},
+        {"id": "storage", "title": "交换后备", "context": "宿主页面 I/O", "nodes": ["storage"]}
+      ],
+      "memory": {"title": "RAM 后备页", "description": "宿主换入页面后，KVM 按当前 PFN 恢复 EPT 映射", "nodes": ["ram"]}
+    },
+    "mmio-read": {
+      "domains": [
+        {"id": "guest", "title": "Guest", "context": "客户机设备驱动", "nodes": ["guest"]},
+        {"id": "hardware", "title": "CPU / EPT", "context": "硬件地址检查", "nodes": ["mmu"]},
+        {"id": "kernel", "title": "KVM", "context": "宿主内核 · 指令模拟", "nodes": ["kvm"]},
+        {"id": "userspace", "title": "QEMU", "context": "宿主用户态 · vCPU 线程与设备模型", "nodes": ["qemu", "device"], "span": 2, "inline": true}
+      ]
+    },
+    "dirty-write-protect": {
+      "domains": [
+        {"id": "guest", "title": "Guest", "context": "客户机写入指令", "nodes": ["guest"]},
+        {"id": "hardware", "title": "CPU / EPT", "context": "硬件写权限检查", "nodes": ["mmu"]},
+        {"id": "kernel", "title": "KVM", "context": "宿主内核 · 写保护与脏页记录", "nodes": ["kvm", "bitmap"]},
+        {"id": "userspace", "title": "QEMU", "context": "宿主用户态 · 稍后读取脏页", "nodes": ["qemu"]}
+      ],
+      "memory": {"title": "RAM 后备页", "description": "EPT 写权限恢复后，客户机重试对目标宿主页的写入", "nodes": ["ram"]}
+    }
+  },
+  "cpu-execution": {
+    "ordinary-add": {
+      "domains": [
+        {"id": "guest", "title": "Guest", "context": "客户机用户态 · CPL 3", "nodes": ["guest"]},
+        {"id": "hardware", "title": "物理 CPU", "context": "VMX 硬件执行", "nodes": ["cpu"]},
+        {"id": "kernel", "title": "KVM", "context": "宿主内核 · vCPU 运行循环", "nodes": ["kvm"]},
+        {"id": "userspace", "title": "QEMU", "context": "宿主用户态 · vCPU 线程", "nodes": ["qemu"]}
+      ]
+    },
+    "guest-syscall": {
+      "domains": [
+        {"id": "guest", "title": "Guest", "context": "客户机用户态与内核态", "nodes": ["app", "kernel"]},
+        {"id": "hardware", "title": "物理 CPU", "context": "VMX non-root · 客户机执行", "nodes": ["cpu"]},
+        {"id": "host", "title": "KVM", "context": "宿主内核 · KVM_RUN 未返回", "nodes": ["kvm"]}
+      ]
+    },
+    "cpuid-kernel": {
+      "domains": [
+        {"id": "guest", "title": "Guest", "context": "客户机 CPUID 指令", "nodes": ["guest"]},
+        {"id": "hardware", "title": "物理 CPU", "context": "VMX 硬件退出", "nodes": ["cpu"]},
+        {"id": "kernel", "title": "KVM", "context": "宿主内核 · CPUID 模拟", "nodes": ["kvm"]},
+        {"id": "userspace", "title": "QEMU", "context": "宿主用户态 · KVM_RUN 未返回", "nodes": ["qemu"]}
+      ]
+    },
+    "mmio-userspace": {
+      "domains": [
+        {"id": "guest", "title": "Guest", "context": "客户机设备访问指令", "nodes": ["guest"]},
+        {"id": "hardware", "title": "CPU / EPT", "context": "硬件地址检查", "nodes": ["cpu"]},
+        {"id": "kernel", "title": "KVM", "context": "宿主内核 · 指令模拟", "nodes": ["kvm"]},
+        {"id": "userspace", "title": "QEMU", "context": "宿主用户态 · vCPU 线程与设备模型", "nodes": ["qemu", "device"], "span": 2, "inline": true}
+      ]
+    },
+    "hlt-wakeup": {
+      "domains": [
+        {"id": "guest", "title": "Guest", "context": "客户机内核 · 空闲线程", "nodes": ["guest"]},
+        {"id": "kvm", "title": "KVM", "context": "宿主内核 · HLT 与中断状态", "nodes": ["kvm", "lapic"]},
+        {"id": "scheduler", "title": "宿主调度", "context": "宿主内核 · vCPU 线程调度", "nodes": ["scheduler"]},
+        {"id": "events", "title": "设备后端", "context": "异步完成事件源", "nodes": ["backend"]}
+      ]
+    },
+    "sleep-other-task": {
+      "domains": [
+        {
+          "id": "guest-tasks",
+          "title": "Guest 任务",
+          "context": "客户机用户态",
+          "nodes": [
+            "app",
+            "peer"
+          ]
+        },
+        {
+          "id": "guest-kernel",
+          "title": "Guest 内核",
+          "context": "客户机定时与调度",
+          "nodes": [
+            "guest-timer",
+            "guest-scheduler"
+          ]
+        },
+        {
+          "id": "kvm",
+          "title": "KVM",
+          "context": "宿主内核 · vCPU 与 LAPIC",
+          "nodes": [
+            "kvm"
+          ]
+        },
+        {
+          "id": "host-services",
+          "title": "宿主时间与调度",
+          "context": "宿主内核 · 两条独立路径",
+          "nodes": [
+            "host-timer",
+            "host-scheduler"
+          ]
+        }
+      ]
+    },
+    "sleep-idle-vcpu": {
+      "domains": [
+        {
+          "id": "guest-tasks",
+          "title": "Guest 执行",
+          "context": "客户机任务与空闲",
+          "nodes": [
+            "app",
+            "peer"
+          ]
+        },
+        {
+          "id": "guest-kernel",
+          "title": "Guest 内核",
+          "context": "客户机定时与调度",
+          "nodes": [
+            "guest-timer",
+            "guest-scheduler"
+          ]
+        },
+        {
+          "id": "kvm",
+          "title": "KVM",
+          "context": "宿主内核 · vCPU 与 LAPIC",
+          "nodes": [
+            "kvm"
+          ]
+        },
+        {
+          "id": "host-services",
+          "title": "宿主时间与调度",
+          "context": "宿主内核 · 两条独立路径",
+          "nodes": [
+            "host-timer",
+            "host-scheduler"
+          ]
+        }
+      ]
+    }
+  },
+  "interrupt-delivery": {
+    "msix-software": {
+      "domains": [
+        {"id": "guest", "title": "Guest", "context": "客户机内核 · IRQ 与驱动", "nodes": ["guest"]},
+        {"id": "kernel", "title": "KVM", "context": "宿主内核 · MSI 路由与 LAPIC", "nodes": ["kvm", "lapic"]},
+        {"id": "userspace", "title": "QEMU", "context": "宿主用户态 · 设备与 MSI-X 表项", "nodes": ["device", "msix"], "span": 2, "inline": true}
+      ]
+    },
+    "irqfd": {
+      "domains": [
+        {"id": "guest", "title": "Guest", "context": "客户机内核 · IRQ 与驱动", "nodes": ["guest"]},
+        {"id": "kernel", "title": "KVM / eventfd", "context": "宿主内核 · 事件路由与 LAPIC", "nodes": ["eventfd", "route", "lapic"]},
+        {"id": "backend", "title": "virtio 后端", "context": "内核或用户态 · 由后端实现决定", "nodes": ["backend"]}
+      ]
+    },
+    "if-masked": {
+      "domains": [
+        {"id": "guest", "title": "Guest", "context": "客户机内核 · IF 与中断屏蔽窗口", "nodes": ["guest"]},
+        {"id": "kernel", "title": "KVM / LAPIC", "context": "宿主内核 · 事件检查与待处理状态", "nodes": ["kvm", "lapic"]},
+        {"id": "events", "title": "设备通知", "context": "已通过 MSI-X 设备侧屏蔽检查", "nodes": ["source"]}
+      ]
+    },
+    "msix-masked": {
+      "domains": [
+        {"id": "guest", "title": "Guest", "context": "客户机驱动 · 配置与 IRQ 处理", "nodes": ["guest"]},
+        {"id": "kernel", "title": "KVM / LAPIC", "context": "宿主内核 · 路由与 CPU 侧状态", "nodes": ["kvm", "lapic"]},
+        {"id": "userspace", "title": "QEMU", "context": "宿主用户态 · 设备侧屏蔽与 PBA", "nodes": ["device", "msix"], "span": 2, "inline": true}
+      ]
+    },
+    "apicv-posted": {
+      "domains": [
+        {"id": "guest", "title": "Guest", "context": "客户机内核 · IRQ handler", "nodes": ["guest"]},
+        {"id": "hardware", "title": "物理 CPU", "context": "正在运行目标 vCPU 的宿主处理器", "nodes": ["cpu"]},
+        {"id": "kernel", "title": "KVM", "context": "宿主内核 · 中断投递入口", "nodes": ["source"]}
+      ],
+      "memory": {"title": "硬件递送状态", "description": "宿主内存中的 PID 与虚拟 APIC 页，分别记录 PIR、vIRR 与 vISR", "nodes": ["pid", "vapic"]}
+    }
+  },
+  "disk-persistence": {
+    "write-cache": {
+      "domains": [
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "应用 · 块层与驱动",
+          "nodes": [
+            "application",
+            "guest"
+          ]
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "用户态 · 设备与块层",
+          "nodes": [
+            "qemu"
+          ]
+        },
+        {
+          "id": "host",
+          "title": "宿主内核",
+          "context": "文件系统 · 块 I/O",
+          "nodes": [
+            "host-cache"
+          ]
+        },
+        {
+          "id": "storage",
+          "title": "存储设备",
+          "context": "易失缓存与稳定性边界",
+          "nodes": [
+            "device-cache",
+            "stable"
+          ]
+        }
+      ],
+      "memory": {
+        "title": "Guest RAM",
+        "description": "写入数据、请求与完成记录；队列完成和数据持久化分别观察",
+        "nodes": [
+          "queue"
+        ]
+      }
+    },
+    "write-flush": {
+      "domains": [
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "应用 · 块层与驱动",
+          "nodes": [
+            "application",
+            "guest"
+          ]
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "用户态 · 设备与块层",
+          "nodes": [
+            "qemu"
+          ]
+        },
+        {
+          "id": "host",
+          "title": "宿主内核",
+          "context": "文件系统 · 块 I/O",
+          "nodes": [
+            "host-cache"
+          ]
+        },
+        {
+          "id": "storage",
+          "title": "存储设备",
+          "context": "易失缓存与稳定性边界",
+          "nodes": [
+            "device-cache",
+            "stable"
+          ]
+        }
+      ],
+      "memory": {
+        "title": "Guest RAM",
+        "description": "写入数据、请求与完成记录；队列完成和数据持久化分别观察",
+        "nodes": [
+          "queue"
+        ]
+      }
+    },
+    "write-fua": {
+      "domains": [
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "应用 · 块层与驱动",
+          "nodes": [
+            "application",
+            "guest"
+          ]
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "用户态 · 设备与块层",
+          "nodes": [
+            "qemu"
+          ]
+        },
+        {
+          "id": "host",
+          "title": "宿主内核",
+          "context": "文件系统 · 块 I/O",
+          "nodes": [
+            "host-cache"
+          ]
+        },
+        {
+          "id": "storage",
+          "title": "存储设备",
+          "context": "易失缓存与稳定性边界",
+          "nodes": [
+            "device-cache",
+            "stable"
+          ]
+        }
+      ],
+      "memory": {
+        "title": "Guest RAM",
+        "description": "写入数据、请求与完成记录；队列完成和数据持久化分别观察",
+        "nodes": [
+          "queue"
+        ]
+      }
+    }
+  },
+  "vm-lifecycle": {
+    "cold-start": {
+      "domains": [
+        {
+          "id": "management",
+          "title": "Libvirt",
+          "context": "宿主管理进程",
+          "nodes": [
+            "manager"
+          ]
+        },
+        {
+          "id": "userspace",
+          "title": "QEMU",
+          "context": "宿主用户态",
+          "nodes": [
+            "qemu",
+            "vcpu"
+          ],
+          "span": 2,
+          "inline": true
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核",
+          "nodes": [
+            "kvm"
+          ]
+        },
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机执行上下文",
+          "nodes": [
+            "firmware",
+            "guest",
+            "app"
+          ]
+        }
+      ],
+      "memory": {
+        "title": "宿主资源",
+        "description": "RAM 后备、块设备与网络连接由运行实例持有；持久定义和系统盘另行保存",
+        "nodes": [
+          "resources"
+        ]
+      }
+    },
+    "acpi-shutdown": {
+      "domains": [
+        {
+          "id": "management",
+          "title": "Libvirt",
+          "context": "宿主管理进程",
+          "nodes": [
+            "manager"
+          ]
+        },
+        {
+          "id": "userspace",
+          "title": "QEMU",
+          "context": "宿主用户态",
+          "nodes": [
+            "qemu",
+            "vcpu"
+          ],
+          "span": 2,
+          "inline": true
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核",
+          "nodes": [
+            "kvm"
+          ]
+        },
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机执行上下文",
+          "nodes": [
+            "guest",
+            "app"
+          ]
+        }
+      ],
+      "memory": {
+        "title": "宿主资源",
+        "description": "RAM 后备、块设备与网络连接由运行实例持有；持久定义和系统盘另行保存",
+        "nodes": [
+          "resources"
+        ]
+      }
+    },
+    "force-stop": {
+      "domains": [
+        {
+          "id": "management",
+          "title": "Libvirt",
+          "context": "宿主管理进程",
+          "nodes": [
+            "manager"
+          ]
+        },
+        {
+          "id": "userspace",
+          "title": "QEMU",
+          "context": "宿主用户态",
+          "nodes": [
+            "qemu",
+            "vcpu"
+          ],
+          "span": 2,
+          "inline": true
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核",
+          "nodes": [
+            "kvm"
+          ]
+        },
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机执行上下文",
+          "nodes": [
+            "guest",
+            "app"
+          ]
+        }
+      ],
+      "memory": {
+        "title": "宿主资源",
+        "description": "RAM 后备、块设备与网络连接由运行实例持有；持久定义和系统盘另行保存",
+        "nodes": [
+          "resources"
+        ]
+      }
+    },
+    "pause-resume": {
+      "domains": [
+        {
+          "id": "management",
+          "title": "Libvirt",
+          "context": "宿主管理进程",
+          "nodes": [
+            "manager"
+          ]
+        },
+        {
+          "id": "userspace",
+          "title": "QEMU",
+          "context": "宿主用户态",
+          "nodes": [
+            "qemu",
+            "vcpu"
+          ],
+          "span": 2,
+          "inline": true
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核",
+          "nodes": [
+            "kvm"
+          ]
+        },
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机执行上下文",
+          "nodes": [
+            "guest",
+            "app"
+          ]
+        }
+      ],
+      "memory": {
+        "title": "宿主资源",
+        "description": "RAM 后备、块设备与网络连接由运行实例持有；持久定义和系统盘另行保存",
+        "nodes": [
+          "resources"
+        ]
+      }
+    }
+  }
+}

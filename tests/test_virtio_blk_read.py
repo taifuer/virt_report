@@ -31,7 +31,7 @@ def test_flow_is_allowlisted_and_matches_article_source_baselines():
     flow = mechanisms.get_flow(article["flow"])
     assert article["presentation"] == "walkthrough"
     assert article["topic"] == "block-io-walkthrough"
-    assert article["title"] == "块 I/O 读写过程"
+    assert article["title"] == "磁盘 I/O 读写过程"
     assert article["baselines"] == flow["baselines"]
     assert flow["request"]["bytes"] == 4096
     assert flow["request"]["queueSize"] == 8
@@ -104,7 +104,7 @@ def test_walkthrough_embeds_safe_data_and_loads_model_before_ui_without_network(
     monkeypatch.setattr(socket, "create_connection", unexpected_io)
     monkeypatch.setattr(sqlite3, "connect", unexpected_io)
     page = render.render_mechanisms_html(Config(), "virtio-blk-read")
-    assert "块 I/O 读写过程 - virt-report" in page
+    assert "磁盘 I/O 读写过程 - virt-report" in page
     assert "mechanism-article--walkthrough" in page
     assert "mechanism-layout--walkthrough" in page
     assert 'class="mechanism-walkthrough-nav"' in page
@@ -132,6 +132,24 @@ def test_walkthrough_has_catalogue_and_existing_article_entry_points():
     assert catalogue.count('href="mechanisms/virtio-blk-read.html"') == 1
     writing = render.render_mechanisms_html(Config(), "qemu-virtio-blk")
     assert 'href="virtio-blk-read.html"' in writing
+    spdk = render.render_mechanisms_html(Config(), "spdk-vhost-user-blk")
+    assert 'href="virtio-blk-read.html?backend=spdk-blk&amp;operation=write#walkthrough"' in spdk
+
+
+def test_walkthrough_links_queue_basics_and_backend_sources():
+    page = render.render_mechanisms_html(Config(), "virtio-blk-read")
+    source_start = page.index('<section id="sources"')
+    sources = page[source_start:page.index('</section>', source_start)]
+    for slug in ("virtio-device-initialization", "packed-virtqueue", "spdk-vhost-user-blk"):
+        assert f'href="{slug}.html"' in page
+    assert "缓存与持久化" in page
+    assert "普通文件与写入的差异" not in page
+    ids = {"local-scsi": "scsi-qemu-vq", "rbd-blk": "rbd-submit",
+           "spdk-blk": "spdk-blk-vq", "spdk-scsi": "spdk-scsi-vq"}
+    for route in mechanisms.get_io_scenarios()["routes"]:
+        if route["id"] in ids:
+            source = route["scenarios"]["read"]["sources"][ids[route["id"]]]
+            assert f'href="{source["url"]}"' in sources
 
 
 def test_walkthrough_has_distinct_views_guest_domains_and_no_sharing_ui():
@@ -157,7 +175,7 @@ def test_walkthrough_has_distinct_views_guest_domains_and_no_sharing_ui():
 def test_step_explanations_are_grouped_in_the_inspector_not_below_the_diagram():
     page = render.render_mechanisms_html(Config(), "virtio-blk-read")
     visual_start = page.index('<div class="vbr-visual">')
-    inspector_start = page.index('<aside class="vbr-inspector"', visual_start)
+    inspector_start = page.index('<aside class="vbr-inspector walkthrough-inspector"', visual_start)
     visual = page[visual_start:inspector_start]
     inspector = page[inspector_start:page.index("</aside>", inspector_start)]
     for attribute in ("data-vbr-event", "data-vbr-ownership"):
@@ -191,7 +209,7 @@ def test_scenario_intro_is_one_paragraph_with_initialization_in_configuration():
     intro = page[start:toolbar]
     assert intro.count("data-vbr-scenario-summary") == 1
     assert "data-vbr-control-plane" not in intro
-    config_start = page.index('<details class="vbr-configuration"')
+    config_start = page.index('<details class="vbr-configuration walkthrough-configuration"')
     configuration = page[config_start:page.index("</details>", config_start)]
     assert "data-vbr-control-plane" in configuration
     assert page.count("data-vbr-control-plane") == 1
@@ -272,7 +290,7 @@ def test_embedded_flow_escapes_script_closing_tags(monkeypatch):
 
 
 @pytest.mark.parametrize("path,marker", [
-    ("/mechanisms/virtio-blk-read.html", "块 I/O 读写过程"),
+    ("/mechanisms/virtio-blk-read.html", "磁盘 I/O 读写过程"),
     ("/assets/virtio-blk-read-model.js", "buildTrace"),
     ("/assets/virtio-blk-read.js", "VirtioBlkReadModel"),
     ("/assets/virtio-blk-read.css", "mechanism-article--walkthrough"),

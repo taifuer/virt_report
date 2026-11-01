@@ -120,9 +120,25 @@
     {
       "slug": "block-io-walkthrough",
       "group": "walkthroughs",
-      "title": "块 I/O 读写过程",
+      "title": "磁盘 I/O 读写过程",
       "overview": "virtio-blk-read",
-      "summary": "选择设备接口、存储后端与读写操作，逐步观察一次请求的跨层交接、队列状态和中断注入。"
+      "summary": "观察请求、队列与中断的交接，并比较普通写入、FLUSH 和 FUA 的持久化条件。"
+    },
+    {
+      "slug": "network-io-walkthrough", "group": "walkthroughs", "title": "网络 I/O 收发过程",
+      "overview": "network-io", "summary": "比较 QEMU、vhost-net、DPDK 和硬件 vDPA 的收发路径与缓冲区交接。"
+    },
+    {
+      "slug": "cpu-execution-walkthrough", "group": "walkthroughs", "title": "CPU 指令执行",
+      "overview": "cpu-execution", "summary": "观察指令执行、退出处理，以及任务等待、定时唤醒与 vCPU 调度。"
+    },
+    {
+      "slug": "memory-access-walkthrough", "group": "walkthroughs", "title": "内存访问过程",
+      "overview": "memory-access", "summary": "沿地址转换区分 RAM、Guest 缺页、EPT 缺项、宿主缺页与 MMIO。"
+    },
+    {
+      "slug": "interrupt-delivery-walkthrough", "group": "walkthroughs", "title": "中断递送过程",
+      "overview": "interrupt-delivery", "summary": "对照软件 MSI-X、irqfd、屏蔽与延迟递送，以及 APICv posted interrupt 路径。"
     }
   ],
   "articles": [
@@ -1787,10 +1803,17 @@
       "slug": "libvirt-domain-start",
       "topic": "vm-startup",
       "title": "虚拟机启动：从 Libvirt 到客户机引导",
-      "summary": "通过暂停启动实例，串起宿主资源准备、QEMU 建机与客户机引导，再分析两道启动屏障、状态事件和失败清理。",
-      "reviewed_on": "2026-10-19",
+      "summary": "串起宿主资源准备、QEMU 建机与客户机引导，并用交互总览对照启动、暂停恢复、正常关机和强制停止的状态与资源交接。",
+      "reviewed_on": "2026-11-01",
       "template": "_libvirt_start_article.html",
+      "execution_demo": "vm-lifecycle",
       "baselines": [
+        {
+          "project": "Linux",
+          "version": "6.18",
+          "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+          "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"
+        },
         {
           "project": "Libvirt",
           "version": "12.0.0",
@@ -1808,6 +1831,10 @@
         {
           "id": "preface",
           "title": "虚拟机冷启动的三个阶段"
+        },
+        {
+          "id": "lifecycle",
+          "title": "生命周期交互总览"
         },
         {
           "id": "example",
@@ -2177,13 +2204,14 @@
     {
       "slug": "virtio-blk-read",
       "topic": "block-io-walkthrough",
-      "title": "块 I/O 读写过程",
-      "summary": "选择 virtio-blk 或 virtio-scsi、本地文件、Ceph RBD 或 SPDK 后端，交互查看一次 4 KiB 读写请求的跨层处理、队列变化、中断注入与源码路径。",
-      "reviewed_on": "2026-10-31",
+      "title": "磁盘 I/O 读写过程",
+      "summary": "选择设备与后端，交互查看一次 4 KiB 读写的跨层处理、队列和中断，并对照普通写入、FLUSH 与 SCSI FUA 的持久化边界。",
+      "reviewed_on": "2026-11-01",
       "template": "_virtio_blk_read_article.html",
       "presentation": "walkthrough",
       "scenario_catalog": true,
       "flow": "virtio-blk-read",
+      "execution_demo": "disk-persistence",
       "stylesheet": "virtio-blk-read.css",
       "model_script": "virtio-blk-read-model.js",
       "script": "virtio-blk-read.js",
@@ -2212,13 +2240,78 @@
         },
         {
           "id": "comparison",
-          "title": "普通文件与写入的差异"
+          "title": "缓存与持久化"
+        },
+        {
+          "id": "persistence",
+          "title": "写入完成与持久化"
         },
         {
           "id": "sources",
           "title": "源码与相关内容"
         }
       ]
+    },
+    {
+      "slug": "network-io",
+      "topic": "network-io-walkthrough",
+      "title": "网络 I/O 收发过程",
+      "summary": "交互比较 QEMU、vhost-net、DPDK vhost-user 和硬件 vDPA 的 TX/RX 路径，跟踪队列索引、缓冲区与完成语义。",
+      "reviewed_on": "2026-11-01",
+      "template": "_network_io_article.html", "presentation": "walkthrough",
+      "execution_demo": "network-io", "stylesheet": "execution-demo.css",
+      "model_script": "execution-model.js", "script": "execution-demo.js",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"},
+        {"project": "DPDK", "version": "24.11", "commit": "1b3bf1128d9bda5595861814792f74b8f57160c8", "url": "https://github.com/DPDK/dpdk/tree/1b3bf1128d9bda5595861814792f74b8f57160c8"}
+      ],
+      "sections": [{"id": "preface", "title": "场景与边界"}, {"id": "walkthrough", "title": "逐步演示"}, {"id": "completion", "title": "缓冲区与完成语义"}, {"id": "evolution", "title": "后端演进与取舍"}, {"id": "sources", "title": "源码与相关内容"}]
+    },
+    {
+      "slug": "cpu-execution",
+      "topic": "cpu-execution-walkthrough",
+      "title": "CPU 指令执行过程",
+      "summary": "对照 x86/KVM 的指令执行、退出与恢复，再沿定时等待区分 Guest 任务阻塞、vCPU 空闲、宿主调度和实际运行。",
+      "reviewed_on": "2026-11-01",
+      "template": "_cpu_execution_article.html", "presentation": "walkthrough",
+      "execution_demo": "cpu-execution", "stylesheet": "execution-demo.css",
+      "model_script": "execution-model.js", "script": "execution-demo.js",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}
+      ],
+      "sections": [{"id": "preface", "title": "场景与边界"}, {"id": "walkthrough", "title": "逐步演示"}, {"id": "comparison", "title": "执行路径的差异"}, {"id": "evolution", "title": "退出处理与优化"}, {"id": "sources", "title": "源码与相关内容"}]
+    },
+    {
+      "slug": "memory-access",
+      "topic": "memory-access-walkthrough",
+      "title": "内存访问与异常处理",
+      "summary": "跟踪 GVA、GPA、HPA 与 memslot，区分缓存命中、页表遍历、Guest 缺页、EPT 映射、宿主后备页、MMIO 和脏页记录。",
+      "reviewed_on": "2026-11-01",
+      "template": "_memory_access_article.html", "presentation": "walkthrough",
+      "execution_demo": "memory-access", "stylesheet": "execution-demo.css",
+      "model_script": "execution-model.js", "script": "execution-demo.js",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}
+      ],
+      "sections": [{"id": "preface", "title": "场景与边界"}, {"id": "walkthrough", "title": "逐步演示"}, {"id": "comparison", "title": "异常处理的分工"}, {"id": "evolution", "title": "映射管理与取舍"}, {"id": "sources", "title": "源码与相关内容"}]
+    },
+    {
+      "slug": "interrupt-delivery",
+      "topic": "interrupt-delivery-walkthrough",
+      "title": "中断递送与客户机响应",
+      "summary": "交互对照 MSI-X 软件递送、irqfd、IF 屏蔽、MSI-X PBA 与 APICv posted interrupt，跟踪请求挂起、接受和 EOI。",
+      "reviewed_on": "2026-11-01",
+      "template": "_interrupt_delivery_article.html", "presentation": "walkthrough",
+      "execution_demo": "interrupt-delivery", "stylesheet": "execution-demo.css",
+      "model_script": "execution-model.js", "script": "execution-demo.js",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}
+      ],
+      "sections": [{"id": "preface", "title": "场景与边界"}, {"id": "walkthrough", "title": "逐步演示"}, {"id": "comparison", "title": "屏蔽与递送的分工"}, {"id": "evolution", "title": "中断路径的演进"}, {"id": "sources", "title": "源码与相关内容"}]
     },
     {
       "slug": "qemu-virtio-blk",

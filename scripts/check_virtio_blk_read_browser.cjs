@@ -15,6 +15,9 @@ const scene = model.getScenario(baseScene, 'read');
 const writeScene = model.getScenario(baseScene, 'write');
 const frames = model.buildTrace(scene);
 const writeFrames = model.buildTrace(writeScene);
+const queueFrames = model.buildQueueTrace(scene);
+const queueInitial = model.buildQueueInitial(scene);
+const writeQueueFrames = model.buildQueueTrace(writeScene);
 const backendIds = ['local-blk', 'local-scsi', 'rbd-blk', 'spdk-blk', 'spdk-scsi'];
 const firstFrame = frames[0];
 const finalFrame = frames.at(-1);
@@ -38,13 +41,14 @@ async function assertPhaseWrapping(page) {
     return {
       width: innerWidth, backend: document.querySelector('[data-vbr-lab]').dataset.backend,
       operation: document.querySelector('[data-vbr-lab]').dataset.operation,
+      view: document.querySelector('[data-vbr-lab]').dataset.view,
       container: rect(strip.getBoundingClientRect()),
       scrollWidth: strip.scrollWidth, clientWidth: strip.clientWidth,
-      buttons: [...strip.querySelectorAll('[data-vbr-phase]')].map(button => {
+      buttons: [...strip.querySelectorAll('[data-vbr-phase], [data-vbr-queue-step]')].map(button => {
         const box = button.getBoundingClientRect(), style = getComputedStyle(button);
         const size = key => parseFloat(style[key]) || 0;
         return {
-          id: button.dataset.vbrPhase, title: button.textContent, box: rect(box),
+          id: button.dataset.vbrPhase || button.dataset.vbrQueueStep, title: button.textContent, box: rect(box),
           content: {left: box.left + size('borderLeftWidth') + size('paddingLeft'),
             right: box.right - size('borderRightWidth') - size('paddingRight'),
             top: box.top + size('borderTopWidth') + size('paddingTop'),
@@ -60,7 +64,7 @@ async function assertPhaseWrapping(page) {
   const context = `${layout.width}px ${layout.backend}/${layout.operation}`;
   const inside = (inner, outer) => inner.left >= outer.left - 1 && inner.right <= outer.right + 1
     && inner.top >= outer.top - 1 && inner.bottom <= outer.bottom + 1;
-  assert.equal(layout.buttons.length, 10, context);
+  assert.equal(layout.buttons.length, layout.view === 'mechanism' ? 8 : 10, context);
   assert(layout.scrollWidth <= layout.clientWidth + 1, `${context}: phases must wrap, not scroll horizontally`);
   const rows = new Set(layout.buttons.map(button => Math.round(button.box.top)));
   if (layout.width <= 700) assert(rows.size >= 2, `${context}: phase buttons must wrap onto multiple rows`);
@@ -179,6 +183,10 @@ async function assertView(page, view) {
   }
   assert.equal(await page.locator('.vbr-visual > [data-vbr-structure]').count(), 1,
     'queue mechanism belongs in the main visualization area');
+  assert.equal(await page.locator('[data-vbr-interrupt-path]').isVisible(), view === 'overview',
+    'interrupt injection details stay in the overview');
+  assert.equal(await page.locator('[data-vbr-queue-step]').count(), view === 'mechanism' ? 8 : 0);
+  assert.equal(await page.locator('[data-vbr-phase]').count(), view === 'mechanism' ? 0 : 10);
 }
 
 async function assertFrame(page, frame, activeScene) {
@@ -189,8 +197,9 @@ async function assertFrame(page, frame, activeScene) {
   }
   const filled = page.locator('[data-vbr-byte][data-filled="true"]');
   assert.equal(await filled.count(), frame.state.bufferReady ? 32 : 0);
+  const view = await page.locator('[data-vbr-lab]').getAttribute('data-view');
   assert.equal(await page.locator('[data-vbr-byte][data-filled="true"]:visible').count(),
-    frame.state.bufferReady ? 16 : 0);
+    frame.state.bufferReady && view !== 'source' ? 16 : 0);
   assert.equal(await page.locator('[data-vbr-node="application"]').getAttribute('data-done'),
     String(frame.state.userReturned), `${frame.id}: application completion indicator`);
   assert.equal(await page.locator('[data-vbr-traveler]').getAttribute('hidden'), '', 'reduced motion disables travel');
@@ -209,6 +218,44 @@ async function assertFrame(page, frame, activeScene) {
   }
 }
 
+async function assertQueueFrame(page, frame, activeScene) {
+  await assertFrame(page, frame, activeScene);
+  await assertView(page, 'mechanism');
+  assert.equal(await page.locator('[data-vbr-title]').textContent(), frame.queueTitle);
+  assert.equal(await page.locator('[data-vbr-counter]').textContent(),
+    frame.queueIndex < 0 ? '准备前 · 共 8 步' : `队列交接 · 第 ${frame.queueIndex + 1} / 8 步`);
+  if (frame.queueIndex < 0) {
+    assert.equal(await page.locator('[data-vbr-queue-step][aria-current="step"]').count(), 0);
+  } else {
+    assert.equal(await page.locator('[data-vbr-queue-step][aria-current="step"]')
+      .getAttribute('data-vbr-queue-step'), frame.id);
+  }
+  const expectedOwnership = frame.state.reclaimed ? 'returned' : frame.state.prepared ? 'owned' : 'idle';
+  for (const descriptor of activeScene.request.descriptors) {
+    assert.equal(await page.locator(`[data-vbr-descriptor="${descriptor.id}"]`)
+      .getAttribute('data-queue-state'), expectedOwnership);
+    const responseId = activeScene.request.interface === 'virtio-scsi'
+      && activeScene.request.operation === 'read' ? 1 : 2;
+    const current = [0, 2, 7].includes(frame.queueIndex)
+      || (frame.queueIndex === 3 && descriptor.len === activeScene.request.bytes)
+      || (frame.queueIndex === 4 && descriptor.id === responseId);
+    assert.equal(await page.locator(`[data-vbr-descriptor="${descriptor.id}"]`)
+      .getAttribute('data-current'), String(current));
+  }
+  assert.equal(await page.locator('[data-vbr-queue-link="available"] span:first-child').textContent(), 'avail 槽 0');
+  assert.equal(await page.locator('[data-vbr-queue-link="available"] span:last-child').textContent(),
+    frame.state.published ? '保存链头 0' : '待发布链头 0');
+  assert.equal(await page.locator('[data-vbr-queue-link="used"] code').textContent(),
+    frame.state.usedWritten ? 'used.id=0' : 'used.id');
+  if (frame.state.usedWritten) {
+    const slot = page.locator('[data-vbr-ring="used"] .vbr-slot').first();
+    assert.equal(await slot.getAttribute('data-queue-state'), expectedOwnership);
+    assert.equal(await slot.getAttribute('data-filled'), 'true', 'reclaim preserves the old record');
+    assert.match(await slot.textContent(), /id 0/);
+  }
+  assert.equal(frame.state.userReturned, false, 'queue view ends before the syscall return');
+}
+
 async function assertBackends(page, everyStep = false) {
   const select = page.locator('[data-vbr-backend-select]');
   const catalog = JSON.parse(await page.locator('#block-io-scenarios-data').textContent());
@@ -220,6 +267,8 @@ async function assertBackends(page, everyStep = false) {
   for (const backend of backendIds) for (const operation of ['read', 'write']) {
     const activeScene = model.getScenario(baseScene, operation, backend, catalog);
     const trace = model.buildTrace(activeScene);
+    const queue = model.buildQueueTrace(activeScene);
+    await page.locator('[data-vbr-view="overview"]').click();
     await select.selectOption(backend);
     await page.locator(`[data-vbr-operation="${operation}"]`).click();
     await page.locator('[data-vbr-reset]').click();
@@ -228,18 +277,32 @@ async function assertBackends(page, everyStep = false) {
     assert.equal(await lab.getAttribute('data-step'), trace[0].id);
     await assertPhaseWrapping(page);
     await page.locator('[data-vbr-view="mechanism"]').click();
+    await assertPhaseWrapping(page);
+    await assertQueueFrame(page, model.buildQueueInitial(activeScene), activeScene);
     if (everyStep) {
+      await page.locator('[data-vbr-next]').click();
+      for (const [index, frame] of queue.entries()) {
+        await assertQueueFrame(page, frame, activeScene);
+        if (index < queue.length - 1) await page.locator('[data-vbr-next]').click();
+      }
+    } else {
+      await page.goto(`${route}?backend=${backend}&operation=${operation}&view=mechanism&step=${trace.at(-1).id}`);
+      await assertQueueFrame(page, queue.at(-1), activeScene);
+    }
+    assert(await page.locator('[data-vbr-next]').isDisabled(), 'queue view stops at descriptor reclamation');
+    assert.match(await page.locator('[data-vbr-used-length]').textContent(), new RegExp(`^${trace.at(-1).state.usedLength} B`));
+    if (backend.endsWith('scsi')) assert.match(await page.locator('[data-vbr-status-byte]').textContent(), /response = OK.*sense_len = 0/);
+    await page.locator('[data-vbr-view="source"]').click();
+    await assertCallpaths(page, queue.at(-1), activeScene);
+    if (everyStep) {
+      await page.locator('[data-vbr-reset]').click();
       for (const [index, frame] of trace.entries()) {
         await assertFrame(page, frame, activeScene);
         if (index < trace.length - 1) await page.locator('[data-vbr-next]').click();
       }
     } else {
-      await page.goto(`${route}?backend=${backend}&operation=${operation}&view=mechanism&step=${trace.at(-1).id}`);
-      await assertFrame(page, trace.at(-1), activeScene);
+      await page.goto(`${route}?backend=${backend}&operation=${operation}&view=source&step=${trace.at(-1).id}`);
     }
-    assert.match(await page.locator('[data-vbr-used-length]').textContent(), new RegExp(`^${trace.at(-1).state.usedLength} B`));
-    if (backend.endsWith('scsi')) assert.match(await page.locator('[data-vbr-status-byte]').textContent(), /response = OK.*sense_len = 0/);
-    await page.locator('[data-vbr-view="source"]').click();
     await assertCallpaths(page, trace.at(-1), activeScene);
     signatures.add(activeScene.steps.map(step => step.sourceIds.join(',')).join('|'));
     await page.reload({waitUntil: 'domcontentloaded'});
@@ -334,6 +397,9 @@ async function assertCallpaths(page, frame, activeScene = scene) {
               assert.equal(await page.locator('[data-vbr-phase][aria-current="step"]').getAttribute('data-vbr-phase'), phase);
               await assertPhaseWrapping(page);
             }
+            await page.locator('[data-vbr-view="mechanism"]').click();
+            await assertPhaseWrapping(page);
+            await page.locator('[data-vbr-view="overview"]').click();
             if (screenshots && backend === 'rbd-blk' && operation === 'read' && [1440, 390].includes(width)) {
               fs.mkdirSync(screenshots, {recursive: true});
               await page.locator('[data-vbr-progress]').scrollIntoViewIfNeeded();
@@ -407,19 +473,52 @@ async function assertCallpaths(page, frame, activeScene = scene) {
     assert(await button('structure').isVisible());
     assert(await button('callpaths').isHidden());
     await assertView(page, 'mechanism');
-    for (const [index, frame] of frames.entries()) {
-      await assertFrame(page, frame, scene);
-      if (index < frames.length - 1) await button('next').click();
+    await assertQueueFrame(page, queueInitial, scene);
+    await button('next').click();
+    let ownedSlotColor;
+    for (const [index, frame] of queueFrames.entries()) {
+      await assertQueueFrame(page, frame, scene);
+      if (frame.state.usedPublished && !frame.state.reclaimed) {
+        ownedSlotColor = await page.locator('[data-vbr-ring="used"] .vbr-slot').first()
+          .evaluate(node => getComputedStyle(node).backgroundColor);
+      }
+      if (index < queueFrames.length - 1) await button('next').click();
     }
     assert(await button('next').isDisabled());
     assert.match(await button('used-length').textContent(), /4097 B/);
-    assert.match(await button('ownership').textContent(), /应用可读取/);
+    assert.match(await button('ownership').textContent(), /回收/);
+    const returnedSlotColor = await page.locator('[data-vbr-ring="used"] .vbr-slot').first()
+      .evaluate(node => getComputedStyle(node).backgroundColor);
+    assert.notEqual(returnedSlotColor, ownedSlotColor, 'reclaimed records are visually distinct from owned ones');
+    for (const frame of queueFrames) {
+      await page.locator(`[data-vbr-queue-step="${frame.id}"]`).click();
+      await assertQueueFrame(page, frame, scene);
+    }
     await button('prev').click();
-    assert.equal(await lab.getAttribute('data-step'), frames.at(-2).id);
+    assert.equal(await lab.getAttribute('data-step'), queueFrames.at(-2).id);
     assert.equal(await page.locator('[data-vbr-node="application"]').getAttribute('data-done'), 'false');
     await button('reset').click();
-    assert.equal(await lab.getAttribute('data-step'), firstFrame.id);
+    assert.equal(await lab.getAttribute('data-step'), queueInitial.id);
     assert.match(await button('status-byte').textContent(), /未回写/);
+    assert(await button('prev').isDisabled());
+    // URLs from the earlier full-step queue view resolve to an existing queue milestone.
+    for (const oldId of [firstFrame.id, 'signal-irqfd', finalFrame.id]) {
+      const original = frames.find(frame => frame.id === oldId);
+      const projected = [...queueFrames].reverse().find(frame => frame.index <= original.index) || queueInitial;
+      await page.goto(`${route}?view=mechanism&step=${oldId}`, {waitUntil: 'networkidle'});
+      await assertQueueFrame(page, projected, scene);
+      assert.equal(new URL(page.url()).searchParams.get('step'), projected.id,
+        'old queue URLs are normalized to the visible milestone');
+      await page.reload({waitUntil: 'networkidle'});
+      await assertQueueFrame(page, projected, scene);
+    }
+    await button('reset').click();
+    await button('speed').selectOption('1200');
+    await button('play').click();
+    await page.waitForFunction(initial => document.querySelector('[data-vbr-lab]').dataset.step !== initial,
+      queueInitial.id);
+    await button('play').click();
+    assert.equal(await button('play').getAttribute('aria-pressed'), 'false');
 
     await page.locator('[data-vbr-view="overview"]').click();
     await page.locator('[data-vbr-node="buffer"]').click();
@@ -442,7 +541,7 @@ async function assertCallpaths(page, frame, activeScene = scene) {
 
     await button('reset').click();
     for (const [index, frame] of frames.entries()) {
-      assert.equal(await lab.getAttribute('data-step'), frame.id);
+      await assertFrame(page, frame, scene);
       await assertCallpaths(page, frame);
       if (index < frames.length - 1) await button('next').click();
     }
@@ -458,14 +557,19 @@ async function assertCallpaths(page, frame, activeScene = scene) {
     assert.match(await button('command').textContent(), /VIRTIO_BLK_T_OUT/);
     assert.match(await button('transfer').textContent(), /Guest 用户缓冲区 → 后端/);
     assert.equal(await page.locator('[data-vbr-descriptor-role="1"]').textContent(), writeScene.request.descriptors[1].role);
-    for (const [index, frame] of writeFrames.entries()) {
-      await assertFrame(page, frame, writeScene);
-      if (index < writeFrames.length - 1) await button('next').click();
+    await assertQueueFrame(page, model.buildQueueInitial(writeScene), writeScene);
+    await button('next').click();
+    for (const [index, frame] of writeQueueFrames.entries()) {
+      await assertQueueFrame(page, frame, writeScene);
+      if (index < writeQueueFrames.length - 1) await button('next').click();
     }
     assert.match(await button('used-length').textContent(), /^1 B/);
-    assert.match(await button('ownership').textContent(), /pwrite\(\).*flush \/ FUA/);
+    assert.match(await button('ownership').textContent(), /回收/);
     await page.locator('[data-vbr-view="source"]').click();
+    await assertCallpaths(page, writeQueueFrames.at(-1), writeScene);
+    while (!(await button('next').isDisabled())) await button('next').click();
     await assertCallpaths(page, writeFrames.at(-1), writeScene);
+    assert.match(await button('ownership').textContent(), /pwrite\(\).*flush \/ FUA/);
     await page.reload({waitUntil: 'networkidle'});
     assert.equal(await lab.getAttribute('data-operation'), 'write');
     assert.equal(await lab.getAttribute('data-step'), writeFrames.at(-1).id);
@@ -541,7 +645,9 @@ async function assertCallpaths(page, frame, activeScene = scene) {
           }),
           activePhaseVisible: (() => {
             const strip = document.querySelector('[data-vbr-progress]').getBoundingClientRect();
-            const active = document.querySelector('[data-vbr-phase][aria-current="step"]').getBoundingClientRect();
+            const current = document.querySelector('[data-vbr-phase][aria-current="step"], [data-vbr-queue-step][aria-current="step"]');
+            if (!current) return true; // Queue preparation has not started.
+            const active = current.getBoundingClientRect();
             return active.left >= strip.left - 1 && active.right <= strip.right + 1;
           })()};
       });

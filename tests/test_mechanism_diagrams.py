@@ -71,10 +71,15 @@ def test_article_diagrams_are_local_with_progressive_fullscreen_controls(slug):
     page = render.render_mechanisms_html(Config(), slug)
     if mechanisms.get_article(slug).get("presentation") == "walkthrough":
         # Native responsive diagrams replace scaled Mermaid images in a walkthrough.
-        assert 'data-vbr-board' in page and 'data-vbr-connections' in page
-        assert 'data-vbr-fallback' in page
+        if mechanisms.get_article(slug).get("execution_demo"):
+            assert 'data-execution-nodes' in page and 'data-execution-connections' in page
+            assert 'data-execution-fallback' in page and 'data-execution-expand' in page
+            assert 'assets/execution-model.js?v=' in page
+        else:
+            assert 'data-vbr-board' in page and 'data-vbr-connections' in page
+            assert 'data-vbr-fallback' in page
+            assert 'assets/virtio-blk-read-model.js?v=' in page
         assert 'type="application/json"' in page
-        assert 'assets/virtio-blk-read-model.js?v=' in page
     else:
         assert 'data-mechanism-view="diagram"' in page
         assert 'data-mechanism-expand' in page

@@ -91,7 +91,7 @@ cp .env.example .env
 | 基础机制 | 虚拟化基础 → CPU 虚拟化 → 内存虚拟化 → 设备与 I/O 虚拟化 → 中断虚拟化 |
 | 关键操作 | 虚拟机启动 → 热迁移 → 热插拔 → 热升级 |
 | 内部机制 | QEMU 内部机制 → KVM 内部机制 → Libvirt 内部机制 |
-| 交互演示 | 块 I/O 读写过程 |
+| 交互演示 | 磁盘 I/O 读写过程 |
 
 目录只显示已有正文的专题及其主归属篇数，未发布的专题和分组不对读者展示。各文章 URL 保持稳定，交叉阅读放在导读正文，不在目录增加附加行或重复计数。
 
@@ -121,20 +121,39 @@ cp .env.example .env
 
 TCG 交互跟踪翻译块的生成、命中、跳转链接与代码改写后的失效；与 KVM 文章对照 CPU 执行路径。公共 Mermaid 图默认不超过原始尺寸，长图等比缩小；细节可在全屏查看器中缩放。
 
-目前 13 个专题入口包含 53 篇原理文章与 1 个交互演示，另保留 3 个旧链接跳转页。内容覆盖 CPU 模型与迁移兼容性、嵌套 VMX、vCPU 热插拔、NUMA 放置、Libvirt 迁移协调、VFIO 设备迁移、virtio-net 接收与 NAPI、Packed virtqueue、vhost-vDPA、IOMMU 与 IOMMUFD、vIOMMU、virtio-gpu，以及外部快照与在线块操作。
+目前 17 个专题入口包含 53 篇原理文章与 5 个交互演示，另保留 3 个旧链接跳转页。内容覆盖 CPU 模型与迁移兼容性、嵌套 VMX、vCPU 热插拔、NUMA 放置、Libvirt 迁移协调、VFIO 设备迁移、virtio-net 接收与 NAPI、Packed virtqueue、vhost-vDPA、IOMMU 与 IOMMUFD、vIOMMU、virtio-gpu，以及外部快照与在线块操作。
 
-`mechanisms/virtio-blk-read.html` 保留原 URL，页面名为“块 I/O 读写过程”，独立归入交互演示，不再计入设备基础文章。读取与写入分别从 Guest 的 `pread()` / `pwrite()` 出发，固定一次 4 KiB 直接 I/O，串起系统调用、内核块层、KVM、QEMU 后端与应用返回。流程总览显示跨层图；队列机制用独立主面板显示描述符、环槽和缓冲区，不再追加在大图下方；源码路径展示关键函数与异步边界。支持单步、播放和回退，URL 保留步骤、视图和 `operation=write`，不设分享按钮。
+`mechanisms/virtio-blk-read.html` 保留原 URL，页面名为“磁盘 I/O 读写过程”，独立归入交互演示，不再计入设备基础文章。读取与写入分别从 Guest 的 `pread()` / `pwrite()` 出发，固定一次 4 KiB 直接 I/O。流程总览显示系统调用、共享队列、后端处理、中断递送与应用返回；源码路径展示关键函数及异步边界。队列机制单独保留 8 个步骤：准备描述符、发布请求、设备取链、读写缓冲区、写回响应、填写完成项、发布完成、回收描述符。该视图以描述符回收为终点，不再逐步展开系统调用与中断注入；阶段导航和计数采用队列自己的进度。三种视图共用完整状态轨迹，队列视图按里程碑取快照，不修改底层因果顺序。支持单步、播放和回退，URL 保留步骤、视图和 `operation=write`。
+
+队列视图初始显示“准备前”，三个描述符未填写、索引为零，不计入 8 个操作步骤。请求占用使用中性背景，仅本步操作高亮；回收后的旧环项仍保留并淡化，避免误解为回收必须清空内存。
 
 默认的本地 virtio-blk 场景固定 Linux 6.18 / QEMU 10.2、split ring、ioeventfd / irqfd、raw 文件与 `aio=threads`；一次应用调用形成一个 bio / 块请求是配置假设，不推广到普通文件或任意 I/O。Guest 直接 I/O 与宿主 `cache.direct=off` 分开说明。VMX 软件中断路径明确区分 irqfd、MSI 路由、LAPIC pending、成功 VM-entry 注入与 Guest 回调，未启用 APICv / posted interrupt。此场景读数据描述符带 WRITE，写数据描述符不带 WRITE，成功 used.len 分别为 4097 / 1；写入完成不等于持久化，未模拟 flush/FUA。动画不代表实测时延；无 JavaScript 时保留默认本地读取的阶段说明，切换后端与操作需要 JavaScript。
 
-演示顶部选择设备接口与后端：本地 virtio-blk、QEMU virtio-scsi、QEMU librbd、SPDK vhost-blk 与 vhost-scsi；五种路径均可选择读取或写入，共十个独立场景。顶部统一显示一段流程概述，初始化细节放入“当前场景配置与源码版本”。切换会更新步骤、队列布局、执行上下文及源码路径，并从请求开始；切换视图保留进度。URL 的 `backend` 参数支持恢复选择。SPDK 固定轮询与 NVMe 路径，QEMU 只承担控制面；Ceph 展示到 QEMU / librbd 的异步接口与完成回调边界，不模拟集群内部。
+演示顶部选择设备接口与后端：本地 virtio-blk、QEMU virtio-scsi、QEMU librbd、SPDK vhost-blk 与 vhost-scsi；五种路径均可选择读取或写入，共十个独立场景。顶部统一显示一段流程概述，初始化细节放入“当前场景配置与源码版本”。切换场景会更新步骤、队列布局、执行上下文及源码路径，并回到当前视图的起点；切换视图时按已有进度定位对应步骤或队列里程碑。URL 的 `backend` 参数支持恢复选择。SPDK 固定轮询与 NVMe 路径，QEMU 只承担控制面；Ceph 展示到 QEMU / librbd 的异步接口与完成回调边界，不模拟集群内部。演示与 SPDK 专文互相链接；设备初始化、Packed 队列及中断实现继续由对应原理文章说明。
 
 离线场景以 `virt_report/content/flows/virtio-blk-read.json` 为基础，`operationVariants.write` 保存本地写路径差异；`qemu-io-variants.json` 与 `spdk-io-variants.json` 保存其他后端已核验的读写差异。Python 在导出时构建完整场景目录，模型 `getScenario(base, operation, backend, catalog)` 返回独立副本。逐步状态模型与界面分别为 `virtio-blk-read-model.js`、`virtio-blk-read.js`。`callPaths` 按执行上下文组织固定源码链接，不能把通知、工作线程、协程恢复或完成回调串成跨上下文的普通函数调用链。修改场景须同时核验函数、缓冲区权限、发布顺序与各实现的完成长度；展示由静态数据驱动，不调用 LLM 或读取本机源码仓库。需要检查浏览器交互时，先启动本地服务，再使用已安装的 Playwright：
 
 ```bash
 node scripts/check_virtio_blk_read_browser.cjs http://127.0.0.1:8090
+node scripts/check_execution_demos_browser.cjs http://127.0.0.1:8090
+node scripts/check_walkthrough_style_browser.cjs http://127.0.0.1:8090
 # 非默认安装位置可通过 PLAYWRIGHT_MODULE 指定；VBR_SCREENSHOT_DIR 可保存检查截图。
 ```
+
+其余四个演示与原理文章互链，均使用独立、可回退的离线场景：
+
+- `network-io.html`：QEMU+TAP、内核 vhost-net+TAP、DPDK vhost-user+PMD、硬件 vDPA 各自收发，以及 QEMU RX 缓冲区不足和 TX 背压。
+- `memory-access.html`：RAM 缓存命中、页表遍历、Guest #PF、EPT 缺项、宿主后备页缺失、MMIO 和脏页写保护。
+- `cpu-execution.html`：普通 ADD、Guest 系统调用、内核处理 CPUID、QEMU 处理 MMIO、HLT 等待与唤醒；定时等待场景进一步区分应用阻塞、Guest 其他任务运行、vCPU 空闲和宿主调度。
+- `interrupt-delivery.html`：软件 MSI-X、irqfd、IF 屏蔽、MSI-X PBA，以及限定条件下的 APICv posted interrupt。
+
+它们共享 `execution-model.js`、`execution-demo.js` 和 `_execution_lab.html`，数据放在 `content/flows/` 对应 JSON。场景以 QEMU 10.2 / Linux 6.18 为基础，CPU、内存和中断选取 Intel VMX/EPT 主线；网络 DPDK 路径另固定 24.11。流程总览保留完整顺序，关键结构视图按 `focus` 取累计快照，源码视图列出当前路径的实现入口与执行上下文。URL 的 `scenario`、`view`、`step` 可恢复选择；无 JavaScript 时保留全部场景的文字流程。放大查看优先使用浏览器全屏，不支持时使用页内覆盖层。`EXECUTION_SCREENSHOT_DIR` 可保存浏览器回归截图。
+
+同一组件还嵌入两篇已有文章，不新增主分类：磁盘 I/O 页的 `#persistence` 比较普通 virtio-blk WRITE、写后 FLUSH 与 virtio-scsi WRITE FUA，状态区分宿主页缓存、设备易失缓存和稳定存储；`libvirt-domain-start.html#lifecycle` 串起冷启动、暂停恢复、正常关机和强制停止。对应数据为 `disk-persistence.json`、`vm-lifecycle.json`，页面映射由 `execution_demos.DEMO_PAGES` 维护。磁盘持久化使用独立的 `persistence-scenario`、`persistence-view`、`persistence-step` 参数，避免覆盖主读写演示的分享链接。生命周期内容固定 Libvirt 12.0.0、QEMU 10.2.0 与 Linux 6.18，区分命令返回、客户机状态、应用就绪与宿主资源回收。
+
+五个演示共用 `walkthrough.css` 与 `walkthrough-fullscreen.js`，统一场景选择、视图切换、播放控制、进度和说明栏。配置与源码版本位于演示下方；放大入口固定在选择区右侧，退出后保留场景与步骤。新增四个演示的执行域和共享内存布局由 `execution-layouts.json` 指定；`span` 和 `inline` 允许同一执行域中的两个节点横向排列，标题行跟随最长说明对齐。连线使用 `walkthrough-routing.js` 避开节点。修改布局时需保留节点实际归属，不能把页表、宿主后备页或硬件中断状态都标成 Guest RAM。样式回归覆盖 320–1440px、下拉箭头和两种全屏方式；`WALKTHROUGH_SCREENSHOT_DIR` 可保存五个演示的桌面与手机截图。
+
+`execution-selectors.json` 将场景入口与技术状态分开维护。网络按后端与发送／接收选择，仅在相应路径下展示背压或缓冲不足；内存先选 RAM / MMIO，RAM 再按正常访问、Guest 缺页与宿主处理分组；CPU、中断使用分组预设。每个场景必须恰好被收录一次，界面只提供已实现的组合。网络总览从一次 18 B UDP 载荷的应用收发开始，区分用户缓冲区、Guest 协议栈与队列，以及本地后端；关键结构视图不逐步展开系统调用。应用返回、队列完成和网络交付分别解释，不能用 TX used 表示远端收到，也不能把驱动补充 RX 空间画成等待应用读取之后才进行。
 
 三篇交互分别展示 vIOMMU 的客户机页表、宿主映射与 IOTLB 同步，VFIO 迁移的源端/目的端设备状态与 DMA 脏页交接，以及嵌套 VMX 的 VMCS01/12/02 和退出处理归属。正文区分可组合能力与版本限制，例如固定 QEMU 10.2 路径不支持启用 vIOMMU 的 VFIO 迁移。
 

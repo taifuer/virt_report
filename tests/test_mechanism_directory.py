@@ -34,6 +34,8 @@ def test_directory_has_reading_order_and_real_anchors_only():
         'interrupt-virtualization', 'vm-startup', 'migration', 'hotplug',
         'live-upgrade', 'qemu-internals', 'kvm-internals', 'libvirt-internals',
         'block-io-walkthrough',
+        'network-io-walkthrough', 'cpu-execution-walkthrough',
+        'memory-access-walkthrough', 'interrupt-delivery-walkthrough',
     ]
     assert re.findall(r'<section class="mechanism-topic" id="([^"]+)"', page) == [
         'virtualization-basics',
@@ -41,6 +43,8 @@ def test_directory_has_reading_order_and_real_anchors_only():
         'interrupt-virtualization', 'vm-startup', 'migration', 'hotplug',
         'live-upgrade', 'qemu-internals', 'kvm-internals', 'libvirt-internals',
         'block-io-walkthrough',
+        'network-io-walkthrough', 'cpu-execution-walkthrough',
+        'memory-access-walkthrough', 'interrupt-delivery-walkthrough',
     ]
     for slug in re.findall(r'href="#([^"]+)"', directory):
         assert f'id="{slug}"' in page
@@ -56,7 +60,9 @@ def test_directory_counts_primary_articles_without_extra_related_rows():
                       'device-virtualization': 15, 'interrupt-virtualization': 2,
                       'vm-startup': 2, 'migration': 7, 'hotplug': 4,
                       'live-upgrade': 1, 'qemu-internals': 6, 'libvirt-internals': 2,
-                      'kvm-internals': 2, 'block-io-walkthrough': 1}
+                      'kvm-internals': 2, 'block-io-walkthrough': 1,
+                      'network-io-walkthrough': 1, 'cpu-execution-walkthrough': 1,
+                      'memory-access-walkthrough': 1, 'interrupt-delivery-walkthrough': 1}
     assert [article['slug'] for article in
             mechanisms.get_topic('memory-virtualization')['articles']] == [
                 'memory-virtualization', 'kvm-ept-fault', 'kvm-hugepages', 'kvm-dirty-ring',
