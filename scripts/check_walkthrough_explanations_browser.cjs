@@ -134,7 +134,11 @@ const diskCases = [
                 if (view !== 'structure' && index > 0) {
                   const phaseIndex = navigation.findIndex(phase => phase.index <= index && index <= phase.end);
                   const phase = navigation[phaseIndex], start = Math.max(1, phase.index);
-                  const counter = `阶段 ${phaseIndex + 1} / ${navigation.length} · 阶段内第 ${index - start + 1} / ${phase.end - start + 1} 步`;
+                  const peers = navigation.filter(item => item.branch === phase.branch);
+                  const branch = scene.parallel?.branches.find(branch => branch.id === phase.branch);
+                  const label = branch ? `${branch.title} · 阶段 ${peers.indexOf(phase) + 1} / ${peers.length}`
+                    : `${scene.parallel ? '共同前序' : '阶段'} ${peers.indexOf(phase) + 1} / ${peers.length}`;
+                  const counter = `${label} · 阶段内第 ${index - start + 1} / ${phase.end - start + 1} 步`;
                   if (one('[data-execution-counter]').textContent !== counter)
                     throw new Error(`${tag}: neutral initial state must not count as an action`);
                 }

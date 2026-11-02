@@ -49,10 +49,10 @@ const assets = path.resolve(__dirname, '../virt_report/render/assets');
             const progress = node.querySelector('.walkthrough-progress');
             return {width: innerWidth, scrollWidth: node.scrollWidth, canvas: rect(canvas),
               inspector: rect(inspector), summary: getComputedStyle(node.querySelector('.walkthrough-summary')).display,
-              rows: new Set([...progress.children].map(button => Math.round(button.getBoundingClientRect().top))).size,
+              rows: new Set([...progress.querySelectorAll('button')].map(button => Math.round(button.getBoundingClientRect().top))).size,
               progress: rect(progress), wrap: getComputedStyle(progress).flexWrap,
               progressFits: progress.scrollWidth <= progress.clientWidth + 1,
-              stepsContained: [...progress.children].every(button => {
+              stepsContained: [...progress.querySelectorAll('button')].every(button => {
                 const parent = progress.getBoundingClientRect(), child = button.getBoundingClientRect();
                 return child.left >= parent.left - 1 && child.right <= parent.right + 1
                   && child.top >= parent.top - 1 && child.bottom <= parent.bottom + 1;

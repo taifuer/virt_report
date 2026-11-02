@@ -7,8 +7,8 @@ const model = require('../virt_report/render/assets/postcopy.js');
 const act = (state, kind = 'advance', page = 2) => model.apply(state, {kind, page});
 function active() { let state = model.createState(); for (let n = 0; n < 3; n++) state = act(state); return state; }
 function finish(state) {
-  for (let n = 0; n < 60 && !model.complete(state); n++) state = act(state);
-  assert.equal(model.complete(state), true); return state;
+  for (let n = 0; n < 60 && (!model.complete(state) || state.retry); n++) state = act(state);
+  assert.equal(model.complete(state), true); assert.equal(state.retry, null); return state;
 }
 function invariant(state) {
   assert.deepEqual(state.source, [1, 1, 2, 1, 1, 3, 1, 1]);
@@ -25,6 +25,10 @@ function invariant(state) {
     if (model.ready(state) && state.destination[page] !== null) assert.ok(state.destination[page] >= state.source[page]);
   }
   if (state.waiting) { assert.equal(state.destination[state.waiting.page], null); assert.equal(model.ready(state), true); }
+  if (state.retry) {
+    assert.notEqual(state.destination[state.retry.page], null);
+    assert.equal(state.waiting, null); assert.equal(model.ready(state), true);
+  }
   if (state.packet) assert.equal(state.destination[state.packet.page], null);
 }
 test('switch discards stale and untransferred pages before listening and running', () => {
@@ -64,22 +68,61 @@ test('a missing page blocks only the modeled vCPU and exposes the actual address
 });
 test('first request carries RAMBlock id and later requests reuse the channel id', () => {
   let state = act(active(), 'access', 2);
-  for (let n = 0; n < 5; n++) state = act(state);
+  for (let n = 0; n < 6; n++) state = act(state);
   assert.equal(state.destination[2], 2); assert.equal(state.waiting, null);
   state = act(state, 'write', 5); assert.equal(state.lastFault.flags, 1);
   state = act(state); assert.equal(state.lastRequest.type, 'MIG_RP_MSG_REQ_PAGES');
   assert.equal(state.lastRequest.id, null); assert.equal(state.lastRequest.payloadLength, 12);
   assert.equal(state.lastRequest.start, 0x5000); invariant(state);
 });
-test('source sent bit clears before destination installation but cannot wake the vCPU early', () => {
+test('page installation wakes the vCPU without completing its original write', () => {
   let state = act(active(), 'write', 2);
   state = act(act(act(state))); assert.equal(state.packet.stage, 'transit');
   assert.equal(state.pending[2], false); assert.equal(state.destination[2], null); assert.equal(state.waiting.page, 2);
   state = act(state); assert.equal(state.packet.stage, 'buffered'); assert.equal(state.destination[2], null);
   assert.equal(state.waiting.page, 2); assert.equal(state.requested[2], true);
   state = act(state); assert.equal(state.packet, null); assert.equal(state.waiting, null);
-  assert.equal(state.requested[2], false); assert.equal(state.destination[2], 3);
+  assert.equal(state.requested[2], false); assert.equal(state.destination[2], 2);
+  assert.deepEqual(state.retry, {page: 2, write: true});
   assert.equal(state.source[2], 2); assert.match(state.status, /UFFDIO_COPY/); invariant(state);
+  state = act(state); assert.equal(state.retry, null); assert.equal(state.destination[2], 3);
+  assert.match(state.status, /重新获得调度.*重试.*写入完成/); invariant(state);
+});
+test('a woken vCPU must retry its original access before another guest operation', () => {
+  let state = act(active(), 'write', 2);
+  for (let n = 0; n < 5; n++) state = act(state);
+  for (const kind of ['access', 'write']) {
+    state = act(state, kind, 0); assert.equal(state.rejected, true);
+    assert.deepEqual(state.retry, {page: 2, write: true});
+    assert.equal(state.destination[0], 1); assert.equal(state.destination[2], 2);
+  }
+  state = act(state); assert.equal(state.retry, null); assert.equal(state.destination[2], 3);
+  state = act(state, 'write', 0); assert.equal(state.rejected, false); assert.equal(state.destination[0], 2);
+  invariant(state);
+});
+test('background transfer can start while a woken vCPU is awaiting scheduling', () => {
+  let state = act(active(), 'access', 2);
+  for (let n = 0; n < 5; n++) state = act(state);
+  assert.deepEqual(state.retry, {page: 2, write: false});
+  state = act(state, 'background');
+  assert.equal(state.rejected, false); assert.equal(state.packet.page, 3);
+  assert.equal(state.packet.stage, 'transit'); assert.notEqual(state.retry, null);
+  const packet = JSON.stringify(state.packet);
+  state = act(state); assert.equal(state.retry, null); assert.equal(state.destination[2], 2);
+  assert.match(state.status, /重新获得调度.*读取到 v2/);
+  assert.equal(JSON.stringify(state.packet), packet); invariant(state);
+});
+test('memory delivery completion does not imply the last faulting guest write has completed', () => {
+  let state = active();
+  for (let n = 0; n < 12; n++) state = act(state);
+  assert.equal(state.destination[7], null);
+  assert.equal(state.destination.filter(value => value !== null).length, 7);
+  state = act(state, 'write', 7);
+  for (let n = 0; n < 5; n++) state = act(state);
+  assert.equal(model.complete(state), true); assert.equal(state.destination[7], 1);
+  assert.deepEqual(state.retry, {page: 7, write: true}); invariant(state);
+  state = act(state); assert.equal(model.complete(state), true);
+  assert.equal(state.retry, null); assert.equal(state.destination[7], 2); invariant(state);
 });
 test('queued requests are preferred over new background scans', () => {
   let state = act(active(), 'access', 7); state = act(act(state));
@@ -100,12 +143,18 @@ test('background and request race sends a missing page exactly once', () => {
   state = act(state, 'write', 2); state = act(act(act(state)));
   assert.equal(state.request, null); assert.match(state.status, /跳过重复请求/);
   assert.equal(state.transfers, 1); assert.equal(state.waiting.page, 2);
-  state = act(act(state)); assert.equal(state.destination[2], 3); assert.equal(state.waiting, null);
+  state = act(act(state)); assert.equal(state.destination[2], 2); assert.equal(state.waiting, null);
+  assert.deepEqual(state.retry, {page: 2, write: true});
+  state = act(state); assert.equal(state.destination[2], 3); assert.equal(state.retry, null);
   state = finish(state); assert.equal(state.destination[2], 3); assert.equal(state.transfers, 5); invariant(state);
 });
-test('buffered background delivery also wakes a fault that arrived before installation', () => {
+test('buffered background delivery wakes a fault before its access is retried', () => {
   let state = act(act(active(), 'background')); assert.equal(state.packet.stage, 'buffered');
-  state = act(state, 'access', 2); state = finish(state);
+  state = act(state, 'access', 2);
+  for (let n = 0; n < 4; n++) state = act(state);
+  assert.equal(state.waiting, null); assert.deepEqual(state.retry, {page: 2, write: false});
+  assert.equal(state.destination[2], 2); invariant(state);
+  state = finish(state);
   assert.equal(state.faults, 1); assert.equal(state.sent[2], 1); assert.equal(state.destination[2], 2); invariant(state);
 });
 test('page channel is bounded and cannot create a second simultaneous packet', () => {
@@ -128,9 +177,15 @@ test('a defensive repeated install cannot overwrite a destination-owned page', (
 });
 test('the supplied example completes memory delivery and retains the faulting guest write', () => {
   let state = model.createState();
-  for (const action of model.example) { state = model.apply(state, action); invariant(state); }
+  let retries = 0;
+  for (const action of model.example) {
+    state = model.apply(state, action); invariant(state);
+    assert.equal(state.rejected, false);
+    if (state.retry) retries++;
+  }
   assert.equal(model.complete(state), true); assert.equal(state.destination[2], 3);
   assert.equal(state.transfers, 5); assert.equal(state.faults, 2);
+  assert.equal(state.retry, null); assert.equal(retries, 2);
 });
 test('mixed deterministic accesses and background steps preserve ownership and delivery invariants', () => {
   let seed = 5219, state = active();
@@ -146,4 +201,8 @@ test('template includes no-JS explanation, visible state structures and fullscre
   assert.match(template, /RAMBlock\.bmap/); assert.match(template, /RAMBlock\.receivedmap/);
   assert.match(template, /data-postcopy-fault-record/); assert.match(template, /data-postcopy-request-record/);
   assert.match(template, /源端/); assert.match(template, /目的端/);
+  assert.match(template, /原读写尚待重试/);
+  assert.match(template, /实际两条线程路径可以交错/);
+  const article = fs.readFileSync(path.join(__dirname, '../virt_report/render/templates/_postcopy_article.html'), 'utf8');
+  assert.match(article, /页面安装完成时，原来的读写可以尚未完成/);
 });

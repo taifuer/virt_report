@@ -171,7 +171,7 @@ def test_ioeventfd_only_completes_matching_write_not_backend_work(demo):
     states = snapshots(item)
     assert states[1]["hw-exit"].startswith("已发生")
     assert states[-1]["event"] == "已触发"
-    assert states[-1]["backend"] == "已通知，等待 IOThread 处理"
+    assert states[-1]["backend"] == "已通知；IOThread 独立处理队列"
     assert any("datamatch" in text for text in item["assumptions"])
 
 

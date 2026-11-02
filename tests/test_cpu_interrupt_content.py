@@ -167,6 +167,16 @@ def test_eoi_does_not_consume_shared_queue(scene_id):
     assert trace["eoi"]["used"] == trace["used-publish"]["used"] == "8"
 
 
+def test_interrupt_article_diagram_preserves_its_rx_completion_byte_count():
+    article = (TEMPLATES / "_interrupt_article.html").read_text()
+    diagram = (CONTENT / "diagrams/interrupt-completion.mmd").read_text()
+    exported = (CONTENT.parent / "render/assets/interrupt-completion.svg").read_text()
+    assert "1500 字节帧与 12 字节网络头，共 1512 字节" in article
+    assert "used.ring[7] = id 3, len 1512" in diagram
+    assert "used.ring[7] = id 3, len 1512" in exported
+    assert "len 512" not in diagram
+
+
 @pytest.mark.parametrize("scene_id", ["msix-software", "irqfd", "if-masked", "msix-masked"])
 def test_software_interrupt_preparation_is_not_guest_handler_entry(scene_id):
     trace = states(scenario("interrupt-delivery", scene_id))

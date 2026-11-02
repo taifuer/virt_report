@@ -214,11 +214,16 @@ async function assertFrame(page, frame) {
           if (id === 'network-io' && view === 'structure') {
             const direction = selectorMembership(demo, scene.id).group.operation;
             assert.equal(trace[stops.at(-1)].id, direction === 'rx' ? 'refill' : 'reclaim');
-            assert(stops.every(stop => scene.steps[stop].focus), `${scene.id}: queue view has queue-related steps only`);
+            assert(stops.every(stop => trace[stop].focus), `${scene.id}: queue view has queue-related steps only`);
           }
           assert.deepEqual(await page.locator('[data-execution-step] > span').allTextContents(),
-            model.navigation(scene, trace, view).map((_, n) => view === 'structure' && n === 0
-              ? '○' : String(n + (view === 'structure' ? 0 : 1)).padStart(2, '0')));
+            model.navigation(scene, trace, view).map((entry, n, entries) => {
+              if (entry.branch) {
+                const letter = String.fromCharCode(65 + scene.parallel.branches.findIndex(branch => branch.id === entry.branch));
+                return letter + String(entries.filter(item => item.branch === entry.branch).indexOf(entry) + 1).padStart(2, '0');
+              }
+              return view === 'structure' && n === 0 ? '○' : String(n + (view === 'structure' ? 0 : 1)).padStart(2, '0');
+            }));
           assert.deepEqual(await page.locator('[data-execution-step] > strong').allTextContents(),
             model.navigation(scene, trace, view).map(entry => entry.title));
           for (const [position, stop] of stops.entries()) {

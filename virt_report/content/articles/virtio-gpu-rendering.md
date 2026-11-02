@@ -85,6 +85,8 @@ capset 描述渲染协议及能力，例如支持哪些格式、功能和限制�
 
 Guest 内核的 `virtio_gpu_execbuffer_ioctl()` 校验参数、取得资源及输入同步依赖，再由 `virtio_gpu_cmd_submit()` 构造 `SUBMIT_3D`。命令和响应缓冲区组成描述符链，驱动发布到 controlq 并按通知条件提示设备。这里交接的是客户机准备好的命令流及资源引用；客户机 CPU 继续由 KVM 执行。[Guest 提交处理](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/gpu/drm/virtio/virtgpu_submit.c)、[controlq 命令构造](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/gpu/drm/virtio/virtgpu_vq.c)
 
+提交与完成沿不同的执行上下文推进。提交 ioctl 返回软件提交结果，后续完成由 fence 跟踪；宿主在另一个执行上下文处理 Q1。应用可以在 Q1 执行期间准备或提交使用其他资源的下一批工作。访问同一资源的操作继续服从依赖关系，批次之间还受队列容量、驱动调度和应用同步方式约束。交互演示跟踪一帧到显示交接，实际应用可以让多个批次同时在途。
+
 ### 从 QEMU 分派到宿主 GPU
 
 QEMU 取出 controlq 请求，VirGL 后端的 `virgl_cmd_submit_3d()` 检查长度并复制命令流，然后调用 `virgl_renderer_submit_cmd()`。renderer 根据上下文进入解码器；`vrend_decode_draw_vbo()` 解析绘制参数，`vrend_draw_vbo()` 选择对应的宿主 `glDrawArrays*()` 或 `glDrawElements*()` 调用。[QEMU 提交分派](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/display/virtio-gpu-virgl.c)、[VirGL 解码器](https://gitlab.freedesktop.org/virgl/virglrenderer/-/blob/500b41d5c8638f9b80dd558f4044f3301c7457a4/src/vrend/vrend_decode.c)
@@ -103,6 +105,8 @@ Mesa 批量编码后通过 controlq 交给 QEMU，virglrenderer 转成宿主图�
 Guest 驱动经 `virtio_gpu_dequeue_ctrl_func()` 消费响应，调用 `virtio_gpu_fence_event_process()`，最终通过 `dma_fence_signal_locked()` 使等待者观察到完成。等待者可以是后续渲染提交、缓冲区映射操作或需要读取结果的应用。普通、不带 FENCE 的命令响应可以早于 GPU 执行完成，需按实际响应类型判断。[QEMU fence 回调](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/display/virtio-gpu-virgl.c#L989)、[Guest fence 完成](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/gpu/drm/virtio/virtgpu_fence.c#L111)
 
 窗口显示还要经过客户机窗口系统或合成器，以及 virtio-gpu 的 scanout 更新。最简单的显示路径把已经绘制好的资源绑定到 scanout，并通知更新；合成桌面可能先把多个窗口合成为另一个显示资源。QEMU 的 VirGL 后端可以把宿主纹理交给 GL 显示后端，避免为了显示而先把整帧复制回 Guest。窗口重绘、远程传输和显示器扫描继续遵循各自的同步机制；渲染 fence 只覆盖它所对应的工作。
+
+本例在 F1 完成后提交该图像的显示更新，便于跟踪同一份结果。连续绘制时，应用可以轮换多个颜色目标，让下一帧准备、当前帧渲染和上一帧显示重叠。要复用某个目标，需要确认仍在访问它的渲染及显示操作各自已完成；仅收到 F1，也只能解除 F1 所覆盖的渲染依赖。
 
 ## 视频能力的协商与宿主接入 {#video-support}
 

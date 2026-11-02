@@ -99,6 +99,7 @@
   <h3>完成记录与完成中断</h3>
   <p>used 项先成为可见状态，再根据驱动配置决定是否发出中断。<code>virtio_notify()</code>内部会检查通知条件，调用它并不保证每个报文都对应一次中断。发送路径可以主动回收先前完成的请求，也可以在需要时使用中断；这为批处理提供了空间。<a href="{{ qemu_source }}hw/virtio/virtio.c#L2701-L2711">完成通知检查</a>。MSI-X 消息、虚拟 LAPIC 和驱动响应见<a href="kvm-virtio-interrupt.html">virtio 完成通知与 KVM 中断注入</a>。</p>
   <p>完成记录界定的是缓冲区生命周期。virtio-net 发送链的 <code>used.len</code>可以为 0，因为设备没有向发送缓冲区写入数据；它仍然是一条有效的完成记录。驱动据此回收本地内存，远端报文接收和应用处理则由相应网络协议确认。</p>
+  <p>普通 TAP 成功路径先从 <code>writev()</code> 返回，再由 QEMU 发布 used 和检查通知条件。宿主接受帧后，网络转发与客户机的完成处理独立推进：客户机处理 MSI-X、运行驱动并回收链的同时，宿主可以继续排队、转发和发送。转发也可能在写 TAP 的内核调用中已经开始，本地发送无需等待客户机回收描述符。<a href="{{ qemu_source }}net/tap.c#L123-L154">TAP 写入</a>、<a href="{{ qemu_source }}hw/net/virtio-net.c#L2793-L2804">返回后发布 used 与通知</a></p>
   <p>后端拥塞会暴露两种实现的细节差异。virtio-net 在异步排队后保留当前元素，等待发送回调再发布完成；e1000 模型已将客户机内容读入内部缓冲区，描述符处理与后端队列排空不必同步完成。此外，发送错误或丢弃路径也可能回收请求。因此观察 DD 或 used 时，还要结合设备统计和宿主网络状态判断发送结果。<a href="{{ qemu_source }}hw/net/virtio-net.c#L2683-L2709">异步回调</a>、<a href="{{ qemu_source }}net/tap.c#L123-L154">TAP 暂不可写处理</a></p>
 </section>
 

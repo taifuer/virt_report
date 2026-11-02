@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=49f2a464e9bd">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=49f2a464e9bd">
   <link rel="stylesheet" href="../assets/site.css?v=49f2a464e9bd">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=6640d4522d70">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=6640d4522d70">
-<link rel="stylesheet" href="../assets/postcopy.css?v=6640d4522d70"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=93907fc093e4">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=93907fc093e4">
+<link rel="stylesheet" href="../assets/postcopy.css?v=93907fc093e4"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -95,7 +95,7 @@ REQ_PAGES：   start: BE64 | len: BE32
   <p>前面已经丢弃 P2 的 v1 副本，这次访问等待的是源端保留的 v2。目的端先检查接收位图，再记录尚待解决的页面并发送请求；源端的返回通道线程校验 RAMBlock 和范围，随后交给页发送路径。单流模式优先取请求队列，队列为空时继续扫描后台页面。请求到达时，后台可能已经发送过该页；<code>get_queued_page()</code> 会检查发送位图并跳过这类请求。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/migration.c#L536-L628">请求编码与已接收检查</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c#L1851-L1910">源端请求去重</a></p>
 <section class="postcopy-lab" data-postcopy-lab data-mechanism-view="lab" aria-labelledby="postcopy-lab-title">
   <div class="mechanism-view-heading"><h3 id="postcopy-lab-title">缺页请求与页面交付</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
-  <p>先按“下一步”完成切换，再选择页面读写。可以让后台先发一页，在它到达前访问同一页，观察请求与传输的交错。</p>
+  <p>先按“下一步”完成切换，再选择页面读写。页面安装后，再按一次“下一步”让 vCPU 获得调度并重试访问。也可以先让后台发页，观察请求、传输与客户机执行的交错。</p>
   <div class="postcopy-controls" data-postcopy-controls hidden>
     <label>操作页面<select data-postcopy-page><option value="0">P0 · 预拷贝有效页</option><option value="1">P1 · 预拷贝有效页</option><option value="2" selected>P2 · 预拷贝旧页</option><option value="3">P3 · 未发送页</option><option value="4">P4 · 预拷贝有效页</option><option value="5">P5 · 预拷贝旧页</option><option value="6">P6 · 未发送页</option><option value="7">P7 · 未发送页</option></select></label>
     <div class="postcopy-actions" role="group" aria-label="页面访问与传输"><button type="button" data-postcopy-access>客户机读页</button><button type="button" data-postcopy-write>客户机写页</button><button type="button" data-postcopy-background>后台发送一页</button></div>
@@ -115,20 +115,21 @@ REQ_PAGES：   start: BE64 | len: BE32
     </div>
     <p class="postcopy-counters" data-postcopy-counters></p><ol class="postcopy-events" data-postcopy-events aria-label="最近操作"></ol>
   </div>
-  <div class="postcopy-fallback" data-postcopy-fallback><ol><li>源端停机并同步脏页。目的端丢弃 P2、P5 的旧副本，以及 P3、P6、P7 的未传范围。</li><li>LISTEN 建立缺页与接收路径，加载 CPU / 设备状态；RUN 恢复目的端执行。</li><li>vCPU 访问缺失的 P2，产生 userfaultfd 事件并等待。QEMU 将宿主地址转为 pc.ram 中的偏移 0x2000。</li><li>返回通道请求 start = 0x2000、len = 4096。源端检查发送位图，优先发送 P2。</li><li>目的端收齐 P2，通过 UFFDIO_COPY 原子安装并唤醒；更新接收位图，访问继续。</li><li>后台补齐其他页。目的端对已交付页面的新写入不再被源端旧副本覆盖。</li></ol><p>启用 JavaScript 后可逐步观察页面、位图和请求字段。</p></div>
-  <p class="postcopy-model-note">示例只取一个 RAMBlock 的 8 个 4 KiB 普通页，源端版本在切换后固定。一次“下一步”表示逻辑处理阶段；接收位图记账与内核唤醒合并显示。单 vCPU、单页面通道，不展开 preempt、大页、外部共享内存访问和故障恢复。版本号表示页内容变化，不表示耗时或带宽。</p>
+  <div class="postcopy-fallback" data-postcopy-fallback><ol><li>源端停机并同步脏页。目的端丢弃 P2、P5 的旧副本，以及 P3、P6、P7 的未传范围。</li><li>LISTEN 建立缺页与接收路径，加载 CPU / 设备状态；RUN 恢复目的端执行。</li><li>vCPU 访问缺失的 P2，产生 userfaultfd 事件并等待。QEMU 将宿主地址转为 pc.ram 中的偏移 0x2000。</li><li>返回通道请求 start = 0x2000、len = 4096。源端检查发送位图，优先发送 P2。</li><li>目的端收齐 P2，通过 UFFDIO_COPY 原子安装并唤醒等待线程；接收线程更新接收位图。此时页已可访问，原读写尚待重试。</li><li>vCPU 重新获得调度，重试原访问，读写完成。后台供页独立推进。</li><li>后台补齐其他页。目的端对已交付页面的新写入不再被源端旧副本覆盖。</li></ol><p>启用 JavaScript 后可逐步观察页面、位图和请求字段。</p></div>
+  <p class="postcopy-model-note">示例只取一个 RAMBlock 的 8 个 4 KiB 普通页，源端版本在切换后固定。一次“下一步”表示逻辑处理阶段；接收位图记账与内核唤醒合并显示，vCPU 获得调度后重试访问单独显示。演示选择先完成接收记账，再让 vCPU 重试；实际两条线程路径可以交错。单 vCPU、单页面通道，不展开 preempt、大页、外部共享内存访问和故障恢复。版本号表示页内容变化，不表示耗时或带宽。</p>
 </section>  <h3 id="fault-part-2"><span class="mechanism-heading-number">2. </span>完整页面安装后，访问才能继续</h3>
   <p><code>ram_load_postcopy()</code> 按流格式读取页数据。如果宿主页包含多个迁移目标页，接收线程先在临时缓冲中收齐它们，再调用 <code>postcopy_place_page()</code>。宿主页与目标页相同的普通页面可以直接利用 QEMUFile 缓冲，仍要等整个页内容到齐后安装。</p>
   <p><code>UFFDIO_COPY</code> 将完整页原子地装入缺失映射：被阻塞的线程不会看到只填了一半的页。QEMU 在这条普通 RAM 路径中没有设置 DONTWAKE，因此内核同时唤醒等待访问；随后 QEMU 更新接收位图，移除待解决请求并结算阻塞时间。这里的“原子”指页面对访问者的可见性，并不表示网络传输、位图更新与线程调度发生在同一时刻。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c#L3814-L3967">接收与整页组装</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/postcopy-ram.c#L1587-L1668">安装与完成记录</a></p>
+  <p>被唤醒的 vCPU 线程还需要重新获得宿主 CPU，才能重试先前受阻的访问。页面安装完成时，原来的读写可以尚未完成；接收线程的记账与 vCPU 恢复执行也可以交错。演示将“页已安装、等待调度”和“重试访问完成”分成两步，保留这两个时刻的区别。</p>
   <figure class="mechanism-diagram" data-diagram="postcopy-page-fault" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
     <span data-mechanism-title>后拷贝缺页处理的线程协作</span>
     <button type="button" data-mechanism-expand aria-label="放大查看后拷贝缺页处理的线程协作" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="后拷贝缺页处理的线程协作">
-    <img src="../assets/postcopy-page-fault.svg?v=6640d4522d70" alt="图示普通单流、4 KiB 宿主页路径。缺页线程发送请求，接收线程安装完整页；内核唤醒访问线程之后，QEMU 完成接收位图与请求记录的更新。" loading="lazy">
+    <img src="../assets/postcopy-page-fault.svg?v=93907fc093e4" alt="图示普通单流、4 KiB 宿主页路径。缺页线程发送请求，接收线程安装完整页；内核唤醒访问线程之后，QEMU 完成接收位图与请求记录的更新。" loading="lazy">
   </div>
-  <figcaption>图示普通单流、4 KiB 宿主页路径。缺页线程发送请求，接收线程安装完整页；内核唤醒访问线程之后，QEMU 完成接收位图与请求记录的更新。 <a href="../assets/postcopy-page-fault.svg?v=6640d4522d70" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>图示普通单流、4 KiB 宿主页路径。缺页线程发送请求，接收线程安装完整页；内核唤醒访问线程之后，QEMU 完成接收位图与请求记录的更新。 <a href="../assets/postcopy-page-fault.svg?v=93907fc093e4" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 后拷贝缺页处理的线程协作
     accDescr: 目的端访问缺页后由内核阻塞，缺页线程将宿主地址转换为 RAMBlock 与页偏移并请求源端。源端在单流路径优先处理未发送的请求页；目的端接收线程收齐宿主页后通过 UFFDIO_COPY 安装，内核唤醒访问线程，QEMU 随后更新接收位图并删除请求记录。
@@ -222,6 +223,6 @@ REQ_PAGES：   start: BE64 | len: BE32
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=49f2a464e9bd"></script>
-<script src="../assets/mechanism-viewer.js?v=6640d4522d70" defer></script>
-<script src="../assets/postcopy.js?v=6640d4522d70" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=93907fc093e4" defer></script>
+<script src="../assets/postcopy.js?v=93907fc093e4" defer></script></body>
 </html>

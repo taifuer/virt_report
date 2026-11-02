@@ -25,10 +25,12 @@ def scenes():
     return {scene["id"]: scene for scene in demo["scenarios"]}
 
 
-def replay(scene):
+def replay(scene, order=None):
     nodes = {node["id"]: node["initial"] for node in scene["nodes"]}
     result = {}
-    for step in scene["steps"]:
+    steps = {step["id"]: step for step in scene["steps"]}
+    for identifier in order or steps:
+        step = steps[identifier]
         nodes.update(step["nodeStates"])
         result[step["id"]] = deepcopy(nodes)
     return result
@@ -100,7 +102,7 @@ def test_dpdk_guest_completion_does_not_imply_pmd_or_remote_completion(scenes):
     assert "远端接收仍未确认" in tx["pmd-cleanup"]["network"]
     rx = replay(scenes["dpdk-rx"])
     assert "mbuf M" in rx["arrive"]["port"]
-    assert "mbuf M 已释放" in rx["free-mbuf"]["backend"]
+    assert "mbuf M 已释放" in rx["free-mbuf"]["port"]
     assert "等待驱动回收" in rx["free-mbuf"]["queue"]
 
 
@@ -138,7 +140,7 @@ process.stdout.write(JSON.stringify(result));
         text=True, capture_output=True, check=True,
     )
     for identifier, actual in json.loads(result.stdout).items():
-        expected = replay(scenes[identifier])
+        expected = replay(scenes[identifier], actual["nodes"])
         assert actual["nodes"] == expected
         assert actual["reset"] == expected["initial"]
         assert actual["independent"]

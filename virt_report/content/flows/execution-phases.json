@@ -5,7 +5,7 @@
       {"id":"prepare","title":"准备队列","start":"prepare"},
       {"id":"publish","title":"发布与通知","start":"publish"},
       {"id":"consume","title":"后端发送","start":"consume"},
-      {"id":"fill-used","title":"发布完成","start":"fill-used"},
+      {"id":"fill-used","title":"TX 队列完成","start":"fill-used"},
       {"id":"notify","title":"中断递送","start":"notify"},
       {"id":"reclaim","title":"驱动回收","start":"reclaim"},
       {"id":"egress","title":"本地转发","start":"egress"}
@@ -13,7 +13,7 @@
     "qemu-rx": [
       {"id":"initial","title":"接收准备","start":"initial"},
       {"id":"arrive","title":"后端接收","start":"arrive"},
-      {"id":"fill-used","title":"发布完成","start":"fill-used"},
+      {"id":"fill-used","title":"RX 队列完成","start":"fill-used"},
       {"id":"notify","title":"中断递送","start":"notify"},
       {"id":"receive","title":"驱动接收","start":"receive"},
       {"id":"refill-prepare","title":"补充队列","start":"refill-prepare"},
@@ -24,7 +24,7 @@
       {"id":"prepare","title":"准备队列","start":"prepare"},
       {"id":"publish","title":"发布与通知","start":"publish"},
       {"id":"consume","title":"后端发送","start":"consume"},
-      {"id":"fill-used","title":"发布完成","start":"fill-used"},
+      {"id":"fill-used","title":"TX 队列完成","start":"fill-used"},
       {"id":"notify","title":"中断递送","start":"notify"},
       {"id":"reclaim","title":"驱动回收","start":"reclaim"},
       {"id":"egress","title":"本地转发","start":"egress"}
@@ -32,7 +32,7 @@
     "vhost-rx": [
       {"id":"initial","title":"接收准备","start":"initial"},
       {"id":"arrive","title":"后端接收","start":"arrive"},
-      {"id":"fill-used","title":"发布完成","start":"fill-used"},
+      {"id":"fill-used","title":"RX 队列完成","start":"fill-used"},
       {"id":"notify","title":"中断递送","start":"notify"},
       {"id":"receive","title":"驱动接收","start":"receive"},
       {"id":"refill-prepare","title":"补充队列","start":"refill-prepare"},
@@ -43,16 +43,17 @@
       {"id":"prepare","title":"准备队列","start":"prepare"},
       {"id":"publish","title":"发布与轮询","start":"publish"},
       {"id":"consume","title":"后端取包","start":"consume"},
-      {"id":"fill-used","title":"发布完成","start":"fill-used"},
-      {"id":"notify","title":"中断递送","start":"notify"},
+      {"id":"fill-used","title":"队列完成与通知","start":"fill-used"},
+      {"id":"notify","title":"中断递送","start":"prepare-interrupt"},
       {"id":"reclaim","title":"驱动回收","start":"reclaim"},
       {"id":"pmd","title":"PMD 发送","start":"pmd"}
     ],
     "dpdk-rx": [
       {"id":"initial","title":"接收准备","start":"initial"},
       {"id":"arrive","title":"后端接收","start":"arrive"},
-      {"id":"fill-used","title":"发布完成","start":"fill-used"},
-      {"id":"notify","title":"中断递送","start":"notify"},
+      {"id":"fill-used","title":"队列完成与通知","start":"fill-used"},
+      {"id":"notify","title":"中断递送","start":"prepare-interrupt"},
+      {"id":"free-mbuf","title":"释放宿主 mbuf","start":"free-mbuf"},
       {"id":"receive","title":"驱动接收","start":"receive"},
       {"id":"refill-prepare","title":"补充队列","start":"refill-prepare"},
       {"id":"socket-enqueue","title":"应用接收","start":"socket-enqueue"}
@@ -62,15 +63,14 @@
       {"id":"prepare","title":"准备队列","start":"prepare"},
       {"id":"publish","title":"发布与门铃","start":"publish"},
       {"id":"consume","title":"硬件取包","start":"consume"},
-      {"id":"fill-used","title":"发布完成","start":"fill-used"},
+      {"id":"fill-used","title":"TX 队列完成","start":"fill-used"},
       {"id":"notify","title":"中断递送","start":"notify"},
-      {"id":"reclaim","title":"驱动回收","start":"reclaim"},
-      {"id":"egress","title":"本地转发","start":"egress"}
+      {"id":"reclaim","title":"驱动回收","start":"reclaim"}
     ],
     "vdpa-rx": [
       {"id":"initial","title":"接收准备","start":"initial"},
       {"id":"arrive","title":"硬件接收","start":"arrive"},
-      {"id":"fill-used","title":"发布完成","start":"fill-used"},
+      {"id":"fill-used","title":"RX 队列完成","start":"fill-used"},
       {"id":"notify","title":"中断递送","start":"notify"},
       {"id":"receive","title":"驱动接收","start":"receive"},
       {"id":"refill-prepare","title":"补充队列","start":"refill-prepare"},
@@ -81,7 +81,7 @@
       {"id":"prepare","title":"准备队列","start":"prepare"},
       {"id":"publish","title":"发布与通知","start":"publish"},
       {"id":"consume","title":"背压与重试","start":"consume"},
-      {"id":"fill-used","title":"发布完成","start":"fill-used"},
+      {"id":"fill-used","title":"TX 队列完成","start":"fill-used"},
       {"id":"notify","title":"中断递送","start":"notify"},
       {"id":"reclaim","title":"驱动回收","start":"reclaim"},
       {"id":"egress","title":"本地转发","start":"egress"}
@@ -90,7 +90,7 @@
       {"id":"initial","title":"等待报文","start":"initial"},
       {"id":"no-buffer","title":"等待缓冲区","start":"no-buffer"},
       {"id":"retry","title":"恢复接收","start":"retry"},
-      {"id":"fill-used","title":"发布完成","start":"fill-used"},
+      {"id":"fill-used","title":"RX 队列完成","start":"fill-used"},
       {"id":"notify","title":"中断递送","start":"notify"},
       {"id":"receive","title":"驱动接收","start":"receive"},
       {"id":"refill-prepare","title":"补充队列","start":"refill-prepare"},

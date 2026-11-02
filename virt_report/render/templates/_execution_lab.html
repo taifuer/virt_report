@@ -60,14 +60,25 @@
     <p class="sr-only" role="status" aria-live="polite" data-execution-status></p>
   </div>
   <div class="execution-fallback" data-execution-fallback>
-    <p>以下按场景列出处理顺序。启用 JavaScript 后可逐步观察结构与状态变化。</p>
+    {% macro step_item(step) %}<li><strong>{{ step.title }}</strong> · {{ step.actor }}<p>{{ step.description }} {{ step.detail }}</p>
+      {% for source_id in step.sourceIds %}<a href="{{ demo.sources[source_id].url }}" target="_blank" rel="noopener noreferrer">{{ demo.sources[source_id].label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</li>{% endmacro %}
+    <p>以下列出各场景的处理路径；并行分支分别列出，不规定分支之间的先后。启用 JavaScript 后可逐步观察结构与状态变化。</p>
     {% for scene in demo.scenarios %}
     <details{% if scene.id == demo.defaultScenario %} open{% endif %}>
       <summary>{{ scene.label }}</summary>
       <p>{{ scene.summary }}</p>
       <ul>{% for assumption in scene.assumptions %}<li>{{ assumption }}</li>{% endfor %}</ul>
-      <ol>{% for step in scene.steps %}<li><strong>{{ step.title }}</strong> · {{ step.actor }}<p>{{ step.description }} {{ step.detail }}</p>
-        {% for source_id in step.sourceIds %}<a href="{{ demo.sources[source_id].url }}" target="_blank" rel="noopener noreferrer">{{ demo.sources[source_id].label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</li>{% endfor %}</ol>
+      {% if scene.parallel %}
+      {% set common = namespace(done=false) %}
+      <ol>{% for step in scene.steps %}{% if not common.done %}{{ step_item(step) }}{% endif %}{% if step.id == scene.parallel.after %}{% set common.done=true %}{% endif %}{% endfor %}</ol>
+      <p><strong>{{ scene.parallel.title }}</strong>：{{ scene.parallel.description }}</p>
+      {% for branch in scene.parallel.branches %}
+      <h3>{{ branch.title }}</h3><p>{{ branch.summary }}</p>
+      <ol>{% for step in scene.steps %}{% if step.id in branch.steps %}{{ step_item(step) }}{% endif %}{% endfor %}</ol>
+      {% endfor %}
+      {% else %}
+      <ol>{% for step in scene.steps %}{{ step_item(step) }}{% endfor %}</ol>
+      {% endif %}
     </details>
     {% endfor %}
   </div>

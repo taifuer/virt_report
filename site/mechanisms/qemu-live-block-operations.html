@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=49f2a464e9bd">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=49f2a464e9bd">
   <link rel="stylesheet" href="../assets/site.css?v=49f2a464e9bd">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=6640d4522d70">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=6640d4522d70">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=93907fc093e4">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=93907fc093e4">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -73,9 +73,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看外部快照前后的 backing 链与数据视图" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="外部快照前后的 backing 链与数据视图">
-    <img src="../assets/block-live-operations.svg?v=6640d4522d70" alt="初始活动层 B 读取基础镜像 A；外部快照后活动层切到 C，A 与 B 构成快照时刻的磁盘视图。C 初始未分配同一偏移，读取继续落到 B；客户机新写入只改变 C 中的当前视图。" loading="lazy">
+    <img src="../assets/block-live-operations.svg?v=93907fc093e4" alt="初始活动层 B 读取基础镜像 A；外部快照后活动层切到 C，A 与 B 构成快照时刻的磁盘视图。C 初始未分配同一偏移，读取继续落到 B；客户机新写入只改变 C 中的当前视图。" loading="lazy">
   </div>
-  <figcaption>初始活动层 B 读取基础镜像 A；外部快照后活动层切到 C，A 与 B 构成快照时刻的磁盘视图。C 初始未分配同一偏移，读取继续落到 B；客户机新写入只改变 C 中的当前视图。 <a href="../assets/block-live-operations.svg?v=6640d4522d70" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>初始活动层 B 读取基础镜像 A；外部快照后活动层切到 C，A 与 B 构成快照时刻的磁盘视图。C 初始未分配同一偏移，读取继续落到 B；客户机新写入只改变 C 中的当前视图。 <a href="../assets/block-live-operations.svg?v=93907fc093e4" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: 外部快照前后的 backing 链与数据视图
   accDescr: 快照前客户机入口是 B，B 的 backing 是 A。快照后入口切到 C，C 的 backing 是 B，B 仍指向 A。十六进制偏移 0x1000 在 A 中为 v1、B 中为 v2，新 C 最初未分配，后来客户机写为 v3。A 加 B 保留快照时刻视图，A 加 B 加 C 表示当前视图。
@@ -151,9 +151,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看mirror 从追赶到活动盘切换" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="mirror 从追赶到活动盘切换">
-    <img src="../assets/block-job-pivot.svg?v=6640d4522d70" alt="RUNNING 复制当前视图并追踪写入；READY 表示可以请求完成，但客户机仍使用原盘。job-complete 后排空 I/O、再次确认同步并 flush，成功改图后客户机改用目标。auto-dismiss=false 保留终态供查询，确认后才 dismiss。" loading="lazy">
+    <img src="../assets/block-job-pivot.svg?v=93907fc093e4" alt="RUNNING 复制当前视图并追踪写入；READY 表示可以请求完成，但客户机仍使用原盘。job-complete 后排空 I/O、再次确认同步并 flush，成功改图后客户机改用目标。auto-dismiss=false 保留终态供查询，确认后才 dismiss。" loading="lazy">
   </div>
-  <figcaption>RUNNING 复制当前视图并追踪写入；READY 表示可以请求完成，但客户机仍使用原盘。job-complete 后排空 I/O、再次确认同步并 flush，成功改图后客户机改用目标。auto-dismiss=false 保留终态供查询，确认后才 dismiss。 <a href="../assets/block-job-pivot.svg?v=6640d4522d70" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>RUNNING 复制当前视图并追踪写入；READY 表示可以请求完成，但客户机仍使用原盘。job-complete 后排空 I/O、再次确认同步并 flush，成功改图后客户机改用目标。auto-dismiss=false 保留终态供查询，确认后才 dismiss。 <a href="../assets/block-job-pivot.svg?v=93907fc093e4" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: mirror 从追赶到活动盘切换
   accDescr: RUNNING 复制源盘并跟踪新增写入，第一次同步完成进入 READY，客户机仍使用原盘。管理程序请求 job-complete，QEMU 排空 I/O、复查同步和 flush，在成功收尾时替换活动节点。auto-dismiss 为 false 时保留 CONCLUDED 供查询；确认无 error 且活动图正确，再 dismiss。
@@ -223,6 +223,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=49f2a464e9bd"></script>
-<script src="../assets/mechanism-viewer.js?v=6640d4522d70" defer></script>
+<script src="../assets/mechanism-viewer.js?v=93907fc093e4" defer></script>
 </body>
 </html>

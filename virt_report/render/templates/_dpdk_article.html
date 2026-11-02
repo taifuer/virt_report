@@ -34,8 +34,9 @@ avail.ring[0] = 0; avail.idx = 1
 last_avail_idx = 0; used.idx = 0
 
 rte_vhost_dequeue_burst(vid, 1, pool, pkts, 32)
+    → 复制 P1 到 M
+    → used.ring[0] = {id: 0, len: 0}; used.idx = 1；检查完成通知条件
     → 返回 1，pkts[0] = M，M.pkt_len = 60
-    → used.ring[0] = {id: 0, len: 0}; used.idx = 1
 
 rte_eth_tx_burst(port, txq, pkts, 1)
     → 返回 1：M 交给 PMD
@@ -43,9 +44,9 @@ rte_eth_tx_burst(port, txq, pkts, 1)
   <h3>消费与复制</h3>
   <p><code>rte_vhost_dequeue_burst()</code> 检查设备、队列和协商状态，split 分支进入 <code>virtio_dev_tx_split()</code>。后者通过 acquire 读取 avail.idx，以与 last_avail_idx 的差计算新增请求数，再限定本批处理数量并从 mempool 分配 mbuf。</p>
   <p><code>fill_vec_buf_split()</code> 从 available 项取得头索引，验证链和缓冲区地址，整理客户机内存片段。<code>desc_to_mbuf()</code> 处理 virtio-net 头，将帧内容复制到 mbuf，并按协商的卸载语义填入元数据。本例 P1 为 60 B，因此 mbuf 中保存 60 B 帧；12 B virtio-net 头不作为以太网数据发送。<a href="{{ dpdk_source }}lib/vhost/virtio_net.c#L2883-L3010">描述符到 mbuf</a></p>
-  <h3>先归还客户机链，再交给物理网卡</h3>
+  <h3>客户机队列完成与物理网卡发送</h3>
   <p>vhost 先暂存 shadow used 项，在完成延后执行的复制操作后，批量写入共享 used ring，再以规定的内存顺序发布 used.idx。必要时触发完成通知。本例 <code>used.len=0</code>，表示后端没有向 TX 描述符缓冲区写入数据；完成的含义是客户机原缓冲区已用完。<a href="{{ dpdk_source }}lib/vhost/virtio_net.c#L3092-L3185">同步 split TX 路径</a></p>
-  <p>应用此时持有内容独立的 M，可以执行转发规则，然后调用 <code>rte_eth_tx_burst()</code>。返回 1 表示 PMD 接受 M 并把报文放入发送描述符；随后网卡 DMA 读取数据，PMD 在确认硬件完成后回收相应 mbuf。客户机链在复制完成后归还，M 在物理发送完成后归还，远端接收另由网络协议确认。<a href="{{ dpdk_source }}lib/ethdev/rte_ethdev.h#L6535-L6605">ethdev TX 接口与缓冲区回收</a></p>
+  <p>dequeue 返回后，应用持有内容独立的 M，可以执行转发规则，然后调用 <code>rte_eth_tx_burst()</code>。返回 1 表示 PMD 接受 M 并把报文放入发送描述符；网卡结束对 M 的使用、PMD 确认完成后，才可回收相应引用。客户机则根据已发布的 used 安排中断或轮询并回收原链。PMD 处理与客户机实际回收之间没有固定先后关系，远端接收仍需另行确认。<a href="{{ dpdk_source }}lib/ethdev/rte_ethdev.h#L6535-L6605">ethdev TX 接口与缓冲区回收</a></p>
   <p>DPDK 的 vhost 示例在 <code>drain_virtio_tx()</code> 取包，交给 <code>virtio_tx_route()</code>，再由 <code>do_drain_mbuf_table()</code> 批量提交物理端口。真实交换机可以增加查表、隧道、限速等步骤，这些工作与 virtqueue 消费本身应分别计量。<a href="{{ dpdk_source }}examples/vhost/main.c#L1234-L1246">物理发送</a>、<a href="{{ dpdk_source }}examples/vhost/main.c#L1436-L1464">客户机 TX 消费</a></p>
 </section>
 
@@ -67,7 +68,7 @@ rte_eth_tx_burst(port, txq, pkts, 1)
   <p>假设本批从客户机取得 32 个 mbuf，而物理 TX 只接受 20 个。前 20 个的引用交给 PMD，后 12 个仍归应用。应用为这 12 个安排有界队列等待重试，或计数后丢弃并释放；已经交给 PMD 的 20 个继续由其完成路径回收。</p>
   <p>普通同步 vhost 路径已经归还了这批客户机描述符，因此物理端口拥塞不会自动撤销客户机完成。若要把背压向前传播，需要应用控制下一批 dequeue 的速度或数量，并安排有界队列。增大缓冲只能吸收短期突发，不能修复持续的入口速率高于出口速率。</p>
   <h3>反向收包有另一组所有权</h3>
-  <p>物理网卡收到报文后，<code>rte_eth_rx_burst()</code> 把 mbuf 交给应用。应用对客户机 RX 队列调用 <code>rte_vhost_enqueue_burst()</code>，后端把数据复制到客户机预先提供的可写缓冲区，发布 used 项。同步调用返回后，应用仍负责释放自己的原 mbuf；enqueue 没有接管这个 mbuf 的生命周期。</p>
+  <p>物理网卡收到报文后，<code>rte_eth_rx_burst()</code> 把 mbuf 交给应用。应用对客户机 RX 队列调用 <code>rte_vhost_enqueue_burst()</code>，后端把数据复制到客户机预先提供的可写缓冲区，发布 used 项。同步调用返回后，已接受报文的复制已经完成，应用可以释放对应原 mbuf；客户机中断、NAPI 和 socket 处理独立推进，无需等客户机消费才释放宿主副本。enqueue 没有接管这个 mbuf 的生命周期。</p>
   <p>客户机 RX 缓冲区不足时，enqueue 返回值会小于请求数，应用决定重试或丢弃。异步 DMA copy 使用独立 API 和完成检查，提交后不能按同步路径立即释放原数据，必须等相应复制完成。<a href="{{ dpdk_source }}examples/vhost/main.c#L1380-L1424">接收、重试与释放</a>、<a href="{{ dpdk_source }}lib/vhost/rte_vhost_async.h">异步接口约定</a></p>
 </section>
 

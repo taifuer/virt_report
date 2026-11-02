@@ -31,6 +31,7 @@
     <li><strong>接收处理。</strong>客户机回调 <code>skb_recv_done()</code> 调度对应 NAPI；poll 从 used 取回缓冲区，解析头、构造 skb，再交给 GRO / 网络协议栈。</li>
     <li><strong>补充空间。</strong>驱动根据空闲描述符数量补入缓冲区。应用稍后从 socket 读取数据，协议栈处理与设备完成并非同一时刻。</li>
   </ol>
+  <p>上述步骤中的协议交付与补充空间可以交错。NAPI 把 skb 交给 GRO 后，普通接收列表可能立即刷新，也可能在达到批量阈值或完成本轮 NAPI 时再交给协议栈；refill 按空闲描述符和内存分配情况推进。已交给协议栈的旧数据页保持有效，新 RX 描述符可以指向另一块空间，应用无需先读完旧报文。</p>
   <p>本例采用 QEMU 软件接收路径，源码中的 <code>iov_from_buf()</code> 执行数据复制。换用 vhost-net、vhost-user 或硬件后端后，队列消费者及数据写入方式会变化；“采用 virtio”本身不能推出零拷贝。<a href="{{ qemu }}hw/net/virtio-net.c#L1903-L2043">QEMU 接收与完成发布</a></p>
   {{ diagram('virtio-rx-napi-sequence', '从一次完成通知到一批报文处理', '通知使 NAPI 获得处理机会，poll 按预算消费 used，补充 RX 空间；只有确认本轮完成并处理好通知竞态，才回到等待状态。') }}
 </section>

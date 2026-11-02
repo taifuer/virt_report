@@ -1,6 +1,6 @@
 <section class="postcopy-lab" data-postcopy-lab data-mechanism-view="lab" aria-labelledby="postcopy-lab-title">
   <div class="mechanism-view-heading"><h3 id="postcopy-lab-title">缺页请求与页面交付</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
-  <p>先按“下一步”完成切换，再选择页面读写。可以让后台先发一页，在它到达前访问同一页，观察请求与传输的交错。</p>
+  <p>先按“下一步”完成切换，再选择页面读写。页面安装后，再按一次“下一步”让 vCPU 获得调度并重试访问。也可以先让后台发页，观察请求、传输与客户机执行的交错。</p>
   <div class="postcopy-controls" data-postcopy-controls hidden>
     <label>操作页面<select data-postcopy-page><option value="0">P0 · 预拷贝有效页</option><option value="1">P1 · 预拷贝有效页</option><option value="2" selected>P2 · 预拷贝旧页</option><option value="3">P3 · 未发送页</option><option value="4">P4 · 预拷贝有效页</option><option value="5">P5 · 预拷贝旧页</option><option value="6">P6 · 未发送页</option><option value="7">P7 · 未发送页</option></select></label>
     <div class="postcopy-actions" role="group" aria-label="页面访问与传输"><button type="button" data-postcopy-access>客户机读页</button><button type="button" data-postcopy-write>客户机写页</button><button type="button" data-postcopy-background>后台发送一页</button></div>
@@ -20,6 +20,6 @@
     </div>
     <p class="postcopy-counters" data-postcopy-counters></p><ol class="postcopy-events" data-postcopy-events aria-label="最近操作"></ol>
   </div>
-  <div class="postcopy-fallback" data-postcopy-fallback><ol><li>源端停机并同步脏页。目的端丢弃 P2、P5 的旧副本，以及 P3、P6、P7 的未传范围。</li><li>LISTEN 建立缺页与接收路径，加载 CPU / 设备状态；RUN 恢复目的端执行。</li><li>vCPU 访问缺失的 P2，产生 userfaultfd 事件并等待。QEMU 将宿主地址转为 pc.ram 中的偏移 0x2000。</li><li>返回通道请求 start = 0x2000、len = 4096。源端检查发送位图，优先发送 P2。</li><li>目的端收齐 P2，通过 UFFDIO_COPY 原子安装并唤醒；更新接收位图，访问继续。</li><li>后台补齐其他页。目的端对已交付页面的新写入不再被源端旧副本覆盖。</li></ol><p>启用 JavaScript 后可逐步观察页面、位图和请求字段。</p></div>
-  <p class="postcopy-model-note">示例只取一个 RAMBlock 的 8 个 4 KiB 普通页，源端版本在切换后固定。一次“下一步”表示逻辑处理阶段；接收位图记账与内核唤醒合并显示。单 vCPU、单页面通道，不展开 preempt、大页、外部共享内存访问和故障恢复。版本号表示页内容变化，不表示耗时或带宽。</p>
+  <div class="postcopy-fallback" data-postcopy-fallback><ol><li>源端停机并同步脏页。目的端丢弃 P2、P5 的旧副本，以及 P3、P6、P7 的未传范围。</li><li>LISTEN 建立缺页与接收路径，加载 CPU / 设备状态；RUN 恢复目的端执行。</li><li>vCPU 访问缺失的 P2，产生 userfaultfd 事件并等待。QEMU 将宿主地址转为 pc.ram 中的偏移 0x2000。</li><li>返回通道请求 start = 0x2000、len = 4096。源端检查发送位图，优先发送 P2。</li><li>目的端收齐 P2，通过 UFFDIO_COPY 原子安装并唤醒等待线程；接收线程更新接收位图。此时页已可访问，原读写尚待重试。</li><li>vCPU 重新获得调度，重试原访问，读写完成。后台供页独立推进。</li><li>后台补齐其他页。目的端对已交付页面的新写入不再被源端旧副本覆盖。</li></ol><p>启用 JavaScript 后可逐步观察页面、位图和请求字段。</p></div>
+  <p class="postcopy-model-note">示例只取一个 RAMBlock 的 8 个 4 KiB 普通页，源端版本在切换后固定。一次“下一步”表示逻辑处理阶段；接收位图记账与内核唤醒合并显示，vCPU 获得调度后重试访问单独显示。演示选择先完成接收记账，再让 vCPU 重试；实际两条线程路径可以交错。单 vCPU、单页面通道，不展开 preempt、大页、外部共享内存访问和故障恢复。版本号表示页内容变化，不表示耗时或带宽。</p>
 </section>

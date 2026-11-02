@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=49f2a464e9bd">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=49f2a464e9bd">
   <link rel="stylesheet" href="../assets/site.css?v=49f2a464e9bd">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=6640d4522d70">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=6640d4522d70">
-<link rel="stylesheet" href="../assets/vhost-path.css?v=6640d4522d70"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=93907fc093e4">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=93907fc093e4">
+<link rel="stylesheet" href="../assets/vhost-path.css?v=93907fc093e4"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -54,7 +54,7 @@
   <h2><span class="mechanism-heading-number">一、</span>保留 virtio 接口，改变队列处理位置</h2>
   <p>virtio-net 驱动通过 virtqueue 提交网络请求。同一套客户机接口，可以由 QEMU 处理，也可以连接宿主内核中的 vhost-net 或独立进程中的 vhost-user 后端。后端位置改变后，队列地址、内存访问权限和通知通道需要重新安排，设备初始化和报文处理也由不同组件承担。</p>
   <p>本文沿用 <a href="qemu-network-tx.html">网卡模拟与 virtio-net 发包路径</a>中的 split virtqueue，分析 x86 / KVM 下单个发送请求。QEMU 和 vhost-net 路径使用 TAP；vhost-user 部分分析协议定义的共享内存和 eventfd 路径，网络出口由外部后端实现。示例不配置客户机 IOMMU，也不展开分段卸载、多队列和异常重试。</p>
-  <p>三条路径都处理同一个动作：从 available 取出报文 P1 的描述符，读取缓冲区，把报文交给出口，再发布 used。主要差别是队列的处理位置和后端的通知方式。下文依次介绍后端的内存与队列访问配置、一次发包经过的进程或内核上下文，以及减少中转带来的收益和管理成本。</p>
+  <p>三条路径都从 available 取出报文 P1 的描述符，读取缓冲区，在结束使用后发布 used。QEMU 和本例 vhost-net 复制路径把帧交给 TAP；DPDK 等外部后端可以先复制到自身缓冲区，再独立安排出口发送。主要差别是队列的处理位置、缓冲区归还条件和通知方式。下文依次介绍内存与队列访问配置、一次发包经过的执行上下文，以及减少中转带来的收益和管理成本。</p>
 <p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
 
 <section id="architecture" class="mechanism-section">
@@ -119,6 +119,7 @@
     <li>当本次请求的缓冲区可以归还时，后端发布 used 项，并按通知条件告知客户机。驱动检查完成记录后回收描述符和缓冲区。</li>
   </ol>
   <p>used 的含义是本地请求完成和缓冲区可以回收，远端应用是否收到报文需要由网络协议确认。下层拥塞、异步发送和零拷贝会影响归还时刻，后端不能在仍有引用时提前让客户机复用缓冲区。</p>
+  <p>普通复制路径把帧交给 TAP 对应的宿主网络后，used 发布和客户机中断处理不再阻塞宿主对这份帧的转发。客户机可以先回收，也可能在宿主已发送之后才获得 CPU。vhost-net 的零拷贝分支仍可能持有客户机数据引用，需要等引用释放条件满足后才能发布完成；复制分支的归还时刻不能直接套用到零拷贝。</p>
 </section>
 
 <section id="notification" class="mechanism-section">
@@ -131,9 +132,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看vhost-user 的控制面与数据面" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="vhost-user 的控制面与数据面">
-    <img src="../assets/vhost-user-control-data.svg?v=6640d4522d70" alt="QEMU 建立内存、队列和通知关系，后端按映射访问客户机 RAM。图示 SET_MEM_TABLE 与 eventfd 路径；正常收发不需要把报文经控制 socket 再传一遍。" loading="lazy">
+    <img src="../assets/vhost-user-control-data.svg?v=93907fc093e4" alt="QEMU 建立内存、队列和通知关系，后端按映射访问客户机 RAM。图示 SET_MEM_TABLE 与 eventfd 路径；正常收发不需要把报文经控制 socket 再传一遍。" loading="lazy">
   </div>
-  <figcaption>QEMU 建立内存、队列和通知关系，后端按映射访问客户机 RAM。图示 SET_MEM_TABLE 与 eventfd 路径；正常收发不需要把报文经控制 socket 再传一遍。 <a href="../assets/vhost-user-control-data.svg?v=6640d4522d70" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>QEMU 建立内存、队列和通知关系，后端按映射访问客户机 RAM。图示 SET_MEM_TABLE 与 eventfd 路径；正常收发不需要把报文经控制 socket 再传一遍。 <a href="../assets/vhost-user-control-data.svg?v=93907fc093e4" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: vhost-user 的控制配置与共享内存数据路径
     accDescr: QEMU 通过 Unix socket 传递能力、内存区域、队列配置以及文件描述符。初始化完成后，客户机驱动与外部后端通过同一份 RAM 交换描述符和报文，kick 与 call eventfd 分别承担提交和完成通知。
@@ -245,6 +246,6 @@ vhost_ops 分派
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=49f2a464e9bd"></script>
-<script src="../assets/mechanism-viewer.js?v=6640d4522d70" defer></script>
-<script src="../assets/vhost-path.js?v=6640d4522d70" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=93907fc093e4" defer></script>
+<script src="../assets/vhost-path.js?v=93907fc093e4" defer></script></body>
 </html>

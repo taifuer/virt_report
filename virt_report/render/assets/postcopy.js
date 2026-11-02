@@ -13,7 +13,7 @@
       phase: 'precopy', tick: 0, source: [1, 1, 2, 1, 1, 3, 1, 1],
       destination: [1, 1, 1, null, 1, 1, null, null],
       pending: [false, false, true, true, false, true, true, true],
-      sent: Array(8).fill(0), requested: Array(8).fill(false), packet: null, request: null, waiting: null,
+      sent: Array(8).fill(0), requested: Array(8).fill(false), packet: null, request: null, waiting: null, retry: null,
       lastFault: null, lastRequest: null, lastBlock: null, faults: 0, transfers: 0,
       installed: 0, rejected: false, status: '预拷贝结束前：P2、P5 的目的端副本已过期。点击“下一步”停源并丢弃待传范围。',
       log: ['P0、P1、P4 已有效接收；P2、P5 已再次变脏；P3、P6、P7 从未发送。']
@@ -55,9 +55,8 @@
     state.destination[page] = packet.value; state.installed++; state.requested[page] = false;
     let suffix = '目的端接收位设为 1。';
     if (state.waiting && state.waiting.page === page) {
-      const write = state.waiting.write; state.waiting = null;
-      if (write) state.destination[page]++;
-      suffix = `等待的 vCPU 被唤醒，${write ? `写入完成，目的端变为 v${state.destination[page]}` : `读取到 v${state.destination[page]}`}；接收位设为 1。`;
+      state.retry = state.waiting; state.waiting = null;
+      suffix = '接收位设为 1；等待的 vCPU 已被唤醒，尚待调度后重试原访问。';
     }
     if (state.request && state.request.page === page && state.request.stage === 'fault') state.request = null;
     return record(state, `UFFDIO_COPY 原子安装 P${page}。${suffix}`);
@@ -75,6 +74,11 @@
     if (state.phase === 'listening') {
       state.phase = 'active';
       return record(state, '目的端处理 RUN 并开始执行；源端保持暂停。选择 P2 读写可触发缺页，或先让后台发送。');
+    }
+    if (state.retry) {
+      const {page, write} = state.retry; state.retry = null;
+      if (write) state.destination[page]++;
+      return record(state, `目的端 vCPU 重新获得调度，重试对 P${page} 的原访问：${write ? `写入完成，目的端变为 v${state.destination[page]}` : `读取到 v${state.destination[page]}`}。源端供页与接收线程可独立继续。`);
     }
     if (state.request && state.request.stage === 'fault') {
       const request = state.request;
@@ -114,6 +118,7 @@
     if (!ready(state)) return record(state, '目的端 vCPU 尚未恢复；请先按“下一步”完成 DISCARD、LISTEN 和 RUN。', true);
     if (action.kind === 'background') return background(state);
     if (state.waiting) return record(state, `这个 vCPU 正等待 P${state.waiting.page}，不能先执行另一条读写；可继续推进供页过程。`, true);
+    if (state.retry) return record(state, `P${state.retry.page} 已安装，原访问尚未重试；请按“下一步”让 vCPU 获得调度，或先推进后台传输。`, true);
     const write = action.kind === 'write';
     if (state.destination[page] !== null) {
       if (write) state.destination[page]++;
@@ -126,10 +131,10 @@
   const example = [
     {kind: 'advance'}, {kind: 'advance'}, {kind: 'advance'},
     {kind: 'write', page: 2}, {kind: 'advance'}, {kind: 'advance'},
-    {kind: 'advance'}, {kind: 'advance'}, {kind: 'advance'},
+    {kind: 'advance'}, {kind: 'advance'}, {kind: 'advance'}, {kind: 'advance'},
     {kind: 'access', page: 2}, {kind: 'background'}, {kind: 'access', page: 3},
     {kind: 'advance'}, {kind: 'advance'}, {kind: 'advance'},
-    {kind: 'advance'}, {kind: 'advance'},
+    {kind: 'advance'}, {kind: 'advance'}, {kind: 'advance'},
     ...Array.from({length: 9}, () => ({kind: 'advance'}))
   ];
   function mount(lab, environment) {
@@ -148,7 +153,7 @@
         cell.dataset.state = value === null ? 'missing' : stale ? 'stale' : 'present';
         cell.dataset.selected = String(page === Number(pageControl.value));
         cell.append(make('small', '', `P${page}`), make('strong', '', value === null ? '缺失' : `v${value}`));
-        cell.append(make('small', '', stale ? '过期' : state.waiting && state.waiting.page === page && name === 'destination' ? '访问等待' : value === null ? state.packet && state.packet.page === page ? '接收中' : '待交付' : name === 'source' ? state.pending[page] ? '待发送' : '保留副本' : '可访问'));
+        cell.append(make('small', '', stale ? '过期' : state.waiting && state.waiting.page === page && name === 'destination' ? '访问等待' : state.retry && state.retry.page === page && name === 'destination' ? '已安装 · 待重试' : value === null ? state.packet && state.packet.page === page ? '接收中' : '待交付' : name === 'source' ? state.pending[page] ? '待发送' : '保留副本' : '可访问'));
         node.append(cell);
       });
     }
@@ -165,9 +170,10 @@
     }
     function paint() {
       lab.dataset.phase = state.phase; lab.dataset.blocked = String(Boolean(state.waiting)); lab.dataset.rejected = String(state.rejected);
+      lab.dataset.cpuState = !ready(state) ? 'stopped' : state.waiting ? 'waiting' : state.retry ? 'ready-to-retry' : 'running';
       get('status').textContent = state.status;
       get('source-cpu').textContent = state.phase === 'precopy' ? '源端 vCPU：预拷贝中' : '源端 vCPU：已暂停 · 页内容固定';
-      get('destination-cpu').textContent = !ready(state) ? '目的端 vCPU：尚未启动' : state.waiting ? `目的端 vCPU：等待 P${state.waiting.page}` : '目的端 vCPU：可运行';
+      get('destination-cpu').textContent = !ready(state) ? '目的端 vCPU：尚未启动' : state.waiting ? `目的端 vCPU：等待 P${state.waiting.page}` : state.retry ? `目的端 vCPU：已唤醒 · 等待调度重试 P${state.retry.page}` : '目的端 vCPU：可运行';
       pages('source', state.source); pages('destination', state.destination);
       bitmap('pending', state.pending); bitmap('received', state.destination.map(value => value !== null));
       const phases = get('phases'); phases.replaceChildren();
@@ -187,7 +193,7 @@
       get('counters').textContent = `逻辑步 ${state.tick} · 缺页 ${state.faults} 次 · 后拷贝发送 ${state.transfers} 页 · 已安装 ${state.destination.filter(value => value !== null).length} / 8 页${complete(state) ? ' · 内存交付完成' : ''}`;
       const events = get('events'); events.replaceChildren(); state.log.forEach(line => events.append(make('li', '', line)));
       get('demo').textContent = demoIndex === null ? '示例下一步' : demoIndex >= example.length ? '重新演示' : `示例下一步 · ${demoIndex}/${example.length}`;
-      get('next').textContent = state.phase === 'precopy' ? '下一步 · 停源与丢弃' : state.phase === 'discard' ? '下一步 · 接收就绪' : state.phase === 'listening' ? '下一步 · 恢复运行' : '下一步';
+      get('next').textContent = state.phase === 'precopy' ? '下一步 · 停源与丢弃' : state.phase === 'discard' ? '下一步 · 接收就绪' : state.phase === 'listening' ? '下一步 · 恢复运行' : state.retry ? '下一步 · 调度与重试' : '下一步';
     }
     function dispatch(kind) { demoIndex = null; state = apply(state, {kind, page: pageControl.value}); paint(); }
     function reset() { state = createState(); demoIndex = null; paint(); }

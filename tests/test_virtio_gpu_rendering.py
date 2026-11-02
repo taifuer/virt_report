@@ -86,6 +86,14 @@ def test_video_examples_keep_surface_and_feedback_constraints():
     assert "普通、不带 FENCE 的命令响应可以早于 GPU 执行完成" in article
 
 
+def test_rendering_article_separates_resource_dependencies_from_frame_pipelining():
+    article = SOURCE.read_text()
+    assert "实际应用可以让多个批次同时在途" in article
+    assert "下一帧准备、当前帧渲染和上一帧显示重叠" in article
+    assert "渲染及显示操作各自已完成" in article
+    assert "只能解除 F1 所覆盖的渲染依赖" in article
+
+
 def test_links_keep_2d_display_and_passthrough_articles_connected():
     page = render.render_mechanisms_html(Config(), SLUG)
     for related in ("virtio-gpu", "gpu-execution"):

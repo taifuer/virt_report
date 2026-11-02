@@ -19,7 +19,7 @@
   try { demo = JSON.parse(data.textContent); } catch (error) { return; }
   const views = ['overview', 'structure', 'source'];
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
-  let scene, trace, index = 0, view = 'overview', timer = null, layout = null;
+  let scene, trace, index = 0, view = 'overview', timer = null, layout = null, firstBranch = null;
   let animateNext = false;
   const controls = one('[data-execution-controls]');
   // Embedded persistence and the main disk walkthrough keep independent links.
@@ -62,7 +62,7 @@
   }
 
   function selectScenario(id) {
-    pause(); buildScene(id); index = 0; render(true);
+    pause(); firstBranch = null; buildScene(id); index = 0; render(true);
   }
 
   function sourceLink(id) {
@@ -72,7 +72,9 @@
   function buildScene(id) {
     scene = demo.scenarios.find(item => item.id === id)
       || demo.scenarios.find(item => item.id === demo.defaultScenario);
-    trace = model.buildTrace(scene);
+    firstBranch = scene.parallel?.branches.find(branch => branch.id === firstBranch)?.id
+      || scene.parallel?.branches[0].id || null;
+    trace = model.buildTrace(scene, firstBranch);
     lab.dataset.presentation = scene.presentation || 'domains';
     syncSelector();
     setText('[data-execution-summary]', scene.summary);
@@ -212,14 +214,43 @@
   function progress() {
     const nav = one('[data-execution-progress]');
     nav.setAttribute('aria-label', view === 'structure' ? '关键结构步骤' : '演示阶段');
-    nav.replaceChildren(...model.navigation(scene, trace, view).map((entry, ordinal) => {
+    const entries = model.navigation(scene, trace, view);
+    const branched = scene.parallel && view !== 'structure';
+    nav.classList.toggle('walkthrough-progress--branched', Boolean(branched));
+    const makeButton = (entry, ordinal, prefix = '') => {
       const button = el('button'); button.type = 'button'; button.dataset.executionStep = String(entry.index);
       button.dataset.executionEnd = String(entry.end);
       if (view !== 'structure') button.dataset.executionPhase = entry.id;
       button.append(el('span', view === 'structure' && entry.index === 0 ? '○'
-        : String(ordinal + (view === 'structure' ? 0 : 1)).padStart(2, '0')), el('strong', entry.title));
+        : prefix + String(ordinal + (view === 'structure' ? 0 : 1)).padStart(2, '0')), el('strong', entry.title));
       button.addEventListener('click', () => move(entry.index)); return button;
-    }));
+    };
+    if (!branched) { nav.replaceChildren(...entries.map((entry, n) => makeButton(entry, n))); return; }
+    const common = el('div', undefined, 'walkthrough-common-phases');
+    common.append(...entries.filter(entry => !entry.branch).map((entry, n) => makeButton(entry, n)));
+    const fork = el('section', undefined, 'walkthrough-fork');
+    fork.dataset.executionFork = '';
+    const heading = el('header');
+    heading.append(el('strong', scene.parallel.title), el('span', scene.parallel.description));
+    const branches = el('div', undefined, 'walkthrough-branches');
+    scene.parallel.branches.forEach((branch, ordinal) => {
+      const section = el('section', undefined, 'walkthrough-branch'); section.dataset.executionBranch = branch.id;
+      const header = el('header'), choose = el('button', '先观察此分支', 'walkthrough-branch-order');
+      choose.type = 'button'; choose.dataset.executionOrder = branch.id;
+      choose.setAttribute('aria-pressed', String(firstBranch === branch.id));
+      choose.setAttribute('aria-label', `从分叉处先观察${branch.title}`);
+      choose.addEventListener('click', () => {
+        pause(); firstBranch = branch.id; buildScene(scene.id);
+        index = trace.findIndex(frame => frame.id === scene.parallel.after);
+        render(true);
+      });
+      header.append(el('strong', `${String.fromCharCode(65 + ordinal)} · ${branch.title}`), choose);
+      const phases = el('div', undefined, 'walkthrough-branch-phases');
+      phases.append(...entries.filter(entry => entry.branch === branch.id)
+        .map((entry, n) => makeButton(entry, n, String.fromCharCode(65 + ordinal))));
+      section.append(header, el('p', branch.summary), phases); branches.append(section);
+    });
+    fork.append(heading, branches); nav.replaceChildren(common, fork);
   }
 
   function draw() {
@@ -287,6 +318,8 @@
     const url = new URL(location.href);
     url.searchParams.set(urlKey('scenario'), scene.id); url.searchParams.set(urlKey('view'), view);
     url.searchParams.set(urlKey('step'), trace[index].id);
+    if (firstBranch) url.searchParams.set(urlKey('order'), firstBranch);
+    else url.searchParams.delete(urlKey('order'));
     try { history.replaceState(null, '', url); } catch { /* Playback also works from local files. */ }
   }
 
@@ -313,14 +346,22 @@
       source: '按阶段定位实现；单步查看具体操作，点击函数或规范链接查看固定版本原文。',
     }[view]);
     if (scene.presentation === 'cpu-timeline' && view === 'overview') setText('[data-execution-help]', '沿同一个 vCPU 观察当前指令、寄存器与执行位置；Guest 权限切换、VM-exit 和返回 QEMU 分别标示。');
+    if (scene.parallel && view !== 'structure') setText('[data-execution-help]', '共同前序完成后，两条分支独立推进。可切换先观察哪条分支；播放顺序不表示两条路径之间存在等待关系。');
     const stops = model.stops(trace, view), count = stops.length - 1;
     const stages = model.phases(scene, trace), phaseIndex = stages.findIndex(phase => phase.index <= index && index <= phase.end);
     const phase = stages[phaseIndex];
     const firstAction = Math.max(1, phase.index);
+    const peers = stages.filter(item => item.branch === phase.branch);
+    const branch = scene.parallel?.branches.find(item => item.id === phase.branch);
+    const phaseLabel = branch ? `${branch.title} · 阶段 ${peers.indexOf(phase) + 1} / ${peers.length}`
+      : `${scene.parallel ? '共同前序' : '阶段'} ${peers.indexOf(phase) + 1} / ${peers.length}`;
     setText('[data-execution-counter]', view === 'structure'
       ? (index === 0 ? `准备前 · 共 ${count} 步` : `第 ${stops.indexOf(index)} / ${count} 步`)
-      : (index === 0 ? `准备前 · 共 ${stages.length} 个阶段`
-        : `阶段 ${phaseIndex + 1} / ${stages.length} · 阶段内第 ${index - firstAction + 1} / ${phase.end - firstAction + 1} 步`));
+      : (index === 0 ? (scene.parallel ? `准备前 · ${peers.length} 个共同阶段，随后分两路` : `准备前 · 共 ${stages.length} 个阶段`)
+        : `${phaseLabel} · 阶段内第 ${index - firstAction + 1} / ${phase.end - firstAction + 1} 步`));
+    all('[data-execution-branch]').forEach(node => {
+      node.dataset.current = String(node.dataset.executionBranch === phase.branch);
+    });
     setText('[data-execution-actor]', frame.actor);
     setText('[data-execution-title]', frame.title);
     components.explanation(one('[data-step-explanation]'), {
@@ -408,7 +449,7 @@
       }
     }
     // Optional protocol visuals share this snapshot with the standard controls.
-    lab.executionSnapshot = {demo, scene, frame, view};
+    lab.executionSnapshot = {demo, scene, frame, view, firstBranch};
     lab.dispatchEvent(new CustomEvent('execution:frame', {detail: lab.executionSnapshot}));
     if (updateURL) writeLocation(); draw();
   }
@@ -434,6 +475,7 @@
   function loadLocation() {
     pause(); const params = new URL(location.href).searchParams;
     view = views.includes(params.get(urlKey('view'))) ? params.get(urlKey('view')) : 'overview';
+    firstBranch = params.get(urlKey('order'));
     buildScene(params.get(urlKey('scenario')));
     index = model.project(trace, view, Math.max(0, trace.findIndex(frame => frame.id === params.get(urlKey('step')))));
     render(false, false);

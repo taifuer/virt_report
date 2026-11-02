@@ -244,13 +244,23 @@
       "kind": "function"
     },
     "lapic-software-timer": {
-      "label": "Linux 6.18：软件 deadline、pending 与 UNBLOCK 请求",
-      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L1976-L2044",
+      "label": "Linux 6.18：设置软件 TSC deadline 定时器",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L2014-L2044",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/lapic.c",
+      "line": 2014,
+      "project": "Linux",
+      "symbol": "start_sw_tscdeadline()",
+      "kind": "function"
+    },
+    "lapic-expiration": {
+      "label": "Linux 6.18：记录定时 pending 与请求唤醒",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L1976-L2012",
       "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
       "path": "arch/x86/kvm/lapic.c",
       "line": 1976,
       "project": "Linux",
-      "symbol": "start_sw_tscdeadline() / apic_timer_expired()",
+      "symbol": "apic_timer_expired()",
       "kind": "function"
     },
     "lapic-timer-callback": {
@@ -2044,18 +2054,36 @@
           "boundary": "初始化与运行循环是上下文。只有所选指令触发退出时才进入对应处理分支；KVM_RUN 返回与硬件 VM-exit 分开。"
         },
         {
-          "id": "path-1",
-          "title": "宿主等待、定时与中断交接",
-          "context": "KVM / 宿主调度器 / 定时回调",
+          "id": "host-wait",
+          "title": "HLT 退出与宿主等待",
+          "context": "目标 vCPU 线程 · KVM 内核",
           "sourceIds": [
             "halt",
-            "block",
-            "wake",
-            "irq",
-            "irq-ack",
-            "halt-resume"
+            "block"
           ],
-          "boundary": "定时回调触发唤醒，调度器随后选择运行任务。Guest 与宿主分别执行各自内核的定时、等待和调度代码。"
+          "boundary": "HLT 处理记录等待状态，运行循环随后发布等待者并检查事件。进入 schedule 后，宿主才停止执行这个 vCPU 线程。"
+        },
+        {
+          "id": "host-wake",
+          "title": "记录中断并唤醒等待者",
+          "context": "中断提交上下文 · 宿主内核",
+          "sourceIds": [
+            "irq",
+            "wake"
+          ],
+          "boundary": "软件递送分支先设置 LAPIC IRR 和 KVM_REQ_EVENT，再 kick 目标 vCPU。唤醒只使线程具备运行资格，目标 vCPU 仍需被宿主调度。",
+          "entry": {"kind": "notification", "label": "外部完成事件提交虚拟中断，与目标 vCPU 的等待栈独立"}
+        },
+        {
+          "id": "host-resume",
+          "title": "恢复 vCPU 并接受中断",
+          "context": "目标 vCPU 线程 · 重新取得物理 CPU 后",
+          "sourceIds": [
+            "halt-resume",
+            "irq-ack"
+          ],
+          "boundary": "线程恢复后退出等待，运行循环检查可递送事件并恢复 RUNNABLE，随后接受向量、准备 Guest 入口。中断记录、宿主唤醒和实际执行分别发生。",
+          "entry": {"kind": "async", "label": "宿主调度器选择已就绪的 vCPU 线程"}
         }
       ]
     },
@@ -2460,7 +2488,7 @@
           },
           "sourceIds": [
             "lapic-timer-callback",
-            "lapic-software-timer",
+            "lapic-expiration",
             "wake"
           ],
           "focus": true
@@ -2614,33 +2642,81 @@
         },
         {
           "id": "path-1",
-          "title": "Guest 等待与定时处理",
-          "context": "Guest 内核任务 / IRQ 上下文",
+          "title": "Guest 建立定时等待",
+          "context": "Guest 任务 A · 系统调用上下文",
           "sourceIds": [
             "guest-nanosleep",
-            "guest-deadline",
-            "guest-timer-vector",
-            "guest-timer-queues",
-            "guest-timer-wake"
+            "guest-deadline"
           ],
-          "boundary": "Guest 内核维护客户机定时器和任务状态；宿主内核独立维护 vCPU 线程的运行与等待状态。"
+          "boundary": "A 建立 hrtimer_sleeper，并通过 clockevent 安排下一次 deadline，然后交出 Guest CPU。定时中断与到期回调稍后独立进入。"
         },
         {
-          "id": "path-2",
-          "title": "宿主等待、定时与中断交接",
-          "context": "KVM / 宿主调度器 / 定时回调",
+          "id": "host-arm-timer",
+          "title": "KVM 设置宿主软件定时器",
+          "context": "vCPU 线程 · Guest deadline 写入的退出处理",
           "sourceIds": [
             "lapic-deadline",
-            "lapic-software-timer",
+            "lapic-software-timer"
+          ],
+          "boundary": "KVM 将 Guest deadline 换算为宿主定时器到期点，然后恢复 Guest。客户机继续执行 B，宿主 hrtimer 独立计时。"
+        },
+        {
+          "id": "host-timer-expire",
+          "title": "宿主定时器记录到期事件",
+          "context": "宿主 hrtimer 回调",
+          "sourceIds": [
             "lapic-timer-callback",
-            "wake",
-            "timer-run-loop",
-            "lapic-timer-deliver",
-            "irq-ack",
-            "scheduler-wake",
+            "lapic-expiration",
+            "wake"
+          ],
+          "boundary": "apic_timer_fn 经 apic_timer_expired 设置 pending 与 UNBLOCK，再 kick vCPU。本例 vCPU 正在运行，kick 用于请求事件检查，未把任务 A 直接唤醒。",
+          "entry": {"kind": "callback", "label": "宿主 hrtimer 到期，进入独立的定时回调"}
+        },
+        {
+          "id": "host-scheduling",
+          "title": "宿主抢占与重新调度",
+          "context": "宿主调度器 · vCPU 线程",
+          "sourceIds": [
             "scheduler-switch"
           ],
-          "boundary": "定时回调触发唤醒，调度器随后选择运行任务。Guest 与宿主分别执行各自内核的定时、等待和调度代码。"
+          "boundary": "示例在 deadline 前安排一次宿主抢占和恢复。宿主选择 vCPU 线程，与 Guest 在 A、B 之间选择任务是两次独立的调度。",
+          "entry": {"kind": "async", "label": "宿主调度点决定 vCPU 何时占用物理 CPU"}
+        },
+        {
+          "id": "host-timer-delivery",
+          "title": "vCPU 递送待处理定时向量",
+          "context": "目标 vCPU 线程 · KVM 运行循环",
+          "sourceIds": [
+            "timer-run-loop",
+            "lapic-timer-deliver",
+            "irq-ack"
+          ],
+          "boundary": "运行循环消费 pending，将定时向量交给 LAPIC；满足接受条件后再准备 VM-entry。该路径由目标 vCPU 执行，宿主到期回调只提交事件。",
+          "entry": {"kind": "async", "label": "目标 vCPU 检查到宿主已提交的定时事件"}
+        },
+        {
+          "id": "guest-timer-callback",
+          "title": "Guest 定时中断唤醒任务 A",
+          "context": "Guest 中断与 hrtimer 回调",
+          "sourceIds": [
+            "guest-timer-vector",
+            "guest-timer-queues",
+            "guest-timer-wake",
+            "scheduler-wake"
+          ],
+          "boundary": "Guest 定时中断调用自己的 clockevent 和 hrtimer 队列；hrtimer_wakeup 清除 sleeper.task 后唤醒 A。这里操作 Guest 任务对象，与宿主 vCPU 线程不同。",
+          "entry": {"kind": "notification", "label": "处理器把定时向量交付到 Guest 的中断入口"}
+        },
+        {
+          "id": "guest-task-resume",
+          "title": "Guest 调度 A 并完成系统调用",
+          "context": "Guest 调度器 → 原任务 A",
+          "sourceIds": [
+            "scheduler-switch",
+            "guest-nanosleep"
+          ],
+          "boundary": "Guest 调度器选择 A 后，它恢复 do_nanosleep 中的等待代码并返回用户态。到期回调只让 A 可运行，实际切换可以稍后发生。",
+          "entry": {"kind": "async", "label": "Guest 在调度点选择已经就绪的任务 A"}
         }
       ]
     },
@@ -3076,7 +3152,7 @@
           },
           "sourceIds": [
             "lapic-timer-callback",
-            "lapic-software-timer"
+            "lapic-expiration"
           ],
           "focus": true
         },
@@ -3286,36 +3362,84 @@
         },
         {
           "id": "path-1",
-          "title": "Guest 等待与定时处理",
-          "context": "Guest 内核任务 / IRQ 上下文",
+          "title": "Guest 建立定时等待并进入 idle",
+          "context": "Guest 任务 A → Guest idle",
           "sourceIds": [
             "guest-nanosleep",
             "guest-deadline",
-            "guest-idle",
-            "guest-timer-vector",
-            "guest-timer-queues",
-            "guest-timer-wake"
+            "guest-idle"
           ],
-          "boundary": "Guest 内核维护客户机定时器和任务状态；宿主内核独立维护 vCPU 线程的运行与等待状态。"
+          "boundary": "A 建立定时等待并由 Guest 调度器切走；没有其他普通任务时运行 idle。本例 idle 使用 HLT，随后才发生宿主 vCPU 等待。"
         },
         {
-          "id": "path-2",
-          "title": "宿主等待、定时与中断交接",
-          "context": "KVM / 宿主调度器 / 定时回调",
+          "id": "host-arm-timer",
+          "title": "KVM 设置宿主软件定时器",
+          "context": "vCPU 线程 · deadline 写入的退出处理",
+          "sourceIds": [
+            "lapic-deadline",
+            "lapic-software-timer"
+          ],
+          "boundary": "Guest 的 deadline 先转换为宿主软件 hrtimer。稍后 HLT 让 vCPU 停止执行 Guest 时，这个定时器仍然计时。"
+        },
+        {
+          "id": "host-wait",
+          "title": "HLT 后进入宿主等待",
+          "context": "目标 vCPU 线程 · KVM 内核",
           "sourceIds": [
             "halt",
-            "block",
-            "lapic-deadline",
-            "lapic-software-timer",
+            "block"
+          ],
+          "boundary": "KVM 记录 HALTED，发布 rcuwait 等待者并复查条件；无事件时 schedule 让出物理 CPU。定时配置已完成，不在此时重新创建 Guest 的等待对象。"
+        },
+        {
+          "id": "host-timer-expire",
+          "title": "宿主到期回调唤醒 vCPU",
+          "context": "宿主 hrtimer 回调与唤醒路径",
+          "sourceIds": [
             "lapic-timer-callback",
+            "lapic-expiration",
             "wake",
+            "scheduler-wake"
+          ],
+          "boundary": "到期回调记录 pending 与 UNBLOCK，然后 kick 等待者，使宿主 vCPU 线程进入运行队列。Guest 的任务 A 此时仍阻塞。",
+          "entry": {"kind": "callback", "label": "宿主 hrtimer 到期，独立于 vCPU 等待栈执行"}
+        },
+        {
+          "id": "host-timer-delivery",
+          "title": "重新调度 vCPU 并递送定时事件",
+          "context": "宿主调度器 → 目标 vCPU 的 KVM 执行路径",
+          "sourceIds": [
+            "scheduler-switch",
             "timer-run-loop",
             "lapic-timer-deliver",
-            "halt-resume",
-            "scheduler-wake",
-            "scheduler-switch"
+            "halt-resume"
           ],
-          "boundary": "定时回调触发唤醒，调度器随后选择运行任务。Guest 与宿主分别执行各自内核的定时、等待和调度代码。"
+          "boundary": "宿主选择该线程后，KVM 从等待返回并消费 pending。定时向量进入 LAPIC 后，后续循环检查接受条件、恢复 RUNNABLE，再准备 Guest 入口。",
+          "entry": {"kind": "async", "label": "宿主调度器选择已经就绪的 vCPU 线程"}
+        },
+        {
+          "id": "guest-timer-callback",
+          "title": "Guest 到期回调唤醒任务 A",
+          "context": "Guest 定时中断与 hrtimer 回调",
+          "sourceIds": [
+            "guest-timer-vector",
+            "guest-timer-queues",
+            "guest-timer-wake",
+            "scheduler-wake"
+          ],
+          "boundary": "Guest 处理定时向量，运行自己的到期队列，再把 A 放回 Guest 运行队列。这是继宿主 vCPU 唤醒之后的另一层任务唤醒。",
+          "entry": {"kind": "notification", "label": "VM-entry 后处理器进入 Guest 定时中断入口"}
+        },
+        {
+          "id": "guest-task-resume",
+          "title": "Guest 调度 A 并返回用户态",
+          "context": "Guest 调度器 → 原任务 A",
+          "sourceIds": [
+            "scheduler-switch",
+            "guest-nanosleep"
+          ],
+          "boundary": "Guest 从 idle 切回 A，恢复原系统调用并完成等待收尾。宿主获得 CPU、Guest 接受中断和 A 重新执行是三个独立观察点。",
+          "entry": {"kind": "async", "label": "Guest 在调度点选择已经就绪的任务 A"}
         }
       ]
     }

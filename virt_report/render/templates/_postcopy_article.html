@@ -50,6 +50,7 @@ REQ_PAGES：   start: BE64 | len: BE32
   <h3>完整页面安装后，访问才能继续</h3>
   <p><code>ram_load_postcopy()</code> 按流格式读取页数据。如果宿主页包含多个迁移目标页，接收线程先在临时缓冲中收齐它们，再调用 <code>postcopy_place_page()</code>。宿主页与目标页相同的普通页面可以直接利用 QEMUFile 缓冲，仍要等整个页内容到齐后安装。</p>
   <p><code>UFFDIO_COPY</code> 将完整页原子地装入缺失映射：被阻塞的线程不会看到只填了一半的页。QEMU 在这条普通 RAM 路径中没有设置 DONTWAKE，因此内核同时唤醒等待访问；随后 QEMU 更新接收位图，移除待解决请求并结算阻塞时间。这里的“原子”指页面对访问者的可见性，并不表示网络传输、位图更新与线程调度发生在同一时刻。<a href="{{ qemu_source }}migration/ram.c#L3814-L3967">接收与整页组装</a>、<a href="{{ qemu_source }}migration/postcopy-ram.c#L1587-L1668">安装与完成记录</a></p>
+  <p>被唤醒的 vCPU 线程还需要重新获得宿主 CPU，才能重试先前受阻的访问。页面安装完成时，原来的读写可以尚未完成；接收线程的记账与 vCPU 恢复执行也可以交错。演示将“页已安装、等待调度”和“重试访问完成”分成两步，保留这两个时刻的区别。</p>
   {{ diagram('postcopy-page-fault', '后拷贝缺页处理的线程协作', '图示普通单流、4 KiB 宿主页路径。缺页线程发送请求，接收线程安装完整页；内核唤醒访问线程之后，QEMU 完成接收位图与请求记录的更新。') }}
   <p>全零页可以使用内核支持的 <code>UFFDIO_ZEROPAGE</code>；不支持该方式的 RAMBlock 则通过零缓冲完成整页安装。共享内存的外部访问者还涉及各自的 userfaultfd 和唤醒协作，后端必须具备相应支持。</p>
 </section>

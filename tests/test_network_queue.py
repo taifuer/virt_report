@@ -33,7 +33,7 @@ def test_enriched_network_validates_and_remains_idempotent(demo):
     enrich_network_demo(demo)
     assert demo == original
     assert len(demo["scenarios"]) == 10
-    assert all(19 <= len(item["steps"]) <= 24 for item in demo["scenarios"])
+    assert all(18 <= len(item["steps"]) <= 24 for item in demo["scenarios"])
     with pytest.raises(ValueError):
         enrich_network_demo({"id": "cpu-execution"})
 

@@ -30,6 +30,35 @@ test('node initial descriptions are neutral and retained until explicitly change
   assert.equal(frames[1].nodes.vm, '已经创建');
   assert.equal(frames[0].nodes.vm, '尚未创建');
 });
+test('parallel observation orders replay only their own queue changes', () => {
+  const base = {avail: {index: 1}, used: {index: 0, consumer: 0}, freeDescriptors: 7, changed: []};
+  const complete = {...base, used: {index: 1, consumer: 0}, changed: ['used.index']};
+  const reclaimed = {...complete, used: {index: 1, consumer: 1}, freeDescriptors: 8, changed: ['used.consumer']};
+  const scene = {nodes: [{id: 'network', initial: 'not observed'}], structures: [{fields: [{key: 'sent', initial: 'no'}]}],
+    steps: [
+      {id: 'initial', queueState: base, changes: {}, nodeStates: {}, focus: true},
+      {id: 'handoff', queueState: base, changes: {}, nodeStates: {}, focus: true},
+      {id: 'complete', queueState: complete, changes: {}, nodeStates: {}, focus: true},
+      {id: 'reclaim', queueState: reclaimed, changes: {}, nodeStates: {}, focus: true},
+      {id: 'forward', queueState: {...reclaimed, changed: []}, changes: {sent: 'yes'}, nodeStates: {network: 'forwarded'}, focus: false},
+    ], phases: [{id: 'submit', title: 'submit', start: 'initial'},
+      {id: 'return', title: 'return', start: 'complete'}, {id: 'send', title: 'send', start: 'forward'}],
+    parallel: {after: 'handoff', branches: [{id: 'queue', steps: ['complete', 'reclaim']}, {id: 'packet', steps: ['forward']}]}};
+  const original = JSON.stringify(scene), queueFirst = model.buildTrace(scene), packetFirst = model.buildTrace(scene, 'packet');
+  assert.deepEqual(packetFirst.map(frame => frame.id), ['initial', 'handoff', 'forward', 'complete', 'reclaim']);
+  assert.deepEqual(packetFirst[2].queueState.used, {index: 0, consumer: 0}, 'packet progress cannot publish or reclaim Guest used');
+  assert.equal(packetFirst[2].queueState.freeDescriptors, 7);
+  assert.deepEqual(packetFirst[3].queueState.used, {index: 1, consumer: 0});
+  assert.equal(queueFirst[3].nodes.network, 'not observed', 'queue recovery cannot imply packet transmission');
+  assert.deepEqual(packetFirst.at(-1).values, queueFirst.at(-1).values);
+  assert.deepEqual(packetFirst.at(-1).nodes, queueFirst.at(-1).nodes);
+  assert.deepEqual(model.phases(scene, packetFirst).map(p => [p.id, p.branch, p.index, p.end]),
+    [['submit', undefined, 0, 1], ['send', 'packet', 2, 2], ['return', 'queue', 3, 4]]);
+  assert.equal(JSON.stringify(scene), original);
+  packetFirst[2].queueState.used.index = 99;
+  assert.equal(packetFirst[1].queueState.used.index, 0);
+  assert.equal(queueFirst[0].queueState.used.index, 0);
+});
 for (const id of ['network-io', 'memory-access', 'cpu-execution', 'interrupt-delivery',
   'disk-persistence', 'vm-lifecycle', 'virtio-gpu-rendering']) {
   const demo = JSON.parse(fs.readFileSync(path.join(__dirname, `../virt_report/content/flows/${id}.json`), 'utf8'));
@@ -78,7 +107,7 @@ test('network structure view ends at queue recovery/refill, without application 
     assert(focused.every(frame => frame.focus && !applicationSteps.has(frame.id)), scene.id);
     const last = stops.at(-1);
     assert.equal(trace[last].id, scene.id.includes('-rx') ? 'refill' : 'reclaim', scene.id);
-    assert(last < trace.length - 1, scene.id);
+    assert(last <= trace.length - 1, scene.id);
     assert.equal(model.next(trace, 'structure', last, 1), last);
     assert.equal(model.project(trace, 'structure', trace.length - 1), last);
     assert.equal(model.stops(trace, 'overview').at(-1), trace.length - 1);

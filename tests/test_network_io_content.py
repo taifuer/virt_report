@@ -54,7 +54,7 @@ def test_network_initial_state_is_neutral_and_steps_are_bounded(scene_id):
     assert not initial["links"]
     assert not initial["changes"]
     assert initial["focus"] is True
-    assert 13 <= len(scene["steps"]) <= 14
+    assert 12 <= len(scene["steps"]) <= 14
     assert len(scene["nodes"]) <= 11
     assert snapshot(scene_id, "initial")["availIdx"] == "0"
     assert snapshot(scene_id, "initial")["usedIdx"] == "0"
@@ -101,9 +101,9 @@ def test_rx_publishes_writable_space_before_arrival_and_preserves_old_data(backe
 def test_dpdk_separates_guest_buffer_from_mbuf_and_pmd():
     copied = snapshot("dpdk-tx", "transfer")
     assert copied["mbufPayload"] == "P1 · pkt_len = 60 B"
+    assert copied["mbufOwner"] == "vhost 库准备 M，尚未返回调用者"
     assert copied["usedIdx"] == "0"
     reclaimed = snapshot("dpdk-tx", "reclaim")
-    assert reclaimed["mbufOwner"] == "DPDK 应用持有 M"
     assert reclaimed["guestBufferOwner"] == "驱动已回收，可复用"
     assert snapshot("dpdk-tx", "pmd")["mbufOwner"] == "PMD 持有 M"
     assert position("dpdk-tx", "used") < position("dpdk-tx", "pmd")

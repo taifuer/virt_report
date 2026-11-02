@@ -81,6 +81,24 @@ def validate_demo(demo: dict) -> None:
         require(len(fields) == len(set(fields)), "duplicate fields")
         require(2 <= len(scene["steps"]) <= 120, "step count")
         ids(scene["steps"])
+        if "parallel" in scene:
+            parallel = scene["parallel"]
+            require(all(text(parallel.get(key)) for key in ("title", "description")), "parallel labels")
+            positions = {step["id"]: n for n, step in enumerate(scene["steps"])}
+            require(parallel.get("after") in positions, "parallel fork")
+            branches = parallel["branches"]
+            require(len(branches) == 2, "parallel branch count")
+            ids(branches)
+            represented = []
+            for branch in branches:
+                require(all(text(branch.get(key)) for key in ("title", "summary")), "parallel branch labels")
+                steps = branch["steps"]
+                require(bool(steps) and set(steps) <= positions.keys(), "parallel branch steps")
+                indexes = [positions[step] for step in steps]
+                require(indexes == sorted(set(indexes)), "parallel branch order")
+                represented.extend(steps)
+            suffix = {step["id"] for step in scene["steps"][positions[parallel["after"]] + 1:]}
+            require(set(represented) == suffix and len(represented) == len(suffix), "parallel coverage")
         if "phases" in scene:
             phases = scene["phases"]
             require(2 <= len(phases) <= 10, "phase count")
@@ -90,6 +108,11 @@ def validate_demo(demo: dict) -> None:
             require(all(phase.get("start") in step_positions for phase in phases), "phase start")
             starts = [step_positions[phase["start"]] for phase in phases]
             require(starts[0] == 0 and starts == sorted(set(starts)), "phase order and coverage")
+            if "parallel" in scene:
+                membership = {step: branch["id"] for branch in scene["parallel"]["branches"] for step in branch["steps"]}
+                for start, end in zip(starts, [*starts[1:], len(scene["steps"])]):
+                    owners = {membership.get(step["id"]) for step in scene["steps"][start:end]}
+                    require(len(owners) == 1, "phase crosses parallel boundary")
         initial = scene["steps"][0]
         require(not initial["active"] and not initial["changes"] and not initial["links"]
                 and initial["focus"], "initial state must be neutral")

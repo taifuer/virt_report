@@ -31,9 +31,11 @@
     </tbody>
   </table>
   <p>发送在队列发布后分成并行的两条路径：Guest 沿系统调用返回，宿主后端消费已发布的链。本页展示先返回、后处理的一种调度顺序，后端也可能更早运行。图中返回边直接连接客户机协议栈和应用，设备完成不会作为 <code>sendto()</code> 返回的前置条件。真实系统若先把 skb 排入客户机 qdisc，返回还可能早于 virtqueue 发布。</p>
-  <p>RX 演示选取单帧接收路径：驱动回收 used 链，把 skb 交给 NAPI；<code>GRO_NORMAL</code> 普通列表尚未达到提前刷新条件，驱动先补充新 RX 空间。本轮处理量小于 budget，随后在 NAPI 完成阶段由 <code>gro_flush_normal()</code> 把普通列表交给协议栈。IPv4 / UDP 校验与分发完成后，数据才进入 socket。批量阈值或处理预算不同，协议交付与 refill 可以交错；补充新空间始终不以应用读完旧数据为前提。</p>
+  <p>QEMU + TAP 的普通 TX 路径在 <code>writev()</code> 成功返回后发布 used，再判断完成通知条件。此时宿主已经接受了帧，网络转发可以独立推进；Guest 侧依次处理虚拟中断和队列回收。宿主转发可能在写 TAP 的调用内部就已开始，两条路径之间没有“Guest 回收后才发送”的依赖。TAP 暂不可写时则保留请求，等待重试成功后发布 used。<a href="{{ demo.sources['qemu-tx'].url }}">QEMU 发送与完成</a>、<a href="{{ demo.sources['qemu-tap-write'].url }}">TAP 写入</a></p>
+  <p>RX 演示选取单帧接收路径：NAPI poll 从 used 取回链，构造 skb 并交给 GRO；<code>GRO_NORMAL</code> 普通列表尚未达到提前刷新条件，驱动先补充新 RX 空间。本轮处理量小于 budget，随后在 NAPI 完成阶段由 <code>gro_flush_normal()</code> 把普通列表交给协议栈。IPv4 / UDP 校验与分发完成后，数据才进入 socket。批量阈值或处理预算不同，协议交付与 refill 可以交错；补充新空间始终不以应用读完旧数据为前提。</p>
   <p>数据进入 socket 后，等待的应用变为可运行；获得 CPU 后才能复制载荷并返回。设备完成也不保证数据能进入 socket：协议校验、接收预算和应用消费速度都可能成为后续限制。本例选择空间充足、校验通过的一条成功路径。</p>
-  <p>DPDK 的普通同步路径有两份独立存储。TX 将 Guest 帧复制为 mbuf，归还 Guest 链后仍可继续转发这个 mbuf；RX 则从 mbuf 复制到 Guest 空间，成功返回后应用可释放宿主 mbuf。<code>rte_vhost_dequeue_burst()</code> 从 Guest 取包，<code>rte_vhost_enqueue_burst()</code> 向 Guest 送包。两个名字以 vhost 接口为视角。</p>
+  <p>DPDK 的普通同步路径有两份独立存储。TX 将 Guest 帧复制为 mbuf，在发布 used 并检查通知条件后返回；应用取得 mbuf，即可交给 PMD，无需等待 Guest 执行中断或回收描述符。RX 则从 mbuf 复制到 Guest 空间；<code>rte_vhost_enqueue_burst()</code> 成功返回后，应用可释放已复制报文对应的宿主 mbuf，Guest 的 NAPI 与协议栈继续处理自己的副本。<code>rte_vhost_dequeue_burst()</code> 从 Guest 取包，<code>rte_vhost_enqueue_burst()</code> 向 Guest 送包，两个名字以 vhost 接口为视角。</p>
+  <p>硬件 vDPA 直接访问 Guest 缓冲区。设备必须结束对本次发送链及其数据的使用，才可发布 TX used；DMA 刚开始或报文刚进入硬件处理流程都不足以满足这一条件。内部缓存、流水线和发送完成策略由具体设备实现，通用 virtio 接口只保证 used 之后可以归还缓冲区。演示保留这条保证，不把设备完成解释为远端收包确认。</p>
   <p>队列空间和网络交付能力也应分别观察。TX 的 TAP 暂不可写时，QEMU 保留异步请求，写入恢复后才归还链。RX 没有可写缓冲区时，QEMU 等待 refill 并暂停上游交付；本例演示恢复成功，持续超载仍受有限队列约束，可能丢包。有关 NAPI、缓冲区补充与竞态的细节见<a href="virtio-net-rx.html">virtio-net 接收路径</a>。</p>
 </section>
 

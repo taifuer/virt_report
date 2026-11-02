@@ -107,6 +107,20 @@ def test_video_paths_keep_surface_copy_and_encoded_feedback_explicit(demo):
     assert feedback["appResult"] == initial["appResult"]
 
 
+def test_rendering_allows_cpu_work_before_fence_and_next_batch_before_presentation(demo):
+    scene = scene_for(demo, "virgl-render")
+    steps = {step["id"]: step for step in scene["steps"]}
+    encoded = snapshot(scene, "encode-draw")
+    assert "绘制调用已返回" in steps["encode-draw"]["nodeStates"]["application"]
+    assert encoded["controlAvail"] == "未发布"
+    assert encoded["fenceState"] == "未建立"
+    assert "与 Q1 的宿主处理重叠" in steps["publish-submit"]["detail"]
+    assert snapshot(scene, "publish-submit")["fenceState"] == "待完成"
+    assert "下一批绘制可以与本帧执行重叠" in steps["consume-result"]["detail"]
+    assert "渲染和显示各自的访问依赖" in steps["consume-result"]["detail"]
+    assert "其他批次可独立推进" in steps["consume-result"]["nodeStates"]["application"]
+
+
 def test_gpu_sources_are_pinned_for_qemu_linux_mesa_and_virglrenderer(demo):
     urls = [source["url"] for source in demo["sources"].values()]
     assert all(re.search(r"/(?:blob|tree)/[0-9a-f]{40}/", url) for url in urls)

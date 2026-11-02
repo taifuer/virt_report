@@ -73,6 +73,16 @@
       "symbol": "hva_to_pfn()",
       "kind": "function"
     },
+    "ept-install": {
+      "label": "Linux 6.18 · 安装 TDP MMU 叶子映射",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/tdp_mmu.c#L1268-L1353",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/mmu/tdp_mmu.c",
+      "line": 1268,
+      "project": "Linux",
+      "symbol": "kvm_tdp_mmu_map()",
+      "kind": "function"
+    },
     "faultin-io": {
       "label": "Linux 6.18 · 后备页需要 I/O 时的同步与异步路径",
       "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/mmu.c#L4591-L4634",
@@ -1456,7 +1466,8 @@
             "mmu": "目标 EPT 已就绪"
           },
           "sourceIds": [
-            "ept-map"
+            "ept-map",
+            "ept-install"
           ],
           "focus": true
         },
@@ -1484,6 +1495,7 @@
           },
           "sourceIds": [
             "ept-map",
+            "ept-install",
             "address-model"
           ],
           "focus": true
@@ -1502,14 +1514,24 @@
         },
         {
           "id": "path-1",
-          "title": "内核退出与设备处理",
+          "title": "EPT 退出与后备页解析",
           "context": "宿主 KVM",
           "sourceIds": [
-            "ept-map",
             "ept-exit",
+            "kvm-page-fault",
+            "ept-map",
             "backing-page"
           ],
-          "boundary": "函数按本场景处理次序排列；后备页等待、事件通知和再次进入客户机是明确的边界。"
+          "boundary": "EPT 退出先进入缺页分派，再由 TDP MMU 路径查询后备 PFN。这里列出逐层进入的关键入口，省略中间包装函数。"
+        },
+        {
+          "id": "install-ept",
+          "title": "取得 PFN 后安装 EPT 映射",
+          "context": "同一 vCPU 线程 · 取页返回后",
+          "sourceIds": [
+            "ept-install"
+          ],
+          "boundary": "取页返回后，kvm_tdp_mmu_page_fault 取得 MMU 锁并检查失效条件，再调用 kvm_tdp_mmu_map。取页函数返回的 PFN 是建图输入；它本身不负责安装 EPT。"
         }
       ]
     },
@@ -1827,6 +1849,7 @@
           },
           "sourceIds": [
             "ept-map",
+            "ept-install",
             "address-model"
           ],
           "focus": true
@@ -1844,7 +1867,7 @@
         },
         {
           "id": "path-1",
-          "title": "内核退出与设备处理",
+          "title": "EPT 退出与同步取页",
           "context": "宿主 KVM",
           "sourceIds": [
             "ept-exit",
@@ -1852,7 +1875,16 @@
             "faultin-io",
             "backing-page"
           ],
-          "boundary": "函数按本场景处理次序排列；后备页等待、事件通知和再次进入客户机是明确的边界。"
+          "boundary": "TDP 缺页路径进入取页逻辑；非等待尝试返回 NEEDS_IO 后，本例继续同步慢路径。宿主可把等待中的 vCPU 线程调度出去，KVM_RUN 仍在调用中。"
+        },
+        {
+          "id": "install-ept",
+          "title": "换入完成后恢复 EPT",
+          "context": "同一 vCPU 线程 · 宿主取页返回后",
+          "sourceIds": [
+            "ept-install"
+          ],
+          "boundary": "页面重新驻留后，缺页处理返回 TDP MMU 上层，在锁和失效检查保护下安装当前 PFN 的映射，然后重试 Guest 访存。"
         }
       ]
     },
@@ -2484,14 +2516,14 @@
       "callPaths": [
         {
           "id": "path-0",
-          "title": "内核退出与设备处理",
+          "title": "写保护退出与脏页记录",
           "context": "宿主 KVM",
           "sourceIds": [
+            "ept-exit",
             "dirty-fault",
-            "dirty-bitmap",
-            "ept-exit"
+            "dirty-bitmap"
           ],
-          "boundary": "函数按本场景处理次序排列；后备页等待、事件通知和再次进入客户机是明确的边界。"
+          "boundary": "EPT 写保护触发退出后，缺页快速路径先原子更新 SPTE，再标记对应 GFN 为脏。原 Guest 写指令要等重新进入客户机后才重试。"
         }
       ]
     },
@@ -2753,15 +2785,15 @@
       "callPaths": [
         {
           "id": "path-0",
-          "title": "内核退出与设备处理",
+          "title": "指令模拟进入内核 LAPIC",
           "context": "宿主 KVM",
           "sourceIds": [
-            "lapic-mmio-read",
             "ept-exit",
+            "mmio-emulate",
             "kvm-mmio-read",
-            "mmio-emulate"
+            "lapic-mmio-read"
           ],
-          "boundary": "函数按本场景处理次序排列；后备页等待、事件通知和再次进入客户机是明确的边界。"
+          "boundary": "退出处理进入指令模拟；emulator_read_write_onepage 经读操作回调调用 vcpu_mmio_read，再通过内核设备接口读取 LAPIC。读值返回模拟器后才能完成 Guest 指令。"
         }
       ]
     },
@@ -2994,12 +3026,12 @@
           ],
           "changes": {
             "event": "已触发",
-            "backend": "已通知，等待 IOThread 处理"
+            "backend": "已通知；IOThread 独立处理队列"
           },
           "nodeStates": {
             "kvm": "发出后端事件通知",
             "eventfd": "发出后端事件通知",
-            "backend": "发出后端事件通知"
+            "backend": "收到通知后独立推进队列"
           },
           "sourceIds": [
             "ioeventfd-write"
@@ -3011,7 +3043,7 @@
           "title": "vCPU 继续执行",
           "actor": "KVM → Guest",
           "description": "内核把门铃写标记为已处理并恢复客户机。",
-          "detail": "KVM_RUN 没有返回 QEMU vCPU 用户态；QEMU IOThread 仍可能稍后处理队列，两者不能混为一谈。",
+          "detail": "KVM_RUN 没有返回 QEMU vCPU 用户态。IOThread 可能已经开始处理，也可能仍在等待调度；vCPU 恢复与后端取链没有固定先后。",
           "active": [
             "kvm",
             "guest"
@@ -3036,14 +3068,14 @@
       "callPaths": [
         {
           "id": "path-0",
-          "title": "内核退出与设备处理",
+          "title": "指令模拟写入 ioeventfd 门铃",
           "context": "宿主 KVM",
           "sourceIds": [
-            "ioeventfd-write",
+            "mmio-emulate",
             "kvm-mmio-write",
-            "mmio-emulate"
+            "ioeventfd-write"
           ],
-          "boundary": "函数按本场景处理次序排列；后备页等待、事件通知和再次进入客户机是明确的边界。"
+          "boundary": "模拟器把写操作交给 vcpu_mmio_write，经 MMIO 总线匹配 ioeventfd。eventfd_signal 发出通知后，vCPU 继续执行与 IOThread 处理队列可并发推进；通知函数不等待后端完成。"
         }
       ]
     },

@@ -204,6 +204,13 @@ def _split_publications(scene: dict) -> None:
            "RX 的 len=72 是实际写入量，不是 1530 B 空间容量。"),
         {"usedEntry": used["changes"].pop("usedEntry")}, fill_sources,
     ))
+    if backend == "vdpa" and tx:
+        fill_used = next(step for step in scene["steps"] if step["id"] == "fill-used")
+        fill_used["description"] = "设备已结束对 Guest 链和缓冲区的使用，填写 used.ring[0] = { id: 0, len: 0 }。"
+        fill_used["detail"] = (
+            "只有满足缓冲区归还条件，设备才会填写完成项并随后发布 used.idx。"
+            "具体硬件何时结束内部发送流水线由实现决定，本步不宣称已复制到设备私有缓冲区或已完成线缆发送。"
+        )
     used["description"] = "先完成数据与 used 环项写入，再发布 used.idx = 1；驱动现在可以消费。"
     used["sourceIds"] = flush_sources
     if not tx:
@@ -423,6 +430,21 @@ def _completion_interrupts(scene: dict) -> None:
             "sourceIds": ["vmx-irq-inject", "guest-edge-irq", "guest-ring-irq"], "focus": False,
         },
     ]
+    if backend == "dpdk":
+        api = "rte_vhost_dequeue_burst()" if tx else "rte_vhost_enqueue_burst()"
+        returned = ("dequeue 已返回 1，调用者持有独立 mbuf M" if tx else
+                    "enqueue 已返回 1，本帧已复制进 Guest 缓冲区")
+        injections[0]["detail"] += (
+            f"本例 irqfd 快速路由在 eventfd 写调用内完成；随后 {api} 返回 1。"
+            "以下从这个共同边界分别观察 Guest 中断处理与宿主 mbuf 的后续操作。"
+        )
+        injections[0]["changes"]["backendState"] = returned
+        if tx:
+            injections[0]["changes"]["mbufOwner"] = "DPDK 应用持有 M"
+        scene["assumptions"].append(
+            f"选择 {api} 返回后再观察 Guest 接受中断的一种调度。"
+            "实际目标 vCPU 也可能更早响应已经挂起的中断；演示中的分支内部保持各自依赖。"
+        )
     offset = scene["steps"].index(notify) + 1
     scene["steps"][offset:offset] = injections
     reclaim = next(step for step in scene["steps"] if step["id"] == ("reclaim" if tx else "receive"))
@@ -624,7 +646,7 @@ def _node_states(scene: dict) -> None:
             if backend in {"qemu", "vhost"}:
                 updates["port"] = "TAP 已接受 P1，后续转发独立进行"
             elif backend == "vdpa":
-                updates["port"] = "设备发送数据面已接收 P1"
+                updates["port"] = "硬件正在处理 P1；内部发送进度未展开"
             else:
                 updates["port"] = "帧已复制至 mbuf M，尚未提交 PMD"
             updates["network"] = "远端接收尚未确认"
@@ -640,11 +662,11 @@ def _node_states(scene: dict) -> None:
         elif event == "refill":
             updates["backend"] = "新 RX 空间已发布，等待下一帧"
         elif event == "free-mbuf":
-            updates["backend"] = "本次 enqueue 已接受 1 帧，宿主 mbuf M 已释放"
+            updates["port"] = "本次宿主 mbuf M 已释放，端口可继续收包"
         elif event == "pmd":
             updates.update(port="PMD 已接受 mbuf M，等待网卡完成", network="远端接收尚未确认")
         elif event == "pmd-cleanup":
-            updates.update(port="本地 TX 已完成，PMD 可回收 mbuf M", network="本地发送已完成；远端接收仍未确认")
+            updates.update(port="网卡已结束使用，PMD 可回收 mbuf M", network="本地缓冲区已归还；远端接收仍未确认")
         elif event == "egress":
             updates["port"] = "继续本地网络转发；未取得远端确认"
             updates["network"] = "远端接收仍未确认"
@@ -814,6 +836,59 @@ def _call_paths(scene: dict) -> None:
         step["sourceIds"] = list(dict.fromkeys(aliases.get(source, source) for source in step["sourceIds"]))
 
 
+def _parallel_network_paths(scene: dict) -> None:
+    """Declare independent suffixes only after their common prerequisites."""
+    identifier = scene["id"]
+    if identifier in {"qemu-tx", "vhost-tx", "qemu-tx-backpressure"}:
+        after = "retry" if identifier == "qemu-tx-backpressure" else "transfer"
+        host_steps = ["egress"]
+        title = "TAP 接受后，队列归还与宿主转发分别推进"
+        description = (
+            "普通复制路径已结束对 Guest 发送缓冲区的使用，后端可以发布 used。"
+            "宿主网络按自己的调度继续转发，不等待 Guest 中断处理或 TX 链回收；"
+            "其中一部分处理也可能已经在提交 TAP 的内核调用中完成。"
+        )
+        guest_id, guest_title = "guest-completion", "Guest 队列完成"
+        guest_summary = "发布 used，经 KVM 递送完成中断，驱动回收 TX 链。"
+        host_id, host_title = "host-forwarding", "宿主网络转发"
+        host_summary = "观察已接受帧的本地转发；不据此推断物理发送完成或远端收到。"
+    elif identifier == "dpdk-tx":
+        after, host_steps = "route-interrupt", ["pmd", "pmd-cleanup"]
+        title = "dequeue 返回后，Guest 回收与 PMD 发送分别推进"
+        description = (
+            "vhost 库已复制帧、发布 used 并通知 KVM，dequeue 已向调用者返回独立 mbuf M。"
+            "Guest 可以处理完成中断，应用也可以把 M 交给 PMD；两边使用不同缓冲区，互不等待对方完成。"
+        )
+        guest_id, guest_title = "guest-completion", "Guest 队列回收"
+        guest_summary = "目标 vCPU 接受完成中断，NAPI 依据 used 回收 Guest TX 链。"
+        host_id, host_title = "host-forwarding", "PMD 发送与 mbuf 回收"
+        host_summary = "应用提交独立 M；PMD 在网卡结束使用 M 后回收它。"
+    elif identifier == "dpdk-rx":
+        after, host_steps = "route-interrupt", ["free-mbuf"]
+        title = "enqueue 返回后，Guest 接收与宿主 mbuf 释放分别推进"
+        description = (
+            "同步 enqueue 已把帧复制到 Guest RX 缓冲区并返回 1。"
+            "Guest 继续处理中断与接收协议栈；DPDK 应用可以释放原 mbuf M，无需等到 recvfrom 返回。"
+        )
+        guest_id, guest_title = "guest-receive", "Guest 接收与应用返回"
+        guest_summary = "NAPI 消费 RX 完成项、补充新空间，协议栈把数据报交给等待的应用。"
+        host_id, host_title = "host-buffer", "宿主 mbuf 释放"
+        host_summary = "应用释放已完成复制的 M；Guest 缓冲区中的帧保持有效。"
+    else:
+        return
+    ids = [step["id"] for step in scene["steps"]]
+    suffix = ids[ids.index(after) + 1:]
+    scene["parallel"] = {
+        "after": after, "title": title, "description": description,
+        "branches": [
+            {"id": guest_id, "title": guest_title, "summary": guest_summary,
+             "steps": [step for step in suffix if step not in host_steps]},
+            {"id": host_id, "title": host_title, "summary": host_summary,
+             "steps": host_steps},
+        ],
+    }
+
+
 def enrich_network_demo(demo: dict) -> None:
     """Add source-backed detail to a newly loaded network demo in place."""
     if demo["id"] != "network-io":
@@ -833,3 +908,4 @@ def enrich_network_demo(demo: dict) -> None:
         _snapshot_queue(scene)
         _node_states(scene)
         _call_paths(scene)
+        _parallel_network_paths(scene)

@@ -743,8 +743,8 @@
           "id": "egress",
           "title": "继续网络转发",
           "actor": "宿主网络",
-          "description": "P1 沿本地出口继续发送，虚拟队列已可承接下一帧。",
-          "detail": "路径中的排队、交换、丢包和远端处理不由本次 used 项报告。演示展示本地交付边界，未模拟对端协议栈或确认报文。 此处整理出口状态，与 Guest 返回及回收可交错；演示未收到对端确认，UDP 本身也不提供可靠交付确认。",
+          "description": "宿主网络继续处理已接受的 P1，按出口配置排队与转发。",
+          "detail": "这一侧不等待 Guest 处理完成中断或回收 TX 链；转发也可能在提交 TAP 的内核调用中已经推进。图中观察本地转发边界，不推断物理网卡完成或远端收到。",
           "active": [
             "port"
           ],
@@ -1272,10 +1272,10 @@
         },
         {
           "id": "receive",
-          "title": "回收 RX 链并交给 NAPI",
+          "title": "NAPI 回收 RX 链",
           "actor": "Guest virtio-net / NAPI",
-          "description": "驱动消费 head 2，去掉 12 B virtio-net 头，将 60 B 帧交给 NAPI 接收处理。",
-          "detail": "驱动回收描述符后，napi_gro_receive() 接管接收 skb。本例单帧走 GRO_NORMAL，普通接收列表尚未达到提前刷新条件，UDP socket 此时仍为空。描述符槽可以复用，旧数据页继续由接收路径持有。",
+          "description": "NAPI poll 消费 head 2，去掉 12 B virtio-net 头，将 60 B 帧交给 GRO。",
+          "detail": "驱动在 NAPI poll 中回收描述符，构造 skb，再调用 napi_gro_receive()。本例单帧走 GRO_NORMAL，普通接收列表尚未达到提前刷新条件，UDP socket 此时仍为空。描述符槽可以复用，旧数据页继续由接收路径持有。",
           "active": [
             "queue",
             "guest"
@@ -2035,8 +2035,8 @@
           "id": "egress",
           "title": "继续网络转发",
           "actor": "宿主网络",
-          "description": "P1 沿本地出口继续发送，虚拟队列已可承接下一帧。",
-          "detail": "路径中的排队、交换、丢包和远端处理不由本次 used 项报告。演示展示本地交付边界，未模拟对端协议栈或确认报文。 此处整理出口状态，与 Guest 返回及回收可交错；演示未收到对端确认，UDP 本身也不提供可靠交付确认。",
+          "description": "宿主网络继续处理已接受的 P1，按出口配置排队与转发。",
+          "detail": "这一侧不等待 Guest 处理完成中断或回收 TX 链；转发也可能在提交 TAP 的内核调用中已经推进。图中观察本地转发边界，不推断物理网卡完成或远端收到。",
           "active": [
             "port"
           ],
@@ -2574,10 +2574,10 @@
         },
         {
           "id": "receive",
-          "title": "回收 RX 链并交给 NAPI",
+          "title": "NAPI 回收 RX 链",
           "actor": "Guest virtio-net / NAPI",
-          "description": "驱动消费 head 2，去掉 12 B virtio-net 头，将 60 B 帧交给 NAPI 接收处理。",
-          "detail": "驱动回收描述符后，napi_gro_receive() 接管接收 skb。本例单帧走 GRO_NORMAL，普通接收列表尚未达到提前刷新条件，UDP socket 此时仍为空。描述符槽可以复用，旧数据页继续由接收路径持有。",
+          "description": "NAPI poll 消费 head 2，去掉 12 B virtio-net 头，将 60 B 帧交给 GRO。",
+          "detail": "驱动在 NAPI poll 中回收描述符，构造 skb，再调用 napi_gro_receive()。本例单帧走 GRO_NORMAL，普通接收列表尚未达到提前刷新条件，UDP socket 此时仍为空。描述符槽可以复用，旧数据页继续由接收路径持有。",
           "active": [
             "queue",
             "guest"
@@ -3266,7 +3266,7 @@
             "consume"
           ],
           "changes": {
-            "mbufOwner": "DPDK 应用持有 M",
+            "mbufOwner": "vhost 库准备 M，尚未返回调用者",
             "mbufPayload": "P1 · pkt_len = 60 B",
             "backendState": "同步复制完成，等待发布 used",
             "networkStage": "P1 已复制到应用 mbuf"
@@ -3357,8 +3357,8 @@
           "id": "pmd",
           "title": "提交 PMD",
           "actor": "DPDK 应用",
-          "description": "调用 rte_eth_tx_burst()，本例返回 1，PMD 接受 M。",
-          "detail": "返回数量决定哪些 mbuf 的访问权交给 PMD。如果返回 0，M 仍由应用持有，应重试或释放；之前发布的 Guest used 无需也不能撤销。",
+          "description": "dequeue 返回后，应用调用 rte_eth_tx_burst()；本例返回 1，PMD 接受 M。",
+          "detail": "M 已是独立副本，提交不等待 Guest 中断或回收。返回数量决定交给 PMD 的 mbuf；若返回 0，M 仍由应用负责重试或释放。之前发布的 Guest used 无需也不能撤销。",
           "active": [
             "backend",
             "port"
@@ -3379,10 +3379,10 @@
         },
         {
           "id": "pmd-cleanup",
-          "title": "完成本地发送",
+          "title": "回收宿主 mbuf",
           "actor": "PMD / 物理网卡",
-          "description": "PMD 观察到网卡完成对 M 的使用，随后可回收 mbuf。",
-          "detail": "具体网卡可能批量清理 TX 描述符。本地 TX 完成与对端协议栈、应用接收分别属于不同观察点，远端送达需要上层协议确认。 此处整理出口状态，与 Guest 返回及回收可交错；演示未收到对端确认，UDP 本身也不提供可靠交付确认。",
+          "description": "PMD 确认网卡已结束对 M 的使用，清理发送描述符并释放 mbuf 引用。",
+          "detail": "具体网卡可以批量清理完成项。这次本地资源回收独立于 Guest TX 链回收，也不提供远端接收或应用处理的确认。",
           "active": [
             "port"
           ],
@@ -3390,9 +3390,9 @@
             "wire"
           ],
           "changes": {
-            "mbufOwner": "网卡完成后由 PMD 清理并归还池",
-            "pmdQueue": "本地 TX 完成，可批量清理",
-            "networkStage": "本地发送已完成；远端未确认"
+            "mbufOwner": "网卡结束使用后由 PMD 清理并归还池",
+            "pmdQueue": "网卡结束使用，PMD 可批量清理 TX 描述符",
+            "networkStage": "网卡已结束对 M 的使用；远端未确认"
           },
           "nodeStates": {},
           "sourceIds": [
@@ -3944,8 +3944,8 @@
           "id": "free-mbuf",
           "title": "释放宿主 mbuf",
           "actor": "DPDK 应用",
-          "description": "同步 enqueue 返回已接受 1 帧，应用释放本次转发引用。",
-          "detail": "普通复制已经把帧放入 Guest RAM，应用可以把 M 归还 mempool；Guest 稍后处理自己的副本。若 enqueue 未接受，应用必须自行重试或丢弃并释放 M。",
+          "description": "同步 enqueue 返回 1，表示已接受本帧；宿主应用释放本次 mbuf 引用。",
+          "detail": "复制已经完成，M 可以归还 mempool；Guest 对其独立副本的中断、NAPI 和 socket 处理可同时推进。未被 enqueue 接受的报文仍由应用重试或丢弃并释放。",
           "active": [
             "backend"
           ],
@@ -3963,10 +3963,10 @@
         },
         {
           "id": "receive",
-          "title": "回收 RX 链并交给 NAPI",
+          "title": "NAPI 回收 RX 链",
           "actor": "Guest virtio-net / NAPI",
-          "description": "驱动消费 head 2，去掉 12 B virtio-net 头，将 60 B 帧交给 NAPI 接收处理。",
-          "detail": "驱动回收描述符后，napi_gro_receive() 接管接收 skb。本例单帧走 GRO_NORMAL，普通接收列表尚未达到提前刷新条件，UDP socket 此时仍为空。描述符槽可以复用，旧数据页继续由接收路径持有。",
+          "description": "NAPI poll 消费 head 2，去掉 12 B virtio-net 头，将 60 B 帧交给 GRO。",
+          "detail": "驱动在 NAPI poll 中回收描述符，构造 skb，再调用 napi_gro_receive()。本例单帧走 GRO_NORMAL，普通接收列表尚未达到提前刷新条件，UDP socket 此时仍为空。描述符槽可以复用，旧数据页继续由接收路径持有。",
           "active": [
             "queue",
             "guest"
@@ -4639,10 +4639,10 @@
         },
         {
           "id": "transfer",
-          "title": "DMA 读取帧",
+          "title": "硬件处理 TX",
           "actor": "vDPA 硬件设备",
-          "description": "设备通过 DMA 读取头和 P1，将报文交给自己的发送数据面。",
-          "detail": "DMA 访问受已建立的映射和权限约束。设备必须结束对 Guest 缓冲区的使用，才能把对应链发布为 used；内部缓存、流水线和线速发送安排由硬件实现决定。",
+          "description": "设备通过 DMA 访问头和 P1，由硬件发送数据面处理这条请求。",
+          "detail": "DMA 访问受已建立的映射和权限约束。内部缓存、流水线和发送策略由设备实现决定；只有结束对该 Guest 链及缓冲区的使用，才满足发布 used 的条件。",
           "active": [
             "backend",
             "port"
@@ -4652,8 +4652,8 @@
             "forward"
           ],
           "changes": {
-            "backendState": "已取得 P1；结束本链的 Guest 内存访问",
-            "networkStage": "设备发送数据面已接收 P1"
+            "backendState": "设备正在处理 P1；尚未归还 Guest 链",
+            "networkStage": "设备内部发送进度未展开；远端未确认"
           },
           "nodeStates": {},
           "sourceIds": [
@@ -4735,28 +4735,6 @@
             "guest-virtio-send"
           ],
           "focus": true
-        },
-        {
-          "id": "egress",
-          "title": "继续网络转发",
-          "actor": "设备网络出口",
-          "description": "P1 沿本地出口继续发送，虚拟队列已可承接下一帧。",
-          "detail": "路径中的排队、交换、丢包和远端处理不由本次 used 项报告。演示展示本地交付边界，未模拟对端协议栈或确认报文。 此处整理出口状态，与 Guest 返回及回收可交错；演示未收到对端确认，UDP 本身也不提供可靠交付确认。",
-          "active": [
-            "port"
-          ],
-          "links": [
-            "wire"
-          ],
-          "changes": {
-            "networkStage": "继续本地网络转发；远端未确认"
-          },
-          "nodeStates": {},
-          "sourceIds": [
-            "virtio-net-spec",
-            "virtio-net-spec"
-          ],
-          "focus": false
         }
       ]
     },
@@ -5291,10 +5269,10 @@
         },
         {
           "id": "receive",
-          "title": "回收 RX 链并交给 NAPI",
+          "title": "NAPI 回收 RX 链",
           "actor": "Guest virtio-net / NAPI",
-          "description": "驱动消费 head 2，去掉 12 B virtio-net 头，将 60 B 帧交给 NAPI 接收处理。",
-          "detail": "驱动回收描述符后，napi_gro_receive() 接管接收 skb。本例单帧走 GRO_NORMAL，普通接收列表尚未达到提前刷新条件，UDP socket 此时仍为空。描述符槽可以复用，旧数据页继续由接收路径持有。",
+          "description": "NAPI poll 消费 head 2，去掉 12 B virtio-net 头，将 60 B 帧交给 GRO。",
+          "detail": "驱动在 NAPI poll 中回收描述符，构造 skb，再调用 napi_gro_receive()。本例单帧走 GRO_NORMAL，普通接收列表尚未达到提前刷新条件，UDP socket 此时仍为空。描述符槽可以复用，旧数据页继续由接收路径持有。",
           "active": [
             "queue",
             "guest"
@@ -6070,8 +6048,8 @@
           "id": "egress",
           "title": "继续网络转发",
           "actor": "宿主网络",
-          "description": "P1 沿本地出口继续发送，虚拟队列已可承接下一帧。",
-          "detail": "路径中的排队、交换、丢包和远端处理不由本次 used 项报告。演示展示本地交付边界，未模拟对端协议栈或确认报文。 此处整理出口状态，与 Guest 返回及回收可交错；演示未收到对端确认，UDP 本身也不提供可靠交付确认。",
+          "description": "宿主网络继续处理已接受的 P1，按出口配置排队与转发。",
+          "detail": "这一侧不等待 Guest 处理完成中断或回收 TX 链；转发也可能在提交 TAP 的内核调用中已经推进。图中观察本地转发边界，不推断物理网卡完成或远端收到。",
           "active": [
             "port"
           ],
@@ -6625,10 +6603,10 @@
         },
         {
           "id": "receive",
-          "title": "回收 RX 链并交给 NAPI",
+          "title": "NAPI 回收 RX 链",
           "actor": "Guest virtio-net / NAPI",
-          "description": "驱动消费 head 2，去掉 12 B virtio-net 头，将 60 B 帧交给 NAPI 接收处理。",
-          "detail": "驱动回收描述符后，napi_gro_receive() 接管接收 skb。本例单帧走 GRO_NORMAL，普通接收列表尚未达到提前刷新条件，UDP socket 此时仍为空。描述符槽可以复用，旧数据页继续由接收路径持有。",
+          "description": "NAPI poll 消费 head 2，去掉 12 B virtio-net 头，将 60 B 帧交给 GRO。",
+          "detail": "驱动在 NAPI poll 中回收描述符，构造 skb，再调用 napi_gro_receive()。本例单帧走 GRO_NORMAL，普通接收列表尚未达到提前刷新条件，UDP socket 此时仍为空。描述符槽可以复用，旧数据页继续由接收路径持有。",
           "active": [
             "queue",
             "guest"

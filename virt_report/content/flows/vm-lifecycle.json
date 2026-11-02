@@ -66,6 +66,15 @@
       "line": 560,
       "project": "QEMU"
     },
+    "qemu-memory-backend": {
+      "label": "QEMU 10.2：板级初始化前准备 RAM 后备",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/core/machine.c#L1658-L1745",
+      "symbol": "machine_run_board_init()",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "hw/core/machine.c",
+      "line": 1658,
+      "project": "QEMU"
+    },
     "qemu-ram": {
       "label": "QEMU 10.2：RAM 更新与 KVM 内存槽",
       "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L1505-L1687",
@@ -85,12 +94,21 @@
       "project": "QEMU"
     },
     "qemu-devices": {
-      "label": "QEMU 10.2：板级初始化与命令行设备创建",
-      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/vl.c#L2708-L2839",
-      "symbol": "qemu_init_board() / qemu_create_cli_devices()",
+      "label": "QEMU 10.2：板级初始化入口",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/vl.c#L2708-L2734",
+      "symbol": "qemu_init_board()",
       "revision": "698104725efad4b29079d857dfdebbd804e34c99",
       "path": "system/vl.c",
       "line": 2708,
+      "project": "QEMU"
+    },
+    "qemu-cli-devices": {
+      "label": "QEMU 10.2：板级初始化后创建命令行设备",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/vl.c#L2736-L2814",
+      "symbol": "qemu_create_cli_devices()",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "system/vl.c",
+      "line": 2736,
       "project": "QEMU"
     },
     "qemu-boot": {
@@ -279,6 +297,15 @@
       "revision": "698104725efad4b29079d857dfdebbd804e34c99",
       "path": "system/cpus.c",
       "line": 294,
+      "project": "QEMU"
+    },
+    "qemu-vm-start": {
+      "label": "QEMU 10.2：发送 RESUME 后放行 vCPU",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/cpus.c#L763-L805",
+      "symbol": "vm_prepare_start() / vm_start()",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "system/cpus.c",
+      "line": 763,
       "project": "QEMU"
     },
     "qemu-pause-cpus": {
@@ -652,6 +679,28 @@
           "focus": true
         },
         {
+          "id": "prepare-ram",
+          "title": "准备 RAM 后备映射",
+          "actor": "QEMU 机器初始化",
+          "description": "进入 Q35 板级初始化前，QEMU 先准备 8 GiB RAM 的后备对象和宿主地址映射。",
+          "detail": "默认 RAM 后备由 machine_run_board_init 创建；显式 memory-backend 对象可以更早建立。此时后备内存尚未按 Q35 的低端、高端地址布局挂入 Guest 物理空间，也未因此完成 KVM 内存槽注册。",
+          "active": [
+            "qemu",
+            "resources"
+          ],
+          "links": [],
+          "changes": {
+            "ramState": "8 GiB RAM 后备已建立；Guest 地址布局与内存槽待注册"
+          },
+          "nodeStates": {
+            "resources": "RAM 后备可用，等待板级地址布局"
+          },
+          "sourceIds": [
+            "qemu-memory-backend"
+          ],
+          "focus": true
+        },
+        {
           "id": "create-vcpus",
           "title": "创建 vCPU 对象与线程",
           "actor": "QEMU vCPU 线程 → KVM",
@@ -682,10 +731,10 @@
         },
         {
           "id": "map-ram",
-          "title": "建立 RAM 与内存槽",
+          "title": "布置 Guest RAM 并注册内存槽",
           "actor": "QEMU 内存系统 → KVM",
-          "description": "QEMU 建立 8 GiB RAM 后备映射和客户机物理地址布局，再向 KVM 注册可访问的内存槽。",
-          "detail": "内存槽关联 GPA 范围与 QEMU 用户态地址。按需后备模式下，建立映射不代表 8 GiB 宿主页已经全部驻留。",
+          "description": "Q35 把已经准备好的 RAM 后备挂入低端、高端客户机物理地址空间，内存监听器随后向 KVM 注册对应内存槽。",
+          "detail": "pc_q35_init 先创建 CPU，再通过 pc_memory_init 布置 RAM 地址；后备分配发生在更早的机器初始化阶段。内存槽关联 GPA 范围与 QEMU 用户态地址，建立映射不代表 8 GiB 宿主页已经全部驻留。",
           "active": [
             "qemu",
             "resources",
@@ -730,7 +779,7 @@
           },
           "sourceIds": [
             "qemu-board",
-            "qemu-devices"
+            "qemu-cli-devices"
           ],
           "focus": true
         },
@@ -766,7 +815,7 @@
           "title": "允许客户机执行",
           "actor": "Libvirt → QEMU → KVM",
           "description": "普通启动发送 cont，QEMU 放行 vCPU；RESUME 事件使 Libvirt 更新运行状态。",
-          "detail": "start API 等待宿主侧启动操作完成，不等待客户机服务。API 响应、事件处理和随后客户机引导可以交错进行；辅助 CPU 仍按客户机启动协议被唤醒。",
+          "detail": "QEMU 在实际放行 vCPU 前发送 RESUME，Libvirt 接收事件与 Guest 获得执行机会可交错。start API 等待宿主侧启动操作完成，不等待客户机服务；辅助 CPU 仍按客户机启动协议被唤醒。",
           "active": [
             "manager",
             "qemu",
@@ -926,11 +975,13 @@
           "sourceIds": [
             "qemu-kvm",
             "qemu-devices",
+            "qemu-memory-backend",
             "qemu-board",
             "qemu-vcpu",
-            "qemu-ram"
+            "qemu-ram",
+            "qemu-cli-devices"
           ],
-          "boundary": "板级初始化包含多个分支，此处按依赖列关键入口，不暗示它们是同一条直接调用栈。",
+          "boundary": "机器初始化先准备 RAM 后备，再进入 Q35 创建 CPU、布置 Guest 地址并注册内存槽。板级函数返回后创建命令行设备；这些入口分属初始化的不同阶段。",
           "entry": {
             "kind": "async",
             "label": "fork/exec 启动独立 QEMU 进程，进入其初始化路径"
@@ -943,6 +994,7 @@
           "sourceIds": [
             "libvirt-cont",
             "qemu-stop-cont",
+            "qemu-vm-start",
             "qemu-boot",
             "guest-init",
             "guest-virtio"
@@ -956,7 +1008,7 @@
           "sourceIds": [
             "libvirt-state"
           ],
-          "boundary": "RESUME 事件更新管理状态，表明虚拟机继续运行；Guest 引导和应用就绪还需分别观察。",
+          "boundary": "RESUME 事件更新管理状态。QEMU 在放行 CPU 前发出事件，Libvirt 的接收时刻与 vCPU 实际执行可交错；Guest 引导和应用就绪需分别观察。",
           "entry": {
             "kind": "notification",
             "label": "Libvirt 接收 QEMU 异步发送的 RESUME 事件"
@@ -2208,7 +2260,7 @@
           "title": "恢复客户机执行",
           "actor": "QEMU → KVM → Guest",
           "description": "QEMU 重新放行 vCPU，客户机从保留的执行状态继续；RESUME 事件使 Libvirt 更新为 RUNNING。",
-          "detail": "vCPU 获准运行后仍受宿主调度影响。寄存器、RAM 和设备状态沿用暂停前的实例。",
+          "detail": "QEMU 先发送 RESUME，再放行 vCPU；管理端接收事件和 vCPU 实际执行可交错。vCPU 获准运行后仍受宿主调度影响，寄存器、RAM 和设备状态沿用暂停前的实例。",
           "active": [
             "qemu",
             "vcpu",
@@ -2287,14 +2339,24 @@
         },
         {
           "id": "path-2",
-          "title": "恢复执行与管理状态",
-          "context": "QMP 命令 / 事件 → Libvirt",
+          "title": "恢复原实例的执行",
+          "context": "Libvirt 恢复作业 → QMP → QEMU",
           "sourceIds": [
+            "libvirt-pause",
             "qemu-stop-cont",
-            "libvirt-state",
-            "libvirt-pause"
+            "qemu-vm-start"
           ],
-          "boundary": "cont 放行执行，RESUME 事件更新状态；RAM 与设备状态保留，不重复冷启动。"
+          "boundary": "Libvirt 的恢复作业发出 cont；QEMU 沿用原 RAM、设备与 vCPU 对象放行执行。RESUME 事件在 CPU 放行前发送，管理端独立处理。"
+        },
+        {
+          "id": "resume-event",
+          "title": "管理端观察恢复状态",
+          "context": "QMP 异步事件 → Libvirt",
+          "sourceIds": [
+            "libvirt-state"
+          ],
+          "boundary": "Libvirt 接收 RESUME 并更新运行状态，与 Guest 重新得到物理 CPU 的时刻可交错。管理状态更新不等待应用健康检查。",
+          "entry": {"kind": "notification", "label": "Libvirt 独立接收 QEMU 的 RESUME 事件"}
         }
       ]
     }
