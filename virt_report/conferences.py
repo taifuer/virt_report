@@ -984,6 +984,11 @@ def load_content() -> dict:
             raise ValueError(f"论文引用未知会议: {paper['venue']}")
         if not paper["url"].startswith("https://"):
             raise ValueError(f"论文链接必须使用 HTTPS: {paper['id']}")
+        evidence_url = paper.get("evidence_source_url")
+        if evidence_url and not evidence_url.startswith("https://"):
+            raise ValueError(f"论文点评来源必须使用 HTTPS: {paper['id']}")
+        if paper.get("evidence_level") == "project" and not evidence_url:
+            raise ValueError(f"作者项目说明必须提供来源: {paper['id']}")
         authors = _valid_string_list(paper.get("authors", []))
         mappings = _valid_affiliation_mappings(
             paper.get("author_affiliations", [])

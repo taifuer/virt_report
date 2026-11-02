@@ -91,7 +91,7 @@ cp .env.example .env
 | 基础机制 | 虚拟化基础 → CPU 虚拟化 → 内存虚拟化 → 设备与 I/O 虚拟化 → 中断虚拟化 |
 | 关键操作 | 虚拟机启动 → 热迁移 → 热插拔 → 热升级 |
 | 内部机制 | QEMU 内部机制 → KVM 内部机制 → Libvirt 内部机制 |
-| 交互演示 | 磁盘 I/O 读写过程 → 网络 I/O 收发过程 → CPU 指令执行 → 内存访问过程 → 中断递送过程 → GPU 命令提交与完成 |
+| 交互演示 | 磁盘 I/O 读写过程 → 网络 I/O 收发过程 → CPU 指令执行 → 内存访问过程 → 中断传递 → GPU 命令执行 → virtio-gpu 渲染与编解码 |
 
 目录只显示已有正文的专题及其主归属篇数，未发布的专题和分组不对读者展示。普通主题保留标题、简介和导读入口，细分文章默认收起，通过紧邻标题的独立箭头按钮展开；按钮不重复显示篇数，无障碍说明保留动作与主题名称。只有一篇的主题及交互演示不增加折叠。顶部目录、直接访问锚点和前进后退会展开对应主题，旧锚点继续可用。关闭 JavaScript 时仍显示完整文章列表。各文章 URL 保持稳定，交叉阅读放在导读正文，不在目录增加附加行或重复计数。
 
@@ -121,7 +121,9 @@ cp .env.example .env
 
 TCG 交互跟踪翻译块的生成、命中、跳转链接与代码改写后的失效；与 KVM 文章对照 CPU 执行路径。公共 Mermaid 图默认不超过原始尺寸，长图等比缩小；细节可在全屏查看器中缩放。
 
-目前 18 个专题入口包含 53 篇原理文章与 6 个交互演示，另保留 3 个旧链接跳转页。内容覆盖 CPU 模型与迁移兼容性、嵌套 VMX、vCPU 热插拔、NUMA 放置、Libvirt 迁移协调、VFIO 设备迁移、virtio-net 接收与 NAPI、Packed virtqueue、vhost-vDPA、IOMMU 与 IOMMUFD、vIOMMU、virtio-gpu，以及外部快照与在线块操作；GPU 演示另区分 VFIO PCI 直通与限定历史实现的 mdev。
+目前 19 个专题入口包含 53 篇原理文章与 7 个交互演示，另保留 3 个旧链接跳转页。内容覆盖 CPU 模型与迁移兼容性、嵌套 VMX、vCPU 热插拔、NUMA 放置、Libvirt 迁移协调、VFIO 设备迁移、virtio-net 接收与 NAPI、Packed virtqueue、vhost-vDPA、IOMMU 与 IOMMUFD、vIOMMU、virtio-gpu，以及外部快照与在线块操作；GPU 演示另区分 VFIO PCI 直通与限定历史实现的 mdev。
+
+`virtio-gpu-rendering.html` 归入交互演示，提供 OpenGL 绘制、H.264 解码和 NV12 编码三个离线场景，可播放、单步、回退、重置与放大。命令包和图像资源随步骤变化，流程总览、关键结构、源码路径共用状态；下方保留详细说明与四张流程图。固定 QEMU 10.2、Linux 6.18、Mesa 25.0、virglrenderer 1.2，明确区分已接通的渲染主线与需要额外初始化的 VirGL video 扩展；不把普通 QEMU GL 配置当成视频加速支持，也不把 DMA-BUF、fence 与最终显示混为一谈。
 
 `mechanisms/virtio-blk-read.html` 保留原 URL，页面名为“磁盘 I/O 读写过程”，独立归入交互演示，不再计入设备基础文章。读取与写入分别从 Guest 的 `pread()` / `pwrite()` 出发，固定一次 4 KiB 直接 I/O。流程总览显示系统调用、共享队列、后端处理、中断递送与应用返回；源码路径展示关键函数及异步边界。队列机制单独保留 8 个步骤：准备描述符、发布请求、设备取链、读写缓冲区、写回响应、填写完成项、发布完成、回收描述符。该视图以描述符回收为终点，不再逐步展开系统调用与中断注入；阶段导航和计数采用队列自己的进度。三种视图共用完整状态轨迹，队列视图按里程碑取快照，不修改底层因果顺序。支持单步、播放和回退，URL 保留步骤、视图和 `operation=write`。
 
@@ -141,6 +143,7 @@ FLUSH 模式在普通写 R1 返回后显式发起刷新请求 F1，两个请求�
 node scripts/check_virtio_blk_read_browser.cjs http://127.0.0.1:8090
 node scripts/check_disk_completion_browser.cjs http://127.0.0.1:8090
 node scripts/check_execution_demos_browser.cjs http://127.0.0.1:8090
+node scripts/check_virtio_gpu_rendering_browser.cjs http://127.0.0.1:8090
 node scripts/check_walkthrough_style_browser.cjs http://127.0.0.1:8090
 node scripts/check_walkthrough_density_browser.cjs http://127.0.0.1:8090
 node scripts/check_walkthrough_wide_layout_browser.cjs http://127.0.0.1:8090
@@ -151,13 +154,14 @@ node scripts/check_back_top_and_badge_browser.cjs http://127.0.0.1:8090
 # 非默认安装位置可通过 PLAYWRIGHT_MODULE 指定；VBR_SCREENSHOT_DIR 可保存检查截图。
 ```
 
-其余五个演示与原理文章互链，均使用独立、可回退的离线场景：
+其余六个演示与原理文章互链，均使用独立、可回退的离线场景：
 
 - `network-io.html`：QEMU+TAP、内核 vhost-net+TAP、DPDK vhost-user+PMD、硬件 vDPA 各自收发，以及 QEMU RX 缓冲区不足和 TX 背压。Guest RAM 拆分描述符表、available ring、used ring 和报文缓冲区；字段视图显示 `addr/len/flags/next`、索引和访问权限，并将填写环项与发布索引分开。
 - `memory-access.html`：RAM 缓存命中、页表遍历、Guest #PF、EPT 缺项、宿主后备页缺失和脏页写保护；MMIO 区分 QEMU 模拟读取、KVM 内核 LAPIC 读取、匹配 ioeventfd 的门铃写，以及可映射 VFIO BAR 的稳态直接访问。硬件 VM-exit 不等于 `KVM_RUN` 必须返回 QEMU，CPU 的 BAR 访问也不能与设备 DMA 的 IOMMU 路径混为一谈。
 - `cpu-execution.html`：普通 ADD、Guest 系统调用、内核处理 CPUID 和返回 QEMU 的 MMIO 使用同一 vCPU 执行时间线，持续显示指令、寄存器、CPL、VMX 状态与 `KVM_RUN` 交接。普通指令不画成“物理 CPU 把请求交给 Guest”。HLT 与两个定时休眠场景继续区分 Guest 任务、vCPU 和宿主调度状态。
 - `interrupt-delivery.html`：从设备写回数据、发布完成和通知条件检查开始，展示软件 MSI-X、irqfd、通知抑制、IF 屏蔽、MSI-X PBA，以及限定条件下的 APICv posted interrupt。队列完成、LAPIC pending、注入准备、Guest 接受与驱动消费分开；通知被抑制时通过后续轮询观察完成，不伪造必然发生的中断。
 - `gpu-execution.html`：三个已限定实现的场景——VFIO PCI 直通 AMD Vega10 / SDMA 4.0 的 Guest RAM→VRAM 上传与 VRAM→Guest RAM 读回，以及旧代 Skylake GVT-g mdev 的 BLT 系统内存缓冲区复制。跟踪 command buffer、ring、GPU 映射、数据、fence 与应用等待；mdev 额外展示 ELSP 捕获、审核、影子上下文、宿主调度和虚拟事件。QEMU 控制面与稳态直接映射访问分开，闭源厂商内部不作推断，GVT-g 不冒充全部 mdev 的共同实现。
+- `virtio-gpu-rendering.html`：通过 controlq 的 SUBMIT_3D 跟踪 VirGL 图形与视频命令，展示输入资源、宿主执行结果、fence 响应和应用消费。视频场景明确以 VMM 已接通 VirGL video 为前提。
 
 它们共享 `execution-model.js`、`execution-demo.js` 和 `_execution_lab.html`，数据放在 `content/flows/` 对应 JSON。场景以 QEMU 10.2 / Linux 6.18 为基础，CPU、内存和中断选取 Intel VMX/EPT 主线；网络 DPDK 路径另固定 24.11。流程总览保留完整顺序，关键结构视图按 `focus` 取累计快照。网络的 `network_queue.py` 生成结构化 `queueState`，不再从中文说明中正则推断描述符和环状态；磁盘模型也提供 typed queue 快照，两者复用 `walkthrough-components.js` 的描述符、环与缓冲区组件，保留各自协议字段和布局。URL 的 `scenario`、`view`、`step` 可恢复选择；无 JavaScript 时保留全部场景的文字流程。放大查看优先使用浏览器全屏，不支持时使用页内覆盖层。`EXECUTION_SCREENSHOT_DIR` 可保存浏览器回归截图。
 
@@ -171,7 +175,7 @@ GPU 直通明确分开命令内存、门铃与完成：Guest AMDGPU 写 GTT 中�
 
 同一组件还嵌入 `libvirt-domain-start.html#lifecycle`，串起冷启动、暂停恢复、正常关机和强制停止，不新增主分类。对应数据为 `vm-lifecycle.json`，页面映射由 `execution_demos.DEMO_PAGES` 维护。生命周期内容固定 Libvirt 12.0.0、QEMU 10.2.0 与 Linux 6.18，区分命令返回、客户机状态、应用就绪与宿主资源回收。`disk-persistence.json` 保留独立核验资料，但磁盘页不再用 `persistence-scenario` 等参数维护第二个交互状态；读写与同步要求统一由主播放器选择。
 
-六个演示共用 `walkthrough.css` 与 `walkthrough-fullscreen.js`，统一场景选择、视图切换、播放控制、进度和说明栏。配置与源码版本位于演示下方；放大入口位于选择区，退出后保留场景与步骤。执行域和共享内存布局由 `execution-layouts.json` 或场景内嵌的 `layout` 指定；CPU 的指令场景使用专门时间线，而不是强行套设备卡片。连线使用 `walkthrough-routing.js` 避开结构，数据、通知、控制切换和地址映射采用不同图例，必要说明集中到解释栏。修改布局须保留实际归属，不能把页表、宿主后备页、硬件中断状态或 GPU VRAM 都标成 Guest RAM。样式回归覆盖 320–1440px、下拉箭头和两种全屏方式；`WALKTHROUGH_SCREENSHOT_DIR` 可保存六个演示的桌面与手机截图。
+七个演示共用 `walkthrough.css` 与 `walkthrough-fullscreen.js`，统一场景选择、视图切换、播放控制、进度和说明栏。配置与源码版本位于演示下方；放大入口位于选择区，退出后保留场景与步骤。执行域和共享内存布局由 `execution-layouts.json` 或场景内嵌的 `layout` 指定；CPU 的指令场景使用专门时间线，而不是强行套设备卡片。连线使用 `walkthrough-routing.js` 避开结构，数据、通知、控制切换和地址映射采用不同图例，必要说明集中到解释栏。修改布局须保留实际归属，不能把页表、宿主后备页、硬件中断状态或 GPU VRAM 都标成 Guest RAM。样式回归覆盖 320–1440px、下拉箭头和两种全屏方式；新增 virtio-gpu 演示另检查命令与图像状态切换。
 
 `execution-selectors.json` 将场景入口与技术状态分开维护，新 GPU 演示将对应 `selector` 内嵌在自己的场景文件中。网络按后端与发送／接收选择，仅在相应路径下展示背压或缓冲不足；内存先选 RAM / MMIO，再按具体处理路径分组；CPU、中断使用分组预设；GPU 先选 VFIO PCI 或 mdev，再选已实现的操作。每个场景必须恰好被收录一次，界面只提供已核验的组合。网络总览从一次 18 B UDP 载荷的应用收发开始，区分用户缓冲区、Guest 协议栈与队列，以及本地后端；关键结构视图不逐步展开系统调用。应用返回、队列完成和网络交付分别解释，不能用 TX used 表示远端收到，也不能把驱动补充 RX 空间画成等待应用读取之后才进行。
 

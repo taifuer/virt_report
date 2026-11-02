@@ -1,4 +1,4 @@
-/* Visual-density regressions: compact overview, full queue detail, wrapping source chains. */
+/* Visual density: overview memory, full queue detail and wrapping source chains. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -32,10 +32,10 @@ async function showView(page, item, view) {
 async function alignOverview(page, item, fullscreen) {
   await page.evaluate(({selector,fullscreen}) => {
     const lab=document.querySelector('[data-walkthrough-lab]');
-    // Explanations now precede a full-width diagram. Check the diagram itself,
-    // not an artificial one-screen budget for controls + all explanatory text.
+    // Normal reading remains full-width. The expanded desktop canvas shares
+    // its workspace with an inspector and keeps controls above both panels.
     const top=lab.querySelector(selector).getBoundingClientRect().top;
-    if (fullscreen) lab.scrollTop += top - lab.getBoundingClientRect().top - 12;
+    if (fullscreen) lab.scrollTop = 0;
     else window.scrollTo(0,window.scrollY+top-76);
   }, {selector:item.overview,fullscreen});
   await settle(page);
@@ -46,7 +46,15 @@ async function assertOverview(page, item, viewport, fullscreen) {
     const summary=root.querySelector('.walkthrough-queue--compact');
     const r=root.getBoundingClientRect(), sr=summary?.getBoundingClientRect();
     const workspace=root.closest('.walkthrough-workspace').getBoundingClientRect();
+    const canvas=root.closest('.execution-canvas, .vbr-visual');
+    const cr=canvas.getBoundingClientRect(), inspector=root.closest('.walkthrough-workspace').querySelector('.walkthrough-inspector').getBoundingClientRect();
+    const lab=root.closest('[data-walkthrough-lab]');
     return {height:r.height,bottom:r.bottom,top:r.top,diagramWidth:r.width,workspaceWidth:workspace.width,page:document.documentElement.scrollWidth,width:innerWidth,
+      canvas:{top:cr.top,bottom:cr.bottom,left:cr.left,right:cr.right,height:cr.height,scroll:canvas.scrollWidth,client:canvas.clientWidth,overflow:getComputedStyle(canvas).overflowY},
+      inspector:{left:inspector.left,right:inspector.right,top:inspector.top,bottom:inspector.bottom},
+      lab:{scroll:lab.scrollWidth,client:lab.clientWidth},
+      memory:[...root.querySelectorAll('[data-network-memory-part]')].map(panel=>({id:panel.dataset.networkMemoryPart,
+        slots:panel.querySelectorAll('.network-memory-slots > span').length,buffers:panel.querySelectorAll('[data-network-buffer]').length})),
       tables:root.querySelectorAll('table').length,
       summary:summary ? {height:sr.height,text:summary.textContent,
         fields:[...summary.querySelectorAll('[data-queue-summary-field]')].map(node=>node.dataset.queueSummaryField),
@@ -56,17 +64,38 @@ async function assertOverview(page, item, viewport, fullscreen) {
   });
   const tag=`${item.slug}/${viewport.width}/${fullscreen?'fullscreen':'normal'}`;
   assert.equal(layout.tables,0,`${tag}: overview must not repeat the detailed descriptor table`);
-  assert(layout.summary,`${tag}: overview retains compact queue state`);
-  assert.equal(layout.summary.tables+layout.summary.slots+layout.summary.buffers,0,
-    `${tag}: compact means a summary, not another full queue visualization`);
-  assert.deepEqual(layout.summary.fields,['chain','avail','used','free'],
-    `${tag}: compact queue keeps request identity and publication/reclamation progress`);
-  assert(layout.summary.height <= (viewport.width>=1000?120:190),`${tag}: summary too tall ${JSON.stringify(layout)}`);
+  if(item.slug==='network-io') {
+    assert.deepEqual(layout.memory.map(panel=>panel.id),['descriptors','buffers','completion'],`${tag}: network memory remains split into three regions`);
+    assert.equal(layout.memory[0].slots,8,`${tag}: available ring slots`);
+    assert.equal(layout.memory[2].slots,8,`${tag}: used ring slots`);
+    assert(layout.memory[1].buffers>0,`${tag}: packet buffers remain visible`);
+    assert.equal(layout.summary,null,`${tag}: do not repeat a second compact queue summary`);
+  } else {
+    assert(layout.summary,`${tag}: overview retains compact queue state`);
+    assert.equal(layout.summary.tables+layout.summary.slots+layout.summary.buffers,0,
+      `${tag}: compact means a summary, not another full queue visualization`);
+    assert.deepEqual(layout.summary.fields,['chain','avail','used','free'],
+      `${tag}: compact queue keeps request identity and publication/reclamation progress`);
+    assert(layout.summary.height <= (viewport.width>=1000?120:190),`${tag}: summary too tall ${JSON.stringify(layout)}`);
+  }
   assert(layout.page<=layout.width+1,`${tag}: page overflow`);
+  assert(layout.lab.scroll<=layout.lab.client+1,`${tag}: walkthrough horizontal overflow`);
+  assert(layout.canvas.scroll<=layout.canvas.client+1,`${tag}: canvas horizontal overflow`);
   if (viewport.width>=1000) {
-    assert(layout.height <= viewport.height-180,`${tag}: core diagram cannot occupy the entire screen ${JSON.stringify(layout)}`);
-    assert(layout.diagramWidth>=layout.workspaceWidth-44,`${tag}: full-width diagram must not reserve a sidebar ${JSON.stringify(layout)}`);
-    assert(layout.bottom<=viewport.height-8,`${tag}: aligned core diagram fits the viewport ${JSON.stringify(layout)}`);
+    if(fullscreen) {
+      assert(layout.canvas.top>=120 && layout.canvas.top<=220,`${tag}: controls must leave useful room for the drawing ${JSON.stringify(layout)}`);
+      assert(layout.canvas.height<=viewport.height-180 && layout.canvas.bottom<=viewport.height+1,`${tag}: expanded canvas is bounded by the viewport ${JSON.stringify(layout)}`);
+      assert(layout.canvas.right<=layout.inspector.left && Math.abs(layout.canvas.top-layout.inspector.top)<2,
+        `${tag}: diagram and current explanation share a row ${JSON.stringify(layout)}`);
+      assert(['auto','scroll'].includes(layout.canvas.overflow),`${tag}: longer content remains accessible by scrolling`);
+      assert(layout.diagramWidth>=layout.workspaceWidth*.6,`${tag}: drawing retains most of the expanded workspace`);
+    } else {
+      assert(layout.diagramWidth>=layout.workspaceWidth-44,`${tag}: normal reading remains full-width ${JSON.stringify(layout)}`);
+      if(item.slug!=='network-io') {
+        assert(layout.height<=viewport.height-180,`${tag}: core disk diagram exceeds its screen budget ${JSON.stringify(layout)}`);
+        assert(layout.bottom<=viewport.height-8,`${tag}: aligned disk diagram fits the viewport ${JSON.stringify(layout)}`);
+      }
+    }
   }
   return layout;
 }

@@ -5,6 +5,17 @@ from virt_report.config import Config
 from virt_report.render import render as html_render
 
 
+def test_paper_archive_keeps_topic_tags_without_community_topic_row():
+    content = conferences.load_content()
+    page = html_render.render_conference_papers_html(Config(), content)
+    assert "paper-community-links" not in page
+    assert "社区专题" not in page
+    paper = page.split('id="paper-osdi26-m3u"', 1)[1].split("</article>", 1)[0]
+    assert 'data-paper-topic="在线迁移"' in paper
+    assert 'data-paper-topic="后拷贝"' in paper
+    assert "editor-comment" in paper
+
+
 def test_kvm_forum_preview_replaces_withdrawn_session_without_inflating_count():
     editions, analysis = kvm_forum.load_content()
     preview = next(item for item in editions if item["year"] == 2026)
@@ -21,7 +32,8 @@ def test_kvm_forum_preview_replaces_withdrawn_session_without_inflating_count():
     )
     assert set(preview["selected_urls"]) <= talks.keys()
     assert "AI 辅助 KVM 安全审计" in preview["analysis"]["summary"]
-    assert "不代表方案已经合入、完成验证" in preview["analysis"]["summary"]
+    assert "依据会前议程归纳" in preview["analysis"]["summary"]
+    assert "合入、验证和部署状态需以各项目后续记录为准" in preview["analysis"]["summary"]
 
     page = html_render.render_kvm_forum_html(Config(), editions, analysis)
     assert "43 个议题" in page

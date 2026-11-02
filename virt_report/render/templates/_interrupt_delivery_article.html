@@ -4,15 +4,15 @@
 <section id="preface" class="mechanism-section">
   <h2>场景与边界</h2>
   <p>virtio 设备完成请求后，先把结果发布到共享队列，再按通知条件提醒客户机。以接收队列的一次完成为例，MSI-X 表项选择 APIC ID 1 和向量 0x51，KVM 将消息送入目标 vCPU 的中断状态，处理器在允许的时机进入客户机处理程序。驱动随后读取队列并取得结果。</p>
-  <p>这段路径有三种容易混淆的等待：MSI-X 屏蔽使通知留在设备的 PBA；客户机暂不能接受使向量留在 LAPIC 的 IRR；线程未获得 CPU 又会推迟执行。下面按通知路径、屏蔽与等待、硬件递送组织示例，观察每一种状态由谁保存、何时推进。irqfd 连接后端事件与 KVM，APICv 优化后续的硬件交付，两者可以配合使用。</p>
-  <p>示例采用 x86-64、Intel VMX、QEMU 10.2.0 和 Linux 6.18。发起方固定为一次 QEMU virtio-net 接收完成，依次观察数据写入、used 项填写、索引发布和通知判断。软件 LAPIC、通知抑制与 posted interrupt 分别选择明确条件，不将任意设备、屏蔽和硬件加速选项自由组合。</p>
+  <p>这段路径有三种容易混淆的等待：MSI-X 屏蔽使通知留在设备的 PBA；客户机暂不能接受使向量留在 LAPIC 的 IRR；线程未获得 CPU 又会推迟执行。irqfd 连接后端事件与 KVM，APICv 优化后续的硬件交付，两者可以配合使用。物理设备直通时，还要经过 IOMMU 的中断重映射：普通路径先到宿主 IRQ，posted 路径可把向量直接发布到目标 vCPU 的 PID。</p>
+  <p>示例采用 x86-64、Intel VMX、QEMU 10.2.0 和 Linux 6.18。软件设备场景跟踪一次 QEMU virtio-net 接收完成；“设备直通与 VT-d”场景从物理设备 DMA 完成后的 MSI-X 开始，对照宿主软件转发与设备 posted interrupt。每个场景分别列明路由、屏蔽状态和硬件加速条件。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="walkthrough" class="mechanism-section">
   <h2>逐步演示</h2>
   {% include '_execution_lab.html' %}
-  <p>所有场景先从设备完成前开始，used.idx 从 7 推进到 8 后才检查是否需要通知。“队列完成但通知被抑制”展示没有 IRQ 也能由后续轮询消费完成项；软件注入则明确区分“准备 VM-entry 注入”和“成功进入 Guest 处理入口”。位图只展开本例用到的一个向量，动画不表示实际延迟比例。</p>
+  <p>virtio 场景先写入完成数据，used.idx 从 7 推进到 8 后才检查通知条件；直通设备场景则从完成数据已就绪、消息尚未发出开始，不使用 virtio 队列。软件注入分别展示“准备 VM-entry 注入”与“成功进入 Guest 处理入口”。位图只展开本例用到的一个向量，分步间隔不表示实际延迟。</p>
 </section>
 
 <section id="comparison" class="mechanism-section">
@@ -25,19 +25,31 @@
       <tr><td>已到 CPU 的待处理中断</td><td>LAPIC IRR，按向量记位</td><td>满足 IF、interrupt shadow、APIC 优先级与运行条件；本例为 IRR[0x51]</td></tr>
       <tr><td>正在服务的中断</td><td>LAPIC ISR</td><td>客户机 EOI 清除最高优先级的服务位，并重新评估优先级</td></tr>
       <tr><td>跨 CPU 发布的 posted 向量</td><td>Posted Interrupt Descriptor 的 PIR 与 ON</td><td>目标处理器或重新进入路径将 pending 同步到虚拟 APIC 状态</td></tr>
+      <tr><td>物理消息的来源与目标</td><td>VT-d IRTE：来源校验、Present、remapped / posted 格式</td><td>普通表项指向宿主 CPU / IRQ 向量；posted 表项指向 vCPU 的 PID 与 Guest 向量</td></tr>
       <tr><td>设备完成尚未被驱动消费</td><td>used.idx 与驱动 last_used_idx</td><td>驱动读取 used 项、处理结果并回收描述符链</td></tr>
     </tbody>
   </table>
   <p>EOI 只应答 APIC 服务状态。Linux 边沿中断路径可以先应答，再执行设备处理；virtio-net 还可把队列消费交给 NAPI。EOI 之后，完成记录可能仍未被驱动消费。演示因此把 EOI 与 last_used_idx 的变化分成两个步骤。</p>
   <p>IF 关闭与表项屏蔽发生在不同位置。IF = 0 时，已经到达的向量可以留在 IRR；设备表项被屏蔽时，消息尚未发出，PBA 记录补发需求。恢复 IF 后还要考虑 STI / MOV SS shadow 和 APIC 优先级。只看“中断已发送”无法判断客户机何时执行处理函数。</p>
   <p>MSI-X 表项 2、KVM 路由键 GSI 37、APIC ID 1、向量 0x51 各自标识不同对象。直接 MSI 路径每次提交地址和 data；irqfd 路径预先登记路由，再用 eventfd 触发该路由。配置变更时，路由与 notifier 绑定也要保持一致。</p>
+  <h3>直通设备的三种向量</h3>
+  <table>
+    <thead><tr><th scope="col">字段</th><th scope="col">本例取值</th><th scope="col">作用</th></tr></thead>
+    <tbody>
+      <tr><td>普通 IRTE 的宿主 IRQ 向量</td><td>0xB1</td><td>让宿主 IRQ 子系统进入 VFIO handler，随后经 eventfd / irqfd 转交 KVM</td></tr>
+      <tr><td>Guest 中断向量</td><td>0x51</td><td>选择客户机 IDT 入口；保存在 KVM 路由或 posted IRTE 中，并对应 PIR / IRR 的位</td></tr>
+      <tr><td>PID.NV 的宿主通知向量</td><td>POSTED_INTR_VECTOR</td><td>提示运行目标 vCPU 的处理器处理 PID；与 Guest 的 IDT 向量分开</td></tr>
+    </tbody>
+  </table>
+  <p>设备发出 remappable MSI 后，IOMMU 按索引查找 IRTE，并校验事务来源。普通 remapped 格式仍需要宿主 IRQ handler；设备 posted 格式把 Guest 向量和 PID 地址写入 IRTE，让 IOMMU 发布 PIR 并按 PID.NV / NDST 通知处理器。来源不匹配、索引无效或表项 Present 位未置位时，消息进入重映射故障处理。</p>
 </section>
 
 <section id="evolution" class="mechanism-section">
   <h2>中断路径的演进</h2>
   <p>把 LAPIC 放进 KVM 后，待处理向量、优先级与许多控制器访问可在内核中完成，减少用户态往返。在这一基础上，irqfd 缩短后端事件进入 KVM 的交接：后端触发 eventfd，KVM 按预登记路由投递，无需用户态逐次监听后再发起中断 ioctl。</p>
   <p>APICv 继续优化控制器访问与 CPU 交付。posted interrupt 把待处理向量放进 PID 的 PIR，通知正在执行目标 vCPU 的处理器；硬件将 PIR 合入虚拟 IRR，再按客户机规则交付。示例中从“发布 PIR”到“进入 handler”的逻辑阶段分别显示，实际硬件处理不提供供软件任意插入的中间停顿。</p>
-  <p>irqfd 与 APICv 作用于不同环节，可以同时使用。目标 vCPU 未运行、被阻塞或正在迁移时，还需要唤醒、重新进入或同步 PID 状态；硬件能力、Guest 屏蔽规则和调度等待仍然存在。本页展示 KVM 软件 posting，物理设备经 VT-d 直接 posted delivery 还涉及中断重映射表和设备绑定。</p>
+  <p>“APICv · KVM 软件投递”由 KVM 设置 PIR；“VT-d Posted Interrupt”由 IOMMU 根据 posted IRTE 设置 PIR。后一条路径要求 VT-d 与 APICv 能力、VFIO irq-bypass 绑定及可投递到单一 vCPU 的中断路由，广播、多播、NMI 等不适用。KVM 会在不适合设备 posting 时恢复普通 remapped 路由。</p>
+  <p>设备 posted 示例固定目标 vCPU 正在运行。vCPU 被抢占、阻塞或迁核时，还需要维护 PID 的通知目标、抑制与唤醒状态，并在重新进入时处理 pending；Guest 的 IF、shadow 和优先级条件也始终有效。启用 posted interrupt 不代表所有运行状态下都没有 VM-exit。</p>
   <p>实际优化可以从“设备完成 → 通知产生 → LAPIC / PID pending → vCPU 执行 → 驱动消费”逐段计时。批处理减少通知数量，irqfd 减少通知中转，APICv 减少部分交付退出，CPU 绑定与调度影响运行机会；收益和代价应在各自对应的阶段评价。</p>
 </section>
 
@@ -48,6 +60,8 @@
     <li><a href="{{ qemu }}hw/pci/msix.c#L126-L146">QEMU：解除屏蔽与 pending 补发</a>；<a href="{{ qemu }}hw/pci/msix.c#L540-L558">MSI-X 消息发送</a>。</li>
     <li><a href="{{ linux }}virt/kvm/eventfd.c#L195-L231">Linux：irqfd_wakeup</a>；<a href="{{ linux }}arch/x86/kvm/lapic.c#L3083-L3124">IRR / ISR 转换</a>；<a href="{{ linux }}arch/x86/kvm/vmx/vmx.c#L5032-L5061">IF 与 shadow 检查</a>。</li>
     <li><a href="{{ linux }}arch/x86/kvm/vmx/common.h#L110-L175">Linux：posted interrupt 发布与通知</a>；<a href="https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html">Intel SDM：虚拟中断交付、posted processing 与 EOI</a>。</li>
+    <li><a href="{{ linux }}drivers/iommu/intel/irq_remapping.c#L373-L411">Linux：IRTE 来源校验</a>；<a href="{{ linux }}drivers/iommu/intel/irq_remapping.c#L1242-L1277">remapped / posted IRTE 切换</a>；<a href="{{ linux }}drivers/iommu/intel/irq_remapping.c#L1331-L1380">remappable MSI 索引格式</a>。</li>
+    <li><a href="{{ linux }}drivers/vfio/pci/vfio_pci_intrs.c#L373-L379">Linux：VFIO MSI handler 与 eventfd</a>；<a href="{{ linux }}arch/x86/kvm/vmx/posted_intr.c#L305-L333">vCPU PID 与设备中断绑定</a>；<a href="{{ linux }}arch/x86/kvm/irq.c#L426-L475">单目标路由条件与回退</a>。</li>
     <li><a href="interrupt-virtualization.html">中断虚拟化</a>：从 PIC、APIC、MSI-X 到硬件辅助的演进；<a href="kvm-virtio-interrupt.html">virtio 完成通知与 KVM 中断注入</a>：消息字段、完整调用链与队列消费。</li>
     <li><a href="network-io.html">网络 I/O 收发过程</a>：不同后端中的完成通知；<a href="cpu-execution.html">CPU 指令执行过程</a>与<a href="kvm-vcpu-halt.html">KVM 空闲等待</a>：中断到达前后的执行及调度状态。</li>
   </ul>

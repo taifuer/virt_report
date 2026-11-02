@@ -482,7 +482,7 @@
             "detail": "Guest 直接 I/O 固定用户页，SPDK 通过已共享的 RAM 映射访问其后备内存。本例没有文件系统数据路径、宿主页缓存文件后端或额外 bounce buffer；这些前提不适用于所有 SPDK 配置。"
           },
           "ready": {
-            "detail": "Guest 保存 virtblk_req，SPDK 保存自己的 vhost task；R1 是逻辑关联标记，不是跨进程共享的 C 指针。"
+            "detail": "Guest 保存 virtblk_req，SPDK 保存自己的 vhost task；R1 用于标识这两端共同处理的请求，各进程独立管理自己的对象和指针。"
           },
           "prepare-buffers": {
             "detail": "sector 单位是 512 B；SPDK 将描述符 GPA 转换为其进程地址视图。固定用户页与共享 RAM 为同一后备内存，不经 vhost-user socket 复制数据。"
@@ -616,7 +616,7 @@
           "write-used": {
             "actor": "spdk",
             "description": "SPDK 向 used.ring[0] 写入链头 id=0、len=4097，关联同一 R1。",
-            "detail": "读成功长度为 4096 B 数据加 1 B 状态，来自 virtio_blk_process_request 的 used_len。vhost_vq_used_ring_enqueue 写记录后才发布索引；不是每个字段各发一条消息。",
+            "detail": "读成功长度为 4096 B 数据加 1 B 状态，来自 virtio_blk_process_request 的 used_len。vhost_vq_used_ring_enqueue 先向共享内存写入记录，再发布索引，使驱动能按顺序观察完成。",
             "sourceIds": [
               "spdk-blk-parse",
               "spdk-used"
@@ -687,7 +687,7 @@
               "title": "构造 NVMe READ 并写入 SQ",
               "actor": "spdk",
               "description": "NVMe bdev 把 4 KiB 读取转换为 LBA=2048、8 个 512 B 块的 NVMe 命令，写 SQ 并通知物理控制器。",
-              "detail": "固定单 iovec、md=NULL、无 memory-domain/加速序列，实际调用 spdk_nvme_ns_cmd_read_with_md。关闭 delay_cmd_submit 后，nvme_pcie_qpair_submit_tracker 写 SQ 并敲 doorbell；不是 Guest 的 virtio kick。",
+              "detail": "固定单 iovec、md=NULL、无 memory-domain/加速序列，实际调用 spdk_nvme_ns_cmd_read_with_md。关闭 delay_cmd_submit 后，nvme_pcie_qpair_submit_tracker 写入物理 NVMe 的 SQ 并敲响其 doorbell。Guest virtio 通知作用于前端队列。",
               "sourceIds": [
                 "spdk-nvme-read",
                 "spdk-nvme-read-command",
@@ -799,7 +799,7 @@
               "spdk-nvme-read-done",
               "spdk-bdev-complete"
             ],
-            "boundary": "硬件完成和软件轮询是不同事件。NVMe poller 消费 CQ，按 CID 找回上下文，再经 bdev 回调返回 vhost；控制器内部 DMA/固件过程不是这些宿主函数的同步调用栈。"
+            "boundary": "控制器异步处理 DMA 并写入 CQ。NVMe poller 随后消费 CQ，按 CID 找回上下文，再经 bdev 回调返回 vhost。"
           },
           {
             "id": "spdk-completion",
@@ -860,7 +860,7 @@
               "guest-bio-end",
               "guest-wait-complete"
             ],
-            "boundary": "bio 完成满足同步等待条件，完成侧继续清理；它不是对用户程序的普通函数调用。"
+            "boundary": "bio 完成满足同步等待条件，完成侧继续清理；原系统调用线程恢复执行后返回用户态。"
           },
           {
             "id": "application-resume",
@@ -1658,7 +1658,7 @@
             "title": "SPDK 回调更新 SCSI 响应",
             "actor": "spdk",
             "description": "bdev/SCSI task 成功后进入 vhost_scsi_task_cpl，写 status=GOOD 与 resid=0，再提交该链的 used 完成。",
-            "detail": "READ 回调 bdev_scsi_read_task_complete_cmd 经 scsi_lun_complete_task 返回 vhost。response=OK 已在 task_submit 设置；本例无 sense，响应初始清零。不是写入一个 virtio-blk status 字节。",
+            "detail": "READ 回调 bdev_scsi_read_task_complete_cmd 经 scsi_lun_complete_task 返回 vhost。response=OK 已在 task_submit 设置；本例无 sense，响应初始清零。响应字段位于 virtio-scsi 的完成结构中。",
             "sourceIds": [
               "spdk-scsi-read-done",
               "spdk-scsi-lun-done",
@@ -1737,7 +1737,7 @@
           },
           "prepare-descriptors": {
             "description": "READ 的直接链为 desc[0] 请求51 B → desc[1] 响应108 B → desc[2] 数据4096 B。",
-            "detail": "__virtscsi_add_cmd 先放 request，再放可写 response，最后是 data-in；因此数据并不是总在 desc[1]。SPDK task_data_setup 的 FROM_DEV 分支按同一顺序解释链。",
+            "detail": "__virtscsi_add_cmd 先放 request，再放可写 response，最后是 data-in；本例中响应位于 desc[1]，数据位于 desc[2]。SPDK task_data_setup 的 FROM_DEV 分支按同一顺序解释链。",
             "sourceIds": [
               "spdk-guest-scsi-sg",
               "ring-add",
@@ -1747,7 +1747,7 @@
           "guest-notice": {
             "title": "Guest virtio-scsi 检查 used 队列",
             "description": "vring_interrupt 进入 request queue 的 virtscsi_req_done，再由 virtscsi_vq_done 检查完成。",
-            "detail": "驱动暂时关闭回调，循环取 used 并重新启用/复查；这条路径不是 virtblk_done。中断只表示需要查看队列，不承载 payload。",
+            "detail": "virtio-scsi 驱动暂时关闭回调，循环取 used 并重新启用和复查。中断提示驱动检查队列，payload 保存在前面交接的缓冲区中。",
             "sourceIds": [
               "guest-irq",
               "spdk-guest-scsi-notice",
@@ -1823,7 +1823,7 @@
               "title": "构造 NVMe READ 并写入 SQ",
               "actor": "spdk",
               "description": "NVMe bdev 把 4 KiB 读取转换为 LBA=2048、8 个 512 B 块的 NVMe 命令，写 SQ 并通知物理控制器。",
-              "detail": "固定单 iovec、md=NULL、无 memory-domain/加速序列，实际调用 spdk_nvme_ns_cmd_read_with_md。关闭 delay_cmd_submit 后，nvme_pcie_qpair_submit_tracker 写 SQ 并敲 doorbell；不是 Guest 的 virtio kick。",
+              "detail": "固定单 iovec、md=NULL、无 memory-domain/加速序列，实际调用 spdk_nvme_ns_cmd_read_with_md。关闭 delay_cmd_submit 后，nvme_pcie_qpair_submit_tracker 写入物理 NVMe 的 SQ 并敲响其 doorbell。Guest virtio 通知作用于前端队列。",
               "sourceIds": [
                 "spdk-nvme-read",
                 "spdk-nvme-read-command",
@@ -1966,7 +1966,7 @@
               "spdk-nvme-read-done",
               "spdk-bdev-complete"
             ],
-            "boundary": "硬件完成和软件轮询是不同事件。NVMe poller 消费 CQ，按 CID 找回上下文，再经 bdev 回调返回 vhost；控制器内部 DMA/固件过程不是这些宿主函数的同步调用栈。"
+            "boundary": "控制器异步处理 DMA 并写入 CQ。NVMe poller 随后消费 CQ，按 CID 找回上下文，再经 bdev 回调返回 vhost。"
           },
           {
             "id": "spdk-completion",

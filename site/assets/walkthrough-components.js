@@ -221,5 +221,73 @@
     if (meta.responseNote) container.append(element('p', meta.responseNote, 'walkthrough-queue-note'));
     if (!compact) container.append(element('p', 'WRITE 表示设备可以写此缓冲区，不是发送方向。填写环项与发布 idx 是不同步骤；回收后的旧环项仍可保留在内存中。', 'walkthrough-queue-note'));
   }
-  window.WalkthroughComponents = {sourceLink, sourcePaths, highlightSources, queue, contexts};
+  function networkMemory(container, state, meta, frame) {
+    // The same typed snapshot drives both this overview and the full queue view.
+    const changed = (...keys) => (state.changed || []).some(value =>
+      keys.some(key => value === key || value.startsWith(key + '.')));
+    const address = value => `0x${value.toString(16)}`;
+    const owners = {prepared: '驱动持有', device: '设备可访问', 'data-ready': '已写入，待发布完成',
+      completed: '已完成，待驱动回收', reusable: '驱动可复用', napi: 'NAPI / 协议栈持有',
+      socket: 'socket 接收队列持有', consumed: '载荷已复制到用户空间'};
+    container.replaceChildren();
+    const panels = element('div', undefined, 'network-memory-panels');
+    const panel = (id, title, active) => {
+      const section = element('section', undefined, 'network-memory-panel');
+      section.dataset.networkMemoryPart = id; section.dataset.current = String(active);
+      section.append(element('h5', title)); panels.append(section); return section;
+    };
+    const slots = (section, name) => {
+      const ring = state[name], list = element('div', undefined, 'network-memory-slots');
+      list.setAttribute('aria-label', `${name} 环槽位`);
+      ring.slots.forEach((entry, index) => {
+        const slot = element('span', entry == null ? '·' : String(name === 'avail' ? entry : entry.id));
+        slot.dataset.filled = String(entry != null);
+        slot.dataset.published = String(entry != null && index < ring.index);
+        slot.dataset.returned = String(entry != null && index < ring.consumer);
+        slot.title = `槽 ${index}：${entry == null ? '空' : name === 'avail' ? `链头 ${entry}` : `id ${entry.id}，len ${entry.len}`}`;
+        list.append(slot);
+      });
+      section.append(list, element('p', `${name}.idx ${ring.index} · ${name === 'avail' ? '设备消费' : '驱动回收'} ${ring.consumer}`, 'network-memory-index'));
+    };
+    const desc = panel('descriptors', '描述符与 available', changed('descriptors', 'avail'));
+    const chain = state.descriptors.length ? state.descriptors.map(d => d.index).join(' → ') : '尚未填写';
+    desc.append(element('strong', `链 ${chain}`, 'network-memory-chain'));
+    for (const d of state.descriptors) {
+      desc.append(element('span', `desc[${d.index}] → ${address(d.addr)} · ${d.len} B · ${d.flags.includes('WRITE') ? '设备可写' : '设备只读'}`, 'network-memory-pointer'));
+    }
+    slots(desc, 'avail');
+    const buffers = panel('buffers', '报文缓冲区', changed('buffers', 'ownership'));
+    if (!state.buffers.length) buffers.append(element('p', meta.name === 'TX'
+      ? '尚未关联 virtio-net 头与报文' : '尚未提交可写 RX 缓冲区'));
+    for (const buffer of state.buffers) {
+      const item = element('div', undefined, 'network-memory-buffer'); item.dataset.networkBuffer = buffer.id;
+      item.dataset.state = buffer.state;
+      item.append(element('strong', buffer.label));
+      const meter = element('div', undefined, 'network-memory-bytes');
+      meter.setAttribute('role', 'meter'); meter.setAttribute('aria-label', `${buffer.label} 有效字节`);
+      meter.setAttribute('aria-valuemin', '0'); meter.setAttribute('aria-valuemax', String(buffer.length));
+      meter.setAttribute('aria-valuenow', String(buffer.validBytes));
+      const valid = element('i'); valid.style.width = `${Math.min(100, 100 * buffer.validBytes / buffer.length)}%`;
+      meter.append(valid);
+      item.append(meter, element('span', `${buffer.validBytes} / ${buffer.length} B · ${owners[buffer.state] || buffer.state}`));
+      if (meta.name === 'RX' && buffer.validBytes > 0 && meta.headerLength) {
+        item.append(element('span', `${meta.headerLength} B virtio-net 头 + ${buffer.validBytes - meta.headerLength} B Ethernet 帧`));
+      }
+      buffers.append(item);
+    }
+    const done = panel('completion', 'used 与回收', changed('used', 'freeDescriptors'));
+    const completion = state.used.slots.find(record => record != null);
+    done.append(element('strong', completion ? `id ${completion.id} · len ${completion.len}` : '尚无完成项', 'network-memory-chain'));
+    done.append(element('span', completion && !state.used.index ? '完成项已填写，idx 尚未发布' :
+      state.used.consumer ? '本次完成已回收' : state.used.index ? '已发布完成，等待驱动回收' : '等待后端处理', 'network-memory-pointer'));
+    slots(done, 'used');
+    done.append(element('span', `空闲描述符 ${state.freeDescriptors} / ${meta.size}`, 'network-memory-pointer'));
+    container.append(panels);
+    const handoff = element('p', meta.name === 'TX'
+      ? '应用 U0 → 复制到 Guest skb S1 → 描述符引用头与报文；TX used 表示后端已结束对此链的访问。'
+      : 'RX 缓冲区 → NAPI / Guest 协议栈 → socket → 复制 UDP 载荷到应用 U1。', 'network-memory-handoff');
+    handoff.dataset.current = String(frame.changed.some(key => ['guestSkb', 'userBuffer', 'socketBuffers'].includes(key)));
+    container.append(handoff);
+  }
+  window.WalkthroughComponents = {sourceLink, sourcePaths, highlightSources, queue, contexts, networkMemory};
 })();

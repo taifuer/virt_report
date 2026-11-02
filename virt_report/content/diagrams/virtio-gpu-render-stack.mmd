@@ -1,0 +1,27 @@
+flowchart TB
+    accTitle: virtio-gpu 加速路径中的命令与执行者
+    accDescr: 客户机 Mesa 将绘图或视频请求编码为 VirGL 命令，Linux 驱动用 SUBMIT_3D 封装后交给 QEMU。宿主 virglrenderer 分派绘图与视频命令，分别调用 GL 或 VA-API，再由宿主驱动调度 GPU。视频分支需要另外接通并启用，QEMU 10.2 默认未启用。
+    subgraph guest[客户机]
+        direction LR
+        api[应用<br/>OpenGL / VA-API]
+        mesa[Mesa virgl<br/>DRAW / VIDEO 命令]
+        drm[Linux virtio_gpu<br/>execbuffer + 资源引用]
+        api --> mesa --> drm
+    end
+    envelope[controlq 描述符链<br/>外层 SUBMIT_3D · ctx_id · fence_id<br/>内层 VirGL 命令批次]
+    subgraph host[宿主用户态]
+        direction LR
+        qemu[QEMU<br/>取命令与后端分派]
+        renderer[virglrenderer<br/>解码命令与管理上下文]
+        gl[宿主 OpenGL<br/>绘制、着色器与资源]
+        va[宿主 VA-API<br/>编解码参数与 surface]
+        qemu --> renderer
+        renderer --> gl
+        renderer -. 视频扩展 .-> va
+    end
+    gpu[宿主内核驱动与物理 GPU<br/>调度任务 · 执行渲染或编解码 · 返回完成]
+    drm --> envelope --> qemu
+    gl --> gpu
+    va --> gpu
+    video[视频路径需构建支持、VMM 启用及能力协商<br/>QEMU 10.2 默认未启用该分支]
+    va -.- video

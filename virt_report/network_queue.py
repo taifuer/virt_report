@@ -216,6 +216,7 @@ def _snapshot_queue(scene: dict) -> None:
         "name": "TX" if tx else "RX", "index": 1 if tx else 0, "size": 8,
         "descriptorIndices": [0, 2] if tx else [2], "head": 0 if tx else 2,
         "requestId": "P1", "direct": True, "addressSpace": "示意 GPA / IOVA",
+        "headerLength": 12, "packetLength": 60, "payloadLength": 18,
     }
     state = {
         "descriptors": [],
@@ -312,6 +313,119 @@ def _snapshot_queue(scene: dict) -> None:
 def _path(identifier: str, title: str, context: str, sources: list[str], boundary: str) -> dict:
     return {"id": identifier, "title": title, "context": context,
             "sourceIds": sources, "boundary": boundary}
+
+
+def _node_states(scene: dict) -> None:
+    """Keep overview cards aligned with the explicit queue and packet events.
+
+    Node text describes the last observed state, independently of the current
+    highlight. Event IDs and typed counters define the transitions; translated
+    descriptions are never parsed to infer progress or delivery.
+    """
+    tx = "-tx" in scene["id"]
+    backend = scene["id"].split("-", 1)[0]
+    head = scene["queue"]["head"]
+    initial = {
+        "application": "18 B 载荷待提交，U0 由应用持有" if tx else "128 B 接收空间，尚未调用 recvfrom",
+        "stack": "尚未构建本次 skb" if tx else "UDP 接收队列为空",
+        "guest": "等待本次发送 skb" if tx else "等待准备本次 RX 空间",
+        "queue": "尚未准备本次描述符，avail.idx = used.idx = 0",
+        "backend": "队列已启用，等待本次 TX" if tx else "队列已启用，等待本次接收",
+        "port": "尚未接受本次发送帧" if tx else "等待本次帧到达",
+        "network": "尚未发出本次帧；远端状态未知" if tx else "本次帧尚未到达本机",
+        "control": "队列与后端已配置，不逐包处理",
+    }
+    for node in scene["nodes"]:
+        node["initial"] = initial[node["id"]]
+
+    queue_states = {
+        "prepare": "链 0 → 2 已准备，尚未发布",
+        "prepare-buffer": "desc[2] 指向 1530 B 可写空间，尚未发布",
+        "fill-avail": f"avail.ring[0] = {head}；avail.idx 仍为 0",
+        "publish": "avail.idx = 1，等待后端取链",
+        "publish-buffer": "avail.idx = 1，设备可写 RX 空间",
+        "replenish": "avail.idx = 1，新 RX 链已发布",
+        "consume": "后端已取链，尚未发布完成",
+        "take-buffer": "后端已取 RX 链，尚未写入本帧",
+        "write-buffer": "已写入 72 B；used.idx 仍为 0",
+        "fill-used": "used 环项已填写；used.idx 仍为 0",
+        "used": "used.idx = 1，完成已发布，等待驱动回收",
+        "reclaim": "描述符已回收，Guest 发送缓冲区可复用",
+        "receive": "描述符已回收；旧帧由 NAPI 持有",
+        "refill-prepare": "desc[2] 改指新缓冲区；旧帧仍由 NAPI 持有",
+        "refill-avail": "avail.ring[1] = 2；avail.idx 仍为 1",
+        "refill": "avail.idx = 2，新 RX 空间可写；旧帧仍在 NAPI",
+        "socket-enqueue": "新 RX 空间等待设备；旧帧由 socket 接收路径持有",
+        "copy-to-user": "新 RX 空间等待设备；旧帧的本次接收引用已释放",
+        "blocked": "原 TX 链仍在途，used.idx = 0",
+        "no-buffer": "无已发布的 RX 空间，不能写入 Guest RAM",
+        "retry": ("TAP 已接受原链，等待完成回调发布 used" if tx else
+                  "后端已取得新 RX 链，准备写入本帧"),
+    }
+    guest_states = {
+        "prepare": "已准备设备可读链 0 → 2",
+        "prepare-buffer": "已准备设备可写 RX 描述符",
+        "fill-avail": "链头已写入环项，尚未交给设备",
+        "publish": "TX 已发布，等待设备归还",
+        "publish-buffer": "RX 空间已发布，等待设备填入报文",
+        "replenish": "新 RX 空间已发布，等待后端重试",
+        "notify": "used 已发布，等待驱动检查完成项",
+        "reclaim": "TX 链已回收，发送 skb 的设备引用已释放",
+        "refill-prepare": "为下一帧关联新的 RX 缓冲区",
+        "refill-avail": "下一条 RX 环项已填，索引尚未发布",
+    }
+    for step in scene["steps"]:
+        event = step["id"]
+        updates = {}
+        if event in queue_states:
+            updates["queue"] = queue_states[event]
+        if event in guest_states:
+            updates["guest"] = guest_states[event]
+        # This field is already an explicit backend state, not prose to parse.
+        if "backendState" in step["changes"]:
+            updates["backend"] = step["changes"]["backendState"]
+        if event == "fill-used":
+            updates["backend"] = "完成项已填写，等待发布 used.idx"
+        elif event == "notify":
+            updates["backend"] = "本链完成已发布，本例发出队列检查提示"
+        elif event == "arrive":
+            updates.update(network="P1 已到达本机", backend="本次帧已到达，等待取得 RX 空间")
+            updates["port"] = {
+                "qemu": "TAP 帧已交给 QEMU 接收路径",
+                "vhost": "TAP 帧可由 vhost worker 读取",
+                "dpdk": "PMD 已向 DPDK 应用交付 mbuf M",
+                "vdpa": "物理端口已收到 P1",
+            }[backend]
+        elif event == "transfer":
+            if backend in {"qemu", "vhost"}:
+                updates["port"] = "TAP 已接受 P1，后续转发独立进行"
+            elif backend == "vdpa":
+                updates["port"] = "设备发送数据面已接收 P1"
+            else:
+                updates["port"] = "帧已复制至 mbuf M，尚未提交 PMD"
+            updates["network"] = "远端接收尚未确认"
+        elif event == "blocked":
+            updates["port"] = "TAP 暂不可写，等待可写事件"
+        elif event == "no-buffer":
+            updates["port"] = "TAP 读取暂停，本帧暂存本地队列"
+        elif event == "retry" and tx:
+            updates["port"] = "TAP 已接受重试帧，后续转发独立进行"
+            updates["network"] = "远端接收尚未确认"
+        elif event == "used" and scene["id"] == "qemu-rx-no-buffer":
+            updates["port"] = "本帧已写入 Guest，TAP 可恢复读取"
+        elif event == "refill":
+            updates["backend"] = "新 RX 空间已发布，等待下一帧"
+        elif event == "free-mbuf":
+            updates["backend"] = "本次 enqueue 已接受 1 帧，宿主 mbuf M 已释放"
+        elif event == "pmd":
+            updates.update(port="PMD 已接受 mbuf M，等待网卡完成", network="远端接收尚未确认")
+        elif event == "pmd-cleanup":
+            updates.update(port="本地 TX 已完成，PMD 可回收 mbuf M", network="本地发送已完成；远端接收仍未确认")
+        elif event == "egress":
+            updates["port"] = "继续本地网络转发；未取得远端确认"
+            updates["network"] = "远端接收仍未确认"
+        # Preserve more specific application/NAPI narrative state where supplied.
+        step["nodeStates"] = {**updates, **step["nodeStates"]}
 
 
 def _call_paths(scene: dict) -> None:
@@ -468,4 +582,5 @@ def enrich_network_demo(demo: dict) -> None:
         )
         _split_publications(scene)
         _snapshot_queue(scene)
+        _node_states(scene)
         _call_paths(scene)

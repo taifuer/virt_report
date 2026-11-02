@@ -172,14 +172,14 @@ def test_mdev_is_a_specific_historical_implementation_not_vfio_with_renamed_labe
 
 def test_gpu_page_has_source_backed_demo_and_explicit_protocol_boundaries():
     page = render_mechanisms_html(Config(), "gpu-execution")
-    assert page and "GPU 命令提交与完成" in page
+    assert page and "GPU 命令执行" in page
     assert 'id="execution-demo-data"' in page
     assert "AMDGPU" in page and "GVT-g" in page
     assert "SR-IOV" in page and "virtio-gpu" in page
     assert "提交、数据与完成的边界" in page
     assert 'href="interrupt-delivery.html"' in page
     assert 'href="qemu-vfio-dma.html"' in page
-    assert "硬件边界" in page and "显示器" in page
+    assert "GPU 硬件执行则标注对应命令包" in page and "显示器" in page
 
 
 def test_gpu_loading_does_not_mutate_checked_in_scene_defaults():
@@ -265,8 +265,8 @@ def test_mdev_exposes_kvm_on_both_trapped_mmio_and_interrupt_paths():
 
 def test_gpu_article_explains_driver_ownership_and_nonserial_domains():
     page = render_mechanisms_html(Config(), "gpu-execution")
-    assert "宿主这块 PCI 设备绑定的是" in page
-    assert "真正接收应用 CS ioctl" in page
-    assert "不表示五个组件必须依次转发每条命令" in page
-    assert "GVT-g 不沿用上述直通快路径" in page
+    assert "宿主这块 PCI 设备绑定" in page and "vfio-pci" in page
+    assert "Guest 内的 AMDGPU 驱动接收应用 CS ioctl" in page
+    assert "提交、数据访问和完成通知各有自己的路径" in page
+    assert "GVT-g 由宿主 i915/GVT-g 管理物理 GPU" in page
     assert 'href="https://docs.kernel.org/driver-api/vfio.html"' in page

@@ -1,6 +1,6 @@
 {
   "id": "gpu-execution",
-  "title": "GPU 命令提交与完成",
+  "title": "GPU 命令执行",
   "defaultScenario": "vfio-upload",
   "sources": {
     "cs": {
@@ -109,7 +109,7 @@
       "path": "drivers/gpu/drm/amd/amdgpu/sdma_v4_0.c",
       "line": 2560,
       "symbol": "SDMA COPY_LINEAR 包",
-      "label": "硬件包格式：驱动内核副本生成器作为参考；不是用户 CS 的调用函数",
+      "label": "硬件包格式：参考驱动中的内核副本生成器",
       "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/gpu/drm/amd/amdgpu/sdma_v4_0.c#L2560",
       "kind": "hardware"
     },
@@ -119,7 +119,7 @@
       "path": "drivers/gpu/drm/amd/amdgpu/sdma_v4_0.c",
       "line": 886,
       "symbol": "SDMA FENCE / TRAP 包",
-      "label": "硬件包格式：以驱动生成器核验写回与通知，不是 GPU 执行 C 函数",
+      "label": "硬件包格式：驱动中的写回与通知字段定义",
       "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/gpu/drm/amd/amdgpu/sdma_v4_0.c#L886",
       "kind": "hardware"
     },
@@ -917,7 +917,7 @@
             "copy-packet",
             "fence-packet"
           ],
-          "boundary": "COPY_LINEAR 包格式以公开驱动生成器核验；本场景的用户 IB 不是由该内核 helper 生成，硬件执行不伪装为 C 函数。"
+          "boundary": "用户 IB 由 Guest 用户态准备，SDMA 硬件读取并执行命令包。链接中的内核生成器用于对照 COPY_LINEAR 包格式，与本次用户提交分开。"
         },
         {
           "id": "completion",
@@ -1151,7 +1151,7 @@
           "title": "SDMA 获取 IB1",
           "actor": "物理 GPU · SDMA",
           "description": "GPU 读取 ring 和 IB1，解析源、目标 GPU VA 与 4096 B 长度。",
-          "detail": "GPU VA 的翻译结果可以指向本地 VRAM 或系统内存。仅系统内存 DMA 跨 PCIe/IOMMU；不是每次显存内部访问都经过宿主 IOMMU。 SDMA 通过 GPU 页表 / GTT 和预建宿主 IOMMU 映射读取系统内存；这不是 VFIO 驱动逐条读取并转发命令。",
+          "detail": "GPU VA 可以映射到本地 VRAM 或系统内存。本地 VRAM 访问留在 GPU 内部；系统内存 DMA 经过 PCIe 和宿主 IOMMU。SDMA 通过 GPU 页表 / GTT 及预建的宿主 IOMMU 映射读取系统内存，VFIO 负责事先建立设备访问条件。",
           "active": [
             "gpu",
             "ring"
@@ -1807,7 +1807,7 @@
             "copy-packet",
             "fence-packet"
           ],
-          "boundary": "COPY_LINEAR 包格式以公开驱动生成器核验；本场景的用户 IB 不是由该内核 helper 生成，硬件执行不伪装为 C 函数。"
+          "boundary": "用户 IB 由 Guest 用户态准备，SDMA 硬件读取并执行命令包。链接中的内核生成器用于对照 COPY_LINEAR 包格式，与本次用户提交分开。"
         },
         {
           "id": "completion",
@@ -2041,7 +2041,7 @@
           "title": "SDMA 获取 IB1",
           "actor": "物理 GPU · SDMA",
           "description": "GPU 读取 ring 和 IB1，解析源、目标 GPU VA 与 4096 B 长度。",
-          "detail": "GPU VA 的翻译结果可以指向本地 VRAM 或系统内存。仅系统内存 DMA 跨 PCIe/IOMMU；不是每次显存内部访问都经过宿主 IOMMU。 SDMA 通过 GPU 页表 / GTT 和预建宿主 IOMMU 映射读取系统内存；这不是 VFIO 驱动逐条读取并转发命令。",
+          "detail": "GPU VA 可以映射到本地 VRAM 或系统内存。本地 VRAM 访问留在 GPU 内部；系统内存 DMA 经过 PCIe 和宿主 IOMMU。SDMA 通过 GPU 页表 / GTT 及预建的宿主 IOMMU 映射读取系统内存，VFIO 负责事先建立设备访问条件。",
           "active": [
             "gpu",
             "ring"
@@ -2689,7 +2689,7 @@
             "gvt-prepare",
             "host-request-add"
           ],
-          "boundary": "审核和影子状态将虚拟上下文变为受宿主控制的物理请求；i915_request_add 链接定位 dispatch_workload 内的实际调用点。请求提交后由物理引擎异步执行，不是 QEMU 解释每条绘图命令。",
+          "boundary": "审核和影子状态将虚拟上下文变为受宿主控制的物理请求；i915_request_add 链接定位 dispatch_workload 内的实际调用点。请求提交后，由物理引擎异步执行命令。",
           "entry": {
             "kind": "async",
             "label": "GVT-g workload 调度线程处理此前创建的请求"
@@ -2747,7 +2747,7 @@
           "sourceIds": [
             "guest-wait"
           ],
-          "boundary": "Guest i915 观察对应虚拟请求完成后，应用等待才能返回；Host 请求结束不是 Guest wait 的同步调用。"
+          "boundary": "宿主完成物理请求后，先更新虚拟设备的完成状态。Guest i915 观察到对应虚拟请求完成，才能满足客户机应用的等待条件。"
         }
       ],
       "steps": [
@@ -2772,7 +2772,7 @@
           "title": "Guest 提交 batch",
           "actor": "Guest 内核 · i915",
           "description": "GEM_EXECBUFFER2 核验对象与依赖，准备请求、上下文及 batch。",
-          "detail": "应用提交的是 GPU 命令，不是通过文件 read/write 让 QEMU 复制载荷。这里只跟踪一个合法 BLT 请求，不涉及显示扫描输出。",
+          "detail": "应用通过 GPU 提交接口交出一个合法 BLT 请求，随后由驱动和设备处理缓冲区复制。显示扫描输出独立于这次请求。",
           "active": [
             "app",
             "driver",
@@ -2799,7 +2799,7 @@
           "title": "写入虚拟提交端口",
           "actor": "Guest i915 → KVM",
           "description": "Guest i915 写入虚拟 ELSP 寄存器，访问落入本例需捕获的 MMIO 区域，硬件 VM-exit 先进入 KVM。",
-          "detail": "这里不是把门铃直接送到物理 GPU。KVM 识别需设备模拟的访问，无法在内核满足时形成 KVM_EXIT_MMIO；这个出口与硬件 VM-exit 是两个层次。",
+          "detail": "KVM 识别需要设备模拟的门铃访问，无法在内核完成时，以 KVM_EXIT_MMIO 返回 QEMU。硬件 VM-exit 先将控制权交给 KVM，KVM_RUN 返回才进入用户态处理。",
           "active": [
             "driver",
             "kvm"
@@ -2937,7 +2937,7 @@
           "title": "交给物理 GPU 执行",
           "actor": "宿主 GVT-g → Host i915",
           "description": "宿主将准备好的 i915_request 加入物理引擎，G1 获得执行机会。",
-          "detail": "这是一条新的宿主请求，不是 Guest 直接拥有整个物理 GPU。其他 vGPU 的调度与抢占不在本次成功场景中。",
+          "detail": "宿主为该虚拟工作负载建立新的物理请求，并控制它的执行。这里跟踪单次成功提交；多个 vGPU 并行运行时，还需处理调度与抢占。",
           "active": [
             "shadow",
             "gpu"
@@ -3015,7 +3015,7 @@
           "title": "宿主确认物理请求完成",
           "actor": "Host i915 → GVT-g",
           "description": "物理请求和 shadow context 退出达到完成条件，GVT-g 收尾当前 workload。",
-          "detail": "complete_current_workload 还要等待影子上下文不再活跃；硬件报信与可以释放该 workload 不是同一个判断。",
+          "detail": "硬件报信后，complete_current_workload 还要等待影子上下文不再活跃，满足这些条件后才能结束并释放该 workload。",
           "active": [
             "gpu",
             "gvt"
@@ -3041,7 +3041,7 @@
           "title": "发布 Guest context 与事件",
           "actor": "宿主 GVT-g",
           "description": "更新 Guest context，并把 workload 中的 pending events 交给虚拟中断逻辑。",
-          "detail": "Guest 的完成状态与宿主请求对象不是同一份结构；物理完成不能直接跳成 Guest 用户态调用返回。",
+          "detail": "宿主请求对象和 Guest 完成状态分别维护。物理请求结束后，还需更新虚拟设备状态，再由 Guest 驱动完成自己的请求。",
           "active": [
             "gvt",
             "completion"
@@ -3126,7 +3126,7 @@
           "title": "Guest 确认请求完成",
           "actor": "Guest i915",
           "description": "Guest 驱动观察更新后的请求状态，等待 G1 的完成条件得到满足。",
-          "detail": "虚拟中断是检查的契机，不是 4 KiB 数据载体。Guest 可能以轮询或其他完成检查方式推进；本场景采用中断驱动路径。",
+          "detail": "虚拟中断提示 Guest 检查完成状态，4 KiB 数据通过前面的缓冲区访问传输。Guest 也可以轮询完成状态；本场景采用中断驱动路径。",
           "active": [
             "completion",
             "driver"
@@ -3153,7 +3153,7 @@
           "title": "应用使用复制结果",
           "actor": "Guest 内核 → 用户态",
           "description": "等待调用成功返回，应用按 GEM 的 CPU 映射与同步约定读取 B。",
-          "detail": "GPU 请求完成与扫描输出到显示器不是同一件事。本例只承诺这次缓冲区复制完成，不把 GVT-g 的历史实现推断为其他 mdev 产品的内部路径。",
+          "detail": "本次完成表示缓冲区复制已经结束。显示扫描输出有自己的同步条件；其他 mdev 实现也需要按各自的设备模型和驱动分析。",
           "active": [
             "driver",
             "app"

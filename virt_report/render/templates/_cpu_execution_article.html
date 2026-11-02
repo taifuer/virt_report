@@ -4,7 +4,7 @@
 <section id="preface" class="mechanism-section">
   <h2>场景与边界</h2>
   <p>使用 KVM 时，QEMU 的 vCPU 线程通过 <code>KVM_RUN</code> 进入宿主内核，再由 VM Entry 开始执行客户机指令。普通加法、客户机内核中的大量代码都可以由物理处理器直接完成。CPUID、模拟设备访问和空闲等待则需要不同的处理路径。</p>
-  <p>基础场景从同一个位置开始：vCPU 已经运行，QEMU 的 KVM_RUN 尚未返回，物理处理器正在执行 Guest 指令。演示固定显示当前指令、RIP、寄存器、Guest CPL 与 VMX 模式；只有实际跨越执行上下文时才转移时间线位置。Guest 不是物理 CPU 之外的另一个请求处理部件。</p>
+  <p>基础场景从同一个位置开始：vCPU 已经运行，QEMU 的 KVM_RUN 尚未返回，物理处理器正在执行 Guest 指令。演示固定显示当前指令、RIP、寄存器、Guest CPL 与 VMX 模式；只有跨越执行上下文时才转移时间线位置。</p>
   <p>硬件路径采用 x86-64、Intel VMX 与 EPT，源码对应 QEMU 10.2.0 和 Linux 6.18。普通指令、系统调用、内核处理退出与用户态设备交接先共用执行时间线；HLT 和定时休眠放在“等待与唤醒”组，进一步观察 Guest 任务和宿主线程两层调度。各场景分别列出使用的拦截、设备和中断配置。</p>
   <p>先看“普通 ADD”，再切换到“CPUID 内核处理”和“MMIO 返回 QEMU”：三者依次展示直接执行、内核处理和用户态设备交接。“Guest SYSCALL”区分客户机权限切换与虚拟化退出；“HLT 空闲等待”展示 vCPU 阻塞。两个定时休眠场景再用同一次 <code>nanosleep</code> 对比：客户机继续执行其他任务，或者进入空闲、等待定时器唤醒。</p>
   {% include '_mechanism_baselines.html' %}
@@ -30,7 +30,7 @@
     </tbody>
   </table>
   <p>CPUID 的结果由虚拟 CPU 配置决定，KVM 在内核中完成查询。MMIO 示例需要设备模型提供读结果：第一次 KVM_RUN 返回请求，QEMU 填入数据，第二次进入内核才消费数据并完成指令。<a href="{{ linux }}arch/x86/kvm/cpuid.c#L2090-L2105">CPUID 处理</a>与<a href="{{ linux }}arch/x86/kvm/x86.c#L11936-L11958">用户态 I/O 继续处理</a>分别体现了这两种分工。</p>
-  <p>HLT 场景又增加一层：客户机已进入空闲，宿主线程可以继续短暂轮询，也可以真正睡眠。后端事件到达后，线程先变为可运行，随后才有机会被调度。<code>TASK_RUNNING</code> 同时覆盖运行队列中的等待者和当前执行者，分析延迟时还要观察调度事件。</p>
+  <p>在 HLT 场景中，客户机已进入空闲，宿主线程可以继续短暂轮询，也可以进入睡眠。后端事件到达后，线程先变为可运行，随后才有机会被调度。<code>TASK_RUNNING</code> 同时覆盖运行队列中的等待者和当前执行者，分析延迟时还要观察调度事件。</p>
   <h3>任务休眠与两层调度</h3>
   <p>定时休眠示例中，任务 A 请求等待 1 ms。Guest 内核创建 <code>hrtimer_sleeper</code>，登记到期回调，再把 A 交给调度器等待。如果任务 B 可以运行，Guest 就选择 B，vCPU 继续执行指令；没有其他可运行的普通任务时，Guest 进入 idle，本例通过 HLT 把等待机会交给 KVM。这样，同一个应用请求会对应两条不同的 vCPU 路径。</p>
   <table>
@@ -47,7 +47,7 @@
   <p>Guest 调度器选择客户机任务，宿主调度器选择包括 vCPU 线程在内的宿主任务。这两个选择可以独立发生。正在运行 B 的 vCPU 被宿主抢占时，Guest 不需要执行一次 A、B 之间的切换；反过来，Guest 从 A 切到 B，也不要求宿主更换 vCPU 线程。演示分别显示任务状态、当前执行者与宿主执行上下文，保留这两层关系。</p>
   <h3>从定时到期到应用继续执行</h3>
   <p>两个示例使用 Guest TSC-deadline clockevent 和 KVM 的宿主软件 hrtimer 分支。Guest 选定下一次时钟事件 D，KVM 将虚拟 LAPIC 的 deadline 转为宿主定时器。宿主回调到期后，先增加 <code>lapic_timer.pending</code> 并请求唤醒；vCPU 执行循环随后把事件提交给虚拟 LAPIC。客户机接受定时中断、运行自己的 hrtimer 队列后，<code>hrtimer_wakeup()</code> 才清除 sleeper 中的任务指针并唤醒 A。<a href="{{ linux }}arch/x86/kvm/lapic.c#L1976-L2044">宿主定时器与 pending 标记</a>、<a href="{{ linux }}kernel/time/hrtimer.c#L2005-L2016">Guest 到期回调</a>对应这两端的处理。</p>
-  <p>在 HLT 场景中，宿主线程被唤醒后，<code>mp_state</code> 仍可暂时为 HALTED。线程先恢复 KVM 执行，把待处理定时事件转为 LAPIC 中断，再由运行循环检查可接受事件、恢复 RUNNABLE。接着才是 Guest 中断处理、A 进入 Guest 运行队列以及 A 被真正调度。演示把这些阶段分开，便于区分“到期”“可运行”和“正在执行”。</p>
+  <p>在 HLT 场景中，宿主线程被唤醒后，<code>mp_state</code> 仍可暂时为 HALTED。线程先恢复 KVM 执行，把待处理定时事件转为 LAPIC 中断，再由运行循环检查可接受事件、恢复 RUNNABLE。接着才是 Guest 中断处理、A 进入 Guest 运行队列以及 A 获得 CPU 开始执行。演示把这些阶段分开，便于区分“到期”“可运行”和“正在执行”。</p>
   <p>1 ms 是应用提交的休眠时长。实际 clockevent D 还受 Guest 当前时间、timer slack 和定时器安排影响；D 之后，宿主运行队列等待、虚拟中断递送和 Guest 调度还可能继续增加返回延迟。本例不加入信号打断，最终返回值为 0。播放速度只控制讲解节奏，不模拟这些延迟的实际长度。</p>
 </section>
 
@@ -67,6 +67,6 @@
     <li><a href="{{ linux }}kernel/time/hrtimer.c#L2107-L2199">Guest：nanosleep 与 hrtimer_sleeper</a>；<a href="{{ linux }}arch/x86/kvm/x86.c#L11605-L11643">KVM：等待后的定时事件处理</a>；<a href="{{ linux }}kernel/sched/core.c#L6784-L6910">Linux：阻塞、抢占与任务切换</a>。</li>
     <li><a href="kvm-vcpu-run.html">KVM vCPU 的运行循环与用户态交接</a>：对象、调用链、MMIO 收尾及 ioeventfd / irqfd。</li>
     <li><a href="kvm-vcpu-halt.html">KVM 的空闲等待与唤醒</a>：轮询预算、阻塞竞态与调度延迟；<a href="kvm-virtual-time.html">客户机时钟与运行时间</a>：运行与等待时间的计量。</li>
-    <li><a href="memory-access.html">内存访问与异常处理</a>、<a href="interrupt-delivery.html">中断递送与客户机响应</a>：继续查看地址转换和事件交付。</li>
+    <li><a href="memory-access.html">内存访问与异常处理</a>、<a href="interrupt-delivery.html">中断传递</a>：继续查看地址转换和事件交付。</li>
   </ul>
 </section>

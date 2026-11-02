@@ -66,7 +66,7 @@ def test_memory_object_selector_keeps_ram_conditions_together():
 
 @pytest.mark.parametrize("demo_id,labels", [
     ("cpu-execution", ["Guest 直接执行", "KVM 内核处理", "QEMU 设备处理", "等待与唤醒"]),
-    ("interrupt-delivery", ["通知路径", "屏蔽与等待", "硬件递送"]),
+    ("interrupt-delivery", ["通知路径", "屏蔽与等待", "硬件递送", "设备直通与 VT-d"]),
 ])
 def test_single_selector_groups_examples_without_free_combination(demo_id, labels):
     selector = SELECTORS[demo_id]

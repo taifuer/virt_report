@@ -1,0 +1,22 @@
+sequenceDiagram
+    accTitle: VirGL 视频扩展的单帧编码与结果回收
+    accDescr: 客户机准备输入平面、编码参数、码流输出资源和反馈资源。virglrenderer 将输入平面复制到 VA surface，经 VA-API 交给 GPU 编码，等待完成后读取编码段并写回码流与反馈。客户机等待资源完成，检查状态和有效长度后才消费结果。
+    participant G as Guest VA-API / Mesa
+    participant Q as VMM 的 virtio-gpu
+    participant R as virglrenderer video
+    participant V as 宿主 VA-API / GPU
+    Note over G,V: 已接通视频扩展，且协商到编码能力<br/>输入平面、codec、输出和反馈资源已建立
+    G->>Q: 上传输入平面，准备编码参数
+    G->>Q: 带 FENCE 的 SUBMIT_3D：BEGIN_FRAME<br/>ENCODE_BITSTREAM + END_FRAME
+    Q->>R: 交付 VirGL 视频命令
+    R->>V: vaSyncSurface：等待输入 surface 可复用
+    Note over R,V: 导出 DMA-BUF / EGLImage<br/>GL 复制 VirGL 平面到 VA surface
+    R->>V: vaBeginPicture + vaRenderPicture<br/>图像参数、码率等编码设置
+    R->>V: vaEndPicture
+    Note over V: GPU 编码单元生成压缩码流
+    R->>V: vaSyncSurface + vaMapBuffer
+    V-->>R: VACodedBufferSegment 编码段
+    Note over R: 写回码流资源<br/>填写反馈状态与 coded_size
+    R-->>Q: 完成本批命令及对应 fence
+    Q-->>G: 响应与完成通知
+    Note over G: get_feedback 等待资源完成<br/>读取状态、有效长度与编码字节

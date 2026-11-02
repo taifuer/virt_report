@@ -64,11 +64,12 @@ async function check(page,width) {
   await page.goto(url); await ready(page);
   const buttons=page.locator('[data-mechanism-toggle]');
   assert.equal(await buttons.count(),10,'only topics with detail articles get a toggle');
-  assert.equal(await page.locator('.mechanism-topic h3 a').count(),18,'all overview links remain available');
+  assert.equal(await page.locator('.mechanism-topic h3 a').count(),19,'all overview links remain available');
   assert.equal(await page.locator('.mechanism-list-item:visible').count(),0,'detail lists initially collapsed');
-  assert.equal(await page.locator('.mechanism-topic-header p:visible').count(),18,'topic summaries remain visible');
+  assert.equal(await page.locator('.mechanism-topic-header p:visible').count(),19,'topic summaries remain visible');
   for(const id of ['virtualization-basics','live-upgrade','block-io-walkthrough','network-io-walkthrough',
-    'cpu-execution-walkthrough','memory-access-walkthrough','interrupt-delivery-walkthrough','gpu-execution-walkthrough']) {
+    'cpu-execution-walkthrough','memory-access-walkthrough','interrupt-delivery-walkthrough','gpu-execution-walkthrough',
+    'virtio-gpu-walkthrough']) {
     assert.equal(await toggle(page,id).count(),0,`${id}: no empty or demo disclosure`);
     assert(await topic(page,id).locator('h3 a').isVisible());
   }

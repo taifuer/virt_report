@@ -63,6 +63,14 @@ def test_label():
     assert "7 月" in periods.label("monthly", "2026-07")
 
 
+def test_report_prompts_require_plain_language_without_losing_evidence_limits():
+    for period in ("daily", "weekly", "monthly"):
+        prompt = prompts.system_prompt(period, "")
+        assert "直接说明改动、原因和影响" in prompt
+        assert "避免“不是……而是……”式铺垫、反复设问" in prompt
+        assert "技术限制、适用条件和未验证结论仍须保留" in prompt
+
+
 def test_period_analysis_prompt_is_only_requested_for_weekly_and_monthly():
     daily = prompts.system_prompt("daily", "2026-08-03")
     weekly = prompts.system_prompt("weekly", "2026-W31")

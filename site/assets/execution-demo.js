@@ -108,9 +108,15 @@
       const heading = el('h4', group.title); heading.append(el('span', group.description));
       const cells = el('div', undefined, 'walkthrough-memory-grid');
       cells.style.setProperty('--memory-count', group.nodes.length);
-      cells.append(...group.nodes.map(makeNode)); memory.append(heading, cells); nodesBoard.append(memory);
+      cells.append(...group.nodes.map(id => {
+        if (demo.id !== 'network-io' || id !== 'queue') return makeNode(id);
+        const card = el('div', undefined, 'execution-network-memory'); card.dataset.executionNode = id;
+        card.append(el('span', '', 'execution-node-status'));
+        const visual = el('div'); visual.dataset.executionNetworkMemory = ''; card.append(visual);
+        return card;
+      })); memory.append(heading, cells); nodesBoard.append(memory);
     }
-    if (scene.queue) {
+    if (scene.queue && demo.id !== 'network-io') {
       const queue = el('section'); queue.dataset.executionTypedQueue = 'compact';
       (nodesBoard.querySelector('.walkthrough-memory') || nodesBoard).append(queue);
     }
@@ -118,7 +124,8 @@
     svg.setAttribute('aria-hidden', 'true'); svg.classList.add('execution-arrows');
     nodesBoard.append(svg);
     const structures = one('[data-execution-structures]');
-    structures.replaceChildren(...scene.structures.map(structure => {
+    structures.replaceChildren(...scene.structures.filter(structure =>
+      structure.fields.some(field => !field.hidden)).map(structure => {
       const section = el('section', undefined, 'execution-structure');
       section.dataset.kind = structure.kind;
       section.append(el('h4', structure.title));
@@ -145,7 +152,7 @@
       const list = el('dl', undefined, 'execution-fields');
       // The ring drawing already presents these fields, without repeating a table.
       list.hidden = Boolean(section.querySelector('.execution-queue'));
-      structure.fields.forEach(field => {
+      structure.fields.filter(field => !field.hidden).forEach(field => {
         const cell = el('div'); cell.dataset.executionField = field.key;
         cell.append(el('dt', field.label), el('dd', field.initial)); list.append(cell);
       });
@@ -225,14 +232,28 @@
         return [node.dataset.executionNode, {left: box.left - rect.left, right: box.right - rect.left,
           top: box.top - rect.top, bottom: box.bottom - rect.top}];
       }));
-      const textObstacles = all('.walkthrough-domain header, .walkthrough-memory > h4').map(node => {
+      // Route a queue handoff to the structure touched by this step, not the
+      // entire Guest RAM rectangle. Other panels remain routing obstacles.
+      const memoryBounds = {};
+      all('[data-network-memory-part]').forEach(node => {
+        const box = node.getBoundingClientRect();
+        memoryBounds[node.dataset.networkMemoryPart] = {left: box.left - rect.left, right: box.right - rect.left,
+          top: box.top - rect.top, bottom: box.bottom - rect.top};
+      });
+      if (memoryBounds.descriptors) {
+        const keys = trace[index].queueState?.changed || [];
+        const part = keys.some(key => key.startsWith('used.')) ? 'completion'
+          : keys.includes('buffers') && !keys.includes('descriptors') ? 'buffers' : 'descriptors';
+        bounds.queue = memoryBounds[part];
+      }
+      const textObstacles = all('.walkthrough-domain header, .walkthrough-memory > h4, .execution-network-memory > .execution-node-status').map(node => {
         const box = node.getBoundingClientRect();
         return {left:box.left-rect.left,right:box.right-rect.left,top:box.top-rect.top,bottom:box.bottom-rect.top};
       }).filter(box => box.right > box.left && box.bottom > box.top);
       for (const id of trace[index].links) {
         const edge = scene.links.find(link => link.id === id);
         const route = window.WalkthroughRouting?.route(bounds[edge.from], bounds[edge.to],
-          [...Object.values(bounds), ...textObstacles], {width: rect.width, height: rect.height});
+          [...Object.values(bounds), ...Object.values(memoryBounds), ...textObstacles], {width: rect.width, height: rect.height});
         if (!route) continue; // The text relationship remains available if space is obstructed.
         const d = route.map((point, n) => `${n ? 'L' : 'M'} ${point.join(' ')}`).join(' ');
         const [x2, y2] = route.at(-1), previous = route.at(-2);
@@ -304,6 +325,8 @@
       node.querySelector('dd').textContent = frame.values[node.dataset.executionField];
     });
     if (scene.queue && frame.queueState) {
+      const networkMemory = one('[data-execution-network-memory]');
+      if (networkMemory) components.networkMemory(networkMemory, frame.queueState, scene.queue, frame);
       all('[data-execution-typed-queue]').forEach(node =>
         components.queue(node, frame.queueState, scene.queue, node.dataset.executionTypedQueue === 'compact'));
     }
@@ -374,6 +397,9 @@
         if (box.top < parent.top || box.bottom > parent.bottom) panel.scrollTop += box.top - parent.top;
       }
     }
+    // Optional protocol visuals share this snapshot with the standard controls.
+    lab.executionSnapshot = {demo, scene, frame, view};
+    lab.dispatchEvent(new CustomEvent('execution:frame', {detail: lab.executionSnapshot}));
     if (updateURL) writeLocation(); draw();
   }
 

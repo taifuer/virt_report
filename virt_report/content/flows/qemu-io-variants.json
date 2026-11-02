@@ -271,7 +271,7 @@
             ],
             "title": "IOThread 处理 SCSI 请求队列",
             "description": "QEMU 的 virtio-scsi 请求队列处理器获得运行机会，检查新 available。",
-            "detail": "这里只是已初始化 dataplane 的队列处理阶段，不是创建 SCSI 控制器，也不是处理控制或事件队列。"
+            "detail": "SCSI 控制器和 dataplane 已在初始化阶段建立，本步处理命令队列中的请求；控制队列与事件队列另行处理。"
           },
           "consume-chain": {
             "description": "QEMU 读取 available 中的链头 0，建立本地 VirtIOSCSIReq，并映射请求、响应与数据描述符。",
@@ -293,7 +293,7 @@
           "write-status": {
             "title": "形成 SCSI 完成响应",
             "description": "scsi-hd 返回 GOOD，控制器写 response=OK、status=GOOD、resid=0、sense_len=0。",
-            "detail": "scsi_dma_complete 经 SCSI 完成层调用 virtio_scsi_command_complete。响应区容量 108 B；成功路径写固定响应字段，没有有效 sense 数据，不是回写一个 virtio-blk status 字节。",
+            "detail": "scsi_dma_complete 经 SCSI 完成层调用 virtio_scsi_command_complete。响应采用 virtio-scsi 的 108 B 结构；成功路径写固定响应字段，没有有效 sense 数据。",
             "sourceIds": [
               "scsi-qemu-dma-complete",
               "scsi-qemu-response",
@@ -364,7 +364,7 @@
               "title": "构造 SCSI CDB",
               "actor": "guest",
               "description": "sd 为本次请求编码 LBA=2048、传输长度=8 个 512 B 块。",
-              "detail": "固定 use_10_for_rw 分支，命令是 READ(10) 或 WRITE(10)，不是 virtio-blk 的 type/sector 请求头。",
+              "detail": "固定 use_10_for_rw 分支，命令采用 SCSI READ(10) 或 WRITE(10) CDB，由 virtio-scsi 请求结构承载。",
               "sourceIds": [
                 "scsi-linux-cdb",
                 "scsi-linux-rw10"
@@ -509,7 +509,7 @@
                 "block-read",
                 "raw-format"
               ],
-              "boundary": "virtio-scsi 控制器查找 LUN，SCSIRequest 关联前端上下文，scsi-hd 解释 CDB 后通过 DMA scatterlist 进入 BlockBackend；不是 virtio_blk_handle_request。"
+              "boundary": "virtio-scsi 控制器查找 LUN，SCSIRequest 关联前端上下文，scsi-hd 解释 CDB 后通过 DMA scatterlist 进入 BlockBackend。"
             },
             {
               "id": "host-file-worker",
@@ -550,7 +550,7 @@
                 "vmx-inject",
                 "vmx-entry"
               ],
-              "boundary": "这些是不同执行阶段，不是一条同线程调用栈。本例关闭 APICv，只有成功 VM-entry 后才将中断递送到 Guest。"
+              "boundary": "通知先设置目标 vCPU 的待处理中断，目标 vCPU 随后检查注入条件。本例关闭 APICv，只有成功 VM-entry 后才将中断递送到 Guest。"
             },
             {
               "id": "guest-scsi-completion",
@@ -581,7 +581,7 @@
                 "guest-read-iter",
                 "guest-pread"
               ],
-              "boundary": "沿返回方向排列。等待完成后释放固定页引用并返回 4096；不是回调直接调用应用。写入成功不额外承诺掉电持久性。"
+              "boundary": "完成回调满足等待条件，原系统调用线程恢复执行，释放固定页引用后返回 4096。普通写入成功不额外承诺掉电持久性。"
             }
           ],
           "stepPatches": {
@@ -699,7 +699,7 @@
                 "block-write",
                 "raw-write-format"
               ],
-              "boundary": "virtio-scsi 控制器查找 LUN，SCSIRequest 关联前端上下文，scsi-hd 解释 CDB 后通过 DMA scatterlist 进入 BlockBackend；不是 virtio_blk_handle_request。"
+              "boundary": "virtio-scsi 控制器查找 LUN，SCSIRequest 关联前端上下文，scsi-hd 解释 CDB 后通过 DMA scatterlist 进入 BlockBackend。"
             },
             {
               "id": "host-file-worker",
@@ -740,7 +740,7 @@
                 "vmx-inject",
                 "vmx-entry"
               ],
-              "boundary": "这些是不同执行阶段，不是一条同线程调用栈。本例关闭 APICv，只有成功 VM-entry 后才将中断递送到 Guest。"
+              "boundary": "通知先设置目标 vCPU 的待处理中断，目标 vCPU 随后检查注入条件。本例关闭 APICv，只有成功 VM-entry 后才将中断递送到 Guest。"
             },
             {
               "id": "guest-scsi-completion",
@@ -772,7 +772,7 @@
                 "guest-write-iter",
                 "guest-pwrite"
               ],
-              "boundary": "沿返回方向排列。等待完成后释放固定页引用并返回 4096；不是回调直接调用应用。写入成功不额外承诺掉电持久性。"
+              "boundary": "完成回调满足等待条件，原系统调用线程恢复执行，释放固定页引用后返回 4096。普通写入成功不额外承诺掉电持久性。"
             }
           ],
           "stepPatches": {
@@ -996,7 +996,7 @@
               "title": "BH 唤醒原 QEMU 协程",
               "actor": "qemu",
               "description": "qemu_rbd_finish_bh 调用 aio_co_wake，原RBD协程检查结果并向块层返回。",
-              "detail": "BH在QEMU上下文执行；之后才进入virtio-blk完成回调。非QEMU回调、BH和协程恢复是三段执行上下文，不是一条同步调用栈。",
+              "detail": "外部完成回调先安排 BH；BH 在 QEMU 上下文中唤醒协程，协程继续运行后进入 virtio-blk 完成处理。",
               "sourceIds": [
                 "rbd-bh",
                 "rbd-wait"
@@ -1039,7 +1039,7 @@
                 "kick-check",
                 "pci-notify"
               ],
-              "boundary": "Guest 仍是 virtio-blk，RBD 是 QEMU 的块后端，不是在 Guest 内加载 Ceph 客户端。"
+              "boundary": "Guest 使用 virtio-blk，QEMU 的 RBD 块后端通过宿主侧 librbd 访问 Ceph。"
             },
             {
               "id": "kvm-doorbell",
@@ -1066,7 +1066,7 @@
                 "rbd-aio-read",
                 "rbd-wait"
               ],
-              "boundary": "块图直接进入 RBD 驱动，不经过本地 file-posix worker，也不是把 /dev/rbdX 交给 QEMU。librbd 接受请求后协程等待，提交返回不是完成。"
+              "boundary": "块图进入 RBD 驱动，由进程内 librbd 提交请求，使用 Ceph 原生接口访问存储。librbd 接受请求后，协程等待异步完成。"
             },
             {
               "id": "ceph-async-boundary",
@@ -1087,7 +1087,7 @@
                 "rbd-bh",
                 "rbd-wait"
               ],
-              "boundary": "完成回调取返回值并安排一次 BH；BH 唤醒协程。它们不是同一线程的嵌套调用，不能由 Ceph 回调直接调用 Guest 中断处理。"
+              "boundary": "Ceph 完成回调取返回值并安排一次 BH，BH 在 QEMU 上下文唤醒协程。后续仍要发布 virtio 完成记录，再经过虚拟中断路径提示 Guest。"
             },
             {
               "id": "qemu-completion",
@@ -1116,7 +1116,7 @@
                 "vmx-inject",
                 "vmx-entry"
               ],
-              "boundary": "这些是不同执行阶段，不是一条同线程调用栈。本例关闭 APICv，只有成功 VM-entry 后才将中断递送到 Guest。"
+              "boundary": "通知先设置目标 vCPU 的待处理中断，目标 vCPU 随后检查注入条件。本例关闭 APICv，只有成功 VM-entry 后才将中断递送到 Guest。"
             },
             {
               "id": "guest-completion",
@@ -1144,7 +1144,7 @@
                 "guest-read-iter",
                 "guest-pread"
               ],
-              "boundary": "沿返回方向排列。等待完成后释放固定页引用并返回 4096；不是回调直接调用应用。写入成功不额外承诺掉电持久性。"
+              "boundary": "完成回调满足等待条件，原系统调用线程恢复执行，释放固定页引用后返回 4096。普通写入成功不额外承诺掉电持久性。"
             }
           ],
           "stepPatches": {
@@ -1205,7 +1205,7 @@
                 "kick-check",
                 "pci-notify"
               ],
-              "boundary": "Guest 仍是 virtio-blk，RBD 是 QEMU 的块后端，不是在 Guest 内加载 Ceph 客户端。"
+              "boundary": "Guest 使用 virtio-blk，QEMU 的 RBD 块后端通过宿主侧 librbd 访问 Ceph。"
             },
             {
               "id": "kvm-doorbell",
@@ -1232,7 +1232,7 @@
                 "rbd-aio-write",
                 "rbd-wait"
               ],
-              "boundary": "块图直接进入 RBD 驱动，不经过本地 file-posix worker，也不是把 /dev/rbdX 交给 QEMU。librbd 接受请求后协程等待，提交返回不是完成。"
+              "boundary": "块图进入 RBD 驱动，由进程内 librbd 提交请求，使用 Ceph 原生接口访问存储。librbd 接受请求后，协程等待异步完成。"
             },
             {
               "id": "ceph-async-boundary",
@@ -1253,7 +1253,7 @@
                 "rbd-bh",
                 "rbd-wait"
               ],
-              "boundary": "完成回调取返回值并安排一次 BH；BH 唤醒协程。它们不是同一线程的嵌套调用，不能由 Ceph 回调直接调用 Guest 中断处理。"
+              "boundary": "Ceph 完成回调取返回值并安排一次 BH，BH 在 QEMU 上下文唤醒协程。后续仍要发布 virtio 完成记录，再经过虚拟中断路径提示 Guest。"
             },
             {
               "id": "qemu-completion",
@@ -1282,7 +1282,7 @@
                 "vmx-inject",
                 "vmx-entry"
               ],
-              "boundary": "这些是不同执行阶段，不是一条同线程调用栈。本例关闭 APICv，只有成功 VM-entry 后才将中断递送到 Guest。"
+              "boundary": "通知先设置目标 vCPU 的待处理中断，目标 vCPU 随后检查注入条件。本例关闭 APICv，只有成功 VM-entry 后才将中断递送到 Guest。"
             },
             {
               "id": "guest-completion",
@@ -1311,7 +1311,7 @@
                 "guest-write-iter",
                 "guest-pwrite"
               ],
-              "boundary": "沿返回方向排列。等待完成后释放固定页引用并返回 4096；不是回调直接调用应用。写入成功不额外承诺掉电持久性。"
+              "boundary": "完成回调满足等待条件，原系统调用线程恢复执行，释放固定页引用后返回 4096。普通写入成功不额外承诺掉电持久性。"
             }
           ],
           "stepPatches": {

@@ -14,7 +14,7 @@ test('node initial descriptions are neutral and retained until explicitly change
   assert.equal(frames[0].nodes.vm, '尚未创建');
 });
 for (const id of ['network-io', 'memory-access', 'cpu-execution', 'interrupt-delivery',
-  'disk-persistence', 'vm-lifecycle']) {
+  'disk-persistence', 'vm-lifecycle', 'virtio-gpu-rendering']) {
   const demo = JSON.parse(fs.readFileSync(path.join(__dirname, `../virt_report/content/flows/${id}.json`), 'utf8'));
   for (const scene of demo.scenarios) test(`${id}/${scene.id}: immutable snapshots and reversible projections`, () => {
     const original = JSON.stringify(scene);

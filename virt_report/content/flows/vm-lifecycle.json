@@ -917,7 +917,7 @@
             "libvirt-prepare",
             "libvirt-launch"
           ],
-          "boundary": "fork/exec 后进入独立 QEMU 进程；monitor/QMP 是进程间协议，不是跨进程函数调用。"
+          "boundary": "fork/exec 后进入独立 QEMU 进程，Libvirt 与 QEMU 通过 monitor/QMP 协议交换请求和事件。"
         },
         {
           "id": "path-2",
@@ -956,7 +956,7 @@
           "sourceIds": [
             "libvirt-state"
           ],
-          "boundary": "RESUME 事件更新管理状态；它不是 Guest 引导或应用就绪的同步回调。",
+          "boundary": "RESUME 事件更新管理状态，表明虚拟机继续运行；Guest 引导和应用就绪还需分别观察。",
           "entry": {
             "kind": "notification",
             "label": "Libvirt 接收 QEMU 异步发送的 RESUME 事件"

@@ -206,6 +206,52 @@
 .walkthrough-lab.walkthrough-expanded { position: fixed; inset: 0; z-index: 10000; width: 100%; max-width: none; height: 100%; max-height: none; box-sizing: border-box; padding: 24px; overflow: auto; background-color: var(--paper); }
 .walkthrough-lab:fullscreen { background-color: var(--paper); }
 .walkthrough-expanded .walkthrough-toolbar { top: 0; }
+/* Keep every step visible in reading order; long sequences wrap naturally. */
+.walkthrough-expanded :is(.walkthrough-summary, .walkthrough-help, [data-vbr-help]) { display: none; }
+.walkthrough-expanded .walkthrough-progress {
+  flex-wrap: wrap; overflow: visible; padding: 4px 2px; margin-bottom: 12px;
+}
+.walkthrough-expanded .walkthrough-progress button { flex: 0 1 auto; min-height: 44px; white-space: normal; }
+@media (min-width: 1100px) {
+  .walkthrough-lab.walkthrough-expanded { padding: 16px; }
+  .walkthrough-expanded .walkthrough-selection { flex-wrap: nowrap; gap: 8px; margin-bottom: 8px; }
+  .walkthrough-expanded .walkthrough-choice {
+    flex-basis: 360px; display: grid; grid-template-columns: auto minmax(0, 1fr);
+    align-items: center; gap: 8px;
+  }
+  .walkthrough-expanded .walkthrough-choice label { white-space: nowrap; }
+  .walkthrough-expanded .walkthrough-selection > span { flex: 1 1 auto; min-width: 0; }
+  .walkthrough-expanded .walkthrough-toolbar {
+    position: sticky; top: 0; z-index: 8; flex-wrap: nowrap; padding: 0;
+    margin-bottom: 8px; background-color: var(--paper);
+  }
+  .walkthrough-lab.walkthrough-expanded .walkthrough-workspace {
+    grid-template-columns: minmax(0, 2.8fr) minmax(280px, 1fr); gap: 20px;
+  }
+  .walkthrough-expanded .walkthrough-workspace > :is(.execution-canvas, .vbr-visual) {
+    grid-column: 1; grid-row: 1;
+  }
+  .walkthrough-lab.walkthrough-expanded .walkthrough-inspector {
+    grid-column: 2; grid-row: 1; display: block; padding: 0 0 0 18px;
+    border-bottom: 0; border-left: 1px solid var(--line);
+  }
+  .walkthrough-expanded .walkthrough-workspace > :is(.execution-canvas, .vbr-visual, .walkthrough-inspector) {
+    box-sizing: border-box; max-height: var(--walkthrough-workspace-height, none);
+    overflow: auto; overscroll-behavior: contain;
+    scrollbar-width: thin; scrollbar-gutter: stable; scroll-padding: 12px;
+  }
+  .walkthrough-expanded .walkthrough-step-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 14px; }
+  .walkthrough-expanded :is(.execution-canvas, .vbr-board) { padding: 14px; }
+  /* Keep an outer channel for arrows to route around full-width RAM headings. */
+  .walkthrough-expanded .execution-nodes { padding: 8px; }
+  .walkthrough-expanded .walkthrough-domains { gap: 8px 14px; }
+  .walkthrough-expanded .walkthrough-domain { gap: 8px; }
+  .walkthrough-expanded .walkthrough-domain-nodes { gap: 8px; }
+  .walkthrough-expanded .execution-node, .walkthrough-lab.walkthrough-expanded .vbr-node { min-height: 56px; padding: 7px 8px; }
+  .walkthrough-expanded :is(.walkthrough-memory, .vbr-memory) { margin-top: 14px; padding-top: 12px; }
+  .walkthrough-expanded :is(.walkthrough-memory-grid, .vbr-memory-grid) { gap: 10px; margin-top: 10px; }
+  .walkthrough-expanded .vbr-domain > header { min-height: 48px; }
+}
 @media (max-width: 1100px) {
   .walkthrough-step-body { grid-template-columns: minmax(0, 1fr); }
   .walkthrough-toolbar { justify-content: flex-start; }

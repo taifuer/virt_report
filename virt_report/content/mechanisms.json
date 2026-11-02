@@ -137,12 +137,16 @@
       "overview": "memory-access", "summary": "沿地址转换区分 RAM、Guest 缺页、EPT 缺项、宿主缺页与 MMIO。"
     },
     {
-      "slug": "interrupt-delivery-walkthrough", "group": "walkthroughs", "title": "中断递送过程",
+      "slug": "interrupt-delivery-walkthrough", "group": "walkthroughs", "title": "中断传递",
       "overview": "interrupt-delivery", "summary": "对照软件 MSI-X、irqfd、屏蔽与延迟递送，以及 APICv posted interrupt 路径。"
     },
     {
-      "slug": "gpu-execution-walkthrough", "group": "walkthroughs", "title": "GPU 命令提交与完成",
+      "slug": "gpu-execution-walkthrough", "group": "walkthroughs", "title": "GPU 命令执行",
       "overview": "gpu-execution", "summary": "跟踪 VFIO 直通 GPU 的上传、读回，以及限定 GVT-g 实现的 mdev 命令审核、调度和完成。"
+    },
+    {
+      "slug": "virtio-gpu-walkthrough", "group": "walkthroughs", "title": "virtio-gpu 渲染与编解码",
+      "overview": "virtio-gpu-rendering", "summary": "逐步观察 OpenGL 绘制、H.264 解码与编码中的命令传输、资源变化、宿主执行和完成通知。"
     }
   ],
   "articles": [
@@ -2206,6 +2210,37 @@
       ]
     },
     {
+      "slug": "virtio-gpu-rendering",
+      "topic": "virtio-gpu-walkthrough",
+      "title": "virtio-gpu 渲染与编解码",
+      "summary": "切换绘制、解码与编码场景，逐步观察 Guest、controlq、QEMU、virglrenderer 和宿主 GPU 之间的命令、资源及完成信号。",
+      "reviewed_on": "2026-11-02",
+      "source": "virtio-gpu-rendering.md",
+      "presentation": "walkthrough",
+      "execution_demo": "virtio-gpu-rendering",
+      "components": ["_execution_lab.html"],
+      "stylesheet": "virtio-gpu-rendering.css",
+      "script": "virtio-gpu-rendering.js",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"},
+        {"project": "Mesa", "version": "25.0.0", "commit": "4fa244fddfebb21378042556862e197284ef65ac", "url": "https://gitlab.freedesktop.org/mesa/mesa/-/tree/4fa244fddfebb21378042556862e197284ef65ac"},
+        {"project": "virglrenderer", "version": "1.2.0", "commit": "500b41d5c8638f9b80dd558f4044f3301c7457a4", "url": "https://gitlab.freedesktop.org/virgl/virglrenderer/-/tree/500b41d5c8638f9b80dd558f4044f3301c7457a4"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "图形与视频命令的执行路径"},
+        {"id": "walkthrough", "title": "逐步演示"},
+        {"id": "transport", "title": "两层命令与资源关联"},
+        {"id": "render", "title": "一次 OpenGL 绘制的完整路径"},
+        {"id": "video-support", "title": "视频能力的协商与宿主接入"},
+        {"id": "decode", "title": "一帧 H.264 的解码与显示"},
+        {"id": "encode", "title": "一帧 NV12 图像的编码与取回"},
+        {"id": "completion", "title": "完成信号、缓冲区复用与等待"},
+        {"id": "evolution", "title": "VirGL、Venus 与资源共享的演进"},
+        {"id": "sources", "title": "源码与进一步阅读"}
+      ]
+    },
+    {
       "slug": "virtio-blk-read",
       "topic": "block-io-walkthrough",
       "title": "磁盘 I/O 读写过程",
@@ -2305,7 +2340,7 @@
     {
       "slug": "interrupt-delivery",
       "topic": "interrupt-delivery-walkthrough",
-      "title": "中断递送与客户机响应",
+      "title": "中断传递",
       "summary": "交互对照 MSI-X 软件递送、irqfd、IF 屏蔽、MSI-X PBA 与 APICv posted interrupt，跟踪请求挂起、接受和 EOI。",
       "reviewed_on": "2026-11-01",
       "template": "_interrupt_delivery_article.html", "presentation": "walkthrough",
@@ -2320,7 +2355,7 @@
     {
       "slug": "gpu-execution",
       "topic": "gpu-execution-walkthrough",
-      "title": "GPU 命令提交与完成",
+      "title": "GPU 命令执行",
       "summary": "以 4 KiB 缓冲区复制区分 VFIO PCI 直通与 mdev GVT-g，跟踪 GPU 命令、地址映射、数据传输、fence 和 Guest 完成。",
       "reviewed_on": "2026-11-02",
       "template": "_gpu_execution_article.html", "presentation": "walkthrough",

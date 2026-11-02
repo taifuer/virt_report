@@ -351,6 +351,47 @@ def test_october_public_snapshot_has_reviewed_feature_notes_without_showing_patc
     assert "auto_dump_max_size" in page
 
 
+def test_november_public_snapshot_preserves_release_dates_and_feature_only_display(tmp_path):
+    bundled = json.loads((versions.CONTENT_DIR / "versions.json").read_text())
+    records = {(row["project"], row["version"]): row for row in bundled["releases"]}
+    expected = {
+        ("libvirt", "12.9.0"): ("2026-11-02", "feature"),
+        ("kvm", "7.3"): ("2026-10-18", "feature"),
+        ("qemu", "11.1.3"): ("2026-10-28", "maintenance"),
+        ("qemu", "10.0.15"): ("2026-10-28", "maintenance"),
+        ("kvm", "7.3.1"): ("2026-10-30", "maintenance"),
+        ("kvm", "7.2.15"): ("2026-11-01", "maintenance"),
+        **{("kvm", version): ("2026-10-30", "maintenance") for version in (
+            "6.18.60", "6.12.115", "6.6.161", "6.1.191", "5.15.224", "5.10.273",
+        )},
+    }
+    for key, (released_on, kind) in expected.items():
+        assert records[key]["released_on"] == released_on
+        assert records[key]["kind"] == kind
+        assert records[key]["source_url"].startswith("https://")
+
+    config = Config(storage=Storage(db_path=tmp_path / "report.db"))
+    content = versions.load_content(config, today=date(2026, 11, 2))
+    assert not any("rc" in row["version"] for row in content["releases"])
+    assert not any(row["project"] == "libvirt" and row["version"] == "12.10.0"
+                   for row in content["releases"])
+    page = render.render_versions_html(config, content)
+    for (project, version), (_, kind) in expected.items():
+        assert (f'id="release-{project}-{version}"' in page) == (kind == "feature")
+    assert "UNDEFINED" in page and "MIGRATED" in page
+    kernel = next(row for row in content["releases"]
+                  if row["project"] == "kvm" and row["version"] == "7.3")
+    assert len(kernel["notes"]) == 2
+    assert all(text.startswith("x86 VMX") for text in kernel["notes"])
+    assert kernel["note_source_url"] == (
+        "https://github.com/torvalds/linux/commit/634c347df123b3938f01c10470b12b5063dae2fe"
+    )
+    assert "嵌套 VM-entry" in page
+    assert "KVM 合并说明" not in page
+    assert kernel["note_source_url"] not in page
+    assert f'href="{kernel["source_url"]}"' in page
+
+
 def test_manual_notes_override_runtime_highlights_without_changing_release_identity(tmp_path, monkeypatch):
     config = Config(storage=Storage(db_path=tmp_path / "report.db"))
     monkeypatch.setattr(versions, "CONTENT_DIR", tmp_path / "content")

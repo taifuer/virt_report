@@ -103,7 +103,8 @@ def test_every_topic_has_a_complete_intro_and_detail_links():
         assert overview and overview["slug"] == topic["overview"]
         assert f'<a href="mechanisms/{overview["slug"]}.html">{topic["title"]}</a>' in index
         page = render.render_mechanisms_html(Config(), overview["slug"])
-        comparison = "completion" if overview["slug"] == "network-io" else "comparison"
+        comparison = ("completion" if overview["slug"] in
+                      {"network-io", "virtio-gpu-rendering"} else "comparison")
         sections = (("walkthrough", comparison, "sources")
                     if overview.get("presentation") == "walkthrough"
                     else ("evolution", "reading", "sources"))

@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=49f2a464e9bd">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=49f2a464e9bd">
   <link rel="stylesheet" href="../assets/site.css?v=49f2a464e9bd">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=f8e166670755">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=f8e166670755">
-<link rel="stylesheet" href="../assets/halt-poll.css?v=f8e166670755"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=0d3876d39f7e">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=0d3876d39f7e">
+<link rel="stylesheet" href="../assets/halt-poll.css?v=0d3876d39f7e"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -55,7 +55,7 @@
   <p>客户机没有工作可做时，空闲循环可以执行 HLT，等待中断。KVM 处理这次退出时，可以短暂轮询即将到来的事件，也可以让承载 vCPU 的宿主线程阻塞。轮询消耗 CPU 时间，但可能减少睡眠与重新调度的延迟；阻塞释放 CPU，唤醒后则需等待调度。halt polling 通过有限的轮询预算在两者之间调整。</p>
   <p>可以先比较两个极端：立即睡眠能尽快归还 CPU，但很快到来的事件也要付出唤醒与调度成本；一直轮询能及时发现事件，却会在长时间空闲时占着 CPU。KVM 在两者之间设置有限预算，并按此前等待的耗时调整下一轮。下文沿一次完成事件跟踪轮询、阻塞和重新运行，最后比较实际收益。</p>
   <p>本文用一次网络请求等待完成事件为例，跟踪 x86、内核 LAPIC、HLT 被截获后的路径。客户机 HLT、宿主线程睡眠和整台虚拟机暂停是不同状态；硬件直接处理 HLT、posted interrupt 与客户机内部 haltpoll 驱动有各自的路径。</p>
-  <p>HLT 由客户机内核的空闲代码执行；本文的轮询与阻塞代码运行在宿主 KVM 中，承载它的仍是该 QEMU vCPU 线程。线程真正休眠后，唤醒和 CPU 分配由宿主 Linux 调度器处理。客户机应用不直接调用这些 KVM 等待函数。</p>
+  <p>HLT 由客户机内核的空闲代码执行；本文的轮询与阻塞代码运行在宿主 KVM 中，承载它的仍是该 QEMU vCPU 线程。线程进入休眠后，唤醒和 CPU 分配由宿主 Linux 调度器处理。客户机应用不直接调用这些 KVM 等待函数。</p>
 <p class="mechanism-baselines">源码版本：<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>、<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p></section>
 
 <section id="example" class="mechanism-section">
@@ -87,9 +87,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看HLT、轮询与事件唤醒" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="HLT、轮询与事件唤醒">
-    <img src="../assets/kvm-halt-wakeup.svg?v=f8e166670755" alt="内核 LAPIC 路径：HLT 后先检查已有事件，再短暂轮询；轮询结束后发布等待者并再次检查，仍无事件才休眠。事件发布后唤醒宿主线程，线程取得 CPU 后继续处理客户机事件。" loading="lazy">
+    <img src="../assets/kvm-halt-wakeup.svg?v=0d3876d39f7e" alt="内核 LAPIC 路径：HLT 后先检查已有事件，再短暂轮询；轮询结束后发布等待者并再次检查，仍无事件才休眠。事件发布后唤醒宿主线程，线程取得 CPU 后继续处理客户机事件。" loading="lazy">
   </div>
-  <figcaption>内核 LAPIC 路径：HLT 后先检查已有事件，再短暂轮询；轮询结束后发布等待者并再次检查，仍无事件才休眠。事件发布后唤醒宿主线程，线程取得 CPU 后继续处理客户机事件。 <a href="../assets/kvm-halt-wakeup.svg?v=f8e166670755" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>内核 LAPIC 路径：HLT 后先检查已有事件，再短暂轮询；轮询结束后发布等待者并再次检查，仍无事件才休眠。事件发布后唤醒宿主线程，线程取得 CPU 后继续处理客户机事件。 <a href="../assets/kvm-halt-wakeup.svg?v=0d3876d39f7e" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TD
     accTitle: KVM vCPU 的 HLT、轮询与事件唤醒
     accDescr: x86 内核 LAPIC 路径。HLT 模拟先检查已有事件。没有事件时可短暂轮询，然后发布 rcuwait 等待者、设置任务状态并重新检查。仍无事件才休眠。事件发布与唤醒配合，避免轮询到休眠之间丢失唤醒。线程重新取得 CPU 后继续检查并处理客户机事件。
@@ -114,7 +114,7 @@
     class I,K event
 </code></pre></details>
 </figure>
-  <p><code>kvm_vcpu_block()</code> 先发布 rcuwait 等待者，把当前任务设为 TASK_INTERRUPTIBLE，再检查一次阻塞条件。只有条件仍不满足才调用 <code>schedule()</code>；返回后循环复查，最后撤销等待者。一次唤醒可能只是宿主信号或维护请求，x86 路径还会判断 vCPU 是否真正可运行，不能无条件把 mp_state 改回 RUNNABLE。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L3644-L3678">阻塞循环</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11527-L11592">架构侧复查</a></p>
+  <p><code>kvm_vcpu_block()</code> 先发布 rcuwait 等待者，把当前任务设为 TASK_INTERRUPTIBLE，再检查一次阻塞条件。只有条件仍不满足才调用 <code>schedule()</code>；返回后循环复查，最后撤销等待者。一次唤醒可能只是宿主信号或维护请求，x86 路径还会判断 vCPU 的运行条件是否满足，不能无条件把 mp_state 改回 RUNNABLE。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L3644-L3678">阻塞循环</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11527-L11592">架构侧复查</a></p>
   <p>以 VMX 的普通中断软件回退路径为例，<code>vmx_deliver_interrupt()</code> 先记录 LAPIC IRR，再设置 EVENT 请求并调用 <code>kvm_vcpu_kick()</code>。已经睡眠的线程经 rcuwait 唤醒；正在客户机模式执行的 vCPU 则可能需要 IPI 促使其退出。线程得到唤醒后只具备被调度的条件，何时取得 CPU 还受宿主负载影响。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L4242-L4255">中断交付</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L3800-L3856">wake 与 kick</a></p>
   <p>待处理的可屏蔽中断还要满足架构允许条件；“有中断记录”不保证立即注入。定时器也有独立入口：常规软件 LAPIC 定时器增加 pending 并请求 UNBLOCK。x86 在阻塞前把仅在客户机运行时计时的硬件定时器切换为软件定时器，避免退出客户机模式后失去唤醒来源。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11472-L11541">事件资格与定时器切换</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L2008-L2011">定时器到期</a></p>
 </section>
@@ -128,7 +128,7 @@
 
 <section id="structures" class="mechanism-section">
   <h2><span class="mechanism-heading-number">六、</span>等待状态：客户机活动状态与宿主任务状态</h2>
-  <p>上例中，“客户机执行到 HLT”和“承载它的宿主线程进入睡眠”之间还有轮询阶段。KVM 分别保存客户机状态、等待者和预算，才能在不睡眠的情况下发现短期事件，也能在真正睡眠后找到需要唤醒的任务。</p>
+  <p>上例中，“客户机执行到 HLT”和“承载它的宿主线程进入睡眠”之间还有轮询阶段。KVM 分别保存客户机状态、等待者和预算，才能在不睡眠的情况下发现短期事件，也能在线程进入睡眠后找到需要唤醒的任务。</p>
   <table><thead><tr><th scope="col">对象与字段</th><th scope="col">用途</th></tr></thead><tbody>
     <tr><td><code>kvm_vcpu.arch.mp_state</code></td><td>客户机的活动状态，如 HALTED、RUNNABLE；不等同于宿主任务状态</td></tr>
     <tr><td><code>kvm_vcpu.halt_poll_ns</code></td><td>这个 vCPU 当前学习到的轮询预算，单位纳秒</td></tr>
@@ -213,7 +213,7 @@ sudo perf script -i halt.data</code></pre>
   <table><thead><tr><th scope="col">顺序</th><th scope="col">源码入口</th><th scope="col">主要职责</th></tr></thead><tbody>
     <tr><td>处理 HLT</td><td><code>kvm_emulate_halt() → vcpu_block()</code></td><td>检查可运行事件，决定进入等待</td></tr>
     <tr><td>轮询与预算</td><td><code>kvm_vcpu_halt()</code></td><td>控制轮询时长、停止条件与下一轮预算</td></tr>
-    <tr><td>真正阻塞</td><td><code>kvm_vcpu_block()</code></td><td>发布等待者、复查条件并调用 schedule</td></tr>
+    <tr><td>阻塞等待</td><td><code>kvm_vcpu_block()</code></td><td>发布等待者、复查条件并调用 schedule</td></tr>
     <tr><td>发布事件与唤醒</td><td><code>vmx_deliver_interrupt() → kvm_vcpu_kick()</code></td><td>先发布事件，再唤醒等待者或促使客户机退出</td></tr>
   </tbody></table>
 </section>
@@ -243,6 +243,6 @@ sudo perf script -i halt.data</code></pre>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=49f2a464e9bd"></script>
-<script src="../assets/mechanism-viewer.js?v=f8e166670755" defer></script>
-<script src="../assets/halt-poll.js?v=f8e166670755" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=0d3876d39f7e" defer></script>
+<script src="../assets/halt-poll.js?v=0d3876d39f7e" defer></script></body>
 </html>

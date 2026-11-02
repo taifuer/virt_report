@@ -9,6 +9,7 @@ const routes = {
   'network-io': 'network-io', 'memory-access': 'memory-access',
   'cpu-execution': 'cpu-execution', 'interrupt-delivery': 'interrupt-delivery',
   'gpu-execution': 'gpu-execution', 'vm-lifecycle': 'libvirt-domain-start',
+  'virtio-gpu-rendering': 'virtio-gpu-rendering',
 };
 const ids = process.env.EXECUTION_DEMO_IDS?.split(',') || Object.keys(routes);
 assert(ids.length && ids.every(id => Object.hasOwn(routes, id)), 'known demo IDs are required');
@@ -134,6 +135,8 @@ async function assertFrame(page, frame) {
       .every(node => node.scrollHeight <= node.clientHeight + 1),
     fields: Object.fromEntries([...lab.querySelectorAll('[data-execution-field]')].map(node =>
       [node.dataset.executionField, node.querySelector('dd').textContent])),
+    hiddenFields: lab.executionSnapshot.scene.structures.flatMap(group =>
+      group.fields.filter(field => field.hidden).map(field => field.key)),
     changed: [...lab.querySelectorAll('[data-execution-field][data-current="true"]')].map(node => node.dataset.executionField),
     active: [...lab.querySelectorAll('[data-execution-node][data-active="true"]')].map(node => node.dataset.executionNode),
     nodes: Object.fromEntries([...lab.querySelectorAll('[data-execution-node]')].map(node =>
@@ -141,7 +144,8 @@ async function assertFrame(page, frame) {
   }));
   assert.equal(state.step, frame.id);
   assert(state.sourceExpanded, `${frame.id}: source paths must expand with the page, without an internal scroller`);
-  const expectedFields = frame.queueState ? Object.fromEntries(Object.entries(frame.values).filter(([key]) => key in state.fields)) : frame.values;
+  const expectedFields = Object.fromEntries(Object.entries(frame.values).filter(([key]) =>
+    !state.hiddenFields.includes(key) && (!frame.queueState || key in state.fields)));
   assert.deepEqual(state.fields, expectedFields);
   assert.deepEqual(state.changed.sort(), frame.changed.filter(key => key in expectedFields).sort());
   assert.deepEqual(state.active.sort(), [...frame.active].sort());

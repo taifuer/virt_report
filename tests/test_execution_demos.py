@@ -52,7 +52,7 @@ def test_demo_registry_points_to_existing_articles_without_duplicate_directory_e
     for demo_id, page_id in execution_demos.DEMO_PAGES.items():
         article = next(article for article in articles if article['slug'] == page_id)
         assert article['execution_demo'] == demo_id
-    assert sum(article.get('presentation') == 'walkthrough' for article in articles) == 6
+    assert sum(article.get('presentation') == 'walkthrough' for article in articles) == 7
     assert not {'disk-persistence', 'vm-lifecycle'} & {article['slug'] for article in articles}
 
 

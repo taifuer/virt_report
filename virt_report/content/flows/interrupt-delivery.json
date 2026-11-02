@@ -1,8 +1,78 @@
 {
   "id": "interrupt-delivery",
-  "title": "虚拟中断递送过程",
+  "title": "中断传递",
   "defaultScenario": "msix-software",
   "sources": {
+    "vtd-source": {
+      "label": "Linux 6.18：IRTE 的 PCIe 来源校验",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/intel/irq_remapping.c#L373-L411",
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "drivers/iommu/intel/irq_remapping.c",
+      "line": 373,
+      "symbol": "set_msi_sid()",
+      "kind": "function"
+    },
+    "vtd-msi": {
+      "label": "Linux 6.18：remappable MSI 的表项索引与 subhandle",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/intel/irq_remapping.c#L1331-L1380",
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "drivers/iommu/intel/irq_remapping.c",
+      "line": 1331,
+      "symbol": "intel_irq_remapping_prepare_irte()",
+      "kind": "function"
+    },
+    "vtd-remap": {
+      "label": "Linux 6.18：普通 IRTE 的目标处理器与向量",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/intel/irq_remapping.c#L1085-L1103",
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "drivers/iommu/intel/irq_remapping.c",
+      "line": 1085,
+      "symbol": "prepare_irte()",
+      "kind": "function"
+    },
+    "vtd-posting": {
+      "label": "Linux 6.18：切换 IRTE 的 remapped / posted 模式",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/intel/irq_remapping.c#L1242-L1277",
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "drivers/iommu/intel/irq_remapping.c",
+      "line": 1242,
+      "symbol": "intel_ir_set_vcpu_affinity()",
+      "kind": "function"
+    },
+    "vfio-msi": {
+      "label": "Linux 6.18：VFIO 宿主 MSI handler 触发 eventfd",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vfio/pci/vfio_pci_intrs.c#L373-L379",
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "drivers/vfio/pci/vfio_pci_intrs.c",
+      "line": 373,
+      "symbol": "vfio_msihandler()",
+      "kind": "function"
+    },
+    "pi-bind": {
+      "label": "Linux 6.18：将 Guest 向量与 vCPU PID 绑定给 IRTE",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/posted_intr.c#L305-L333",
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/vmx/posted_intr.c",
+      "line": 305,
+      "symbol": "vmx_pi_update_irte()",
+      "kind": "function"
+    },
+    "pi-route": {
+      "label": "Linux 6.18：设备 posting 的单目标路由限制与回退",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/irq.c#L426-L475",
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/irq.c",
+      "line": 426,
+      "symbol": "kvm_pi_update_irte()",
+      "kind": "function"
+    },
     "msix": {
       "label": "QEMU 10.2：msix_notify 的屏蔽检查与消息发送",
       "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/pci/msix.c#L540-L558",
@@ -788,7 +858,7 @@
           "title": "驱动消费完成记录",
           "actor": "客户机驱动 / NAPI",
           "description": "驱动读取 used 项、取得接收结果，再回收描述符链并推进私有索引。",
-          "detail": "一条中断可以提示多条完成；图中只消费一项。队列进度由驱动维护，独立于刚才的 EOI。 vring_interrupt 先调用 skb_recv_done 安排 NAPI；随后 virtnet_poll 经接收路径取得 used 项，二者不是连续的同步调用。",
+          "detail": "一条中断可以提示多条完成；图中只消费一项。队列进度由驱动维护，独立于刚才的 EOI。 vring_interrupt 先调用 skb_recv_done 安排 NAPI；NAPI 获得调度后，virtnet_poll 再经接收路径取得 used 项。",
           "active": [
             "guest",
             "queue"
@@ -826,7 +896,7 @@
             "notify-check",
             "virtio-notify"
           ],
-          "boundary": "先写数据与完成记录，发布索引后再决定是否通知；不是每次完成都产生中断。"
+          "boundary": "先写数据与完成记录，发布索引后再检查通知条件；通知抑制或合并允许多次完成共用一次中断。"
         },
         {
           "id": "path-1",
@@ -865,7 +935,7 @@
             "guest-receive",
             "consume"
           ],
-          "boundary": "Guest EOI 与驱动取得完成记录分开；eoi 的 KVM 实现解释软件 LAPIC 状态，不是 Guest 直接调用宿主函数。 vring_interrupt → skb_recv_done 是通知回调；NAPI 调度后才进入 virtnet_poll → 接收处理 → used 回收，跨调度边界。",
+          "boundary": "Guest EOI 更新中断服务状态，驱动另行取得队列完成记录；链接中的 KVM eoi 实现对应宿主的软件 LAPIC 处理。vring_interrupt → skb_recv_done 安排 NAPI，NAPI 获得调度后才进入 virtnet_poll → 接收处理 → used 回收。",
           "entry": {
             "kind": "notification",
             "label": "中断交付 Guest 后执行 IRQ 回调；后续 NAPI 另行调度"
@@ -1197,7 +1267,7 @@
           "title": "后端触发完成事件",
           "actor": "QEMU IOThread · guest notifier",
           "description": "后端在发布 used 之后触发 call eventfd。",
-          "detail": "virtio_irq 经延迟通知回调执行 event_notifier_set，KVM 的 irqfd 接收该事件；不是由 QEMU vCPU 线程逐次模拟 MSI。",
+          "detail": "virtio_irq 经延迟通知回调执行 event_notifier_set，KVM 的 irqfd 接收该事件并使用已配置的 MSI 路由；完成通知沿 eventfd 路径进入内核。",
           "active": [
             "backend",
             "eventfd"
@@ -1351,7 +1421,7 @@
           "title": "消费 used 项",
           "actor": "客户机驱动",
           "description": "驱动随后从共享队列取得完成结果，last_used_idx 推进到 8。",
-          "detail": "通知可以合并，后端触发次数、KVM 投递次数与驱动处理请求数不保证一一对应。 vring_interrupt 先调用 skb_recv_done 安排 NAPI；随后 virtnet_poll 经接收路径取得 used 项，二者不是连续的同步调用。",
+          "detail": "通知可以合并，后端触发次数、KVM 投递次数与驱动处理请求数不保证一一对应。 vring_interrupt 先调用 skb_recv_done 安排 NAPI；NAPI 获得调度后，virtnet_poll 再经接收路径取得 used 项。",
           "active": [
             "guest",
             "queue"
@@ -1389,7 +1459,7 @@
             "virtio-notify",
             "virtio-irq"
           ],
-          "boundary": "先写数据与完成记录，发布索引后再决定是否通知；不是每次完成都产生中断。"
+          "boundary": "先写数据与完成记录，发布索引后再检查通知条件；通知抑制或合并允许多次完成共用一次中断。"
         },
         {
           "id": "path-1",
@@ -1427,7 +1497,7 @@
             "guest-receive",
             "consume"
           ],
-          "boundary": "Guest EOI 与驱动取得完成记录分开；eoi 的 KVM 实现解释软件 LAPIC 状态，不是 Guest 直接调用宿主函数。 vring_interrupt → skb_recv_done 是通知回调；NAPI 调度后才进入 virtnet_poll → 接收处理 → used 回收，跨调度边界。",
+          "boundary": "Guest EOI 更新中断服务状态，驱动另行取得队列完成记录；链接中的 KVM eoi 实现对应宿主的软件 LAPIC 处理。vring_interrupt → skb_recv_done 安排 NAPI，NAPI 获得调度后才进入 virtnet_poll → 接收处理 → used 回收。",
           "entry": {
             "kind": "notification",
             "label": "中断交付 Guest 后执行 IRQ 回调；后续 NAPI 另行调度"
@@ -1939,7 +2009,7 @@
           "title": "驱动消费已发布的完成",
           "actor": "Guest IRQ / NAPI 与驱动",
           "description": "驱动沿接收处理路径取得 used 项，消费位置从 7 前进到 8。",
-          "detail": "APIC 应答不自动消费队列。NAPI 调度与完整协议栈细节见网络演示；本步只观察完成记录回收。 vring_interrupt 先调用 skb_recv_done 安排 NAPI；随后 virtnet_poll 经接收路径取得 used 项，二者不是连续的同步调用。",
+          "detail": "APIC 应答不自动消费队列。NAPI 调度与完整协议栈细节见网络演示；本步只观察完成记录回收。 vring_interrupt 先调用 skb_recv_done 安排 NAPI；NAPI 获得调度后，virtnet_poll 再经接收路径取得 used 项。",
           "active": [
             "guest",
             "queue"
@@ -1976,7 +2046,7 @@
             "notify-check",
             "virtio-notify"
           ],
-          "boundary": "先写数据与完成记录，发布索引后再决定是否通知；不是每次完成都产生中断。"
+          "boundary": "先写数据与完成记录，发布索引后再检查通知条件；通知抑制或合并允许多次完成共用一次中断。"
         },
         {
           "id": "path-1",
@@ -2016,7 +2086,7 @@
             "guest-receive",
             "consume"
           ],
-          "boundary": "Guest EOI 与驱动取得完成记录分开；eoi 的 KVM 实现解释软件 LAPIC 状态，不是 Guest 直接调用宿主函数。 vring_interrupt → skb_recv_done 是通知回调；NAPI 调度后才进入 virtnet_poll → 接收处理 → used 回收，跨调度边界。",
+          "boundary": "Guest EOI 更新中断服务状态，驱动另行取得队列完成记录；链接中的 KVM eoi 实现对应宿主的软件 LAPIC 处理。vring_interrupt → skb_recv_done 安排 NAPI，NAPI 获得调度后才进入 virtnet_poll → 接收处理 → used 回收。",
           "entry": {
             "kind": "notification",
             "label": "中断交付 Guest 后执行 IRQ 回调；后续 NAPI 另行调度"
@@ -2533,7 +2603,7 @@
           "title": "驱动消费已发布的完成",
           "actor": "Guest IRQ / NAPI 与驱动",
           "description": "驱动沿接收处理路径取得 used 项，消费位置从 7 前进到 8。",
-          "detail": "APIC 应答不自动消费队列。NAPI 调度与完整协议栈细节见网络演示；本步只观察完成记录回收。 vring_interrupt 先调用 skb_recv_done 安排 NAPI；随后 virtnet_poll 经接收路径取得 used 项，二者不是连续的同步调用。",
+          "detail": "APIC 应答不自动消费队列。NAPI 调度与完整协议栈细节见网络演示；本步只观察完成记录回收。 vring_interrupt 先调用 skb_recv_done 安排 NAPI；NAPI 获得调度后，virtnet_poll 再经接收路径取得 used 项。",
           "active": [
             "guest",
             "queue"
@@ -2570,7 +2640,7 @@
             "notify-check",
             "virtio-notify"
           ],
-          "boundary": "先写数据与完成记录，发布索引后再决定是否通知；不是每次完成都产生中断。"
+          "boundary": "先写数据与完成记录，发布索引后再检查通知条件；通知抑制或合并允许多次完成共用一次中断。"
         },
         {
           "id": "path-1",
@@ -2609,7 +2679,7 @@
             "guest-receive",
             "consume"
           ],
-          "boundary": "Guest EOI 与驱动取得完成记录分开；eoi 的 KVM 实现解释软件 LAPIC 状态，不是 Guest 直接调用宿主函数。 vring_interrupt → skb_recv_done 是通知回调；NAPI 调度后才进入 virtnet_poll → 接收处理 → used 回收，跨调度边界。",
+          "boundary": "Guest EOI 更新中断服务状态，驱动另行取得队列完成记录；链接中的 KVM eoi 实现对应宿主的软件 LAPIC 处理。vring_interrupt → skb_recv_done 安排 NAPI，NAPI 获得调度后才进入 virtnet_poll → 接收处理 → used 回收。",
           "entry": {
             "kind": "notification",
             "label": "中断交付 Guest 后执行 IRQ 回调；后续 NAPI 另行调度"
@@ -2619,7 +2689,7 @@
     },
     {
       "id": "apicv-posted",
-      "label": "APICv Posted Interrupt",
+      "label": "APICv · KVM 软件投递",
       "summary": "目标 vCPU 正在运行时，KVM 将向量写入 PIR，硬件同步到虚拟 IRR 并向客户机交付。",
       "assumptions": [
         "Intel 处理器支持并启用 APICv、virtual interrupt delivery 与 posted interrupts",
@@ -3002,7 +3072,7 @@
           "title": "通知目标物理 CPU",
           "actor": "KVM → 目标处理器",
           "description": "KVM 向正在运行目标 vCPU 的 CPU 发送 posted notification。",
-          "detail": "宿主通知向量用于提示处理器检查 PID，与客户机的 0x51 向量不是同一编号。本例条件下无需为该通知退出 Guest。",
+          "detail": "宿主通知向量提示处理器检查 PID；PID 中记录客户机的 0x51 向量。两个向量分别用于宿主通知和客户机中断，本例条件下无需为该通知退出 Guest。",
           "active": [
             "pid",
             "cpu"
@@ -3108,7 +3178,7 @@
           "title": "驱动消费已发布的完成",
           "actor": "Guest IRQ / NAPI 与驱动",
           "description": "驱动沿接收处理路径取得 used 项，消费位置从 7 前进到 8。",
-          "detail": "APIC 应答不自动消费队列。NAPI 调度与完整协议栈细节见网络演示；本步只观察完成记录回收。 vring_interrupt 先调用 skb_recv_done 安排 NAPI；随后 virtnet_poll 经接收路径取得 used 项，二者不是连续的同步调用。",
+          "detail": "APIC 应答不自动消费队列。NAPI 调度与完整协议栈细节见网络演示；本步只观察完成记录回收。 vring_interrupt 先调用 skb_recv_done 安排 NAPI；NAPI 获得调度后，virtnet_poll 再经接收路径取得 used 项。",
           "active": [
             "guest",
             "queue"
@@ -3145,7 +3215,7 @@
             "notify-check",
             "virtio-notify"
           ],
-          "boundary": "先写数据与完成记录，发布索引后再决定是否通知；不是每次完成都产生中断。"
+          "boundary": "先写数据与完成记录，发布索引后再检查通知条件；通知抑制或合并允许多次完成共用一次中断。"
         },
         {
           "id": "path-1",
@@ -3200,7 +3270,7 @@
           "sourceIds": [
             "sdm"
           ],
-          "detail": "这是 posted-interrupt processing 的硬件语义，不是调用 vmx_deliver_interrupt 再复制一次 PIR；本例无需退出或重新 VM-entry。",
+          "detail": "这些步骤由处理器的 posted-interrupt processing 完成；本例在 Guest 持续运行时处理 PIR，无需退出或重新 VM-entry。",
           "code": "PID.PIR → vIRR；PIR 清除；ON=0"
         },
         {
@@ -3214,7 +3284,7 @@
           "sourceIds": [
             "sdm"
           ],
-          "detail": "处理器转入 Guest 的中断入口，并更新虚拟 APIC 服务状态；不是 KVM C 函数替 Guest 执行 handler。",
+          "detail": "处理器转入 Guest 的中断入口，并更新虚拟 APIC 服务状态；随后执行的是客户机内核的中断处理代码。",
           "code": "vIRR[0x51]=0；vISR[0x51]=1"
         },
         {
@@ -3572,7 +3642,7 @@
           "title": "Guest 后续轮询队列",
           "actor": "Guest NAPI / 驱动",
           "description": "正在轮询的 Guest 接收路径检查 used.idx，发现有一个新的完成项。",
-          "detail": "没有中断不代表没有完成；此处的推进来自显式轮询，不是设备又发出了一次通知。",
+          "detail": "设备已经发布完成记录，驱动通过显式轮询发现新进度；本步没有新增设备通知。",
           "active": [
             "guest",
             "queue"
@@ -3632,7 +3702,7 @@
             "notify-check",
             "virtio-notify"
           ],
-          "boundary": "先写数据与完成记录，发布索引后再决定是否通知；不是每次完成都产生中断。"
+          "boundary": "先写数据与完成记录，发布索引后再检查通知条件；通知抑制或合并允许多次完成共用一次中断。"
         },
         {
           "id": "guest-poll",
@@ -3648,6 +3718,1146 @@
             "kind": "async",
             "label": "此前已安排的 NAPI 继续轮询；本次完成没有 IRQ 通知"
           }
+        }
+      ]
+    },
+    {
+      "id": "vtd-remapped",
+      "label": "中断重映射 · 宿主转发",
+      "summary": "跟踪直通设备的 MSI-X：VT-d 校验来源并送入宿主 IRQ，VFIO 通过 eventfd / irqfd 转交 KVM，最后注入 Guest 向量 0x51。",
+      "assumptions": [
+        "物理 PCIe 设备通过 VFIO 直通，DMA 已写入本次完成数据；从设备准备发送 MSI-X 开始。这里没有 virtio used ring。",
+        "示例 Requester ID 为 03:00.0（0x0300），IRTE 索引为 0x20、subhandle 为 0；均为说明字段关系的示例值。实际索引和向量由系统分配。",
+        "VT-d 中断重映射已启用，IRTE 为 Present，按设备拓扑设置 Source-ID 校验；示例为无别名的普通 PCIe 端点，来源必须匹配 0x0300。",
+        "Guest 的目标 APIC ID 为 1，中断向量为 0x51；Guest IF = 1、无 interrupt shadow，APIC 优先级允许交付。Guest APIC ID 与宿主 APIC ID 属于不同编号空间。",
+        "IRTE 可以命中 IOMMU 缓存；图中“查询 IRTE”表示逻辑查找，不代表每次中断都读取内存。",
+        "本场景关闭 APICv，不使用设备 posted interrupt，也不使用宿主 Posted MSI 加速；IRTE 采用普通 remapped 格式，明确展示完整的软件转发路径。",
+        "IRTE 的宿主目标 APIC ID = 2、宿主向量 = 0xB1；VFIO eventfd 已与 KVM irqfd 连接，路由键 GSI 37 指向 Guest APIC ID 1 / 向量 0x51。QEMU 参与配置，逐次中断不经过 QEMU 用户态。",
+        "宿主接收中断的 CPU 与目标 vCPU 所在 CPU 可以不同。需要通知或唤醒目标 vCPU 时，由 KVM 调度和进入路径推进；示例省略额外的调度等待。"
+      ],
+      "nodes": [
+        {
+          "id": "device",
+          "label": "直通 PCIe 设备",
+          "role": "物理设备 · MSI-X",
+          "initial": "DMA 已完成，MSI-X 待发送"
+        },
+        {
+          "id": "iommu",
+          "label": "VT-d 中断重映射",
+          "role": "IOMMU 硬件",
+          "initial": "IRTE[0x20] 已配置，等待消息"
+        },
+        {
+          "id": "vfio",
+          "label": "VFIO IRQ handler",
+          "role": "宿主内核",
+          "initial": "等待宿主向量 0xB1"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM irqfd / MSI 路由",
+          "role": "宿主内核",
+          "initial": "GSI 37 路由已登记"
+        },
+        {
+          "id": "lapic",
+          "label": "vCPU 1 LAPIC",
+          "role": "KVM 软件 APIC 状态",
+          "initial": "IRR[0x51] = 0，ISR[0x51] = 0"
+        },
+        {
+          "id": "guest",
+          "label": "Guest IRQ / 驱动",
+          "role": "客户机内核",
+          "badge": "内核态",
+          "initial": "等待向量 0x51"
+        }
+      ],
+      "layout": {
+        "domains": [
+          {
+            "id": "hardware",
+            "component": "hardware",
+            "title": "PCIe / VT-d",
+            "context": "物理消息与来源校验",
+            "nodes": [
+              "device",
+              "iommu"
+            ]
+          },
+          {
+            "id": "host",
+            "component": "host-kernel",
+            "title": "Host IRQ",
+            "context": "宿主中断处理",
+            "nodes": [
+              "vfio"
+            ]
+          },
+          {
+            "id": "kvm",
+            "component": "kvm",
+            "title": "KVM",
+            "context": "宿主内核 · 路由与注入",
+            "nodes": [
+              "kvm",
+              "lapic"
+            ]
+          },
+          {
+            "id": "guest",
+            "component": "guest",
+            "title": "Guest",
+            "context": "客户机中断处理",
+            "nodes": [
+              "guest"
+            ]
+          },
+          {
+            "id": "qemu-config",
+            "component": "qemu",
+            "title": "QEMU",
+            "context": "用户态配置",
+            "nodes": [],
+            "note": "预先建立 VFIO / eventfd / irqfd 路由；本次中断无需回到 QEMU 用户态转发。"
+          }
+        ]
+      },
+      "links": [
+        {
+          "id": "msi",
+          "from": "device",
+          "to": "iommu",
+          "label": "remappable MSI · index 0x20",
+          "kind": "notification"
+        },
+        {
+          "id": "host-irq",
+          "from": "iommu",
+          "to": "vfio",
+          "label": "Host APIC 2 · 向量 0xB1",
+          "kind": "notification"
+        },
+        {
+          "id": "event",
+          "from": "vfio",
+          "to": "kvm",
+          "label": "eventfd → irqfd",
+          "kind": "notification"
+        },
+        {
+          "id": "route",
+          "from": "kvm",
+          "to": "lapic",
+          "label": "GSI 37 → Guest 向量 0x51",
+          "kind": "notification"
+        },
+        {
+          "id": "entry",
+          "from": "lapic",
+          "to": "guest",
+          "label": "VM-entry 外部中断注入",
+          "kind": "notification"
+        },
+        {
+          "id": "eoi",
+          "from": "guest",
+          "to": "lapic",
+          "label": "Guest EOI",
+          "kind": "control"
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "remap-config",
+          "title": "配置 remappable MSI 与来源检查",
+          "context": "设备绑定与宿主 IRQ 配置阶段",
+          "sourceIds": [
+            "vtd-msi",
+            "vtd-source",
+            "vtd-remap"
+          ],
+          "boundary": "这些函数配置消息和 IRTE。逐次中断中的索引查找、来源校验与递送由 VT-d 硬件完成，不逐次执行这些配置函数。"
+        },
+        {
+          "id": "host-forward",
+          "title": "宿主 VFIO 中断转交 KVM",
+          "context": "宿主 IRQ 与 irqfd 回调",
+          "sourceIds": [
+            "vfio-msi",
+            "irqfd",
+            "routing",
+            "deliver"
+          ],
+          "boundary": "按处理阶段串联源码入口；VFIO handler 触发 eventfd，irqfd 回调使用已登记路由进入 KVM MSI / LAPIC 路径。",
+          "entry": {
+            "kind": "notification",
+            "label": "普通重映射消息先进入宿主 IRQ handler"
+          }
+        },
+        {
+          "id": "vcpu-entry",
+          "title": "检查条件并准备 Guest 注入",
+          "context": "目标 vCPU 的 KVM 进入路径",
+          "sourceIds": [
+            "allowed",
+            "ack",
+            "inject"
+          ],
+          "boundary": "异步待定事件在 vCPU 进入路径处理；注入字段准备与成功 VM-entry 分开观察。",
+          "entry": {
+            "kind": "async",
+            "label": "目标 vCPU 处理待定事件，调度等待省略"
+          }
+        },
+        {
+          "id": "guest-ack",
+          "title": "客户机边沿 IRQ 应答",
+          "context": "Guest IRQ 与软件 LAPIC",
+          "sourceIds": [
+            "irq-ack",
+            "eoi"
+          ],
+          "boundary": "Guest EOI 维护 LAPIC 服务状态，设备完成消费由具体直通设备驱动决定。",
+          "entry": {
+            "kind": "notification",
+            "label": "VM-entry 成功后执行 Guest IRQ 入口"
+          }
+        }
+      ],
+      "structures": [
+        {
+          "id": "message",
+          "title": "设备消息与来源",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "source-id",
+              "label": "PCIe Requester ID",
+              "initial": "0x0300 · 03:00.0"
+            },
+            {
+              "key": "ir-index",
+              "label": "IRTE 索引 / subhandle",
+              "initial": "0x20 / 0"
+            },
+            {
+              "key": "message",
+              "label": "MSI-X 消息",
+              "initial": "待发送"
+            },
+            {
+              "key": "source-check",
+              "label": "Source-ID 校验",
+              "initial": "待校验"
+            }
+          ]
+        },
+        {
+          "id": "irte",
+          "title": "IRTE · Remapped",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "irte-mode",
+              "label": "格式 / Present",
+              "initial": "remapped / 1"
+            },
+            {
+              "key": "host-destination",
+              "label": "宿主目标 APIC ID",
+              "initial": "2"
+            },
+            {
+              "key": "host-vector",
+              "label": "宿主 IRQ 向量",
+              "initial": "0xB1"
+            },
+            {
+              "key": "host-irq",
+              "label": "宿主 IRQ",
+              "initial": "等待消息"
+            }
+          ]
+        },
+        {
+          "id": "guest-route",
+          "title": "软件路由与 Guest LAPIC",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "gsi",
+              "label": "KVM 路由键",
+              "initial": "GSI 37"
+            },
+            {
+              "key": "guest-destination",
+              "label": "Guest APIC ID",
+              "initial": "1"
+            },
+            {
+              "key": "guest-vector",
+              "label": "Guest 中断向量",
+              "initial": "0x51"
+            },
+            {
+              "key": "eventfd",
+              "label": "eventfd / irqfd",
+              "initial": "已绑定，等待事件"
+            },
+            {
+              "key": "irr",
+              "label": "IRR[0x51]",
+              "initial": "0"
+            },
+            {
+              "key": "isr",
+              "label": "ISR[0x51]",
+              "initial": "0"
+            },
+            {
+              "key": "entry",
+              "label": "VM-entry 注入",
+              "initial": "未准备"
+            },
+            {
+              "key": "handler",
+              "label": "Guest 处理程序",
+              "initial": "未进入"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "ready",
+          "title": "初始状态",
+          "actor": "设备与路由",
+          "description": "DMA 数据已经就绪，中断重映射表与 VFIO / irqfd 路由已配置，本次消息尚未发送。",
+          "detail": "普通 IRTE 决定消息先交给哪个宿主 CPU；KVM 的 GSI 路由另行决定 Guest 目标。宿主向量 0xB1 与 Guest 向量 0x51 分开保存。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "vtd-remap",
+            "vtd-source",
+            "pi-route"
+          ],
+          "focus": true
+        },
+        {
+          "id": "emit",
+          "title": "设备发送 MSI-X",
+          "actor": "物理 PCIe 设备",
+          "description": "设备发出 remappable MSI，消息中携带 IRTE 索引，PCIe 事务同时带有 Requester ID。",
+          "detail": "本例 index = 0x20、subhandle = 0。Linux 配置的 remappable MSI 格式由 IOMMU 解释；Guest 编程的虚拟 MSI-X 目标不会原样成为宿主 CPU 的接收向量。",
+          "active": [
+            "device",
+            "iommu"
+          ],
+          "links": [
+            "msi"
+          ],
+          "changes": {
+            "message": "已发送 · index 0x20 / subhandle 0"
+          },
+          "nodeStates": {
+            "device": "已发出本次 MSI-X",
+            "iommu": "收到 RID 0x0300 的消息"
+          },
+          "sourceIds": [
+            "vtd-msi",
+            "vtd-source"
+          ],
+          "focus": true
+        },
+        {
+          "id": "validate",
+          "title": "查找并校验 IRTE",
+          "actor": "VT-d 中断重映射硬件",
+          "description": "IOMMU 使用消息索引查找 IRTE，检查 Present 与来源校验条件，通过后取得宿主目标 APIC ID 2 和向量 0xB1。",
+          "detail": "本例启用完整 Source-ID 比较。无效索引、Present = 0 的表项或来源不匹配会产生重映射故障，消息不能沿成功路径送到目标；设备别名及桥接拓扑的校验方式由驱动设置。",
+          "active": [
+            "iommu"
+          ],
+          "links": [],
+          "changes": {
+            "source-check": "通过 · RID 0x0300",
+            "host-irq": "等待递送 · Host APIC 2 / 0xB1"
+          },
+          "nodeStates": {
+            "iommu": "校验通过，选定宿主 APIC 2 / 0xB1"
+          },
+          "sourceIds": [
+            "vtd-source",
+            "vtd-remap"
+          ],
+          "focus": true
+        },
+        {
+          "id": "host",
+          "title": "进入宿主 IRQ",
+          "actor": "宿主 CPU / VFIO",
+          "description": "VT-d 按普通 remapped 表项递送中断，宿主 IRQ 子系统进入此设备绑定的 VFIO MSI handler。",
+          "detail": "宿主处理的是向量 0xB1。Linux IRQ 号与 CPU 向量还存在一层映射；若接收 CPU 当时运行 Guest，需要先转到宿主处理，本例随后由软件向 Guest 转发。",
+          "active": [
+            "iommu",
+            "vfio"
+          ],
+          "links": [
+            "host-irq"
+          ],
+          "changes": {
+            "host-irq": "handler 正在处理"
+          },
+          "nodeStates": {
+            "iommu": "消息已递送宿主",
+            "vfio": "执行 vfio_msihandler()"
+          },
+          "sourceIds": [
+            "vtd-remap",
+            "vfio-msi"
+          ],
+          "focus": true
+        },
+        {
+          "id": "signal",
+          "title": "触发 eventfd / irqfd",
+          "actor": "VFIO → KVM",
+          "description": "vfio_msihandler() 调用 eventfd_signal()。绑定的 irqfd 回调按预登记的 GSI 37 路由生成 Guest MSI 请求。",
+          "detail": "eventfd 传递通知，KVM 路由保存 Guest APIC ID 1 与向量 0x51。本次转发无需先回到 QEMU 用户态；这里显示触发事件，不把 eventfd 当作请求完成数量。",
+          "active": [
+            "vfio",
+            "kvm"
+          ],
+          "links": [
+            "event"
+          ],
+          "changes": {
+            "eventfd": "已触发 irqfd",
+            "host-irq": "VFIO 已转发事件"
+          },
+          "nodeStates": {
+            "vfio": "已执行 eventfd_signal()",
+            "kvm": "irqfd 选择 GSI 37 → Guest 1 / 0x51"
+          },
+          "sourceIds": [
+            "vfio-msi",
+            "irqfd",
+            "routing"
+          ],
+          "focus": true
+        },
+        {
+          "id": "pending",
+          "title": "登记 Guest 待处理中断",
+          "actor": "KVM LAPIC",
+          "description": "KVM 将向量 0x51 置入目标 vCPU 的 LAPIC IRR，并请求目标 vCPU 处理待定事件。",
+          "detail": "本场景关闭 APICv，使用软件 LAPIC 的 IRR。目标正在其他 CPU 运行或等待时，还需 kick / 唤醒；IRR 置位本身不表示 Guest handler 已开始执行。",
+          "active": [
+            "kvm",
+            "lapic"
+          ],
+          "links": [
+            "route"
+          ],
+          "changes": {
+            "irr": "1"
+          },
+          "nodeStates": {
+            "kvm": "已提交 Guest 向量 0x51",
+            "lapic": "IRR[0x51] = 1，等待注入"
+          },
+          "sourceIds": [
+            "routing",
+            "deliver"
+          ],
+          "focus": true
+        },
+        {
+          "id": "inject",
+          "title": "准备 VM-entry 注入",
+          "actor": "KVM vCPU 进入路径",
+          "description": "KVM 检查 Guest 的 IF、interrupt shadow 和 APIC 优先级，选取 0x51，更新 LAPIC 应答状态并填写 VM-entry 中断字段。",
+          "detail": "此时 IRR 清除、ISR 置位；VM-entry 中断字段准备完成。只有随后的成功进入才会让 Guest 执行中断入口，注入失败或取消时还需要相应的恢复处理。",
+          "active": [
+            "lapic"
+          ],
+          "links": [],
+          "changes": {
+            "irr": "0",
+            "isr": "1",
+            "entry": "已准备 · 向量 0x51"
+          },
+          "nodeStates": {
+            "lapic": "IRR = 0，ISR = 1，注入字段已准备"
+          },
+          "sourceIds": [
+            "allowed",
+            "ack",
+            "inject"
+          ],
+          "focus": true
+        },
+        {
+          "id": "accept",
+          "title": "进入 Guest 处理入口",
+          "actor": "目标 vCPU / Guest 内核",
+          "description": "VM-entry 成功，处理器按 Guest IDT 进入向量 0x51 的中断入口，客户机开始执行对应的中断处理。",
+          "detail": "这里的控制转移才是 Guest 收到中断。客户机驱动还需读取设备完成状态；实际驱动可以使用中断下半部或轮询处理数据。",
+          "active": [
+            "lapic",
+            "guest"
+          ],
+          "links": [
+            "entry"
+          ],
+          "changes": {
+            "entry": "VM-entry 成功",
+            "handler": "已进入向量 0x51"
+          },
+          "nodeStates": {
+            "lapic": "ISR[0x51] = 1",
+            "guest": "执行 Guest 向量 0x51 的处理入口"
+          },
+          "sourceIds": [
+            "inject",
+            "sdm"
+          ],
+          "focus": true
+        },
+        {
+          "id": "eoi",
+          "title": "应答服务状态",
+          "actor": "Guest LAPIC / KVM",
+          "description": "Guest 写 EOI，结束当前向量在 LAPIC 中的服务状态；后续是否还有设备完成需要处理，由驱动按设备协议检查。",
+          "detail": "EOI 与 DMA 数据消费相互独立。Linux 的边沿中断处理可以先做 APIC 应答，再调用设备 handler，因此本步不把 EOI 等同于“完成数据已读完”。",
+          "active": [
+            "guest",
+            "lapic"
+          ],
+          "links": [
+            "eoi"
+          ],
+          "changes": {
+            "isr": "0",
+            "handler": "已应答 APIC · 驱动继续处理完成"
+          },
+          "nodeStates": {
+            "lapic": "ISR[0x51] = 0",
+            "guest": "已应答，按设备协议消费完成"
+          },
+          "sourceIds": [
+            "eoi",
+            "irq-ack"
+          ],
+          "focus": true
+        }
+      ]
+    },
+    {
+      "id": "vtd-posted",
+      "label": "VT-d Posted Interrupt",
+      "summary": "跟踪直通设备的硬件投递：VT-d 校验 IRTE 后写入目标 vCPU 的 PID，通过宿主通知向量提示处理器，再交付 Guest 向量 0x51。",
+      "assumptions": [
+        "物理 PCIe 设备通过 VFIO 直通，DMA 已写入本次完成数据；从设备准备发送 MSI-X 开始。这里没有 virtio used ring。",
+        "示例 Requester ID 为 03:00.0（0x0300），IRTE 索引为 0x20、subhandle 为 0；均为说明字段关系的示例值。实际索引和向量由系统分配。",
+        "VT-d 中断重映射已启用，IRTE 为 Present，按设备拓扑设置 Source-ID 校验；示例为无别名的普通 PCIe 端点，来源必须匹配 0x0300。",
+        "Guest 的目标 APIC ID 为 1，中断向量为 0x51；Guest IF = 1、无 interrupt shadow，APIC 优先级允许交付。Guest APIC ID 与宿主 APIC ID 属于不同编号空间。",
+        "IRTE 可以命中 IOMMU 缓存；图中“查询 IRTE”表示逻辑查找，不代表每次中断都读取内存。",
+        "VT-d 支持 posted interrupt，内核启用中断重映射与设备 posting，Intel APICv / virtual-interrupt delivery 已启用。VFIO irq-bypass 绑定成功，Guest 使用内核 LAPIC。",
+        "KVM 路由为可 posting 的单一 vCPU 普通中断；多播、广播及 NMI 等不适用本例。绑定时把 Guest 向量和该 vCPU 的 PID 地址写入 posted IRTE。",
+        "目标 vCPU 1 正在宿主 APIC ID 2 对应的 CPU 上以 VMX non-root 模式运行；不考虑嵌套虚拟化和迁核。PID 为 64 字节对齐的宿主内存结构，并非 Guest RAM。",
+        "初始 PIR[0x51] = 0、ON = 0、SN = 0；NV 使用 Linux POSTED_INTR_VECTOR，NDST 指向宿主 APIC ID 2，且没有其他并发 posted 通知。",
+        "不适合设备 posting 的路由可回退到普通 remapped IRTE 与宿主软件转发。vCPU 被抢占、阻塞或迁核时，KVM 还会维护 PID 的目标、抑制与唤醒设置，不保证所有状态下都无 VM-exit。",
+        "为单独观察交付，本例的 EOI-exit bitmap 不要求向量 0x51 退出；Guest 的 APIC EOI 虚拟化按该配置处理。"
+      ],
+      "nodes": [
+        {
+          "id": "device",
+          "label": "直通 PCIe 设备",
+          "role": "物理设备 · MSI-X",
+          "initial": "DMA 已完成，MSI-X 待发送"
+        },
+        {
+          "id": "iommu",
+          "label": "VT-d posted IRTE",
+          "role": "IOMMU 硬件",
+          "initial": "IRTE 指向 vCPU 1 的 PID"
+        },
+        {
+          "id": "pid",
+          "label": "vCPU 1 · PID",
+          "role": "宿主内存 · 64 B 对齐",
+          "initial": "PIR[0x51] = 0，ON = 0，SN = 0"
+        },
+        {
+          "id": "cpu",
+          "label": "宿主 CPU · APICv",
+          "role": "执行目标 vCPU 的处理器",
+          "initial": "vCPU 1 运行中，等待 posted 通知"
+        },
+        {
+          "id": "lapic",
+          "label": "vCPU 1 虚拟 APIC",
+          "role": "硬件维护的虚拟中断状态",
+          "initial": "vIRR[0x51] = 0，vISR[0x51] = 0"
+        },
+        {
+          "id": "guest",
+          "label": "Guest IRQ / 驱动",
+          "role": "客户机内核",
+          "badge": "内核态",
+          "initial": "等待向量 0x51"
+        }
+      ],
+      "layout": {
+        "domains": [
+          {
+            "id": "device",
+            "component": "hardware",
+            "title": "PCIe 设备",
+            "context": "物理完成通知",
+            "nodes": [
+              "device"
+            ]
+          },
+          {
+            "id": "iommu",
+            "component": "hardware",
+            "title": "VT-d",
+            "context": "来源校验与 posted 写入",
+            "nodes": [
+              "iommu"
+            ]
+          },
+          {
+            "id": "cpu",
+            "component": "hardware",
+            "title": "CPU / APICv",
+            "context": "目标 vCPU 已在运行",
+            "nodes": [
+              "cpu",
+              "lapic"
+            ]
+          },
+          {
+            "id": "guest",
+            "component": "guest",
+            "title": "Guest",
+            "context": "客户机中断处理",
+            "nodes": [
+              "guest"
+            ]
+          },
+          {
+            "id": "qemu-config",
+            "component": "qemu",
+            "title": "QEMU",
+            "context": "用户态配置",
+            "nodes": [],
+            "note": "配置 VFIO 直通和中断路由；设备 posted 的逐次交付不经过 QEMU 用户态。"
+          },
+          {
+            "id": "kvm-config",
+            "component": "kvm",
+            "title": "KVM",
+            "context": "宿主内核 · vCPU 与 PID 管理",
+            "nodes": [],
+            "note": "绑定单目标路由和 PID，维护 vCPU 调度、迁核及回退；本例目标 vCPU 已在运行。"
+          },
+          {
+            "id": "host-config",
+            "component": "host-kernel",
+            "title": "Host kernel",
+            "context": "VFIO / IOMMU 配置",
+            "nodes": [],
+            "note": "预先配置来源校验和 posted IRTE；本次交付不执行 VFIO 宿主 MSI handler。"
+          }
+        ],
+        "memory": {
+          "title": "宿主内存 · PID",
+          "description": "每个 vCPU 的 Posted Interrupt Descriptor；保存 PIR 与通知控制，不属于 Guest RAM",
+          "nodes": [
+            "pid"
+          ]
+        }
+      },
+      "links": [
+        {
+          "id": "msi",
+          "from": "device",
+          "to": "iommu",
+          "label": "remappable MSI · index 0x20",
+          "kind": "notification"
+        },
+        {
+          "id": "post",
+          "from": "iommu",
+          "to": "pid",
+          "label": "Guest 向量 0x51 → PIR",
+          "kind": "control"
+        },
+        {
+          "id": "notify",
+          "from": "iommu",
+          "to": "cpu",
+          "label": "NDST 2 · NV = POSTED_INTR_VECTOR",
+          "kind": "notification"
+        },
+        {
+          "id": "sync",
+          "from": "pid",
+          "to": "lapic",
+          "label": "硬件同步 PIR → vIRR",
+          "kind": "control"
+        },
+        {
+          "id": "accept",
+          "from": "lapic",
+          "to": "guest",
+          "label": "Guest 向量 0x51",
+          "kind": "notification"
+        },
+        {
+          "id": "eoi",
+          "from": "guest",
+          "to": "lapic",
+          "label": "虚拟 EOI",
+          "kind": "control"
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "device-binding",
+          "title": "把单目标路由绑定为 posted IRTE",
+          "context": "KVM / IOMMU 配置阶段",
+          "sourceIds": [
+            "pi-route",
+            "pi-bind",
+            "vtd-posting"
+          ],
+          "boundary": "KVM 检查路由并提供 PID 物理地址及 Guest 向量；IOMMU 驱动修改 IRTE。绑定完成后逐次设备 posting 由硬件执行，不重复调用这些函数。"
+        },
+        {
+          "id": "source-check-config",
+          "title": "配置来源检查与 MSI 索引",
+          "context": "宿主中断重映射配置",
+          "sourceIds": [
+            "vtd-source",
+            "vtd-msi"
+          ],
+          "boundary": "配置 PCIe 来源验证和 remappable MSI 格式。表项缓存命中时不需要每次读取内存，来源异常走重映射故障处理。"
+        },
+        {
+          "id": "blocked-or-moved",
+          "title": "vCPU 运行状态变化的相关实现",
+          "context": "KVM 目标 vCPU 的调度与唤醒",
+          "sourceIds": [
+            "posted-notify",
+            "pi-route"
+          ],
+          "boundary": "软件 posting 的唤醒处理和路由回退提供边界参考；本例只演示目标 vCPU 已运行的 VT-d 硬件路径，不把这些函数画成每次物理消息的调用链。"
+        }
+      ],
+      "structures": [
+        {
+          "id": "message",
+          "title": "设备消息与 posted IRTE",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "source-id",
+              "label": "PCIe Requester ID",
+              "initial": "0x0300 · 03:00.0"
+            },
+            {
+              "key": "ir-index",
+              "label": "IRTE 索引 / subhandle",
+              "initial": "0x20 / 0"
+            },
+            {
+              "key": "message",
+              "label": "MSI-X 消息",
+              "initial": "待发送"
+            },
+            {
+              "key": "source-check",
+              "label": "Source-ID 校验",
+              "initial": "待校验"
+            },
+            {
+              "key": "irte-mode",
+              "label": "IRTE 格式 / Present",
+              "initial": "posted / 1"
+            },
+            {
+              "key": "irte-vector",
+              "label": "IRTE Guest 向量",
+              "initial": "0x51"
+            },
+            {
+              "key": "irte-pda",
+              "label": "IRTE Posted Descriptor 地址",
+              "initial": "vCPU 1 的 PID · 宿主物理地址"
+            }
+          ]
+        },
+        {
+          "id": "pid",
+          "title": "PID · 位图与通知控制",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "pir",
+              "label": "PIR[0x51]",
+              "initial": "0"
+            },
+            {
+              "key": "on",
+              "label": "ON · Outstanding Notification",
+              "initial": "0"
+            },
+            {
+              "key": "sn",
+              "label": "SN · Suppress Notification",
+              "initial": "0"
+            },
+            {
+              "key": "nv",
+              "label": "NV · 宿主通知向量",
+              "initial": "POSTED_INTR_VECTOR"
+            },
+            {
+              "key": "ndst",
+              "label": "NDST · 宿主目标 APIC ID",
+              "initial": "2"
+            },
+            {
+              "key": "notification",
+              "label": "posted 通知",
+              "initial": "尚未发送"
+            }
+          ]
+        },
+        {
+          "id": "virtual-apic",
+          "title": "Guest 虚拟 APIC",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "guest-destination",
+              "label": "Guest APIC ID",
+              "initial": "1"
+            },
+            {
+              "key": "guest-vector",
+              "label": "Guest 中断向量",
+              "initial": "0x51"
+            },
+            {
+              "key": "irr",
+              "label": "vIRR[0x51]",
+              "initial": "0"
+            },
+            {
+              "key": "isr",
+              "label": "vISR[0x51]",
+              "initial": "0"
+            },
+            {
+              "key": "handler",
+              "label": "Guest 处理程序",
+              "initial": "未进入"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "ready",
+          "title": "初始状态",
+          "actor": "设备与 posted 路由",
+          "description": "直通设备完成数据已就绪，posted IRTE 已绑定 vCPU 1 的 PID，目标 vCPU 正在运行。",
+          "detail": "KVM 在路由绑定阶段提供 Guest 向量 0x51 与 PID 地址；这一步配置发生在逐次中断之外。PID.NV 负责提示宿主处理器，Guest IDT 使用的仍是 0x51。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "pi-bind",
+            "pi-route",
+            "vtd-posting"
+          ],
+          "focus": true
+        },
+        {
+          "id": "emit",
+          "title": "设备发送 MSI-X",
+          "actor": "物理 PCIe 设备",
+          "description": "设备仍然发出 remappable MSI，消息携带 IRTE 索引，PCIe 事务标识来源 03:00.0。",
+          "detail": "设备发送消息的形式与普通 remapped 路径相同；posted 行为由 IOMMU 选择的 IRTE 格式决定，设备不直接填写 vCPU 的 PIR。",
+          "active": [
+            "device",
+            "iommu"
+          ],
+          "links": [
+            "msi"
+          ],
+          "changes": {
+            "message": "已发送 · index 0x20 / subhandle 0"
+          },
+          "nodeStates": {
+            "device": "已发出本次 MSI-X",
+            "iommu": "收到 RID 0x0300 的消息"
+          },
+          "sourceIds": [
+            "vtd-msi",
+            "vtd-source"
+          ],
+          "focus": true
+        },
+        {
+          "id": "validate",
+          "title": "查找 posted IRTE",
+          "actor": "VT-d 中断重映射硬件",
+          "description": "IOMMU 检查索引、Present 与 Source-ID 校验，通过后读取 posted 格式中的 Guest 向量 0x51 和 PID 地址。",
+          "detail": "posted IRTE 中的向量用于 Guest 中断；通知所需的宿主目标与通知向量存放在 PID.NDST / NV。来源不匹配或表项无效时走重映射故障处理，不继续 posted。",
+          "active": [
+            "iommu"
+          ],
+          "links": [],
+          "changes": {
+            "source-check": "通过 · RID 0x0300"
+          },
+          "nodeStates": {
+            "iommu": "校验通过，定位 vCPU 1 的 PID / 向量 0x51"
+          },
+          "sourceIds": [
+            "vtd-source",
+            "vtd-posting",
+            "pi-bind"
+          ],
+          "focus": true
+        },
+        {
+          "id": "post",
+          "title": "发布 PIR 位",
+          "actor": "VT-d posted 硬件",
+          "description": "IOMMU 在 PID 中原子设置 PIR[0x51]。本例 SN = 0 且 ON = 0，更新 ON 为 1 并需要发出通知。",
+          "detail": "PIR 保存 Guest 待处理向量，ON 表示已有通知待处理。其他通知已在途或通知被抑制时，可以只积累 pending；不能把每个 PIR 置位都计算成一次宿主中断。",
+          "active": [
+            "iommu",
+            "pid"
+          ],
+          "links": [
+            "post"
+          ],
+          "changes": {
+            "pir": "1",
+            "on": "1",
+            "notification": "需要发送 · SN 0 / 原 ON 0"
+          },
+          "nodeStates": {
+            "iommu": "已发布 Guest 向量 0x51",
+            "pid": "PIR[0x51] = 1，ON = 1"
+          },
+          "sourceIds": [
+            "vtd-posting",
+            "sdm"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify",
+          "title": "通知目标处理器",
+          "actor": "VT-d → 目标宿主 CPU",
+          "description": "IOMMU 按 PID.NDST 通知宿主 APIC ID 2，通知向量为 PID.NV 的 POSTED_INTR_VECTOR。",
+          "detail": "目标 CPU 正在运行配置匹配的 vCPU，硬件识别 posted 通知并进入处理。这个通知向量用于宿主侧协调，Guest 不会以 POSTED_INTR_VECTOR 进入自己的 IDT。",
+          "active": [
+            "iommu",
+            "cpu"
+          ],
+          "links": [
+            "notify"
+          ],
+          "changes": {
+            "notification": "已送达运行中的目标 CPU"
+          },
+          "nodeStates": {
+            "iommu": "posted 通知已发出",
+            "cpu": "识别匹配的 posted 通知"
+          },
+          "sourceIds": [
+            "sdm",
+            "pi-bind"
+          ],
+          "focus": true
+        },
+        {
+          "id": "sync",
+          "title": "同步虚拟中断状态",
+          "actor": "目标 CPU · posted processing",
+          "description": "处理器将 PIR 的 pending 合入虚拟 APIC 的 IRR，清除已同步 PIR 位和 ON，并更新虚拟中断优先级状态。",
+          "detail": "本例只有 0x51 一个向量、无并发写入，因此显示 PIR 1 → 0、vIRR 0 → 1。硬件同步是体系结构操作，页面分步便于观察状态，不表示软件可在这些步骤之间插入处理。",
+          "active": [
+            "cpu",
+            "pid",
+            "lapic"
+          ],
+          "links": [
+            "sync"
+          ],
+          "changes": {
+            "pir": "0",
+            "on": "0",
+            "irr": "1",
+            "notification": "已处理"
+          },
+          "nodeStates": {
+            "cpu": "posted 状态同步完成",
+            "pid": "PIR[0x51] = 0，ON = 0",
+            "lapic": "vIRR[0x51] = 1，等待客户机接受"
+          },
+          "sourceIds": [
+            "sdm"
+          ],
+          "focus": true
+        },
+        {
+          "id": "accept",
+          "title": "进入 Guest 处理入口",
+          "actor": "目标 vCPU · virtual-interrupt delivery",
+          "description": "Guest 的 IF、shadow 和优先级条件均满足，处理器交付向量 0x51，vIRR 清位、vISR 置位，进入 Guest IRQ 处理入口。",
+          "detail": "在本例固定的运行条件下，无需先执行 VFIO 宿主 MSI handler，也不经 eventfd / irqfd 的逐次转发。Guest 仍使用自己的 IDT 与设备驱动处理完成。",
+          "active": [
+            "lapic",
+            "guest"
+          ],
+          "links": [
+            "accept"
+          ],
+          "changes": {
+            "irr": "0",
+            "isr": "1",
+            "handler": "已进入向量 0x51"
+          },
+          "nodeStates": {
+            "lapic": "vIRR = 0，vISR[0x51] = 1",
+            "guest": "执行 Guest 向量 0x51 的处理入口"
+          },
+          "sourceIds": [
+            "sdm",
+            "pi-route"
+          ],
+          "focus": true
+        },
+        {
+          "id": "eoi",
+          "title": "虚拟 EOI",
+          "actor": "Guest / APICv",
+          "description": "Guest 应答当前中断，虚拟 APIC 清除服务位并重估优先级；驱动继续按直通设备的协议处理完成状态。",
+          "detail": "本例未要求该向量 EOI 退出。EOI 不表示 DMA 数据已被消费；vCPU 停止运行、迁核或路由改变时，还要走 KVM 对 PID 的维护、唤醒或路由回退路径。",
+          "active": [
+            "guest",
+            "lapic"
+          ],
+          "links": [
+            "eoi"
+          ],
+          "changes": {
+            "isr": "0",
+            "handler": "已应答 APIC · 驱动继续处理完成"
+          },
+          "nodeStates": {
+            "lapic": "vISR[0x51] = 0",
+            "guest": "已应答，按设备协议消费完成"
+          },
+          "sourceIds": [
+            "sdm",
+            "pi-route",
+            "posted-notify"
+          ],
+          "focus": true
+        }
+      ],
+      "sourceSteps": [
+        {
+          "id": "iommu-check",
+          "title": "VT-d 解释消息与来源检查",
+          "kind": "instruction",
+          "context": "IOMMU 硬件 · 配置由 Linux 预先建立",
+          "stepIds": [
+            "emit",
+            "validate"
+          ],
+          "sourceIds": [
+            "vtd-source",
+            "vtd-msi",
+            "vtd-posting"
+          ],
+          "detail": "Linux 源码展示表项及 MSI 格式；实际消息查找、Present 和来源检查在硬件中执行。",
+          "code": "MSI.index + subhandle → IRTE；Present / Source-ID 检查"
+        },
+        {
+          "id": "iommu-post",
+          "title": "VT-d 发布 PIR 并通知 CPU",
+          "kind": "instruction",
+          "context": "IOMMU 硬件 · PID 原 ON 0 / SN 0",
+          "stepIds": [
+            "post",
+            "notify"
+          ],
+          "sourceIds": [
+            "vtd-posting",
+            "sdm"
+          ],
+          "detail": "posted IRTE 指定 PID 地址和 Guest 向量；PIR 记录 pending，NV / NDST 负责提示宿主处理器。",
+          "code": "PIR[0x51] ← 1；ON ← 1；notification(NDST, NV)"
+        },
+        {
+          "id": "sync-hardware",
+          "title": "处理器同步 posted 状态",
+          "kind": "instruction",
+          "context": "APICv · 目标 vCPU 正在 non-root 运行",
+          "stepIds": [
+            "sync"
+          ],
+          "sourceIds": [
+            "sdm"
+          ],
+          "detail": "硬件将 posted pending 合入虚拟 APIC。单向量、无并发通知条件下，PIR 与 ON 在处理后清除。",
+          "code": "PIR → vIRR；PIR ← 0；ON ← 0"
+        },
+        {
+          "id": "accept-hardware",
+          "title": "接受 Guest 虚拟中断",
+          "kind": "instruction",
+          "context": "Guest IF / shadow / 优先级允许",
+          "stepIds": [
+            "accept"
+          ],
+          "sourceIds": [
+            "sdm"
+          ],
+          "detail": "处理器更新虚拟 APIC 服务状态并转入 Guest IDT 的 0x51 入口，不把 NV 作为客户机向量。",
+          "code": "vIRR[0x51] ← 0；vISR[0x51] ← 1；Guest IDT[0x51]"
+        },
+        {
+          "id": "eoi-hardware",
+          "title": "虚拟 EOI",
+          "kind": "instruction",
+          "context": "EOI-exit bitmap 不要求本向量退出",
+          "stepIds": [
+            "eoi"
+          ],
+          "sourceIds": [
+            "sdm"
+          ],
+          "detail": "本例由硬件完成 EOI 虚拟化，设备完成数据是否已消费由具体驱动决定。",
+          "code": "vISR[0x51] ← 0"
         }
       ]
     }

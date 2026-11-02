@@ -660,7 +660,7 @@
             "qemu-write",
             "qemu-complete"
           ],
-          "boundary": "异步提交与完成回调不是同一调用栈。普通 WRITE 只能确认后端已接受本次数据。"
+          "boundary": "后端异步执行写入，结束后通过完成回调恢复后续处理。普通 WRITE 只能确认后端已接受本次数据。"
         }
       ]
     },
@@ -1276,7 +1276,7 @@
             "qemu-write",
             "qemu-complete"
           ],
-          "boundary": "通过队列交接，不是直接跨层调用。"
+          "boundary": "驱动发布队列后，后端在自己的执行上下文中继续处理。"
         },
         {
           "id": "path-2",
@@ -1287,7 +1287,7 @@
             "linux-blk-command",
             "qemu-flush"
           ],
-          "boundary": "fsync 在 W1 之后提交另一条 FLUSH；FLUSH 不是 WRITE 自带的设备字段。"
+          "boundary": "fsync 在 W1 之后单独提交一条 FLUSH，以确认此前写入满足持久化要求。"
         },
         {
           "id": "path-3",
@@ -1806,7 +1806,7 @@
             "linux-scsi-fua",
             "linux-scsi-cdb"
           ],
-          "boundary": "从 REQ_FUA 已设置的请求开始。FUA 是本次写的完成约束，不是独立命令。"
+          "boundary": "从 REQ_FUA 已设置的写请求开始，FUA 要求本次写在满足持久化条件后才能报告完成。"
         },
         {
           "id": "path-2",

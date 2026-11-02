@@ -1,10 +1,10 @@
-/* Shared appearance/fullscreen regressions across the six offline demos. */
+/* Shared appearance/fullscreen regressions across the offline demos. */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
-const slugs = ['virtio-blk-read', 'network-io', 'cpu-execution', 'memory-access', 'interrupt-delivery', 'gpu-execution'];
+const slugs = ['virtio-blk-read', 'network-io', 'cpu-execution', 'memory-access', 'interrupt-delivery', 'gpu-execution', 'virtio-gpu-rendering'];
 const shots = process.env.WALKTHROUGH_SCREENSHOT_DIR;
 if (shots) fs.mkdirSync(shots, {recursive: true});
 

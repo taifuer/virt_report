@@ -45,6 +45,11 @@ class _TitleListParser(HTMLParser):
             self.parser == "sosp" and tag == "b"
             and any("paperlist" in a.get("class", "").split()
                     for _, a in self.stack)
+        ) or (
+            self.parser == "atc" and tag == "strong"
+            and len(self.stack) > 1 and self.stack[-2][0] == "li"
+            and any(t == "ul" and "paperlist" in a.get("class", "").split()
+                    for t, a in self.stack)
         ) or (self.parser == "socc" and tag == "h3" and self.in_accepted) or (
             self.parser == "pretalx" and tag == "div"
             and "title" in attrs.get("class", "").split()
@@ -86,7 +91,7 @@ class _TitleListParser(HTMLParser):
 
 def parse_title_list(body: str, source: dict) -> list[dict]:
     """Parse known HTML lists; reject empty/challenge pages instead of clearing data."""
-    if source["parser"] not in {"usenix", "sosp", "socc", "pretalx"}:
+    if source["parser"] not in {"usenix", "sosp", "socc", "pretalx", "atc"}:
         raise ValueError(f"未知会议列表解析器: {source['parser']}")
     parser = _TitleListParser(source["parser"], source["source_url"])
     parser.feed(body)

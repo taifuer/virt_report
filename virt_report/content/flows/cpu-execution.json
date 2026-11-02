@@ -444,7 +444,7 @@
         "指令页映射有效；不加入调试单步、宿主抢占及无关异步事件",
         "83 c0 01 编码为 3 字节；示例初值 EAX = 41",
         "共同起点：QEMU vCPU 线程已经处于 KVM_RUN，处理器正在执行 Guest；初始化只列在源码配置路径中",
-        "Guest 与物理 CPU 不是两个传递请求的部件：Guest 指令直接在物理处理器的 non-root 上下文执行"
+        "Guest 指令直接在物理处理器的 non-root 上下文执行；Guest 表示客户机执行环境，CPU 是执行指令的硬件"
       ],
       "nodes": [
         {
@@ -698,7 +698,7 @@
         {
           "id": "path-1",
           "title": "执行前的 vCPU 运行环境",
-          "context": "准备条件 · 不是本条 ADD 的调用链",
+          "context": "虚拟机与 vCPU 的准备条件",
           "sourceIds": [
             "run-loop"
           ],
@@ -733,7 +733,7 @@
           "sourceIds": [
             "sdm"
           ],
-          "detail": "处理器直接完成普通 Guest 指令；这些是架构状态结果，不是额外执行的赋值指令，也没有 KVM C 函数逐条解释 ADD。",
+          "detail": "处理器直接执行 ADD 并更新 Guest 寄存器。这里列出执行后的架构状态，用于对应前后变化；示意赋值行仅描述结果。",
           "code": "EAX=42; ZF=0; CF=0; OF=0; RIP=0x400003"
         },
         {
@@ -761,7 +761,7 @@
         "直接执行 x86-64 getpid 系统调用（RAX=39），不发生设备访问和缺页；无信号或调试干预，满足 SYSRETQ 快速返回条件",
         "省略信号、调试、抢占与安全缓解细节，聚焦 Guest 权限切换",
         "共同起点：QEMU vCPU 线程已经处于 KVM_RUN，处理器正在执行 Guest；初始化只列在源码配置路径中",
-        "Guest 与物理 CPU 不是两个传递请求的部件：Guest 指令直接在物理处理器的 non-root 上下文执行"
+        "Guest 指令直接在物理处理器的 non-root 上下文执行；Guest 表示客户机执行环境，CPU 是执行指令的硬件"
       ],
       "nodes": [
         {
@@ -881,7 +881,7 @@
           "title": "保存返回位置",
           "actor": "物理处理器",
           "description": "SYSCALL 把返回 RIP 保存到 RCX，把原 RFLAGS 保存到 R11。",
-          "detail": "SYSCALL 在一次架构转换中保存下一条 RIP，清除 RF 后保存 RFLAGS，并切换入口；不是两条独立指令，也不自动切换 RSP。本例调用前 RF=0。",
+          "detail": "SYSCALL 在一次架构转换中保存下一条 RIP，清除 RF 后保存 RFLAGS，并切换入口。这些变化由同一条指令完成，RSP 保持原值。本例调用前 RF=0。",
           "active": [
             "guest"
           ],
@@ -1039,7 +1039,7 @@
           "sourceIds": [
             "guest-sysret"
           ],
-          "boundary": "系统调用结果与 SYSRET 可用性已由 do_syscall_64 准备；汇编恢复寄存器和用户栈，最后 SYSRETQ 切回 CPL 3。不是 VM-entry。",
+          "boundary": "系统调用结果与 SYSRET 可用性已由 do_syscall_64 准备；汇编恢复寄存器和用户栈，最后 SYSRETQ 切回 CPL 3。整个切换发生在 Guest 内部。",
           "flow": "return",
           "entry": {
             "kind": "return",
@@ -1103,7 +1103,7 @@
         "示例执行 CPUID leaf 0，虚拟 CPU 厂商配置为 GenuineIntel",
         "返回值由客户机可见 CPU 配置决定，不直接照抄宿主能力",
         "共同起点：QEMU vCPU 线程已经处于 KVM_RUN，处理器正在执行 Guest；初始化只列在源码配置路径中",
-        "Guest 与物理 CPU 不是两个传递请求的部件：Guest 指令直接在物理处理器的 non-root 上下文执行"
+        "Guest 指令直接在物理处理器的 non-root 上下文执行；Guest 表示客户机执行环境，CPU 是执行指令的硬件"
       ],
       "nodes": [
         {
@@ -1378,7 +1378,7 @@
         "读取无法由内核设备处理；单片段长度 4 字节，无 ioeventfd 读处理",
         "示例指令为 mov eax, [rbx]，RBX 已映射到目标地址；设备返回 0x12345678",
         "共同起点：QEMU vCPU 线程已经处于 KVM_RUN，处理器正在执行 Guest；初始化只列在源码配置路径中",
-        "Guest 与物理 CPU 不是两个传递请求的部件：Guest 指令直接在物理处理器的 non-root 上下文执行"
+        "Guest 指令直接在物理处理器的 non-root 上下文执行；Guest 表示客户机执行环境，CPU 是执行指令的硬件"
       ],
       "nodes": [
         {
@@ -1736,7 +1736,7 @@
       "summary": "客户机空闲时执行 HLT，KVM 让宿主 vCPU 线程睡眠；可接受的中断到达后再唤醒并继续。",
       "assumptions": [
         "Intel VMX 拦截 HLT；KVM 管理 LAPIC，APICv 关闭",
-        "halt-poll 预算为 0，展示真正阻塞；Guest IF = 1，向量 0x51 优先级允许",
+        "halt-poll 预算为 0，展示阻塞等待；Guest IF = 1，向量 0x51 优先级允许",
         "没有待处理中断，随后后端完成事件通过软件 LAPIC 路径到达"
       ],
       "nodes": [
@@ -2011,7 +2011,7 @@
           "title": "恢复客户机并处理事件",
           "actor": "KVM → 客户机",
           "description": "满足注入条件后，KVM 进入客户机的中断处理入口。",
-          "detail": "HLT 之后的执行随后由客户机中断返回继续。完整 IRR、ISR、EOI 变化见虚拟中断递送过程；这里的 KVM_RUN 仍未返回。",
+          "detail": "HLT 之后的执行随后由客户机中断返回继续。完整 IRR、ISR、EOI 变化见中断传递；这里的 KVM_RUN 仍未返回。",
           "active": [
             "kvm",
             "guest"
@@ -2055,7 +2055,7 @@
             "irq-ack",
             "halt-resume"
           ],
-          "boundary": "定时回调、唤醒和调度不是同一同步调用链；相同调度函数可在 Guest 与宿主各自内核运行。"
+          "boundary": "定时回调触发唤醒，调度器随后选择运行任务。Guest 与宿主分别执行各自内核的定时、等待和调度代码。"
         }
       ]
     },
@@ -2295,7 +2295,7 @@
           "title": "建立任务等待对象",
           "actor": "Guest 内核 · do_nanosleep",
           "description": "Guest 为 A 建立 hrtimer_sleeper，task 指向 A，并设置可中断等待标志。",
-          "detail": "源码设置 TASK_INTERRUPTIBLE | TASK_FREEZABLE，随后启动定时器；此刻 A 仍在内核执行，真正离开 CPU 发生在 schedule。信号与冻结处理不在本次成功路径内。",
+          "detail": "源码设置 TASK_INTERRUPTIBLE | TASK_FREEZABLE，随后启动定时器；此刻 A 仍在内核执行，到 schedule 才让出 CPU。信号与冻结处理不在本次成功路径内。",
           "active": [
             "app",
             "guest-timer"
@@ -2623,7 +2623,7 @@
             "guest-timer-queues",
             "guest-timer-wake"
           ],
-          "boundary": "Guest 定时器和任务状态是客户机对象，不是宿主 vCPU 线程的状态。"
+          "boundary": "Guest 内核维护客户机定时器和任务状态；宿主内核独立维护 vCPU 线程的运行与等待状态。"
         },
         {
           "id": "path-2",
@@ -2640,7 +2640,7 @@
             "scheduler-wake",
             "scheduler-switch"
           ],
-          "boundary": "定时回调、唤醒和调度不是同一同步调用链；相同调度函数可在 Guest 与宿主各自内核运行。"
+          "boundary": "定时回调触发唤醒，调度器随后选择运行任务。Guest 与宿主分别执行各自内核的定时、等待和调度代码。"
         }
       ]
     },
@@ -3009,7 +3009,7 @@
           "title": "发布宿主等待者并复查",
           "actor": "KVM · kvm_vcpu_block",
           "description": "KVM 发布 vCPU 的 rcuwait 等待者，设置 TASK_INTERRUPTIBLE 并复查事件。",
-          "detail": "本例 halt-poll 预算为 0，定时器尚未到期。先发布等待者再检查事件，可以覆盖检查与真正休眠之间的唤醒竞争。设置等待状态时线程仍在 CPU 上执行。",
+          "detail": "本例 halt-poll 预算为 0，定时器尚未到期。先发布等待者再检查事件，可以覆盖检查与进入休眠之间的唤醒竞争。设置等待状态时线程仍在 CPU 上执行。",
           "active": [
             "kvm"
           ],
@@ -3296,7 +3296,7 @@
             "guest-timer-queues",
             "guest-timer-wake"
           ],
-          "boundary": "Guest 定时器和任务状态是客户机对象，不是宿主 vCPU 线程的状态。"
+          "boundary": "Guest 内核维护客户机定时器和任务状态；宿主内核独立维护 vCPU 线程的运行与等待状态。"
         },
         {
           "id": "path-2",
@@ -3315,7 +3315,7 @@
             "scheduler-wake",
             "scheduler-switch"
           ],
-          "boundary": "定时回调、唤醒和调度不是同一同步调用链；相同调度函数可在 Guest 与宿主各自内核运行。"
+          "boundary": "定时回调触发唤醒，调度器随后选择运行任务。Guest 与宿主分别执行各自内核的定时、等待和调度代码。"
         }
       ]
     }

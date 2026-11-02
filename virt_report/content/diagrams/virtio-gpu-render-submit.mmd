@@ -1,0 +1,23 @@
+sequenceDiagram
+    accTitle: 一批 VirGL 绘图命令的提交与完成
+    accDescr: Mesa 把状态设置和绘图合并为批次，Linux 用带 fence 的 SUBMIT_3D 提交。QEMU 将命令交给 virglrenderer，宿主 GL 驱动调度 GPU。渲染完成经回调、virtqueue 响应和客户机 dma_fence 返回；输出绑定与最终呈现属于后续独立过程。
+    participant G as Guest Mesa / DRM
+    participant Q as QEMU
+    participant R as virglrenderer
+    participant H as 宿主 GL / GPU
+    participant D as 显示后端
+    Note over G,H: 上下文、顶点、着色器和目标资源已建立<br/>图示普通 GLsync 完成分支
+    G->>Q: controlq：SUBMIT_3D<br/>状态设置 + DRAW，头部带 FENCE
+    Note over G: ioctl 可先返回<br/>完成仍由 dma_fence 跟踪
+    Q->>R: virgl_renderer_submit_cmd
+    R->>H: 解码 VirGL，调用 GL 绘制
+    Q->>R: 为本批次创建 fence
+    R->>H: glFenceSync + glFlush
+    Note over H: 宿主驱动排队<br/>GPU 完成此前的绘制
+    H-->>R: GL fence 满足
+    R-->>Q: fence 完成回调
+    Q-->>G: 带 fence_id 的响应 + used<br/>驱动 signal dma_fence
+    Note over G,D: 需要显示该资源时，另外安排输出与刷新
+    G->>Q: SET_SCANOUT / RESOURCE_FLUSH
+    Q->>D: 关联渲染资源并提交显示更新
+    Note over D: 合成与最终呈现独立发生<br/>渲染 fence 不代表屏幕已更新

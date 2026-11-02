@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=49f2a464e9bd">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=49f2a464e9bd">
   <link rel="stylesheet" href="../assets/site.css?v=49f2a464e9bd">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=f8e166670755">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=f8e166670755">
-<link rel="stylesheet" href="../assets/viommu-lab.css?v=f8e166670755"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=0d3876d39f7e">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=0d3876d39f7e">
+<link rel="stylesheet" href="../assets/viommu-lab.css?v=0d3876d39f7e"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -92,9 +92,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看客户机映射与物理设备使用的合成映射" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="客户机映射与物理设备使用的合成映射">
-    <img src="../assets/viommu-shadow-path.svg?v=f8e166670755" alt="上方控制路径把 IOVA→GPA 与客户机 RAM 后备关系合成到宿主页表；下方数据路径直接使用宿主 IOMMU。两条路径在页表处汇合，QEMU 不转发每一笔直通 DMA。" loading="lazy">
+    <img src="../assets/viommu-shadow-path.svg?v=0d3876d39f7e" alt="上方控制路径把 IOVA→GPA 与客户机 RAM 后备关系合成到宿主页表；下方数据路径直接使用宿主 IOMMU。两条路径在页表处汇合，QEMU 不转发每一笔直通 DMA。" loading="lazy">
   </div>
-  <figcaption>上方控制路径把 IOVA→GPA 与客户机 RAM 后备关系合成到宿主页表；下方数据路径直接使用宿主 IOMMU。两条路径在页表处汇合，QEMU 不转发每一笔直通 DMA。 <a href="../assets/viommu-shadow-path.svg?v=f8e166670755" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>上方控制路径把 IOVA→GPA 与客户机 RAM 后备关系合成到宿主页表；下方数据路径直接使用宿主 IOMMU。两条路径在页表处汇合，QEMU 不转发每一笔直通 DMA。 <a href="../assets/viommu-shadow-path.svg?v=0d3876d39f7e" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: vIOMMU 软件合成映射的控制路径与 DMA 数据路径
     accDescr: 客户机 I/O 页表给出 IOVA 到 GPA，QEMU 查找 RAM 后备并通过 VFIO 将合成结果写入宿主 IOMMU 页表。物理网卡的正常 DMA 经宿主 IOMMU 直接访问 HPA，不经过 QEMU。
@@ -145,9 +145,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看缓冲区 A 的撤销与缓冲区 B 的接入" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="缓冲区 A 的撤销与缓冲区 B 的接入">
-    <img src="../assets/viommu-map-lifecycle.svg?v=f8e166670755" alt="先按设备协议完成旧请求，再撤销 A 的映射并等待同步。旧 IOVA 可以在完成撤销后复用，新映射也要完成同步，才能交给设备。示意采用同步回收；实际驱动可以批处理，但必须保持相同的生命周期约束。" loading="lazy">
+    <img src="../assets/viommu-map-lifecycle.svg?v=0d3876d39f7e" alt="先按设备协议完成旧请求，再撤销 A 的映射并等待同步。旧 IOVA 可以在完成撤销后复用，新映射也要完成同步，才能交给设备。示意采用同步回收；实际驱动可以批处理，但必须保持相同的生命周期约束。" loading="lazy">
   </div>
-  <figcaption>先按设备协议完成旧请求，再撤销 A 的映射并等待同步。旧 IOVA 可以在完成撤销后复用，新映射也要完成同步，才能交给设备。示意采用同步回收；实际驱动可以批处理，但必须保持相同的生命周期约束。 <a href="../assets/viommu-map-lifecycle.svg?v=f8e166670755" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>先按设备协议完成旧请求，再撤销 A 的映射并等待同步。旧 IOVA 可以在完成撤销后复用，新映射也要完成同步，才能交给设备。示意采用同步回收；实际驱动可以批处理，但必须保持相同的生命周期约束。 <a href="../assets/viommu-map-lifecycle.svg?v=0d3876d39f7e" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 同一 IOVA 从缓冲区 A 撤销后重新映射到 B
     accDescr: 客户机先确认设备请求完成，清除 A 的页表项并提交失效。QEMU 同步宿主 UNMAP 并完成缓存处理，然后客户机释放 A。B 的新映射经过相同同步路径后，设备才能使用复用的 IOVA。
@@ -408,6 +408,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=49f2a464e9bd"></script>
-<script src="../assets/mechanism-viewer.js?v=f8e166670755" defer></script>
-<script src="../assets/viommu-lab.js?v=f8e166670755" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=0d3876d39f7e" defer></script>
+<script src="../assets/viommu-lab.js?v=0d3876d39f7e" defer></script></body>
 </html>

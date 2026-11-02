@@ -51,14 +51,14 @@ virsh -c qemu:///system resume demo</code></pre>
   {{ diagram('libvirt-domain-start', '从 virsh start 到客户机引导的完整时序', 'Libvirt 准备定义、磁盘和网络，在 exec 前完成宿主隔离；QEMU 创建虚拟硬件并保持 CPU 暂停。QMP 配置完成后 cont 启动客户机，后续操作系统引导与 API 返回分别进行。') }}
   <p><code>qemuBuildCommandLine()</code> 构造 argv，其中包含 <code>-S</code>，要求 QEMU 完成初始化后先暂停客户机 CPU。Libvirt 还为进程创建设置执行前钩子、PID 文件、输出日志和握手管道。<a href="{{ libvirt_source }}src/qemu/qemu_command.c#L10755-L10783">命令行构造</a></p>
   <p>执行 <code>virCommandRun()</code> 后，子进程完成自己的 pre-exec 初始化，通知父进程，然后等待确认。父进程读到 PID，保存早期状态，等待握手，再设置 mount namespace、cgroup、CPU 亲和性及资源权限等。<code>virCommandHandshakeNotify()</code> 发出确认后，子进程才被允许 exec QEMU。<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L8248-L8358">父进程顺序</a>、<a href="{{ libvirt_source }}src/util/vircommand.c#L387-L432">子进程握手</a></p>
-  <p>这个顺序让宿主约束在 QEMU 真正使用资源前生效。例如进程应先进入目标 cgroup，再开始分配大块内存或创建工作线程。拿到 PID 只证明子进程已出现，exec 仍可能失败；后面还需要确认 monitor 可连接、能力协商与查询成功。</p>
+  <p>这个顺序让宿主约束在 QEMU 使用资源前生效。例如进程应先进入目标 cgroup，再开始分配大块内存或创建工作线程。拿到 PID 只证明子进程已出现，exec 仍可能失败；后面还需要确认 monitor 可连接、能力协商与查询成功。</p>
   <p>QEMU exec 成功后创建机器、内存、设备和 vCPU 线程，<code>-S</code> 使客户机 CPU 暂不执行。Libvirt 连接 monitor，接收 greeting，再发送 <code>qmp_capabilities</code> 进入命令模式，随后刷新 vCPU / IOThread 信息并设置调度、网络链路、内存气球和磁盘限速等。这些设置有些依赖 QEMU 实际创建的线程和设备，因此必须在进程创建之后完成。<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L2064-L2131">monitor 初始化</a>、<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L8363-L8447">运行前配置</a></p>
   <p>两道屏障解决不同问题：pre-exec 握手保护宿主资源准备顺序，<code>-S</code> 保护客户机开始执行的时机。QMP 连接属于 Libvirt 与 QEMU 之间的管理通道，也不同于前面的 Libvirt RPC。</p>
 </section>
 
 <section id="state" class="mechanism-section">
   <h2>cont、运行状态与生命周期事件</h2>
-  <p><code>qemuProcessFinishStartup()</code> 决定是否启动 CPU。普通启动调用 <code>qemuProcessStartCPUs()</code>，先启用网络设备并恢复锁管理状态，保存 <code>VIR_DOMAIN_RUNNING_BOOTED</code> 原因，再通过 monitor 发送 <code>cont</code>。<code>--paused</code> 路径不发送 cont，而是把暂停原因改为用户要求。<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L3398-L3444">启动 CPU</a>、<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L8566-L8597">完成启动</a></p>
+  <p><code>qemuProcessFinishStartup()</code> 决定是否启动 CPU。普通启动调用 <code>qemuProcessStartCPUs()</code>，先启用网络设备并恢复锁管理状态，保存 <code>VIR_DOMAIN_RUNNING_BOOTED</code> 原因，再通过 monitor 发送 <code>cont</code>。<code>--paused</code> 路径保留暂停状态，将暂停原因改为用户要求，跳过 cont。<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L3398-L3444">启动 CPU</a>、<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L8566-L8597">完成启动</a></p>
   {{ diagram('libvirt-domain-state', '进程状态与客户机运行状态', 'PAUSED / STARTING_UP 在创建进程之前就可能出现。当前版本由 QMP RESUME 事件处理器写入 RUNNING 状态；API 返回与客户机操作系统就绪是不同阶段。') }}
   <p>在本文版本中，<code>qemuProcessStartCPUs()</code> 不直接设置 RUNNING；QMP <code>RESUME</code> 事件进入 <code>qemuProcessHandleResume()</code> 后，处理器使用保存的运行原因更新 <code>virDomainObj</code>，保存状态并排队生命周期事件。命令响应与异步事件经过不同处理路径，不能依赖“先收到 cont 响应，再收到 RESUME”这种固定顺序。<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L873-L918">RESUME 处理器</a></p>
   <p>冷启动成功后，<code>qemuDomainObjStart()</code> 另行排队 <code>STARTED / BOOTED</code> 事件；显式暂停启动还会排队 <code>SUSPENDED / PAUSED</code>。启动作业结束，API 返回成功。运行状态、原因和事件分别描述当前状态及其变化，不能把收到某个事件简单等同于客户机服务已经可用。</p>

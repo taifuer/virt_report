@@ -4,7 +4,23 @@ import re
 
 from virt_report import mechanisms
 from virt_report.config import Config
+from virt_report.execution_demos import get_demo
 from virt_report.render import render
+
+
+def test_short_demo_titles_match_directory_article_and_player():
+    for slug, title in (
+        ("gpu-execution", "GPU 命令执行"),
+        ("virtio-gpu-rendering", "virtio-gpu 渲染与编解码"),
+        ("interrupt-delivery", "中断传递"),
+    ):
+        article = mechanisms.get_article(slug)
+        assert article["title"] == title
+        assert mechanisms.get_topic(article["topic"])["title"] == title
+        assert get_demo(slug)["title"] == title
+        page = render.render_mechanisms_html(Config(), slug)
+        assert f"<title>{title} - virt-report</title>" in page
+        assert 'id="execution-demo-data"' in page
 
 
 def test_directory_metadata_covers_each_topic_and_article_once():
@@ -36,7 +52,7 @@ def test_directory_has_reading_order_and_real_anchors_only():
         'block-io-walkthrough',
         'network-io-walkthrough', 'cpu-execution-walkthrough',
         'memory-access-walkthrough', 'interrupt-delivery-walkthrough',
-        'gpu-execution-walkthrough',
+        'gpu-execution-walkthrough', 'virtio-gpu-walkthrough',
     ]
     assert re.findall(r'<section class="mechanism-topic" id="([^"]+)"', page) == [
         'virtualization-basics',
@@ -46,7 +62,7 @@ def test_directory_has_reading_order_and_real_anchors_only():
         'block-io-walkthrough',
         'network-io-walkthrough', 'cpu-execution-walkthrough',
         'memory-access-walkthrough', 'interrupt-delivery-walkthrough',
-        'gpu-execution-walkthrough',
+        'gpu-execution-walkthrough', 'virtio-gpu-walkthrough',
     ]
     for slug in re.findall(r'href="#([^"]+)"', directory):
         assert f'id="{slug}"' in page
@@ -65,7 +81,7 @@ def test_directory_counts_primary_articles_without_extra_related_rows():
                       'kvm-internals': 2, 'block-io-walkthrough': 1,
                       'network-io-walkthrough': 1, 'cpu-execution-walkthrough': 1,
                       'memory-access-walkthrough': 1, 'interrupt-delivery-walkthrough': 1,
-                      'gpu-execution-walkthrough': 1}
+                      'gpu-execution-walkthrough': 1, 'virtio-gpu-walkthrough': 1}
     assert [article['slug'] for article in
             mechanisms.get_topic('memory-virtualization')['articles']] == [
                 'memory-virtualization', 'kvm-ept-fault', 'kvm-hugepages', 'kvm-dirty-ring',

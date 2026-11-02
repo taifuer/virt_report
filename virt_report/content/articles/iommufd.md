@@ -9,7 +9,7 @@
 
 ## 两个文件描述符与三类对象 {#objects}
 
-QEMU 打开 `/dev/vfio/devices/vfioX`，得到设备文件描述符 `devfd`；打开 `/dev/iommu`，得到 IOMMUFD 上下文的文件描述符 `iommufd`。示例中的 `vfioX` 由宿主设备注册产生，不是 PCI 地址。
+QEMU 打开 `/dev/vfio/devices/vfioX`，得到设备文件描述符 `devfd`；打开 `/dev/iommu`，得到 IOMMUFD 上下文的文件描述符 `iommufd`。示例中的 `vfioX` 是宿主注册设备时分配的节点名，与 PCI 地址分别标识设备节点和 PCI 功能。
 
 | 入口 | 主要操作 | 保存的关系 |
 | --- | --- | --- |

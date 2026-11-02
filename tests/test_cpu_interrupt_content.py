@@ -133,7 +133,7 @@ def test_interrupt_scenarios_preserve_independent_masking_layers():
     assert demo["defaultScenario"] == "msix-software"
     assert {scene["id"] for scene in demo["scenarios"]} == {
         "msix-software", "irqfd", "if-masked", "msix-masked", "apicv-posted",
-        "notify-suppressed",
+        "notify-suppressed", "vtd-remapped", "vtd-posted",
     }
     trace = states(scenario("interrupt-delivery", "msix-masked"))
     assert trace["pending"]["pba"] == "1"

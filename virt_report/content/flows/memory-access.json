@@ -519,7 +519,7 @@
           "sourceIds": [
             "address-model"
           ],
-          "detail": "汇编以 RDI 表示本例有效 Guest 虚拟地址。普通载入不是调用 KVM 地址转换函数。",
+          "detail": "汇编以 RDI 表示本例有效 Guest 虚拟地址，普通载入由处理器按当前地址转换规则执行。",
           "code": "MOV EAX, DWORD PTR [RDI]"
         },
         {
@@ -2056,7 +2056,7 @@
           "title": "返回 QEMU",
           "actor": "KVM → QEMU",
           "description": "KVM_RUN 返回 KVM_EXIT_MMIO，并在共享结构中填写地址、长度与方向。",
-          "detail": "phys_addr=0xf0001000，len=4，is_write=0。这个边界才真正从宿主内核回到 QEMU 用户态。",
+          "detail": "phys_addr=0xf0001000，len=4，is_write=0。KVM_RUN 在这里从宿主内核返回 QEMU 用户态。",
           "active": [
             "kvm",
             "qemu"

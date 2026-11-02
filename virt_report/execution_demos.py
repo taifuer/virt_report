@@ -17,6 +17,7 @@ DEMO_PAGES = {
     "disk-persistence": "virtio-blk-read",
     "vm-lifecycle": "libvirt-domain-start",
     "gpu-execution": "gpu-execution",
+    "virtio-gpu-rendering": "virtio-gpu-rendering",
 }
 DEMO_IDS = tuple(DEMO_PAGES)
 CONTENT_DIR = Path(__file__).parent / "content" / "flows"
@@ -73,6 +74,8 @@ def validate_demo(demo: dict) -> None:
             require(text(structure["title"]) and bool(structure["fields"]), "structure")
             for field in structure["fields"]:
                 require(all(text(field.get(key)) for key in ("key", "label", "initial")), "field")
+                require("hidden" not in field or isinstance(field["hidden"], bool),
+                        "field visibility")
                 require(field["key"] not in {"__proto__", "constructor", "prototype"}, "unsafe field")
                 fields.append(field["key"])
         require(len(fields) == len(set(fields)), "duplicate fields")

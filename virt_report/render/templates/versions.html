@@ -39,9 +39,9 @@
               <div class="version-detail">
                 {% if item.topics %}<div class="version-topic-tags" aria-label="相关主题">{% for key in item.topics %}<span>{{ content.topics[key].label }}</span>{% endfor %}</div>{% endif %}
                 {% if item.notes %}<ul class="version-notes">{% for note in item.notes %}<li>{{ note }}</li>{% endfor %}</ul>{% elif item.highlights %}<ul class="version-notes version-original" lang="en" aria-label="官方要点原文">{% for note in item.highlights %}<li>{{ note }}</li>{% endfor %}</ul>{% else %}<p class="version-note-empty">暂缺经核验的更新要点。</p>{% endif %}
-                {% if item.commits or item.contributors or item.note_source_url != item.source_url %}<div class="version-meta">
+                {% if item.commits or item.contributors or (item.project != 'kvm' and item.note_source_url != item.source_url) %}<div class="version-meta">
                   {% if item.commits %}<span>{{ item.commits }}{{ '+' if item.commits_approximate else '' }} 次提交</span>{% endif %}{% if item.contributors %}<span>{{ item.contributors }} 位贡献者</span>{% endif %}
-                  {% if item.note_source_url != item.source_url %}<a href="{{ item.note_source_url }}" target="_blank" rel="noopener noreferrer">{{ 'KVM 合并说明' if item.project == 'kvm' else '发布要点来源' }}</a>{% endif %}
+                  {% if item.project != 'kvm' and item.note_source_url != item.source_url %}<a href="{{ item.note_source_url }}" target="_blank" rel="noopener noreferrer">发布要点来源</a>{% endif %}
                 </div>{% endif %}
               </div>
             </div>

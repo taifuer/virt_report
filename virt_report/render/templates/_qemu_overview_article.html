@@ -23,7 +23,7 @@
 <section id="example" class="mechanism-section">
   <h2>一次 4 KiB 读取的请求与完成路径</h2>
   <p>设客户机从磁盘偏移 1 MiB 读取 4 KiB。驱动准备三部分共享内存：说明读哪个磁盘位置的请求头、接收 4 KiB 数据的缓冲区，以及接收成功或失败的状态字节。描述符将这些缓冲区连成一条请求，再通过 available ring 把它交给设备。磁盘偏移选择读取内容，缓冲区地址决定将结果放回客户机内存的什么位置。</p>
-  {{ diagram('qemu-overview-read-lifecycle', '从请求发布到缓冲区归还', '本例配置 ioeventfd 与 IOThread。共享队列交接请求及完成，块层提交真正的存储操作；等待 I/O 的协程让出执行，完成后继续发布结果。') }}
+  {{ diagram('qemu-overview-read-lifecycle', '从请求发布到缓冲区归还', '本例配置 ioeventfd 与 IOThread。共享队列交接请求及完成，块层向存储后端提交操作；等待 I/O 的协程让出执行，完成后继续发布结果。') }}
   <ol>
     <li><strong>接收请求。</strong>队列通知经 ioeventfd 到达对应 IOThread。QEMU 读取描述符并解析客户机缓冲区，检查命令、长度、磁盘范围和访问方向。</li>
     <li><strong>转换为后端操作。</strong>设备取得数据缓冲区列表，通过 BlockBackend 这一设备侧入口提交读取。raw 示例继续到文件节点；若是 qcow2，还需按格式元数据解析磁盘偏移，不能直接拿客户机偏移读取镜像文件。</li>

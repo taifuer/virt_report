@@ -115,6 +115,7 @@ virtio-gpu 允许控制命令采用异步处理。驱动需要确认命令处理
 普通二维 virtio-gpu 的主线可以归纳为：建立资源及 backing，选择输出，再反复执行像素写入、TRANSFER 和 FLUSH。资源编号解决对象引用，内存段列表解决 backing 的访问，矩形解决更新范围，fence 解决命令处理的同步。这几组关系清楚之后，便能沿着同一条路径分析画面未更新、局部内容错误或显示延迟等问题。
 
 - [virtio 设备初始化](virtio-device-initialization.html)：功能协商、队列配置和设备状态。
+- [virtio-gpu 渲染与编解码](virtio-gpu-rendering.html)：从应用命令到宿主执行，区分 VirGL 渲染、视频扩展和完成反馈。
 - [QEMU 的 virtio-net 发送路径](qemu-network-tx.html)：描述符链、avail 与 used 的交接。
 - [VFIO 设备直通与 DMA](qemu-vfio-dma.html)：物理设备分配与 DMA 地址转换，理解另一类设备使用方式。
 

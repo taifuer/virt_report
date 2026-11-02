@@ -10,6 +10,27 @@
     lab.dispatchEvent(new CustomEvent(type, {bubbles: true}));
   }
 
+  function sizeWorkspace(lab) {
+    if (!lab.classList.contains('walkthrough-expanded')) return;
+    const workspace = lab.querySelector('.walkthrough-workspace');
+    if (!workspace) return;
+    // Step rows vary with scenario, view, viewport and font size. Measure the
+    // actual control area instead of assuming a single fixed-height strip.
+    const top = workspace.getBoundingClientRect().top - lab.getBoundingClientRect().top + lab.scrollTop;
+    const padding = parseFloat(getComputedStyle(lab).paddingBottom) || 0;
+    const remaining = lab.clientHeight - top - padding;
+    // On short screens keep a readable diagram and let the expanded page scroll.
+    const height = window.innerWidth >= 1100 && remaining >= 260 ? `${Math.floor(remaining)}px` : 'none';
+    lab.style.setProperty('--walkthrough-workspace-height', height);
+  }
+
+  const scheduled = new WeakSet();
+  function scheduleLayout(lab) {
+    if (typeof requestAnimationFrame !== 'function' || scheduled.has(lab)) return;
+    scheduled.add(lab);
+    requestAnimationFrame(() => { scheduled.delete(lab); sizeWorkspace(lab); });
+  }
+
   function focusable(lab) {
     return [...lab.querySelectorAll('button, a[href], input, select, textarea, [tabindex]')]
       .filter(node => !node.disabled && node.tabIndex >= 0 && !node.closest('[inert]')
@@ -35,6 +56,7 @@
     if (active !== record) return;
     active = null;
     record.lab.classList.remove('walkthrough-expanded');
+    record.lab.style?.removeProperty('--walkthrough-workspace-height');
     record.lab.removeAttribute('data-walkthrough-expanded');
     restoreOutside(record);
     if (record.mode === 'fallback') {
@@ -82,6 +104,7 @@
     }
     setButtons(record, true);
     notify(record.lab, 'walkthrough:resize');
+    scheduleLayout(record.lab);
     record.buttons[0]?.focus({preventScroll: true});
   }
 
@@ -154,6 +177,14 @@
     }
   });
   labs.forEach(lab => {
+    if (typeof ResizeObserver === 'function') {
+      const observer = new ResizeObserver(() => scheduleLayout(lab));
+      observer.observe(lab);
+      lab.querySelectorAll('.walkthrough-selection, .walkthrough-toolbar, .walkthrough-progress')
+        .forEach(node => observer.observe(node));
+    }
+    lab.addEventListener('walkthrough:resize', () => scheduleLayout(lab));
+    lab.addEventListener('change', () => scheduleLayout(lab));
     const buttons = [...lab.querySelectorAll('[data-walkthrough-expand]')];
     buttons.forEach(button => {
       button.hidden = false;

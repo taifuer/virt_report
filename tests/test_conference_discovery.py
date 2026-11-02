@@ -42,6 +42,13 @@ def test_metadata_candidates_are_review_hints(title, abstract, expected):
     ("pretalx", '<div class="title">Lunch</div><a href="/2026/talk/ABC/">'
      '<div class="pretalx-session"><div class="title">QEMU Migration</div>'
      '<div class="abstract">Long abstract</div></div></a>', ["QEMU Migration"]),
+    ("atc", '<nav><strong>Accepted Papers</strong></nav>'
+     '<section id="cfp"><h2 id="accepted-title">Accepted Papers</h2>'
+     '<ul class="paperlist"><li><strong>A <i>MicroVM</i> Paper</strong><br>'
+     '<em>Author (<strong>Institution</strong>)</em></li>'
+     '<li><strong>A MicroVM Paper</strong><br><em>Repeated author</em></li></ul>'
+     '</section><!-- <ul class="paperlist"><li><strong>Old Paper</strong></li></ul> -->'
+     '<ul><li><strong>Sponsors</strong></li></ul>', ["A MicroVM Paper"]),
 ])
 def test_official_lists_exclude_navigation_authors_and_comments(parser, body, expected):
     records = conference_watch.parse_title_list(body, {
@@ -58,6 +65,34 @@ def test_invalid_official_page_is_not_an_empty_success(body):
         conference_watch.parse_title_list(body, {
             "parser": "usenix", "source_url": "https://example.com/program",
         })
+
+
+@pytest.mark.parametrize("body", [
+    "", "<h1>Verify you are human</h1>",
+    '<ul><li><strong>A Virtual Machine Paper</strong></li></ul>',
+    '<ul class="paperlist"><li><em><strong>Author</strong></em></li></ul>',
+])
+def test_atc_parser_rejects_missing_or_changed_title_lists(body):
+    with pytest.raises(ValueError, match="未解析到"):
+        conference_watch.parse_title_list(body, {
+            "parser": "atc", "source_url": "https://atc.sigops.org/2026/accepted.html",
+        })
+
+
+def test_atc_titles_link_to_the_verified_list_without_invented_fragments():
+    source = {"parser": "atc", "source_url": "https://atc.sigops.org/2026/accepted.html"}
+    records = conference_watch.parse_title_list(
+        '<ul class="paperlist"><li><strong>Example VM &amp; I/O Study</strong>'
+        '<br><em>Author, University</em></li></ul>', source,
+    )
+    assert records == [{"title": "Example VM & I/O Study", "url": source["source_url"]}]
+
+
+def test_about_atc_entry_points_to_current_organizer():
+    page = render.render_about_html(Config())
+    assert 'href="https://atc.sigops.org/2026/"' in page
+    assert "2026 年起由 ACM SIGOPS 举办" in page
+    assert "系统研究历史档案" not in page
 
 
 def test_official_checks_are_incremental_and_keep_last_success(tmp_path, monkeypatch):
@@ -137,7 +172,8 @@ def test_reviewed_additions_keep_years_evidence_and_institutions():
     assert "data-conference-query" in page and "data-paper-topic" in page
     assert 'id="paper-security25-tdxploit"' in page
     assert "目前仅核实标题，待摘要补充" in page
-    assert 'href="topics/migration/index.html"' in page
+    assert "paper-community-links" not in page
+    assert 'data-paper-topic="在线迁移"' in page
     # The search index uses rendered text, not another copy of paper prose.
     assert 'data-search-text=' not in page
 
