@@ -13,6 +13,7 @@ CONTENT = Path(__file__).resolve().parents[1] / "virt_report" / "content" / "flo
 SCENARIOS = {
     "ram-hit", "tlb-miss", "guest-page-fault", "ept-missing",
     "host-page-fault", "mmio-read", "dirty-write-protect",
+    "mmio-kernel-lapic", "mmio-ioeventfd", "mmio-vfio-direct",
 }
 
 
@@ -60,7 +61,7 @@ def test_memory_demo_schema_sources_and_initial_state(demo):
         assert "/blob/" in source["url"] and "#L" in source["url"]
 
 
-@pytest.mark.parametrize("scenario_id", sorted(SCENARIOS - {"mmio-read"}))
+@pytest.mark.parametrize("scenario_id", sorted(item for item in SCENARIOS if not item.startswith("mmio-")))
 def test_ram_paths_never_claim_to_return_to_qemu(demo, scenario_id):
     states = snapshots(scene(demo, scenario_id))
     assert all(state["userspace"] == "否" for state in states)
@@ -145,3 +146,81 @@ def test_dirty_tracking_marks_before_guest_retries_store(demo):
     assert len({state["guest-pte"] for state in states}) == 1
     assert any("未启用 Dirty Ring 或硬件 PML" in assumption
                for assumption in item["assumptions"])
+
+
+@pytest.mark.parametrize("scenario_id", ["mmio-kernel-lapic", "mmio-ioeventfd", "mmio-vfio-direct"])
+def test_additional_mmio_paths_do_not_return_kvm_run_to_qemu(demo, scenario_id):
+    item = scene(demo, scenario_id)
+    states = snapshots(item)
+    assert all(state["userspace"] == "否" for state in states)
+    assert all("KVM_EXIT_MMIO" not in state.get("hw-exit", "") for state in states)
+    assert states[-1]["instruction"].endswith("完成")
+
+
+def test_kernel_lapic_read_exits_but_is_completed_by_kernel(demo):
+    item = scene(demo, "mmio-kernel-lapic")
+    states = snapshots(item)
+    assert states[1]["hw-exit"].startswith("已发生")
+    assert states[-1]["value"] == "0x01000000"
+    assert any("关闭" in text and "硬件加速" in text for text in item["assumptions"])
+    assert "lapic-mmio-read" in {id for step in item["steps"] for id in step["sourceIds"]}
+
+
+def test_ioeventfd_only_completes_matching_write_not_backend_work(demo):
+    item = scene(demo, "mmio-ioeventfd")
+    states = snapshots(item)
+    assert states[1]["hw-exit"].startswith("已发生")
+    assert states[-1]["event"] == "已触发"
+    assert states[-1]["backend"] == "已通知，等待 IOThread 处理"
+    assert any("datamatch" in text for text in item["assumptions"])
+
+
+def test_vfio_bar_steady_mapping_is_not_device_dma_or_qemu_callback(demo):
+    item = scene(demo, "mmio-vfio-direct")
+    states = snapshots(item)
+    assert {state["hw-exit"] for state in states} == {"无"}
+    assert all("qemu" not in step["active"] and "kvm" not in step["active"] for step in item["steps"])
+    assert any("MSI-X" in text and "首次" in text for text in item["assumptions"])
+    assert any("不是设备 DMA" in text for text in item["assumptions"])
+
+
+def test_memory_source_paths_name_symbols_and_keep_context_boundaries(demo):
+    for item in demo["scenarios"]:
+        assert item["callPaths"]
+        for path in item["callPaths"]:
+            assert path["context"] and path["boundary"]
+            for source_id in path["sourceIds"]:
+                source = demo["sources"][source_id]
+                assert source["symbol"] and source["path"] and source["line"] > 0
+                assert len(source["revision"]) == 40
+
+
+def test_qemu_mmio_has_real_request_device_and_completion_paths(demo):
+    item = next(scene for scene in demo["scenarios"] if scene["id"] == "mmio-read")
+    steps = {step["id"]: step for step in item["steps"]}
+    assert "mmio-request" in steps["userspace"]["sourceIds"]
+    assert steps["device"]["sourceIds"] == [
+        "qemu-address-read", "qemu-memory-read", "qemu-device-read",
+    ]
+    assert steps["complete"]["sourceIds"] == [
+        "mmio-complete-fn", "mmio-complete-read", "mmio-resume-instruction",
+    ]
+    source = demo["sources"]["mmio-complete-read"]
+    assert (source["symbol"], source["path"], source["line"]) == (
+        "complete_emulated_mmio()", "arch/x86/kvm/x86.c", 11761,
+    )
+    assert demo["sources"]["mmio-completion"]["kind"] == "spec"
+    assert demo["sources"]["mmio-qemu"]["symbol"] == "kvm_cpu_exec()"
+
+
+@pytest.mark.parametrize("scene_id", ["ram-hit", "tlb-miss", "mmio-vfio-direct"])
+def test_hardware_memory_paths_explain_instruction_steps_without_inventing_calls(demo, scene_id):
+    item = next(scene for scene in demo["scenarios"] if scene["id"] == scene_id)
+    assert item["sourceSteps"]
+    assert all(part["kind"] == "instruction" for part in item["sourceSteps"])
+    assert {step_id for part in item["sourceSteps"] for step_id in part["stepIds"]} == {
+        step["id"] for step in item["steps"]
+    }
+    assert {source["kind"] for source in demo["sources"].values()} <= {
+        "function", "assembly", "spec", "reference",
+    }

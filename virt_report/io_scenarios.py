@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 import re
 
+from virt_report.source_paths import validate_call_path_metadata
+
 
 _REPOSITORIES = {
     "Linux": "torvalds/linux", "QEMU": "qemu/qemu",
@@ -38,7 +40,7 @@ _DEPENDENCIES = {
 _STEP_PATCH_KEYS = {
     "title", "actor", "description", "detail", "sourceIds", "active", "edge", "changes",
 }
-_PATH_PATCH_KEYS = {"title", "context", "sourceIds", "boundary"}
+_PATH_PATCH_KEYS = {"title", "context", "sourceIds", "boundary", "flow", "relations", "entry"}
 _DELTA_KEYS = {
     "title", "summary", "request", "presentation", "lanes", "assumptions",
     "callPaths", "baselines", "sources", "sourceMap",
@@ -265,10 +267,12 @@ def _validate_scene(scene: dict) -> None:
                and len(set(refs)) == len(refs), "source references")
 
     for path in paths.values():
-        _check(set(path) == {"id", "title", "context", "sourceIds", "boundary"}, "call path fields")
+        required = {"id", "title", "context", "sourceIds", "boundary"}
+        _check(required <= set(path) <= required | {"flow", "relations", "entry"}, "call path fields")
         for key in ("title", "context", "boundary"):
             _text(path.get(key), f"call path {key}")
         references(path)
+        validate_call_path_metadata(path, sources)
     path_references = {reference for path in paths.values() for reference in path["sourceIds"]}
     state = deepcopy(_object(scene.get("initial"), "initial state"))
     _check(set(state) == _STATE_KEYS and all(state[key] is False for key in _FLAGS), "initial state fields")
@@ -370,6 +374,30 @@ def derive_base_operation(base: dict, operation: str = "read") -> dict:
     return scene
 
 
+def _background_domains(backend: str) -> list[dict[str, str]]:
+    """Keep setup and backend boundaries visible without inventing animated hops."""
+    if backend.startswith("spdk-"):
+        return [
+            {"component": "qemu", "title": "QEMU", "context": "宿主用户态 · 控制面",
+             "note": "已建立 vhost-user 连接、共享内存与中断通知；本次数据 I/O 由 SPDK 处理，不经过 QEMU 块层。"},
+            {"component": "host-kernel", "title": "Host kernel", "context": "宿主内核 · 映射与隔离",
+             "note": "提供后端所需的内存、设备访问与隔离；SPDK 直接驱动 NVMe，不走宿主文件系统和内核块层。"},
+        ]
+    if backend == "rbd-blk":
+        return [
+            {"component": "host-kernel", "title": "Host kernel", "context": "宿主内核 · 网络 I/O",
+             "note": "librbd / librados 经宿主网络连接 Ceph；此配置没有将镜像映射成宿主 /dev/rbdX 块设备。"},
+            {"component": "hardware", "title": "物理设备", "context": "远端 Ceph 集群 · 演示边界外",
+             "note": "数据存储在集群后端。本图止于 librbd 的异步接口，不将完成回调等同于某块本地磁盘完成。"},
+        ]
+    return [
+        {"component": "host-kernel", "title": "Host kernel", "context": "宿主内核 · 文件系统与块层",
+         "note": "QEMU worker 发起宿主文件 I/O，经文件系统与页缓存；需要设备访问时才继续进入宿主块层。"},
+        {"component": "hardware", "title": "物理设备", "context": "缓存之外的存储边界",
+         "note": "读取可命中宿主页缓存，普通写入完成也不等于落盘。是否访问设备及持久化保证取决于缓存与刷新要求。"},
+    ]
+
+
 def build_io_scenarios(base: dict, flow_dir: Path | str) -> dict:
     """Build all five backend routes and both operations from checked-in deltas.
 
@@ -414,4 +442,11 @@ def build_io_scenarios(base: dict, flow_dir: Path | str) -> dict:
                 scenes[operation] = scene
             catalog[backend] = {"id": backend, "label": route["label"], "scenarios": scenes}
     _check(set(catalog) == set(_ROUTES), "missing backend routes")
+    from virt_report.disk_source_paths import annotate_disk_source_paths
+
+    for route in catalog.values():
+        route["contexts"] = _background_domains(route["id"])
+        for scene in route["scenarios"].values():
+            annotate_disk_source_paths(scene)
+            _validate_scene(scene)
     return {"routes": [catalog[key] for key in _ROUTES]}

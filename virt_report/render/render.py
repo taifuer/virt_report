@@ -75,6 +75,7 @@ MECHANISM_DIAGRAM_NAMES = (
 )
 MECHANISM_LAYOUT_NAMES = ("migration-wire-layout",)
 MECHANISM_ASSET_NAMES = ("mechanisms.css", "mechanisms.js", "precopy-lab.css",
+                         "mechanism-directory.js",
                          "mechanism-redirect.js",
                          "mechanism-viewer.css", "mechanism-viewer.js",
                          "migration-stream.css", "migration-stream.js",
@@ -83,6 +84,8 @@ MECHANISM_ASSET_NAMES = ("mechanisms.css", "mechanisms.js", "precopy-lab.css",
                          "execution-demo.css", "execution-model.js", "execution-demo.js",
                          "walkthrough.css", "walkthrough-fullscreen.js",
                          "walkthrough-routing.js",
+                         "walkthrough-components.js",
+                         "disk-completion-model.js",
                          "packed-virtqueue.css", "packed-virtqueue.js",
                          "vhost-path.css", "vhost-path.js", "dirty-ring.css", "dirty-ring.js",
                          "postcopy.css", "postcopy.js", "vfio-dma.css", "vfio-dma.js",

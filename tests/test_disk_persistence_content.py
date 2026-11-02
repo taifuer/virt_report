@@ -113,7 +113,7 @@ def test_persistence_sources_use_fixed_versions_and_real_step_references():
 def test_fragment_explains_direct_cache_no_flush_and_virtio_blk_fua_fallback():
     path = CONTENT.parents[2] / "render/templates/_disk_persistence_lab.html"
     article = path.read_text(encoding="utf-8")
-    for text in ("_execution_lab.html", "cache.direct=on", "cache.no-flush=on",
+    for text in ("同一个工作区", "cache.direct=on", "cache.no-flush=on",
                  "cache=none", "cache=unsafe", "POSTFLUSH", "原子性"):
         assert text in article
     assert "virtio-blk 的普通 OUT 命令没有这里的原生 FUA 位" in article

@@ -3,148 +3,3333 @@
   "title": "内存访问与缺页处理",
   "defaultScenario": "ram-hit",
   "sources": {
-    "address-model": {"label": "Linux 6.18 · KVM MMU 地址空间与两级转换", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/x86/mmu.rst#L58-L105"},
-    "memory-slot": {"label": "QEMU 10.2 · kvm_set_user_memory_region", "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L360-L392"},
-    "vmx-exceptions": {"label": "Linux 6.18 · Guest #PF 拦截条件", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L815-L866"},
-    "guest-fault": {"label": "Linux 6.18 · do_user_addr_fault 与 handle_mm_fault", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/mm/fault.c#L1209-L1398"},
-    "ept-exit": {"label": "Linux 6.18 · handle_ept_violation", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L5746-L5777"},
-    "ept-map": {"label": "Linux 6.18 · kvm_tdp_mmu_page_fault", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/mmu.c#L4882-L4914"},
-    "backing-page": {"label": "Linux 6.18 · HVA、GUP 与后备 PFN", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L2854-L3076"},
-    "faultin-io": {"label": "Linux 6.18 · 后备页需要 I/O 时的同步与异步路径", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/mmu.c#L4591-L4634"},
-    "dirty-fault": {"label": "Linux 6.18 · 写保护快速修复与脏页记录", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/mmu.c#L3601-L3629"},
-    "dirty-bitmap": {"label": "Linux 6.18 · mark_page_dirty_in_slot", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L3520-L3543"},
-    "mmio-qemu": {"label": "QEMU 10.2 · KVM_EXIT_MMIO 与 address_space_rw", "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L3246-L3254"},
-    "mmio-completion": {"label": "Linux 6.18 · MMIO 数据与重新进入 KVM_RUN", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst#L6676-L6710"}
+    "address-model": {
+      "label": "Linux 6.18 · KVM MMU 地址空间与两级转换",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/x86/mmu.rst#L58-L105",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "Documentation/virt/kvm/x86/mmu.rst",
+      "line": 58,
+      "project": "Linux",
+      "symbol": "KVM MMU address translation model",
+      "kind": "spec"
+    },
+    "memory-slot": {
+      "label": "QEMU 10.2 · kvm_set_user_memory_region",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L360-L392",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "accel/kvm/kvm-all.c",
+      "line": 360,
+      "project": "QEMU",
+      "symbol": "kvm_set_user_memory_region()",
+      "kind": "function"
+    },
+    "vmx-exceptions": {
+      "label": "Linux 6.18 · Guest #PF 拦截条件",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L815-L866",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/vmx/vmx.c",
+      "line": 815,
+      "project": "Linux",
+      "symbol": "vmx_update_exception_bitmap()",
+      "kind": "function"
+    },
+    "guest-fault": {
+      "label": "Linux 6.18 · do_user_addr_fault 与 handle_mm_fault",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/mm/fault.c#L1209-L1398",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/mm/fault.c",
+      "line": 1209,
+      "project": "Linux",
+      "symbol": "do_user_addr_fault()",
+      "kind": "function"
+    },
+    "ept-exit": {
+      "label": "Linux 6.18 · handle_ept_violation",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L5746-L5777",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/vmx/vmx.c",
+      "line": 5746,
+      "project": "Linux",
+      "symbol": "handle_ept_violation()",
+      "kind": "function"
+    },
+    "ept-map": {
+      "label": "Linux 6.18 · kvm_tdp_mmu_page_fault",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/mmu.c#L4882-L4914",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/mmu/mmu.c",
+      "line": 4882,
+      "project": "Linux",
+      "symbol": "kvm_tdp_mmu_page_fault()",
+      "kind": "function"
+    },
+    "backing-page": {
+      "label": "Linux 6.18 · HVA、GUP 与后备 PFN",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L2854-L3076",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "virt/kvm/kvm_main.c",
+      "line": 2854,
+      "project": "Linux",
+      "symbol": "hva_to_pfn()",
+      "kind": "function"
+    },
+    "faultin-io": {
+      "label": "Linux 6.18 · 后备页需要 I/O 时的同步与异步路径",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/mmu.c#L4591-L4634",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/mmu/mmu.c",
+      "line": 4591,
+      "project": "Linux",
+      "symbol": "__kvm_mmu_faultin_pfn()",
+      "kind": "function"
+    },
+    "dirty-fault": {
+      "label": "Linux 6.18 · 写保护快速修复与脏页记录",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/mmu.c#L3601-L3629",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/mmu/mmu.c",
+      "line": 3601,
+      "project": "Linux",
+      "symbol": "fast_pf_fix_direct_spte()",
+      "kind": "function"
+    },
+    "dirty-bitmap": {
+      "label": "Linux 6.18 · mark_page_dirty_in_slot",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L3520-L3543",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "virt/kvm/kvm_main.c",
+      "line": 3520,
+      "project": "Linux",
+      "symbol": "mark_page_dirty_in_slot()",
+      "kind": "function"
+    },
+    "mmio-qemu": {
+      "label": "QEMU 10.2 · KVM_EXIT_MMIO 与 address_space_rw",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L3154-L3254",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "accel/kvm/kvm-all.c",
+      "line": 3154,
+      "project": "QEMU",
+      "symbol": "kvm_cpu_exec()",
+      "kind": "function"
+    },
+    "mmio-completion": {
+      "label": "Linux 6.18 · MMIO 数据与重新进入 KVM_RUN",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst#L6676-L6710",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "Documentation/virt/kvm/api.rst",
+      "line": 6676,
+      "project": "Linux",
+      "symbol": "KVM_EXIT_MMIO completion contract",
+      "kind": "spec"
+    },
+    "kvm-mmio-read": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/x86.c",
+      "line": 7780,
+      "symbol": "vcpu_mmio_read()",
+      "label": "vcpu_mmio_read()",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L7780-L7799"
+    },
+    "kvm-mmio-write": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/x86.c",
+      "line": 7759,
+      "symbol": "vcpu_mmio_write()",
+      "label": "vcpu_mmio_write()",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L7759-L7778"
+    },
+    "lapic-mmio-read": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/lapic.c",
+      "line": 1765,
+      "symbol": "apic_mmio_read()",
+      "label": "apic_mmio_read()",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L1765-L1787"
+    },
+    "ioeventfd-write": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "virt/kvm/eventfd.c",
+      "line": 803,
+      "symbol": "ioeventfd_write()",
+      "label": "ioeventfd_write()",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/eventfd.c#L803-L815"
+    },
+    "vfio-region-map": {
+      "project": "QEMU",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "hw/vfio/region.c",
+      "line": 241,
+      "symbol": "vfio_region_mmap()",
+      "label": "vfio_region_mmap()",
+      "kind": "function",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/region.c#L241-L302"
+    },
+    "mmio-emulate": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/x86.c",
+      "line": 8171,
+      "symbol": "emulator_read_write_onepage()",
+      "label": "emulator_read_write_onepage()",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L8171-L8222"
+    },
+    "mmio-complete-fn": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/x86.c",
+      "line": 11850,
+      "symbol": "kvm_arch_vcpu_ioctl_run()",
+      "label": "kvm_arch_vcpu_ioctl_run()",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11850-L11958"
+    },
+    "kvm-page-fault": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/mmu/mmu.c",
+      "line": 6317,
+      "symbol": "kvm_mmu_page_fault()",
+      "label": "kvm_mmu_page_fault()",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/mmu.c#L6317-L6388"
+    },
+    "mmio-request": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/x86.c",
+      "line": 8222,
+      "symbol": "emulator_read_write()",
+      "label": "Linux 6.18：填写 KVM_EXIT_MMIO 请求",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L8222-L8274"
+    },
+    "mmio-complete-read": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/x86.c",
+      "line": 11761,
+      "symbol": "complete_emulated_mmio()",
+      "label": "Linux 6.18：复制返回读值并完成 MMIO",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11761-L11804"
+    },
+    "mmio-resume-instruction": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/x86.c",
+      "line": 11731,
+      "symbol": "complete_emulated_io()",
+      "label": "Linux 6.18：恢复原指令模拟",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11731-L11743"
+    },
+    "qemu-address-read": {
+      "project": "QEMU",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "system/physmem.c",
+      "line": 3456,
+      "symbol": "address_space_rw()",
+      "label": "QEMU 10.2：按读写方向选择地址空间访问",
+      "kind": "function",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/physmem.c#L3456-L3464"
+    },
+    "qemu-memory-read": {
+      "project": "QEMU",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "system/physmem.c",
+      "line": 3425,
+      "symbol": "address_space_read_full()",
+      "label": "QEMU 10.2：翻译地址并进入 MemoryRegion 读路径",
+      "kind": "function",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/physmem.c#L3425-L3440"
+    },
+    "qemu-device-read": {
+      "project": "QEMU",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "system/memory.c",
+      "line": 1466,
+      "symbol": "memory_region_dispatch_read()",
+      "label": "QEMU 10.2：检查访问并分派设备读回调",
+      "kind": "function",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/memory.c#L1466-L1489"
+    }
   },
   "scenarios": [
     {
-      "id": "ram-hit", "label": "RAM · 转换缓存命中",
+      "id": "ram-hit",
+      "label": "RAM · 转换缓存命中",
       "summary": "有效地址转换已经缓存。处理器检查权限后访问宿主物理内存，KVM 与 QEMU 不参与本次读取。",
-      "assumptions": ["Intel VMX + EPT，x86-64，4 KiB 页；不含嵌套虚拟化。", "读取 GVA 0x40203080 的 32 位值，目标内存值为 0x12345678。", "当前地址空间的组合转换缓存有效、权限允许；未发生并发失效。", "转换缓存命中与 CPU 数据缓存命中是两件事，本演示不模拟缓存层级与访问时延。"],
-      "nodes": [{"id": "guest", "label": "Guest 指令", "role": "客户机用户态"}, {"id": "mmu", "label": "CPU MMU / TLB", "role": "硬件地址转换"}, {"id": "ram", "label": "宿主物理内存", "role": "RAM 后备页"}, {"id": "kvm", "label": "KVM", "role": "本次不介入"}, {"id": "qemu", "label": "QEMU", "role": "已完成 RAM 注册"}],
-      "links": [{"id": "lookup", "from": "guest", "to": "mmu", "label": "GVA 与读取权限", "kind": "translation"}, {"id": "read", "from": "mmu", "to": "ram", "label": "HPA 0x21000080", "kind": "data"}, {"id": "result", "from": "ram", "to": "guest", "label": "读取结果", "kind": "data"}],
+      "assumptions": [
+        "Intel VMX + EPT，x86-64，4 KiB 页；不含嵌套虚拟化。",
+        "读取 GVA 0x40203080 的 32 位值，目标内存值为 0x12345678。",
+        "当前地址空间的组合转换缓存有效、权限允许；未发生并发失效。",
+        "转换缓存命中与 CPU 数据缓存命中是两件事，本演示不模拟缓存层级与访问时延。"
+      ],
+      "nodes": [
+        {
+          "id": "guest",
+          "label": "Guest 指令",
+          "role": "客户机用户态",
+          "badge": "用户态"
+        },
+        {
+          "id": "mmu",
+          "label": "CPU MMU / TLB",
+          "role": "硬件地址转换"
+        },
+        {
+          "id": "ram",
+          "label": "宿主物理内存",
+          "role": "RAM 后备页"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM",
+          "role": "本次不介入"
+        },
+        {
+          "id": "qemu",
+          "label": "QEMU",
+          "role": "已完成 RAM 注册"
+        }
+      ],
+      "links": [
+        {
+          "id": "lookup",
+          "from": "guest",
+          "to": "mmu",
+          "label": "GVA 与读取权限",
+          "kind": "translation"
+        },
+        {
+          "id": "read",
+          "from": "mmu",
+          "to": "ram",
+          "label": "HPA 0x21000080",
+          "kind": "data"
+        },
+        {
+          "id": "result",
+          "from": "ram",
+          "to": "guest",
+          "label": "读取结果",
+          "kind": "data"
+        }
+      ],
       "structures": [
-        {"id": "addresses", "title": "本次访问的地址", "kind": "address", "fields": [{"key": "gva", "label": "Guest 虚拟地址", "initial": "0x0000000040203080"}, {"key": "gpa", "label": "对应 GPA", "initial": "0x00403080（既有映射）"}, {"key": "hpa", "label": "对应 HPA", "initial": "0x21000080（既有映射）"}]},
-        {"id": "translation", "title": "映射与执行状态", "kind": "registers", "fields": [{"key": "cache", "label": "转换缓存", "initial": "当前上下文有有效条目"}, {"key": "permission", "label": "访问权限", "initial": "Guest PTE 与 EPT 均允许读取"}, {"key": "value", "label": "目标寄存器 EAX", "initial": "尚未更新"}, {"key": "instruction", "label": "当前读取", "initial": "尚未执行"}, {"key": "userspace", "label": "返回 QEMU", "initial": "否"}]}
+        {
+          "id": "addresses",
+          "title": "本次访问的地址",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "gva",
+              "label": "Guest 虚拟地址",
+              "initial": "0x0000000040203080"
+            },
+            {
+              "key": "gpa",
+              "label": "对应 GPA",
+              "initial": "0x00403080（既有映射）"
+            },
+            {
+              "key": "hpa",
+              "label": "对应 HPA",
+              "initial": "0x21000080（既有映射）"
+            }
+          ]
+        },
+        {
+          "id": "translation",
+          "title": "映射与执行状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "cache",
+              "label": "转换缓存",
+              "initial": "当前上下文有有效条目"
+            },
+            {
+              "key": "permission",
+              "label": "访问权限",
+              "initial": "Guest PTE 与 EPT 均允许读取"
+            },
+            {
+              "key": "value",
+              "label": "目标寄存器 EAX",
+              "initial": "尚未更新"
+            },
+            {
+              "key": "instruction",
+              "label": "当前读取",
+              "initial": "尚未执行"
+            },
+            {
+              "key": "userspace",
+              "label": "返回 QEMU",
+              "initial": "否"
+            }
+          ]
+        }
       ],
       "steps": [
-        {"id": "ready", "title": "访问前", "actor": "Guest 用户态", "description": "读取指令准备访问 GVA 0x40203080。既有页表和转换缓存均有效。", "detail": "页表给出 GPA 0x00403080、HPA 0x21000080；初始图展示已存在的关系，尚未执行本次读取。", "active": [], "links": [], "changes": {}, "nodeStates": {}, "sourceIds": ["address-model"], "focus": true},
-        {"id": "lookup", "title": "查询地址转换", "actor": "CPU 硬件", "description": "处理器用当前地址空间与 GVA 查询转换缓存。", "detail": "缓存标签包含地址空间相关信息，切换虚机或进程后不能直接套用其他上下文的映射。这里展示逻辑转换，不模拟处理器内部微操作次序。", "active": ["guest", "mmu"], "links": ["lookup"], "changes": {"instruction": "读取进行中", "cache": "匹配当前上下文"}, "nodeStates": {"mmu": "查询转换"}, "sourceIds": ["address-model"], "focus": true},
-        {"id": "hit", "title": "取得已缓存的映射", "actor": "CPU 硬件", "description": "有效转换直接给出目标 HPA，并通过本次读取的权限检查。", "detail": "命中时无需重新遍历 Guest 页表与 EPT。GPA 表示两级转换中的逻辑中间地址，不要求硬件在每次命中时先输出 GPA 再做第二次软件查询。", "active": ["mmu"], "links": [], "changes": {"cache": "命中，无需页表遍历", "permission": "本次读取权限检查通过"}, "nodeStates": {"mmu": "命中有效转换"}, "sourceIds": ["address-model"], "focus": true},
-        {"id": "load", "title": "读取后备内存", "actor": "CPU 硬件", "description": "沿 HPA 0x21000080 读取 4 字节，得到 0x12345678。", "detail": "数据可能由 CPU 缓存提供，也可能需要继续访问内存层级。转换命中本身并不保证数据已经在缓存中。", "active": ["mmu", "ram"], "links": ["read"], "changes": {"hpa": "0x21000080 · 读取 4 B"}, "nodeStates": {"ram": "返回 0x12345678"}, "sourceIds": ["address-model"], "focus": true},
-        {"id": "complete", "title": "完成读取", "actor": "Guest 用户态", "description": "结果写入 EAX，客户机继续执行下一条指令。", "detail": "本次访问没有引发 EPT VM-Exit，也没有让 KVM_RUN 返回 QEMU。QEMU 先前的内存注册仍是这条硬件路径成立的前提。", "active": ["guest"], "links": ["result"], "changes": {"value": "0x12345678", "instruction": "读取完成，进入下一条指令"}, "nodeStates": {"guest": "继续执行"}, "sourceIds": ["address-model", "memory-slot"], "focus": true}
+        {
+          "id": "ready",
+          "title": "访问前",
+          "actor": "Guest 用户态",
+          "description": "读取指令准备访问 GVA 0x40203080。既有页表和转换缓存均有效。",
+          "detail": "页表给出 GPA 0x00403080、HPA 0x21000080；初始图展示已存在的关系，尚未执行本次读取。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "address-model"
+          ],
+          "focus": true
+        },
+        {
+          "id": "lookup",
+          "title": "查询地址转换",
+          "actor": "CPU 硬件",
+          "description": "处理器用当前地址空间与 GVA 查询转换缓存。",
+          "detail": "缓存标签包含地址空间相关信息，切换虚机或进程后不能直接套用其他上下文的映射。这里展示逻辑转换，不模拟处理器内部微操作次序。",
+          "active": [
+            "guest",
+            "mmu"
+          ],
+          "links": [
+            "lookup"
+          ],
+          "changes": {
+            "instruction": "读取进行中",
+            "cache": "匹配当前上下文"
+          },
+          "nodeStates": {
+            "mmu": "查询转换"
+          },
+          "sourceIds": [
+            "address-model"
+          ],
+          "focus": true
+        },
+        {
+          "id": "hit",
+          "title": "取得已缓存的映射",
+          "actor": "CPU 硬件",
+          "description": "有效转换直接给出目标 HPA，并通过本次读取的权限检查。",
+          "detail": "命中时无需重新遍历 Guest 页表与 EPT。GPA 表示两级转换中的逻辑中间地址，不要求硬件在每次命中时先输出 GPA 再做第二次软件查询。",
+          "active": [
+            "mmu"
+          ],
+          "links": [],
+          "changes": {
+            "cache": "命中，无需页表遍历",
+            "permission": "本次读取权限检查通过"
+          },
+          "nodeStates": {
+            "mmu": "命中有效转换"
+          },
+          "sourceIds": [
+            "address-model"
+          ],
+          "focus": true
+        },
+        {
+          "id": "load",
+          "title": "读取后备内存",
+          "actor": "CPU 硬件",
+          "description": "沿 HPA 0x21000080 读取 4 字节，得到 0x12345678。",
+          "detail": "数据可能由 CPU 缓存提供，也可能需要继续访问内存层级。转换命中本身并不保证数据已经在缓存中。",
+          "active": [
+            "mmu",
+            "ram"
+          ],
+          "links": [
+            "read"
+          ],
+          "changes": {
+            "hpa": "0x21000080 · 读取 4 B"
+          },
+          "nodeStates": {
+            "ram": "返回 0x12345678"
+          },
+          "sourceIds": [
+            "address-model"
+          ],
+          "focus": true
+        },
+        {
+          "id": "complete",
+          "title": "完成读取",
+          "actor": "Guest 用户态",
+          "description": "结果写入 EAX，客户机继续执行下一条指令。",
+          "detail": "本次访问没有引发 EPT VM-Exit，也没有让 KVM_RUN 返回 QEMU。QEMU 先前的内存注册仍是这条硬件路径成立的前提。",
+          "active": [
+            "guest"
+          ],
+          "links": [
+            "result"
+          ],
+          "changes": {
+            "value": "0x12345678",
+            "instruction": "读取完成，进入下一条指令"
+          },
+          "nodeStates": {
+            "guest": "继续执行"
+          },
+          "sourceIds": [
+            "address-model"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "硬件地址转换与准备条件",
+          "context": "处理器 / 初始化配置",
+          "sourceIds": [
+            "address-model",
+            "memory-slot"
+          ],
+          "boundary": "这些入口解释映射与拦截配置；硬件命中路径不会逐次调用软件设置函数。"
+        }
+      ],
+      "sourceSteps": [
+        {
+          "id": "load",
+          "title": "Guest 执行载入指令",
+          "kind": "instruction",
+          "context": "处理器 · Guest 上下文",
+          "stepIds": [
+            "ready",
+            "lookup"
+          ],
+          "sourceIds": [
+            "address-model"
+          ],
+          "detail": "汇编以 RDI 表示本例有效 Guest 虚拟地址。普通载入不是调用 KVM 地址转换函数。",
+          "code": "MOV EAX, DWORD PTR [RDI]"
+        },
+        {
+          "id": "translation-hit",
+          "title": "命中已缓存的地址转换",
+          "kind": "instruction",
+          "context": "硬件转换缓存",
+          "stepIds": [
+            "hit"
+          ],
+          "sourceIds": [
+            "address-model"
+          ],
+          "detail": "缓存中的合成转换与权限允许本次访问；不逐次调用 memslot 设置函数，也不执行软件页表遍历。",
+          "code": "Guest 虚拟地址 → 宿主物理页 + 页内偏移"
+        },
+        {
+          "id": "load-result",
+          "title": "读取数据并继续 Guest",
+          "kind": "instruction",
+          "context": "处理器 · Guest 上下文",
+          "stepIds": [
+            "load",
+            "complete"
+          ],
+          "sourceIds": [
+            "address-model"
+          ],
+          "detail": "硬件完成载入并提交寄存器结果。本次不发生 VM-exit，QEMU 与 KVM 无逐次软件调用路径。",
+          "code": "EAX ← 本次 4 B 读值"
+        }
       ]
     },
     {
-      "id": "tlb-miss", "label": "RAM · TLB 未命中",
+      "id": "tlb-miss",
+      "label": "RAM · TLB 未命中",
       "summary": "转换缓存没有目标条目，但 Guest 页表和 EPT 都有效。硬件遍历页表后完成访问，不需要软件缺页处理。",
-      "assumptions": ["Intel VMX + EPT，4 KiB 页；读取 GVA 0x40203080 的 32 位值。", "Guest 各级页表和对应 EPT 均有效，目标数据页也有允许读取的 EPT 映射。", "本例只展开最终叶子关系，页表遍历缓存可以省略部分中间访问。"],
-      "nodes": [{"id": "guest", "label": "Guest 指令", "role": "客户机用户态"}, {"id": "mmu", "label": "CPU MMU / TLB", "role": "硬件遍历"}, {"id": "gpt", "label": "Guest 页表", "role": "GVA → GPA"}, {"id": "ept", "label": "EPT", "role": "GPA → HPA"}, {"id": "ram", "label": "宿主物理内存", "role": "目标数据"}, {"id": "kvm", "label": "KVM / QEMU", "role": "本次不介入"}],
-      "links": [{"id": "lookup", "from": "guest", "to": "mmu", "label": "GVA 0x40203080", "kind": "translation"}, {"id": "guest-walk", "from": "mmu", "to": "gpt", "label": "遍历 Guest 页表", "kind": "translation"}, {"id": "table-ept", "from": "gpt", "to": "ept", "label": "页表页也需 EPT 转换", "kind": "translation"}, {"id": "data-ept", "from": "mmu", "to": "ept", "label": "目标 GPA 0x00403080", "kind": "translation"}, {"id": "read", "from": "ept", "to": "ram", "label": "HPA 0x21000080", "kind": "data"}, {"id": "result", "from": "ram", "to": "guest", "label": "0x12345678", "kind": "data"}],
+      "assumptions": [
+        "Intel VMX + EPT，4 KiB 页；读取 GVA 0x40203080 的 32 位值。",
+        "Guest 各级页表和对应 EPT 均有效，目标数据页也有允许读取的 EPT 映射。",
+        "本例只展开最终叶子关系，页表遍历缓存可以省略部分中间访问。"
+      ],
+      "nodes": [
+        {
+          "id": "guest",
+          "label": "Guest 指令",
+          "role": "客户机用户态",
+          "badge": "用户态"
+        },
+        {
+          "id": "mmu",
+          "label": "CPU MMU / TLB",
+          "role": "硬件遍历"
+        },
+        {
+          "id": "gpt",
+          "label": "Guest 页表",
+          "role": "GVA → GPA"
+        },
+        {
+          "id": "ept",
+          "label": "EPT",
+          "role": "GPA → HPA"
+        },
+        {
+          "id": "ram",
+          "label": "宿主物理内存",
+          "role": "目标数据"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM / QEMU",
+          "role": "本次不介入"
+        }
+      ],
+      "links": [
+        {
+          "id": "lookup",
+          "from": "guest",
+          "to": "mmu",
+          "label": "GVA 0x40203080",
+          "kind": "translation"
+        },
+        {
+          "id": "guest-walk",
+          "from": "mmu",
+          "to": "gpt",
+          "label": "遍历 Guest 页表",
+          "kind": "translation"
+        },
+        {
+          "id": "table-ept",
+          "from": "gpt",
+          "to": "ept",
+          "label": "页表页也需 EPT 转换",
+          "kind": "translation"
+        },
+        {
+          "id": "data-ept",
+          "from": "mmu",
+          "to": "ept",
+          "label": "目标 GPA 0x00403080",
+          "kind": "translation"
+        },
+        {
+          "id": "read",
+          "from": "ept",
+          "to": "ram",
+          "label": "HPA 0x21000080",
+          "kind": "data"
+        },
+        {
+          "id": "result",
+          "from": "ram",
+          "to": "guest",
+          "label": "0x12345678",
+          "kind": "data"
+        }
+      ],
       "structures": [
-        {"id": "addresses", "title": "硬件地址转换", "kind": "address", "fields": [{"key": "gva", "label": "GVA", "initial": "0x0000000040203080"}, {"key": "gpa", "label": "本次解析 GPA", "initial": "尚未解析"}, {"key": "hpa", "label": "本次解析 HPA", "initial": "尚未解析"}]},
-        {"id": "tables", "title": "页表与缓存", "kind": "registers", "fields": [{"key": "cache", "label": "转换缓存", "initial": "目标条目缺失"}, {"key": "guest-pte", "label": "Guest PTE", "initial": "P=1 · 映射 GPA 页 0x00403000"}, {"key": "ept-leaf", "label": "目标 EPT 叶子", "initial": "R=1 · 映射 HPA 页 0x21000000"}, {"key": "instruction", "label": "当前读取", "initial": "尚未执行"}, {"key": "value", "label": "EAX", "initial": "尚未更新"}, {"key": "userspace", "label": "返回 QEMU", "initial": "否"}]}
+        {
+          "id": "addresses",
+          "title": "硬件地址转换",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "gva",
+              "label": "GVA",
+              "initial": "0x0000000040203080"
+            },
+            {
+              "key": "gpa",
+              "label": "本次解析 GPA",
+              "initial": "尚未解析"
+            },
+            {
+              "key": "hpa",
+              "label": "本次解析 HPA",
+              "initial": "尚未解析"
+            }
+          ]
+        },
+        {
+          "id": "tables",
+          "title": "页表与缓存",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "cache",
+              "label": "转换缓存",
+              "initial": "目标条目缺失"
+            },
+            {
+              "key": "guest-pte",
+              "label": "Guest PTE",
+              "initial": "P=1 · 映射 GPA 页 0x00403000"
+            },
+            {
+              "key": "ept-leaf",
+              "label": "目标 EPT 叶子",
+              "initial": "R=1 · 映射 HPA 页 0x21000000"
+            },
+            {
+              "key": "instruction",
+              "label": "当前读取",
+              "initial": "尚未执行"
+            },
+            {
+              "key": "value",
+              "label": "EAX",
+              "initial": "尚未更新"
+            },
+            {
+              "key": "userspace",
+              "label": "返回 QEMU",
+              "initial": "否"
+            }
+          ]
+        }
       ],
       "steps": [
-        {"id": "ready", "title": "访问前", "actor": "Guest 用户态", "description": "目标地址暂时没有转换缓存条目，页表映射已经准备好。", "detail": "TLB 未命中描述缓存状态；是否发生异常，还取决于接下来遍历到的页表内容和权限。", "active": [], "links": [], "changes": {}, "nodeStates": {}, "sourceIds": ["address-model"], "focus": true},
-        {"id": "miss", "title": "转换缓存未命中", "actor": "CPU MMU", "description": "处理器查询 GVA 0x40203080，启动硬件页表遍历。", "detail": "在本例的 EPT 配置下，普通 TLB miss 本身不产生 VM-Exit，也不会调用 QEMU。", "active": ["guest", "mmu"], "links": ["lookup"], "changes": {"cache": "未命中，开始硬件遍历", "instruction": "等待地址转换"}, "nodeStates": {"mmu": "页表遍历"}, "sourceIds": ["address-model"], "focus": true},
-        {"id": "guest-leaf", "title": "解析 Guest 页表", "actor": "CPU MMU", "description": "硬件读取 Guest 页表，得到 GPA 页 0x00403000，加上偏移 0x080。", "detail": "Guest 页表存放在 Guest 物理内存中，读取页表页本身也要经过 EPT。本图将重复的层级遍历收束为一条关系。", "active": ["mmu", "gpt", "ept"], "links": ["guest-walk", "table-ept"], "changes": {"gpa": "0x00403080", "guest-pte": "已读取 · P=1 · 本次读取允许"}, "nodeStates": {"gpt": "得到目标 GPA"}, "sourceIds": ["address-model"], "focus": true},
-        {"id": "ept-leaf", "title": "解析目标 EPT 叶子", "actor": "CPU MMU", "description": "目标 GPA 有有效 EPT 映射，页内偏移保持为 0x080。", "detail": "叶子给出 HPA 页 0x21000000，本次地址为 0x21000080。两级权限都允许访问，硬件无需请求软件修复。", "active": ["mmu", "ept"], "links": ["data-ept"], "changes": {"hpa": "0x21000080", "ept-leaf": "已读取 · R=1 · HPA 页 0x21000000", "cache": "取得有效转换，可供后续复用"}, "nodeStates": {"ept": "目标页映射有效"}, "sourceIds": ["address-model"], "focus": true},
-        {"id": "load", "title": "完成数据读取", "actor": "CPU 硬件", "description": "处理器读取目标内存，将 0x12345678 写入 EAX。", "detail": "与缓存命中相比，这次增加了页表遍历成本；整个成功路径仍由硬件完成。", "active": ["ram", "guest"], "links": ["read", "result"], "changes": {"value": "0x12345678", "instruction": "读取完成，进入下一条指令"}, "nodeStates": {"guest": "继续执行"}, "sourceIds": ["address-model"], "focus": true}
+        {
+          "id": "ready",
+          "title": "访问前",
+          "actor": "Guest 用户态",
+          "description": "目标地址暂时没有转换缓存条目，页表映射已经准备好。",
+          "detail": "TLB 未命中描述缓存状态；是否发生异常，还取决于接下来遍历到的页表内容和权限。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "address-model"
+          ],
+          "focus": true
+        },
+        {
+          "id": "miss",
+          "title": "转换缓存未命中",
+          "actor": "CPU MMU",
+          "description": "处理器查询 GVA 0x40203080，启动硬件页表遍历。",
+          "detail": "在本例的 EPT 配置下，普通 TLB miss 本身不产生 VM-Exit，也不会调用 QEMU。",
+          "active": [
+            "guest",
+            "mmu"
+          ],
+          "links": [
+            "lookup"
+          ],
+          "changes": {
+            "cache": "未命中，开始硬件遍历",
+            "instruction": "等待地址转换"
+          },
+          "nodeStates": {
+            "mmu": "页表遍历"
+          },
+          "sourceIds": [
+            "address-model"
+          ],
+          "focus": true
+        },
+        {
+          "id": "guest-leaf",
+          "title": "解析 Guest 页表",
+          "actor": "CPU MMU",
+          "description": "硬件读取 Guest 页表，得到 GPA 页 0x00403000，加上偏移 0x080。",
+          "detail": "Guest 页表存放在 Guest 物理内存中，读取页表页本身也要经过 EPT。本图将重复的层级遍历收束为一条关系。",
+          "active": [
+            "mmu",
+            "gpt",
+            "ept"
+          ],
+          "links": [
+            "guest-walk",
+            "table-ept"
+          ],
+          "changes": {
+            "gpa": "0x00403080",
+            "guest-pte": "已读取 · P=1 · 本次读取允许"
+          },
+          "nodeStates": {
+            "gpt": "得到目标 GPA"
+          },
+          "sourceIds": [
+            "address-model"
+          ],
+          "focus": true
+        },
+        {
+          "id": "ept-leaf",
+          "title": "解析目标 EPT 叶子",
+          "actor": "CPU MMU",
+          "description": "目标 GPA 有有效 EPT 映射，页内偏移保持为 0x080。",
+          "detail": "叶子给出 HPA 页 0x21000000，本次地址为 0x21000080。两级权限都允许访问，硬件无需请求软件修复。",
+          "active": [
+            "mmu",
+            "ept"
+          ],
+          "links": [
+            "data-ept"
+          ],
+          "changes": {
+            "hpa": "0x21000080",
+            "ept-leaf": "已读取 · R=1 · HPA 页 0x21000000",
+            "cache": "取得有效转换，可供后续复用"
+          },
+          "nodeStates": {
+            "ept": "目标页映射有效"
+          },
+          "sourceIds": [
+            "address-model"
+          ],
+          "focus": true
+        },
+        {
+          "id": "load",
+          "title": "完成数据读取",
+          "actor": "CPU 硬件",
+          "description": "处理器读取目标内存，将 0x12345678 写入 EAX。",
+          "detail": "与缓存命中相比，这次增加了页表遍历成本；整个成功路径仍由硬件完成。",
+          "active": [
+            "ram",
+            "guest"
+          ],
+          "links": [
+            "read",
+            "result"
+          ],
+          "changes": {
+            "value": "0x12345678",
+            "instruction": "读取完成，进入下一条指令"
+          },
+          "nodeStates": {
+            "guest": "继续执行"
+          },
+          "sourceIds": [
+            "address-model"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "硬件地址转换与准备条件",
+          "context": "处理器 / 初始化配置",
+          "sourceIds": [
+            "address-model"
+          ],
+          "boundary": "这些入口解释映射与拦截配置；硬件命中路径不会逐次调用软件设置函数。"
+        }
+      ],
+      "sourceSteps": [
+        {
+          "id": "load",
+          "title": "Guest 载入遇到转换缓存未命中",
+          "kind": "instruction",
+          "context": "处理器 · Guest 上下文",
+          "stepIds": [
+            "ready",
+            "miss"
+          ],
+          "sourceIds": [
+            "address-model"
+          ],
+          "detail": "示例使用一个 4 B MOV 载入；缓存未命中不自动等于 VM-exit。",
+          "code": "MOV EAX, DWORD PTR [RDI]"
+        },
+        {
+          "id": "page-walk",
+          "title": "硬件遍历已存在的两级页表",
+          "kind": "instruction",
+          "context": "硬件 page walker",
+          "stepIds": [
+            "guest-leaf",
+            "ept-leaf"
+          ],
+          "sourceIds": [
+            "address-model"
+          ],
+          "detail": "读取 Guest 页表本身也可能需要 EPT 转换；两级遍历可交织发生。这里按最终 Guest PTE 与 EPT 叶项分解解释，不冒充两次 Linux 函数调用。",
+          "code": "Guest 页表：GVA → GPA\nEPT：GPA → HPA"
+        },
+        {
+          "id": "load-result",
+          "title": "更新转换缓存并完成原载入",
+          "kind": "instruction",
+          "context": "处理器 · Guest 上下文",
+          "stepIds": [
+            "load"
+          ],
+          "sourceIds": [
+            "address-model"
+          ],
+          "detail": "页表与权限均有效，因此不需要 KVM 修复映射或返回 QEMU。",
+          "code": "EAX ← 本次 4 B 读值"
+        }
       ]
     },
     {
-      "id": "guest-page-fault", "label": "Guest #PF · 按需分配",
+      "id": "guest-page-fault",
+      "label": "Guest #PF · 按需分配",
       "summary": "客户机应用首次写入合法匿名映射，Guest PTE 尚不存在。客户机内核分配并映射页面，返回后重试写入。",
-      "assumptions": ["Guest 运行 Linux 6.18；匿名私有 VMA 允许读写，目标 PTE 为 non-present。", "Guest 用户态写入 0x12345678；未启用 userfaultfd，不发生内存不足。", "本例由 Guest 分配器选到 GPA 页 0x00403000；该页以及页表页已有可写 EPT 与驻留的宿主后备页。", "Intel EPT 已启用，本例 Guest #PF 不被 VMX 拦截；不含特殊 MAXPHYADDR 或嵌套配置。"],
-      "nodes": [{"id": "guest", "label": "Guest 应用", "role": "首次写入"}, {"id": "mmu", "label": "CPU MMU", "role": "检查 Guest PTE"}, {"id": "guest-os", "label": "Guest Linux", "role": "VMA 与页分配"}, {"id": "gpt", "label": "Guest 页表", "role": "新增叶子 PTE"}, {"id": "ram", "label": "已映射的 RAM", "role": "EPT 与宿主页就绪"}, {"id": "kvm", "label": "KVM / QEMU", "role": "本次不介入"}],
-      "links": [{"id": "write", "from": "guest", "to": "mmu", "label": "写 GVA 0x40203080", "kind": "translation"}, {"id": "fault", "from": "mmu", "to": "guest-os", "label": "Guest #PF · CR2", "kind": "control"}, {"id": "allocate", "from": "guest-os", "to": "ram", "label": "分配并清零 Guest 页", "kind": "data"}, {"id": "install", "from": "guest-os", "to": "gpt", "label": "建立可写 PTE", "kind": "control"}, {"id": "return", "from": "guest-os", "to": "guest", "label": "异常返回，重试原指令", "kind": "control"}, {"id": "store", "from": "guest", "to": "ram", "label": "写入 0x12345678", "kind": "data"}],
+      "assumptions": [
+        "Guest 运行 Linux 6.18；匿名私有 VMA 允许读写，目标 PTE 为 non-present。",
+        "Guest 用户态写入 0x12345678；未启用 userfaultfd，不发生内存不足。",
+        "本例由 Guest 分配器选到 GPA 页 0x00403000；该页以及页表页已有可写 EPT 与驻留的宿主后备页。",
+        "Intel EPT 已启用，本例 Guest #PF 不被 VMX 拦截；不含特殊 MAXPHYADDR 或嵌套配置。"
+      ],
+      "nodes": [
+        {
+          "id": "guest",
+          "label": "Guest 应用",
+          "role": "首次写入",
+          "badge": "用户态"
+        },
+        {
+          "id": "mmu",
+          "label": "CPU MMU",
+          "role": "检查 Guest PTE"
+        },
+        {
+          "id": "guest-os",
+          "label": "Guest Linux",
+          "role": "VMA 与页分配",
+          "badge": "内核态"
+        },
+        {
+          "id": "gpt",
+          "label": "Guest 页表",
+          "role": "新增叶子 PTE"
+        },
+        {
+          "id": "ram",
+          "label": "已映射的 RAM",
+          "role": "EPT 与宿主页就绪"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM / QEMU",
+          "role": "本次不介入"
+        }
+      ],
+      "links": [
+        {
+          "id": "write",
+          "from": "guest",
+          "to": "mmu",
+          "label": "写 GVA 0x40203080",
+          "kind": "translation"
+        },
+        {
+          "id": "fault",
+          "from": "mmu",
+          "to": "guest-os",
+          "label": "Guest #PF · CR2",
+          "kind": "control"
+        },
+        {
+          "id": "allocate",
+          "from": "guest-os",
+          "to": "ram",
+          "label": "分配并清零 Guest 页",
+          "kind": "data"
+        },
+        {
+          "id": "install",
+          "from": "guest-os",
+          "to": "gpt",
+          "label": "建立可写 PTE",
+          "kind": "control"
+        },
+        {
+          "id": "return",
+          "from": "guest-os",
+          "to": "guest",
+          "label": "异常返回，重试原指令",
+          "kind": "control"
+        },
+        {
+          "id": "store",
+          "from": "guest",
+          "to": "ram",
+          "label": "写入 0x12345678",
+          "kind": "data"
+        }
+      ],
       "structures": [
-        {"id": "addresses", "title": "Guest 地址与异常", "kind": "address", "fields": [{"key": "gva", "label": "写入 GVA", "initial": "0x0000000040203080"}, {"key": "gpa", "label": "本次目标 GPA", "initial": "尚无 Guest 映射"}, {"key": "cr2", "label": "Guest CR2", "initial": "本次尚未更新"}, {"key": "pf-error", "label": "#PF 错误码", "initial": "尚未发生"}]},
-        {"id": "mapping", "title": "按需分配状态", "kind": "registers", "fields": [{"key": "vma", "label": "Guest VMA", "initial": "合法匿名私有映射 · 允许读写"}, {"key": "guest-pte", "label": "Guest PTE", "initial": "P=0 · 未建立映射"}, {"key": "ept-leaf", "label": "将分配页的 EPT", "initial": "已存在 · 可读写 · HPA 页 0x21000000"}, {"key": "value", "label": "目标 4 B", "initial": "尚未分配给此 Guest VMA"}, {"key": "instruction", "label": "应用写指令", "initial": "尚未执行"}, {"key": "userspace", "label": "返回 QEMU", "initial": "否"}]}
+        {
+          "id": "addresses",
+          "title": "Guest 地址与异常",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "gva",
+              "label": "写入 GVA",
+              "initial": "0x0000000040203080"
+            },
+            {
+              "key": "gpa",
+              "label": "本次目标 GPA",
+              "initial": "尚无 Guest 映射"
+            },
+            {
+              "key": "cr2",
+              "label": "Guest CR2",
+              "initial": "本次尚未更新"
+            },
+            {
+              "key": "pf-error",
+              "label": "#PF 错误码",
+              "initial": "尚未发生"
+            }
+          ]
+        },
+        {
+          "id": "mapping",
+          "title": "按需分配状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "vma",
+              "label": "Guest VMA",
+              "initial": "合法匿名私有映射 · 允许读写"
+            },
+            {
+              "key": "guest-pte",
+              "label": "Guest PTE",
+              "initial": "P=0 · 未建立映射"
+            },
+            {
+              "key": "ept-leaf",
+              "label": "将分配页的 EPT",
+              "initial": "已存在 · 可读写 · HPA 页 0x21000000"
+            },
+            {
+              "key": "value",
+              "label": "目标 4 B",
+              "initial": "尚未分配给此 Guest VMA"
+            },
+            {
+              "key": "instruction",
+              "label": "应用写指令",
+              "initial": "尚未执行"
+            },
+            {
+              "key": "userspace",
+              "label": "返回 QEMU",
+              "initial": "否"
+            }
+          ]
+        }
       ],
       "steps": [
-        {"id": "ready", "title": "访问前", "actor": "Guest 用户态", "description": "应用已有合法的匿名地址范围，目标页尚未分配。", "detail": "创建 VMA 与建立每一个 PTE 可以发生在不同时间。这里从目标页的首次写入开始。", "active": [], "links": [], "changes": {}, "nodeStates": {}, "sourceIds": ["guest-fault"], "focus": true},
-        {"id": "fault", "title": "产生 Guest #PF", "actor": "CPU 硬件", "description": "Guest PTE 的 P 位为 0，处理器转入客户机的缺页异常处理入口。", "detail": "CR2 记录 GVA 0x40203080，错误码为 0x6：non-present、write、user。原应用写指令尚未完成。本例无需先退出到 KVM。", "active": ["guest", "mmu", "guest-os"], "links": ["write", "fault"], "changes": {"cr2": "0x0000000040203080", "pf-error": "0x6 · P=0 / W=1 / U=1", "instruction": "缺页挂起 · 保存的 RIP 指向原写指令"}, "nodeStates": {"guest-os": "处理 Guest #PF"}, "sourceIds": ["guest-fault", "vmx-exceptions"], "focus": true},
-        {"id": "validate", "title": "检查地址范围", "actor": "Guest Linux 内核", "description": "do_user_addr_fault() 找到对应 VMA，确认应用具有写权限，交给 handle_mm_fault()。", "detail": "本例选择可修复的匿名缺页。若地址不属于合法 VMA 或权限不允许，Guest 可能给应用发送 SIGSEGV，不会继续本例的分配路径。", "active": ["guest-os"], "links": [], "changes": {"vma": "查找成功 · 写权限检查通过"}, "nodeStates": {"guest-os": "允许按需分配"}, "sourceIds": ["guest-fault"], "focus": true},
-        {"id": "allocate", "title": "分配并建立 Guest PTE", "actor": "Guest Linux 内核", "description": "客户机分配、清零 GPA 页 0x00403000，并建立应用虚拟页的可写映射。", "detail": "这个 GPA 页对应的 EPT 和宿主页已就绪。Guest 内核管理自己的页分配与 PTE，无需调用 QEMU 设备模型。", "active": ["guest-os", "ram", "gpt"], "links": ["allocate", "install"], "changes": {"gpa": "0x00403080", "guest-pte": "P=1 / RW=1 / U=1 · GPA 页 0x00403000", "value": "0x00000000（新页已清零）"}, "nodeStates": {"gpt": "可写映射就绪"}, "sourceIds": ["guest-fault", "address-model"], "focus": true},
-        {"id": "retry", "title": "返回并重试原写入", "actor": "Guest 用户态", "description": "异常返回恢复应用执行，处理器重新执行同一条写指令。", "detail": "硬件现在能完成 Guest 页表与 EPT 转换，目标地址是 HPA 0x21000080。页故障处理期间 Guest 内核执行了其他指令，应用的这条写指令一直保持待完成。", "active": ["guest-os", "guest", "ram"], "links": ["return", "store"], "changes": {"value": "0x12345678", "instruction": "写入完成，进入下一条指令"}, "nodeStates": {"guest": "恢复应用执行", "ram": "接收写入值"}, "sourceIds": ["guest-fault", "address-model"], "focus": true}
+        {
+          "id": "ready",
+          "title": "访问前",
+          "actor": "Guest 用户态",
+          "description": "应用已有合法的匿名地址范围，目标页尚未分配。",
+          "detail": "创建 VMA 与建立每一个 PTE 可以发生在不同时间。这里从目标页的首次写入开始。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "guest-fault"
+          ],
+          "focus": true
+        },
+        {
+          "id": "fault",
+          "title": "产生 Guest #PF",
+          "actor": "CPU 硬件",
+          "description": "Guest PTE 的 P 位为 0，处理器转入客户机的缺页异常处理入口。",
+          "detail": "CR2 记录 GVA 0x40203080，错误码为 0x6：non-present、write、user。原应用写指令尚未完成。本例无需先退出到 KVM。",
+          "active": [
+            "guest",
+            "mmu",
+            "guest-os"
+          ],
+          "links": [
+            "write",
+            "fault"
+          ],
+          "changes": {
+            "cr2": "0x0000000040203080",
+            "pf-error": "0x6 · P=0 / W=1 / U=1",
+            "instruction": "缺页挂起 · 保存的 RIP 指向原写指令"
+          },
+          "nodeStates": {
+            "guest-os": "处理 Guest #PF"
+          },
+          "sourceIds": [
+            "guest-fault",
+            "vmx-exceptions"
+          ],
+          "focus": true
+        },
+        {
+          "id": "validate",
+          "title": "检查地址范围",
+          "actor": "Guest Linux 内核",
+          "description": "do_user_addr_fault() 找到对应 VMA，确认应用具有写权限，交给 handle_mm_fault()。",
+          "detail": "本例选择可修复的匿名缺页。若地址不属于合法 VMA 或权限不允许，Guest 可能给应用发送 SIGSEGV，不会继续本例的分配路径。",
+          "active": [
+            "guest-os"
+          ],
+          "links": [],
+          "changes": {
+            "vma": "查找成功 · 写权限检查通过"
+          },
+          "nodeStates": {
+            "guest-os": "允许按需分配"
+          },
+          "sourceIds": [
+            "guest-fault"
+          ],
+          "focus": true
+        },
+        {
+          "id": "allocate",
+          "title": "分配并建立 Guest PTE",
+          "actor": "Guest Linux 内核",
+          "description": "客户机分配、清零 GPA 页 0x00403000，并建立应用虚拟页的可写映射。",
+          "detail": "这个 GPA 页对应的 EPT 和宿主页已就绪。Guest 内核管理自己的页分配与 PTE，无需调用 QEMU 设备模型。",
+          "active": [
+            "guest-os",
+            "ram",
+            "gpt"
+          ],
+          "links": [
+            "allocate",
+            "install"
+          ],
+          "changes": {
+            "gpa": "0x00403080",
+            "guest-pte": "P=1 / RW=1 / U=1 · GPA 页 0x00403000",
+            "value": "0x00000000（新页已清零）"
+          },
+          "nodeStates": {
+            "gpt": "可写映射就绪"
+          },
+          "sourceIds": [
+            "guest-fault",
+            "address-model"
+          ],
+          "focus": true
+        },
+        {
+          "id": "retry",
+          "title": "返回并重试原写入",
+          "actor": "Guest 用户态",
+          "description": "异常返回恢复应用执行，处理器重新执行同一条写指令。",
+          "detail": "硬件现在能完成 Guest 页表与 EPT 转换，目标地址是 HPA 0x21000080。页故障处理期间 Guest 内核执行了其他指令，应用的这条写指令一直保持待完成。",
+          "active": [
+            "guest-os",
+            "guest",
+            "ram"
+          ],
+          "links": [
+            "return",
+            "store"
+          ],
+          "changes": {
+            "value": "0x12345678",
+            "instruction": "写入完成，进入下一条指令"
+          },
+          "nodeStates": {
+            "guest": "恢复应用执行",
+            "ram": "接收写入值"
+          },
+          "sourceIds": [
+            "guest-fault",
+            "address-model"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "硬件地址转换与准备条件",
+          "context": "处理器 / 初始化配置",
+          "sourceIds": [
+            "vmx-exceptions",
+            "address-model"
+          ],
+          "boundary": "这些入口解释映射与拦截配置；硬件命中路径不会逐次调用软件设置函数。"
+        },
+        {
+          "id": "path-1",
+          "title": "Guest 缺页处理",
+          "context": "客户机内核",
+          "sourceIds": [
+            "guest-fault"
+          ],
+          "boundary": "Guest #PF handler 在客户机上下文执行，不等于 KVM 的 EPT 缺页。",
+          "entry": {
+            "kind": "notification",
+            "label": "处理器把 #PF 交付给 Guest 自己的异常入口"
+          }
+        }
       ]
     },
     {
-      "id": "ept-missing", "label": "EPT · 映射尚未建立",
+      "id": "ept-missing",
+      "label": "EPT · 映射尚未建立",
       "summary": "Guest 页表有效，目标 RAM 页没有 EPT 叶子。KVM 由 memslot 找到已有宿主页，建立第二级映射后重试。",
-      "assumptions": ["Intel VMX + EPT，Linux 6.18 TDP MMU，QEMU 10.2，4 KiB 页。", "Guest 页表页的 EPT 映射已经存在，只有目标数据页 EPT 缺失。", "RAM memslot 从 GPA 0x00400000 开始，长度 2 MiB，HVA 基址 0x7f0000000000。", "后备页已驻留，当前 PFN 为 0x21000；访问期间映射没有并发失效。"],
-      "nodes": [{"id": "guest", "label": "Guest 指令", "role": "读取 RAM"}, {"id": "mmu", "label": "CPU MMU / EPT", "role": "第二级转换"}, {"id": "kvm", "label": "KVM TDP MMU", "role": "EPT 建图"}, {"id": "host-mm", "label": "宿主内存管理", "role": "HVA → 当前 PFN"}, {"id": "ram", "label": "宿主物理内存", "role": "已驻留后备页"}, {"id": "qemu", "label": "QEMU", "role": "已登记 memslot"}],
-      "links": [{"id": "translate", "from": "guest", "to": "mmu", "label": "GVA → GPA", "kind": "translation"}, {"id": "exit", "from": "mmu", "to": "kvm", "label": "EPT violation / VM-Exit", "kind": "control"}, {"id": "resolve", "from": "kvm", "to": "host-mm", "label": "用 HVA 取得后备 PFN", "kind": "control"}, {"id": "map", "from": "kvm", "to": "mmu", "label": "安装 EPT 叶子，VM-entry", "kind": "control"}, {"id": "read", "from": "mmu", "to": "ram", "label": "重试读取 HPA", "kind": "data"}, {"id": "result", "from": "ram", "to": "guest", "label": "0x12345678", "kind": "data"}],
+      "assumptions": [
+        "Intel VMX + EPT，Linux 6.18 TDP MMU，QEMU 10.2，4 KiB 页。",
+        "Guest 页表页的 EPT 映射已经存在，只有目标数据页 EPT 缺失。",
+        "RAM memslot 从 GPA 0x00400000 开始，长度 2 MiB，HVA 基址 0x7f0000000000。",
+        "后备页已驻留，当前 PFN 为 0x21000；访问期间映射没有并发失效。"
+      ],
+      "nodes": [
+        {
+          "id": "guest",
+          "label": "Guest 指令",
+          "role": "读取 RAM",
+          "badge": "用户态"
+        },
+        {
+          "id": "mmu",
+          "label": "CPU MMU / EPT",
+          "role": "第二级转换"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM TDP MMU",
+          "role": "EPT 建图"
+        },
+        {
+          "id": "host-mm",
+          "label": "宿主内存管理",
+          "role": "HVA → 当前 PFN"
+        },
+        {
+          "id": "ram",
+          "label": "宿主物理内存",
+          "role": "已驻留后备页"
+        },
+        {
+          "id": "qemu",
+          "label": "QEMU",
+          "role": "已登记 memslot"
+        }
+      ],
+      "links": [
+        {
+          "id": "translate",
+          "from": "guest",
+          "to": "mmu",
+          "label": "GVA → GPA",
+          "kind": "translation"
+        },
+        {
+          "id": "exit",
+          "from": "mmu",
+          "to": "kvm",
+          "label": "EPT violation / VM-Exit",
+          "kind": "control"
+        },
+        {
+          "id": "resolve",
+          "from": "kvm",
+          "to": "host-mm",
+          "label": "用 HVA 取得后备 PFN",
+          "kind": "control"
+        },
+        {
+          "id": "map",
+          "from": "kvm",
+          "to": "mmu",
+          "label": "安装 EPT 叶子，VM-entry",
+          "kind": "control"
+        },
+        {
+          "id": "read",
+          "from": "mmu",
+          "to": "ram",
+          "label": "重试读取 HPA",
+          "kind": "data"
+        },
+        {
+          "id": "result",
+          "from": "ram",
+          "to": "guest",
+          "label": "0x12345678",
+          "kind": "data"
+        }
+      ],
       "structures": [
-        {"id": "addresses", "title": "硬件地址转换", "kind": "address", "fields": [{"key": "gva", "label": "GVA", "initial": "0x0000000040203080"}, {"key": "gpa", "label": "Guest 页表映射", "initial": "0x00403080"}, {"key": "hpa", "label": "本次 HPA", "initial": "尚无 EPT 目标"}]},
-        {"id": "backing", "title": "KVM 软件建图", "kind": "address", "fields": [{"key": "gfn", "label": "GFN / 槽内页号", "initial": "尚未查找"}, {"key": "hva", "label": "后备页 HVA", "initial": "尚未查找"}, {"key": "pfn", "label": "宿主 PFN", "initial": "尚未取得"}, {"key": "ept-leaf", "label": "目标 EPT 叶子", "initial": "不存在"}]},
-        {"id": "execution", "title": "执行边界", "kind": "registers", "fields": [{"key": "instruction", "label": "当前读取", "initial": "尚未执行"}, {"key": "value", "label": "EAX", "initial": "尚未更新"}, {"key": "userspace", "label": "返回 QEMU", "initial": "否"}]}
+        {
+          "id": "addresses",
+          "title": "硬件地址转换",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "gva",
+              "label": "GVA",
+              "initial": "0x0000000040203080"
+            },
+            {
+              "key": "gpa",
+              "label": "Guest 页表映射",
+              "initial": "0x00403080"
+            },
+            {
+              "key": "hpa",
+              "label": "本次 HPA",
+              "initial": "尚无 EPT 目标"
+            }
+          ]
+        },
+        {
+          "id": "backing",
+          "title": "KVM 软件建图",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "gfn",
+              "label": "GFN / 槽内页号",
+              "initial": "尚未查找"
+            },
+            {
+              "key": "hva",
+              "label": "后备页 HVA",
+              "initial": "尚未查找"
+            },
+            {
+              "key": "pfn",
+              "label": "宿主 PFN",
+              "initial": "尚未取得"
+            },
+            {
+              "key": "ept-leaf",
+              "label": "目标 EPT 叶子",
+              "initial": "不存在"
+            }
+          ]
+        },
+        {
+          "id": "execution",
+          "title": "执行边界",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "instruction",
+              "label": "当前读取",
+              "initial": "尚未执行"
+            },
+            {
+              "key": "value",
+              "label": "EAX",
+              "initial": "尚未更新"
+            },
+            {
+              "key": "userspace",
+              "label": "返回 QEMU",
+              "initial": "否"
+            }
+          ]
+        }
       ],
       "steps": [
-        {"id": "ready", "title": "访问前", "actor": "Guest 用户态", "description": "QEMU 已注册 RAM 范围，目标数据页的 EPT 叶子尚未建立。", "detail": "注册 GPA 与 HVA 对应范围，并不要求 KVM 立即为整段 RAM 填完 EPT。", "active": [], "links": [], "changes": {}, "nodeStates": {}, "sourceIds": ["memory-slot", "ept-map"], "focus": true},
-        {"id": "exit", "title": "EPT 转换引起退出", "actor": "CPU 硬件 → KVM", "description": "Guest 页表给出 GPA 0x00403080，EPT 转换无法找到有效叶子，触发 EPT violation。", "detail": "VMX 记录 GPA 和访问类型。这里发生硬件 VM-Exit，KVM_RUN 仍在宿主内核内执行；Guest 不接收 #PF。", "active": ["guest", "mmu", "kvm"], "links": ["translate", "exit"], "changes": {"instruction": "原读取尚未完成 · KVM 处理 EPT violation"}, "nodeStates": {"kvm": "读取退出 GPA 与访问类型"}, "sourceIds": ["ept-exit"], "focus": true},
-        {"id": "slot", "title": "由 memslot 定位 HVA", "actor": "KVM", "description": "GFN 为 0x403，槽内页号为 3；KVM 据此算出后备页 HVA。", "detail": "0x7f0000000000 + 3 × 0x1000 = 0x7f0000003000。HVA 只服务于软件查找宿主页，不加入 Guest 的硬件 GVA → GPA → HPA 转换链。", "active": ["kvm"], "links": [], "changes": {"gfn": "GFN 0x403 · 槽内页号 3", "hva": "0x7f0000003000"}, "nodeStates": {"kvm": "命中 RAM memslot"}, "sourceIds": ["backing-page", "memory-slot"], "focus": true},
-        {"id": "pfn", "title": "取得当前后备页", "actor": "KVM → 宿主内存管理", "description": "后备页已经驻留，宿主内存管理返回 PFN 0x21000。", "detail": "KVM 获得页引用和可写状态，并检查相关映射失效条件。这并不意味着整台虚机的 RAM 被永久固定。", "active": ["kvm", "host-mm"], "links": ["resolve"], "changes": {"pfn": "0x21000 · 后备页已驻留"}, "nodeStates": {"host-mm": "返回当前 PFN"}, "sourceIds": ["backing-page"], "focus": true},
-        {"id": "map", "title": "安装 EPT 叶子", "actor": "KVM TDP MMU", "description": "KVM 建立 GPA 页 0x00403000 到 HPA 页 0x21000000 的映射，再进入客户机。", "detail": "TDP MMU 在锁与失效检查保护下提交 SPTE。Guest PTE 保持原样，原读取指令没有被跳过。", "active": ["kvm", "mmu"], "links": ["map"], "changes": {"ept-leaf": "R=1 · GPA 页 0x00403000 → HPA 页 0x21000000", "hpa": "0x21000080", "instruction": "重新进入 Guest · 重试同一条读取"}, "nodeStates": {"mmu": "目标 EPT 已就绪"}, "sourceIds": ["ept-map"], "focus": true},
-        {"id": "complete", "title": "重试并完成读取", "actor": "CPU 硬件", "description": "处理器重新执行读取，沿新 EPT 映射取得 0x12345678。", "detail": "这次 RAM 缺项在 KVM 内修复完成，整个过程中没有调用 QEMU 的设备读回调。", "active": ["mmu", "ram", "guest"], "links": ["read", "result"], "changes": {"value": "0x12345678", "instruction": "读取完成，进入下一条指令"}, "nodeStates": {"guest": "继续执行"}, "sourceIds": ["ept-map", "address-model"], "focus": true}
+        {
+          "id": "ready",
+          "title": "访问前",
+          "actor": "Guest 用户态",
+          "description": "QEMU 已注册 RAM 范围，目标数据页的 EPT 叶子尚未建立。",
+          "detail": "注册 GPA 与 HVA 对应范围，并不要求 KVM 立即为整段 RAM 填完 EPT。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "memory-slot",
+            "ept-map"
+          ],
+          "focus": true
+        },
+        {
+          "id": "exit",
+          "title": "EPT 转换引起退出",
+          "actor": "CPU 硬件 → KVM",
+          "description": "Guest 页表给出 GPA 0x00403080，EPT 转换无法找到有效叶子，触发 EPT violation。",
+          "detail": "VMX 记录 GPA 和访问类型。这里发生硬件 VM-Exit，KVM_RUN 仍在宿主内核内执行；Guest 不接收 #PF。",
+          "active": [
+            "guest",
+            "mmu",
+            "kvm"
+          ],
+          "links": [
+            "translate",
+            "exit"
+          ],
+          "changes": {
+            "instruction": "原读取尚未完成 · KVM 处理 EPT violation"
+          },
+          "nodeStates": {
+            "kvm": "读取退出 GPA 与访问类型"
+          },
+          "sourceIds": [
+            "ept-exit"
+          ],
+          "focus": true
+        },
+        {
+          "id": "slot",
+          "title": "由 memslot 定位 HVA",
+          "actor": "KVM",
+          "description": "GFN 为 0x403，槽内页号为 3；KVM 据此算出后备页 HVA。",
+          "detail": "0x7f0000000000 + 3 × 0x1000 = 0x7f0000003000。HVA 只服务于软件查找宿主页，不加入 Guest 的硬件 GVA → GPA → HPA 转换链。",
+          "active": [
+            "kvm"
+          ],
+          "links": [],
+          "changes": {
+            "gfn": "GFN 0x403 · 槽内页号 3",
+            "hva": "0x7f0000003000"
+          },
+          "nodeStates": {
+            "kvm": "命中 RAM memslot"
+          },
+          "sourceIds": [
+            "backing-page",
+            "memory-slot"
+          ],
+          "focus": true
+        },
+        {
+          "id": "pfn",
+          "title": "取得当前后备页",
+          "actor": "KVM → 宿主内存管理",
+          "description": "后备页已经驻留，宿主内存管理返回 PFN 0x21000。",
+          "detail": "KVM 获得页引用和可写状态，并检查相关映射失效条件。这并不意味着整台虚机的 RAM 被永久固定。",
+          "active": [
+            "kvm",
+            "host-mm"
+          ],
+          "links": [
+            "resolve"
+          ],
+          "changes": {
+            "pfn": "0x21000 · 后备页已驻留"
+          },
+          "nodeStates": {
+            "host-mm": "返回当前 PFN"
+          },
+          "sourceIds": [
+            "backing-page"
+          ],
+          "focus": true
+        },
+        {
+          "id": "map",
+          "title": "安装 EPT 叶子",
+          "actor": "KVM TDP MMU",
+          "description": "KVM 建立 GPA 页 0x00403000 到 HPA 页 0x21000000 的映射，再进入客户机。",
+          "detail": "TDP MMU 在锁与失效检查保护下提交 SPTE。Guest PTE 保持原样，原读取指令没有被跳过。",
+          "active": [
+            "kvm",
+            "mmu"
+          ],
+          "links": [
+            "map"
+          ],
+          "changes": {
+            "ept-leaf": "R=1 · GPA 页 0x00403000 → HPA 页 0x21000000",
+            "hpa": "0x21000080",
+            "instruction": "重新进入 Guest · 重试同一条读取"
+          },
+          "nodeStates": {
+            "mmu": "目标 EPT 已就绪"
+          },
+          "sourceIds": [
+            "ept-map"
+          ],
+          "focus": true
+        },
+        {
+          "id": "complete",
+          "title": "重试并完成读取",
+          "actor": "CPU 硬件",
+          "description": "处理器重新执行读取，沿新 EPT 映射取得 0x12345678。",
+          "detail": "这次 RAM 缺项在 KVM 内修复完成，整个过程中没有调用 QEMU 的设备读回调。",
+          "active": [
+            "mmu",
+            "ram",
+            "guest"
+          ],
+          "links": [
+            "read",
+            "result"
+          ],
+          "changes": {
+            "value": "0x12345678",
+            "instruction": "读取完成，进入下一条指令"
+          },
+          "nodeStates": {
+            "guest": "继续执行"
+          },
+          "sourceIds": [
+            "ept-map",
+            "address-model"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "硬件地址转换与准备条件",
+          "context": "处理器 / 初始化配置",
+          "sourceIds": [
+            "memory-slot",
+            "address-model"
+          ],
+          "boundary": "这些入口解释映射与拦截配置；硬件命中路径不会逐次调用软件设置函数。"
+        },
+        {
+          "id": "path-1",
+          "title": "内核退出与设备处理",
+          "context": "宿主 KVM",
+          "sourceIds": [
+            "ept-map",
+            "ept-exit",
+            "backing-page"
+          ],
+          "boundary": "函数按本场景处理次序排列；后备页等待、事件通知和再次进入客户机是明确的边界。"
+        }
       ]
     },
     {
-      "id": "host-page-fault", "label": "宿主后备页 · 换入等待",
+      "id": "host-page-fault",
+      "label": "宿主后备页 · 换入等待",
       "summary": "Guest PTE 有效，但 RAM 后备页已被宿主换出。KVM 取得 PFN 时进入宿主缺页慢路径，等待页面驻留后重新建立 EPT。",
-      "assumptions": ["普通 HVA 后备 RAM，4 KiB 页；匿名宿主页已换出，相关 EPT 已通过失效机制撤销。", "Guest 页表页和内核所需页面均驻留，本例只跟踪目标 RAM 数据页。", "Guest 未启用 KVM 异步缺页协议，本例使用允许等待 I/O 的同步取页路径。", "换入成功、无信号和硬件错误；换入后的示例 PFN 为 0x21000，原数据值为 0x12345678。"],
-      "nodes": [{"id": "guest", "label": "Guest 指令", "role": "读取已有 RAM"}, {"id": "mmu", "label": "CPU MMU / EPT", "role": "目标映射缺失"}, {"id": "kvm", "label": "KVM", "role": "解析后备页"}, {"id": "host-mm", "label": "宿主内存管理", "role": "缺页与换入"}, {"id": "storage", "label": "宿主交换后备", "role": "等待页面 I/O"}, {"id": "ram", "label": "宿主物理内存", "role": "换入后的页面"}],
-      "links": [{"id": "translate", "from": "guest", "to": "mmu", "label": "GVA → GPA", "kind": "translation"}, {"id": "exit", "from": "mmu", "to": "kvm", "label": "EPT violation", "kind": "control"}, {"id": "faultin", "from": "kvm", "to": "host-mm", "label": "GUP / HVA 取页", "kind": "control"}, {"id": "io", "from": "host-mm", "to": "storage", "label": "允许等待的宿主缺页", "kind": "control"}, {"id": "load-page", "from": "storage", "to": "ram", "label": "恢复后备页内容", "kind": "data"}, {"id": "resume", "from": "kvm", "to": "mmu", "label": "建 EPT 后重新进入", "kind": "control"}, {"id": "read", "from": "ram", "to": "guest", "label": "重试读取", "kind": "data"}],
+      "assumptions": [
+        "普通 HVA 后备 RAM，4 KiB 页；匿名宿主页已换出，相关 EPT 已通过失效机制撤销。",
+        "Guest 页表页和内核所需页面均驻留，本例只跟踪目标 RAM 数据页。",
+        "Guest 未启用 KVM 异步缺页协议，本例使用允许等待 I/O 的同步取页路径。",
+        "换入成功、无信号和硬件错误；换入后的示例 PFN 为 0x21000，原数据值为 0x12345678。"
+      ],
+      "nodes": [
+        {
+          "id": "guest",
+          "label": "Guest 指令",
+          "role": "读取已有 RAM",
+          "badge": "用户态"
+        },
+        {
+          "id": "mmu",
+          "label": "CPU MMU / EPT",
+          "role": "目标映射缺失"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM",
+          "role": "解析后备页"
+        },
+        {
+          "id": "host-mm",
+          "label": "宿主内存管理",
+          "role": "缺页与换入"
+        },
+        {
+          "id": "storage",
+          "label": "宿主交换后备",
+          "role": "等待页面 I/O"
+        },
+        {
+          "id": "ram",
+          "label": "宿主物理内存",
+          "role": "换入后的页面"
+        }
+      ],
+      "links": [
+        {
+          "id": "translate",
+          "from": "guest",
+          "to": "mmu",
+          "label": "GVA → GPA",
+          "kind": "translation"
+        },
+        {
+          "id": "exit",
+          "from": "mmu",
+          "to": "kvm",
+          "label": "EPT violation",
+          "kind": "control"
+        },
+        {
+          "id": "faultin",
+          "from": "kvm",
+          "to": "host-mm",
+          "label": "GUP / HVA 取页",
+          "kind": "control"
+        },
+        {
+          "id": "io",
+          "from": "host-mm",
+          "to": "storage",
+          "label": "允许等待的宿主缺页",
+          "kind": "control"
+        },
+        {
+          "id": "load-page",
+          "from": "storage",
+          "to": "ram",
+          "label": "恢复后备页内容",
+          "kind": "data"
+        },
+        {
+          "id": "resume",
+          "from": "kvm",
+          "to": "mmu",
+          "label": "建 EPT 后重新进入",
+          "kind": "control"
+        },
+        {
+          "id": "read",
+          "from": "ram",
+          "to": "guest",
+          "label": "重试读取",
+          "kind": "data"
+        }
+      ],
       "structures": [
-        {"id": "addresses", "title": "访问与后备地址", "kind": "address", "fields": [{"key": "gva", "label": "GVA", "initial": "0x0000000040203080"}, {"key": "gpa", "label": "Guest 页表映射", "initial": "0x00403080 · 有效"}, {"key": "hva", "label": "后备页 HVA", "initial": "0x7f0000003000 · 所属 VMA 有效"}, {"key": "pfn", "label": "当前宿主 PFN", "initial": "页面未驻留"}]},
-        {"id": "fault", "title": "缺页与恢复", "kind": "registers", "fields": [{"key": "ept-leaf", "label": "目标 EPT 叶子", "initial": "已撤销，等待后备页"}, {"key": "residency", "label": "后备页", "initial": "已换出"}, {"key": "thread", "label": "vCPU 线程", "initial": "执行 Guest"}, {"key": "instruction", "label": "当前读取", "initial": "尚未执行"}, {"key": "value", "label": "EAX", "initial": "尚未更新"}, {"key": "userspace", "label": "返回 QEMU", "initial": "否"}]}
+        {
+          "id": "addresses",
+          "title": "访问与后备地址",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "gva",
+              "label": "GVA",
+              "initial": "0x0000000040203080"
+            },
+            {
+              "key": "gpa",
+              "label": "Guest 页表映射",
+              "initial": "0x00403080 · 有效"
+            },
+            {
+              "key": "hva",
+              "label": "后备页 HVA",
+              "initial": "0x7f0000003000 · 所属 VMA 有效"
+            },
+            {
+              "key": "pfn",
+              "label": "当前宿主 PFN",
+              "initial": "页面未驻留"
+            }
+          ]
+        },
+        {
+          "id": "fault",
+          "title": "缺页与恢复",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "ept-leaf",
+              "label": "目标 EPT 叶子",
+              "initial": "已撤销，等待后备页"
+            },
+            {
+              "key": "residency",
+              "label": "后备页",
+              "initial": "已换出"
+            },
+            {
+              "key": "thread",
+              "label": "vCPU 线程",
+              "initial": "执行 Guest"
+            },
+            {
+              "key": "instruction",
+              "label": "当前读取",
+              "initial": "尚未执行"
+            },
+            {
+              "key": "value",
+              "label": "EAX",
+              "initial": "尚未更新"
+            },
+            {
+              "key": "userspace",
+              "label": "返回 QEMU",
+              "initial": "否"
+            }
+          ]
+        }
       ],
       "steps": [
-        {"id": "ready", "title": "访问前", "actor": "Guest 用户态", "description": "Guest 地址仍合法，宿主已经将目标后备页换出并撤销相关 EPT。", "detail": "Guest 页表与宿主页的驻留状态由不同层管理。页面换出不要求 Guest 删除自己的 PTE。", "active": [], "links": [], "changes": {}, "nodeStates": {}, "sourceIds": ["address-model"], "focus": true},
-        {"id": "exit", "title": "EPT 退出到 KVM", "actor": "CPU 硬件 → KVM", "description": "读取命中缺失的 EPT 映射，KVM 接手处理 GPA 0x00403080。", "detail": "此时 Guest 没有收到 #PF。故障地址是第二级映射对应的 GPA，随后才会查找宿主 HVA。", "active": ["guest", "mmu", "kvm"], "links": ["translate", "exit"], "changes": {"thread": "宿主内核 · KVM", "instruction": "读取尚未完成"}, "nodeStates": {"kvm": "解析后备页"}, "sourceIds": ["ept-exit", "ept-map"], "focus": true},
-        {"id": "nowait", "title": "非等待取页无法完成", "actor": "KVM → 宿主内存管理", "description": "KVM 用 HVA 取页，FOLL_NOWAIT 尝试发现页面需要 I/O。", "detail": "返回 KVM_PFN_ERR_NEEDS_IO 后，KVM 检查能否走异步缺页。本例未启用相应 Guest 协议，继续同步慢路径。", "active": ["kvm", "host-mm"], "links": ["faultin"], "changes": {"residency": "需要 I/O · KVM_PFN_ERR_NEEDS_IO"}, "nodeStates": {"host-mm": "无法立即提供 PFN"}, "sourceIds": ["faultin-io", "backing-page"], "focus": true},
-        {"id": "wait", "title": "等待宿主换入", "actor": "宿主内存管理", "description": "KVM 去掉 FOLL_NOWAIT 后再次取页，宿主读取交换后备并等待页面可用。", "detail": "同一 vCPU 线程仍处于 KVM_RUN 的宿主内核调用中，等待期间可以被调度出去；这种等待不等于返回 QEMU 用户态。其他 vCPU 的运行取决于其自身状态。", "active": ["host-mm", "storage"], "links": ["io"], "changes": {"thread": "宿主内核等待 I/O，可被调度出去", "residency": "换入进行中"}, "nodeStates": {"host-mm": "同步缺页处理", "storage": "读取页面"}, "sourceIds": ["faultin-io", "backing-page"], "focus": true},
-        {"id": "resident", "title": "后备页重新驻留", "actor": "宿主内存管理 → KVM", "description": "页面内容恢复，宿主返回当前 PFN 0x21000。", "detail": "换入后的 PFN 可以不同于换出前的 PFN；本例显示本次返回值。KVM 仍需核对失效条件后才能发布 EPT。", "active": ["storage", "ram", "host-mm", "kvm"], "links": ["load-page", "faultin"], "changes": {"pfn": "0x21000", "residency": "已驻留，原内容保留", "thread": "宿主内核 · KVM 恢复执行"}, "nodeStates": {"ram": "页面内容恢复", "kvm": "取得 PFN"}, "sourceIds": ["faultin-io", "ept-map"], "focus": true},
-        {"id": "map", "title": "恢复 EPT 并重试", "actor": "KVM → CPU 硬件", "description": "KVM 建立新的 EPT 叶子，重新进入 Guest。原读取沿 HPA 0x21000080 完成。", "detail": "成功后 EAX 得到 0x12345678。宿主缺页带来的主要额外成本是取页与等待，Guest 页表没有因此被改写。", "active": ["kvm", "mmu", "ram", "guest"], "links": ["resume", "read"], "changes": {"ept-leaf": "R=1 · GPA 页 0x00403000 → HPA 页 0x21000000", "value": "0x12345678", "thread": "执行 Guest", "instruction": "读取完成，进入下一条指令"}, "nodeStates": {"guest": "继续执行"}, "sourceIds": ["ept-map", "address-model"], "focus": true}
+        {
+          "id": "ready",
+          "title": "访问前",
+          "actor": "Guest 用户态",
+          "description": "Guest 地址仍合法，宿主已经将目标后备页换出并撤销相关 EPT。",
+          "detail": "Guest 页表与宿主页的驻留状态由不同层管理。页面换出不要求 Guest 删除自己的 PTE。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "address-model"
+          ],
+          "focus": true
+        },
+        {
+          "id": "exit",
+          "title": "EPT 退出到 KVM",
+          "actor": "CPU 硬件 → KVM",
+          "description": "读取命中缺失的 EPT 映射，KVM 接手处理 GPA 0x00403080。",
+          "detail": "此时 Guest 没有收到 #PF。故障地址是第二级映射对应的 GPA，随后才会查找宿主 HVA。",
+          "active": [
+            "guest",
+            "mmu",
+            "kvm"
+          ],
+          "links": [
+            "translate",
+            "exit"
+          ],
+          "changes": {
+            "thread": "宿主内核 · KVM",
+            "instruction": "读取尚未完成"
+          },
+          "nodeStates": {
+            "kvm": "解析后备页"
+          },
+          "sourceIds": [
+            "ept-exit",
+            "ept-map"
+          ],
+          "focus": true
+        },
+        {
+          "id": "nowait",
+          "title": "非等待取页无法完成",
+          "actor": "KVM → 宿主内存管理",
+          "description": "KVM 用 HVA 取页，FOLL_NOWAIT 尝试发现页面需要 I/O。",
+          "detail": "返回 KVM_PFN_ERR_NEEDS_IO 后，KVM 检查能否走异步缺页。本例未启用相应 Guest 协议，继续同步慢路径。",
+          "active": [
+            "kvm",
+            "host-mm"
+          ],
+          "links": [
+            "faultin"
+          ],
+          "changes": {
+            "residency": "需要 I/O · KVM_PFN_ERR_NEEDS_IO"
+          },
+          "nodeStates": {
+            "host-mm": "无法立即提供 PFN"
+          },
+          "sourceIds": [
+            "faultin-io",
+            "backing-page"
+          ],
+          "focus": true
+        },
+        {
+          "id": "wait",
+          "title": "等待宿主换入",
+          "actor": "宿主内存管理",
+          "description": "KVM 去掉 FOLL_NOWAIT 后再次取页，宿主读取交换后备并等待页面可用。",
+          "detail": "同一 vCPU 线程仍处于 KVM_RUN 的宿主内核调用中，等待期间可以被调度出去；这种等待不等于返回 QEMU 用户态。其他 vCPU 的运行取决于其自身状态。",
+          "active": [
+            "host-mm",
+            "storage"
+          ],
+          "links": [
+            "io"
+          ],
+          "changes": {
+            "thread": "宿主内核等待 I/O，可被调度出去",
+            "residency": "换入进行中"
+          },
+          "nodeStates": {
+            "host-mm": "同步缺页处理",
+            "storage": "读取页面"
+          },
+          "sourceIds": [
+            "faultin-io",
+            "backing-page"
+          ],
+          "focus": true
+        },
+        {
+          "id": "resident",
+          "title": "后备页重新驻留",
+          "actor": "宿主内存管理 → KVM",
+          "description": "页面内容恢复，宿主返回当前 PFN 0x21000。",
+          "detail": "换入后的 PFN 可以不同于换出前的 PFN；本例显示本次返回值。KVM 仍需核对失效条件后才能发布 EPT。",
+          "active": [
+            "storage",
+            "ram",
+            "host-mm",
+            "kvm"
+          ],
+          "links": [
+            "load-page",
+            "faultin"
+          ],
+          "changes": {
+            "pfn": "0x21000",
+            "residency": "已驻留，原内容保留",
+            "thread": "宿主内核 · KVM 恢复执行"
+          },
+          "nodeStates": {
+            "ram": "页面内容恢复",
+            "kvm": "取得 PFN"
+          },
+          "sourceIds": [
+            "faultin-io",
+            "ept-map"
+          ],
+          "focus": true
+        },
+        {
+          "id": "map",
+          "title": "恢复 EPT 并重试",
+          "actor": "KVM → CPU 硬件",
+          "description": "KVM 建立新的 EPT 叶子，重新进入 Guest。原读取沿 HPA 0x21000080 完成。",
+          "detail": "成功后 EAX 得到 0x12345678。宿主缺页带来的主要额外成本是取页与等待，Guest 页表没有因此被改写。",
+          "active": [
+            "kvm",
+            "mmu",
+            "ram",
+            "guest"
+          ],
+          "links": [
+            "resume",
+            "read"
+          ],
+          "changes": {
+            "ept-leaf": "R=1 · GPA 页 0x00403000 → HPA 页 0x21000000",
+            "value": "0x12345678",
+            "thread": "执行 Guest",
+            "instruction": "读取完成，进入下一条指令"
+          },
+          "nodeStates": {
+            "guest": "继续执行"
+          },
+          "sourceIds": [
+            "ept-map",
+            "address-model"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "硬件地址转换与准备条件",
+          "context": "处理器 / 初始化配置",
+          "sourceIds": [
+            "address-model"
+          ],
+          "boundary": "这些入口解释映射与拦截配置；硬件命中路径不会逐次调用软件设置函数。"
+        },
+        {
+          "id": "path-1",
+          "title": "内核退出与设备处理",
+          "context": "宿主 KVM",
+          "sourceIds": [
+            "ept-exit",
+            "ept-map",
+            "faultin-io",
+            "backing-page"
+          ],
+          "boundary": "函数按本场景处理次序排列；后备页等待、事件通知和再次进入客户机是明确的边界。"
+        }
       ]
     },
     {
-      "id": "mmio-read", "label": "MMIO · QEMU 设备读取",
+      "id": "mmio-read",
+      "label": "MMIO · QEMU 设备读取",
       "summary": "地址落在 QEMU 模拟设备寄存器。KVM 返回 MMIO 退出，QEMU 填回读值，再次 KVM_RUN 后完成待决指令。",
-      "assumptions": ["Guest 内核读取 32 位 MMIO 寄存器；GVA 0xffffc90070001000 映射到 GPA 0xf0001000。", "对应设备由 QEMU 模拟，内核设备不能处理该访问；该区域不作为普通 RAM memslot 映射。", "一次 4 B 读取，不跨页、不拆分；设备回调返回 0x12345678。", "未涉及直通设备 BAR、内核 LAPIC 或 ioeventfd 门铃写入。"],
-      "nodes": [{"id": "guest", "label": "Guest 驱动", "role": "读取 MMIO 寄存器"}, {"id": "mmu", "label": "CPU / EPT", "role": "访问引起退出"}, {"id": "kvm", "label": "KVM", "role": "指令模拟与待决读"}, {"id": "qemu", "label": "QEMU vCPU 线程", "role": "处理 KVM_EXIT_MMIO"}, {"id": "device", "label": "QEMU 设备模型", "role": "MemoryRegion 读回调"}],
-      "links": [{"id": "access", "from": "guest", "to": "mmu", "label": "读 GPA 0xf0001000", "kind": "translation"}, {"id": "exit", "from": "mmu", "to": "kvm", "label": "EPT 退出", "kind": "control"}, {"id": "userspace-exit", "from": "kvm", "to": "qemu", "label": "KVM_RUN 返回 MMIO", "kind": "control"}, {"id": "dispatch", "from": "qemu", "to": "device", "label": "address_space_rw", "kind": "control"}, {"id": "data", "from": "device", "to": "qemu", "label": "78 56 34 12", "kind": "data"}, {"id": "reenter", "from": "qemu", "to": "kvm", "label": "再次 KVM_RUN", "kind": "control"}, {"id": "complete", "from": "kvm", "to": "guest", "label": "完成模拟并恢复执行", "kind": "control"}],
+      "assumptions": [
+        "Guest 内核读取 32 位 MMIO 寄存器；GVA 0xffffc90070001000 映射到 GPA 0xf0001000。",
+        "对应设备由 QEMU 模拟，内核设备不能处理该访问；该区域不作为普通 RAM memslot 映射。",
+        "一次 4 B 读取，不跨页、不拆分；设备回调返回 0x12345678。",
+        "未涉及直通设备 BAR、内核 LAPIC 或 ioeventfd 门铃写入。"
+      ],
+      "nodes": [
+        {
+          "id": "guest",
+          "label": "Guest 驱动",
+          "role": "读取 MMIO 寄存器",
+          "badge": "内核态"
+        },
+        {
+          "id": "mmu",
+          "label": "CPU / EPT",
+          "role": "访问引起退出"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM",
+          "role": "指令模拟与待决读"
+        },
+        {
+          "id": "qemu",
+          "label": "QEMU vCPU 线程",
+          "role": "处理 KVM_EXIT_MMIO"
+        },
+        {
+          "id": "device",
+          "label": "QEMU 设备模型",
+          "role": "MemoryRegion 读回调"
+        }
+      ],
+      "links": [
+        {
+          "id": "access",
+          "from": "guest",
+          "to": "mmu",
+          "label": "读 GPA 0xf0001000",
+          "kind": "translation"
+        },
+        {
+          "id": "exit",
+          "from": "mmu",
+          "to": "kvm",
+          "label": "EPT 退出",
+          "kind": "control"
+        },
+        {
+          "id": "userspace-exit",
+          "from": "kvm",
+          "to": "qemu",
+          "label": "KVM_RUN 返回 MMIO",
+          "kind": "control"
+        },
+        {
+          "id": "dispatch",
+          "from": "qemu",
+          "to": "device",
+          "label": "address_space_rw",
+          "kind": "control"
+        },
+        {
+          "id": "data",
+          "from": "device",
+          "to": "qemu",
+          "label": "78 56 34 12",
+          "kind": "data"
+        },
+        {
+          "id": "reenter",
+          "from": "qemu",
+          "to": "kvm",
+          "label": "再次 KVM_RUN",
+          "kind": "control"
+        },
+        {
+          "id": "complete",
+          "from": "kvm",
+          "to": "guest",
+          "label": "完成模拟并恢复执行",
+          "kind": "control"
+        }
+      ],
       "structures": [
-        {"id": "addresses", "title": "设备访问地址", "kind": "address", "fields": [{"key": "gva", "label": "Guest 驱动 GVA", "initial": "0xffffc90070001000"}, {"key": "gpa", "label": "MMIO GPA", "initial": "0xf0001000"}, {"key": "backing", "label": "地址对应对象", "initial": "QEMU 设备寄存器，无普通 RAM HPA"}]},
-        {"id": "mmio", "title": "kvm_run.mmio", "kind": "registers", "fields": [{"key": "exit-reason", "label": "exit_reason", "initial": "本次尚未退出"}, {"key": "mmio-address", "label": "phys_addr / len / is_write", "initial": "尚未填写"}, {"key": "mmio-data", "label": "data[0..3]", "initial": "等待读值"}, {"key": "value", "label": "Guest EAX", "initial": "尚未更新"}, {"key": "instruction", "label": "当前读取", "initial": "尚未执行"}, {"key": "userspace", "label": "返回 QEMU", "initial": "尚未返回"}]}
+        {
+          "id": "addresses",
+          "title": "设备访问地址",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "gva",
+              "label": "Guest 驱动 GVA",
+              "initial": "0xffffc90070001000"
+            },
+            {
+              "key": "gpa",
+              "label": "MMIO GPA",
+              "initial": "0xf0001000"
+            },
+            {
+              "key": "backing",
+              "label": "地址对应对象",
+              "initial": "QEMU 设备寄存器，无普通 RAM HPA"
+            }
+          ]
+        },
+        {
+          "id": "mmio",
+          "title": "kvm_run.mmio",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "exit-reason",
+              "label": "exit_reason",
+              "initial": "本次尚未退出"
+            },
+            {
+              "key": "mmio-address",
+              "label": "phys_addr / len / is_write",
+              "initial": "尚未填写"
+            },
+            {
+              "key": "mmio-data",
+              "label": "data[0..3]",
+              "initial": "等待读值"
+            },
+            {
+              "key": "value",
+              "label": "Guest EAX",
+              "initial": "尚未更新"
+            },
+            {
+              "key": "instruction",
+              "label": "当前读取",
+              "initial": "尚未执行"
+            },
+            {
+              "key": "userspace",
+              "label": "返回 QEMU",
+              "initial": "尚未返回"
+            }
+          ]
+        }
       ],
       "steps": [
-        {"id": "ready", "title": "访问前", "actor": "Guest 驱动", "description": "Guest 已映射设备寄存器，准备执行 4 B 读取。", "detail": "Guest 页表中的地址有效，GPA 落在模拟设备区域。这里没有可供普通 RAM 读取使用的宿主页。", "active": [], "links": [], "changes": {}, "nodeStates": {}, "sourceIds": ["mmio-completion", "mmio-qemu"], "focus": true},
-        {"id": "exit", "title": "退出并识别设备访问", "actor": "CPU 硬件 → KVM", "description": "访存引起 EPT 退出，KVM 进入指令模拟路径。", "detail": "KVM 无法用普通 RAM 映射或内核设备满足该读取，保留尚未完成的指令状态，准备请求用户态设备处理。", "active": ["guest", "mmu", "kvm"], "links": ["access", "exit"], "changes": {"instruction": "读取尚未完成 · 等待设备结果"}, "nodeStates": {"kvm": "准备 MMIO 读请求"}, "sourceIds": ["ept-exit", "mmio-completion"], "focus": false},
-        {"id": "userspace", "title": "返回 QEMU", "actor": "KVM → QEMU", "description": "KVM_RUN 返回 KVM_EXIT_MMIO，并在共享结构中填写地址、长度与方向。", "detail": "phys_addr=0xf0001000，len=4，is_write=0。这个边界才真正从宿主内核回到 QEMU 用户态。", "active": ["kvm", "qemu"], "links": ["userspace-exit"], "changes": {"exit-reason": "KVM_EXIT_MMIO", "mmio-address": "0xf0001000 / 4 B / is_write=0", "userspace": "是 · KVM_RUN 已返回"}, "nodeStates": {"qemu": "收到 MMIO 读退出"}, "sourceIds": ["mmio-completion"], "focus": true},
-        {"id": "device", "title": "执行设备读回调", "actor": "QEMU 设备模型", "description": "QEMU 调用 address_space_rw()，在 MemoryRegion 地址空间中定位设备。", "detail": "设备模型按寄存器语义返回 0x12345678。真实设备可能有读清除等副作用，本示例使用固定值寄存器。", "active": ["qemu", "device"], "links": ["dispatch"], "changes": {"backing": "MemoryRegion 设备回调已返回 0x12345678"}, "nodeStates": {"device": "完成寄存器读回调"}, "sourceIds": ["mmio-qemu"], "focus": false},
-        {"id": "fill", "title": "填回 MMIO 读值", "actor": "QEMU", "description": "共享区 data[0..3] 填入小端字节 78 56 34 12。", "detail": "Guest EAX 此时仍未更新，待决读指令也尚未完成。设备回调结束与客户机指令完成处在两个不同阶段。", "active": ["device", "qemu"], "links": ["data"], "changes": {"mmio-data": "78 56 34 12", "instruction": "QEMU 已填值，等待再次 KVM_RUN"}, "nodeStates": {"qemu": "读值已写入共享结构"}, "sourceIds": ["mmio-qemu", "mmio-completion"], "focus": true},
-        {"id": "complete", "title": "重新进入并完成待决读", "actor": "QEMU → KVM → Guest", "description": "QEMU 再次调用 KVM_RUN，KVM 消费返回字节，完成指令模拟后恢复 Guest。", "detail": "EAX 现在成为 0x12345678，执行位置前进。演示合并了内核完成待决操作与后续 VM-entry；KVM 会先完成待决操作，再处理可能阻止 Guest 继续运行的信号等事件。", "active": ["qemu", "kvm", "guest"], "links": ["reenter", "complete"], "changes": {"value": "0x12345678", "instruction": "读取完成，进入下一条指令", "userspace": "已再次调用 KVM_RUN"}, "nodeStates": {"guest": "恢复执行", "kvm": "待决 MMIO 已完成"}, "sourceIds": ["mmio-completion"], "focus": true}
+        {
+          "id": "ready",
+          "title": "访问前",
+          "actor": "Guest 驱动",
+          "description": "Guest 已映射设备寄存器，准备执行 4 B 读取。",
+          "detail": "Guest 页表中的地址有效，GPA 落在模拟设备区域。这里没有可供普通 RAM 读取使用的宿主页。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "mmio-completion",
+            "mmio-qemu"
+          ],
+          "focus": true
+        },
+        {
+          "id": "exit",
+          "title": "退出并识别设备访问",
+          "actor": "CPU 硬件 → KVM",
+          "description": "访存引起 EPT 退出，KVM 进入指令模拟路径。",
+          "detail": "KVM 无法用普通 RAM 映射或内核设备满足该读取，保留尚未完成的指令状态，准备请求用户态设备处理。",
+          "active": [
+            "guest",
+            "mmu",
+            "kvm"
+          ],
+          "links": [
+            "access",
+            "exit"
+          ],
+          "changes": {
+            "instruction": "读取尚未完成 · 等待设备结果"
+          },
+          "nodeStates": {
+            "kvm": "准备 MMIO 读请求"
+          },
+          "sourceIds": [
+            "ept-exit",
+            "kvm-page-fault",
+            "mmio-emulate"
+          ],
+          "focus": false
+        },
+        {
+          "id": "userspace",
+          "title": "返回 QEMU",
+          "actor": "KVM → QEMU",
+          "description": "KVM_RUN 返回 KVM_EXIT_MMIO，并在共享结构中填写地址、长度与方向。",
+          "detail": "phys_addr=0xf0001000，len=4，is_write=0。这个边界才真正从宿主内核回到 QEMU 用户态。",
+          "active": [
+            "kvm",
+            "qemu"
+          ],
+          "links": [
+            "userspace-exit"
+          ],
+          "changes": {
+            "exit-reason": "KVM_EXIT_MMIO",
+            "mmio-address": "0xf0001000 / 4 B / is_write=0",
+            "userspace": "是 · KVM_RUN 已返回"
+          },
+          "nodeStates": {
+            "qemu": "收到 MMIO 读退出"
+          },
+          "sourceIds": [
+            "mmio-request",
+            "mmio-qemu",
+            "mmio-completion"
+          ],
+          "focus": true
+        },
+        {
+          "id": "device",
+          "title": "执行设备读回调",
+          "actor": "QEMU 设备模型",
+          "description": "QEMU 调用 address_space_rw()，在 MemoryRegion 地址空间中定位设备。",
+          "detail": "设备模型按寄存器语义返回 0x12345678。真实设备可能有读清除等副作用，本示例使用固定值寄存器。",
+          "active": [
+            "qemu",
+            "device"
+          ],
+          "links": [
+            "dispatch"
+          ],
+          "changes": {
+            "backing": "MemoryRegion 设备回调已返回 0x12345678"
+          },
+          "nodeStates": {
+            "device": "完成寄存器读回调"
+          },
+          "sourceIds": [
+            "qemu-address-read",
+            "qemu-memory-read",
+            "qemu-device-read"
+          ],
+          "focus": false
+        },
+        {
+          "id": "fill",
+          "title": "填回 MMIO 读值",
+          "actor": "QEMU",
+          "description": "共享区 data[0..3] 填入小端字节 78 56 34 12。",
+          "detail": "Guest EAX 此时仍未更新，待决读指令也尚未完成。设备回调结束与客户机指令完成处在两个不同阶段。",
+          "active": [
+            "device",
+            "qemu"
+          ],
+          "links": [
+            "data"
+          ],
+          "changes": {
+            "mmio-data": "78 56 34 12",
+            "instruction": "QEMU 已填值，等待再次 KVM_RUN"
+          },
+          "nodeStates": {
+            "qemu": "读值已写入共享结构"
+          },
+          "sourceIds": [
+            "mmio-qemu",
+            "mmio-completion"
+          ],
+          "focus": true
+        },
+        {
+          "id": "complete",
+          "title": "重新进入并完成待决读",
+          "actor": "QEMU → KVM → Guest",
+          "description": "QEMU 再次调用 KVM_RUN，KVM 消费返回字节，完成指令模拟后恢复 Guest。",
+          "detail": "EAX 现在成为 0x12345678，执行位置前进。演示合并了内核完成待决操作与后续 VM-entry；KVM 会先完成待决操作，再处理可能阻止 Guest 继续运行的信号等事件。",
+          "active": [
+            "qemu",
+            "kvm",
+            "guest"
+          ],
+          "links": [
+            "reenter",
+            "complete"
+          ],
+          "changes": {
+            "value": "0x12345678",
+            "instruction": "读取完成，进入下一条指令",
+            "userspace": "已再次调用 KVM_RUN"
+          },
+          "nodeStates": {
+            "guest": "恢复执行",
+            "kvm": "待决 MMIO 已完成"
+          },
+          "sourceIds": [
+            "mmio-complete-fn",
+            "mmio-complete-read",
+            "mmio-resume-instruction"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "kvm-request",
+          "title": "KVM 识别设备访问并退出到用户态",
+          "context": "宿主 KVM · vCPU 线程",
+          "sourceIds": [
+            "ept-exit",
+            "kvm-page-fault",
+            "mmio-request",
+            "mmio-emulate"
+          ],
+          "boundary": "页故障处理选择指令模拟；在未被 RAM 或内核设备满足时，emulator_read_write 才填写 KVM_EXIT_MMIO 请求。"
+        },
+        {
+          "id": "qemu-device",
+          "title": "QEMU 地址空间与设备读回调",
+          "context": "宿主 QEMU · KVM_RUN 已返回",
+          "sourceIds": [
+            "mmio-qemu",
+            "qemu-address-read",
+            "qemu-memory-read",
+            "qemu-device-read"
+          ],
+          "boundary": "经过 FlatView/MemoryRegion 翻译调用所选设备的 read 回调。本例是抽象寄存器，不冒充某一具体设备实现；设备返回的字节仍不是 Guest 指令已完成。",
+          "entry": {
+            "kind": "return",
+            "label": "KVM_EXIT_MMIO 使 KVM_RUN 返回，再由 QEMU 分派设备访问"
+          }
+        },
+        {
+          "id": "kvm-complete",
+          "title": "重新进入 KVM 完成原指令",
+          "context": "同一 vCPU 线程 · 第二次 KVM_RUN",
+          "sourceIds": [
+            "mmio-complete-fn",
+            "mmio-complete-read",
+            "mmio-resume-instruction",
+            "mmio-completion"
+          ],
+          "boundary": "kvm_arch_vcpu_ioctl_run 先调用 complete_userspace_io；complete_emulated_mmio 复制读值，再恢复原指令模拟，最后才可能继续 Guest。",
+          "entry": {
+            "kind": "callback",
+            "label": "第二次 KVM_RUN 时先调用 complete_userspace_io"
+          }
+        }
       ]
     },
     {
-      "id": "dirty-write-protect", "label": "脏页记录 · EPT 写保护",
+      "id": "dirty-write-protect",
+      "label": "脏页记录 · EPT 写保护",
       "summary": "Guest PTE 允许写入，KVM 为记录脏页撤掉 EPT 写权限。首次写入触发退出，KVM 记录脏页并恢复写权限后重试。",
-      "assumptions": ["普通 RAM，4 KiB EPT 叶子，Guest 用户态写入 0x12345678。", "memslot 启用 KVM_MEM_LOG_DIRTY_PAGES，使用位图；未启用 Dirty Ring 或硬件 PML。", "本轮已对目标 EPT 叶子写保护并完成所需失效，Guest PTE、宿主页及 KVM 软件记录都允许最终恢复写权限。", "固定为成功的 fast_page_fault 修复路径，无并发 SPTE 改动、页跟踪或其他写保护原因。"],
-      "nodes": [{"id": "guest", "label": "Guest 指令", "role": "写 RAM"}, {"id": "mmu", "label": "CPU MMU / EPT", "role": "EPT W=0"}, {"id": "kvm", "label": "KVM", "role": "写保护修复"}, {"id": "bitmap", "label": "memslot 脏位图", "role": "槽内页号 3"}, {"id": "ram", "label": "宿主物理内存", "role": "目标可写页面"}, {"id": "qemu", "label": "QEMU", "role": "稍后读取脏页记录"}],
-      "links": [{"id": "write", "from": "guest", "to": "mmu", "label": "写 GVA → GPA", "kind": "translation"}, {"id": "exit", "from": "mmu", "to": "kvm", "label": "EPT 写权限 violation", "kind": "control"}, {"id": "permission", "from": "kvm", "to": "mmu", "label": "原子更新 SPTE 写权限", "kind": "control"}, {"id": "mark", "from": "kvm", "to": "bitmap", "label": "记录 GFN 0x403", "kind": "control"}, {"id": "resume", "from": "kvm", "to": "guest", "label": "VM-entry 重试", "kind": "control"}, {"id": "store", "from": "guest", "to": "ram", "label": "写入 0x12345678", "kind": "data"}],
+      "assumptions": [
+        "普通 RAM，4 KiB EPT 叶子，Guest 用户态写入 0x12345678。",
+        "memslot 启用 KVM_MEM_LOG_DIRTY_PAGES，使用位图；未启用 Dirty Ring 或硬件 PML。",
+        "本轮已对目标 EPT 叶子写保护并完成所需失效，Guest PTE、宿主页及 KVM 软件记录都允许最终恢复写权限。",
+        "固定为成功的 fast_page_fault 修复路径，无并发 SPTE 改动、页跟踪或其他写保护原因。"
+      ],
+      "nodes": [
+        {
+          "id": "guest",
+          "label": "Guest 指令",
+          "role": "写 RAM",
+          "badge": "用户态"
+        },
+        {
+          "id": "mmu",
+          "label": "CPU MMU / EPT",
+          "role": "EPT W=0"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM",
+          "role": "写保护修复"
+        },
+        {
+          "id": "bitmap",
+          "label": "memslot 脏位图",
+          "role": "槽内页号 3"
+        },
+        {
+          "id": "ram",
+          "label": "宿主物理内存",
+          "role": "目标可写页面"
+        },
+        {
+          "id": "qemu",
+          "label": "QEMU",
+          "role": "稍后读取脏页记录"
+        }
+      ],
+      "links": [
+        {
+          "id": "write",
+          "from": "guest",
+          "to": "mmu",
+          "label": "写 GVA → GPA",
+          "kind": "translation"
+        },
+        {
+          "id": "exit",
+          "from": "mmu",
+          "to": "kvm",
+          "label": "EPT 写权限 violation",
+          "kind": "control"
+        },
+        {
+          "id": "permission",
+          "from": "kvm",
+          "to": "mmu",
+          "label": "原子更新 SPTE 写权限",
+          "kind": "control"
+        },
+        {
+          "id": "mark",
+          "from": "kvm",
+          "to": "bitmap",
+          "label": "记录 GFN 0x403",
+          "kind": "control"
+        },
+        {
+          "id": "resume",
+          "from": "kvm",
+          "to": "guest",
+          "label": "VM-entry 重试",
+          "kind": "control"
+        },
+        {
+          "id": "store",
+          "from": "guest",
+          "to": "ram",
+          "label": "写入 0x12345678",
+          "kind": "data"
+        }
+      ],
       "structures": [
-        {"id": "addresses", "title": "写入目标", "kind": "address", "fields": [{"key": "gva", "label": "GVA", "initial": "0x0000000040203080"}, {"key": "gpa", "label": "GPA / GFN", "initial": "0x00403080 / 0x403"}, {"key": "hpa", "label": "HPA", "initial": "0x21000080"}]},
-        {"id": "permissions", "title": "权限与脏页记录", "kind": "registers", "fields": [{"key": "guest-pte", "label": "Guest PTE", "initial": "P=1 / RW=1 / U=1"}, {"key": "ept-leaf", "label": "目标 EPT 叶子", "initial": "R=1 / W=0 · 暂时写保护"}, {"key": "dirty", "label": "dirty_bitmap · bit 3", "initial": "0 · 本轮尚未记录"}, {"key": "value", "label": "目标内存值", "initial": "0x00000000"}, {"key": "instruction", "label": "当前写入", "initial": "尚未执行"}, {"key": "userspace", "label": "返回 QEMU", "initial": "否"}]}
+        {
+          "id": "addresses",
+          "title": "写入目标",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "gva",
+              "label": "GVA",
+              "initial": "0x0000000040203080"
+            },
+            {
+              "key": "gpa",
+              "label": "GPA / GFN",
+              "initial": "0x00403080 / 0x403"
+            },
+            {
+              "key": "hpa",
+              "label": "HPA",
+              "initial": "0x21000080"
+            }
+          ]
+        },
+        {
+          "id": "permissions",
+          "title": "权限与脏页记录",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "guest-pte",
+              "label": "Guest PTE",
+              "initial": "P=1 / RW=1 / U=1"
+            },
+            {
+              "key": "ept-leaf",
+              "label": "目标 EPT 叶子",
+              "initial": "R=1 / W=0 · 暂时写保护"
+            },
+            {
+              "key": "dirty",
+              "label": "dirty_bitmap · bit 3",
+              "initial": "0 · 本轮尚未记录"
+            },
+            {
+              "key": "value",
+              "label": "目标内存值",
+              "initial": "0x00000000"
+            },
+            {
+              "key": "instruction",
+              "label": "当前写入",
+              "initial": "尚未执行"
+            },
+            {
+              "key": "userspace",
+              "label": "返回 QEMU",
+              "initial": "否"
+            }
+          ]
+        }
       ],
       "steps": [
-        {"id": "ready", "title": "访问前", "actor": "Guest 用户态", "description": "客户机允许写入该页，EPT 暂时禁止写入，以捕获本轮第一次写访问。", "detail": "槽从 GFN 0x400 起始，因此 GFN 0x403 对应脏位图中的槽内页号 3。", "active": [], "links": [], "changes": {}, "nodeStates": {}, "sourceIds": ["dirty-fault", "dirty-bitmap"], "focus": true},
-        {"id": "exit", "title": "写权限检查触发退出", "actor": "CPU 硬件 → KVM", "description": "Guest PTE 的写权限通过，但 EPT W=0，写入在修改数据前触发 EPT violation。", "detail": "这次写保护由 KVM 为脏页记录设置；不会因此向 Guest 抛出权限 #PF。目标内存仍是 0x00000000。", "active": ["guest", "mmu", "kvm"], "links": ["write", "exit"], "changes": {"instruction": "写入尚未发生 · EPT 写保护退出"}, "nodeStates": {"kvm": "识别可恢复的 EPT 写保护"}, "sourceIds": ["ept-exit", "dirty-fault"], "focus": true},
-        {"id": "repair", "title": "恢复 EPT 写权限", "actor": "KVM fast_page_fault", "description": "KVM 确认映射允许恢复写权限，原子更新 SPTE。", "detail": "本例沿 fast_pf_fix_direct_spte() 的顺序展示：先成功更新 SPTE，随后记录脏页，再返回 Guest。这里只展示一个 vCPU 的成功路径，不将图中分步视为可供其他线程观察的同步屏障。", "active": ["kvm", "mmu"], "links": ["permission"], "changes": {"ept-leaf": "R=1 / W=1 · 本轮写保护解除"}, "nodeStates": {"mmu": "允许后续写入"}, "sourceIds": ["dirty-fault"], "focus": true},
-        {"id": "mark", "title": "记录脏页", "actor": "KVM", "description": "mark_page_dirty_in_slot() 将槽内页号 3 标记为脏。", "detail": "该记录按页表示需要重新同步的数据范围。它可以保守地早于实际写入完成；这里仍未执行 Guest 的原写指令。", "active": ["kvm", "bitmap"], "links": ["mark"], "changes": {"dirty": "1 · GFN 0x403 已记录"}, "nodeStates": {"bitmap": "本轮包含此页"}, "sourceIds": ["dirty-fault", "dirty-bitmap"], "focus": true},
-        {"id": "retry", "title": "重试写入", "actor": "CPU 硬件 / Guest", "description": "重新进入 Guest 后，同一条写指令通过两级权限检查，将 0x12345678 写入 RAM。", "detail": "此次处理不返回 QEMU。本轮内该页后续写入通常无需再次因这项写保护退出；开始新一轮记录时还需按脏页 API 的规则重新建立跟踪条件。", "active": ["kvm", "guest", "ram"], "links": ["resume", "store"], "changes": {"value": "0x12345678", "instruction": "写入完成，进入下一条指令"}, "nodeStates": {"guest": "继续执行", "ram": "新值已写入"}, "sourceIds": ["dirty-fault", "dirty-bitmap"], "focus": true}
+        {
+          "id": "ready",
+          "title": "访问前",
+          "actor": "Guest 用户态",
+          "description": "客户机允许写入该页，EPT 暂时禁止写入，以捕获本轮第一次写访问。",
+          "detail": "槽从 GFN 0x400 起始，因此 GFN 0x403 对应脏位图中的槽内页号 3。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "dirty-fault",
+            "dirty-bitmap"
+          ],
+          "focus": true
+        },
+        {
+          "id": "exit",
+          "title": "写权限检查触发退出",
+          "actor": "CPU 硬件 → KVM",
+          "description": "Guest PTE 的写权限通过，但 EPT W=0，写入在修改数据前触发 EPT violation。",
+          "detail": "这次写保护由 KVM 为脏页记录设置；不会因此向 Guest 抛出权限 #PF。目标内存仍是 0x00000000。",
+          "active": [
+            "guest",
+            "mmu",
+            "kvm"
+          ],
+          "links": [
+            "write",
+            "exit"
+          ],
+          "changes": {
+            "instruction": "写入尚未发生 · EPT 写保护退出"
+          },
+          "nodeStates": {
+            "kvm": "识别可恢复的 EPT 写保护"
+          },
+          "sourceIds": [
+            "ept-exit",
+            "dirty-fault"
+          ],
+          "focus": true
+        },
+        {
+          "id": "repair",
+          "title": "恢复 EPT 写权限",
+          "actor": "KVM fast_page_fault",
+          "description": "KVM 确认映射允许恢复写权限，原子更新 SPTE。",
+          "detail": "本例沿 fast_pf_fix_direct_spte() 的顺序展示：先成功更新 SPTE，随后记录脏页，再返回 Guest。这里只展示一个 vCPU 的成功路径，不将图中分步视为可供其他线程观察的同步屏障。",
+          "active": [
+            "kvm",
+            "mmu"
+          ],
+          "links": [
+            "permission"
+          ],
+          "changes": {
+            "ept-leaf": "R=1 / W=1 · 本轮写保护解除"
+          },
+          "nodeStates": {
+            "mmu": "允许后续写入"
+          },
+          "sourceIds": [
+            "dirty-fault"
+          ],
+          "focus": true
+        },
+        {
+          "id": "mark",
+          "title": "记录脏页",
+          "actor": "KVM",
+          "description": "mark_page_dirty_in_slot() 将槽内页号 3 标记为脏。",
+          "detail": "该记录按页表示需要重新同步的数据范围。它可以保守地早于实际写入完成；这里仍未执行 Guest 的原写指令。",
+          "active": [
+            "kvm",
+            "bitmap"
+          ],
+          "links": [
+            "mark"
+          ],
+          "changes": {
+            "dirty": "1 · GFN 0x403 已记录"
+          },
+          "nodeStates": {
+            "bitmap": "本轮包含此页"
+          },
+          "sourceIds": [
+            "dirty-fault",
+            "dirty-bitmap"
+          ],
+          "focus": true
+        },
+        {
+          "id": "retry",
+          "title": "重试写入",
+          "actor": "CPU 硬件 / Guest",
+          "description": "重新进入 Guest 后，同一条写指令通过两级权限检查，将 0x12345678 写入 RAM。",
+          "detail": "此次处理不返回 QEMU。本轮内该页后续写入通常无需再次因这项写保护退出；开始新一轮记录时还需按脏页 API 的规则重新建立跟踪条件。",
+          "active": [
+            "kvm",
+            "guest",
+            "ram"
+          ],
+          "links": [
+            "resume",
+            "store"
+          ],
+          "changes": {
+            "value": "0x12345678",
+            "instruction": "写入完成，进入下一条指令"
+          },
+          "nodeStates": {
+            "guest": "继续执行",
+            "ram": "新值已写入"
+          },
+          "sourceIds": [
+            "dirty-fault",
+            "dirty-bitmap"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "内核退出与设备处理",
+          "context": "宿主 KVM",
+          "sourceIds": [
+            "dirty-fault",
+            "dirty-bitmap",
+            "ept-exit"
+          ],
+          "boundary": "函数按本场景处理次序排列；后备页等待、事件通知和再次进入客户机是明确的边界。"
+        }
+      ]
+    },
+    {
+      "id": "mmio-kernel-lapic",
+      "label": "KVM 内核 LAPIC 读取",
+      "summary": "Guest 读取 xAPIC ID 寄存器，访问退出到 KVM 后由内核 LAPIC 返回结果，不交给 QEMU。",
+      "assumptions": [
+        "x86-64 / Intel VMX，Linux 6.18 与 QEMU 10.2.0；仅跟踪所选设备访问",
+        "硬件 VM-exit 与 KVM_RUN 返回用户态是两个不同边界；没有其他异步退出",
+        "内核 LAPIC、xAPIC MMIO 模式；关闭 APIC-access / APIC-register virtualization 等相关硬件加速",
+        "Guest LAPIC 基址 0xfee00000，ID 寄存器偏移 0x20；示例 APIC ID = 1，32 位读取值为 0x01000000"
+      ],
+      "nodes": [
+        {
+          "id": "guest",
+          "label": "Guest 驱动指令",
+          "role": "客户机内核",
+          "initial": "准备就绪",
+          "badge": "内核态"
+        },
+        {
+          "id": "mmu",
+          "label": "处理器 · EPT",
+          "role": "地址转换与指令执行",
+          "initial": "准备就绪"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM",
+          "role": "宿主内核",
+          "initial": "准备就绪"
+        },
+        {
+          "id": "qemu",
+          "label": "QEMU",
+          "role": "宿主用户态",
+          "initial": "准备就绪"
+        },
+        {
+          "id": "device",
+          "label": "内核 LAPIC",
+          "role": "KVM 设备实现",
+          "initial": "准备就绪"
+        }
+      ],
+      "links": [
+        {
+          "id": "translate",
+          "from": "guest",
+          "to": "mmu",
+          "label": "读取 GPA 0xfee00020",
+          "kind": "translation"
+        },
+        {
+          "id": "exit",
+          "from": "mmu",
+          "to": "kvm",
+          "label": "陷入处理设备访问",
+          "kind": "control"
+        },
+        {
+          "id": "dispatch",
+          "from": "kvm",
+          "to": "device",
+          "label": "内核 MMIO 读",
+          "kind": "control"
+        },
+        {
+          "id": "value",
+          "from": "device",
+          "to": "kvm",
+          "label": "返回 32 位 ID",
+          "kind": "data"
+        },
+        {
+          "id": "resume",
+          "from": "kvm",
+          "to": "guest",
+          "label": "完成原指令并继续",
+          "kind": "control"
+        }
+      ],
+      "structures": [
+        {
+          "id": "address",
+          "title": "访问地址",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "gva",
+              "label": "Guest VA",
+              "initial": "0xffffc900fee00020"
+            },
+            {
+              "key": "gpa",
+              "label": "Guest PA",
+              "initial": "0xfee00020"
+            },
+            {
+              "key": "backing",
+              "label": "访问目标",
+              "initial": "KVM 内核虚拟 LAPIC"
+            }
+          ]
+        },
+        {
+          "id": "execution",
+          "title": "处理边界",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "hw-exit",
+              "label": "VM-exit",
+              "initial": "无"
+            },
+            {
+              "key": "userspace",
+              "label": "KVM_RUN 返回 QEMU",
+              "initial": "否"
+            },
+            {
+              "key": "value",
+              "label": "Guest 目标寄存器",
+              "initial": "旧值"
+            },
+            {
+              "key": "instruction",
+              "label": "原指令",
+              "initial": "尚未执行"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "ready",
+          "title": "读取前",
+          "actor": "Guest 内核",
+          "description": "驱动即将读取 LAPIC ID。",
+          "detail": "QEMU 只在准备阶段配置虚拟机；本次寄存器读由内核设备处理。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "lapic-mmio-read"
+          ],
+          "focus": true
+        },
+        {
+          "id": "exit",
+          "title": "设备访问退出到 KVM",
+          "actor": "处理器 → KVM",
+          "description": "所选配置下，该 MMIO 访问使处理器退出 Guest。",
+          "detail": "这是硬件 VM-exit，不是 KVM_RUN 返回 QEMU。",
+          "active": [
+            "guest",
+            "mmu",
+            "kvm"
+          ],
+          "links": [
+            "translate",
+            "exit"
+          ],
+          "changes": {
+            "hw-exit": "已发生，进入内核 MMIO 模拟",
+            "instruction": "等待内核设备读值"
+          },
+          "nodeStates": {
+            "guest": "设备访问退出到 KVM",
+            "mmu": "设备访问退出到 KVM",
+            "kvm": "设备访问退出到 KVM"
+          },
+          "sourceIds": [
+            "ept-exit",
+            "kvm-mmio-read"
+          ],
+          "focus": true
+        },
+        {
+          "id": "dispatch",
+          "title": "优先检查内核 LAPIC",
+          "actor": "KVM · vcpu_mmio_read",
+          "description": "KVM 先把地址交给内核 LAPIC，apic_mmio_read 命中此地址。",
+          "detail": "内核处理成功就不再为这部分访问创建 KVM_EXIT_MMIO。",
+          "active": [
+            "kvm",
+            "device"
+          ],
+          "links": [
+            "dispatch"
+          ],
+          "changes": {},
+          "nodeStates": {
+            "device": "地址与读取宽度有效",
+            "kvm": "优先检查内核 LAPIC"
+          },
+          "sourceIds": [
+            "kvm-mmio-read",
+            "lapic-mmio-read"
+          ],
+          "focus": true
+        },
+        {
+          "id": "read",
+          "title": "读取虚拟 APIC ID",
+          "actor": "KVM · apic_mmio_read",
+          "description": "内核 LAPIC 返回 0x01000000。",
+          "detail": "返回值先交给指令模拟器，Guest 原目标寄存器随后才更新。",
+          "active": [
+            "device",
+            "kvm"
+          ],
+          "links": [
+            "value"
+          ],
+          "changes": {
+            "instruction": "内核读值已就绪，待完成原指令"
+          },
+          "nodeStates": {
+            "device": "APIC ID = 1",
+            "kvm": "读取虚拟 APIC ID"
+          },
+          "sourceIds": [
+            "lapic-mmio-read",
+            "mmio-emulate"
+          ],
+          "focus": true
+        },
+        {
+          "id": "complete",
+          "title": "完成读指令并继续 Guest",
+          "actor": "KVM → Guest",
+          "description": "模拟器写回目标寄存器并推进原指令，随后恢复客户机。",
+          "detail": "整个访问没有把 KVM_RUN 交回 QEMU 用户态；不需要一次额外用户态读回调。",
+          "active": [
+            "kvm",
+            "guest"
+          ],
+          "links": [
+            "resume"
+          ],
+          "changes": {
+            "value": "0x01000000",
+            "instruction": "读指令完成"
+          },
+          "nodeStates": {
+            "kvm": "完成读指令并继续 Guest",
+            "guest": "完成读指令并继续 Guest"
+          },
+          "sourceIds": [
+            "mmio-emulate",
+            "kvm-mmio-read"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "内核退出与设备处理",
+          "context": "宿主 KVM",
+          "sourceIds": [
+            "lapic-mmio-read",
+            "ept-exit",
+            "kvm-mmio-read",
+            "mmio-emulate"
+          ],
+          "boundary": "函数按本场景处理次序排列；后备页等待、事件通知和再次进入客户机是明确的边界。"
+        }
+      ]
+    },
+    {
+      "id": "mmio-ioeventfd",
+      "label": "ioeventfd 队列门铃写入",
+      "summary": "Guest 发布队列后写门铃，KVM 匹配 ioeventfd 并发出通知；vCPU 不经通用用户态 MMIO 返回。",
+      "assumptions": [
+        "x86-64 / Intel VMX，Linux 6.18 与 QEMU 10.2.0；仅跟踪所选设备访问",
+        "硬件 VM-exit 与 KVM_RUN 返回用户态是两个不同边界；没有其他异步退出",
+        "已注册地址、宽度与 datamatch 匹配的 ioeventfd，固定为 2 字节队列 0 门铃写",
+        "队列描述符与 available 索引已按协议发布，本场景只跟踪通知写；后端采用 QEMU IOThread",
+        "只优化匹配的写通知；寄存器读取、未匹配访问和具体后端数据处理不适用该捷径"
+      ],
+      "nodes": [
+        {
+          "id": "guest",
+          "label": "Guest 驱动指令",
+          "role": "客户机内核",
+          "initial": "准备就绪",
+          "badge": "内核态"
+        },
+        {
+          "id": "mmu",
+          "label": "处理器 · EPT",
+          "role": "地址转换与指令执行",
+          "initial": "准备就绪"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM",
+          "role": "宿主内核",
+          "initial": "准备就绪"
+        },
+        {
+          "id": "qemu",
+          "label": "QEMU",
+          "role": "宿主用户态",
+          "initial": "准备就绪"
+        },
+        {
+          "id": "eventfd",
+          "label": "eventfd",
+          "role": "内核通知对象",
+          "initial": "准备就绪"
+        },
+        {
+          "id": "backend",
+          "label": "QEMU IOThread",
+          "role": "后端队列消费者",
+          "initial": "准备就绪"
+        }
+      ],
+      "links": [
+        {
+          "id": "translate",
+          "from": "guest",
+          "to": "mmu",
+          "label": "写门铃 GPA",
+          "kind": "translation"
+        },
+        {
+          "id": "exit",
+          "from": "mmu",
+          "to": "kvm",
+          "label": "捕获设备写",
+          "kind": "control"
+        },
+        {
+          "id": "signal",
+          "from": "kvm",
+          "to": "eventfd",
+          "label": "eventfd_signal",
+          "kind": "notification"
+        },
+        {
+          "id": "wake",
+          "from": "eventfd",
+          "to": "backend",
+          "label": "通知后端处理队列",
+          "kind": "notification"
+        },
+        {
+          "id": "resume",
+          "from": "kvm",
+          "to": "guest",
+          "label": "完成门铃写并继续",
+          "kind": "control"
+        }
+      ],
+      "structures": [
+        {
+          "id": "address",
+          "title": "门铃访问",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "gva",
+              "label": "Guest VA",
+              "initial": "0xffffc900f0001000"
+            },
+            {
+              "key": "gpa",
+              "label": "Guest PA",
+              "initial": "0xf0001000"
+            },
+            {
+              "key": "write",
+              "label": "写入值",
+              "initial": "queue 0 · 2 B"
+            }
+          ]
+        },
+        {
+          "id": "state",
+          "title": "通知与执行状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "hw-exit",
+              "label": "VM-exit",
+              "initial": "无"
+            },
+            {
+              "key": "userspace",
+              "label": "KVM_RUN 返回 QEMU",
+              "initial": "否"
+            },
+            {
+              "key": "event",
+              "label": "eventfd",
+              "initial": "未触发"
+            },
+            {
+              "key": "backend",
+              "label": "后端处理",
+              "initial": "尚未处理本次通知"
+            },
+            {
+              "key": "instruction",
+              "label": "原指令",
+              "initial": "尚未执行"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "ready",
+          "title": "门铃写入前",
+          "actor": "Guest 驱动",
+          "description": "共享队列已经发布，驱动准备写队列号 0。",
+          "detail": "发布数据和门铃通知是两个动作；先发布，再判断是否需要 kick。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "ioeventfd-write"
+          ],
+          "focus": true
+        },
+        {
+          "id": "exit",
+          "title": "捕获门铃写入",
+          "actor": "处理器 → KVM",
+          "description": "本次设备写入退出到 KVM 的 MMIO 总线。",
+          "detail": "本场景没有硬件直通门铃；省掉的是通用用户态 MMIO 往返，不是硬件 VM-exit。",
+          "active": [
+            "guest",
+            "mmu",
+            "kvm"
+          ],
+          "links": [
+            "translate",
+            "exit"
+          ],
+          "changes": {
+            "hw-exit": "已发生，内核处理写通知",
+            "instruction": "等待匹配 ioeventfd"
+          },
+          "nodeStates": {
+            "guest": "捕获门铃写入",
+            "mmu": "捕获门铃写入",
+            "kvm": "捕获门铃写入"
+          },
+          "sourceIds": [
+            "kvm-mmio-write",
+            "ioeventfd-write"
+          ],
+          "focus": true
+        },
+        {
+          "id": "match",
+          "title": "匹配注册的 ioeventfd",
+          "actor": "KVM · ioeventfd_write",
+          "description": "地址、宽度和 datamatch 均匹配，KVM 接管这次写。",
+          "detail": "不匹配时返回 EOPNOTSUPP，仍可继续尝试其他 MMIO 处理者；本例不走该分支。",
+          "active": [
+            "kvm",
+            "eventfd"
+          ],
+          "links": [],
+          "changes": {
+            "instruction": "门铃匹配成功"
+          },
+          "nodeStates": {
+            "kvm": "匹配注册的 ioeventfd",
+            "eventfd": "匹配注册的 ioeventfd"
+          },
+          "sourceIds": [
+            "ioeventfd-write"
+          ],
+          "focus": true
+        },
+        {
+          "id": "signal",
+          "title": "发出后端事件通知",
+          "actor": "KVM · eventfd_signal",
+          "description": "KVM 对已绑定的 eventfd 发出信号，后端获得处理机会。",
+          "detail": "通知不表示后端已取链或完成 I/O；IOThread 与 vCPU 是异步上下文。",
+          "active": [
+            "kvm",
+            "eventfd",
+            "backend"
+          ],
+          "links": [
+            "signal",
+            "wake"
+          ],
+          "changes": {
+            "event": "已触发",
+            "backend": "已通知，等待 IOThread 处理"
+          },
+          "nodeStates": {
+            "kvm": "发出后端事件通知",
+            "eventfd": "发出后端事件通知",
+            "backend": "发出后端事件通知"
+          },
+          "sourceIds": [
+            "ioeventfd-write"
+          ],
+          "focus": true
+        },
+        {
+          "id": "complete",
+          "title": "vCPU 继续执行",
+          "actor": "KVM → Guest",
+          "description": "内核把门铃写标记为已处理并恢复客户机。",
+          "detail": "KVM_RUN 没有返回 QEMU vCPU 用户态；QEMU IOThread 仍可能稍后处理队列，两者不能混为一谈。",
+          "active": [
+            "kvm",
+            "guest"
+          ],
+          "links": [
+            "resume"
+          ],
+          "changes": {
+            "instruction": "写指令完成"
+          },
+          "nodeStates": {
+            "kvm": "vCPU 继续执行",
+            "guest": "vCPU 继续执行"
+          },
+          "sourceIds": [
+            "kvm-mmio-write",
+            "mmio-emulate"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "内核退出与设备处理",
+          "context": "宿主 KVM",
+          "sourceIds": [
+            "ioeventfd-write",
+            "kvm-mmio-write",
+            "mmio-emulate"
+          ],
+          "boundary": "函数按本场景处理次序排列；后备页等待、事件通知和再次进入客户机是明确的边界。"
+        }
+      ]
+    },
+    {
+      "id": "mmio-vfio-direct",
+      "label": "VFIO BAR 已建立直接映射",
+      "summary": "访问已映射且允许直访的 VFIO BAR 区间，CPU 经 Guest 页表与 EPT 访问设备，无需逐次陷入 QEMU。",
+      "assumptions": [
+        "x86-64 / Intel VMX，Linux 6.18 与 QEMU 10.2.0；仅跟踪所选设备访问",
+        "硬件 VM-exit 与 KVM_RUN 返回用户态是两个不同边界；没有其他异步退出",
+        "固定可 mmap 的 BAR 区间，宿主 VFIO 映射、KVM memslot 与有效 EPT 映射均已建立",
+        "不包括 MSI-X 表、需模拟寄存器、首次建图故障、权限变更、设备复位和映射撤销",
+        "本例观察 CPU 对设备 BAR 的读取，不是设备 DMA；IOMMU 的设备地址转换不串入这条 CPU 路径",
+        "示意地址和读值仅用于观察；实际可映射范围、内存类型和访问语义以具体设备为准"
+      ],
+      "nodes": [
+        {
+          "id": "guest",
+          "label": "Guest 驱动指令",
+          "role": "客户机内核",
+          "initial": "准备就绪",
+          "badge": "内核态"
+        },
+        {
+          "id": "mmu",
+          "label": "处理器 · EPT",
+          "role": "地址转换与指令执行",
+          "initial": "准备就绪"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM",
+          "role": "宿主内核",
+          "initial": "准备就绪"
+        },
+        {
+          "id": "qemu",
+          "label": "QEMU",
+          "role": "宿主用户态",
+          "initial": "准备就绪"
+        },
+        {
+          "id": "device",
+          "label": "物理设备 BAR",
+          "role": "PCIe 设备可映射区域",
+          "initial": "准备就绪"
+        }
+      ],
+      "links": [
+        {
+          "id": "translate",
+          "from": "guest",
+          "to": "mmu",
+          "label": "Guest VA → GPA → BAR",
+          "kind": "translation"
+        },
+        {
+          "id": "read",
+          "from": "mmu",
+          "to": "device",
+          "label": "CPU 设备读取",
+          "kind": "data"
+        },
+        {
+          "id": "return",
+          "from": "device",
+          "to": "guest",
+          "label": "读值返回 CPU",
+          "kind": "data"
+        }
+      ],
+      "structures": [
+        {
+          "id": "address",
+          "title": "CPU 地址转换",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "gva",
+              "label": "Guest VA",
+              "initial": "0xffffc900f0001000"
+            },
+            {
+              "key": "gpa",
+              "label": "Guest PA",
+              "initial": "0xf0001000"
+            },
+            {
+              "key": "bar",
+              "label": "宿主物理设备区间",
+              "initial": "已建立有效 EPT 映射"
+            }
+          ]
+        },
+        {
+          "id": "state",
+          "title": "执行与映射",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "hw-exit",
+              "label": "因本次访问 VM-exit",
+              "initial": "无"
+            },
+            {
+              "key": "userspace",
+              "label": "KVM_RUN 返回 QEMU",
+              "initial": "否"
+            },
+            {
+              "key": "value",
+              "label": "Guest 目标寄存器",
+              "initial": "旧值"
+            },
+            {
+              "key": "instruction",
+              "label": "原指令",
+              "initial": "尚未执行"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "ready",
+          "title": "稳态映射已经就绪",
+          "actor": "Guest 驱动",
+          "description": "准备读取已允许直接映射的设备区间。",
+          "detail": "vfio_region_mmap 与 memslot 配置发生在准备阶段；每次访问不会重新执行这些设置函数。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "vfio-region-map",
+            "memory-slot"
+          ],
+          "focus": true
+        },
+        {
+          "id": "translate",
+          "title": "硬件解析 CPU 地址",
+          "actor": "处理器",
+          "description": "CPU 使用 Guest 页表和有效 EPT 找到设备 BAR 目标。",
+          "detail": "此处无软件页表遍历，也不经过设备 DMA 的 IOMMU 翻译；配置假设保证本次映射与权限有效。",
+          "active": [
+            "guest",
+            "mmu"
+          ],
+          "links": [
+            "translate"
+          ],
+          "changes": {
+            "instruction": "地址转换完成"
+          },
+          "nodeStates": {
+            "guest": "硬件解析 CPU 地址",
+            "mmu": "硬件解析 CPU 地址"
+          },
+          "sourceIds": [
+            "address-model",
+            "vfio-region-map"
+          ],
+          "focus": true
+        },
+        {
+          "id": "access",
+          "title": "访问物理设备区间",
+          "actor": "物理处理器 / PCIe",
+          "description": "CPU 把读取送往映射对应的设备区域。",
+          "detail": "QEMU vCPU 线程仍处于 KVM_RUN；本次没有调用 vfio_region_read。",
+          "active": [
+            "mmu",
+            "device"
+          ],
+          "links": [
+            "read"
+          ],
+          "changes": {
+            "instruction": "等待设备读取结果"
+          },
+          "nodeStates": {
+            "mmu": "访问物理设备区间",
+            "device": "访问物理设备区间"
+          },
+          "sourceIds": [
+            "vfio-region-map"
+          ],
+          "focus": true
+        },
+        {
+          "id": "return",
+          "title": "设备返回读值",
+          "actor": "物理设备 → CPU",
+          "description": "设备提供示意值 0x12345678。",
+          "detail": "这是设备读完成，不代表 GPU 或其他设备上此前提交的异步任务全部完成。",
+          "active": [
+            "device",
+            "guest"
+          ],
+          "links": [
+            "return"
+          ],
+          "changes": {
+            "instruction": "读值已返回"
+          },
+          "nodeStates": {
+            "device": "设备返回读值",
+            "guest": "设备返回读值"
+          },
+          "sourceIds": [
+            "vfio-region-map"
+          ],
+          "focus": true
+        },
+        {
+          "id": "complete",
+          "title": "完成 Guest 读取",
+          "actor": "Guest 驱动",
+          "description": "CPU 更新目标寄存器，执行下一条指令。",
+          "detail": "这条稳态直接映射路径不因本次访问退出；其他寄存器区间与异常条件可能仍需要 KVM/QEMU 处理。",
+          "active": [
+            "guest"
+          ],
+          "links": [],
+          "changes": {
+            "value": "0x12345678",
+            "instruction": "读取完成"
+          },
+          "nodeStates": {
+            "guest": "完成 Guest 读取"
+          },
+          "sourceIds": [
+            "vfio-region-map",
+            "address-model"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "硬件地址转换与准备条件",
+          "context": "处理器 / 初始化配置",
+          "sourceIds": [
+            "vfio-region-map",
+            "memory-slot",
+            "address-model"
+          ],
+          "boundary": "这些入口解释映射与拦截配置；硬件命中路径不会逐次调用软件设置函数。"
+        }
+      ],
+      "sourceSteps": [
+        {
+          "id": "direct-load",
+          "title": "Guest 读取已直映射的 BAR 区间",
+          "kind": "instruction",
+          "context": "Guest CPU 地址访问 · 不是设备 DMA",
+          "stepIds": [
+            "ready",
+            "translate"
+          ],
+          "sourceIds": [
+            "address-model",
+            "vfio-region-map"
+          ],
+          "detail": "vfio_region_mmap 与 memslot 在准备阶段建立映射；本次稳态访问由 CPU 转换，不能画成每次调用 vfio_region_read。",
+          "code": "MOV EAX, DWORD PTR [RDI]"
+        },
+        {
+          "id": "bar-result",
+          "title": "设备返回读值并完成原指令",
+          "kind": "instruction",
+          "context": "处理器与已映射的物理设备区间",
+          "stepIds": [
+            "access",
+            "return",
+            "complete"
+          ],
+          "sourceIds": [
+            "address-model",
+            "vfio-region-map"
+          ],
+          "detail": "具体寄存器副作用由设备定义；在本例可直映射区间与有效权限条件下，不因这次访问 VM-exit。源码链只列初始化映射依据。",
+          "code": "EAX ← BAR 寄存器读值"
+        }
       ]
     }
   ]

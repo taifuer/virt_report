@@ -107,6 +107,23 @@ def test_cold_start_crosses_process_execution_and_readiness_boundaries(demo):
     assert ready["applicationState"] == "示例健康检查成功"
 
 
+def test_lifecycle_sources_separate_exact_entries_from_policy_references(demo):
+    for key, line in {"qemu-kvm": 2510, "qemu-vcpu": 560,
+                      "qemu-acpi-button": 282, "qemu-acpi-off": 582}.items():
+        source = demo["sources"][key]
+        assert source["line"] == line
+        assert f"#L{line}-" in source["url"]
+    assert demo["sources"]["qemu-boot"]["kind"] == "reference"
+    shutdown = scene(demo, "acpi-shutdown")
+    guest_shutdown = step(shutdown, "guest-shutdown")
+    assert guest_shutdown["sourceIds"] == ["shutdown-api"]
+    assert "策略边界" in guest_shutdown["detail"]
+    assert "不展开" in guest_shutdown["detail"]
+    for item in demo["scenarios"]:
+        represented = {source for path in item["callPaths"] for source in path["sourceIds"]}
+        assert {source for point in item["steps"] for source in point["sourceIds"]} <= represented
+
+
 def test_ram_registration_does_not_claim_all_pages_are_resident(demo):
     cold = scene(demo, "cold-start")
     ram = step(cold, "map-ram")

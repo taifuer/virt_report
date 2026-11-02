@@ -4,6 +4,7 @@
   const lab = document.querySelector('[data-execution-lab]');
   const data = document.getElementById('execution-demo-data');
   const model = window.ExecutionDemoModel;
+  const components = window.WalkthroughComponents;
   if (!lab || !data || !model) return;
   const one = selector => lab.querySelector(selector);
   const all = selector => [...lab.querySelectorAll(selector)];
@@ -19,10 +20,14 @@
   const views = ['overview', 'structure', 'source'];
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   let scene, trace, index = 0, view = 'overview', timer = null, layout = null;
+  let animateNext = false;
   const controls = one('[data-execution-controls]');
   // Embedded persistence and the main disk walkthrough keep independent links.
   const urlKey = name => (lab.dataset.executionUrlPrefix || '') + name;
   const nodesBoard = one('[data-execution-nodes]');
+  const contextsBoard = el('div');
+  contextsBoard.dataset.executionContexts = '';
+  nodesBoard.after(contextsBoard);
   let svg;
 
   // Options are curated scenario presets, not freely combinable simulation flags.
@@ -61,43 +66,53 @@
   }
 
   function sourceLink(id) {
-    const source = demo.sources[id], link = el('a', source.label);
-    link.href = source.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
-    return link;
+    return components.sourceLink(demo.sources[id]);
   }
 
   function buildScene(id) {
     scene = demo.scenarios.find(item => item.id === id)
       || demo.scenarios.find(item => item.id === demo.defaultScenario);
     trace = model.buildTrace(scene);
+    lab.dataset.presentation = scene.presentation || 'domains';
     syncSelector();
     setText('[data-execution-summary]', scene.summary);
     one('[data-execution-assumptions]').replaceChildren(...scene.assumptions.map(text => el('li', text)));
     const makeNode = id => {
       const node = scene.nodes.find(item => item.id === id);
       const card = el('div', undefined, 'execution-node'); card.dataset.executionNode = node.id;
-      card.append(el('strong', node.label), el('span', '', 'execution-node-status'));
+      const heading = el('div', undefined, 'execution-node-heading');
+      heading.append(el('strong', node.label));
+      if (node.badge) heading.append(el('span', node.badge, 'walkthrough-node-badge'));
+      card.append(heading, el('span', '', 'execution-node-status'));
       return card;
     };
     const domains = el('div', undefined, 'walkthrough-domains');
-    domains.style.setProperty('--domain-count', scene.layout.domains.reduce((sum, group) => sum + (group.span || 1), 0));
-    for (const group of scene.layout.domains) {
+    const lanes = scene.layout.domains.filter(group => group.nodes.length);
+    domains.style.setProperty('--domain-count', lanes.reduce((sum, group) => sum + (group.span || 1), 0));
+    for (const group of lanes) {
       const domain = el('section', undefined, 'walkthrough-domain');
       domain.dataset.executionDomain = group.id;
+      if (group.component) domain.dataset.component = group.component;
       if (group.span) domain.style.gridColumn = `span ${group.span}`;
       if (group.inline) domain.classList.add('walkthrough-domain--inline');
       const header = el('header'); header.append(el('small', group.context), el('h4', group.title));
       const nodes = el('div', undefined, 'walkthrough-domain-nodes');
       nodes.append(...group.nodes.map(makeNode));
+      if (group.note) nodes.append(el('p', group.note, 'walkthrough-domain-note'));
       domain.append(header, nodes); domains.append(domain);
     }
     nodesBoard.replaceChildren(domains);
+    components.contexts(contextsBoard, scene.layout.domains.filter(group => !group.nodes.length));
     if (scene.layout.memory) {
       const group = scene.layout.memory, memory = el('section', undefined, 'walkthrough-memory');
       const heading = el('h4', group.title); heading.append(el('span', group.description));
       const cells = el('div', undefined, 'walkthrough-memory-grid');
       cells.style.setProperty('--memory-count', group.nodes.length);
       cells.append(...group.nodes.map(makeNode)); memory.append(heading, cells); nodesBoard.append(memory);
+    }
+    if (scene.queue) {
+      const queue = el('section'); queue.dataset.executionTypedQueue = 'compact';
+      (nodesBoard.querySelector('.walkthrough-memory') || nodesBoard).append(queue);
     }
     svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('aria-hidden', 'true'); svg.classList.add('execution-arrows');
@@ -107,6 +122,10 @@
       const section = el('section', undefined, 'execution-structure');
       section.dataset.kind = structure.kind;
       section.append(el('h4', structure.title));
+      if (scene.queue && structure.id === scene.queue.structureId) {
+        section.dataset.executionTypedQueue = 'full';
+        return section;
+      }
       if (structure.kind === 'queue' && structure.fields.some(field => field.key === 'availIdx')) {
         const queue = el('div', undefined, 'execution-queue');
         const chain = el('div', undefined, 'execution-chain'); chain.dataset.executionChain = '';
@@ -133,6 +152,9 @@
       section.append(list); return section;
     }));
     const sources = one('[data-execution-sources]');
+    if (scene.callPaths) {
+      components.sourcePaths(sources, scene.callPaths, demo.sources, scene.sourceSteps || []);
+    } else {
     sources.replaceChildren(el('p', '按执行阶段列出实现入口。跨线程通知、硬件行为与回调分别标明；连线表示事件先后，不代表同一条调用栈。'));
     trace.slice(1).forEach(frame => {
       const row = el('section', undefined, 'execution-source-row'); row.dataset.executionSourceStep = frame.id;
@@ -141,7 +163,43 @@
       frame.sourceIds.forEach(id => { const item = el('li'); item.append(sourceLink(id)); list.append(item); });
       row.append(list); sources.append(row);
     });
+    }
     progress();
+  }
+
+  function renderTimeline(frame) {
+    const timeline = one('[data-execution-timeline]');
+    const active = scene.presentation === 'cpu-timeline';
+    timeline.hidden = !active; nodesBoard.hidden = active;
+    if (!active) return;
+    timeline.replaceChildren();
+    const lanes = el('ol', undefined, 'walkthrough-cpu-lanes');
+    for (const lane of scene.timeline.lanes) {
+      const node = el('li', lane.label); node.dataset.current = String(frame.execution?.lane === lane.id);
+      node.dataset.component = lane.id.startsWith('guest-') ? 'guest' : lane.id;
+      lanes.append(node);
+    }
+    timeline.append(el('h4', '同一个 vCPU · 当前执行位置'), lanes);
+    const instruction = el('div', undefined, 'walkthrough-cpu-instruction');
+    instruction.append(el('small', frame.execution?.phase || '准备执行'),
+      el('code', frame.execution?.instruction || '等待下一步'));
+    timeline.append(instruction);
+    const fields = el('dl', undefined, 'execution-fields');
+    const labels = Object.fromEntries(scene.structures.flatMap(s => s.fields.map(f => [f.key, f.label])));
+    for (const key of scene.timeline.fields) {
+      const cell = el('div'); cell.dataset.current = String(frame.changed.includes(key));
+      cell.append(el('dt', labels[key] || key), el('dd', frame.values[key])); fields.append(cell);
+    }
+    timeline.append(fields);
+    const steps = el('ol', undefined, 'walkthrough-cpu-history');
+    for (let n = Math.max(0, index - 1); n <= Math.min(trace.length - 1, index + 1); n++) {
+      const item = el('li'); item.dataset.current = String(n === index);
+      const lane = scene.timeline.lanes.find(lane => lane.id === trace[n].execution?.lane);
+      item.append(el('small', n < index ? '上一步' : n === index ? '当前' : '下一步'),
+        el('strong', trace[n].title), el('span', lane?.label || trace[n].actor));
+      steps.append(item);
+    }
+    timeline.append(steps);
   }
 
   function progress() {
@@ -154,10 +212,11 @@
   }
 
   function draw() {
+    const animate = animateNext; animateNext = false;
     if (layout) cancelAnimationFrame(layout);
     layout = requestAnimationFrame(() => {
       layout = null;
-      if (view !== 'overview' || !svg) return;
+      if (view !== 'overview' || !svg || scene.presentation === 'cpu-timeline') return;
       const rect = nodesBoard.getBoundingClientRect();
       svg.setAttribute('viewBox', `0 0 ${rect.width} ${rect.height}`); svg.replaceChildren();
       const ns = 'http://www.w3.org/2000/svg';
@@ -166,10 +225,14 @@
         return [node.dataset.executionNode, {left: box.left - rect.left, right: box.right - rect.left,
           top: box.top - rect.top, bottom: box.bottom - rect.top}];
       }));
+      const textObstacles = all('.walkthrough-domain header, .walkthrough-memory > h4').map(node => {
+        const box = node.getBoundingClientRect();
+        return {left:box.left-rect.left,right:box.right-rect.left,top:box.top-rect.top,bottom:box.bottom-rect.top};
+      }).filter(box => box.right > box.left && box.bottom > box.top);
       for (const id of trace[index].links) {
         const edge = scene.links.find(link => link.id === id);
         const route = window.WalkthroughRouting?.route(bounds[edge.from], bounds[edge.to],
-          Object.values(bounds), {width: rect.width, height: rect.height});
+          [...Object.values(bounds), ...textObstacles], {width: rect.width, height: rect.height});
         if (!route) continue; // The text relationship remains available if space is obstructed.
         const d = route.map((point, n) => `${n ? 'L' : 'M'} ${point.join(' ')}`).join(' ');
         const [x2, y2] = route.at(-1), previous = route.at(-2);
@@ -181,6 +244,16 @@
           [x2 - 7 * Math.cos(angle + offset), y2 - 7 * Math.sin(angle + offset)]);
         arrow.setAttribute('d', `M ${points[0].join(' ')} L ${x2} ${y2} L ${points[1].join(' ')}`);
         arrow.dataset.kind = edge.kind; svg.append(arrow);
+        if (animate && !reduced.matches && index > 0 && edge.kind === 'data') {
+          const dot = document.createElementNS(ns, 'circle'); dot.setAttribute('r', '3');
+          dot.setAttribute('class', 'walkthrough-packet');
+          const motion = document.createElementNS(ns, 'animateMotion');
+          motion.setAttribute('path', d); motion.setAttribute('dur', '.7s');
+          motion.setAttribute('repeatCount', '1'); motion.setAttribute('fill', 'freeze');
+          dot.append(motion); svg.append(dot);
+          motion.beginElement?.();
+          setTimeout(() => dot.remove(), 750);
+        }
       }
     });
   }
@@ -194,6 +267,11 @@
 
   function render(speak = false, updateURL = true) {
     const frame = trace[index];
+    renderTimeline(frame);
+    one('.execution-key').textContent = scene.presentation === 'cpu-timeline'
+      ? '高亮泳道表示当前执行位置，字段高亮表示本步变化。普通指令由物理 CPU 执行；不是在 Guest、KVM 与 QEMU 之间逐条搬运。'
+      : '实线：数据 · 虚线：通知 · 点线：控制切换 · 蓝色映射：地址转换。高亮表示本步操作后的状态，动画不表示真实耗时。';
+    one('.execution-key').hidden = view !== 'overview';
     lab.dataset.scenario = scene.id; lab.dataset.view = view; lab.dataset.step = frame.id;
     all('[data-execution-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.executionView === view)));
     all('[data-execution-step]').forEach(button => {
@@ -209,6 +287,7 @@
       structure: '只保留与关键结构相关的步骤。高亮本步更新的字段，索引、地址和状态可逐步对照。',
       source: '沿当前场景核对关键实现；点击函数或规范链接查看固定版本原文。',
     }[view]);
+    if (scene.presentation === 'cpu-timeline' && view === 'overview') setText('[data-execution-help]', '沿同一个 vCPU 观察当前指令、寄存器与执行位置；Guest 权限切换、VM-exit 和返回 QEMU 分别标示。');
     const stops = model.stops(trace, view), count = stops.length - 1;
     setText('[data-execution-counter]', index === 0 ? `准备前 · 共 ${count} 步`
       : `第 ${stops.indexOf(index)} / ${count} 步`);
@@ -216,9 +295,6 @@
     setText('[data-execution-title]', frame.title);
     setText('[data-execution-description]', frame.description);
     setText('[data-execution-detail]', frame.detail);
-    one('[data-execution-source-links]').replaceChildren(...frame.sourceIds.map(id => {
-      const item = el('li'); item.append(sourceLink(id)); return item;
-    }));
     all('[data-execution-node]').forEach(node => {
       node.dataset.active = String(frame.active.includes(node.dataset.executionNode));
       node.querySelector('.execution-node-status').textContent = frame.nodes[node.dataset.executionNode];
@@ -227,6 +303,11 @@
       node.dataset.current = String(frame.changed.includes(node.dataset.executionField));
       node.querySelector('dd').textContent = frame.values[node.dataset.executionField];
     });
+    if (scene.queue && frame.queueState) {
+      all('[data-execution-typed-queue]').forEach(node =>
+        components.queue(node, frame.queueState, scene.queue, node.dataset.executionTypedQueue === 'compact'));
+    }
+    if (scene.callPaths) components.highlightSources(one('[data-execution-sources]'), frame.sourceIds, frame.id, demo.sources);
     all('[data-execution-chain]').forEach(node => {
       node.textContent = `描述符链 · ${frame.values.desc}`;
       node.dataset.current = String(frame.changed.includes('desc'));
@@ -272,7 +353,8 @@
       const from = scene.nodes.find(node => node.id === edge.from).label;
       const to = scene.nodes.find(node => node.id === edge.to).label;
       row.append(el('strong', from), el('span', ` → ${edge.label} → `), el('strong', to)); return row;
-    }) : [el('p', index === 0 ? '选择下一步，开始观察状态变化。' : '本步在当前组件内处理，没有跨组件交接。')]));
+    }) : []));
+    one('[data-execution-connections]').hidden = !edges.length || view !== 'overview' || scene.presentation === 'cpu-timeline';
     one('[data-execution-prev]').disabled = index === 0;
     one('[data-execution-next]').disabled = index === stops.at(-1);
     if (speak) setText('[data-execution-status]', `${frame.title}。${frame.description}`);
@@ -297,10 +379,12 @@
 
   function pause() {
     clearTimeout(timer); timer = null;
+    svg?.querySelectorAll('.walkthrough-packet').forEach(node => node.remove());
     setText('[data-execution-play]', '播放'); one('[data-execution-play]').setAttribute('aria-pressed', 'false');
   }
   function move(position, stop = true) {
     if (stop) pause();
+    animateNext = position > index;
     index = model.project(trace, view, Math.max(0, Math.min(trace.length - 1, position)));
     render(stop);
   }

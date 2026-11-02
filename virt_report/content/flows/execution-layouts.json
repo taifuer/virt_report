@@ -5,12 +5,21 @@
         {
           "id": "guest",
           "title": "Guest",
-          "context": "用户态应用 · 内核协议栈与驱动",
+          "context": "客户机 · 应用与网络栈",
           "nodes": [
             "application",
             "stack",
             "guest"
-          ]
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kvm-context",
+          "title": "KVM",
+          "context": "宿主内核 · 虚拟化子系统",
+          "nodes": [],
+          "component": "kvm",
+          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
         },
         {
           "id": "qemu",
@@ -18,15 +27,25 @@
           "context": "宿主用户态 · 设备模型",
           "nodes": [
             "backend"
-          ]
+          ],
+          "component": "qemu"
         },
         {
           "id": "host-network",
-          "title": "TAP / 宿主网络",
-          "context": "宿主内核 · 网络接口",
+          "title": "Host kernel",
+          "context": "宿主内核 · TAP 与网络栈",
           "nodes": [
             "port"
-          ]
+          ],
+          "component": "host-kernel"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "是否经过物理网卡取决于宿主网络拓扑；TAP 也可连接本机虚拟网络，本图不假定必经物理端口。"
         },
         {
           "id": "external",
@@ -34,7 +53,8 @@
           "context": "本机之外的网络路径",
           "nodes": [
             "network"
-          ]
+          ],
+          "component": "external"
         }
       ],
       "memory": {
@@ -50,12 +70,21 @@
         {
           "id": "guest",
           "title": "Guest",
-          "context": "用户态应用 · 内核协议栈与驱动",
+          "context": "客户机 · 应用与网络栈",
           "nodes": [
             "application",
             "stack",
             "guest"
-          ]
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kvm-context",
+          "title": "KVM",
+          "context": "宿主内核 · 虚拟化子系统",
+          "nodes": [],
+          "component": "kvm",
+          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
         },
         {
           "id": "qemu",
@@ -63,15 +92,25 @@
           "context": "宿主用户态 · 设备模型",
           "nodes": [
             "backend"
-          ]
+          ],
+          "component": "qemu"
         },
         {
           "id": "host-network",
-          "title": "TAP / 宿主网络",
-          "context": "宿主内核 · 网络接口",
+          "title": "Host kernel",
+          "context": "宿主内核 · TAP 与网络栈",
           "nodes": [
             "port"
-          ]
+          ],
+          "component": "host-kernel"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "是否经过物理网卡取决于宿主网络拓扑；TAP 也可连接本机虚拟网络，本图不假定必经物理端口。"
         },
         {
           "id": "external",
@@ -79,7 +118,8 @@
           "context": "本机之外的网络路径",
           "nodes": [
             "network"
-          ]
+          ],
+          "component": "external"
         }
       ],
       "memory": {
@@ -95,21 +135,21 @@
         {
           "id": "guest",
           "title": "Guest",
-          "context": "用户态应用 · 内核协议栈与驱动",
+          "context": "客户机 · 应用与网络栈",
           "nodes": [
             "application",
             "stack",
             "guest"
-          ]
+          ],
+          "component": "guest"
         },
         {
-          "id": "host-network",
-          "title": "vhost / 宿主网络",
-          "context": "宿主内核 · 数据路径",
-          "nodes": [
-            "backend",
-            "port"
-          ]
+          "id": "kvm-context",
+          "title": "KVM",
+          "context": "宿主内核 · 虚拟化子系统",
+          "nodes": [],
+          "component": "kvm",
+          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
         },
         {
           "id": "qemu",
@@ -117,7 +157,26 @@
           "context": "宿主用户态 · 配置控制",
           "nodes": [
             "control"
-          ]
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-network",
+          "title": "Host kernel",
+          "context": "宿主内核 · vhost-net / TAP",
+          "nodes": [
+            "backend",
+            "port"
+          ],
+          "component": "host-kernel"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "是否经过物理网卡取决于宿主网络拓扑；TAP 也可连接本机虚拟网络，本图不假定必经物理端口。"
         },
         {
           "id": "external",
@@ -125,7 +184,8 @@
           "context": "本机之外的网络路径",
           "nodes": [
             "network"
-          ]
+          ],
+          "component": "external"
         }
       ],
       "memory": {
@@ -141,21 +201,21 @@
         {
           "id": "guest",
           "title": "Guest",
-          "context": "用户态应用 · 内核协议栈与驱动",
+          "context": "客户机 · 应用与网络栈",
           "nodes": [
             "application",
             "stack",
             "guest"
-          ]
+          ],
+          "component": "guest"
         },
         {
-          "id": "host-network",
-          "title": "vhost / 宿主网络",
-          "context": "宿主内核 · 数据路径",
-          "nodes": [
-            "backend",
-            "port"
-          ]
+          "id": "kvm-context",
+          "title": "KVM",
+          "context": "宿主内核 · 虚拟化子系统",
+          "nodes": [],
+          "component": "kvm",
+          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
         },
         {
           "id": "qemu",
@@ -163,7 +223,26 @@
           "context": "宿主用户态 · 配置控制",
           "nodes": [
             "control"
-          ]
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-network",
+          "title": "Host kernel",
+          "context": "宿主内核 · vhost-net / TAP",
+          "nodes": [
+            "backend",
+            "port"
+          ],
+          "component": "host-kernel"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "是否经过物理网卡取决于宿主网络拓扑；TAP 也可连接本机虚拟网络，本图不假定必经物理端口。"
         },
         {
           "id": "external",
@@ -171,7 +250,8 @@
           "context": "本机之外的网络路径",
           "nodes": [
             "network"
-          ]
+          ],
+          "component": "external"
         }
       ],
       "memory": {
@@ -187,29 +267,56 @@
         {
           "id": "guest",
           "title": "Guest",
-          "context": "用户态应用 · 内核协议栈与驱动",
+          "context": "客户机 · 应用与网络栈",
           "nodes": [
             "application",
             "stack",
             "guest"
-          ]
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kvm-context",
+          "title": "KVM",
+          "context": "宿主内核 · 虚拟化子系统",
+          "nodes": [],
+          "component": "kvm",
+          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "宿主用户态 · 配置控制",
+          "nodes": [
+            "control"
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "共享内存映射与线程调度已经就绪；本例采用用户态 DPDK 数据面，不走 TAP / 宿主网络栈逐包转发。"
         },
         {
           "id": "userspace",
-          "title": "QEMU / DPDK",
-          "context": "宿主用户态 · 控制面与数据面",
+          "title": "DPDK",
+          "context": "宿主用户态 · vhost 数据面",
           "nodes": [
-            "control",
             "backend"
-          ]
+          ],
+          "component": "host-user"
         },
         {
           "id": "port",
-          "title": "PMD / 网卡",
-          "context": "用户态轮询驱动与物理设备",
+          "title": "物理网卡",
+          "context": "用户态 PMD 与物理设备交接",
           "nodes": [
             "port"
-          ]
+          ],
+          "component": "hardware"
         },
         {
           "id": "external",
@@ -217,7 +324,8 @@
           "context": "本机之外的网络路径",
           "nodes": [
             "network"
-          ]
+          ],
+          "component": "external"
         }
       ],
       "memory": {
@@ -233,29 +341,56 @@
         {
           "id": "guest",
           "title": "Guest",
-          "context": "用户态应用 · 内核协议栈与驱动",
+          "context": "客户机 · 应用与网络栈",
           "nodes": [
             "application",
             "stack",
             "guest"
-          ]
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kvm-context",
+          "title": "KVM",
+          "context": "宿主内核 · 虚拟化子系统",
+          "nodes": [],
+          "component": "kvm",
+          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "宿主用户态 · 配置控制",
+          "nodes": [
+            "control"
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "共享内存映射与线程调度已经就绪；本例采用用户态 DPDK 数据面，不走 TAP / 宿主网络栈逐包转发。"
         },
         {
           "id": "userspace",
-          "title": "QEMU / DPDK",
-          "context": "宿主用户态 · 控制面与数据面",
+          "title": "DPDK",
+          "context": "宿主用户态 · vhost 数据面",
           "nodes": [
-            "control",
             "backend"
-          ]
+          ],
+          "component": "host-user"
         },
         {
           "id": "port",
-          "title": "PMD / 网卡",
-          "context": "用户态轮询驱动与物理设备",
+          "title": "物理网卡",
+          "context": "用户态 PMD 与物理设备交接",
           "nodes": [
             "port"
-          ]
+          ],
+          "component": "hardware"
         },
         {
           "id": "external",
@@ -263,7 +398,8 @@
           "context": "本机之外的网络路径",
           "nodes": [
             "network"
-          ]
+          ],
+          "component": "external"
         }
       ],
       "memory": {
@@ -279,12 +415,21 @@
         {
           "id": "guest",
           "title": "Guest",
-          "context": "用户态应用 · 内核协议栈与驱动",
+          "context": "客户机 · 应用与网络栈",
           "nodes": [
             "application",
             "stack",
             "guest"
-          ]
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kvm-context",
+          "title": "KVM",
+          "context": "宿主内核 · 虚拟化子系统",
+          "nodes": [],
+          "component": "kvm",
+          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
         },
         {
           "id": "qemu",
@@ -292,7 +437,16 @@
           "context": "宿主用户态 · 配置控制",
           "nodes": [
             "control"
-          ]
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "vhost-vDPA 负责设备控制与映射；本例 direct 数据面由硬件处理，不由宿主网络栈逐包转发。"
         },
         {
           "id": "device",
@@ -301,7 +455,8 @@
           "nodes": [
             "backend",
             "port"
-          ]
+          ],
+          "component": "hardware"
         },
         {
           "id": "external",
@@ -309,7 +464,8 @@
           "context": "本机之外的网络路径",
           "nodes": [
             "network"
-          ]
+          ],
+          "component": "external"
         }
       ],
       "memory": {
@@ -325,12 +481,21 @@
         {
           "id": "guest",
           "title": "Guest",
-          "context": "用户态应用 · 内核协议栈与驱动",
+          "context": "客户机 · 应用与网络栈",
           "nodes": [
             "application",
             "stack",
             "guest"
-          ]
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kvm-context",
+          "title": "KVM",
+          "context": "宿主内核 · 虚拟化子系统",
+          "nodes": [],
+          "component": "kvm",
+          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
         },
         {
           "id": "qemu",
@@ -338,7 +503,16 @@
           "context": "宿主用户态 · 配置控制",
           "nodes": [
             "control"
-          ]
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "vhost-vDPA 负责设备控制与映射；本例 direct 数据面由硬件处理，不由宿主网络栈逐包转发。"
         },
         {
           "id": "device",
@@ -347,7 +521,8 @@
           "nodes": [
             "backend",
             "port"
-          ]
+          ],
+          "component": "hardware"
         },
         {
           "id": "external",
@@ -355,7 +530,8 @@
           "context": "本机之外的网络路径",
           "nodes": [
             "network"
-          ]
+          ],
+          "component": "external"
         }
       ],
       "memory": {
@@ -371,12 +547,21 @@
         {
           "id": "guest",
           "title": "Guest",
-          "context": "用户态应用 · 内核协议栈与驱动",
+          "context": "客户机 · 应用与网络栈",
           "nodes": [
             "application",
             "stack",
             "guest"
-          ]
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kvm-context",
+          "title": "KVM",
+          "context": "宿主内核 · 虚拟化子系统",
+          "nodes": [],
+          "component": "kvm",
+          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
         },
         {
           "id": "qemu",
@@ -384,15 +569,25 @@
           "context": "宿主用户态 · 设备模型",
           "nodes": [
             "backend"
-          ]
+          ],
+          "component": "qemu"
         },
         {
           "id": "host-network",
-          "title": "TAP / 宿主网络",
-          "context": "宿主内核 · 发送背压",
+          "title": "Host kernel",
+          "context": "宿主内核 · TAP 与网络栈",
           "nodes": [
             "port"
-          ]
+          ],
+          "component": "host-kernel"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "是否经过物理网卡取决于宿主网络拓扑；TAP 也可连接本机虚拟网络，本图不假定必经物理端口。"
         },
         {
           "id": "external",
@@ -400,7 +595,8 @@
           "context": "本机之外的网络路径",
           "nodes": [
             "network"
-          ]
+          ],
+          "component": "external"
         }
       ],
       "memory": {
@@ -416,12 +612,21 @@
         {
           "id": "guest",
           "title": "Guest",
-          "context": "用户态应用 · 内核协议栈与驱动",
+          "context": "客户机 · 应用与网络栈",
           "nodes": [
             "application",
             "stack",
             "guest"
-          ]
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kvm-context",
+          "title": "KVM",
+          "context": "宿主内核 · 虚拟化子系统",
+          "nodes": [],
+          "component": "kvm",
+          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
         },
         {
           "id": "qemu",
@@ -429,15 +634,25 @@
           "context": "宿主用户态 · 设备模型",
           "nodes": [
             "backend"
-          ]
+          ],
+          "component": "qemu"
         },
         {
           "id": "host-network",
-          "title": "TAP / 宿主网络",
-          "context": "宿主内核 · 接收等待",
+          "title": "Host kernel",
+          "context": "宿主内核 · TAP 与网络栈",
           "nodes": [
             "port"
-          ]
+          ],
+          "component": "host-kernel"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "是否经过物理网卡取决于宿主网络拓扑；TAP 也可连接本机虚拟网络，本图不假定必经物理端口。"
         },
         {
           "id": "external",
@@ -445,7 +660,8 @@
           "context": "本机之外的网络路径",
           "nodes": [
             "network"
-          ]
+          ],
+          "component": "external"
         }
       ],
       "memory": {
@@ -460,103 +676,804 @@
   "memory-access": {
     "ram-hit": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机用户态", "nodes": ["guest"]},
-        {"id": "hardware", "title": "CPU / MMU", "context": "硬件执行与地址转换", "nodes": ["mmu"]},
-        {"id": "kernel", "title": "KVM", "context": "宿主内核 · 本次不介入", "nodes": ["kvm"]},
-        {"id": "userspace", "title": "QEMU", "context": "宿主用户态 · RAM 已注册", "nodes": ["qemu"]}
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机用户态",
+          "nodes": [
+            "guest"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核 · 本次不介入",
+          "nodes": [
+            "kvm"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "userspace",
+          "title": "QEMU",
+          "context": "宿主用户态 · RAM 已注册",
+          "nodes": [
+            "qemu"
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "宿主后备页与映射已就绪；本次不进入宿主取页或换入路径。"
+        },
+        {
+          "id": "hardware",
+          "title": "CPU / MMU",
+          "context": "硬件执行与地址转换",
+          "nodes": [
+            "mmu"
+          ],
+          "component": "hardware"
+        }
       ],
-      "memory": {"title": "RAM 后备页", "description": "客户机 RAM 对应的宿主物理内存；本例读取地址 HPA 0x21000080", "nodes": ["ram"]}
+      "memory": {
+        "title": "RAM 后备页",
+        "description": "客户机 RAM 对应的宿主物理内存；本例读取地址 HPA 0x21000080",
+        "nodes": [
+          "ram"
+        ]
+      }
     },
     "tlb-miss": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机指令与客户机页表", "nodes": ["guest", "gpt"]},
-        {"id": "hardware", "title": "CPU / MMU", "context": "硬件页表遍历", "nodes": ["mmu"]},
-        {"id": "host", "title": "宿主映射", "context": "宿主维护 EPT；本次由硬件读取", "nodes": ["ept", "kvm"]}
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机指令与客户机页表",
+          "nodes": [
+            "guest",
+            "gpt"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "host",
+          "title": "KVM",
+          "context": "宿主内核 · EPT 已就绪",
+          "nodes": [
+            "ept",
+            "kvm"
+          ],
+          "component": "kvm",
+          "note": "EPT 是宿主维护的页表数据；本次由 CPU 硬件遍历，不调用 KVM 建图。"
+        },
+        {
+          "id": "qemu-context",
+          "title": "QEMU",
+          "context": "宿主用户态 · 配置与设备模型",
+          "nodes": [],
+          "component": "qemu",
+          "note": "QEMU 已登记 RAM 后备区；本次访存或缺页路径没有 KVM_RUN 返回用户态。"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "宿主后备页与映射已就绪；本次不进入宿主取页或换入路径。"
+        },
+        {
+          "id": "hardware",
+          "title": "CPU / MMU",
+          "context": "硬件页表遍历",
+          "nodes": [
+            "mmu"
+          ],
+          "component": "hardware"
+        }
       ],
-      "memory": {"title": "RAM 后备页", "description": "经过两级转换后访问的宿主物理内存", "nodes": ["ram"]}
+      "memory": {
+        "title": "RAM 后备页",
+        "description": "经过两级转换后访问的宿主物理内存",
+        "nodes": [
+          "ram"
+        ]
+      }
     },
     "guest-page-fault": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机应用、内核与页表", "nodes": ["guest", "guest-os", "gpt"]},
-        {"id": "hardware", "title": "CPU / MMU", "context": "硬件权限检查与异常递送", "nodes": ["mmu"]},
-        {"id": "host", "title": "KVM / QEMU", "context": "宿主软件 · 本次不介入", "nodes": ["kvm"]}
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机应用、内核与页表",
+          "nodes": [
+            "guest",
+            "guest-os",
+            "gpt"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "host",
+          "title": "KVM",
+          "context": "宿主内核 · 本次不介入",
+          "nodes": [
+            "kvm"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "qemu-context",
+          "title": "QEMU",
+          "context": "宿主用户态 · 配置与设备模型",
+          "nodes": [],
+          "component": "qemu",
+          "note": "QEMU 已登记 RAM 后备区；本次访存或缺页路径没有 KVM_RUN 返回用户态。"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "宿主后备页与映射已就绪；本次不进入宿主取页或换入路径。"
+        },
+        {
+          "id": "hardware",
+          "title": "CPU / MMU",
+          "context": "硬件权限检查与异常递送",
+          "nodes": [
+            "mmu"
+          ],
+          "component": "hardware"
+        }
       ],
-      "memory": {"title": "已映射的 RAM", "description": "本例 EPT 与宿主后备页已就绪，Guest Linux 处理自己的页表缺项", "nodes": ["ram"]}
+      "memory": {
+        "title": "已映射的 RAM",
+        "description": "本例 EPT 与宿主后备页已就绪，Guest Linux 处理自己的页表缺项",
+        "nodes": [
+          "ram"
+        ]
+      }
     },
     "ept-missing": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机用户态", "nodes": ["guest"]},
-        {"id": "hardware", "title": "CPU / EPT", "context": "硬件第二级转换", "nodes": ["mmu"]},
-        {"id": "kernel", "title": "KVM / 宿主内存", "context": "宿主内核 · 解析后备页并建图", "nodes": ["kvm", "host-mm"]},
-        {"id": "userspace", "title": "QEMU", "context": "宿主用户态 · memslot 已登记", "nodes": ["qemu"]}
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机用户态",
+          "nodes": [
+            "guest"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核 · 第二级地址转换",
+          "nodes": [
+            "kvm"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "userspace",
+          "title": "QEMU",
+          "context": "宿主用户态 · memslot 已登记",
+          "nodes": [
+            "qemu"
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-memory",
+          "title": "Host kernel",
+          "context": "宿主内核 · 内存管理",
+          "nodes": [
+            "host-mm"
+          ],
+          "component": "host-kernel"
+        },
+        {
+          "id": "hardware",
+          "title": "CPU / EPT",
+          "context": "硬件第二级转换",
+          "nodes": [
+            "mmu"
+          ],
+          "component": "hardware"
+        }
       ],
-      "memory": {"title": "RAM 后备页", "description": "已驻留的宿主物理页；建立 EPT 后由 Guest 直接访问", "nodes": ["ram"]}
+      "memory": {
+        "title": "RAM 后备页",
+        "description": "已驻留的宿主物理页；建立 EPT 后由 Guest 直接访问",
+        "nodes": [
+          "ram"
+        ]
+      }
     },
     "host-page-fault": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机用户态", "nodes": ["guest"]},
-        {"id": "hardware", "title": "CPU / EPT", "context": "硬件第二级转换", "nodes": ["mmu"]},
-        {"id": "kernel", "title": "KVM / 宿主内存", "context": "宿主内核 · 取页与等待", "nodes": ["kvm", "host-mm"]},
-        {"id": "storage", "title": "交换后备", "context": "宿主页面 I/O", "nodes": ["storage"]}
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机用户态",
+          "nodes": [
+            "guest"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核 · 第二级地址转换",
+          "nodes": [
+            "kvm"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "qemu-context",
+          "title": "QEMU",
+          "context": "宿主用户态 · 配置与设备模型",
+          "nodes": [],
+          "component": "qemu",
+          "note": "QEMU 已登记 RAM 后备区；本次访存或缺页路径没有 KVM_RUN 返回用户态。"
+        },
+        {
+          "id": "host-memory",
+          "title": "Host kernel",
+          "context": "宿主内核 · 内存管理",
+          "nodes": [
+            "host-mm"
+          ],
+          "component": "host-kernel"
+        },
+        {
+          "id": "hardware",
+          "title": "CPU / EPT",
+          "context": "硬件第二级转换",
+          "nodes": [
+            "mmu"
+          ],
+          "component": "hardware"
+        },
+        {
+          "id": "storage",
+          "title": "交换后备",
+          "context": "宿主页面 I/O",
+          "nodes": [
+            "storage"
+          ],
+          "component": "hardware"
+        }
       ],
-      "memory": {"title": "RAM 后备页", "description": "宿主换入页面后，KVM 按当前 PFN 恢复 EPT 映射", "nodes": ["ram"]}
+      "memory": {
+        "title": "RAM 后备页",
+        "description": "宿主换入页面后，KVM 按当前 PFN 恢复 EPT 映射",
+        "nodes": [
+          "ram"
+        ]
+      }
     },
     "mmio-read": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机设备驱动", "nodes": ["guest"]},
-        {"id": "hardware", "title": "CPU / EPT", "context": "硬件地址检查", "nodes": ["mmu"]},
-        {"id": "kernel", "title": "KVM", "context": "宿主内核 · 指令模拟", "nodes": ["kvm"]},
-        {"id": "userspace", "title": "QEMU", "context": "宿主用户态 · vCPU 线程与设备模型", "nodes": ["qemu", "device"], "span": 2, "inline": true}
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机设备驱动",
+          "nodes": [
+            "guest"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核 · 指令模拟",
+          "nodes": [
+            "kvm"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "userspace",
+          "title": "QEMU",
+          "context": "宿主用户态 · vCPU 线程与设备模型",
+          "nodes": [
+            "qemu",
+            "device"
+          ],
+          "span": 2,
+          "inline": true,
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "这里只展开目标 MMIO 的处理方；其余宿主内核设施不作为额外的数据转发层。"
+        },
+        {
+          "id": "hardware",
+          "title": "CPU / EPT",
+          "context": "硬件地址检查",
+          "nodes": [
+            "mmu"
+          ],
+          "component": "hardware"
+        }
       ]
     },
     "dirty-write-protect": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机写入指令", "nodes": ["guest"]},
-        {"id": "hardware", "title": "CPU / EPT", "context": "硬件写权限检查", "nodes": ["mmu"]},
-        {"id": "kernel", "title": "KVM", "context": "宿主内核 · 写保护与脏页记录", "nodes": ["kvm", "bitmap"]},
-        {"id": "userspace", "title": "QEMU", "context": "宿主用户态 · 稍后读取脏页", "nodes": ["qemu"]}
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机写入指令",
+          "nodes": [
+            "guest"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核 · 写保护与脏页记录",
+          "nodes": [
+            "kvm",
+            "bitmap"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "userspace",
+          "title": "QEMU",
+          "context": "宿主用户态 · 稍后读取脏页",
+          "nodes": [
+            "qemu"
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "宿主后备页与映射已就绪；本次不进入宿主取页或换入路径。"
+        },
+        {
+          "id": "hardware",
+          "title": "CPU / EPT",
+          "context": "硬件写权限检查",
+          "nodes": [
+            "mmu"
+          ],
+          "component": "hardware"
+        }
       ],
-      "memory": {"title": "RAM 后备页", "description": "EPT 写权限恢复后，客户机重试对目标宿主页的写入", "nodes": ["ram"]}
+      "memory": {
+        "title": "RAM 后备页",
+        "description": "EPT 写权限恢复后，客户机重试对目标宿主页的写入",
+        "nodes": [
+          "ram"
+        ]
+      }
+    },
+    "mmio-kernel-lapic": {
+      "domains": [
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机内核",
+          "nodes": [
+            "guest"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "host",
+          "title": "KVM",
+          "context": "宿主内核",
+          "nodes": [
+            "kvm",
+            "device"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "宿主用户态",
+          "nodes": [
+            "qemu"
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "这里只展开目标 MMIO 的处理方；其余宿主内核设施不作为额外的数据转发层。"
+        },
+        {
+          "id": "cpu",
+          "title": "CPU",
+          "context": "地址转换与设备访问",
+          "nodes": [
+            "mmu"
+          ],
+          "component": "hardware"
+        }
+      ]
+    },
+    "mmio-ioeventfd": {
+      "domains": [
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机内核",
+          "nodes": [
+            "guest"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "host",
+          "title": "KVM",
+          "context": "宿主内核",
+          "nodes": [
+            "kvm",
+            "eventfd"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "宿主用户态",
+          "nodes": [
+            "qemu",
+            "backend"
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "这里只展开目标 MMIO 的处理方；其余宿主内核设施不作为额外的数据转发层。"
+        },
+        {
+          "id": "cpu",
+          "title": "CPU",
+          "context": "地址转换与设备访问",
+          "nodes": [
+            "mmu"
+          ],
+          "component": "hardware"
+        }
+      ]
+    },
+    "mmio-vfio-direct": {
+      "domains": [
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机内核",
+          "nodes": [
+            "guest"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "host",
+          "title": "KVM",
+          "context": "宿主内核",
+          "nodes": [
+            "kvm"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "宿主用户态",
+          "nodes": [
+            "qemu"
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "VFIO 已建立可 mmap 的 BAR 映射；本次 CPU 直接访问设备，不逐次调用 VFIO，且不是设备 DMA。"
+        },
+        {
+          "id": "cpu",
+          "title": "CPU",
+          "context": "地址转换与设备访问",
+          "nodes": [
+            "mmu"
+          ],
+          "component": "hardware"
+        },
+        {
+          "id": "device",
+          "title": "物理设备",
+          "context": "可映射 BAR 区间",
+          "nodes": [
+            "device"
+          ],
+          "component": "hardware"
+        }
+      ]
     }
   },
   "cpu-execution": {
     "ordinary-add": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机用户态 · CPL 3", "nodes": ["guest"]},
-        {"id": "hardware", "title": "物理 CPU", "context": "VMX 硬件执行", "nodes": ["cpu"]},
-        {"id": "kernel", "title": "KVM", "context": "宿主内核 · vCPU 运行循环", "nodes": ["kvm"]},
-        {"id": "userspace", "title": "QEMU", "context": "宿主用户态 · vCPU 线程", "nodes": ["qemu"]}
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "同一 CPU · non-root",
+          "nodes": [
+            "guest",
+            "kernel"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kvm",
+          "title": "KVM",
+          "context": "宿主内核 · 同一 vCPU 线程",
+          "nodes": [
+            "kvm"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "宿主用户态 · 同一 vCPU 线程",
+          "nodes": [
+            "qemu"
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "宿主调度器管理 vCPU 线程；本段只展示选定的指令执行边界，不展开无关调度。"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "Guest、KVM 和 QEMU 是物理 CPU 上的不同执行上下文，不是逐站转发指令的设备。"
+        }
       ]
     },
     "guest-syscall": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机用户态与内核态", "nodes": ["app", "kernel"]},
-        {"id": "hardware", "title": "物理 CPU", "context": "VMX non-root · 客户机执行", "nodes": ["cpu"]},
-        {"id": "host", "title": "KVM", "context": "宿主内核 · KVM_RUN 未返回", "nodes": ["kvm"]}
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "同一 CPU · non-root",
+          "nodes": [
+            "guest",
+            "kernel"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kvm",
+          "title": "KVM",
+          "context": "宿主内核 · 同一 vCPU 线程",
+          "nodes": [
+            "kvm"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "宿主用户态 · 同一 vCPU 线程",
+          "nodes": [
+            "qemu"
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "宿主调度器管理 vCPU 线程；本段只展示选定的指令执行边界，不展开无关调度。"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "Guest、KVM 和 QEMU 是物理 CPU 上的不同执行上下文，不是逐站转发指令的设备。"
+        }
       ]
     },
     "cpuid-kernel": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机 CPUID 指令", "nodes": ["guest"]},
-        {"id": "hardware", "title": "物理 CPU", "context": "VMX 硬件退出", "nodes": ["cpu"]},
-        {"id": "kernel", "title": "KVM", "context": "宿主内核 · CPUID 模拟", "nodes": ["kvm"]},
-        {"id": "userspace", "title": "QEMU", "context": "宿主用户态 · KVM_RUN 未返回", "nodes": ["qemu"]}
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "同一 CPU · non-root",
+          "nodes": [
+            "guest",
+            "kernel"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kvm",
+          "title": "KVM",
+          "context": "宿主内核 · 同一 vCPU 线程",
+          "nodes": [
+            "kvm"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "宿主用户态 · 同一 vCPU 线程",
+          "nodes": [
+            "qemu"
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "宿主调度器管理 vCPU 线程；本段只展示选定的指令执行边界，不展开无关调度。"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "Guest、KVM 和 QEMU 是物理 CPU 上的不同执行上下文，不是逐站转发指令的设备。"
+        }
       ]
     },
     "mmio-userspace": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机设备访问指令", "nodes": ["guest"]},
-        {"id": "hardware", "title": "CPU / EPT", "context": "硬件地址检查", "nodes": ["cpu"]},
-        {"id": "kernel", "title": "KVM", "context": "宿主内核 · 指令模拟", "nodes": ["kvm"]},
-        {"id": "userspace", "title": "QEMU", "context": "宿主用户态 · vCPU 线程与设备模型", "nodes": ["qemu", "device"], "span": 2, "inline": true}
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "同一 CPU · non-root",
+          "nodes": [
+            "guest",
+            "kernel"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kvm",
+          "title": "KVM",
+          "context": "宿主内核 · 同一 vCPU 线程",
+          "nodes": [
+            "kvm"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "宿主用户态 · 同一 vCPU 线程",
+          "nodes": [
+            "qemu"
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "宿主调度器管理 vCPU 线程；本段只展示选定的指令执行边界，不展开无关调度。"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "Guest、KVM 和 QEMU 是物理 CPU 上的不同执行上下文，不是逐站转发指令的设备。"
+        }
       ]
     },
     "hlt-wakeup": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机内核 · 空闲线程", "nodes": ["guest"]},
-        {"id": "kvm", "title": "KVM", "context": "宿主内核 · HLT 与中断状态", "nodes": ["kvm", "lapic"]},
-        {"id": "scheduler", "title": "宿主调度", "context": "宿主内核 · vCPU 线程调度", "nodes": ["scheduler"]},
-        {"id": "events", "title": "设备后端", "context": "异步完成事件源", "nodes": ["backend"]}
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机内核 · 空闲线程",
+          "nodes": [
+            "guest"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kvm",
+          "title": "KVM",
+          "context": "宿主内核 · HLT 与中断状态",
+          "nodes": [
+            "kvm",
+            "lapic"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "qemu-context",
+          "title": "QEMU",
+          "context": "宿主用户态 · 配置与设备模型",
+          "nodes": [],
+          "component": "qemu",
+          "note": "QEMU 已创建 vCPU；等待与唤醒由 KVM 和宿主调度处理，不要求每次返回 QEMU 用户态。"
+        },
+        {
+          "id": "scheduler",
+          "title": "Host kernel",
+          "context": "宿主内核 · vCPU 线程调度",
+          "nodes": [
+            "scheduler"
+          ],
+          "component": "host-kernel"
+        },
+        {
+          "id": "events",
+          "title": "设备后端",
+          "context": "异步完成事件源",
+          "nodes": [
+            "backend"
+          ],
+          "component": "backend"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "Guest、KVM 和 QEMU 是物理 CPU 上的不同执行上下文，不是逐站转发指令的设备。"
+        }
       ]
     },
     "sleep-other-task": {
@@ -568,7 +1485,8 @@
           "nodes": [
             "app",
             "peer"
-          ]
+          ],
+          "component": "guest"
         },
         {
           "id": "guest-kernel",
@@ -577,7 +1495,8 @@
           "nodes": [
             "guest-timer",
             "guest-scheduler"
-          ]
+          ],
+          "component": "guest"
         },
         {
           "id": "kvm",
@@ -585,16 +1504,34 @@
           "context": "宿主内核 · vCPU 与 LAPIC",
           "nodes": [
             "kvm"
-          ]
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "qemu-context",
+          "title": "QEMU",
+          "context": "宿主用户态 · 配置与设备模型",
+          "nodes": [],
+          "component": "qemu",
+          "note": "QEMU 已创建 vCPU；等待与唤醒由 KVM 和宿主调度处理，不要求每次返回 QEMU 用户态。"
         },
         {
           "id": "host-services",
-          "title": "宿主时间与调度",
+          "title": "Host kernel",
           "context": "宿主内核 · 两条独立路径",
           "nodes": [
             "host-timer",
             "host-scheduler"
-          ]
+          ],
+          "component": "host-kernel"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "Guest、KVM 和 QEMU 是物理 CPU 上的不同执行上下文，不是逐站转发指令的设备。"
         }
       ]
     },
@@ -607,7 +1544,8 @@
           "nodes": [
             "app",
             "peer"
-          ]
+          ],
+          "component": "guest"
         },
         {
           "id": "guest-kernel",
@@ -616,7 +1554,8 @@
           "nodes": [
             "guest-timer",
             "guest-scheduler"
-          ]
+          ],
+          "component": "guest"
         },
         {
           "id": "kvm",
@@ -624,16 +1563,34 @@
           "context": "宿主内核 · vCPU 与 LAPIC",
           "nodes": [
             "kvm"
-          ]
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "qemu-context",
+          "title": "QEMU",
+          "context": "宿主用户态 · 配置与设备模型",
+          "nodes": [],
+          "component": "qemu",
+          "note": "QEMU 已创建 vCPU；等待与唤醒由 KVM 和宿主调度处理，不要求每次返回 QEMU 用户态。"
         },
         {
           "id": "host-services",
-          "title": "宿主时间与调度",
+          "title": "Host kernel",
           "context": "宿主内核 · 两条独立路径",
           "nodes": [
             "host-timer",
             "host-scheduler"
-          ]
+          ],
+          "component": "host-kernel"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "Guest、KVM 和 QEMU 是物理 CPU 上的不同执行上下文，不是逐站转发指令的设备。"
         }
       ]
     }
@@ -641,39 +1598,353 @@
   "interrupt-delivery": {
     "msix-software": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机内核 · IRQ 与驱动", "nodes": ["guest"]},
-        {"id": "kernel", "title": "KVM", "context": "宿主内核 · MSI 路由与 LAPIC", "nodes": ["kvm", "lapic"]},
-        {"id": "userspace", "title": "QEMU", "context": "宿主用户态 · 设备与 MSI-X 表项", "nodes": ["device", "msix"], "span": 2, "inline": true}
-      ]
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机内核 · IRQ 与驱动",
+          "nodes": [
+            "guest"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核 · MSI 路由与 LAPIC",
+          "nodes": [
+            "kvm",
+            "lapic"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "userspace",
+          "title": "QEMU",
+          "context": "宿主用户态 · virtio-net 完成通知",
+          "nodes": [
+            "device",
+            "msix"
+          ],
+          "span": 2,
+          "inline": true,
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "宿主 eventfd、调度等基础设施支持通知；虚拟中断的路由与待处理状态由内核 KVM 管理。"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "物理 CPU 在条件允许时向 Guest 交付中断；此处发起方是 QEMU 模拟设备，不是物理网卡直投。"
+        }
+      ],
+      "memory": {
+        "title": "Guest RAM",
+        "description": "RX 数据与设备完成记录",
+        "nodes": [
+          "queue"
+        ]
+      }
     },
     "irqfd": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机内核 · IRQ 与驱动", "nodes": ["guest"]},
-        {"id": "kernel", "title": "KVM / eventfd", "context": "宿主内核 · 事件路由与 LAPIC", "nodes": ["eventfd", "route", "lapic"]},
-        {"id": "backend", "title": "virtio 后端", "context": "内核或用户态 · 由后端实现决定", "nodes": ["backend"]}
-      ]
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机内核 · IRQ 与驱动",
+          "nodes": [
+            "guest"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核 · irqfd 与虚拟中断",
+          "nodes": [
+            "eventfd",
+            "route",
+            "lapic"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "backend",
+          "title": "QEMU",
+          "context": "宿主用户态 · virtio-net 完成通知",
+          "nodes": [
+            "backend"
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "宿主 eventfd、调度等基础设施支持通知；虚拟中断的路由与待处理状态由内核 KVM 管理。"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "物理 CPU 在条件允许时向 Guest 交付中断；此处发起方是 QEMU 模拟设备，不是物理网卡直投。"
+        }
+      ],
+      "memory": {
+        "title": "Guest RAM",
+        "description": "RX 数据与设备完成记录",
+        "nodes": [
+          "queue"
+        ]
+      }
     },
     "if-masked": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机内核 · IF 与中断屏蔽窗口", "nodes": ["guest"]},
-        {"id": "kernel", "title": "KVM / LAPIC", "context": "宿主内核 · 事件检查与待处理状态", "nodes": ["kvm", "lapic"]},
-        {"id": "events", "title": "设备通知", "context": "已通过 MSI-X 设备侧屏蔽检查", "nodes": ["source"]}
-      ]
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机内核 · IF 与中断屏蔽窗口",
+          "nodes": [
+            "guest"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核 · 事件检查与待处理状态",
+          "nodes": [
+            "kvm",
+            "lapic"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "events",
+          "title": "QEMU",
+          "context": "宿主用户态 · virtio-net 完成通知",
+          "nodes": [
+            "source"
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "宿主 eventfd、调度等基础设施支持通知；虚拟中断的路由与待处理状态由内核 KVM 管理。"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "物理 CPU 在条件允许时向 Guest 交付中断；此处发起方是 QEMU 模拟设备，不是物理网卡直投。"
+        }
+      ],
+      "memory": {
+        "title": "Guest RAM",
+        "description": "RX 数据与设备完成记录",
+        "nodes": [
+          "queue"
+        ]
+      }
     },
     "msix-masked": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机驱动 · 配置与 IRQ 处理", "nodes": ["guest"]},
-        {"id": "kernel", "title": "KVM / LAPIC", "context": "宿主内核 · 路由与 CPU 侧状态", "nodes": ["kvm", "lapic"]},
-        {"id": "userspace", "title": "QEMU", "context": "宿主用户态 · 设备侧屏蔽与 PBA", "nodes": ["device", "msix"], "span": 2, "inline": true}
-      ]
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机驱动 · 配置与 IRQ 处理",
+          "nodes": [
+            "guest"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核 · 路由与 CPU 侧状态",
+          "nodes": [
+            "kvm",
+            "lapic"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "userspace",
+          "title": "QEMU",
+          "context": "宿主用户态 · virtio-net 完成通知",
+          "nodes": [
+            "device",
+            "msix"
+          ],
+          "span": 2,
+          "inline": true,
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "宿主 eventfd、调度等基础设施支持通知；虚拟中断的路由与待处理状态由内核 KVM 管理。"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "物理 CPU 在条件允许时向 Guest 交付中断；此处发起方是 QEMU 模拟设备，不是物理网卡直投。"
+        }
+      ],
+      "memory": {
+        "title": "Guest RAM",
+        "description": "RX 数据与设备完成记录",
+        "nodes": [
+          "queue"
+        ]
+      }
     },
     "apicv-posted": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机内核 · IRQ handler", "nodes": ["guest"]},
-        {"id": "hardware", "title": "物理 CPU", "context": "正在运行目标 vCPU 的宿主处理器", "nodes": ["cpu"]},
-        {"id": "kernel", "title": "KVM", "context": "宿主内核 · 中断投递入口", "nodes": ["source"]}
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机内核 · IRQ handler",
+          "nodes": [
+            "guest"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核 · 中断投递入口",
+          "nodes": [
+            "source"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "interrupt-state",
+          "title": "宿主中断状态",
+          "context": "KVM 维护 · PID 与虚拟 APIC 宿主内存",
+          "nodes": [
+            "pid",
+            "vapic"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "device",
+          "title": "QEMU",
+          "context": "宿主用户态 · virtio-net 完成通知",
+          "nodes": [
+            "device"
+          ],
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "宿主 eventfd、调度等基础设施支持通知；虚拟中断的路由与待处理状态由内核 KVM 管理。"
+        },
+        {
+          "id": "hardware",
+          "title": "物理 CPU",
+          "context": "正在运行目标 vCPU 的宿主处理器",
+          "nodes": [
+            "cpu"
+          ],
+          "component": "hardware"
+        }
       ],
-      "memory": {"title": "硬件递送状态", "description": "宿主内存中的 PID 与虚拟 APIC 页，分别记录 PIR、vIRR 与 vISR", "nodes": ["pid", "vapic"]}
+      "memory": {
+        "title": "Guest RAM",
+        "description": "RX 数据与设备完成记录",
+        "nodes": [
+          "queue"
+        ]
+      }
+    },
+    "notify-suppressed": {
+      "domains": [
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机内核 · IRQ 与驱动",
+          "nodes": [
+            "guest"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核 · MSI 路由与 LAPIC",
+          "nodes": [
+            "kvm",
+            "lapic"
+          ],
+          "component": "kvm"
+        },
+        {
+          "id": "userspace",
+          "title": "QEMU",
+          "context": "宿主用户态 · virtio-net 完成通知",
+          "nodes": [
+            "device",
+            "msix"
+          ],
+          "span": 2,
+          "inline": true,
+          "component": "qemu"
+        },
+        {
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "宿主 eventfd、调度等基础设施支持通知；虚拟中断的路由与待处理状态由内核 KVM 管理。"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "物理 CPU 在条件允许时向 Guest 交付中断；此处发起方是 QEMU 模拟设备，不是物理网卡直投。"
+        }
+      ],
+      "memory": {
+        "title": "Guest RAM",
+        "description": "RX 数据与设备完成记录",
+        "nodes": [
+          "queue"
+        ]
+      }
     }
   },
   "disk-persistence": {
@@ -686,23 +1957,34 @@
           "nodes": [
             "application",
             "guest"
-          ]
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kvm-context",
+          "title": "KVM",
+          "context": "宿主内核 · 虚拟化子系统",
+          "nodes": [],
+          "component": "kvm",
+          "note": "KVM 负责 vCPU 与通知路由；它不决定块请求何时满足持久化边界，也不转发磁盘载荷。"
         },
         {
           "id": "qemu",
           "title": "QEMU",
-          "context": "用户态 · 设备与块层",
+          "context": "宿主用户态 · 设备与块层",
           "nodes": [
             "qemu"
-          ]
+          ],
+          "component": "qemu"
         },
         {
           "id": "host",
-          "title": "宿主内核",
+          "title": "Host kernel",
           "context": "文件系统 · 块 I/O",
           "nodes": [
             "host-cache"
-          ]
+          ],
+          "component": "host-kernel"
         },
         {
           "id": "storage",
@@ -711,7 +1993,8 @@
           "nodes": [
             "device-cache",
             "stable"
-          ]
+          ],
+          "component": "hardware"
         }
       ],
       "memory": {
@@ -731,23 +2014,34 @@
           "nodes": [
             "application",
             "guest"
-          ]
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kvm-context",
+          "title": "KVM",
+          "context": "宿主内核 · 虚拟化子系统",
+          "nodes": [],
+          "component": "kvm",
+          "note": "KVM 负责 vCPU 与通知路由；它不决定块请求何时满足持久化边界，也不转发磁盘载荷。"
         },
         {
           "id": "qemu",
           "title": "QEMU",
-          "context": "用户态 · 设备与块层",
+          "context": "宿主用户态 · 设备与块层",
           "nodes": [
             "qemu"
-          ]
+          ],
+          "component": "qemu"
         },
         {
           "id": "host",
-          "title": "宿主内核",
+          "title": "Host kernel",
           "context": "文件系统 · 块 I/O",
           "nodes": [
             "host-cache"
-          ]
+          ],
+          "component": "host-kernel"
         },
         {
           "id": "storage",
@@ -756,7 +2050,8 @@
           "nodes": [
             "device-cache",
             "stable"
-          ]
+          ],
+          "component": "hardware"
         }
       ],
       "memory": {
@@ -776,23 +2071,34 @@
           "nodes": [
             "application",
             "guest"
-          ]
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kvm-context",
+          "title": "KVM",
+          "context": "宿主内核 · 虚拟化子系统",
+          "nodes": [],
+          "component": "kvm",
+          "note": "KVM 负责 vCPU 与通知路由；它不决定块请求何时满足持久化边界，也不转发磁盘载荷。"
         },
         {
           "id": "qemu",
           "title": "QEMU",
-          "context": "用户态 · 设备与块层",
+          "context": "宿主用户态 · 设备与块层",
           "nodes": [
             "qemu"
-          ]
+          ],
+          "component": "qemu"
         },
         {
           "id": "host",
-          "title": "宿主内核",
+          "title": "Host kernel",
           "context": "文件系统 · 块 I/O",
           "nodes": [
             "host-cache"
-          ]
+          ],
+          "component": "host-kernel"
         },
         {
           "id": "storage",
@@ -801,7 +2107,8 @@
           "nodes": [
             "device-cache",
             "stable"
-          ]
+          ],
+          "component": "hardware"
         }
       ],
       "memory": {
@@ -817,12 +2124,24 @@
     "cold-start": {
       "domains": [
         {
-          "id": "management",
-          "title": "Libvirt",
-          "context": "宿主管理进程",
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机执行上下文",
           "nodes": [
-            "manager"
-          ]
+            "firmware",
+            "guest",
+            "app"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核",
+          "nodes": [
+            "kvm"
+          ],
+          "component": "kvm"
         },
         {
           "id": "userspace",
@@ -833,25 +2152,33 @@
             "vcpu"
           ],
           "span": 2,
-          "inline": true
+          "inline": true,
+          "component": "qemu"
         },
         {
-          "id": "kernel",
-          "title": "KVM",
-          "context": "宿主内核",
-          "nodes": [
-            "kvm"
-          ]
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "宿主负责进程调度与资源管理；KVM 是其中的虚拟化子系统，资源状态另列在下方。"
         },
         {
-          "id": "guest",
-          "title": "Guest",
-          "context": "客户机执行上下文",
+          "id": "management",
+          "title": "Libvirt",
+          "context": "宿主管理进程",
           "nodes": [
-            "firmware",
-            "guest",
-            "app"
-          ]
+            "manager"
+          ],
+          "component": "host-user"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "物理 CPU 执行 Guest 与宿主代码；启动、退出和暂停不是把整台虚机作为请求传给物理设备。"
         }
       ],
       "memory": {
@@ -865,12 +2192,23 @@
     "acpi-shutdown": {
       "domains": [
         {
-          "id": "management",
-          "title": "Libvirt",
-          "context": "宿主管理进程",
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机执行上下文",
           "nodes": [
-            "manager"
-          ]
+            "guest",
+            "app"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核",
+          "nodes": [
+            "kvm"
+          ],
+          "component": "kvm"
         },
         {
           "id": "userspace",
@@ -881,24 +2219,33 @@
             "vcpu"
           ],
           "span": 2,
-          "inline": true
+          "inline": true,
+          "component": "qemu"
         },
         {
-          "id": "kernel",
-          "title": "KVM",
-          "context": "宿主内核",
-          "nodes": [
-            "kvm"
-          ]
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "宿主负责进程调度与资源管理；KVM 是其中的虚拟化子系统，资源状态另列在下方。"
         },
         {
-          "id": "guest",
-          "title": "Guest",
-          "context": "客户机执行上下文",
+          "id": "management",
+          "title": "Libvirt",
+          "context": "宿主管理进程",
           "nodes": [
-            "guest",
-            "app"
-          ]
+            "manager"
+          ],
+          "component": "host-user"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "物理 CPU 执行 Guest 与宿主代码；启动、退出和暂停不是把整台虚机作为请求传给物理设备。"
         }
       ],
       "memory": {
@@ -912,12 +2259,23 @@
     "force-stop": {
       "domains": [
         {
-          "id": "management",
-          "title": "Libvirt",
-          "context": "宿主管理进程",
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机执行上下文",
           "nodes": [
-            "manager"
-          ]
+            "guest",
+            "app"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核",
+          "nodes": [
+            "kvm"
+          ],
+          "component": "kvm"
         },
         {
           "id": "userspace",
@@ -928,24 +2286,33 @@
             "vcpu"
           ],
           "span": 2,
-          "inline": true
+          "inline": true,
+          "component": "qemu"
         },
         {
-          "id": "kernel",
-          "title": "KVM",
-          "context": "宿主内核",
-          "nodes": [
-            "kvm"
-          ]
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "宿主负责进程调度与资源管理；KVM 是其中的虚拟化子系统，资源状态另列在下方。"
         },
         {
-          "id": "guest",
-          "title": "Guest",
-          "context": "客户机执行上下文",
+          "id": "management",
+          "title": "Libvirt",
+          "context": "宿主管理进程",
           "nodes": [
-            "guest",
-            "app"
-          ]
+            "manager"
+          ],
+          "component": "host-user"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "物理 CPU 执行 Guest 与宿主代码；启动、退出和暂停不是把整台虚机作为请求传给物理设备。"
         }
       ],
       "memory": {
@@ -959,12 +2326,23 @@
     "pause-resume": {
       "domains": [
         {
-          "id": "management",
-          "title": "Libvirt",
-          "context": "宿主管理进程",
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机执行上下文",
           "nodes": [
-            "manager"
-          ]
+            "guest",
+            "app"
+          ],
+          "component": "guest"
+        },
+        {
+          "id": "kernel",
+          "title": "KVM",
+          "context": "宿主内核",
+          "nodes": [
+            "kvm"
+          ],
+          "component": "kvm"
         },
         {
           "id": "userspace",
@@ -975,24 +2353,33 @@
             "vcpu"
           ],
           "span": 2,
-          "inline": true
+          "inline": true,
+          "component": "qemu"
         },
         {
-          "id": "kernel",
-          "title": "KVM",
-          "context": "宿主内核",
-          "nodes": [
-            "kvm"
-          ]
+          "id": "host-kernel-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · 非 KVM 子系统",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "宿主负责进程调度与资源管理；KVM 是其中的虚拟化子系统，资源状态另列在下方。"
         },
         {
-          "id": "guest",
-          "title": "Guest",
-          "context": "客户机执行上下文",
+          "id": "management",
+          "title": "Libvirt",
+          "context": "宿主管理进程",
           "nodes": [
-            "guest",
-            "app"
-          ]
+            "manager"
+          ],
+          "component": "host-user"
+        },
+        {
+          "id": "hardware-context",
+          "title": "物理硬件",
+          "context": "处理器与物理设备",
+          "nodes": [],
+          "component": "hardware",
+          "note": "物理 CPU 执行 Guest 与宿主代码；启动、退出和暂停不是把整台虚机作为请求传给物理设备。"
         }
       ],
       "memory": {

@@ -5,14 +5,14 @@
   <h2>场景与边界</h2>
   <p>virtio 设备完成请求后，先把结果发布到共享队列，再按通知条件提醒客户机。以接收队列的一次完成为例，MSI-X 表项选择 APIC ID 1 和向量 0x51，KVM 将消息送入目标 vCPU 的中断状态，处理器在允许的时机进入客户机处理程序。驱动随后读取队列并取得结果。</p>
   <p>这段路径有三种容易混淆的等待：MSI-X 屏蔽使通知留在设备的 PBA；客户机暂不能接受使向量留在 LAPIC 的 IRR；线程未获得 CPU 又会推迟执行。下面按通知路径、屏蔽与等待、硬件递送组织示例，观察每一种状态由谁保存、何时推进。irqfd 连接后端事件与 KVM，APICv 优化后续的硬件交付，两者可以配合使用。</p>
-  <p>示例采用 x86-64、Intel VMX、QEMU 10.2.0 和 Linux 6.18。前四种使用软件 LAPIC 注入路径；posted 场景固定硬件支持、APICv 已启用且目标 vCPU 正在运行。它们是具有明确条件的对照场景，不将任意设备、屏蔽和硬件加速选项自由组合。</p>
+  <p>示例采用 x86-64、Intel VMX、QEMU 10.2.0 和 Linux 6.18。发起方固定为一次 QEMU virtio-net 接收完成，依次观察数据写入、used 项填写、索引发布和通知判断。软件 LAPIC、通知抑制与 posted interrupt 分别选择明确条件，不将任意设备、屏蔽和硬件加速选项自由组合。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="walkthrough" class="mechanism-section">
   <h2>逐步演示</h2>
   {% include '_execution_lab.html' %}
-  <p>“MSI-X 软件注入”和“irqfd 通知”都从 used 已发布、通知尚未触发的位置开始。位图只展开本例用到的一个向量；其他向量、并发中断和通知合并会让真实系统拥有更多状态。演示不表示实际延迟比例。</p>
+  <p>所有场景先从设备完成前开始，used.idx 从 7 推进到 8 后才检查是否需要通知。“队列完成但通知被抑制”展示没有 IRQ 也能由后续轮询消费完成项；软件注入则明确区分“准备 VM-entry 注入”和“成功进入 Guest 处理入口”。位图只展开本例用到的一个向量，动画不表示实际延迟比例。</p>
 </section>
 
 <section id="comparison" class="mechanism-section">
@@ -20,6 +20,7 @@
   <table>
     <thead><tr><th scope="col">状态</th><th scope="col">保存位置</th><th scope="col">推进条件与动作</th></tr></thead>
     <tbody>
+      <tr><td>队列通知被抑制</td><td>驱动设置的 NO_INTERRUPT；本例不协商 EVENT_IDX</td><td>完成仍保留在 used ring，由明确的轮询或后续通知触发消费；尚未产生 MSI-X/PBA/IRR</td></tr>
       <tr><td>设备通知被屏蔽</td><td>MSI-X PBA，按表项索引记位</td><td>解除表项及功能屏蔽后补发；本例使用 PBA[2]</td></tr>
       <tr><td>已到 CPU 的待处理中断</td><td>LAPIC IRR，按向量记位</td><td>满足 IF、interrupt shadow、APIC 优先级与运行条件；本例为 IRR[0x51]</td></tr>
       <tr><td>正在服务的中断</td><td>LAPIC ISR</td><td>客户机 EOI 清除最高优先级的服务位，并重新评估优先级</td></tr>
@@ -43,6 +44,7 @@
 <section id="sources" class="mechanism-section">
   <h2>源码与相关内容</h2>
   <ul>
+    <li><a href="{{ qemu }}hw/net/virtio-net.c#L1903-L2050">QEMU：RX 数据写入</a>；<a href="{{ qemu }}hw/virtio/virtio.c#L1038-L1115">完成项填写与索引发布</a>；<a href="{{ qemu }}hw/virtio/virtio.c#L2583-L2711">通知条件、MSI-X 与 guest notifier 分支</a>。</li>
     <li><a href="{{ qemu }}hw/pci/msix.c#L126-L146">QEMU：解除屏蔽与 pending 补发</a>；<a href="{{ qemu }}hw/pci/msix.c#L540-L558">MSI-X 消息发送</a>。</li>
     <li><a href="{{ linux }}virt/kvm/eventfd.c#L195-L231">Linux：irqfd_wakeup</a>；<a href="{{ linux }}arch/x86/kvm/lapic.c#L3083-L3124">IRR / ISR 转换</a>；<a href="{{ linux }}arch/x86/kvm/vmx/vmx.c#L5032-L5061">IF 与 shadow 检查</a>。</li>
     <li><a href="{{ linux }}arch/x86/kvm/vmx/common.h#L110-L175">Linux：posted interrupt 发布与通知</a>；<a href="https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html">Intel SDM：虚拟中断交付、posted processing 与 EOI</a>。</li>

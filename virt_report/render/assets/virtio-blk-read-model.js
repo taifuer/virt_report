@@ -52,6 +52,37 @@
     requireThat(new Set(items).size === items.length, `${label} duplicates`);
   }
 
+  function validatePathMetadata(path, sources) {
+    const flows = ['sequence', 'call', 'via', 'return'];
+    requireThat(flows.includes(Object.hasOwn(path, 'flow') ? path.flow : 'sequence'), 'source path flow');
+    if (Object.hasOwn(path, 'entry')) {
+      const entry = record(path.entry, 'source path entry');
+      requireThat(Object.keys(entry).length === 2 && Object.hasOwn(entry, 'kind')
+        && Object.hasOwn(entry, 'label')
+        && ['notification', 'async', 'callback', 'return'].includes(entry.kind), 'source path entry');
+      text(entry.label, 'source path entry label');
+    }
+    const relations = Object.hasOwn(path, 'relations') ? path.relations : [];
+    requireThat(Array.isArray(relations), 'source path relations');
+    const implementation = path.sourceIds.filter(key => {
+      const source = sources[key];
+      return !['spec', 'specification', 'reference', 'hardware'].includes(source.kind)
+        && (['function', 'assembly'].includes(source.kind)
+          || Boolean(source.symbol && /\.(?:c|h|S|s|cc|cpp)$/.test(source.path || '')));
+    });
+    const adjacent = new Set(implementation.slice(1).map((key, index) => `${implementation[index]}:${key}`));
+    const seen = new Set();
+    relations.forEach(relation => {
+      record(relation, 'source path relation');
+      requireThat(Object.keys(relation).length === 3
+        && ['from', 'to', 'kind'].every(key => typeof relation[key] === 'string')
+        && flows.includes(relation.kind), 'source path relation');
+      const pair = `${relation.from}:${relation.to}`;
+      requireThat(adjacent.has(pair) && !seen.has(pair), 'source path relation must join unique adjacent implementations');
+      seen.add(pair);
+    });
+  }
+
   function requestLayout(request) {
     const transport = request.interface ?? 'virtio-blk';
     requireThat(['virtio-blk', 'virtio-scsi'].includes(transport), 'request interface');
@@ -189,12 +220,13 @@
     uniqueList(scenario.callPaths.map(path => path.id), 'call path ids');
     scenario.callPaths.forEach(path => {
       record(path, 'call path'); id(path.id, 'call path id');
-      requireThat(Object.keys(path).length === 5
-        && Object.keys(path).every(key => ['id', 'title', 'context', 'sourceIds', 'boundary'].includes(key)),
+      requireThat(['id', 'title', 'context', 'sourceIds', 'boundary'].every(key => Object.hasOwn(path, key))
+        && Object.keys(path).every(key => ['id', 'title', 'context', 'sourceIds', 'boundary', 'flow', 'relations', 'entry'].includes(key)),
       'call path keys');
       ['title', 'context', 'boundary'].forEach(key => text(path[key], `call path ${key}`));
       uniqueList(path.sourceIds, 'call path source references');
       requireThat(path.sourceIds.every(key => Object.hasOwn(sources, key)), 'unknown call path source');
+      validatePathMetadata(path, sources);
     });
 
     let state = {...record(scenario.initial, 'initial')};
@@ -254,7 +286,9 @@
     validateScenario(base);
     requireThat(base.request.operation === 'read', 'base must be READ');
     const copy = value => JSON.parse(JSON.stringify(value));
-    if (backend !== 'local-blk') {
+    const catalogHasLocal = Array.isArray(catalog?.routes)
+      && catalog.routes.some(route => route?.id === 'local-blk');
+    if (backend !== 'local-blk' || catalogHasLocal) {
       record(catalog, 'backend catalog');
       requireThat(Array.isArray(catalog.routes) && catalog.routes.length > 0, 'catalog routes');
       uniqueList(catalog.routes.map(route => record(route, 'catalog route').id), 'catalog route ids');
@@ -266,9 +300,9 @@
       requireThat(Boolean(route), 'unknown requested backend');
       requireThat(Object.hasOwn(route.scenarios, operation), 'missing backend operation');
       const selected = record(route.scenarios[operation], 'backend scenario');
-      requireThat(selected.request?.backend === backend
+      requireThat((selected.request?.backend || 'local-blk') === backend
         && selected.request?.operation === operation, 'catalog scenario identity');
-      requireThat(Object.hasOwn(selected.request, 'interface'), 'catalog request interface');
+      requireThat(backend === 'local-blk' || Object.hasOwn(selected.request, 'interface'), 'catalog request interface');
       validateScenario(selected);
       return copy(selected);
     }
@@ -441,5 +475,80 @@
       queueDetail: '点击下一步准备描述符。浅色表示当前操作，已占用但本步未操作的结构保持中性；旧记录在回收后淡化显示。'};
   }
 
-  return {validateScenario, buildTrace, buildQueueTrace, buildQueueInitial, getScenario};
+  // A typed view adapter, not a second state machine. R1 currently combines
+  // available-slot filling and idx publication in one reviewed milestone; do
+  // not invent an earlier filled slot. Used filling/publication are distinct.
+  function buildQueueSnapshot(scene, frame) {
+    const request = scene.request, scsi = request.interface === 'virtio-scsi';
+    const writing = request.operation === 'write';
+    const meta = {
+      name: `${request.id} · ${scsi ? 'virtio-scsi' : 'virtio-blk'}`,
+      index: scsi ? 2 : 0, size: request.queueSize,
+      descriptorIndices: request.descriptors.map(descriptor => descriptor.id),
+      requestId: request.id, head: request.head, direct: true,
+      addressSpace: '示意 GPA / IOVA', usedLengthNote: request.usedLengthNote || '',
+      responseNote: scsi ? '响应区容量 108 B；本例有效固定字段 12 B，sense_len=0。used.len 是实现报告值，不等于有效字段数。' : '',
+    };
+    if (frame.queueState) {
+      return {state: frame.queueState, meta: {...meta, name: 'F1 · FLUSH（R1 已完成）',
+        requestId: 'F1', index: 0, descriptorIndices: [0, 1], usedLengthNote: '', responseNote: ''}};
+    }
+    const s = frame.state, patch = frame.changes || {};
+    const descriptorState = s.reclaimed ? 'reclaimed' : s.usedPublished ? 'completed'
+      : s.published ? 'device' : 'prepared';
+    const holding = s.userReturned ? '应用可使用缓冲区'
+      : s.completed ? '上层块请求已完成'
+        : s.reclaimed ? '驱动收尾中，缓冲区仍需保持有效' : descriptorState;
+    const dataId = scsi && !writing ? 2 : 1, responseId = scsi && !writing ? 1 : 2;
+    const descriptors = s.prepared ? request.descriptors.map(descriptor => ({
+      index: descriptor.id, addr: Number(descriptor.addr), len: descriptor.len,
+      flags: [...descriptor.flags], next: descriptor.next,
+      label: descriptor.role, state: descriptorState,
+    })) : [];
+    const buffers = s.prepared ? request.descriptors.map(descriptor => {
+      const payload = descriptor.id === dataId, response = descriptor.id === responseId;
+      let label = payload ? (writing ? 'R1 输入数据' : 'R1 读取结果') : response
+        ? (scsi ? 'SCSI 响应' : '状态字节') : (scsi ? '请求头 / CDB' : 'virtio-blk 请求头');
+      if (response) label += s.statusWritten ? (scsi ? ' · OK / GOOD' : ' · 0x00 / OK') : ' · 尚未回写';
+      // sense storage is capacity, not 96 bytes of valid sense on success.
+      const validBytes = response ? (s.statusWritten ? (scsi ? 12 : 1) : 0)
+        : payload ? (s.bufferReady ? request.bytes : 0) : descriptor.len;
+      return {id: response ? 'response' : payload ? 'payload' : 'header',
+        label, addr: Number(descriptor.addr), length: descriptor.len, validBytes,
+        writable: descriptor.flags.includes('WRITE'),
+        state: !s.usedPublished && ((response && s.statusWritten) || (payload && !writing && s.dataReady))
+          ? 'data-ready' : holding};
+    }) : [];
+    const avail = Array(request.queueSize).fill(null), used = Array(request.queueSize).fill(null);
+    if (s.published) avail[0] = request.head;
+    if (s.usedWritten) used[0] = {id: s.usedId, len: s.usedLength};
+    const changed = new Set();
+    const changes = {
+      prepared: ['descriptors', 'buffers', 'freeDescriptors'],
+      published: ['avail.slots', 'avail.index', 'descriptors', 'buffers', 'ownership'],
+      consumed: ['avail.consumer'], dataReady: ['buffers'],
+      statusWritten: ['buffers', 'response'], usedWritten: ['used.slots'],
+      usedPublished: ['used.index', 'descriptors', 'buffers', 'ownership'],
+      reclaimed: ['used.consumer', 'descriptors', 'buffers', 'freeDescriptors', 'ownership'],
+      bioCompleted: ['buffers'], completed: ['buffers'], userReturned: ['buffers'],
+    };
+    Object.entries(changes).forEach(([flag, keys]) => {
+      if (patch[flag]) keys.forEach(key => changed.add(key));
+    });
+    return {meta, state: {
+      descriptors, buffers,
+      avail: {index: s.availIndex, consumer: s.backendIndex, slots: avail},
+      used: {index: s.usedIndex, consumer: s.driverIndex, slots: used},
+      freeDescriptors: s.freeDescriptors,
+      ownership: s.reclaimed || !s.published ? 'driver' : s.usedPublished ? 'completed' : 'device',
+      changed: [...changed],
+      response: scsi ? {kind: 'scsi', ready: s.statusWritten, status: s.statusWritten ? 'GOOD' : null,
+        response: s.statusWritten ? 'OK' : null, residual: s.statusWritten ? 0 : null,
+        senseLength: s.statusWritten ? 0 : null} :
+        {kind: 'virtio-blk', ready: s.statusWritten, statusByte: s.statusByte,
+          status: s.statusWritten ? '0x00 · OK' : null},
+    }};
+  }
+
+  return {validateScenario, buildTrace, buildQueueTrace, buildQueueInitial, buildQueueSnapshot, getScenario};
 });

@@ -1,0 +1,49 @@
+<section id="preface" class="mechanism-section">
+  <h2>场景与边界</h2>
+  <p>跟踪一笔 GPU 作业 G1，从 Guest 用户态提交命令，到硬件搬运数据、驱动确认完成，最后应用使用结果。直通场景分别展示上传与读回；mdev 场景展示一个受宿主管理的虚拟 GPU 提交。这里的“读写”是缓冲区之间的数据传输，不是把 GPU 当成磁盘调用 <code>read()</code> 或 <code>write()</code>。</p>
+  <p>VFIO PCI 路径固定 AMD Vega10 / SDMA 4.0 与公开 AMDGPU 驱动，观察 Guest RAM 和 VRAM 之间的 4 KiB 复制。mdev 路径固定旧代 Skylake 的 Intel GVT-g / i915 execlists，观察共享系统内存中的 BLT 复制；它不是通用 NVIDIA vGPU 流程，也不表示当前所有 Intel GPU 都支持该实现。设备初始化、BO 分配和基础映射已完成。</p>
+  <p>演示区分 Guest、KVM、QEMU、Host kernel 和物理 GPU。KVM 本身运行在宿主内核；这里把它与 VFIO、i915/GVT-g 分开，是为了区分 vCPU / 中断虚拟化与设备管理职责，不表示五个组件必须依次转发每条命令。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+
+<section id="walkthrough" class="mechanism-section">
+  <h2>逐步演示</h2>
+  {% include '_execution_lab.html' %}
+  <p>G1、IB1、地址和 fence 序号用于关联同一次操作，不是真实采样值。播放间隔只控制讲解节奏，不能用于推断 GPU 或虚拟化开销。</p>
+</section>
+
+<section id="comparison" class="mechanism-section">
+  <h2>提交、数据与完成的边界</h2>
+  <table>
+    <thead><tr><th scope="col">观察点</th><th scope="col">已经发生</th><th scope="col">不能据此推断</th></tr></thead>
+    <tbody>
+      <tr><td>提交 ioctl 返回</td><td>驱动已接受作业或建立异步完成关系</td><td>GPU 已执行完毕，或应用已经可以复用所有缓冲区</td></tr>
+      <tr><td>doorbell / ELSP 发布</td><td>相应执行者可以处理新的命令</td><td>门铃携带整个数据载荷，或每个访问都由 QEMU 处理</td></tr>
+      <tr><td>数据写入目标</td><td>硬件完成了本笔数据移动</td><td>Guest 驱动已经观察到完成，或应用已经满足 CPU 访问同步条件</td></tr>
+      <tr><td>fence / 请求完成</td><td>软件可以确认对应作业的完成关系</td><td>显示器已呈现某一帧，或所有其他 GPU 作业都已经结束</td></tr>
+      <tr><td>等待成功并满足映射同步约定</td><td>应用可以按该缓冲区的接口约定使用结果</td><td>所有 GPU、mdev 和厂商驱动使用完全相同的完成协议</td></tr>
+    </tbody>
+  </table>
+  <p>AMDGPU 的 CS 提交路径先核验上下文、对象和 GPU VM，再把作业交给 DRM 调度器。调度回调组织 IB、fence 与 ring 发布；SDMA 硬件随后执行。等待接口既有 ioctl 返回值，也有输出状态，不能把“调用成功”和“作业完成”混为一谈。</p>
+</section>
+
+<section id="mapping" class="mechanism-section">
+  <h2>地址转换与宿主参与</h2>
+  <p>整卡直通时，宿主这块 PCI 设备绑定的是 <code>vfio-pci</code>，而非 <code>amdgpu</code>；真正接收应用 CS ioctl、组织 GPU 作业的是 Guest 内的 AMDGPU 驱动。宿主 VFIO 管理设备资源、DMA 隔离和中断接口，QEMU 预先配置虚拟设备、BAR 与中断路由，KVM 维护 vCPU 的二级地址转换并递送虚拟中断。它们不代替 Guest 驱动逐条解释或转发 GPU 命令。参见 <a href="https://docs.kernel.org/driver-api/vfio.html" target="_blank" rel="noopener noreferrer">Linux VFIO 文档</a>。</p>
+  <p>本例先在 Guest RAM / GTT 写好 IB 与 SDMA ring，再由 Guest CPU 向可 mmap 的 doorbell BAR 写入新写指针。这个 CPU 访问沿 Guest VA → GPA → 已建立的 EPT → 物理 BAR，直接让 GPU 看见门铃；门铃不是 4 KiB 数据载荷，也不需要每次调用宿主 VFIO 或返回 QEMU。GPU 随后自己读取 ring 和 IB：访问系统内存经过 GPU 地址转换与宿主 IOMMU 的预建映射，访问本地 VRAM 则不等于一次系统内存 DMA。SDMA ring 在该驱动中分配于 GTT，本例用户 IB1 也选择 GTT；不是所有 GPU 命令缓冲区都必须放在系统内存。</p>
+  <p>数据复制及 fence 写回完成后，物理 MSI 由宿主 VFIO 触发 eventfd，KVM irqfd 把向量路由到目标 vLAPIC；目标 vCPU 在允许时注入，Guest AMDGPU 才处理完成并唤醒应用。演示把 pending 与实际注入分开。未直接映射、需要捕获或特殊处理的 BAR 区域仍可能进入 KVM / QEMU 的 VFIO region 回调，不能用“直通”推导全部寄存器访问都不退出。</p>
+  <p>GVT-g 不沿用上述直通快路径：宿主物理 GPU 由 i915/GVT-g 管理。本例 ELSP 写先由 KVM 捕获，经 QEMU 的 VFIO region 进入宿主 GVT-g，再审核 workload、建立影子上下文并调度真实引擎；完成后由 GVT-g 发布虚拟事件，KVM 负责递送。部分图形内存仍可直接访问，不是每个数据字节都经 QEMU 模拟。集成 GPU 的 A、B 和 batch 使用系统内存后备页，不能画成独立显存。参见 <a href="https://docs.kernel.org/gpu/i915.html#intel-gvt-g-guest-support-vgpu" target="_blank" rel="noopener noreferrer">GVT-g 的访问与地址空间说明</a>。</p>
+  <p>VFIO 是设备访问、DMA 和中断的框架；mdev 是 mediated 实例及厂商设备实现，SR-IOV VF 是硬件提供的虚拟功能，virtio-gpu 则是另一种前后端协议。它们不能直接互换。闭源厂商调度与固件内部不在这两个可核验实现的范围内。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>源码与相关内容</h2>
+  <p>演示中的源码路径按执行上下文展示关键函数。GPU 执行以命令包与硬件边界标识，不伪造内部 C 函数；宿主中断、KVM 递送、Guest 驱动和用户态等待也不串成一条同步调用栈。</p>
+  <ul>
+    <li><a href="{{ demo.sources['cs'].url }}">AMDGPU CS 提交</a>、<a href="{{ demo.sources['job'].url }}">DRM 调度回调</a>、<a href="{{ demo.sources['doorbell'].url }}">SDMA 4.0 doorbell</a>与<a href="{{ demo.sources['wait'].url }}">CS 等待</a>。</li>
+    <li><a href="{{ demo.sources['ring-init'].url }}">GTT 中的 SDMA ring</a>、<a href="{{ demo.sources['bar-map'].url }}">QEMU VFIO BAR 映射</a>与<a href="{{ demo.sources['bar-write'].url }}">被捕获的 region 写</a>。</li>
+    <li><a href="{{ demo.sources['vfio-irq'].url }}">VFIO MSI eventfd</a>、<a href="{{ demo.sources['irqfd'].url }}">KVM irqfd 路由</a>与<a href="{{ demo.sources['vmx-inject'].url }}">VM-entry 注入</a>。</li>
+    <li><a href="{{ demo.sources['gvt-elsp'].url }}">GVT-g ELSP 提交</a>、<a href="{{ demo.sources['gvt-dispatch'].url }}">命令审核与调度</a>、<a href="{{ demo.sources['gvt-complete'].url }}">完成交接</a>与<a href="{{ demo.sources['gvt-event'].url }}">虚拟事件</a>。</li>
+    <li><a href="qemu-vfio-dma.html">VFIO 直通与 DMA 映射</a>、<a href="memory-access.html">内存访问与 MMIO</a>、<a href="interrupt-delivery.html">中断递送</a>及<a href="virtio-gpu.html">virtio-gpu 的独立协议路径</a>。</li>
+  </ul>
+</section>

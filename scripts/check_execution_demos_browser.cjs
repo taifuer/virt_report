@@ -8,11 +8,11 @@ const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
 const routes = {
   'network-io': 'network-io', 'memory-access': 'memory-access',
   'cpu-execution': 'cpu-execution', 'interrupt-delivery': 'interrupt-delivery',
-  'disk-persistence': 'virtio-blk-read', 'vm-lifecycle': 'libvirt-domain-start',
+  'gpu-execution': 'gpu-execution', 'vm-lifecycle': 'libvirt-domain-start',
 };
 const ids = process.env.EXECUTION_DEMO_IDS?.split(',') || Object.keys(routes);
 assert(ids.length && ids.every(id => Object.hasOwn(routes, id)), 'known demo IDs are required');
-const queryKey = (id, key) => (id === 'disk-persistence' ? 'persistence-' : '') + key;
+const queryKey = (_id, key) => key;
 const shots = process.env.EXECUTION_SCREENSHOT_DIR;
 if (shots) fs.mkdirSync(shots, {recursive: true});
 const button = (page, name) => page.locator(`[data-execution-${name}]`);
@@ -121,37 +121,17 @@ async function assertNetworkQueuePlayback(page, demo) {
   await button(page, 'play').click();
 }
 
-async function assertIndependentDiskLabs(page, demo) {
-  await chooseScenario(page, demo, demo.defaultScenario);
-  await page.locator('[data-execution-view="overview"]').click();
-  await button(page, 'reset').click();
-  await button(page, 'next').click();
-  const persistenceStep = await page.locator('[data-execution-lab]').getAttribute('data-step');
-  const persisted = new URL(page.url()).searchParams.get('persistence-step');
-  assert.equal(persisted, persistenceStep);
-  await page.locator('[data-vbr-next]').click();
-  const diskStep = new URL(page.url()).searchParams.get('step');
-  assert(diskStep);
-  assert.equal(new URL(page.url()).searchParams.get('persistence-step'), persistenceStep);
-  await page.reload();
-  assert.equal(await page.locator('[data-execution-lab]').getAttribute('data-step'), persistenceStep);
-  assert.equal(new URL(page.url()).searchParams.get('step'), diskStep);
-  await button(page, 'next').click();
-  assert.equal(new URL(page.url()).searchParams.get('step'), diskStep);
-  // Both labs have their own fullscreen boundary; closing either restores the page.
-  const embedded = page.locator('[data-execution-lab]');
-  await embedded.evaluate(node => { node.requestFullscreen = undefined; });
-  await button(page, 'expand').click();
-  assert.equal(await embedded.getAttribute('data-walkthrough-expanded'), 'fallback');
-  await page.keyboard.press('Escape');
-  assert.equal(await button(page, 'expand').getAttribute('aria-pressed'), 'false');
-  assert(await button(page, 'expand').evaluate(node => node === document.activeElement));
-  assert.equal(await page.locator('[inert]').count(), 0);
-}
-
 async function assertFrame(page, frame) {
+  assert.equal(await page.locator('.walkthrough-inspector a').count(), 0,
+    'sources belong exclusively in the source view');
+  const highlighted = await page.locator('[data-execution-sources] [data-source-id][data-current="true"]')
+    .evaluateAll(nodes => [...new Set(nodes.map(node => node.dataset.sourceId))].sort());
+  assert.deepEqual(highlighted, [...new Set(frame.sourceIds)].sort(),
+    `${frame.id}: every source is available and highlighted in the source view`);
   const state = await page.locator('[data-execution-lab]').evaluate(lab => ({
     step: lab.dataset.step,
+    sourceExpanded: lab.dataset.view !== 'source' || [...lab.querySelectorAll('[data-execution-sources]')]
+      .every(node => node.scrollHeight <= node.clientHeight + 1),
     fields: Object.fromEntries([...lab.querySelectorAll('[data-execution-field]')].map(node =>
       [node.dataset.executionField, node.querySelector('dd').textContent])),
     changed: [...lab.querySelectorAll('[data-execution-field][data-current="true"]')].map(node => node.dataset.executionField),
@@ -160,12 +140,33 @@ async function assertFrame(page, frame) {
       [node.dataset.executionNode, node.querySelector('.execution-node-status').textContent])),
   }));
   assert.equal(state.step, frame.id);
-  assert.deepEqual(state.fields, frame.values);
-  assert.deepEqual(state.changed.sort(), [...frame.changed].sort());
+  assert(state.sourceExpanded, `${frame.id}: source paths must expand with the page, without an internal scroller`);
+  const expectedFields = frame.queueState ? Object.fromEntries(Object.entries(frame.values).filter(([key]) => key in state.fields)) : frame.values;
+  assert.deepEqual(state.fields, expectedFields);
+  assert.deepEqual(state.changed.sort(), frame.changed.filter(key => key in expectedFields).sort());
   assert.deepEqual(state.active.sort(), [...frame.active].sort());
   assert.deepEqual(state.nodes, frame.nodes);
   assert.equal(await button(page, 'title').textContent(), frame.title);
-  if (Object.hasOwn(frame.values, 'availHead')) {
+  if (frame.queueState) {
+    const sceneLabel = await page.locator('[data-execution-lab]').evaluate(lab =>
+      `${lab.getAttribute('aria-label')}/${lab.dataset.scenario}/${lab.dataset.view}/${lab.dataset.step}`);
+    assert.equal(await page.locator('[data-execution-structures] [data-typed-queue]').count(), 1,
+      `${sceneLabel}: structure view must contain exactly one full typed queue`);
+    const actual = await page.locator('[data-execution-structures] [data-typed-queue]').evaluate(queue => ({
+      rows:[...queue.querySelectorAll('tbody tr')].map(row=>({index:Number(row.dataset.descriptor),state:row.dataset.state,text:row.textContent})),
+      rings:Object.fromEntries([...queue.querySelectorAll('[data-queue-ring]')].map(ring=>[ring.dataset.queueRing, [...ring.querySelectorAll('.walkthrough-queue-slots > div')].map(slot=>slot.querySelector('span').textContent)])),
+    }));
+    if (frame.queueState.descriptors.length) {
+      assert.deepEqual(actual.rows.map(row=>row.index),frame.queueState.descriptors.map(desc=>desc.index));
+      for (const descriptor of frame.queueState.descriptors) {
+        const row=actual.rows.find(row=>row.index===descriptor.index);
+        assert(row.text.includes(`0x${descriptor.addr.toString(16)}`));
+        assert(row.text.includes(String(descriptor.len)));
+      }
+    } else assert(actual.rows.every(row=>row.state==='unprepared'));
+    for (const name of ['avail','used']) assert.deepEqual(actual.rings[name],frame.queueState[name].slots.map(record=>
+      record===null?'—':name==='avail'?`头 ${record}`:`id ${record.id}`));
+  } else if (Object.hasOwn(frame.values, 'availHead')) {
     for (const name of ['avail', 'used']) {
       const record = frame.values[name === 'avail' ? 'availHead' : 'usedEntry'];
       const slot = record.match(/slot\s+(\d+)/)?.[1];
@@ -229,7 +230,6 @@ async function assertFrame(page, frame) {
       }
       await assertSelectorTransitions(page, demo);
       if (id === 'network-io') await assertNetworkQueuePlayback(page, demo);
-      if (id === 'disk-persistence') await assertIndependentDiskLabs(page, demo);
       // Deep links and unknown parameters have safe fallbacks.
       const invalidQuery = new URLSearchParams(['scenario', 'view', 'step'].map(key => [queryKey(id, key), 'unknown']));
       await page.goto(`${route}?${invalidQuery}`);

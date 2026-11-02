@@ -36,6 +36,7 @@ def test_directory_has_reading_order_and_real_anchors_only():
         'block-io-walkthrough',
         'network-io-walkthrough', 'cpu-execution-walkthrough',
         'memory-access-walkthrough', 'interrupt-delivery-walkthrough',
+        'gpu-execution-walkthrough',
     ]
     assert re.findall(r'<section class="mechanism-topic" id="([^"]+)"', page) == [
         'virtualization-basics',
@@ -45,6 +46,7 @@ def test_directory_has_reading_order_and_real_anchors_only():
         'block-io-walkthrough',
         'network-io-walkthrough', 'cpu-execution-walkthrough',
         'memory-access-walkthrough', 'interrupt-delivery-walkthrough',
+        'gpu-execution-walkthrough',
     ]
     for slug in re.findall(r'href="#([^"]+)"', directory):
         assert f'id="{slug}"' in page
@@ -62,7 +64,8 @@ def test_directory_counts_primary_articles_without_extra_related_rows():
                       'live-upgrade': 1, 'qemu-internals': 6, 'libvirt-internals': 2,
                       'kvm-internals': 2, 'block-io-walkthrough': 1,
                       'network-io-walkthrough': 1, 'cpu-execution-walkthrough': 1,
-                      'memory-access-walkthrough': 1, 'interrupt-delivery-walkthrough': 1}
+                      'memory-access-walkthrough': 1, 'interrupt-delivery-walkthrough': 1,
+                      'gpu-execution-walkthrough': 1}
     assert [article['slug'] for article in
             mechanisms.get_topic('memory-virtualization')['articles']] == [
                 'memory-virtualization', 'kvm-ept-fault', 'kvm-hugepages', 'kvm-dirty-ring',
@@ -134,3 +137,37 @@ def test_group_building_does_not_mutate_editorial_metadata():
     original = copy.deepcopy(mechanisms._content())
     mechanisms.topic_groups()
     assert mechanisms._content() == original
+
+
+def test_article_lists_are_progressively_collapsible_without_hiding_links_from_no_js():
+    page = render.render_mechanisms_html(Config())
+    assert 'assets/mechanism-directory.js?v=' in page
+    assert 'mechanism-directory.js' in render.MECHANISM_ASSET_NAMES
+    topics = mechanisms.topics()
+    assert page.count('data-mechanism-toggle ') == sum(
+        bool(topic['detail_articles']) and topic['group'] != 'walkthroughs' for topic in topics
+    )
+    for topic in topics:
+        body = re.search(rf'<section class="mechanism-topic" id="{topic["slug"]}".*?</section>',
+                         page, re.S).group()
+        assert f'id="mechanism-list-{topic["slug"]}"' in body
+        assert re.search(r'<div class="mechanism-list"[^>]*>', body).group().find('hidden') == -1
+        assert f'href="mechanisms/{topic["overview"]}.html"' in body
+        if topic['detail_articles'] and topic['group'] != 'walkthroughs':
+            button = re.search(r'<button[^>]*data-mechanism-toggle[^>]*>', body).group()
+            assert f'aria-controls="mechanism-list-{topic["slug"]}"' in button
+            assert 'aria-expanded="true"' in button
+            assert ' hidden' in button
+            assert f'data-article-count="{len(topic["detail_articles"])}"' in button
+            contents = re.search(r'<button[^>]*data-mechanism-toggle[^>]*>(.*?)</button>',
+                                 body, re.S).group(1)
+            assert '<svg ' in contents and 'aria-hidden="true"' in contents
+            assert '展开' not in contents and '收起' not in contents and '篇' not in contents
+            assert 'aria-label=' in button
+        else:
+            assert 'data-mechanism-toggle' not in body
+
+
+def test_directory_script_is_not_loaded_on_article_pages():
+    page = render.render_mechanisms_html(Config(), 'cpu-execution')
+    assert 'src="../assets/mechanism-directory.js' not in page

@@ -3,102 +3,3652 @@
   "title": "虚拟中断递送过程",
   "defaultScenario": "msix-software",
   "sources": {
-    "msix": {"label":"QEMU 10.2：msix_notify 的屏蔽检查与消息发送","url":"https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/pci/msix.c#L540-L558"},
-    "unmask": {"label":"QEMU 10.2：解除屏蔽后补发 pending","url":"https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/pci/msix.c#L126-L146"},
-    "msi-entry": {"label":"QEMU 10.2：KVM APIC 的 MSI 消息入口","url":"https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/kvm/apic.c#L186-L216"},
-    "msi-ioctl": {"label":"QEMU 10.2：KVM_SIGNAL_MSI","url":"https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L2189-L2200"},
-    "routing": {"label":"Linux 6.18：MSI 地址与数据解码","url":"https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/irq.c#L198-L238"},
-    "deliver": {"label":"Linux 6.18：VMX posted 路径与 IRR 软件回退","url":"https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L4217-L4256"},
-    "ack": {"label":"Linux 6.18：清 IRR、设置 ISR","url":"https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L3083-L3124"},
-    "inject": {"label":"Linux 6.18：VM Entry 外部中断注入字段","url":"https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L4916-L4941"},
-    "allowed": {"label":"Linux 6.18：IF 与 STI / MOV SS interrupt shadow 检查","url":"https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L5032-L5061"},
-    "window": {"label":"Linux 6.18：中断窗口退出请求事件复查","url":"https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L5622-L5629"},
-    "eoi": {"label":"Linux 6.18：EOI 清除最高 ISR 并更新优先级","url":"https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L1535-L1558"},
-    "irq-ack": {"label":"Linux 6.18：客户机边沿中断的应答与 handler","url":"https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/irq/chip.c#L770-L812"},
-    "consume": {"label":"Linux 6.18：virtqueue used 消费与描述符回收","url":"https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_ring.c#L768-L819"},
-    "irqfd": {"label":"Linux 6.18：irqfd_wakeup 读取 eventfd 并投递缓存路由","url":"https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/eventfd.c#L195-L231"},
-    "bind": {"label":"QEMU 10.2：MSI-X 路由与 guest notifier 绑定","url":"https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-pci.c#L865-L899"},
-    "posted": {"label":"Linux 6.18：PIR、ON 与 posted notification","url":"https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/common.h#L110-L175"},
-    "sdm": {"label":"Intel SDM：APIC virtual interrupt delivery 与 posted-interrupt processing","url":"https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html"}
+    "msix": {
+      "label": "QEMU 10.2：msix_notify 的屏蔽检查与消息发送",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/pci/msix.c#L540-L558",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "hw/pci/msix.c",
+      "line": 540,
+      "project": "QEMU",
+      "symbol": "msix_notify()",
+      "kind": "function"
+    },
+    "unmask": {
+      "label": "QEMU 10.2：解除屏蔽后补发 pending",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/pci/msix.c#L126-L146",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "hw/pci/msix.c",
+      "line": 126,
+      "project": "QEMU",
+      "symbol": "msix_handle_mask_update()",
+      "kind": "function"
+    },
+    "msi-entry": {
+      "label": "QEMU 10.2：KVM APIC 的 MSI 消息入口",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/kvm/apic.c#L186-L216",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "hw/i386/kvm/apic.c",
+      "line": 186,
+      "project": "QEMU",
+      "symbol": "kvm_apic_mem_write()",
+      "kind": "function"
+    },
+    "msi-ioctl": {
+      "label": "QEMU 10.2：KVM_SIGNAL_MSI",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L2189-L2200",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "accel/kvm/kvm-all.c",
+      "line": 2189,
+      "project": "QEMU",
+      "symbol": "kvm_irqchip_send_msi()",
+      "kind": "function"
+    },
+    "routing": {
+      "label": "Linux 6.18：MSI 地址与数据解码",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/irq.c#L198-L238",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/irq.c",
+      "line": 198,
+      "project": "Linux",
+      "symbol": "kvm_set_msi()",
+      "kind": "function"
+    },
+    "deliver": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/vmx/vmx.c",
+      "line": 4242,
+      "symbol": "vmx_deliver_interrupt()",
+      "label": "Linux 6.18：VMX 递送选择与 IRR 软件回退",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L4242-L4256"
+    },
+    "ack": {
+      "label": "Linux 6.18：清 IRR、设置 ISR",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L3085-L3124",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/lapic.c",
+      "line": 3085,
+      "project": "Linux",
+      "symbol": "kvm_apic_ack_interrupt()",
+      "kind": "function"
+    },
+    "inject": {
+      "label": "Linux 6.18：VM Entry 外部中断注入字段",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L4916-L4941",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/vmx/vmx.c",
+      "line": 4916,
+      "project": "Linux",
+      "symbol": "vmx_inject_irq()",
+      "kind": "function"
+    },
+    "allowed": {
+      "label": "Linux 6.18：IF 与 STI / MOV SS interrupt shadow 检查",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L5032-L5061",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/vmx/vmx.c",
+      "line": 5032,
+      "project": "Linux",
+      "symbol": "vmx_interrupt_allowed()",
+      "kind": "function"
+    },
+    "window": {
+      "label": "Linux 6.18：中断窗口退出请求事件复查",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L5622-L5629",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/vmx/vmx.c",
+      "line": 5622,
+      "project": "Linux",
+      "symbol": "handle_interrupt_window()",
+      "kind": "function"
+    },
+    "eoi": {
+      "label": "Linux 6.18：EOI 清除最高 ISR 并更新优先级",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L1535-L1558",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/lapic.c",
+      "line": 1535,
+      "project": "Linux",
+      "symbol": "apic_set_eoi()",
+      "kind": "function"
+    },
+    "irq-ack": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "kernel/irq/chip.c",
+      "line": 823,
+      "symbol": "handle_edge_irq()",
+      "label": "Linux 6.18：Guest 边沿中断应答与 handler 调用",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/irq/chip.c#L823-L858"
+    },
+    "consume": {
+      "label": "Linux 6.18：virtqueue used 消费与描述符回收",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_ring.c#L815-L871",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "drivers/virtio/virtio_ring.c",
+      "line": 815,
+      "project": "Linux",
+      "symbol": "virtqueue_get_buf_ctx_split()",
+      "kind": "function"
+    },
+    "irqfd": {
+      "label": "Linux 6.18：irqfd_wakeup 读取 eventfd 并投递缓存路由",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/eventfd.c#L195-L231",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "virt/kvm/eventfd.c",
+      "line": 195,
+      "project": "Linux",
+      "symbol": "irqfd_wakeup()",
+      "kind": "function"
+    },
+    "bind": {
+      "label": "QEMU 10.2：MSI-X 路由与 guest notifier 绑定",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-pci.c#L893-L921",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "hw/virtio/virtio-pci.c",
+      "line": 893,
+      "project": "QEMU",
+      "symbol": "kvm_virtio_pci_irqfd_use()",
+      "kind": "function"
+    },
+    "posted": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/vmx/common.h",
+      "line": 159,
+      "symbol": "__vmx_deliver_posted_interrupt()",
+      "label": "Linux 6.18：设置 PIR / ON 并请求 posted notification",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/common.h#L159-L178"
+    },
+    "sdm": {
+      "label": "Intel SDM：APIC virtual interrupt delivery 与 posted-interrupt processing",
+      "url": "https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html",
+      "project": "Intel",
+      "revision": "architecture-manual",
+      "path": "Intel SDM",
+      "line": 0,
+      "symbol": "Intel SDM · interrupt delivery / posted-interrupt processing",
+      "kind": "spec"
+    },
+    "rx-copy": {
+      "project": "QEMU",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "hw/net/virtio-net.c",
+      "line": 1903,
+      "symbol": "virtio_net_receive_rcu()",
+      "label": "virtio_net_receive_rcu()",
+      "kind": "function",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/virtio-net.c#L1903-L2050"
+    },
+    "used-fill": {
+      "project": "QEMU",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "hw/virtio/virtio.c",
+      "line": 1038,
+      "symbol": "virtqueue_fill()",
+      "label": "virtqueue_fill()",
+      "kind": "function",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio.c#L1038-L1052"
+    },
+    "used-publish": {
+      "project": "QEMU",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "hw/virtio/virtio.c",
+      "line": 1064,
+      "symbol": "virtqueue_split_flush()",
+      "label": "virtqueue_split_flush()",
+      "kind": "function",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio.c#L1064-L1115"
+    },
+    "notify-check": {
+      "project": "QEMU",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "hw/virtio/virtio.c",
+      "line": 2583,
+      "symbol": "virtio_split_should_notify()",
+      "label": "virtio_split_should_notify()",
+      "kind": "function",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio.c#L2583-L2607"
+    },
+    "virtio-notify": {
+      "project": "QEMU",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "hw/virtio/virtio.c",
+      "line": 2701,
+      "symbol": "virtio_notify()",
+      "label": "virtio_notify()",
+      "kind": "function",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio.c#L2701-L2711"
+    },
+    "virtio-irq": {
+      "project": "QEMU",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "hw/virtio/virtio.c",
+      "line": 2669,
+      "symbol": "virtio_irq()",
+      "label": "virtio_irq()",
+      "kind": "function",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio.c#L2669-L2699"
+    },
+    "notify-eventfd": {
+      "project": "QEMU",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "hw/virtio/virtio.c",
+      "line": 2659,
+      "symbol": "virtio_notify_irqfd_deferred_fn()",
+      "label": "virtio_notify_irqfd_deferred_fn()",
+      "kind": "function",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio.c#L2659-L2667"
+    },
+    "guest-vring-irq": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "drivers/virtio/virtio_ring.c",
+      "line": 2693,
+      "symbol": "vring_interrupt()",
+      "label": "vring_interrupt()",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_ring.c#L2693-L2718"
+    },
+    "posted-notify": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/vmx/common.h",
+      "line": 111,
+      "symbol": "kvm_vcpu_trigger_posted_interrupt()",
+      "label": "Linux 6.18：通知运行中的目标 vCPU 或唤醒等待者",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/common.h#L111-L153"
+    },
+    "guest-rx-callback": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "drivers/net/virtio_net.c",
+      "line": 2861,
+      "symbol": "skb_recv_done()",
+      "label": "Linux 6.18：Guest RX 回调安排 NAPI",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/net/virtio_net.c#L2861-L2868"
+    },
+    "guest-napi-poll": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "drivers/net/virtio_net.c",
+      "line": 3114,
+      "symbol": "virtnet_poll()",
+      "label": "Linux 6.18：NAPI 执行接收处理",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/net/virtio_net.c#L3114-L3155"
+    },
+    "guest-receive": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "drivers/net/virtio_net.c",
+      "line": 2994,
+      "symbol": "virtnet_receive_packets()",
+      "label": "Linux 6.18：读取 virtqueue 接收完成项",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/net/virtio_net.c#L2994-L3020"
+    }
   },
   "scenarios": [
     {
-      "id":"msix-software","label":"MSI-X 软件注入","summary":"QEMU 设备完成一次收包后，通过 MSI-X 消息进入 KVM，再由软件路径安排客户机中断。",
-      "assumptions":["x86-64、Intel VMX，Linux 6.18 / QEMU 10.2.0，内核 LAPIC，APICv 关闭", "QEMU 直接设备通知路径，无 guest notifier / irqfd 中转；used 已发布且允许通知", "MSI-X 表项 2 已启用且未屏蔽；xAPIC 物理目的地 APIC ID 1、fixed/edge 向量 0x51", "目标 vCPU 可运行，Guest IF = 1、无 interrupt shadow，APIC 优先级允许"],
-      "nodes":[{"id":"device","label":"QEMU virtio-net","role":"用户态设备模型"},{"id":"msix","label":"MSI-X 表项 2","role":"设备通知配置"},{"id":"kvm","label":"KVM MSI 路由","role":"宿主内核"},{"id":"lapic","label":"vCPU 1 LAPIC","role":"IRR / ISR"},{"id":"guest","label":"客户机 IRQ / 驱动","role":"Guest 内核"}],
-      "links":[{"id":"notify","from":"device","to":"msix","label":"请求完成通知","kind":"notification"},{"id":"msi","from":"msix","to":"kvm","label":"KVM_SIGNAL_MSI","kind":"notification"},{"id":"route","from":"kvm","to":"lapic","label":"目标 1 / 向量 0x51","kind":"notification"},{"id":"inject","from":"lapic","to":"guest","label":"VM Entry 注入","kind":"notification"},{"id":"eoi","from":"guest","to":"lapic","label":"EOI","kind":"control"}],
-      "structures":[{"id":"message","title":"MSI-X 表项 2","kind":"interrupt","fields":[{"key":"mask","label":"表项 mask","initial":"0"},{"key":"address","label":"Message Address","initial":"0xfee01000"},{"key":"data","label":"Message Data","initial":"0x51"},{"key":"sent","label":"消息状态","initial":"等待发送"}]},{"id":"apic","title":"目标 LAPIC 与注入字段","kind":"interrupt","fields":[{"key":"irr","label":"IRR[0x51]","initial":"0"},{"key":"isr","label":"ISR[0x51]","initial":"0"},{"key":"entry","label":"VM_ENTRY_INTR_INFO","initial":"无待注入事件"}]},{"id":"queue","title":"共享队列与驱动进度","kind":"queue","fields":[{"key":"used","label":"used.idx","initial":"8（完成已发布）"},{"key":"last-used","label":"驱动 last_used_idx","initial":"7"},{"key":"descriptor","label":"已完成描述符链","initial":"等待驱动回收"}]}],
-      "steps":[
-        {"id":"ready","title":"完成记录已发布","actor":"QEMU virtio-net","description":"used.idx 已从 7 推进到 8，驱动还没有消费这次完成。","detail":"本演示从通知之前开始。表项 2、APIC ID 1 和向量 0x51 是不同编号；由设备与客户机配置关联。","active":[],"links":[],"changes":{},"nodeStates":{},"sourceIds":["msix","consume"],"focus":true},
-        {"id":"notify","title":"读取 MSI-X 表项","actor":"QEMU · msix_notify","description":"检查表项已分配且未屏蔽，取出中断地址和数据。","detail":"地址选择目标 APIC，data 携带向量与投递属性。消息中不携带报文或 used 条目。","active":["device","msix"],"links":["notify"],"changes":{"sent":"已组装 MSIMessage"},"nodeStates":{"msix":"目标 1 / 向量 0x51"},"sourceIds":["msix"],"focus":true},
-        {"id":"submit","title":"提交中断消息","actor":"QEMU → KVM","description":"KVM APIC 消息入口通过 KVM_SIGNAL_MSI 把地址和 data 交给内核。","detail":"这是设备通知侧的调用，不要求 vCPU 先以 KVM_EXIT_MMIO 返回；目标 vCPU 可以与通知者并行运行。","active":["msix","kvm"],"links":["msi"],"changes":{"sent":"已提交 KVM_SIGNAL_MSI"},"nodeStates":{"kvm":"解码消息并查找目标"},"sourceIds":["msi-entry","msi-ioctl","routing"],"focus":false},
-        {"id":"pending","title":"记录待处理中断","actor":"KVM → 虚拟 LAPIC","description":"软件路径设置 IRR[0x51]，请求事件检查并 kick 目标 vCPU。","detail":"kick 促使目标及时检查事件；中断消息进入 IRR 与客户机开始执行 handler 之间仍有接受条件。","active":["kvm","lapic"],"links":["route"],"changes":{"irr":"1"},"nodeStates":{"lapic":"0x51 待处理"},"sourceIds":["deliver"],"focus":true},
-        {"id":"inject","title":"准备并交付中断","actor":"KVM → 客户机","description":"满足 IF、shadow 与优先级条件后，软件路径清 IRR、设置 ISR，配置 VM Entry 注入。","detail":"VM_ENTRY_INTR_INFO 记录有效的 external interrupt 与向量 0x51；进入后客户机按 IDT 找到中断入口。","active":["lapic","guest"],"links":["inject"],"changes":{"irr":"0","isr":"1","entry":"有效 external interrupt，vector 0x51"},"nodeStates":{"guest":"进入向量 0x51 handler"},"sourceIds":["allowed","ack","inject"],"focus":true},
-        {"id":"eoi","title":"应答 APIC 服务状态","actor":"客户机通用 IRQ 路径","description":"客户机发出 EOI，LAPIC 清除对应最高优先级的 in-service 位。","detail":"本例按边沿处理的早期应答顺序展示。EOI 不推进 used.idx，也不释放描述符；网络处理还可交给 NAPI。","active":["guest","lapic"],"links":["eoi"],"changes":{"isr":"0","entry":"本次进入已消费该事件"},"nodeStates":{"lapic":"本次 APIC 应答完成"},"sourceIds":["eoi","irq-ack"],"focus":true},
-        {"id":"consume","title":"驱动消费完成记录","actor":"客户机驱动 / NAPI","description":"驱动读取 used 项、取得接收结果，再回收描述符链并推进私有索引。","detail":"一条中断可以提示多条完成；图中只消费一项。队列进度由驱动维护，独立于刚才的 EOI。","active":["guest"],"links":[],"changes":{"last-used":"8","descriptor":"已回收，可再次发布"},"nodeStates":{"guest":"完成记录已消费"},"sourceIds":["consume"],"focus":true}
+      "id": "msix-software",
+      "label": "MSI-X 软件注入",
+      "summary": "QEMU 设备完成一次收包后，通过 MSI-X 消息进入 KVM，再由软件路径安排客户机中断。",
+      "assumptions": [
+        "x86-64、Intel VMX，Linux 6.18 / QEMU 10.2.0，内核 LAPIC，APICv 关闭",
+        "QEMU 直接设备通知路径，无 guest notifier / irqfd 中转；本次 used 尚未发布，队列允许通知",
+        "MSI-X 表项 2 已启用且未屏蔽；xAPIC 物理目的地 APIC ID 1、fixed/edge 向量 0x51",
+        "目标 vCPU 可运行，Guest IF = 1、无 interrupt shadow，APIC 优先级允许",
+        "具体发起方为一次 QEMU virtio-net RX 完成；split queue，VIRTIO_F_EVENT_IDX 未协商，默认 avail.flags 不设置 NO_INTERRUPT",
+        "缓冲区已经发布且容量足够；此处不重复收包、描述符分配与网络协议栈的全部过程",
+        "未协商 VIRTIO_F_NOTIFY_ON_EMPTY；不触发队列清空时的强制通知例外"
+      ],
+      "nodes": [
+        {
+          "id": "device",
+          "label": "QEMU virtio-net",
+          "role": "用户态设备模型"
+        },
+        {
+          "id": "msix",
+          "label": "MSI-X 表项 2",
+          "role": "设备通知配置"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM MSI 路由",
+          "role": "宿主内核"
+        },
+        {
+          "id": "lapic",
+          "label": "vCPU 1 LAPIC",
+          "role": "IRR / ISR"
+        },
+        {
+          "id": "guest",
+          "label": "客户机 IRQ / 驱动",
+          "role": "Guest 内核",
+          "badge": "内核态"
+        },
+        {
+          "id": "queue",
+          "label": "RX 缓冲区与 used ring",
+          "role": "Guest RAM，共享队列",
+          "initial": "P1 尚未写入，used.idx=7"
+        }
+      ],
+      "links": [
+        {
+          "id": "notify",
+          "from": "device",
+          "to": "msix",
+          "label": "请求完成通知",
+          "kind": "notification"
+        },
+        {
+          "id": "msi",
+          "from": "msix",
+          "to": "kvm",
+          "label": "KVM_SIGNAL_MSI",
+          "kind": "notification"
+        },
+        {
+          "id": "route",
+          "from": "kvm",
+          "to": "lapic",
+          "label": "目标 1 / 向量 0x51",
+          "kind": "notification"
+        },
+        {
+          "id": "inject",
+          "from": "lapic",
+          "to": "guest",
+          "label": "VM Entry 注入",
+          "kind": "notification"
+        },
+        {
+          "id": "eoi",
+          "from": "guest",
+          "to": "lapic",
+          "label": "EOI",
+          "kind": "control"
+        },
+        {
+          "id": "write-data",
+          "from": "device",
+          "to": "queue",
+          "label": "写入 RX 报文",
+          "kind": "data"
+        },
+        {
+          "id": "publish-used",
+          "from": "device",
+          "to": "queue",
+          "label": "填写并发布完成记录",
+          "kind": "control"
+        },
+        {
+          "id": "read-used",
+          "from": "queue",
+          "to": "guest",
+          "label": "驱动消费完成记录",
+          "kind": "data"
+        }
+      ],
+      "structures": [
+        {
+          "id": "message",
+          "title": "MSI-X 表项 2",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "mask",
+              "label": "表项 mask",
+              "initial": "0"
+            },
+            {
+              "key": "address",
+              "label": "Message Address",
+              "initial": "0xfee01000"
+            },
+            {
+              "key": "data",
+              "label": "Message Data",
+              "initial": "0x51"
+            },
+            {
+              "key": "sent",
+              "label": "消息状态",
+              "initial": "等待发送"
+            }
+          ]
+        },
+        {
+          "id": "apic",
+          "title": "目标 LAPIC 与注入字段",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "irr",
+              "label": "IRR[0x51]",
+              "initial": "0"
+            },
+            {
+              "key": "isr",
+              "label": "ISR[0x51]",
+              "initial": "0"
+            },
+            {
+              "key": "entry",
+              "label": "VM_ENTRY_INTR_INFO",
+              "initial": "无待注入事件"
+            }
+          ]
+        },
+        {
+          "id": "queue",
+          "title": "共享队列与驱动进度",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "used",
+              "label": "used.idx",
+              "initial": "7"
+            },
+            {
+              "key": "last-used",
+              "label": "驱动 last_used_idx",
+              "initial": "7"
+            },
+            {
+              "key": "descriptor",
+              "label": "已完成描述符链",
+              "initial": "等待驱动回收"
+            }
+          ]
+        },
+        {
+          "id": "device-completion",
+          "title": "设备数据与通知起点",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "payload",
+              "label": "RX 数据",
+              "initial": "尚未写入"
+            },
+            {
+              "key": "used-entry",
+              "label": "used.ring[7]",
+              "initial": "尚未填写"
+            },
+            {
+              "key": "notify-policy",
+              "label": "通知条件",
+              "initial": "avail.flags.NO_INTERRUPT = 0"
+            },
+            {
+              "key": "notify-decision",
+              "label": "通知判断",
+              "initial": "尚未检查"
+            }
+          ]
+        },
+        {
+          "id": "delivery-stage",
+          "title": "注入阶段",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "delivery",
+              "label": "Guest 接受状态",
+              "initial": "尚无注入事件"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "ready",
+          "title": "设备完成前",
+          "actor": "QEMU virtio-net · RX 后端",
+          "description": "一次报文即将写入预先发布的 Guest RX 缓冲区，本次完成项尚未发布。",
+          "detail": "跟踪报文 P1 的 72 B 接收结果（12 B virtio 头与 60 B 帧），队列大小 8，先前 used.idx 与驱动消费位置均为 7。设备通知、LAPIC pending 和 Guest 消费分开推进。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "rx-copy",
+            "used-fill"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-data",
+          "title": "写入 Guest RX 数据",
+          "actor": "QEMU virtio-net · receive",
+          "description": "设备把 P1 报文写入已经借给设备的 RX 缓冲区。",
+          "detail": "数据写入与通知分离。此刻 used.idx 仍为 7，驱动还不能仅凭数据变化认定请求完成。",
+          "active": [
+            "device",
+            "queue"
+          ],
+          "links": [
+            "write-data"
+          ],
+          "changes": {
+            "payload": "72 B 已写入；本次完成尚未发布"
+          },
+          "nodeStates": {
+            "queue": "数据已写入，完成待发布",
+            "device": "写入 Guest RX 数据"
+          },
+          "sourceIds": [
+            "rx-copy"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used-fill",
+          "title": "填写完成项",
+          "actor": "QEMU · virtqueue_fill",
+          "description": "写 used.ring[7] 的 id=0、len=72。",
+          "detail": "填写环项没有推进 used.idx；驱动的消费位置仍为 7。",
+          "active": [
+            "device",
+            "queue"
+          ],
+          "links": [
+            "publish-used"
+          ],
+          "changes": {
+            "used-entry": "id=0 · len=72"
+          },
+          "nodeStates": {
+            "device": "填写完成项",
+            "queue": "填写完成项"
+          },
+          "sourceIds": [
+            "used-fill"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used-publish",
+          "title": "发布 used.idx",
+          "actor": "QEMU · virtqueue_split_flush",
+          "description": "在写入顺序约束之后，把 used.idx 从 7 推进到 8。",
+          "detail": "发布索引使驱动可以按协议观察到前面的数据与完成记录；这一步本身尚未发中断。",
+          "active": [
+            "device",
+            "queue"
+          ],
+          "links": [
+            "publish-used"
+          ],
+          "changes": {
+            "used": "8"
+          },
+          "nodeStates": {
+            "queue": "P1 完成已发布",
+            "device": "发布 used.idx"
+          },
+          "sourceIds": [
+            "used-publish"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify-check",
+          "title": "检查是否需要通知",
+          "actor": "QEMU · virtio_should_notify",
+          "description": "本例 NO_INTERRUPT 为 0，因此允许为此次完成发出通知。",
+          "detail": "EVENT_IDX 未协商；若启用该特性，要改用事件索引判断，不能把两种策略同时当作必经判断。",
+          "active": [
+            "device",
+            "queue"
+          ],
+          "links": [],
+          "changes": {
+            "notify-decision": "允许通知"
+          },
+          "nodeStates": {
+            "device": "检查是否需要通知",
+            "queue": "检查是否需要通知"
+          },
+          "sourceIds": [
+            "notify-check",
+            "virtio-notify"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify",
+          "title": "读取 MSI-X 表项",
+          "actor": "QEMU · msix_notify",
+          "description": "检查表项已分配且未屏蔽，取出中断地址和数据。",
+          "detail": "地址选择目标 APIC，data 携带向量与投递属性。消息中不携带报文或 used 条目。",
+          "active": [
+            "device",
+            "msix"
+          ],
+          "links": [
+            "notify"
+          ],
+          "changes": {
+            "sent": "已组装 MSIMessage"
+          },
+          "nodeStates": {
+            "msix": "目标 1 / 向量 0x51",
+            "device": "读取 MSI-X 表项"
+          },
+          "sourceIds": [
+            "msix"
+          ],
+          "focus": true
+        },
+        {
+          "id": "submit",
+          "title": "提交中断消息",
+          "actor": "QEMU → KVM",
+          "description": "KVM APIC 消息入口通过 KVM_SIGNAL_MSI 把地址和 data 交给内核。",
+          "detail": "这是设备通知侧的调用，不要求 vCPU 先以 KVM_EXIT_MMIO 返回；目标 vCPU 可以与通知者并行运行。",
+          "active": [
+            "msix",
+            "kvm"
+          ],
+          "links": [
+            "msi"
+          ],
+          "changes": {
+            "sent": "已提交 KVM_SIGNAL_MSI"
+          },
+          "nodeStates": {
+            "kvm": "解码消息并查找目标",
+            "msix": "提交中断消息"
+          },
+          "sourceIds": [
+            "msi-entry",
+            "msi-ioctl",
+            "routing"
+          ],
+          "focus": false
+        },
+        {
+          "id": "pending",
+          "title": "记录待处理中断",
+          "actor": "KVM → 虚拟 LAPIC",
+          "description": "软件路径设置 IRR[0x51]，请求事件检查并 kick 目标 vCPU。",
+          "detail": "kick 促使目标及时检查事件；中断消息进入 IRR 与客户机开始执行 handler 之间仍有接受条件。",
+          "active": [
+            "kvm",
+            "lapic"
+          ],
+          "links": [
+            "route"
+          ],
+          "changes": {
+            "irr": "1"
+          },
+          "nodeStates": {
+            "lapic": "0x51 待处理",
+            "kvm": "记录待处理中断"
+          },
+          "sourceIds": [
+            "deliver"
+          ],
+          "focus": true
+        },
+        {
+          "id": "inject",
+          "title": "准备 VM-entry 中断注入",
+          "actor": "KVM · 接受条件检查与 VMCS 配置",
+          "description": "条件允许后，KVM 从 IRR 取出向量、记录 ISR，并填写 VM-entry 中断注入字段。",
+          "detail": "这是软件路径的准备状态，Guest handler 此刻尚未执行。只有成功进入客户机，才能说 CPU 已把控制权交给中断入口。",
+          "active": [
+            "lapic"
+          ],
+          "links": [],
+          "changes": {
+            "irr": "0",
+            "isr": "1",
+            "entry": "有效 external interrupt，vector 0x51",
+            "delivery": "注入字段已准备，尚未进入 Guest"
+          },
+          "nodeStates": {
+            "guest": "handler 尚未执行",
+            "lapic": "准备 VM-entry 中断注入"
+          },
+          "sourceIds": [
+            "allowed",
+            "ack",
+            "inject"
+          ],
+          "focus": true
+        },
+        {
+          "id": "guest-entry",
+          "title": "成功进入 Guest 中断入口",
+          "actor": "处理器 · VM-entry",
+          "description": "本次 VM-entry 成功，处理器按注入字段进入向量 0x51 的 Guest 中断入口。",
+          "detail": "软件准备注入、硬件接受、驱动处理是不同阶段。EOI 和队列消费的先后按本例 Linux IRQ 路径单独展示。",
+          "active": [
+            "guest"
+          ],
+          "links": [
+            "inject"
+          ],
+          "changes": {
+            "delivery": "Guest handler 已进入"
+          },
+          "nodeStates": {
+            "guest": "执行 Guest IRQ 入口"
+          },
+          "sourceIds": [
+            "inject",
+            "irq-ack"
+          ],
+          "focus": true
+        },
+        {
+          "id": "eoi",
+          "title": "应答 APIC 服务状态",
+          "actor": "客户机通用 IRQ 路径",
+          "description": "客户机发出 EOI，LAPIC 清除对应最高优先级的 in-service 位。",
+          "detail": "本例按边沿处理的早期应答顺序展示。EOI 不推进 used.idx，也不释放描述符；网络处理还可交给 NAPI。",
+          "active": [
+            "guest",
+            "lapic"
+          ],
+          "links": [
+            "eoi"
+          ],
+          "changes": {
+            "isr": "0",
+            "entry": "本次进入已消费该事件"
+          },
+          "nodeStates": {
+            "lapic": "本次 APIC 应答完成",
+            "guest": "应答 APIC 服务状态"
+          },
+          "sourceIds": [
+            "eoi",
+            "irq-ack"
+          ],
+          "focus": true
+        },
+        {
+          "id": "consume",
+          "title": "驱动消费完成记录",
+          "actor": "客户机驱动 / NAPI",
+          "description": "驱动读取 used 项、取得接收结果，再回收描述符链并推进私有索引。",
+          "detail": "一条中断可以提示多条完成；图中只消费一项。队列进度由驱动维护，独立于刚才的 EOI。 vring_interrupt 先调用 skb_recv_done 安排 NAPI；随后 virtnet_poll 经接收路径取得 used 项，二者不是连续的同步调用。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "read-used"
+          ],
+          "changes": {
+            "last-used": "8",
+            "descriptor": "已回收，可再次发布"
+          },
+          "nodeStates": {
+            "guest": "完成记录已消费",
+            "queue": "驱动消费完成记录"
+          },
+          "sourceIds": [
+            "guest-vring-irq",
+            "guest-rx-callback",
+            "guest-napi-poll",
+            "guest-receive",
+            "consume"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "设备完成与通知决策",
+          "context": "QEMU 设备执行上下文",
+          "sourceIds": [
+            "rx-copy",
+            "used-fill",
+            "used-publish",
+            "notify-check",
+            "virtio-notify"
+          ],
+          "boundary": "先写数据与完成记录，发布索引后再决定是否通知；不是每次完成都产生中断。"
+        },
+        {
+          "id": "path-1",
+          "title": "设备消息与事件交接",
+          "context": "QEMU → KVM 异步边界",
+          "sourceIds": [
+            "msix",
+            "msi-entry",
+            "msi-ioctl"
+          ],
+          "boundary": "仅保留所选场景的路径；guest notifier/eventfd 和 KVM_SIGNAL_MSI 是不同分支。"
+        },
+        {
+          "id": "path-2",
+          "title": "目标路由与接受条件",
+          "context": "KVM / VMX / 处理器",
+          "sourceIds": [
+            "routing",
+            "deliver",
+            "allowed",
+            "ack",
+            "inject"
+          ],
+          "boundary": "软件注入要等待成功 VM-entry；APICv 场景按硬件 posting 条件交付，不强制退出目标 Guest。"
+        },
+        {
+          "id": "path-3",
+          "title": "Guest 应答与完成消费",
+          "context": "Guest IRQ / 驱动上下文",
+          "sourceIds": [
+            "irq-ack",
+            "eoi",
+            "guest-vring-irq",
+            "guest-rx-callback",
+            "guest-napi-poll",
+            "guest-receive",
+            "consume"
+          ],
+          "boundary": "Guest EOI 与驱动取得完成记录分开；eoi 的 KVM 实现解释软件 LAPIC 状态，不是 Guest 直接调用宿主函数。 vring_interrupt → skb_recv_done 是通知回调；NAPI 调度后才进入 virtnet_poll → 接收处理 → used 回收，跨调度边界。",
+          "entry": {
+            "kind": "notification",
+            "label": "中断交付 Guest 后执行 IRQ 回调；后续 NAPI 另行调度"
+          }
+        }
       ]
     },
     {
-      "id":"irqfd","label":"irqfd 通知","summary":"后端触发已绑定的 eventfd，由 KVM 使用预登记的 MSI 路由递送中断。",
-      "assumptions":["固定为 MSI-X、未屏蔽，guest notifier 与 irqfd 已成功绑定", "示例路由键 GSI 37 → APIC ID 1 / 向量 0x51；GSI 不等于 APIC 向量", "使用软件 LAPIC 交付，APICv 关闭，Guest IF 与优先级允许接受", "后端完成已发布；本例原子投递成功，不进入工作队列回退"],
-      "nodes":[{"id":"backend","label":"virtio 后端","role":"内核或用户态后端"},{"id":"eventfd","label":"call eventfd","role":"已绑定 KVM_IRQFD"},{"id":"route","label":"KVM 路由 GSI 37","role":"缓存 MSI 路由"},{"id":"lapic","label":"vCPU 1 LAPIC","role":"软件 IRR / ISR"},{"id":"guest","label":"客户机 IRQ / 驱动","role":"Guest 内核"}],
-      "links":[{"id":"signal","from":"backend","to":"eventfd","label":"完成事件","kind":"notification"},{"id":"wake","from":"eventfd","to":"route","label":"irqfd_wakeup","kind":"notification"},{"id":"deliver","from":"route","to":"lapic","label":"0xfee01000 / 0x51","kind":"notification"},{"id":"inject","from":"lapic","to":"guest","label":"注入 0x51","kind":"notification"},{"id":"eoi","from":"guest","to":"lapic","label":"EOI","kind":"control"}],
-      "structures":[{"id":"binding","title":"eventfd 与已配置路由","kind":"interrupt","fields":[{"key":"event","label":"eventfd 事件","initial":"未触发"},{"key":"gsi","label":"irqfd.gsi","initial":"37"},{"key":"message","label":"缓存 MSI 路由","initial":"APIC ID 1 / vector 0x51"}]},{"id":"apic","title":"中断接收与服务状态","kind":"interrupt","fields":[{"key":"irr","label":"IRR[0x51]","initial":"0"},{"key":"isr","label":"ISR[0x51]","initial":"0"}]},{"id":"queue","title":"队列完成与消费","kind":"queue","fields":[{"key":"used","label":"used.idx","initial":"8（已发布）"},{"key":"last-used","label":"last_used_idx","initial":"7"}]}],
-      "steps":[
-        {"id":"ready","title":"绑定与完成记录已就绪","actor":"后端","description":"KVM 已保存 GSI 37 的 MSI 路由，eventfd 绑定到该路由。","detail":"MSI-X 表项变化需要更新对应路由与通知配置；这里固定一条已正确建立的绑定。","active":[],"links":[],"changes":{},"nodeStates":{},"sourceIds":["bind","irqfd"],"focus":true},
-        {"id":"signal","title":"后端触发完成事件","actor":"后端 → eventfd","description":"后端在发布 used 之后触发 call eventfd。","detail":"eventfd 承载事件计数，实际结果仍在共享队列中。用户态后端触发 eventfd 仍可能需要系统调用。","active":["backend","eventfd"],"links":["signal"],"changes":{"event":"已触发，等待 KVM 消费"},"nodeStates":{"eventfd":"完成通知就绪"},"sourceIds":["irqfd"],"focus":true},
-        {"id":"route","title":"KVM 消费事件并取得路由","actor":"KVM · irqfd_wakeup","description":"KVM 读取 eventfd，取出一致的缓存路由并尝试原子投递。","detail":"若当前上下文不能完成，源码会安排工作队列。无论哪条分支，都不需要 QEMU 逐次监听后再调用 KVM_SIGNAL_MSI。","active":["eventfd","route"],"links":["wake"],"changes":{"event":"已由 KVM 消费"},"nodeStates":{"route":"选定 APIC ID 1 / 0x51"},"sourceIds":["irqfd"],"focus":true},
-        {"id":"pending","title":"到达目标 LAPIC","actor":"KVM 路由 → LAPIC","description":"路由解码出目标与向量，在软件路径设置 IRR[0x51]。","detail":"irqfd 优化的是后端通知进入 KVM 这段；后续仍需接受条件检查和 vCPU 执行机会。","active":["route","lapic"],"links":["deliver"],"changes":{"irr":"1"},"nodeStates":{"lapic":"等待交付"},"sourceIds":["routing","deliver"],"focus":true},
-        {"id":"inject","title":"客户机接受中断","actor":"KVM → 客户机","description":"KVM 取出 IRR 向量、设置 ISR，安排客户机进入相应处理入口。","detail":"相同的 irqfd 前半段也可接 APICv posted 路径；本场景固定使用软件注入，便于与直接 MSI 路径对照。","active":["lapic","guest"],"links":["inject"],"changes":{"irr":"0","isr":"1"},"nodeStates":{"guest":"处理中断"},"sourceIds":["ack","inject","deliver"],"focus":true},
-        {"id":"eoi","title":"客户机应答","actor":"客户机 IRQ 路径","description":"EOI 清除 in-service 状态。","detail":"used.idx 和 last_used_idx 保持原值；eventfd 被消费与客户机回收请求属于独立动作。","active":["guest","lapic"],"links":["eoi"],"changes":{"isr":"0"},"nodeStates":{"lapic":"本次服务状态结束"},"sourceIds":["eoi","irq-ack"],"focus":true},
-        {"id":"consume","title":"消费 used 项","actor":"客户机驱动","description":"驱动随后从共享队列取得完成结果，last_used_idx 推进到 8。","detail":"通知可以合并，后端触发次数、KVM 投递次数与驱动处理请求数不保证一一对应。","active":["guest"],"links":[],"changes":{"last-used":"8"},"nodeStates":{"guest":"完成已消费"},"sourceIds":["consume","irqfd"],"focus":true}
+      "id": "irqfd",
+      "label": "irqfd 通知",
+      "summary": "后端触发已绑定的 eventfd，由 KVM 使用预登记的 MSI 路由递送中断。",
+      "assumptions": [
+        "固定为 MSI-X、未屏蔽，guest notifier 与 irqfd 已成功绑定",
+        "示例路由键 GSI 37 → APIC ID 1 / 向量 0x51；GSI 不等于 APIC 向量",
+        "使用软件 LAPIC 交付，APICv 关闭，Guest IF 与优先级允许接受",
+        "本次后端完成尚未发布；之后 irqfd 原子投递成功，不进入工作队列回退",
+        "具体发起方为一次 QEMU virtio-net RX 完成；split queue，VIRTIO_F_EVENT_IDX 未协商，默认 avail.flags 不设置 NO_INTERRUPT",
+        "缓冲区已经发布且容量足够；此处不重复收包、描述符分配与网络协议栈的全部过程",
+        "固定 QEMU IOThread 的 guest notifier 路径；不把 vhost-net 或物理设备的发起函数混入这条源码链",
+        "未协商 VIRTIO_F_NOTIFY_ON_EMPTY；不触发队列清空时的强制通知例外"
+      ],
+      "nodes": [
+        {
+          "id": "backend",
+          "label": "QEMU virtio-net IOThread",
+          "role": "QEMU IOThread · virtio-net RX 完成"
+        },
+        {
+          "id": "eventfd",
+          "label": "call eventfd",
+          "role": "已绑定 KVM_IRQFD"
+        },
+        {
+          "id": "route",
+          "label": "KVM 路由 GSI 37",
+          "role": "缓存 MSI 路由"
+        },
+        {
+          "id": "lapic",
+          "label": "vCPU 1 LAPIC",
+          "role": "软件 IRR / ISR"
+        },
+        {
+          "id": "guest",
+          "label": "客户机 IRQ / 驱动",
+          "role": "Guest 内核",
+          "badge": "内核态"
+        },
+        {
+          "id": "queue",
+          "label": "RX 缓冲区与 used ring",
+          "role": "Guest RAM，共享队列",
+          "initial": "P1 尚未写入，used.idx=7"
+        }
+      ],
+      "links": [
+        {
+          "id": "signal",
+          "from": "backend",
+          "to": "eventfd",
+          "label": "完成事件",
+          "kind": "notification"
+        },
+        {
+          "id": "wake",
+          "from": "eventfd",
+          "to": "route",
+          "label": "irqfd_wakeup",
+          "kind": "notification"
+        },
+        {
+          "id": "deliver",
+          "from": "route",
+          "to": "lapic",
+          "label": "0xfee01000 / 0x51",
+          "kind": "notification"
+        },
+        {
+          "id": "inject",
+          "from": "lapic",
+          "to": "guest",
+          "label": "注入 0x51",
+          "kind": "notification"
+        },
+        {
+          "id": "eoi",
+          "from": "guest",
+          "to": "lapic",
+          "label": "EOI",
+          "kind": "control"
+        },
+        {
+          "id": "write-data",
+          "from": "backend",
+          "to": "queue",
+          "label": "写入 RX 报文",
+          "kind": "data"
+        },
+        {
+          "id": "publish-used",
+          "from": "backend",
+          "to": "queue",
+          "label": "填写并发布完成记录",
+          "kind": "control"
+        },
+        {
+          "id": "read-used",
+          "from": "queue",
+          "to": "guest",
+          "label": "驱动消费完成记录",
+          "kind": "data"
+        }
+      ],
+      "structures": [
+        {
+          "id": "binding",
+          "title": "eventfd 与已配置路由",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "event",
+              "label": "eventfd 事件",
+              "initial": "未触发"
+            },
+            {
+              "key": "gsi",
+              "label": "irqfd.gsi",
+              "initial": "37"
+            },
+            {
+              "key": "message",
+              "label": "缓存 MSI 路由",
+              "initial": "APIC ID 1 / vector 0x51"
+            }
+          ]
+        },
+        {
+          "id": "apic",
+          "title": "中断接收与服务状态",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "irr",
+              "label": "IRR[0x51]",
+              "initial": "0"
+            },
+            {
+              "key": "isr",
+              "label": "ISR[0x51]",
+              "initial": "0"
+            }
+          ]
+        },
+        {
+          "id": "queue",
+          "title": "队列完成与消费",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "used",
+              "label": "used.idx",
+              "initial": "7"
+            },
+            {
+              "key": "last-used",
+              "label": "last_used_idx",
+              "initial": "7"
+            }
+          ]
+        },
+        {
+          "id": "device-completion",
+          "title": "设备数据与通知起点",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "payload",
+              "label": "RX 数据",
+              "initial": "尚未写入"
+            },
+            {
+              "key": "used-entry",
+              "label": "used.ring[7]",
+              "initial": "尚未填写"
+            },
+            {
+              "key": "notify-policy",
+              "label": "通知条件",
+              "initial": "avail.flags.NO_INTERRUPT = 0"
+            },
+            {
+              "key": "notify-decision",
+              "label": "通知判断",
+              "initial": "尚未检查"
+            }
+          ]
+        },
+        {
+          "id": "delivery-stage",
+          "title": "注入阶段",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "delivery",
+              "label": "Guest 接受状态",
+              "initial": "尚无注入事件"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "ready",
+          "title": "设备完成前",
+          "actor": "QEMU virtio-net · RX 后端",
+          "description": "一次报文即将写入预先发布的 Guest RX 缓冲区，本次完成项尚未发布。",
+          "detail": "跟踪报文 P1 的 72 B 接收结果（12 B virtio 头与 60 B 帧），队列大小 8，先前 used.idx 与驱动消费位置均为 7。设备通知、LAPIC pending 和 Guest 消费分开推进。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "rx-copy",
+            "used-fill"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-data",
+          "title": "写入 Guest RX 数据",
+          "actor": "QEMU virtio-net · receive",
+          "description": "设备把 P1 报文写入已经借给设备的 RX 缓冲区。",
+          "detail": "数据写入与通知分离。此刻 used.idx 仍为 7，驱动还不能仅凭数据变化认定请求完成。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "write-data"
+          ],
+          "changes": {
+            "payload": "72 B 已写入；本次完成尚未发布"
+          },
+          "nodeStates": {
+            "queue": "数据已写入，完成待发布",
+            "backend": "写入 Guest RX 数据"
+          },
+          "sourceIds": [
+            "rx-copy"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used-fill",
+          "title": "填写完成项",
+          "actor": "QEMU · virtqueue_fill",
+          "description": "写 used.ring[7] 的 id=0、len=72。",
+          "detail": "填写环项没有推进 used.idx；驱动的消费位置仍为 7。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "publish-used"
+          ],
+          "changes": {
+            "used-entry": "id=0 · len=72"
+          },
+          "nodeStates": {
+            "backend": "填写完成项",
+            "queue": "填写完成项"
+          },
+          "sourceIds": [
+            "used-fill"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used-publish",
+          "title": "发布 used.idx",
+          "actor": "QEMU · virtqueue_split_flush",
+          "description": "在写入顺序约束之后，把 used.idx 从 7 推进到 8。",
+          "detail": "发布索引使驱动可以按协议观察到前面的数据与完成记录；这一步本身尚未发中断。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [
+            "publish-used"
+          ],
+          "changes": {
+            "used": "8"
+          },
+          "nodeStates": {
+            "queue": "P1 完成已发布",
+            "backend": "发布 used.idx"
+          },
+          "sourceIds": [
+            "used-publish"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify-check",
+          "title": "检查是否需要通知",
+          "actor": "QEMU · virtio_should_notify",
+          "description": "本例 NO_INTERRUPT 为 0，因此允许为此次完成发出通知。",
+          "detail": "EVENT_IDX 未协商；若启用该特性，要改用事件索引判断，不能把两种策略同时当作必经判断。",
+          "active": [
+            "backend",
+            "queue"
+          ],
+          "links": [],
+          "changes": {
+            "notify-decision": "允许通知"
+          },
+          "nodeStates": {
+            "backend": "检查是否需要通知",
+            "queue": "检查是否需要通知"
+          },
+          "sourceIds": [
+            "notify-check",
+            "virtio-notify"
+          ],
+          "focus": true
+        },
+        {
+          "id": "signal",
+          "title": "后端触发完成事件",
+          "actor": "QEMU IOThread · guest notifier",
+          "description": "后端在发布 used 之后触发 call eventfd。",
+          "detail": "virtio_irq 经延迟通知回调执行 event_notifier_set，KVM 的 irqfd 接收该事件；不是由 QEMU vCPU 线程逐次模拟 MSI。",
+          "active": [
+            "backend",
+            "eventfd"
+          ],
+          "links": [
+            "signal"
+          ],
+          "changes": {
+            "event": "已触发，等待 KVM 消费"
+          },
+          "nodeStates": {
+            "eventfd": "完成通知就绪",
+            "backend": "后端触发完成事件"
+          },
+          "sourceIds": [
+            "virtio-irq",
+            "notify-eventfd",
+            "irqfd"
+          ],
+          "focus": true
+        },
+        {
+          "id": "route",
+          "title": "KVM 消费事件并取得路由",
+          "actor": "KVM · irqfd_wakeup",
+          "description": "KVM 读取 eventfd，取出一致的缓存路由并尝试原子投递。",
+          "detail": "若当前上下文不能完成，源码会安排工作队列。无论哪条分支，都不需要 QEMU 逐次监听后再调用 KVM_SIGNAL_MSI。",
+          "active": [
+            "eventfd",
+            "route"
+          ],
+          "links": [
+            "wake"
+          ],
+          "changes": {
+            "event": "已由 KVM 消费"
+          },
+          "nodeStates": {
+            "route": "选定 APIC ID 1 / 0x51",
+            "eventfd": "KVM 消费事件并取得路由"
+          },
+          "sourceIds": [
+            "irqfd"
+          ],
+          "focus": true
+        },
+        {
+          "id": "pending",
+          "title": "到达目标 LAPIC",
+          "actor": "KVM 路由 → LAPIC",
+          "description": "路由解码出目标与向量，在软件路径设置 IRR[0x51]。",
+          "detail": "irqfd 优化的是后端通知进入 KVM 这段；后续仍需接受条件检查和 vCPU 执行机会。",
+          "active": [
+            "route",
+            "lapic"
+          ],
+          "links": [
+            "deliver"
+          ],
+          "changes": {
+            "irr": "1"
+          },
+          "nodeStates": {
+            "lapic": "等待交付",
+            "route": "到达目标 LAPIC"
+          },
+          "sourceIds": [
+            "routing",
+            "deliver"
+          ],
+          "focus": true
+        },
+        {
+          "id": "inject",
+          "title": "准备 VM-entry 中断注入",
+          "actor": "KVM · 接受条件检查与 VMCS 配置",
+          "description": "条件允许后，KVM 从 IRR 取出向量、记录 ISR，并填写 VM-entry 中断注入字段。",
+          "detail": "这是软件路径的准备状态，Guest handler 此刻尚未执行。只有成功进入客户机，才能说 CPU 已把控制权交给中断入口。",
+          "active": [
+            "lapic"
+          ],
+          "links": [],
+          "changes": {
+            "irr": "0",
+            "isr": "1",
+            "delivery": "注入字段已准备，尚未进入 Guest"
+          },
+          "nodeStates": {
+            "guest": "handler 尚未执行",
+            "lapic": "准备 VM-entry 中断注入"
+          },
+          "sourceIds": [
+            "allowed",
+            "ack",
+            "inject"
+          ],
+          "focus": true
+        },
+        {
+          "id": "guest-entry",
+          "title": "成功进入 Guest 中断入口",
+          "actor": "处理器 · VM-entry",
+          "description": "本次 VM-entry 成功，处理器按注入字段进入向量 0x51 的 Guest 中断入口。",
+          "detail": "软件准备注入、硬件接受、驱动处理是不同阶段。EOI 和队列消费的先后按本例 Linux IRQ 路径单独展示。",
+          "active": [
+            "guest"
+          ],
+          "links": [
+            "inject"
+          ],
+          "changes": {
+            "delivery": "Guest handler 已进入"
+          },
+          "nodeStates": {
+            "guest": "执行 Guest IRQ 入口"
+          },
+          "sourceIds": [
+            "inject",
+            "irq-ack"
+          ],
+          "focus": true
+        },
+        {
+          "id": "eoi",
+          "title": "客户机应答",
+          "actor": "客户机 IRQ 路径",
+          "description": "EOI 清除 in-service 状态。",
+          "detail": "used.idx 和 last_used_idx 保持原值；eventfd 被消费与客户机回收请求属于独立动作。",
+          "active": [
+            "guest",
+            "lapic"
+          ],
+          "links": [
+            "eoi"
+          ],
+          "changes": {
+            "isr": "0"
+          },
+          "nodeStates": {
+            "lapic": "本次服务状态结束",
+            "guest": "客户机应答"
+          },
+          "sourceIds": [
+            "eoi",
+            "irq-ack"
+          ],
+          "focus": true
+        },
+        {
+          "id": "consume",
+          "title": "消费 used 项",
+          "actor": "客户机驱动",
+          "description": "驱动随后从共享队列取得完成结果，last_used_idx 推进到 8。",
+          "detail": "通知可以合并，后端触发次数、KVM 投递次数与驱动处理请求数不保证一一对应。 vring_interrupt 先调用 skb_recv_done 安排 NAPI；随后 virtnet_poll 经接收路径取得 used 项，二者不是连续的同步调用。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "read-used"
+          ],
+          "changes": {
+            "last-used": "8"
+          },
+          "nodeStates": {
+            "guest": "完成已消费",
+            "queue": "消费 used 项"
+          },
+          "sourceIds": [
+            "guest-vring-irq",
+            "guest-rx-callback",
+            "guest-napi-poll",
+            "guest-receive",
+            "consume"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "设备完成与通知决策",
+          "context": "QEMU 设备执行上下文",
+          "sourceIds": [
+            "rx-copy",
+            "used-fill",
+            "used-publish",
+            "notify-check",
+            "virtio-notify",
+            "virtio-irq"
+          ],
+          "boundary": "先写数据与完成记录，发布索引后再决定是否通知；不是每次完成都产生中断。"
+        },
+        {
+          "id": "path-1",
+          "title": "设备消息与事件交接",
+          "context": "QEMU → KVM 异步边界",
+          "sourceIds": [
+            "notify-eventfd",
+            "irqfd"
+          ],
+          "boundary": "仅保留所选场景的路径；guest notifier/eventfd 和 KVM_SIGNAL_MSI 是不同分支。"
+        },
+        {
+          "id": "path-2",
+          "title": "目标路由与接受条件",
+          "context": "KVM / VMX / 处理器",
+          "sourceIds": [
+            "routing",
+            "deliver",
+            "allowed",
+            "ack",
+            "inject"
+          ],
+          "boundary": "软件注入要等待成功 VM-entry；APICv 场景按硬件 posting 条件交付，不强制退出目标 Guest。"
+        },
+        {
+          "id": "path-3",
+          "title": "Guest 应答与完成消费",
+          "context": "Guest IRQ / 驱动上下文",
+          "sourceIds": [
+            "irq-ack",
+            "eoi",
+            "guest-vring-irq",
+            "guest-rx-callback",
+            "guest-napi-poll",
+            "guest-receive",
+            "consume"
+          ],
+          "boundary": "Guest EOI 与驱动取得完成记录分开；eoi 的 KVM 实现解释软件 LAPIC 状态，不是 Guest 直接调用宿主函数。 vring_interrupt → skb_recv_done 是通知回调；NAPI 调度后才进入 virtnet_poll → 接收处理 → used 回收，跨调度边界。",
+          "entry": {
+            "kind": "notification",
+            "label": "中断交付 Guest 后执行 IRQ 回调；后续 NAPI 另行调度"
+          }
+        }
       ]
     },
     {
-      "id":"if-masked","label":"IF 关闭与延迟交付","summary":"向量已到 LAPIC，但客户机 IF = 0；恢复 IF 并越过 STI shadow 后才接受中断。",
-      "assumptions":["Intel VMX 软件注入路径，APICv 关闭，MSI-X 表项未屏蔽", "向量 0x51 高于当前 APIC 优先级；固定忽略 NMI 和更高优先级事件", "客户机内核执行 STI，再执行一条普通指令，展示 STI shadow"],
-      "nodes":[{"id":"source","label":"设备完成消息","role":"MSI-X 已获准发送"},{"id":"lapic","label":"虚拟 LAPIC","role":"IRR / ISR"},{"id":"kvm","label":"VMX 事件检查","role":"宿主内核"},{"id":"guest","label":"客户机内核","role":"IF 与 interrupt shadow"}],
-      "links":[{"id":"arrive","from":"source","to":"lapic","label":"向量 0x51","kind":"notification"},{"id":"check","from":"lapic","to":"kvm","label":"待处理事件检查","kind":"control"},{"id":"state","from":"guest","to":"kvm","label":"IF / shadow 状态","kind":"control"},{"id":"inject","from":"kvm","to":"guest","label":"中断窗口允许注入","kind":"notification"},{"id":"eoi","from":"guest","to":"lapic","label":"EOI","kind":"control"}],
-      "structures":[{"id":"conditions","title":"客户机中断允许条件","kind":"registers","fields":[{"key":"if","label":"RFLAGS.IF","initial":"0"},{"key":"shadow","label":"STI interrupt shadow","initial":"0"},{"key":"window","label":"可屏蔽中断窗口","initial":"关闭"}]},{"id":"apic","title":"LAPIC 状态","kind":"interrupt","fields":[{"key":"irr","label":"IRR[0x51]","initial":"0"},{"key":"isr","label":"ISR[0x51]","initial":"0"},{"key":"pba","label":"设备 PBA[2]","initial":"0（未在设备侧屏蔽）"}]}],
-      "steps":[
-        {"id":"ready","title":"客户机暂时关闭中断","actor":"客户机内核","description":"客户机处于 IF = 0 的临界区，尚无本次待处理中断。","detail":"IF 控制可屏蔽中断接受；它不会把设备 MSI-X 表项的 mask 位一并设为 1。","active":[],"links":[],"changes":{},"nodeStates":{},"sourceIds":["allowed","msix"],"focus":true},
-        {"id":"pending","title":"消息到达 LAPIC","actor":"设备 → LAPIC","description":"消息已通过设备屏蔽检查，LAPIC 设置 IRR[0x51]。","detail":"向量停留在 CPU 侧待处理状态；设备 PBA 仍为 0。","active":["source","lapic"],"links":["arrive"],"changes":{"irr":"1"},"nodeStates":{"lapic":"0x51 待处理"},"sourceIds":["deliver"],"focus":true},
-        {"id":"blocked","title":"保留等待，不注入","actor":"KVM · VMX 条件检查","description":"Guest IF = 0，当前不能注入这条可屏蔽中断，IRR 保留。","detail":"KVM 可安排中断窗口检查；pending 表示已有事件，不代表客户机 handler 已运行。","active":["lapic","kvm"],"links":["check","state"],"changes":{},"nodeStates":{"kvm":"等待可用中断窗口"},"sourceIds":["allowed"],"focus":false},
-        {"id":"sti","title":"STI 设置 IF","actor":"客户机内核","description":"客户机执行 STI，把 IF 设为 1，同时进入短暂的 STI interrupt shadow。","detail":"在本例从 IF = 0 执行 STI 的条件下，紧随其后的一条指令仍受到中断抑制保护。","active":["guest","kvm"],"links":["state"],"changes":{"if":"1","shadow":"1","window":"关闭，STI shadow 生效"},"nodeStates":{"guest":"即将执行 STI 后一条指令"},"sourceIds":["sdm","allowed"],"focus":true},
-        {"id":"window","title":"越过 STI 后一条指令","actor":"客户机处理器 → KVM","description":"下一条普通指令完成，shadow 清除，IF 保持 1。","detail":"软件注入路径可借 interrupt-window exiting 在窗口开放时回到 KVM，重新检查事件。本例 APIC 优先级允许，接下来可以安排注入。","active":["guest","kvm"],"links":["state"],"changes":{"shadow":"0","window":"开放"},"nodeStates":{"kvm":"可以安排注入"},"sourceIds":["sdm","allowed","window"],"focus":true},
-        {"id":"inject","title":"取出并交付待处理向量","actor":"KVM → 客户机","description":"软件注入清 IRR、置 ISR，客户机进入向量 0x51 的 interrupt gate。","detail":"本例使用 interrupt gate，进入处理程序会清 IF；这发生在接受中断之后，不会撤销已接受的事件。","active":["lapic","kvm","guest"],"links":["check","inject"],"changes":{"irr":"0","isr":"1","if":"0（interrupt gate 入口）","window":"handler 入口暂关闭"},"nodeStates":{"guest":"处理向量 0x51"},"sourceIds":["ack","inject","sdm"],"focus":true},
-        {"id":"eoi","title":"完成 APIC 应答","actor":"客户机 IRQ 路径","description":"客户机 EOI 清除 ISR[0x51]。","detail":"后续是否重新启用 IF 由客户机处理程序及中断返回控制；EOI 本身不修改 IF，也不消费设备队列。","active":["guest","lapic"],"links":["eoi"],"changes":{"isr":"0"},"nodeStates":{"lapic":"本次服务已应答"},"sourceIds":["eoi","sdm"],"focus":true}
+      "id": "if-masked",
+      "label": "IF 关闭与延迟交付",
+      "summary": "向量已到 LAPIC，但客户机 IF = 0；恢复 IF 并越过 STI shadow 后才接受中断。",
+      "assumptions": [
+        "Intel VMX 软件注入路径，APICv 关闭，MSI-X 表项未屏蔽",
+        "向量 0x51 高于当前 APIC 优先级；固定忽略 NMI 和更高优先级事件",
+        "客户机内核执行 STI，再执行一条普通指令，展示 STI shadow",
+        "具体发起方为一次 QEMU virtio-net RX 完成；split queue，VIRTIO_F_EVENT_IDX 未协商，默认 avail.flags 不设置 NO_INTERRUPT",
+        "缓冲区已经发布且容量足够；此处不重复收包、描述符分配与网络协议栈的全部过程",
+        "未协商 VIRTIO_F_NOTIFY_ON_EMPTY；不触发队列清空时的强制通知例外"
+      ],
+      "nodes": [
+        {
+          "id": "source",
+          "label": "QEMU virtio-net",
+          "role": "QEMU virtio-net · MSI-X 完成通知"
+        },
+        {
+          "id": "lapic",
+          "label": "虚拟 LAPIC",
+          "role": "IRR / ISR"
+        },
+        {
+          "id": "kvm",
+          "label": "VMX 事件检查",
+          "role": "宿主内核"
+        },
+        {
+          "id": "guest",
+          "label": "客户机内核",
+          "role": "IF 与 interrupt shadow",
+          "badge": "内核态"
+        },
+        {
+          "id": "queue",
+          "label": "RX 缓冲区与 used ring",
+          "role": "Guest RAM，共享队列",
+          "initial": "P1 尚未写入，used.idx=7"
+        }
+      ],
+      "links": [
+        {
+          "id": "arrive",
+          "from": "source",
+          "to": "lapic",
+          "label": "向量 0x51",
+          "kind": "notification"
+        },
+        {
+          "id": "check",
+          "from": "lapic",
+          "to": "kvm",
+          "label": "待处理事件检查",
+          "kind": "control"
+        },
+        {
+          "id": "state",
+          "from": "guest",
+          "to": "kvm",
+          "label": "IF / shadow 状态",
+          "kind": "control"
+        },
+        {
+          "id": "inject",
+          "from": "kvm",
+          "to": "guest",
+          "label": "中断窗口允许注入",
+          "kind": "notification"
+        },
+        {
+          "id": "eoi",
+          "from": "guest",
+          "to": "lapic",
+          "label": "EOI",
+          "kind": "control"
+        },
+        {
+          "id": "write-data",
+          "from": "source",
+          "to": "queue",
+          "label": "写入 RX 报文",
+          "kind": "data"
+        },
+        {
+          "id": "publish-used",
+          "from": "source",
+          "to": "queue",
+          "label": "填写并发布完成记录",
+          "kind": "control"
+        },
+        {
+          "id": "read-used",
+          "from": "queue",
+          "to": "guest",
+          "label": "驱动消费完成记录",
+          "kind": "data"
+        }
+      ],
+      "structures": [
+        {
+          "id": "conditions",
+          "title": "客户机中断允许条件",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "if",
+              "label": "RFLAGS.IF",
+              "initial": "0"
+            },
+            {
+              "key": "shadow",
+              "label": "STI interrupt shadow",
+              "initial": "0"
+            },
+            {
+              "key": "window",
+              "label": "可屏蔽中断窗口",
+              "initial": "关闭"
+            }
+          ]
+        },
+        {
+          "id": "apic",
+          "title": "LAPIC 状态",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "irr",
+              "label": "IRR[0x51]",
+              "initial": "0"
+            },
+            {
+              "key": "isr",
+              "label": "ISR[0x51]",
+              "initial": "0"
+            },
+            {
+              "key": "pba",
+              "label": "设备 PBA[2]",
+              "initial": "0（未在设备侧屏蔽）"
+            }
+          ]
+        },
+        {
+          "id": "device-completion",
+          "title": "设备数据与通知起点",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "payload",
+              "label": "RX 数据",
+              "initial": "尚未写入"
+            },
+            {
+              "key": "used-entry",
+              "label": "used.ring[7]",
+              "initial": "尚未填写"
+            },
+            {
+              "key": "notify-policy",
+              "label": "通知条件",
+              "initial": "avail.flags.NO_INTERRUPT = 0"
+            },
+            {
+              "key": "notify-decision",
+              "label": "通知判断",
+              "initial": "尚未检查"
+            },
+            {
+              "key": "used",
+              "label": "used.idx",
+              "initial": "7"
+            },
+            {
+              "key": "last-used",
+              "label": "驱动消费位置",
+              "initial": "7"
+            }
+          ]
+        },
+        {
+          "id": "delivery-stage",
+          "title": "注入阶段",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "delivery",
+              "label": "Guest 接受状态",
+              "initial": "尚无注入事件"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "ready",
+          "title": "设备完成前",
+          "actor": "QEMU virtio-net · RX 后端",
+          "description": "一次报文即将写入预先发布的 Guest RX 缓冲区，本次完成项尚未发布。",
+          "detail": "跟踪报文 P1 的 72 B 接收结果（12 B virtio 头与 60 B 帧），队列大小 8，先前 used.idx 与驱动消费位置均为 7。设备通知、LAPIC pending 和 Guest 消费分开推进。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "rx-copy",
+            "used-fill"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-data",
+          "title": "写入 Guest RX 数据",
+          "actor": "QEMU virtio-net · receive",
+          "description": "设备把 P1 报文写入已经借给设备的 RX 缓冲区。",
+          "detail": "数据写入与通知分离。此刻 used.idx 仍为 7，驱动还不能仅凭数据变化认定请求完成。",
+          "active": [
+            "source",
+            "queue"
+          ],
+          "links": [
+            "write-data"
+          ],
+          "changes": {
+            "payload": "72 B 已写入；本次完成尚未发布"
+          },
+          "nodeStates": {
+            "queue": "数据已写入，完成待发布",
+            "source": "写入 Guest RX 数据"
+          },
+          "sourceIds": [
+            "rx-copy"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used-fill",
+          "title": "填写完成项",
+          "actor": "QEMU · virtqueue_fill",
+          "description": "写 used.ring[7] 的 id=0、len=72。",
+          "detail": "填写环项没有推进 used.idx；驱动的消费位置仍为 7。",
+          "active": [
+            "source",
+            "queue"
+          ],
+          "links": [
+            "publish-used"
+          ],
+          "changes": {
+            "used-entry": "id=0 · len=72"
+          },
+          "nodeStates": {
+            "source": "填写完成项",
+            "queue": "填写完成项"
+          },
+          "sourceIds": [
+            "used-fill"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used-publish",
+          "title": "发布 used.idx",
+          "actor": "QEMU · virtqueue_split_flush",
+          "description": "在写入顺序约束之后，把 used.idx 从 7 推进到 8。",
+          "detail": "发布索引使驱动可以按协议观察到前面的数据与完成记录；这一步本身尚未发中断。",
+          "active": [
+            "source",
+            "queue"
+          ],
+          "links": [
+            "publish-used"
+          ],
+          "changes": {
+            "used": "8"
+          },
+          "nodeStates": {
+            "queue": "P1 完成已发布",
+            "source": "发布 used.idx"
+          },
+          "sourceIds": [
+            "used-publish"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify-check",
+          "title": "检查是否需要通知",
+          "actor": "QEMU · virtio_should_notify",
+          "description": "本例 NO_INTERRUPT 为 0，因此允许为此次完成发出通知。",
+          "detail": "EVENT_IDX 未协商；若启用该特性，要改用事件索引判断，不能把两种策略同时当作必经判断。",
+          "active": [
+            "source",
+            "queue"
+          ],
+          "links": [],
+          "changes": {
+            "notify-decision": "允许通知"
+          },
+          "nodeStates": {
+            "source": "检查是否需要通知",
+            "queue": "检查是否需要通知"
+          },
+          "sourceIds": [
+            "notify-check",
+            "virtio-notify"
+          ],
+          "focus": true
+        },
+        {
+          "id": "pending",
+          "title": "消息到达 LAPIC",
+          "actor": "设备 → LAPIC",
+          "description": "消息已通过设备屏蔽检查，LAPIC 设置 IRR[0x51]。",
+          "detail": "向量停留在 CPU 侧待处理状态；设备 PBA 仍为 0。",
+          "active": [
+            "source",
+            "lapic"
+          ],
+          "links": [
+            "arrive"
+          ],
+          "changes": {
+            "irr": "1"
+          },
+          "nodeStates": {
+            "lapic": "0x51 待处理",
+            "source": "消息到达 LAPIC"
+          },
+          "sourceIds": [
+            "msix",
+            "msi-ioctl",
+            "routing",
+            "deliver"
+          ],
+          "focus": true
+        },
+        {
+          "id": "blocked",
+          "title": "保留等待，不注入",
+          "actor": "KVM · VMX 条件检查",
+          "description": "Guest IF = 0，当前不能注入这条可屏蔽中断，IRR 保留。",
+          "detail": "KVM 可安排中断窗口检查；pending 表示已有事件，不代表客户机 handler 已运行。",
+          "active": [
+            "lapic",
+            "kvm"
+          ],
+          "links": [
+            "check",
+            "state"
+          ],
+          "changes": {},
+          "nodeStates": {
+            "kvm": "等待可用中断窗口",
+            "lapic": "保留等待，不注入"
+          },
+          "sourceIds": [
+            "allowed"
+          ],
+          "focus": false
+        },
+        {
+          "id": "sti",
+          "title": "STI 设置 IF",
+          "actor": "客户机内核",
+          "description": "客户机执行 STI，把 IF 设为 1，同时进入短暂的 STI interrupt shadow。",
+          "detail": "在本例从 IF = 0 执行 STI 的条件下，紧随其后的一条指令仍受到中断抑制保护。",
+          "active": [
+            "guest",
+            "kvm"
+          ],
+          "links": [
+            "state"
+          ],
+          "changes": {
+            "if": "1",
+            "shadow": "1",
+            "window": "关闭，STI shadow 生效"
+          },
+          "nodeStates": {
+            "guest": "即将执行 STI 后一条指令",
+            "kvm": "STI 设置 IF"
+          },
+          "sourceIds": [
+            "sdm",
+            "allowed"
+          ],
+          "focus": true
+        },
+        {
+          "id": "window",
+          "title": "越过 STI 后一条指令",
+          "actor": "客户机处理器 → KVM",
+          "description": "下一条普通指令完成，shadow 清除，IF 保持 1。",
+          "detail": "软件注入路径可借 interrupt-window exiting 在窗口开放时回到 KVM，重新检查事件。本例 APIC 优先级允许，接下来可以安排注入。",
+          "active": [
+            "guest",
+            "kvm"
+          ],
+          "links": [
+            "state"
+          ],
+          "changes": {
+            "shadow": "0",
+            "window": "开放"
+          },
+          "nodeStates": {
+            "kvm": "可以安排注入",
+            "guest": "越过 STI 后一条指令"
+          },
+          "sourceIds": [
+            "sdm",
+            "allowed",
+            "window"
+          ],
+          "focus": true
+        },
+        {
+          "id": "inject",
+          "title": "准备 VM-entry 中断注入",
+          "actor": "KVM · 接受条件检查与 VMCS 配置",
+          "description": "条件允许后，KVM 从 IRR 取出向量、记录 ISR，并填写 VM-entry 中断注入字段。",
+          "detail": "这是软件路径的准备状态，Guest handler 此刻尚未执行。只有成功进入客户机，才能说 CPU 已把控制权交给中断入口。",
+          "active": [
+            "lapic",
+            "kvm"
+          ],
+          "links": [],
+          "changes": {
+            "irr": "0",
+            "isr": "1",
+            "delivery": "注入字段已准备，尚未进入 Guest"
+          },
+          "nodeStates": {
+            "guest": "handler 尚未执行",
+            "lapic": "准备 VM-entry 中断注入",
+            "kvm": "准备 VM-entry 中断注入"
+          },
+          "sourceIds": [
+            "allowed",
+            "ack",
+            "inject"
+          ],
+          "focus": true
+        },
+        {
+          "id": "guest-entry",
+          "title": "成功进入 Guest 中断入口",
+          "actor": "处理器 · VM-entry",
+          "description": "本次 VM-entry 成功，处理器按注入字段进入向量 0x51 的 Guest 中断入口。",
+          "detail": "软件准备注入、硬件接受、驱动处理是不同阶段。EOI 和队列消费的先后按本例 Linux IRQ 路径单独展示。",
+          "active": [
+            "guest"
+          ],
+          "links": [
+            "check",
+            "inject"
+          ],
+          "changes": {
+            "if": "0（interrupt gate 入口）",
+            "window": "handler 入口暂关闭",
+            "delivery": "Guest handler 已进入"
+          },
+          "nodeStates": {
+            "guest": "执行 Guest IRQ 入口"
+          },
+          "sourceIds": [
+            "inject",
+            "irq-ack"
+          ],
+          "focus": true
+        },
+        {
+          "id": "eoi",
+          "title": "完成 APIC 应答",
+          "actor": "客户机 IRQ 路径",
+          "description": "客户机 EOI 清除 ISR[0x51]。",
+          "detail": "后续是否重新启用 IF 由客户机处理程序及中断返回控制；EOI 本身不修改 IF，也不消费设备队列。",
+          "active": [
+            "guest",
+            "lapic"
+          ],
+          "links": [
+            "eoi"
+          ],
+          "changes": {
+            "isr": "0"
+          },
+          "nodeStates": {
+            "lapic": "本次服务已应答",
+            "guest": "完成 APIC 应答"
+          },
+          "sourceIds": [
+            "eoi",
+            "sdm"
+          ],
+          "focus": true
+        },
+        {
+          "id": "consume",
+          "title": "驱动消费已发布的完成",
+          "actor": "Guest IRQ / NAPI 与驱动",
+          "description": "驱动沿接收处理路径取得 used 项，消费位置从 7 前进到 8。",
+          "detail": "APIC 应答不自动消费队列。NAPI 调度与完整协议栈细节见网络演示；本步只观察完成记录回收。 vring_interrupt 先调用 skb_recv_done 安排 NAPI；随后 virtnet_poll 经接收路径取得 used 项，二者不是连续的同步调用。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "read-used"
+          ],
+          "changes": {
+            "last-used": "8"
+          },
+          "nodeStates": {
+            "queue": "完成已由驱动消费",
+            "guest": "驱动消费已发布的完成"
+          },
+          "sourceIds": [
+            "guest-vring-irq",
+            "guest-rx-callback",
+            "guest-napi-poll",
+            "guest-receive",
+            "consume"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "设备完成与通知决策",
+          "context": "QEMU 设备执行上下文",
+          "sourceIds": [
+            "rx-copy",
+            "used-fill",
+            "used-publish",
+            "notify-check",
+            "virtio-notify"
+          ],
+          "boundary": "先写数据与完成记录，发布索引后再决定是否通知；不是每次完成都产生中断。"
+        },
+        {
+          "id": "path-1",
+          "title": "设备消息与事件交接",
+          "context": "QEMU → KVM 异步边界",
+          "sourceIds": [
+            "msix",
+            "msi-ioctl"
+          ],
+          "boundary": "仅保留所选场景的路径；guest notifier/eventfd 和 KVM_SIGNAL_MSI 是不同分支。"
+        },
+        {
+          "id": "path-2",
+          "title": "目标路由与接受条件",
+          "context": "KVM / VMX / 处理器",
+          "sourceIds": [
+            "routing",
+            "deliver",
+            "allowed",
+            "window",
+            "ack",
+            "inject",
+            "sdm"
+          ],
+          "boundary": "软件注入要等待成功 VM-entry；APICv 场景按硬件 posting 条件交付，不强制退出目标 Guest。"
+        },
+        {
+          "id": "path-3",
+          "title": "Guest 应答与完成消费",
+          "context": "Guest IRQ / 驱动上下文",
+          "sourceIds": [
+            "irq-ack",
+            "eoi",
+            "guest-vring-irq",
+            "guest-rx-callback",
+            "guest-napi-poll",
+            "guest-receive",
+            "consume"
+          ],
+          "boundary": "Guest EOI 与驱动取得完成记录分开；eoi 的 KVM 实现解释软件 LAPIC 状态，不是 Guest 直接调用宿主函数。 vring_interrupt → skb_recv_done 是通知回调；NAPI 调度后才进入 virtnet_poll → 接收处理 → used 回收，跨调度边界。",
+          "entry": {
+            "kind": "notification",
+            "label": "中断交付 Guest 后执行 IRQ 回调；后续 NAPI 另行调度"
+          }
+        }
       ]
     },
     {
-      "id":"msix-masked","label":"MSI-X 屏蔽与 PBA","summary":"设备表项被屏蔽时把通知记入 PBA，解除屏蔽后再补发 MSI-X 消息。",
-      "assumptions":["QEMU 软件 MSI-X 设备，表项 2 已分配，功能级 mask 关闭", "表项级 mask 初始为 1；不用 irqfd notifier 路径，聚焦 msix_notify 与 mask update", "APICv 关闭，目标 Guest IF、shadow 与优先级均允许交付"],
-      "nodes":[{"id":"device","label":"QEMU 设备模型","role":"完成通知发起者"},{"id":"msix","label":"MSI-X 表项 / PBA","role":"设备侧屏蔽状态"},{"id":"guest","label":"客户机驱动","role":"配置表项与处理中断"},{"id":"kvm","label":"KVM MSI 路由","role":"宿主内核"},{"id":"lapic","label":"目标 LAPIC","role":"CPU 侧待处理状态"}],
-      "links":[{"id":"notify","from":"device","to":"msix","label":"请求通知","kind":"notification"},{"id":"unmask","from":"guest","to":"msix","label":"清表项 mask","kind":"control"},{"id":"send","from":"msix","to":"kvm","label":"补发 MSI-X","kind":"notification"},{"id":"pending","from":"kvm","to":"lapic","label":"向量 0x51","kind":"notification"},{"id":"inject","from":"lapic","to":"guest","label":"交付中断","kind":"notification"},{"id":"eoi","from":"guest","to":"lapic","label":"EOI","kind":"control"}],
-      "structures":[{"id":"device-state","title":"设备侧表项 2","kind":"interrupt","fields":[{"key":"mask","label":"Vector Control.mask","initial":"1"},{"key":"pba","label":"PBA[2]","initial":"0"},{"key":"message","label":"MSI-X 消息","initial":"尚未发送"}]},{"id":"cpu-state","title":"CPU 侧向量 0x51","kind":"interrupt","fields":[{"key":"irr","label":"IRR[0x51]","initial":"0"},{"key":"isr","label":"ISR[0x51]","initial":"0"}]},{"id":"queue","title":"设备已发布的完成记录","kind":"queue","fields":[{"key":"used","label":"used.idx","initial":"8（已完成）"}]}],
-      "steps":[
-        {"id":"ready","title":"表项处于屏蔽状态","actor":"QEMU 设备模型","description":"请求数据已完成，设备准备发出通知，但表项 2 的 mask = 1。","detail":"屏蔽通知不撤销已经写入的完成记录。驱动若主动轮询队列，也可以发现 used。","active":[],"links":[],"changes":{},"nodeStates":{},"sourceIds":["msix","consume"],"focus":true},
-        {"id":"pending","title":"记录设备 pending 位","actor":"QEMU · msix_notify","description":"屏蔽检查命中，设置 PBA[2] 后返回，暂不发送 MSI-X。","detail":"PBA 按表项保存待发送通知，不计数每一个请求；多次通知可合并在同一位。目标 LAPIC 的 IRR 此时仍为 0。","active":["device","msix"],"links":["notify"],"changes":{"pba":"1","message":"被表项 mask 阻止"},"nodeStates":{"msix":"设备侧 pending"},"sourceIds":["msix"],"focus":true},
-        {"id":"unmask","title":"客户机解除屏蔽","actor":"客户机驱动 → MSI-X 表项","description":"驱动清除表项 mask，QEMU 的 mask update 检查发现 PBA[2] = 1。","detail":"这是一次配置变化。设备侧可以补发之前被屏蔽的通知，尚不代表 CPU 已接受该中断。","active":["guest","msix"],"links":["unmask"],"changes":{"mask":"0"},"nodeStates":{"msix":"发现待补发通知"},"sourceIds":["unmask"],"focus":true},
-        {"id":"send","title":"清 pending 并补发消息","actor":"QEMU → KVM","description":"QEMU 清 PBA[2]，再次调用 msix_notify，发出目标 1、向量 0x51 的消息。","detail":"消息随后进入正常 MSI 路由；PBA 清零与 LAPIC IRR 置位是不同对象上的操作。","active":["msix","kvm"],"links":["send"],"changes":{"pba":"0","message":"已补发 0x51"},"nodeStates":{"kvm":"接收补发消息"},"sourceIds":["unmask","msix","msi-ioctl"],"focus":true},
-        {"id":"lapic","title":"记录 LAPIC 待处理向量","actor":"KVM → LAPIC","description":"KVM 将消息路由到目标 vCPU，设置 IRR[0x51]。","detail":"设备侧 pending 已处理完毕；向量现在等待 CPU 侧的接受与交付。","active":["kvm","lapic"],"links":["pending"],"changes":{"irr":"1"},"nodeStates":{"lapic":"0x51 待交付"},"sourceIds":["routing","deliver"],"focus":true},
-        {"id":"inject","title":"交付并进入处理程序","actor":"KVM → 客户机","description":"条件满足，软件注入路径把向量从 IRR 转为 ISR，并进入客户机。","detail":"若客户机 IF 为 0，流程会在 CPU 侧继续等待；该情形由独立场景展示。","active":["lapic","guest"],"links":["inject"],"changes":{"irr":"0","isr":"1"},"nodeStates":{"guest":"处理中断"},"sourceIds":["ack","inject"],"focus":true},
-        {"id":"eoi","title":"客户机 EOI","actor":"客户机 IRQ 路径","description":"EOI 清除 ISR 中的本次服务位。","detail":"设备队列中的数据和完成项仍由驱动读取；PBA、IRR、ISR 分别承担设备待发、CPU 待处理和 CPU 服务中状态。","active":["guest","lapic"],"links":["eoi"],"changes":{"isr":"0"},"nodeStates":{"lapic":"应答完成"},"sourceIds":["eoi"],"focus":true}
+      "id": "msix-masked",
+      "label": "MSI-X 屏蔽与 PBA",
+      "summary": "设备表项被屏蔽时把通知记入 PBA，解除屏蔽后再补发 MSI-X 消息。",
+      "assumptions": [
+        "QEMU 软件 MSI-X 设备，表项 2 已分配，功能级 mask 关闭",
+        "表项级 mask 初始为 1；不用 irqfd notifier 路径，聚焦 msix_notify 与 mask update",
+        "APICv 关闭，目标 Guest IF、shadow 与优先级均允许交付",
+        "具体发起方为一次 QEMU virtio-net RX 完成；split queue，VIRTIO_F_EVENT_IDX 未协商，默认 avail.flags 不设置 NO_INTERRUPT",
+        "缓冲区已经发布且容量足够；此处不重复收包、描述符分配与网络协议栈的全部过程",
+        "未协商 VIRTIO_F_NOTIFY_ON_EMPTY；不触发队列清空时的强制通知例外"
+      ],
+      "nodes": [
+        {
+          "id": "device",
+          "label": "QEMU 设备模型",
+          "role": "完成通知发起者"
+        },
+        {
+          "id": "msix",
+          "label": "MSI-X 表项 / PBA",
+          "role": "设备侧屏蔽状态"
+        },
+        {
+          "id": "guest",
+          "label": "客户机驱动",
+          "role": "配置表项与处理中断",
+          "badge": "内核态"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM MSI 路由",
+          "role": "宿主内核"
+        },
+        {
+          "id": "lapic",
+          "label": "目标 LAPIC",
+          "role": "CPU 侧待处理状态"
+        },
+        {
+          "id": "queue",
+          "label": "RX 缓冲区与 used ring",
+          "role": "Guest RAM，共享队列",
+          "initial": "P1 尚未写入，used.idx=7"
+        }
+      ],
+      "links": [
+        {
+          "id": "notify",
+          "from": "device",
+          "to": "msix",
+          "label": "请求通知",
+          "kind": "notification"
+        },
+        {
+          "id": "unmask",
+          "from": "guest",
+          "to": "msix",
+          "label": "清表项 mask",
+          "kind": "control"
+        },
+        {
+          "id": "send",
+          "from": "msix",
+          "to": "kvm",
+          "label": "补发 MSI-X",
+          "kind": "notification"
+        },
+        {
+          "id": "pending",
+          "from": "kvm",
+          "to": "lapic",
+          "label": "向量 0x51",
+          "kind": "notification"
+        },
+        {
+          "id": "inject",
+          "from": "lapic",
+          "to": "guest",
+          "label": "交付中断",
+          "kind": "notification"
+        },
+        {
+          "id": "eoi",
+          "from": "guest",
+          "to": "lapic",
+          "label": "EOI",
+          "kind": "control"
+        },
+        {
+          "id": "write-data",
+          "from": "device",
+          "to": "queue",
+          "label": "写入 RX 报文",
+          "kind": "data"
+        },
+        {
+          "id": "publish-used",
+          "from": "device",
+          "to": "queue",
+          "label": "填写并发布完成记录",
+          "kind": "control"
+        },
+        {
+          "id": "read-used",
+          "from": "queue",
+          "to": "guest",
+          "label": "驱动消费完成记录",
+          "kind": "data"
+        }
+      ],
+      "structures": [
+        {
+          "id": "device-state",
+          "title": "设备侧表项 2",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "mask",
+              "label": "Vector Control.mask",
+              "initial": "1"
+            },
+            {
+              "key": "pba",
+              "label": "PBA[2]",
+              "initial": "0"
+            },
+            {
+              "key": "message",
+              "label": "MSI-X 消息",
+              "initial": "尚未发送"
+            }
+          ]
+        },
+        {
+          "id": "cpu-state",
+          "title": "CPU 侧向量 0x51",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "irr",
+              "label": "IRR[0x51]",
+              "initial": "0"
+            },
+            {
+              "key": "isr",
+              "label": "ISR[0x51]",
+              "initial": "0"
+            }
+          ]
+        },
+        {
+          "id": "queue",
+          "title": "设备已发布的完成记录",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "used",
+              "label": "used.idx",
+              "initial": "7"
+            }
+          ]
+        },
+        {
+          "id": "device-completion",
+          "title": "设备数据与通知起点",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "payload",
+              "label": "RX 数据",
+              "initial": "尚未写入"
+            },
+            {
+              "key": "used-entry",
+              "label": "used.ring[7]",
+              "initial": "尚未填写"
+            },
+            {
+              "key": "notify-policy",
+              "label": "通知条件",
+              "initial": "avail.flags.NO_INTERRUPT = 0"
+            },
+            {
+              "key": "notify-decision",
+              "label": "通知判断",
+              "initial": "尚未检查"
+            },
+            {
+              "key": "last-used",
+              "label": "驱动消费位置",
+              "initial": "7"
+            }
+          ]
+        },
+        {
+          "id": "delivery-stage",
+          "title": "注入阶段",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "delivery",
+              "label": "Guest 接受状态",
+              "initial": "尚无注入事件"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "ready",
+          "title": "设备完成前",
+          "actor": "QEMU virtio-net · RX 后端",
+          "description": "一次报文即将写入预先发布的 Guest RX 缓冲区，本次完成项尚未发布。",
+          "detail": "跟踪报文 P1 的 72 B 接收结果（12 B virtio 头与 60 B 帧），队列大小 8，先前 used.idx 与驱动消费位置均为 7。设备通知、LAPIC pending 和 Guest 消费分开推进。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "rx-copy",
+            "used-fill"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-data",
+          "title": "写入 Guest RX 数据",
+          "actor": "QEMU virtio-net · receive",
+          "description": "设备把 P1 报文写入已经借给设备的 RX 缓冲区。",
+          "detail": "数据写入与通知分离。此刻 used.idx 仍为 7，驱动还不能仅凭数据变化认定请求完成。",
+          "active": [
+            "device",
+            "queue"
+          ],
+          "links": [
+            "write-data"
+          ],
+          "changes": {
+            "payload": "72 B 已写入；本次完成尚未发布"
+          },
+          "nodeStates": {
+            "queue": "数据已写入，完成待发布",
+            "device": "写入 Guest RX 数据"
+          },
+          "sourceIds": [
+            "rx-copy"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used-fill",
+          "title": "填写完成项",
+          "actor": "QEMU · virtqueue_fill",
+          "description": "写 used.ring[7] 的 id=0、len=72。",
+          "detail": "填写环项没有推进 used.idx；驱动的消费位置仍为 7。",
+          "active": [
+            "device",
+            "queue"
+          ],
+          "links": [
+            "publish-used"
+          ],
+          "changes": {
+            "used-entry": "id=0 · len=72"
+          },
+          "nodeStates": {
+            "device": "填写完成项",
+            "queue": "填写完成项"
+          },
+          "sourceIds": [
+            "used-fill"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used-publish",
+          "title": "发布 used.idx",
+          "actor": "QEMU · virtqueue_split_flush",
+          "description": "在写入顺序约束之后，把 used.idx 从 7 推进到 8。",
+          "detail": "发布索引使驱动可以按协议观察到前面的数据与完成记录；这一步本身尚未发中断。",
+          "active": [
+            "device",
+            "queue"
+          ],
+          "links": [
+            "publish-used"
+          ],
+          "changes": {
+            "used": "8"
+          },
+          "nodeStates": {
+            "queue": "P1 完成已发布",
+            "device": "发布 used.idx"
+          },
+          "sourceIds": [
+            "used-publish"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify-check",
+          "title": "检查是否需要通知",
+          "actor": "QEMU · virtio_should_notify",
+          "description": "本例 NO_INTERRUPT 为 0，因此允许为此次完成发出通知。",
+          "detail": "EVENT_IDX 未协商；若启用该特性，要改用事件索引判断，不能把两种策略同时当作必经判断。",
+          "active": [
+            "device",
+            "queue"
+          ],
+          "links": [],
+          "changes": {
+            "notify-decision": "允许通知"
+          },
+          "nodeStates": {
+            "device": "检查是否需要通知",
+            "queue": "检查是否需要通知"
+          },
+          "sourceIds": [
+            "notify-check",
+            "virtio-notify"
+          ],
+          "focus": true
+        },
+        {
+          "id": "pending",
+          "title": "记录设备 pending 位",
+          "actor": "QEMU · msix_notify",
+          "description": "屏蔽检查命中，设置 PBA[2] 后返回，暂不发送 MSI-X。",
+          "detail": "PBA 按表项保存待发送通知，不计数每一个请求；多次通知可合并在同一位。目标 LAPIC 的 IRR 此时仍为 0。",
+          "active": [
+            "device",
+            "msix"
+          ],
+          "links": [
+            "notify"
+          ],
+          "changes": {
+            "pba": "1",
+            "message": "被表项 mask 阻止"
+          },
+          "nodeStates": {
+            "msix": "设备侧 pending",
+            "device": "记录设备 pending 位"
+          },
+          "sourceIds": [
+            "msix"
+          ],
+          "focus": true
+        },
+        {
+          "id": "unmask",
+          "title": "客户机解除屏蔽",
+          "actor": "客户机驱动 → MSI-X 表项",
+          "description": "驱动清除表项 mask，QEMU 的 mask update 检查发现 PBA[2] = 1。",
+          "detail": "这是一次配置变化。设备侧可以补发之前被屏蔽的通知，尚不代表 CPU 已接受该中断。",
+          "active": [
+            "guest",
+            "msix"
+          ],
+          "links": [
+            "unmask"
+          ],
+          "changes": {
+            "mask": "0"
+          },
+          "nodeStates": {
+            "msix": "发现待补发通知",
+            "guest": "客户机解除屏蔽"
+          },
+          "sourceIds": [
+            "unmask"
+          ],
+          "focus": true
+        },
+        {
+          "id": "send",
+          "title": "清 pending 并补发消息",
+          "actor": "QEMU → KVM",
+          "description": "QEMU 清 PBA[2]，再次调用 msix_notify，发出目标 1、向量 0x51 的消息。",
+          "detail": "消息随后进入正常 MSI 路由；PBA 清零与 LAPIC IRR 置位是不同对象上的操作。",
+          "active": [
+            "msix",
+            "kvm"
+          ],
+          "links": [
+            "send"
+          ],
+          "changes": {
+            "pba": "0",
+            "message": "已补发 0x51"
+          },
+          "nodeStates": {
+            "kvm": "接收补发消息",
+            "msix": "清 pending 并补发消息"
+          },
+          "sourceIds": [
+            "unmask",
+            "msix",
+            "msi-ioctl"
+          ],
+          "focus": true
+        },
+        {
+          "id": "lapic",
+          "title": "记录 LAPIC 待处理向量",
+          "actor": "KVM → LAPIC",
+          "description": "KVM 将消息路由到目标 vCPU，设置 IRR[0x51]。",
+          "detail": "设备侧 pending 已处理完毕；向量现在等待 CPU 侧的接受与交付。",
+          "active": [
+            "kvm",
+            "lapic"
+          ],
+          "links": [
+            "pending"
+          ],
+          "changes": {
+            "irr": "1"
+          },
+          "nodeStates": {
+            "lapic": "0x51 待交付",
+            "kvm": "记录 LAPIC 待处理向量"
+          },
+          "sourceIds": [
+            "routing",
+            "deliver"
+          ],
+          "focus": true
+        },
+        {
+          "id": "inject",
+          "title": "准备 VM-entry 中断注入",
+          "actor": "KVM · 接受条件检查与 VMCS 配置",
+          "description": "条件允许后，KVM 从 IRR 取出向量、记录 ISR，并填写 VM-entry 中断注入字段。",
+          "detail": "这是软件路径的准备状态，Guest handler 此刻尚未执行。只有成功进入客户机，才能说 CPU 已把控制权交给中断入口。",
+          "active": [
+            "lapic"
+          ],
+          "links": [],
+          "changes": {
+            "irr": "0",
+            "isr": "1",
+            "delivery": "注入字段已准备，尚未进入 Guest"
+          },
+          "nodeStates": {
+            "guest": "handler 尚未执行",
+            "lapic": "准备 VM-entry 中断注入"
+          },
+          "sourceIds": [
+            "allowed",
+            "ack",
+            "inject"
+          ],
+          "focus": true
+        },
+        {
+          "id": "guest-entry",
+          "title": "成功进入 Guest 中断入口",
+          "actor": "处理器 · VM-entry",
+          "description": "本次 VM-entry 成功，处理器按注入字段进入向量 0x51 的 Guest 中断入口。",
+          "detail": "软件准备注入、硬件接受、驱动处理是不同阶段。EOI 和队列消费的先后按本例 Linux IRQ 路径单独展示。",
+          "active": [
+            "guest"
+          ],
+          "links": [
+            "inject"
+          ],
+          "changes": {
+            "delivery": "Guest handler 已进入"
+          },
+          "nodeStates": {
+            "guest": "执行 Guest IRQ 入口"
+          },
+          "sourceIds": [
+            "inject",
+            "irq-ack"
+          ],
+          "focus": true
+        },
+        {
+          "id": "eoi",
+          "title": "客户机 EOI",
+          "actor": "客户机 IRQ 路径",
+          "description": "EOI 清除 ISR 中的本次服务位。",
+          "detail": "设备队列中的数据和完成项仍由驱动读取；PBA、IRR、ISR 分别承担设备待发、CPU 待处理和 CPU 服务中状态。",
+          "active": [
+            "guest",
+            "lapic"
+          ],
+          "links": [
+            "eoi"
+          ],
+          "changes": {
+            "isr": "0"
+          },
+          "nodeStates": {
+            "lapic": "应答完成",
+            "guest": "客户机 EOI"
+          },
+          "sourceIds": [
+            "eoi"
+          ],
+          "focus": true
+        },
+        {
+          "id": "consume",
+          "title": "驱动消费已发布的完成",
+          "actor": "Guest IRQ / NAPI 与驱动",
+          "description": "驱动沿接收处理路径取得 used 项，消费位置从 7 前进到 8。",
+          "detail": "APIC 应答不自动消费队列。NAPI 调度与完整协议栈细节见网络演示；本步只观察完成记录回收。 vring_interrupt 先调用 skb_recv_done 安排 NAPI；随后 virtnet_poll 经接收路径取得 used 项，二者不是连续的同步调用。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "read-used"
+          ],
+          "changes": {
+            "last-used": "8"
+          },
+          "nodeStates": {
+            "queue": "完成已由驱动消费",
+            "guest": "驱动消费已发布的完成"
+          },
+          "sourceIds": [
+            "guest-vring-irq",
+            "guest-rx-callback",
+            "guest-napi-poll",
+            "guest-receive",
+            "consume"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "设备完成与通知决策",
+          "context": "QEMU 设备执行上下文",
+          "sourceIds": [
+            "rx-copy",
+            "used-fill",
+            "used-publish",
+            "notify-check",
+            "virtio-notify"
+          ],
+          "boundary": "先写数据与完成记录，发布索引后再决定是否通知；不是每次完成都产生中断。"
+        },
+        {
+          "id": "path-1",
+          "title": "设备消息与事件交接",
+          "context": "QEMU → KVM 异步边界",
+          "sourceIds": [
+            "msix",
+            "unmask",
+            "msi-ioctl"
+          ],
+          "boundary": "仅保留所选场景的路径；guest notifier/eventfd 和 KVM_SIGNAL_MSI 是不同分支。"
+        },
+        {
+          "id": "path-2",
+          "title": "目标路由与接受条件",
+          "context": "KVM / VMX / 处理器",
+          "sourceIds": [
+            "routing",
+            "deliver",
+            "allowed",
+            "ack",
+            "inject"
+          ],
+          "boundary": "软件注入要等待成功 VM-entry；APICv 场景按硬件 posting 条件交付，不强制退出目标 Guest。"
+        },
+        {
+          "id": "path-3",
+          "title": "Guest 应答与完成消费",
+          "context": "Guest IRQ / 驱动上下文",
+          "sourceIds": [
+            "irq-ack",
+            "eoi",
+            "guest-vring-irq",
+            "guest-rx-callback",
+            "guest-napi-poll",
+            "guest-receive",
+            "consume"
+          ],
+          "boundary": "Guest EOI 与驱动取得完成记录分开；eoi 的 KVM 实现解释软件 LAPIC 状态，不是 Guest 直接调用宿主函数。 vring_interrupt → skb_recv_done 是通知回调；NAPI 调度后才进入 virtnet_poll → 接收处理 → used 回收，跨调度边界。",
+          "entry": {
+            "kind": "notification",
+            "label": "中断交付 Guest 后执行 IRQ 回调；后续 NAPI 另行调度"
+          }
+        }
       ]
     },
     {
-      "id":"apicv-posted","label":"APICv Posted Interrupt","summary":"目标 vCPU 正在运行时，KVM 将向量写入 PIR，硬件同步到虚拟 IRR 并向客户机交付。",
-      "assumptions":["Intel 处理器支持并启用 APICv、virtual interrupt delivery 与 posted interrupts", "KVM 内核 LAPIC，目标 apicv_active，非嵌套虚拟化，vCPU 正在另一宿主 CPU 的 non-root 模式运行", "PID 初始 ON = 0、SN = 0，正确配置通知向量与目的 CPU；无并发重复通知", "Guest IF = 1，无 interrupt shadow，向量优先级允许；固定为普通边沿向量 0x51", "EOI-exit bitmap 不为向量 0x51 请求退出", "本例采用 KVM 软件 posting，不展示物理设备经 VT-d 直接 posting"],
-      "nodes":[{"id":"source","label":"KVM 中断投递入口","role":"可来自 MSI 或 irqfd"},{"id":"pid","label":"Posted Interrupt Descriptor","role":"PIR / ON / 通知信息"},{"id":"cpu","label":"目标宿主处理器","role":"正在执行该 vCPU"},{"id":"vapic","label":"虚拟 APIC 状态","role":"vIRR / vISR / RVI"},{"id":"guest","label":"客户机 IRQ handler","role":"Guest 内核"}],
-      "links":[{"id":"post","from":"source","to":"pid","label":"置 PIR[0x51] / ON","kind":"notification"},{"id":"notify","from":"pid","to":"cpu","label":"posted notification IPI","kind":"notification"},{"id":"sync","from":"cpu","to":"vapic","label":"同步 PIR → vIRR","kind":"control"},{"id":"deliver","from":"vapic","to":"guest","label":"硬件虚拟中断交付","kind":"notification"},{"id":"eoi","from":"guest","to":"vapic","label":"虚拟 EOI","kind":"control"}],
-      "structures":[{"id":"descriptor","title":"Posted Interrupt Descriptor","kind":"interrupt","fields":[{"key":"pir","label":"PIR[0x51]","initial":"0"},{"key":"on","label":"ON：通知未完成","initial":"0"},{"key":"sn","label":"SN：抑制通知","initial":"0"}]},{"id":"virtual-apic","title":"虚拟 APIC 与 Guest 状态","kind":"interrupt","fields":[{"key":"virr","label":"vIRR[0x51]","initial":"0"},{"key":"visr","label":"vISR[0x51]","initial":"0"},{"key":"rvi","label":"RVI","initial":"0（无待处理向量）"},{"key":"mode","label":"目标 vCPU VMX 模式","initial":"non-root，正在运行"},{"key":"exit","label":"为本次交付的 VM Exit","initial":"0"}]}],
-      "steps":[
-        {"id":"ready","title":"目标 vCPU 正在运行","actor":"KVM 投递入口","description":"目标具备 posted interrupt 条件，PID 与虚拟 APIC 均无本次向量。","detail":"本场景固定 vCPU 正在另一宿主 CPU 上运行。阻塞、抢占和迁移需要额外唤醒或状态同步，不套用这条最短路径。","active":[],"links":[],"changes":{},"nodeStates":{},"sourceIds":["deliver","posted"],"focus":true},
-        {"id":"post","title":"把向量记入 PIR","actor":"KVM · __vmx_deliver_posted_interrupt","description":"原子设置 PIR[0x51]，再把 ON 从 0 置为 1。","detail":"PIR 已有该位或此前通知仍 outstanding 时，可省去重复通知。本例固定二者初始为 0，继续发送。","active":["source","pid"],"links":["post"],"changes":{"pir":"1","on":"1"},"nodeStates":{"pid":"向量已发布"},"sourceIds":["posted"],"focus":true},
-        {"id":"notify","title":"通知目标物理 CPU","actor":"KVM → 目标处理器","description":"KVM 向正在运行目标 vCPU 的 CPU 发送 posted notification。","detail":"宿主通知向量用于提示处理器检查 PID，与客户机的 0x51 向量不是同一编号。本例条件下无需为该通知退出 Guest。","active":["pid","cpu"],"links":["notify"],"changes":{},"nodeStates":{"cpu":"收到 posted notification"},"sourceIds":["posted","sdm"],"focus":false},
-        {"id":"sync","title":"硬件同步待处理中断","actor":"目标处理器","description":"posted-interrupt processing 把 PIR 位合入 vIRR，清除已取出的 PIR 与 ON，并更新 RVI。","detail":"此时 vIRR 表示客户机尚待接受的向量；它与 PID 中用于跨 CPU 发布的 PIR 分属两个阶段。图中拆开显示硬件处理的逻辑结果。","active":["cpu","pid","vapic"],"links":["sync"],"changes":{"pir":"0","on":"0","virr":"1","rvi":"0x51"},"nodeStates":{"vapic":"0x51 可供交付"},"sourceIds":["deliver","sdm"],"focus":true},
-        {"id":"accept","title":"硬件交付虚拟中断","actor":"虚拟 APIC / 处理器","description":"满足 Guest IF、shadow 与优先级条件，硬件清 vIRR、设置 vISR，并进入客户机中断入口。","detail":"没有其他 pending 向量时，RVI 回到 0。Guest 的中断架构规则保持有效；关闭 IF 时仍会保留 pending 等待。","active":["vapic","guest"],"links":["deliver"],"changes":{"virr":"0","visr":"1","rvi":"0（无其他待处理向量）"},"nodeStates":{"guest":"处理 0x51"},"sourceIds":["sdm"],"focus":true},
-        {"id":"eoi","title":"完成虚拟 APIC 应答","actor":"客户机 → 虚拟 APIC","description":"客户机 EOI 结束本次 in-service 状态，vISR[0x51] 清零。","detail":"本例固定 EOI-exit bitmap 对该向量未请求退出，硬件可处理这次应答。其他 EOI 配置、未运行 vCPU 或不满足 APICv 条件的情况仍需软件路径。","active":["guest","vapic"],"links":["eoi"],"changes":{"visr":"0"},"nodeStates":{"vapic":"应答完成"},"sourceIds":["sdm","eoi"],"focus":true}
+      "id": "apicv-posted",
+      "label": "APICv Posted Interrupt",
+      "summary": "目标 vCPU 正在运行时，KVM 将向量写入 PIR，硬件同步到虚拟 IRR 并向客户机交付。",
+      "assumptions": [
+        "Intel 处理器支持并启用 APICv、virtual interrupt delivery 与 posted interrupts",
+        "KVM 内核 LAPIC，目标 apicv_active，非嵌套虚拟化，vCPU 正在另一宿主 CPU 的 non-root 模式运行",
+        "PID 初始 ON = 0、SN = 0，正确配置通知向量与目的 CPU；无并发重复通知",
+        "Guest IF = 1，无 interrupt shadow，向量优先级允许；固定为普通边沿向量 0x51",
+        "EOI-exit bitmap 不为向量 0x51 请求退出",
+        "本例采用 KVM 软件 posting，不展示物理设备经 VT-d 直接 posting",
+        "具体发起方为一次 QEMU virtio-net RX 完成；split queue，VIRTIO_F_EVENT_IDX 未协商，默认 avail.flags 不设置 NO_INTERRUPT",
+        "缓冲区已经发布且容量足够；此处不重复收包、描述符分配与网络协议栈的全部过程",
+        "未协商 VIRTIO_F_NOTIFY_ON_EMPTY；不触发队列清空时的强制通知例外"
+      ],
+      "nodes": [
+        {
+          "id": "source",
+          "label": "KVM 中断投递入口",
+          "role": "可来自 MSI 或 irqfd"
+        },
+        {
+          "id": "pid",
+          "label": "Posted Interrupt Descriptor",
+          "role": "PIR / ON / 通知信息"
+        },
+        {
+          "id": "cpu",
+          "label": "目标宿主处理器",
+          "role": "正在执行该 vCPU"
+        },
+        {
+          "id": "vapic",
+          "label": "虚拟 APIC 状态",
+          "role": "vIRR / vISR / RVI"
+        },
+        {
+          "id": "guest",
+          "label": "客户机 IRQ handler",
+          "role": "Guest 内核",
+          "badge": "内核态"
+        },
+        {
+          "id": "queue",
+          "label": "RX 缓冲区与 used ring",
+          "role": "Guest RAM，共享队列",
+          "initial": "P1 尚未写入，used.idx=7"
+        },
+        {
+          "id": "device",
+          "label": "QEMU virtio-net",
+          "role": "用户态设备完成发起者",
+          "initial": "准备就绪"
+        }
+      ],
+      "links": [
+        {
+          "id": "post",
+          "from": "source",
+          "to": "pid",
+          "label": "置 PIR[0x51] / ON",
+          "kind": "notification"
+        },
+        {
+          "id": "notify",
+          "from": "pid",
+          "to": "cpu",
+          "label": "posted notification IPI",
+          "kind": "notification"
+        },
+        {
+          "id": "sync",
+          "from": "cpu",
+          "to": "vapic",
+          "label": "同步 PIR → vIRR",
+          "kind": "control"
+        },
+        {
+          "id": "deliver",
+          "from": "vapic",
+          "to": "guest",
+          "label": "硬件虚拟中断交付",
+          "kind": "notification"
+        },
+        {
+          "id": "eoi",
+          "from": "guest",
+          "to": "vapic",
+          "label": "虚拟 EOI",
+          "kind": "control"
+        },
+        {
+          "id": "submit-msi",
+          "from": "device",
+          "to": "source",
+          "label": "KVM_SIGNAL_MSI → 路由",
+          "kind": "notification"
+        },
+        {
+          "id": "write-data",
+          "from": "device",
+          "to": "queue",
+          "label": "写入 RX 报文",
+          "kind": "data"
+        },
+        {
+          "id": "publish-used",
+          "from": "device",
+          "to": "queue",
+          "label": "填写并发布完成记录",
+          "kind": "control"
+        },
+        {
+          "id": "read-used",
+          "from": "queue",
+          "to": "guest",
+          "label": "驱动消费完成记录",
+          "kind": "data"
+        }
+      ],
+      "structures": [
+        {
+          "id": "descriptor",
+          "title": "Posted Interrupt Descriptor",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "pir",
+              "label": "PIR[0x51]",
+              "initial": "0"
+            },
+            {
+              "key": "on",
+              "label": "ON：通知未完成",
+              "initial": "0"
+            },
+            {
+              "key": "sn",
+              "label": "SN：抑制通知",
+              "initial": "0"
+            }
+          ]
+        },
+        {
+          "id": "virtual-apic",
+          "title": "虚拟 APIC 与 Guest 状态",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "virr",
+              "label": "vIRR[0x51]",
+              "initial": "0"
+            },
+            {
+              "key": "visr",
+              "label": "vISR[0x51]",
+              "initial": "0"
+            },
+            {
+              "key": "rvi",
+              "label": "RVI",
+              "initial": "0（无待处理向量）"
+            },
+            {
+              "key": "mode",
+              "label": "目标 vCPU VMX 模式",
+              "initial": "non-root，正在运行"
+            },
+            {
+              "key": "exit",
+              "label": "为本次交付的 VM Exit",
+              "initial": "0"
+            }
+          ]
+        },
+        {
+          "id": "device-completion",
+          "title": "设备数据与通知起点",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "payload",
+              "label": "RX 数据",
+              "initial": "尚未写入"
+            },
+            {
+              "key": "used-entry",
+              "label": "used.ring[7]",
+              "initial": "尚未填写"
+            },
+            {
+              "key": "notify-policy",
+              "label": "通知条件",
+              "initial": "avail.flags.NO_INTERRUPT = 0"
+            },
+            {
+              "key": "notify-decision",
+              "label": "通知判断",
+              "initial": "尚未检查"
+            },
+            {
+              "key": "used",
+              "label": "used.idx",
+              "initial": "7"
+            },
+            {
+              "key": "last-used",
+              "label": "驱动消费位置",
+              "initial": "7"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "ready",
+          "title": "设备完成前",
+          "actor": "QEMU virtio-net · RX 后端",
+          "description": "一次报文即将写入预先发布的 Guest RX 缓冲区，本次完成项尚未发布。",
+          "detail": "跟踪报文 P1 的 72 B 接收结果（12 B virtio 头与 60 B 帧），队列大小 8，先前 used.idx 与驱动消费位置均为 7。设备通知、LAPIC pending 和 Guest 消费分开推进。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "rx-copy",
+            "used-fill"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-data",
+          "title": "写入 Guest RX 数据",
+          "actor": "QEMU virtio-net · receive",
+          "description": "设备把 P1 报文写入已经借给设备的 RX 缓冲区。",
+          "detail": "数据写入与通知分离。此刻 used.idx 仍为 7，驱动还不能仅凭数据变化认定请求完成。",
+          "active": [
+            "device",
+            "queue"
+          ],
+          "links": [
+            "write-data"
+          ],
+          "changes": {
+            "payload": "72 B 已写入；本次完成尚未发布"
+          },
+          "nodeStates": {
+            "queue": "数据已写入，完成待发布",
+            "device": "写入 Guest RX 数据"
+          },
+          "sourceIds": [
+            "rx-copy"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used-fill",
+          "title": "填写完成项",
+          "actor": "QEMU · virtqueue_fill",
+          "description": "写 used.ring[7] 的 id=0、len=72。",
+          "detail": "填写环项没有推进 used.idx；驱动的消费位置仍为 7。",
+          "active": [
+            "device",
+            "queue"
+          ],
+          "links": [
+            "publish-used"
+          ],
+          "changes": {
+            "used-entry": "id=0 · len=72"
+          },
+          "nodeStates": {
+            "device": "填写完成项",
+            "queue": "填写完成项"
+          },
+          "sourceIds": [
+            "used-fill"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used-publish",
+          "title": "发布 used.idx",
+          "actor": "QEMU · virtqueue_split_flush",
+          "description": "在写入顺序约束之后，把 used.idx 从 7 推进到 8。",
+          "detail": "发布索引使驱动可以按协议观察到前面的数据与完成记录；这一步本身尚未发中断。",
+          "active": [
+            "device",
+            "queue"
+          ],
+          "links": [
+            "publish-used"
+          ],
+          "changes": {
+            "used": "8"
+          },
+          "nodeStates": {
+            "queue": "P1 完成已发布",
+            "device": "发布 used.idx"
+          },
+          "sourceIds": [
+            "used-publish"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify-check",
+          "title": "检查是否需要通知",
+          "actor": "QEMU · virtio_should_notify",
+          "description": "本例 NO_INTERRUPT 为 0，因此允许为此次完成发出通知。",
+          "detail": "EVENT_IDX 未协商；若启用该特性，要改用事件索引判断，不能把两种策略同时当作必经判断。",
+          "active": [
+            "device",
+            "queue"
+          ],
+          "links": [],
+          "changes": {
+            "notify-decision": "允许通知"
+          },
+          "nodeStates": {
+            "device": "检查是否需要通知",
+            "queue": "检查是否需要通知"
+          },
+          "sourceIds": [
+            "notify-check",
+            "virtio-notify"
+          ],
+          "focus": true
+        },
+        {
+          "id": "submit-msi",
+          "title": "把设备消息交给 KVM",
+          "actor": "QEMU → KVM",
+          "description": "设备取出 MSI-X 地址与数据，通过 KVM_SIGNAL_MSI 提交向量。",
+          "detail": "KVM 路由选择具备 APICv 条件的目标 vCPU；接下来的 posting 不需要把正在运行的目标 vCPU 退出。",
+          "active": [
+            "device",
+            "source"
+          ],
+          "links": [
+            "submit-msi"
+          ],
+          "changes": {},
+          "nodeStates": {
+            "device": "把设备消息交给 KVM",
+            "source": "把设备消息交给 KVM"
+          },
+          "sourceIds": [
+            "msix",
+            "msi-ioctl",
+            "routing"
+          ],
+          "focus": true
+        },
+        {
+          "id": "post",
+          "title": "把向量记入 PIR",
+          "actor": "KVM · __vmx_deliver_posted_interrupt",
+          "description": "原子设置 PIR[0x51]，再把 ON 从 0 置为 1。",
+          "detail": "PIR 已有该位或此前通知仍 outstanding 时，可省去重复通知。本例固定二者初始为 0，继续发送。",
+          "active": [
+            "source",
+            "pid"
+          ],
+          "links": [
+            "post"
+          ],
+          "changes": {
+            "pir": "1",
+            "on": "1"
+          },
+          "nodeStates": {
+            "pid": "向量已发布",
+            "source": "把向量记入 PIR"
+          },
+          "sourceIds": [
+            "posted"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify",
+          "title": "通知目标物理 CPU",
+          "actor": "KVM → 目标处理器",
+          "description": "KVM 向正在运行目标 vCPU 的 CPU 发送 posted notification。",
+          "detail": "宿主通知向量用于提示处理器检查 PID，与客户机的 0x51 向量不是同一编号。本例条件下无需为该通知退出 Guest。",
+          "active": [
+            "pid",
+            "cpu"
+          ],
+          "links": [
+            "notify"
+          ],
+          "changes": {},
+          "nodeStates": {
+            "cpu": "收到 posted notification",
+            "pid": "通知目标物理 CPU"
+          },
+          "sourceIds": [
+            "posted-notify",
+            "sdm"
+          ],
+          "focus": false
+        },
+        {
+          "id": "sync",
+          "title": "硬件同步待处理中断",
+          "actor": "目标处理器",
+          "description": "posted-interrupt processing 把 PIR 位合入 vIRR，清除已取出的 PIR 与 ON，并更新 RVI。",
+          "detail": "此时 vIRR 表示客户机尚待接受的向量；它与 PID 中用于跨 CPU 发布的 PIR 分属两个阶段。图中拆开显示硬件处理的逻辑结果。",
+          "active": [
+            "cpu",
+            "pid",
+            "vapic"
+          ],
+          "links": [
+            "sync"
+          ],
+          "changes": {
+            "pir": "0",
+            "on": "0",
+            "virr": "1",
+            "rvi": "0x51"
+          },
+          "nodeStates": {
+            "vapic": "0x51 可供交付",
+            "cpu": "硬件同步待处理中断",
+            "pid": "硬件同步待处理中断"
+          },
+          "sourceIds": [
+            "sdm"
+          ],
+          "focus": true
+        },
+        {
+          "id": "accept",
+          "title": "硬件交付虚拟中断",
+          "actor": "虚拟 APIC / 处理器",
+          "description": "满足 Guest IF、shadow 与优先级条件，硬件清 vIRR、设置 vISR，并进入客户机中断入口。",
+          "detail": "没有其他 pending 向量时，RVI 回到 0。Guest 的中断架构规则保持有效；关闭 IF 时仍会保留 pending 等待。",
+          "active": [
+            "vapic",
+            "guest"
+          ],
+          "links": [
+            "deliver"
+          ],
+          "changes": {
+            "virr": "0",
+            "visr": "1",
+            "rvi": "0（无其他待处理向量）"
+          },
+          "nodeStates": {
+            "guest": "处理 0x51",
+            "vapic": "硬件交付虚拟中断"
+          },
+          "sourceIds": [
+            "sdm"
+          ],
+          "focus": true
+        },
+        {
+          "id": "eoi",
+          "title": "完成虚拟 APIC 应答",
+          "actor": "客户机 → 虚拟 APIC",
+          "description": "客户机 EOI 结束本次 in-service 状态，vISR[0x51] 清零。",
+          "detail": "本例固定 EOI-exit bitmap 对该向量未请求退出，硬件可处理这次应答。其他 EOI 配置、未运行 vCPU 或不满足 APICv 条件的情况仍需软件路径。",
+          "active": [
+            "guest",
+            "vapic"
+          ],
+          "links": [
+            "eoi"
+          ],
+          "changes": {
+            "visr": "0"
+          },
+          "nodeStates": {
+            "vapic": "应答完成",
+            "guest": "完成虚拟 APIC 应答"
+          },
+          "sourceIds": [
+            "sdm"
+          ],
+          "focus": true
+        },
+        {
+          "id": "consume",
+          "title": "驱动消费已发布的完成",
+          "actor": "Guest IRQ / NAPI 与驱动",
+          "description": "驱动沿接收处理路径取得 used 项，消费位置从 7 前进到 8。",
+          "detail": "APIC 应答不自动消费队列。NAPI 调度与完整协议栈细节见网络演示；本步只观察完成记录回收。 vring_interrupt 先调用 skb_recv_done 安排 NAPI；随后 virtnet_poll 经接收路径取得 used 项，二者不是连续的同步调用。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "read-used"
+          ],
+          "changes": {
+            "last-used": "8"
+          },
+          "nodeStates": {
+            "queue": "完成已由驱动消费",
+            "guest": "驱动消费已发布的完成"
+          },
+          "sourceIds": [
+            "guest-vring-irq",
+            "guest-rx-callback",
+            "guest-napi-poll",
+            "guest-receive",
+            "consume"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "设备完成与通知决策",
+          "context": "QEMU 设备执行上下文",
+          "sourceIds": [
+            "rx-copy",
+            "used-fill",
+            "used-publish",
+            "notify-check",
+            "virtio-notify"
+          ],
+          "boundary": "先写数据与完成记录，发布索引后再决定是否通知；不是每次完成都产生中断。"
+        },
+        {
+          "id": "path-1",
+          "title": "设备消息与事件交接",
+          "context": "QEMU → KVM 异步边界",
+          "sourceIds": [
+            "msix",
+            "msi-ioctl"
+          ],
+          "boundary": "仅保留所选场景的路径；guest notifier/eventfd 和 KVM_SIGNAL_MSI 是不同分支。"
+        },
+        {
+          "id": "path-2",
+          "title": "目标路由与接受条件",
+          "context": "KVM / VMX / 处理器",
+          "sourceIds": [
+            "routing",
+            "deliver",
+            "posted",
+            "posted-notify",
+            "sdm"
+          ],
+          "boundary": "软件注入要等待成功 VM-entry；APICv 场景按硬件 posting 条件交付，不强制退出目标 Guest。"
+        },
+        {
+          "id": "path-3",
+          "title": "Guest 应答与完成消费",
+          "context": "Guest IRQ / 驱动上下文",
+          "sourceIds": [
+            "guest-vring-irq",
+            "guest-rx-callback",
+            "guest-napi-poll",
+            "guest-receive",
+            "consume"
+          ],
+          "boundary": "本例 EOI 未触发退出，由处理器完成虚拟 APIC 应答；不调用宿主 apic_set_eoi。Guest virtqueue IRQ 回调安排 NAPI，之后接收路径才消费完成项。",
+          "entry": {
+            "kind": "notification",
+            "label": "中断交付 Guest 后执行 IRQ 回调；后续 NAPI 另行调度"
+          }
+        }
+      ],
+      "sourceSteps": [
+        {
+          "id": "posted-hardware",
+          "title": "处理器同步 PIR 至虚拟 IRR",
+          "kind": "instruction",
+          "context": "APICv · 目标 vCPU 仍在 non-root",
+          "stepIds": [
+            "sync"
+          ],
+          "sourceIds": [
+            "sdm"
+          ],
+          "detail": "这是 posted-interrupt processing 的硬件语义，不是调用 vmx_deliver_interrupt 再复制一次 PIR；本例无需退出或重新 VM-entry。",
+          "code": "PID.PIR → vIRR；PIR 清除；ON=0"
+        },
+        {
+          "id": "accept-hardware",
+          "title": "硬件接受虚拟中断",
+          "kind": "instruction",
+          "context": "Guest IF / 优先级允许",
+          "stepIds": [
+            "accept"
+          ],
+          "sourceIds": [
+            "sdm"
+          ],
+          "detail": "处理器转入 Guest 的中断入口，并更新虚拟 APIC 服务状态；不是 KVM C 函数替 Guest 执行 handler。",
+          "code": "vIRR[0x51]=0；vISR[0x51]=1"
+        },
+        {
+          "id": "eoi-hardware",
+          "title": "Guest EOI 更新虚拟 APIC",
+          "kind": "instruction",
+          "context": "本例 EOI-exit bitmap 未请求退出",
+          "stepIds": [
+            "eoi"
+          ],
+          "sourceIds": [
+            "sdm"
+          ],
+          "detail": "硬件虚拟化此处的 EOI，不调用软件 LAPIC 的 apic_set_eoi；驱动消费 virtqueue 是后续独立工作。",
+          "code": "vISR[0x51]=0"
+        }
+      ]
+    },
+    {
+      "id": "notify-suppressed",
+      "label": "队列完成但通知被抑制",
+      "summary": "设备先发布 RX 完成，随后因 NO_INTERRUPT 跳过通知；Guest 后续主动轮询仍能消费结果。",
+      "assumptions": [
+        "x86-64、Intel VMX，Linux 6.18 / QEMU 10.2.0，内核 LAPIC，APICv 关闭",
+        "QEMU 直接设备通知路径，无 guest notifier / irqfd 中转；本次 used 尚未发布，本场景队列通知被抑制",
+        "MSI-X 表项 2 已启用且未屏蔽；xAPIC 物理目的地 APIC ID 1、fixed/edge 向量 0x51",
+        "目标 vCPU 可运行，Guest IF = 1、无 interrupt shadow，APIC 优先级允许",
+        "具体发起方为一次 QEMU virtio-net RX 完成；split queue，VIRTIO_F_EVENT_IDX 未协商，本例 avail.flags 设置 NO_INTERRUPT",
+        "缓冲区已经发布且容量足够；此处不重复收包、描述符分配与网络协议栈的全部过程",
+        "Guest 已在接收轮询期间抑制队列通知；本例显示后续一次明确的 NAPI 轮询，不承诺无轮询时自动及时消费",
+        "未协商 VIRTIO_F_NOTIFY_ON_EMPTY；不触发队列清空时的强制通知例外"
+      ],
+      "nodes": [
+        {
+          "id": "device",
+          "label": "QEMU virtio-net",
+          "role": "用户态设备模型"
+        },
+        {
+          "id": "msix",
+          "label": "MSI-X 表项 2",
+          "role": "设备通知配置"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM MSI 路由",
+          "role": "宿主内核"
+        },
+        {
+          "id": "lapic",
+          "label": "vCPU 1 LAPIC",
+          "role": "IRR / ISR"
+        },
+        {
+          "id": "guest",
+          "label": "客户机 IRQ / 驱动",
+          "role": "Guest 内核",
+          "badge": "内核态"
+        },
+        {
+          "id": "queue",
+          "label": "RX 缓冲区与 used ring",
+          "role": "Guest RAM，共享队列",
+          "initial": "P1 尚未写入，used.idx=7"
+        }
+      ],
+      "links": [
+        {
+          "id": "notify",
+          "from": "device",
+          "to": "msix",
+          "label": "请求完成通知",
+          "kind": "notification"
+        },
+        {
+          "id": "msi",
+          "from": "msix",
+          "to": "kvm",
+          "label": "KVM_SIGNAL_MSI",
+          "kind": "notification"
+        },
+        {
+          "id": "route",
+          "from": "kvm",
+          "to": "lapic",
+          "label": "目标 1 / 向量 0x51",
+          "kind": "notification"
+        },
+        {
+          "id": "inject",
+          "from": "lapic",
+          "to": "guest",
+          "label": "VM Entry 注入",
+          "kind": "notification"
+        },
+        {
+          "id": "eoi",
+          "from": "guest",
+          "to": "lapic",
+          "label": "EOI",
+          "kind": "control"
+        },
+        {
+          "id": "write-data",
+          "from": "device",
+          "to": "queue",
+          "label": "写入 RX 报文",
+          "kind": "data"
+        },
+        {
+          "id": "publish-used",
+          "from": "device",
+          "to": "queue",
+          "label": "填写并发布完成记录",
+          "kind": "control"
+        },
+        {
+          "id": "read-used",
+          "from": "queue",
+          "to": "guest",
+          "label": "驱动消费完成记录",
+          "kind": "data"
+        }
+      ],
+      "structures": [
+        {
+          "id": "message",
+          "title": "MSI-X 表项 2",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "mask",
+              "label": "表项 mask",
+              "initial": "0"
+            },
+            {
+              "key": "address",
+              "label": "Message Address",
+              "initial": "0xfee01000"
+            },
+            {
+              "key": "data",
+              "label": "Message Data",
+              "initial": "0x51"
+            },
+            {
+              "key": "sent",
+              "label": "消息状态",
+              "initial": "等待发送"
+            }
+          ]
+        },
+        {
+          "id": "apic",
+          "title": "目标 LAPIC 与注入字段",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "irr",
+              "label": "IRR[0x51]",
+              "initial": "0"
+            },
+            {
+              "key": "isr",
+              "label": "ISR[0x51]",
+              "initial": "0"
+            },
+            {
+              "key": "entry",
+              "label": "VM_ENTRY_INTR_INFO",
+              "initial": "无待注入事件"
+            }
+          ]
+        },
+        {
+          "id": "queue",
+          "title": "共享队列与驱动进度",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "used",
+              "label": "used.idx",
+              "initial": "7"
+            },
+            {
+              "key": "last-used",
+              "label": "驱动 last_used_idx",
+              "initial": "7"
+            },
+            {
+              "key": "descriptor",
+              "label": "已完成描述符链",
+              "initial": "等待驱动回收"
+            }
+          ]
+        },
+        {
+          "id": "device-completion",
+          "title": "设备数据与通知起点",
+          "kind": "queue",
+          "fields": [
+            {
+              "key": "payload",
+              "label": "RX 数据",
+              "initial": "尚未写入"
+            },
+            {
+              "key": "used-entry",
+              "label": "used.ring[7]",
+              "initial": "尚未填写"
+            },
+            {
+              "key": "notify-policy",
+              "label": "通知条件",
+              "initial": "avail.flags.NO_INTERRUPT = 1"
+            },
+            {
+              "key": "notify-decision",
+              "label": "通知判断",
+              "initial": "尚未检查"
+            }
+          ]
+        },
+        {
+          "id": "delivery-stage",
+          "title": "注入阶段",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "delivery",
+              "label": "Guest 接受状态",
+              "initial": "尚无注入事件"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "ready",
+          "title": "设备完成前",
+          "actor": "QEMU virtio-net · RX 后端",
+          "description": "一次报文即将写入预先发布的 Guest RX 缓冲区，本次完成项尚未发布。",
+          "detail": "跟踪报文 P1 的 72 B 接收结果（12 B virtio 头与 60 B 帧），队列大小 8，先前 used.idx 与驱动消费位置均为 7。设备通知、LAPIC pending 和 Guest 消费分开推进。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "rx-copy",
+            "used-fill"
+          ],
+          "focus": true
+        },
+        {
+          "id": "write-data",
+          "title": "写入 Guest RX 数据",
+          "actor": "QEMU virtio-net · receive",
+          "description": "设备把 P1 报文写入已经借给设备的 RX 缓冲区。",
+          "detail": "数据写入与通知分离。此刻 used.idx 仍为 7，驱动还不能仅凭数据变化认定请求完成。",
+          "active": [
+            "device",
+            "queue"
+          ],
+          "links": [
+            "write-data"
+          ],
+          "changes": {
+            "payload": "72 B 已写入；本次完成尚未发布"
+          },
+          "nodeStates": {
+            "queue": "数据已写入，完成待发布",
+            "device": "写入 Guest RX 数据"
+          },
+          "sourceIds": [
+            "rx-copy"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used-fill",
+          "title": "填写完成项",
+          "actor": "QEMU · virtqueue_fill",
+          "description": "写 used.ring[7] 的 id=0、len=72。",
+          "detail": "填写环项没有推进 used.idx；驱动的消费位置仍为 7。",
+          "active": [
+            "device",
+            "queue"
+          ],
+          "links": [
+            "publish-used"
+          ],
+          "changes": {
+            "used-entry": "id=0 · len=72"
+          },
+          "nodeStates": {
+            "device": "填写完成项",
+            "queue": "填写完成项"
+          },
+          "sourceIds": [
+            "used-fill"
+          ],
+          "focus": true
+        },
+        {
+          "id": "used-publish",
+          "title": "发布 used.idx",
+          "actor": "QEMU · virtqueue_split_flush",
+          "description": "在写入顺序约束之后，把 used.idx 从 7 推进到 8。",
+          "detail": "发布索引使驱动可以按协议观察到前面的数据与完成记录；这一步本身尚未发中断。",
+          "active": [
+            "device",
+            "queue"
+          ],
+          "links": [
+            "publish-used"
+          ],
+          "changes": {
+            "used": "8"
+          },
+          "nodeStates": {
+            "queue": "P1 完成已发布",
+            "device": "发布 used.idx"
+          },
+          "sourceIds": [
+            "used-publish"
+          ],
+          "focus": true
+        },
+        {
+          "id": "notify-check",
+          "title": "通知被抑制",
+          "actor": "QEMU · virtio_should_notify",
+          "description": "NO_INTERRUPT 为 1，virtio_should_notify 返回 false，virtio_notify 不进入中断发送路径。",
+          "detail": "used.idx 已为 8，数据保持有效；没有 MSI-X、PBA、LAPIC IRR 或 Guest IRQ 变化。",
+          "active": [
+            "device",
+            "queue"
+          ],
+          "links": [],
+          "changes": {
+            "notify-decision": "抑制通知；完成保留"
+          },
+          "nodeStates": {
+            "device": "通知被抑制",
+            "queue": "通知被抑制"
+          },
+          "sourceIds": [
+            "notify-check",
+            "virtio-notify"
+          ],
+          "focus": true
+        },
+        {
+          "id": "poll",
+          "title": "Guest 后续轮询队列",
+          "actor": "Guest NAPI / 驱动",
+          "description": "正在轮询的 Guest 接收路径检查 used.idx，发现有一个新的完成项。",
+          "detail": "没有中断不代表没有完成；此处的推进来自显式轮询，不是设备又发出了一次通知。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "read-used"
+          ],
+          "changes": {},
+          "nodeStates": {
+            "guest": "Guest 后续轮询队列",
+            "queue": "Guest 后续轮询队列"
+          },
+          "sourceIds": [
+            "guest-napi-poll",
+            "guest-receive",
+            "consume"
+          ],
+          "focus": true
+        },
+        {
+          "id": "consume",
+          "title": "消费完成并回收",
+          "actor": "Guest 驱动",
+          "description": "消费位置从 7 推进到 8，驱动取得 P1 数据并回收对应描述符。",
+          "detail": "本次全过程没有发出设备中断；何时重开通知与防丢事件的复查属于驱动后续协议。",
+          "active": [
+            "guest",
+            "queue"
+          ],
+          "links": [
+            "read-used"
+          ],
+          "changes": {
+            "last-used": "8",
+            "descriptor": "已回收"
+          },
+          "nodeStates": {
+            "queue": "P1 完成已消费",
+            "guest": "消费完成并回收"
+          },
+          "sourceIds": [
+            "guest-receive",
+            "consume"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "设备完成与通知决策",
+          "context": "QEMU 设备执行上下文",
+          "sourceIds": [
+            "rx-copy",
+            "used-fill",
+            "used-publish",
+            "notify-check",
+            "virtio-notify"
+          ],
+          "boundary": "先写数据与完成记录，发布索引后再决定是否通知；不是每次完成都产生中断。"
+        },
+        {
+          "id": "guest-poll",
+          "title": "Guest 轮询与完成消费",
+          "context": "Guest NAPI · 不经过 IRQ handler",
+          "sourceIds": [
+            "guest-napi-poll",
+            "guest-receive",
+            "consume"
+          ],
+          "boundary": "本场景由已安排的轮询继续推进，不经过 vring_interrupt 或 skb_recv_done；通知被抑制不意味着完成数据不存在。",
+          "entry": {
+            "kind": "async",
+            "label": "此前已安排的 NAPI 继续轮询；本次完成没有 IRQ 通知"
+          }
+        }
       ]
     }
   ]

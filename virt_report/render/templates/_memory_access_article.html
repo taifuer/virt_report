@@ -2,7 +2,7 @@
   <h2>场景与边界</h2>
   <p>一条客户机访存指令可以直接由硬件完成，也可能停在客户机页表、EPT 或宿主后备页这几个不同位置。演示沿同一组 RAM 地址切换条件，观察由哪一层处理、修改哪份结构，以及原指令在何时完成。</p>
   <p>RAM 示例沿用<a href="kvm-ept-fault.html">EPT 缺页处理</a>中的地址：<code>GVA 0x40203080 → GPA 0x00403080 → HPA 0x21000080</code>，页大小为 4 KiB。内存槽从 GPA <code>0x00400000</code> 开始、长度为 2 MiB，后备 HVA 基址为 <code>0x7f0000000000</code>。因此目标页是槽内第 3 页，对应后备页 HVA <code>0x7f0000003000</code>。</p>
-  <p>硬件执行两级转换；HVA 则用于 KVM 向宿主内存管理查询后备页。映射建立后，正常访存不会逐次经过 QEMU 的 HVA 查询。MMIO 场景另外读取 GPA <code>0xf0001000</code> 的模拟设备寄存器，避免将设备地址与 RAM 后备混在一起。</p>
+  <p>硬件执行两级转换；HVA 则用于 KVM 向宿主内存管理查询后备页。映射建立后，正常访存不会逐次经过 QEMU 的 HVA 查询。MMIO 分别展示 QEMU 模拟寄存器、KVM 内核 LAPIC、ioeventfd 门铃写入与 VFIO BAR 的稳态直接映射，不能把“设备访问”“硬件 VM-exit”和“返回 QEMU”视为同一件事。</p>
   <p>先选择 RAM 或 MMIO，再观察具体条件下的处理过程。RAM 的场景分为正常访问、Guest 缺页与宿主处理：例如，转换缓存未命中后，硬件遍历中还可能遇到页表缺项；KVM 建立 EPT 时，也可能需要等待宿主后备页。一次访问可以经过多个环节，下面的示例分别固定其他前提，展示各处的状态变化。</p>
   <p>源码采用 QEMU 10.2.0、Linux 6.18，处理器采用 Intel VMX / EPT。普通 RAM 场景均使用 HVA 后备内存，未加入嵌套虚拟化或私有内存。具体前提位于演示下方的“当前场景配置与源码版本”；步骤间隔不表示实际时延。</p>
   {% include '_mechanism_baselines.html' %}
@@ -25,12 +25,16 @@
       <tr><td>EPT 映射缺失</td><td>KVM 查 memslot、取得 PFN、建立 EPT 叶子</td><td>VM-entry 后重试；无需返回 QEMU</td></tr>
       <tr><td>宿主后备页未驻留</td><td>宿主内存管理提供页面，KVM 再建立 EPT</td><td>本例 vCPU 线程等待换入，再进入 Guest 重试</td></tr>
       <tr><td>QEMU 模拟设备 MMIO</td><td>KVM 返回退出信息，QEMU 设备回调填入读值</td><td>再次 KVM_RUN，完成待决模拟后恢复 Guest</td></tr>
+      <tr><td>KVM 内核 LAPIC MMIO</td><td>限定关闭相关硬件加速，退出后由内核设备返回读值</td><td>内核完成原指令，不需要 KVM_RUN 返回 QEMU</td></tr>
+      <tr><td>匹配 ioeventfd 的门铃写</td><td>KVM 匹配地址、宽度及数据后触发 eventfd</td><td>vCPU 继续执行；已通知的后端仍可能在用户态异步处理</td></tr>
+      <tr><td>VFIO 可 mmap 的 BAR 区间</td><td>已有有效映射与权限，CPU 直接访问设备区间</td><td>稳态访问不因该指令退出，不经过逐次 QEMU 设备回调</td></tr>
       <tr><td>脏页记录写保护</td><td>KVM 恢复 EPT 写权限并标记脏页</td><td>VM-entry 后重试写入；Guest PTE 保持不变</td></tr>
     </tbody>
   </table>
   <p>普通 TLB miss 只说明转换缓存没有可用条目。Guest 页表和 EPT 都有效时，硬件能够自行完成遍历。CPU 数据缓存则保存数据或指令，其命中情况与转换缓存要分别观察。</p>
   <p>Guest #PF 示例选用合法匿名映射的首次写入；非法地址与权限错误可能终止应用。宿主缺页示例选用未启用 KVM 异步缺页协议的同步换入；在其他配置中，KVM 可以把等待转成异步处理。两者都不能简单归结为“缺页就调用 QEMU”。</p>
-  <p>MMIO 的读值填写与指令完成尤其需要分开：<code>kvm_run.mmio.data</code> 已填好时，Guest 寄存器仍可能保留旧值。KVM API 要求用户态重新进入 <code>KVM_RUN</code>，由内核先完成待决操作。相关执行循环见<a href="kvm-vcpu-run.html">KVM vCPU 运行与退出</a>。</p>
+  <p>只有交给用户态的 MMIO 读才需要这次往返：<code>kvm_run.mmio.data</code> 已填好时，Guest 寄存器仍可能保留旧值，用户态需重新进入 <code>KVM_RUN</code>，由内核先完成待决操作。KVM 在此之前会尝试内核 LAPIC 与 MMIO 总线；命中的 ioeventfd 写通知也可在内核完成。相关执行循环见<a href="kvm-vcpu-run.html">KVM vCPU 运行与退出</a>。</p>
+  <p>VFIO 直接访问只适用于允许映射的 BAR 区间，且本例从映射已建立的稳态开始。MSI-X 表、需模拟区域、首次映射缺失与权限变化不属于这条无退出路径。这里的 CPU 地址链是 Guest 页表与 EPT；设备自身发起 DMA 时使用的 IOMMU 地址链是另一个方向，不能串成一次 CPU 读取的必经环节。</p>
 </section>
 
 <section id="evolution" class="mechanism-section">
@@ -44,7 +48,7 @@
   <h2>源码与相关内容</h2>
   <p>演示中的源码链接分别定位 Guest 缺页入口、VMX 退出、KVM 后备页解析、EPT 建图和用户态 MMIO 完成边界。源码视图只展开当前场景涉及的路径。</p>
   <ul class="mechanism-sources">
-    {% for source_id in ['address-model', 'guest-fault', 'vmx-exceptions', 'ept-exit', 'ept-map', 'faultin-io', 'backing-page', 'dirty-fault', 'mmio-qemu', 'mmio-completion'] %}
+    {% for source_id in ['address-model', 'guest-fault', 'vmx-exceptions', 'ept-exit', 'ept-map', 'faultin-io', 'backing-page', 'dirty-fault', 'kvm-mmio-read', 'lapic-mmio-read', 'ioeventfd-write', 'vfio-region-map', 'mmio-qemu', 'mmio-completion'] %}
     <li><a href="{{ demo.sources[source_id].url }}" target="_blank" rel="noopener noreferrer">{{ demo.sources[source_id].label }}</a></li>
     {% endfor %}
   </ul>

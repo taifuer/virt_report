@@ -175,8 +175,9 @@ def test_walkthrough_has_distinct_views_guest_domains_and_no_sharing_ui():
 def test_step_explanations_are_grouped_in_the_inspector_not_below_the_diagram():
     page = render.render_mechanisms_html(Config(), "virtio-blk-read")
     visual_start = page.index('<div class="vbr-visual">')
-    inspector_start = page.index('<aside class="vbr-inspector walkthrough-inspector"', visual_start)
-    visual = page[visual_start:inspector_start]
+    inspector_start = page.index('<aside class="vbr-inspector walkthrough-inspector"')
+    assert inspector_start < visual_start
+    visual = page[visual_start:page.index('<div class="vbr-fallback"', visual_start)]
     inspector = page[inspector_start:page.index("</aside>", inspector_start)]
     for attribute in ("data-vbr-event", "data-vbr-ownership"):
         assert attribute not in visual
@@ -198,8 +199,13 @@ def test_backend_selection_is_part_of_the_playback_not_a_separate_comparison():
         "local-blk", "local-scsi", "rbd-blk", "spdk-blk", "spdk-scsi",
     ))
     assert 'data-vbr-control-plane' in page
-    assert 'data-vbr-descriptor-address="1"' in page
-    assert 'data-vbr-completion-label' in page
+    assert 'data-vbr-queue-overview' in page
+    assert 'data-vbr-queue-detail' in page
+    assert 'data-vbr-descriptor-address' not in page
+    script = (render.ASSETS_DIR / "virtio-blk-read.js").read_text(encoding="utf-8")
+    assert 'buildQueueSnapshot(scene, frame)' in script
+    assert 'WalkthroughComponents.queue' in script
+    assert 'data-vbr-source-list' not in page
 
 
 def test_scenario_intro_is_one_paragraph_with_initialization_in_configuration():

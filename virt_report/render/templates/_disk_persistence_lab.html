@@ -1,8 +1,7 @@
 <section id="persistence" class="mechanism-section">
   <h2>写入完成与持久化</h2>
-  <p>同样写入 4 KiB 数据，普通 WRITE、写后 FLUSH 和 WRITE FUA 的完成条件不同。下面沿用偏移 1 MiB 的块设备写入，把旧值 A 更新为 B，分别观察应用返回、Guest 队列完成、宿主缓存和稳定存储。原有读写演示用于查看完整设备路径，这里集中展示同步要求如何改变完成边界。</p>
-  <p>三种场景固定使用 QEMU 的 raw 文件后端、<code>aio=threads</code> 和 writeback 模式。普通 WRITE 与写后 FLUSH 从应用的 <code>O_DIRECT</code> 块设备写入开始，宿主仍使用自己的页缓存；FUA 对照从已经带 <code>REQ_FUA</code> 的块请求开始，只观察这一命令。WRITE 后 FLUSH 场景另外提交一条刷新命令。缓存状态用于解释接口契约，不表示真实硬件内部时序或耗时。</p>
-  {% include '_execution_lab.html' %}
+  <p>在上方同一演示中选择“写入”，再选择“写入完成要求”：本地 virtio-blk 提供普通写与写后 FLUSH，本地 virtio-scsi 提供普通写与 FUA。R1、队列、源码和当前完成保证在同一个工作区连续展示，不需要另开播放器。RBD/SPDK 目前只展示其已核验的普通读写，不套用本地文件的刷新语义。</p>
+  <p>本地场景使用 raw 文件、<code>aio=threads</code>、writeback=on 与 no-flush=off。写后 FLUSH 在普通 <code>O_DIRECT</code> 写返回后发起 <code>fsync()</code>，形成独立请求 F1；FUA 从已经携带 <code>REQ_FUA</code> 的块请求开始，到上层请求完成，不冒充完整应用同步写路径（后者还可能包含额外刷新）。缓存状态表达接口契约，不推断物理设备内部时序或真实耗时。</p>
   <h3>区分缓存路径与同步要求</h3>
   <table>
     <thead><tr><th scope="col">配置或操作</th><th scope="col">控制范围</th><th scope="col">完成保证</th></tr></thead>

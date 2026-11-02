@@ -35,7 +35,8 @@
     // final callback. Keep that transfer visible instead of skipping its edge.
     const transfers = frames.flatMap((frame, position) =>
       frame.edge?.kind === 'data' || frame.changes.dataReady === true ? [position] : []);
-    return [...new Set([0, ...phases.map(phase => phase.end), ...irq, ...transfers])].sort((a, b) => a - b);
+    const contracts = frames.flatMap((frame, position) => frame.followup || frame.id.startsWith('fua-') ? [position] : []);
+    return [...new Set([0, ...phases.map(phase => phase.end), ...irq, ...transfers, ...contracts])].filter(n => n >= 0).sort((a, b) => a - b);
   }
   let overviewStops = overviewMilestones();
   let queueFrames = window.VirtioBlkReadModel.buildQueueTrace(scene);
@@ -49,16 +50,46 @@
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   let index = 0, view = 'overview', timer = null, animation = null, layoutFrame = null;
   let drawingVersion = 0;
+  let completionMode = 'ordinary';
 
-  function loadScenario(operation, backend = scene.request.backend || 'local-blk') {
+  function loadScenario(operation, backend = scene.request.backend || 'local-blk', requestedMode = completionMode) {
     scene = window.VirtioBlkReadModel.getScenario(baseScene, operation, backend, catalog);
     frames = window.VirtioBlkReadModel.buildTrace(scene);
+    const modes = window.DiskCompletionModel.supported(backend, operation);
+    completionMode = modes.includes(requestedMode) ? requestedMode : 'ordinary';
+    frames = window.DiskCompletionModel.extend(scene, frames, completionMode).frames;
+    const completionControl = one('[data-vbr-completion]');
+    completionControl.replaceChildren(...modes.map(mode => {
+      const option = document.createElement('option'); option.value = mode;
+      option.textContent = {ordinary:'普通写入',flush:'写后 fsync / FLUSH',fua:'FUA 块请求'}[mode]; return option;
+    }));
+    completionControl.value = completionMode;
+    one('[data-vbr-completion-choice]').hidden = operation !== 'write';
     phases = scene.phases.map(phase => ({...phase,
       end: frames.map(frame => frame.phase).lastIndexOf(phase.id)}));
     overviewStops = overviewMilestones();
-    queueFrames = window.VirtioBlkReadModel.buildQueueTrace(scene);
-    queueInitial = window.VirtioBlkReadModel.buildQueueInitial(scene);
+    // Base protocol validation remains independent of the explicitly appended F1.
+    const baseQueueScene = window.VirtioBlkReadModel.getScenario(baseScene, operation, backend, catalog);
+    queueFrames = window.VirtioBlkReadModel.buildQueueTrace(baseQueueScene).map(frame => {
+      const current = frames.find(item => item.id === frame.id);
+      const fuaCompletion = completionMode === 'fua' && current.changes.dataReady;
+      return {...current, queueIndex:frame.queueIndex, queueTitle:frame.queueTitle,
+        queueDescription:fuaCompletion ? current.description : frame.queueDescription,
+        queueDetail:fuaCompletion ? current.detail : frame.queueDetail};
+    });
+    queueInitial = window.VirtioBlkReadModel.buildQueueInitial(baseQueueScene);
+    if (completionMode === 'fua') queueInitial = {...queueInitial, ...frames[0], index:0, queueIndex:-1,
+      queueTitle:'已有 FUA 请求，队列尚未准备',queueDescription:frames[0].description,queueDetail:frames[0].detail};
+    const followupQueueSteps = new Set(['flush-prepare','flush-fill-avail','flush-publish','flush-consume',
+      'flush-status','flush-fill-used','flush-used','flush-reclaim']);
+    for (const frame of frames.filter(item => followupQueueSteps.has(item.id))) queueFrames.push({...frame,
+      queueIndex:queueFrames.length, queueTitle:frame.title, queueDescription:frame.description, queueDetail:frame.detail});
+    progressKey = '';
     const presentation = scene.presentation || {};
+    window.WalkthroughComponents.contexts(one('[data-vbr-contexts]'),
+      catalog.routes.find(route => route.id === backend)?.contexts || []);
+    one('[data-vbr-domain="device"]').dataset.component = backend.startsWith('spdk-') ? 'host-user' : 'qemu';
+    one('[data-vbr-domain="backend"]').dataset.component = backend.startsWith('spdk-') ? 'hardware' : 'backend';
     one('[data-vbr-backend-select]').value = backend;
     setText('[data-vbr-device-domain]', presentation.deviceDomain || 'QEMU');
     setText('[data-vbr-device-context]', presentation.deviceContext || '宿主用户态 · IOThread');
@@ -68,16 +99,14 @@
         ? '轮询共享队列，经 bdev 提交 NVMe I/O；不经过 QEMU 块层。'
         : '设备模型与块层。通过映射访问同一份 Guest RAM。'));
     setText('[data-vbr-backend-title]', presentation.storageTitle || '本地文件');
-    setText('[data-vbr-storage-context]', presentation.storageContext || 'QEMU 后端 / 宿主 I/O');
+    setText('[data-vbr-storage-context]', presentation.storageContext || 'QEMU worker / 宿主 I/O');
     setText('[data-vbr-storage-summary]', presentation.storageSummary
       || 'raw 格式与文件协议；cache.direct=off、aio=threads，可能命中宿主页缓存。');
     setText('[data-vbr-control-plane]', presentation.controlPlane || '');
     one('[data-vbr-control-plane]').hidden = !presentation.controlPlane;
     setText('[data-vbr-scenario-summary]', scene.summary);
     one('[data-vbr-scenario-summary]').hidden = false;
-    setText('[data-vbr-queue-title]', presentation.queueTitle || 'virtqueue 0');
     setText('[data-vbr-notify-title]', presentation.notificationMode === 'poll' ? '提交路径不经 KVM' : '提交通知');
-    setText('[data-vbr-completion-label]', scene.request.interface === 'virtio-scsi' ? 'SCSI response' : 'status');
     setText('[data-vbr-used-length-note]', scene.request.usedLengthNote || '');
     one('[data-vbr-used-length-note]').hidden = !scene.request.usedLengthNote;
     const assumptions = one('[data-vbr-assumptions]');
@@ -93,38 +122,17 @@
       link.target = '_blank'; link.rel = 'noopener noreferrer'; baselines.append(link);
     });
     one('[data-vbr-configuration]').hidden = false;
-    const paths = one('[data-vbr-callpaths]');
-    paths.replaceChildren();
-    for (const [number, path] of scene.callPaths.entries()) {
-      const section = document.createElement('section');
-      section.className = 'vbr-callpath';
-      section.dataset.vbrCallpath = path.id;
-      const title = document.createElement('h4');
-      title.textContent = `${number + 1}. ${path.title}`;
-      const context = document.createElement('p');
-      context.className = 'vbr-callpath-context'; context.textContent = path.context;
-      const list = document.createElement('ol');
-      for (const id of path.sourceIds) {
-        const source = scene.sources[id];
-        const item = document.createElement('li'); item.dataset.vbrSource = id;
-        const link = document.createElement('a');
-        link.href = source.url; link.title = `${source.path}:${source.line}`;
-        link.target = '_blank'; link.rel = 'noopener noreferrer';
-        const symbol = document.createElement('strong'); symbol.textContent = source.symbol;
-        const file = document.createElement('span'); file.textContent = link.title;
-        link.append(symbol, file); item.append(link); list.append(item);
-      }
-      const boundary = document.createElement('p');
-      boundary.className = 'vbr-callpath-boundary'; boundary.textContent = path.boundary;
-      section.append(title, context, list, boundary); paths.append(section);
-    }
+    window.WalkthroughComponents.sourcePaths(one('[data-vbr-callpaths]'), scene.callPaths, scene.sources);
   }
 
   function readLocation() {
     const params = new URL(window.location.href).searchParams;
-    const backend = catalog.routes.some(route => route.id === params.get('backend'))
+    let backend = catalog.routes.some(route => route.id === params.get('backend'))
       ? params.get('backend') : 'local-blk';
-    loadScenario(params.get('operation') === 'write' ? 'write' : 'read', backend);
+    const legacy = !params.has('completion') && params.get('persistence-scenario');
+    const legacyMode = {'write-cache':'ordinary','write-flush':'flush','write-fua':'fua'}[legacy];
+    if (legacyMode) backend = legacyMode === 'fua' ? 'local-scsi' : 'local-blk';
+    loadScenario(legacyMode || params.get('operation') === 'write' ? 'write' : 'read', backend, legacyMode || params.get('completion') || 'ordinary');
     const requested = frames.findIndex(frame => frame.id === params.get('step'));
     index = requested < 0 ? 0 : requested;
     view = views.includes(params.get('view')) ? params.get('view') : 'overview';
@@ -142,6 +150,8 @@
     else url.searchParams.delete('operation');
     if (scene.request.backend && scene.request.backend !== 'local-blk') url.searchParams.set('backend', scene.request.backend);
     else url.searchParams.delete('backend');
+    if (completionMode !== 'ordinary') url.searchParams.set('completion', completionMode);
+    else url.searchParams.delete('completion');
     // A static file may be opened directly; history updates are an enhancement.
     try { window.history.replaceState(null, '', url); } catch { /* Keep playback working. */ }
   }
@@ -165,7 +175,7 @@
 
   function renderProgress(frame) {
     const queueView = view === 'mechanism';
-    const key = `${queueView}:${scene.request.backend}:${scene.request.operation}`;
+    const key = `${queueView}:${scene.request.backend}:${scene.request.operation}:${completionMode}`;
     const progress = one('[data-vbr-progress]');
     if (key !== progressKey) {
       progressKey = key;
@@ -296,29 +306,7 @@
   }
 
   function renderSources(frame) {
-    const list = one('[data-vbr-source-list]');
-    list.replaceChildren();
-    for (const id of frame.sourceIds) {
-      const source = scene.sources[id];
-      const item = document.createElement('li');
-      const link = document.createElement('a');
-      link.href = source.url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      const name = document.createElement('strong');
-      name.textContent = source.symbol;
-      const location = document.createElement('span');
-      location.textContent = `${source.project} · ${source.path}:${source.line}`;
-      link.append(name, location);
-      item.append(link);
-      list.append(item);
-    }
-    all('[data-vbr-source]').forEach(node => {
-      node.dataset.active = String(frame.sourceIds.includes(node.dataset.vbrSource));
-    });
-    all('[data-vbr-callpath]').forEach(node => {
-      node.dataset.active = String(Boolean(node.querySelector('[data-vbr-source][data-active="true"]')));
-    });
+    window.WalkthroughComponents.highlightSources(one('[data-vbr-callpaths]'), frame.sourceIds, frame.id, scene.sources);
   }
 
   function render({animate = false, speak = false, updateURL = true} = {}) {
@@ -342,19 +330,21 @@
     one('[data-vbr-prev]').disabled = index === firstIndex();
     one('[data-vbr-next]').disabled = index === lastIndex();
     one('[data-vbr-detail]').hidden = view === 'overview';
-    one('[data-vbr-sources]').hidden = view !== 'source';
     one('[data-vbr-structure]').hidden = view !== 'mechanism';
     board.hidden = view !== 'overview';
     one('[data-vbr-callpaths]').hidden = view !== 'source';
     one('[data-vbr-legend]').hidden = view !== 'overview';
     one('[data-vbr-interrupt-path]').hidden = view !== 'overview';
-    setText('[data-vbr-operation-note]', writing ? '4 KiB · 写入完成不等于持久化' : '4 KiB · 单请求成功路径');
+    setText('[data-vbr-operation-note]', writing ? (completionMode === 'ordinary' ? '4 KiB · 普通写不保证持久化' : '4 KiB · 跟踪同步完成要求') : '4 KiB · 单请求成功路径');
     setText('[data-vbr-app-title]', `应用 · ${syscall}()`);
+    setText('[data-vbr-node="application"] .vbr-mode-tag', completionMode === 'fua' ? '请求边界' : '用户态');
+    setText('[data-vbr-driver-title]', completionMode === 'fua' ? 'SCSI 与块层' : '系统调用与块层');
+    setText('[data-vbr-buffer-title]', completionMode === 'fua' ? '请求缓冲区 · 4 KiB' : '用户缓冲区 · 4 KiB');
+    if (completionMode === 'fua') setText('[data-vbr-app-title]', '上层请求方 · REQ_FUA');
     setText('[data-vbr-storage-title]', `异步${verb}`);
-    setText('[data-vbr-command]', scene.request.command || (writing ? 'VIRTIO_BLK_T_OUT' : 'VIRTIO_BLK_T_IN'));
-    setText('[data-vbr-transfer]', writing ? 'Guest 用户缓冲区 → 后端' : '后端 → Guest 用户缓冲区');
     setText('[data-vbr-help]', viewHelp[view]);
-    setText('[data-vbr-counter]', queueFrame ? (queueFrame.queueIndex < 0 ? '准备前 · 共 8 步'
+    if (view === 'mechanism' && completionMode === 'flush') setText('[data-vbr-help]', '分别跟踪 R1 写入与 F1 刷新的队列交接。F1 是后续独立请求，环索引从 1 推进到 2；系统调用和中断细节见流程总览。');
+    setText('[data-vbr-counter]', queueFrame ? (queueFrame.queueIndex < 0 ? `准备前 · 共 ${queueFrames.length} 步`
       : `队列交接 · 第 ${queueFrame.queueIndex + 1} / ${queueFrames.length} 步`)
       : `阶段 ${phaseIndex + 1} / ${phases.length} · 步骤 ${index + 1} / ${frames.length}`);
     const lane = scene.lanes.find(item => item.id === frame.actor);
@@ -402,7 +392,10 @@
       reclaim: s.completed ? 'R1 完成 · 可继续使用资源' : s.reclaimed ? '链已回收，块请求待结束' : s.guestNoticed ? '检查 used，准备回收' : '等待设备完成',
     };
     for (const [id, value] of Object.entries(captions)) setText(`[data-vbr-node-state="${id}"]`, value);
-    setText('[data-vbr-buffer-detail]', captions.buffer);
+    if (completionMode === 'fua') {
+      setText('[data-vbr-node-state="application"]', s.completed ? 'R1 已完成，不展示应用返回' : '已有 R1，等待块请求完成');
+      setText('[data-vbr-node-state="buffer"]', s.completed ? 'R1 已完成，上层可按契约处理缓冲区' : 'R1 输入页已准备，保持有效');
+    }
     const irqStates = [s.interruptSignaled, s.irqPending, s.irqInjected, s.guestNoticed];
     all('[data-vbr-irq-stage]').forEach((item, n) => {
       item.dataset.done = String(irqStates[n]);
@@ -413,54 +406,9 @@
       cell.dataset.filled = String(s.bufferReady);
       cell.style.setProperty('--vbr-byte-order', n);
     });
-    for (const descriptor of scene.request.descriptors) {
-      const box = one(`[data-vbr-descriptor="${descriptor.id}"]`);
-      box.dataset.active = String(s.prepared && !s.reclaimed);
-      box.dataset.queueState = s.reclaimed ? 'returned' : s.prepared ? 'owned' : 'idle';
-      const responseId = scsi && !writing ? 1 : 2;
-      box.dataset.current = String(Boolean(frame.changes.prepared || frame.changes.consumed || frame.changes.reclaimed
-        || (frame.changes.dataReady && descriptor.len === scene.request.bytes)
-        || (frame.changes.statusWritten && descriptor.id === responseId)));
-      setText(`[data-vbr-descriptor-role="${descriptor.id}"]`, descriptor.role);
-      setText(`[data-vbr-descriptor-address="${descriptor.id}"]`, `${descriptor.addr} · ${descriptor.len} B`);
-      setText(`[data-vbr-descriptor-flags="${descriptor.id}"]`, s.prepared ? descriptor.flags.join(' · ') : '尚未填写');
-      setText(`[data-vbr-descriptor-next="${descriptor.id}"]`, s.prepared ? `next = ${descriptor.next ?? '—'}` : '尚未建立链');
-    }
-    for (const name of ['available', 'used']) {
-      const written = name === 'available' ? s.published : s.usedWritten;
-      all(`[data-vbr-ring="${name}"] .vbr-slot`).forEach((slot, n) => {
-        slot.dataset.filled = String(n === 0 && written);
-        slot.dataset.active = String(n === 0 && written && !s.reclaimed);
-        slot.dataset.queueState = n !== 0 || !written ? 'idle' : s.reclaimed ? 'returned' : 'owned';
-        slot.dataset.current = String(n === 0 && Boolean(name === 'available'
-          ? frame.changes.published || frame.changes.consumed
-          : frame.changes.usedWritten || frame.changes.usedPublished || frame.changes.reclaimed));
-        slot.querySelector('span').textContent = n === 0 && written ? (name === 'available' ? '头 0' : 'id 0') : '—';
-      });
-    }
-    const queueLinks = {
-      available: [s.published, frame.changes.published || frame.changes.consumed],
-      chain: [s.prepared, frame.changes.prepared || frame.changes.consumed],
-      buffer: [s.prepared, frame.changes.dataReady],
-      used: [s.usedWritten, frame.changes.usedWritten || frame.changes.usedPublished],
-      'return-chain': [s.usedWritten, frame.changes.reclaimed],
-      reclaim: [s.reclaimed, frame.changes.reclaimed],
-    };
-    all('[data-vbr-queue-link]').forEach(node => {
-      const [ready, current] = queueLinks[node.dataset.vbrQueueLink];
-      node.dataset.queueState = !ready ? 'idle' : s.reclaimed ? 'returned' : 'owned';
-      node.dataset.current = String(Boolean(current));
-    });
-    setText('[data-vbr-queue-link="available"] span:last-child', s.published ? '保存链头 0' : '待发布链头 0');
-    setText('[data-vbr-queue-link="used"] code', s.usedWritten ? 'used.id=0' : 'used.id');
-    setText('[data-vbr-queue-link="used"] span', s.usedWritten ? '完成的链头' : '待填完成链头');
-    setText('[data-vbr-queue-link="reclaim"] span:last-child', s.reclaimed ? '允许复用' : '等待驱动回收');
-    setText('[data-vbr-status-byte]', s.statusWritten
-      ? (scsi ? 'response = OK · status = GOOD · resid = 0 · sense_len = 0' : '0x00 · OK')
-      : '未回写（初值不作保证）');
-    setText('[data-vbr-used-length]', s.usedWritten
-      ? `${s.usedLength} B${scsi ? '（实现记录值）' : writing ? '（仅状态）' : ' = 4096 + 1'}${s.usedPublished ? '' : '（待发布）'}`
-      : '尚无完成记录');
+    const queue = window.VirtioBlkReadModel.buildQueueSnapshot(scene, frame);
+    window.WalkthroughComponents.queue(one('[data-vbr-queue-overview]'), queue.state, queue.meta, true);
+    window.WalkthroughComponents.queue(one('[data-vbr-queue-detail]'), queue.state, queue.meta);
     const ownership = s.userReturned ? (writing ? 'pwrite() 已返回，可复用缓冲区；本演示未执行 flush / FUA'
       : 'pread() 已返回，应用可读取结果')
       : s.completed ? '块请求结束，应用调用尚未返回'
@@ -470,6 +418,31 @@
           : s.published ? '设备可访问，驱动必须保持缓冲区有效'
             : s.pagesMapped ? '用户页已固定，尚未发布给设备' : '用户缓冲区尚未交给设备';
     setText('[data-vbr-ownership]', ownership);
+    const durability = one('[data-vbr-durability]'); durability.hidden = !writing;
+    if (frame.durability) {
+      for (const key of ['host', 'device', 'stable']) setText(`[data-vbr-durable-${key}]`, frame.durability[key]);
+      durability.dataset.confirmed = String(frame.durability.stableConfirmed);
+      if (frame.durability.stableConfirmed) setText('[data-vbr-node-state="storage"]', '本次数据已确认持久化');
+      if (completionMode === 'fua') setText('[data-vbr-ownership]', s.completed ? '上层块请求 R1 完成，数据已获持久化保证；不推断应用调用返回。' : '跟踪已有 REQ_FUA 的 R1；不模拟应用系统调用。');
+    }
+    if (frame.followup) {
+      setText('[data-vbr-node-state="application"]', frame.id === 'sync-return' ? 'fsync() 返回 0' : 'pwrite 已返回 · fsync 等待中');
+      setText('[data-vbr-node-state="queue"]', `F1 · avail.idx=${frame.queueState.avail.index} · 无数据载荷`);
+      setText('[data-vbr-node-state="completion"]', `F1 · used.idx=${frame.queueState.used.index}`);
+      setText('[data-vbr-node-state="driver"]', frame.followup.published ? 'F1 已发布' : '为后续刷新准备 F1');
+      setText('[data-vbr-node-state="device"]', frame.followup.usedPublished ? 'F1 完成已发布' : frame.followup.consumed ? '等待 F1 刷新成功' : '等待 F1');
+      setText('[data-vbr-node-state="reclaim"]', frame.followup.reclaimed ? 'F1 已回收' : 'R1 已回收 · F1 未回收');
+      setText('[data-vbr-node-state="buffer"]', 'R1 数据已交付 · F1 无数据载荷');
+      setText('[data-vbr-node-state="interrupt"]', frame.followup.irqHandled ? 'Guest 已接受 F1 通知' : frame.followup.irqInjected ? 'F1 中断已注入' : frame.followup.irqPending ? 'F1 向量待注入' : frame.followup.irqSignaled ? 'F1 irqfd 已触发' : '等待 F1 完成通知');
+      const f1irq = [frame.followup.irqSignaled, frame.followup.irqPending, frame.followup.irqInjected, frame.followup.irqHandled];
+      all('[data-vbr-irq-stage]').forEach((item, n) => {
+        item.dataset.done = String(Boolean(f1irq[n])); item.dataset.active = String(Boolean(f1irq[n] && !f1irq[n + 1]));
+      });
+      all('[data-vbr-metric]').forEach(node => {
+        node.textContent = {availIndex:frame.queueState.avail.index,usedIndex:frame.queueState.used.index,freeDescriptors:frame.queueState.freeDescriptors}[node.dataset.vbrMetric];
+      });
+      setText('[data-vbr-ownership]', frame.id === 'sync-return' ? 'R1 与独立刷新 F1 均成功，fsync 返回。' : 'R1 已完成；正在跟踪后续独立刷新 F1。');
+    }
     if (speak) announce(`${title}。${description}`);
     if (updateURL) writeLocation();
     scheduleDrawing(animate);
@@ -484,7 +457,8 @@
     if (index === lastIndex()) {
       stopPlayback();
       if (!manual) announce(view === 'mechanism' ? '队列交接播放完成，描述符已回收。'
-        : `${scene.request.operation === 'write' ? '写入' : '读取'}过程播放完成，系统调用已返回。`);
+        : completionMode === 'fua' ? 'FUA 过程播放完成，上层块请求已完成。'
+          : `${scene.request.operation === 'write' ? '写入' : '读取'}过程播放完成，系统调用已返回。`);
     }
   }
 
@@ -533,6 +507,10 @@
     index = firstIndex();
     render();
     announce(`已切换到${event.target.selectedOptions[0].textContent}，从${view === 'mechanism' ? '队列准备' : '请求'}开始。`);
+  });
+  one('[data-vbr-completion]').addEventListener('change', event => {
+    stopPlayback(); loadScenario(scene.request.operation, scene.request.backend || 'local-blk', event.target.value);
+    index = firstIndex(); render(); announce('已切换写入完成要求，从同一请求起点开始。');
   });
   one('[data-vbr-progress]').addEventListener('click', event => {
     const button = event.target.closest('button');

@@ -7,14 +7,14 @@
   <title>原理 - virt-report</title>
   <meta name="description" content="结合固定版本源码、图解与交互，分析 QEMU、KVM 和 libvirt 的实现机制与设计演进。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="feed.xml">
-  <link rel="shortcut icon" href="favicon.ico?v=85f3a75ef38f">
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=85f3a75ef38f">
-  <link rel="stylesheet" href="assets/site.css?v=85f3a75ef38f">
-<link rel="stylesheet" href="assets/mechanisms.css?v=613736e500b7"></head>
+  <link rel="shortcut icon" href="favicon.ico?v=49f2a464e9bd">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=49f2a464e9bd">
+  <link rel="stylesheet" href="assets/site.css?v=49f2a464e9bd">
+<link rel="stylesheet" href="assets/mechanisms.css?v=f8e166670755"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="index.html"><img class="brand-mark" src="assets/brand-mark.png?v=85f3a75ef38f" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="index.html"><img class="brand-mark" src="assets/brand-mark.png?v=49f2a464e9bd" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -79,6 +79,7 @@
           <li><a href="#cpu-execution-walkthrough"><span>CPU 指令执行</span><span class="mechanism-directory-count">1<span class="sr-only"> 个演示</span></span></a></li>
           <li><a href="#memory-access-walkthrough"><span>内存访问过程</span><span class="mechanism-directory-count">1<span class="sr-only"> 个演示</span></span></a></li>
           <li><a href="#interrupt-delivery-walkthrough"><span>中断递送过程</span><span class="mechanism-directory-count">1<span class="sr-only"> 个演示</span></span></a></li>
+          <li><a href="#gpu-execution-walkthrough"><span>GPU 命令提交与完成</span><span class="mechanism-directory-count">1<span class="sr-only"> 个演示</span></span></a></li>
         </ul>
       </div>
     </nav>
@@ -86,13 +87,23 @@
   <section class="mechanism-group" aria-labelledby="group-foundations">
     <h2 id="group-foundations">基础机制</h2>
   <section class="mechanism-topic" id="virtualization-basics" aria-labelledby="mechanism-topic-virtualization-basics">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-virtualization-basics"><a href="mechanisms/virtualization-basics.html">虚拟化基础</a></h3><p>理解虚拟机的组成，以及 CPU、内存、设备和中断如何共同完成一次请求。</p></header>
-    <div class="mechanism-list">
+    <header class="mechanism-topic-header">
+      <div class="mechanism-topic-heading">
+        <h3 id="mechanism-topic-virtualization-basics"><a href="mechanisms/virtualization-basics.html">虚拟化基础</a></h3>
+      </div>
+      <p>理解虚拟机的组成，以及 CPU、内存、设备和中断如何共同完成一次请求。</p>
+    </header>
+    <div class="mechanism-list" id="mechanism-list-virtualization-basics">
     </div>
   </section>
   <section class="mechanism-topic" id="cpu-virtualization" aria-labelledby="mechanism-topic-cpu-virtualization">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-cpu-virtualization"><a href="mechanisms/cpu-virtualization.html">CPU 虚拟化</a></h3><p>客户机执行、退出处理、调度与时钟，以及 TCG 指令翻译、代码缓存和执行交接。</p></header>
-    <div class="mechanism-list">
+    <header class="mechanism-topic-header">
+      <div class="mechanism-topic-heading">
+        <h3 id="mechanism-topic-cpu-virtualization"><a href="mechanisms/cpu-virtualization.html">CPU 虚拟化</a></h3>
+<button type="button" class="mechanism-topic-toggle" data-mechanism-toggle data-topic-title="CPU 虚拟化" data-article-count="5" aria-expanded="true" aria-controls="mechanism-list-cpu-virtualization" aria-label="收起CPU 虚拟化的细分文章" hidden><svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="m5 8 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>      </div>
+      <p>客户机执行、退出处理、调度与时钟，以及 TCG 指令翻译、代码缓存和执行交接。</p>
+    </header>
+    <div class="mechanism-list" id="mechanism-list-cpu-virtualization">
 <article class="mechanism-list-item">
         <h4><a href="mechanisms/kvm-vcpu-halt.html">KVM vCPU 的阻塞、轮询与唤醒</a></h4>
         <p>从 HLT 跟踪宿主轮询、等待者发布与中断唤醒，分析丢失唤醒的防护和轮询预算的自适应调整。</p>
@@ -111,8 +122,13 @@
       </article>    </div>
   </section>
   <section class="mechanism-topic" id="memory-virtualization" aria-labelledby="mechanism-topic-memory-virtualization">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-memory-virtualization"><a href="mechanisms/memory-virtualization.html">内存虚拟化</a></h3><p>客户机内存的地址转换、映射与脏页跟踪。</p></header>
-    <div class="mechanism-list">
+    <header class="mechanism-topic-header">
+      <div class="mechanism-topic-heading">
+        <h3 id="mechanism-topic-memory-virtualization"><a href="mechanisms/memory-virtualization.html">内存虚拟化</a></h3>
+<button type="button" class="mechanism-topic-toggle" data-mechanism-toggle data-topic-title="内存虚拟化" data-article-count="4" aria-expanded="true" aria-controls="mechanism-list-memory-virtualization" aria-label="收起内存虚拟化的细分文章" hidden><svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="m5 8 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>      </div>
+      <p>客户机内存的地址转换、映射与脏页跟踪。</p>
+    </header>
+    <div class="mechanism-list" id="mechanism-list-memory-virtualization">
 <article class="mechanism-list-item">
         <h4><a href="mechanisms/kvm-ept-fault.html">KVM 内存映射与 EPT 缺页处理</a></h4>
         <p>从内存槽注册和一页 RAM 的首次访问出发，分析 EPT 建图、权限处理、宿主页失效及 TDP MMU 的演进。</p>
@@ -128,8 +144,13 @@
       </article>    </div>
   </section>
   <section class="mechanism-topic" id="device-virtualization" aria-labelledby="mechanism-topic-device-virtualization">
-<span id="io-virtualization" class="mechanism-topic-alias" aria-hidden="true"></span>    <header class="mechanism-topic-header"><h3 id="mechanism-topic-device-virtualization"><a href="mechanisms/device-virtualization.html">设备与 I/O 虚拟化</a></h3><p>从 virtqueue 与网络、存储、图形设备，到 vhost 后端、IOMMU 地址转换及直通设备管理。</p></header>
-    <div class="mechanism-list">
+<span id="io-virtualization" class="mechanism-topic-alias" aria-hidden="true"></span>    <header class="mechanism-topic-header">
+      <div class="mechanism-topic-heading">
+        <h3 id="mechanism-topic-device-virtualization"><a href="mechanisms/device-virtualization.html">设备与 I/O 虚拟化</a></h3>
+<button type="button" class="mechanism-topic-toggle" data-mechanism-toggle data-topic-title="设备与 I/O 虚拟化" data-article-count="14" aria-expanded="true" aria-controls="mechanism-list-device-virtualization" aria-label="收起设备与 I/O 虚拟化的细分文章" hidden><svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="m5 8 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>      </div>
+      <p>从 virtqueue 与网络、存储、图形设备，到 vhost 后端、IOMMU 地址转换及直通设备管理。</p>
+    </header>
+    <div class="mechanism-list" id="mechanism-list-device-virtualization">
 <article class="mechanism-list-item">
         <h4><a href="mechanisms/virtio-device-initialization.html">virtio 设备初始化与特性协商</a></h4>
         <p>从 PCI 能力、状态握手到队列地址配置，跟踪一个 4 描述符队列如何开始工作，并区分失败、设备复位与队列复位。</p>
@@ -175,8 +196,13 @@
       </article>    </div>
   </section>
   <section class="mechanism-topic" id="interrupt-virtualization" aria-labelledby="mechanism-topic-interrupt-virtualization">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-interrupt-virtualization"><a href="mechanisms/interrupt-virtualization.html">中断虚拟化</a></h3><p>从设备完成事件到客户机中断处理，分析路由、注入与硬件加速。</p></header>
-    <div class="mechanism-list">
+    <header class="mechanism-topic-header">
+      <div class="mechanism-topic-heading">
+        <h3 id="mechanism-topic-interrupt-virtualization"><a href="mechanisms/interrupt-virtualization.html">中断虚拟化</a></h3>
+<button type="button" class="mechanism-topic-toggle" data-mechanism-toggle data-topic-title="中断虚拟化" data-article-count="1" aria-expanded="true" aria-controls="mechanism-list-interrupt-virtualization" aria-label="收起中断虚拟化的细分文章" hidden><svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="m5 8 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>      </div>
+      <p>从设备完成事件到客户机中断处理，分析路由、注入与硬件加速。</p>
+    </header>
+    <div class="mechanism-list" id="mechanism-list-interrupt-virtualization">
 <article class="mechanism-list-item">
         <h4><a href="mechanisms/kvm-virtio-interrupt.html">virtio 完成通知与 KVM 中断注入</a></h4>
         <p>从 used ring 的完成发布出发，分析通知抑制、MSI-X 消息、LAPIC 状态及 irqfd 替代路径。</p>
@@ -186,16 +212,26 @@
   <section class="mechanism-group" aria-labelledby="group-operations">
     <h2 id="group-operations">关键操作</h2>
   <section class="mechanism-topic" id="vm-startup" aria-labelledby="mechanism-topic-vm-startup">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-vm-startup"><a href="mechanisms/libvirt-domain-start.html">虚拟机启动</a></h3><p>从 Libvirt 请求到 QEMU 创建机器、KVM 初始化和客户机开始执行。</p></header>
-    <div class="mechanism-list">
+    <header class="mechanism-topic-header">
+      <div class="mechanism-topic-heading">
+        <h3 id="mechanism-topic-vm-startup"><a href="mechanisms/libvirt-domain-start.html">虚拟机启动</a></h3>
+<button type="button" class="mechanism-topic-toggle" data-mechanism-toggle data-topic-title="虚拟机启动" data-article-count="1" aria-expanded="true" aria-controls="mechanism-list-vm-startup" aria-label="收起虚拟机启动的细分文章" hidden><svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="m5 8 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>      </div>
+      <p>从 Libvirt 请求到 QEMU 创建机器、KVM 初始化和客户机开始执行。</p>
+    </header>
+    <div class="mechanism-list" id="mechanism-list-vm-startup">
 <article class="mechanism-list-item">
         <h4><a href="mechanisms/qemu-vm-startup.html">QEMU 虚拟机启动与 vCPU 初始化</a></h4>
         <p>以包含系统盘与网卡的 Q35 虚拟机为例，跟踪后端、KVM、CPU、内存与设备初始化，再到复位、固件和操作系统引导。</p>
       </article>    </div>
   </section>
   <section class="mechanism-topic" id="migration" aria-labelledby="mechanism-topic-migration">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-migration"><a href="mechanisms/migration.html">热迁移</a></h3><p>内存迭代、停机控制、迁移流格式、多通道同步与后拷贝缺页处理。</p></header>
-    <div class="mechanism-list">
+    <header class="mechanism-topic-header">
+      <div class="mechanism-topic-heading">
+        <h3 id="mechanism-topic-migration"><a href="mechanisms/migration.html">热迁移</a></h3>
+<button type="button" class="mechanism-topic-toggle" data-mechanism-toggle data-topic-title="热迁移" data-article-count="6" aria-expanded="true" aria-controls="mechanism-list-migration" aria-label="收起热迁移的细分文章" hidden><svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="m5 8 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>      </div>
+      <p>内存迭代、停机控制、迁移流格式、多通道同步与后拷贝缺页处理。</p>
+    </header>
+    <div class="mechanism-list" id="mechanism-list-migration">
 <article class="mechanism-list-item">
         <h4><a href="mechanisms/qemu-memory-migration.html">QEMU 预拷贝迁移的内存迭代与停机控制</a></h4>
         <p>脏页跟踪、内存重传与切换条件，以及带宽、写入负载和停机时间之间的关系。</p>
@@ -217,8 +253,13 @@
       </article>    </div>
   </section>
   <section class="mechanism-topic" id="hotplug" aria-labelledby="mechanism-topic-hotplug">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-hotplug"><a href="mechanisms/hotplug.html">热插拔</a></h3><p>设备、CPU 与内存的在线增删、客户机通知和资源回收。</p></header>
-    <div class="mechanism-list">
+    <header class="mechanism-topic-header">
+      <div class="mechanism-topic-heading">
+        <h3 id="mechanism-topic-hotplug"><a href="mechanisms/hotplug.html">热插拔</a></h3>
+<button type="button" class="mechanism-topic-toggle" data-mechanism-toggle data-topic-title="热插拔" data-article-count="3" aria-expanded="true" aria-controls="mechanism-list-hotplug" aria-label="收起热插拔的细分文章" hidden><svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="m5 8 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>      </div>
+      <p>设备、CPU 与内存的在线增删、客户机通知和资源回收。</p>
+    </header>
+    <div class="mechanism-list" id="mechanism-list-hotplug">
 <article class="mechanism-list-item">
         <h4><a href="mechanisms/qemu-pcie-hotplug.html">QEMU PCIe 设备热插拔与异步移除</a></h4>
         <p>从端口拓扑、插槽事件到客户机停用与对象回收，分析设备添加、异步删除和管理程序的完成判断。</p>
@@ -231,16 +272,26 @@
       </article>    </div>
   </section>
   <section class="mechanism-topic" id="live-upgrade" aria-labelledby="mechanism-topic-live-upgrade">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-live-upgrade"><a href="mechanisms/qemu-cpr-transfer.html">热升级</a></h3><p>QEMU 同机进程替换中的共享内存、状态恢复、兼容性与失败边界。</p></header>
-    <div class="mechanism-list">
+    <header class="mechanism-topic-header">
+      <div class="mechanism-topic-heading">
+        <h3 id="mechanism-topic-live-upgrade"><a href="mechanisms/qemu-cpr-transfer.html">热升级</a></h3>
+      </div>
+      <p>QEMU 同机进程替换中的共享内存、状态恢复、兼容性与失败边界。</p>
+    </header>
+    <div class="mechanism-list" id="mechanism-list-live-upgrade">
     </div>
   </section>
   </section>
   <section class="mechanism-group" aria-labelledby="group-internals">
     <h2 id="group-internals">内部机制</h2>
   <section class="mechanism-topic" id="qemu-internals" aria-labelledby="mechanism-topic-qemu-internals">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-qemu-internals"><a href="mechanisms/qemu-internals.html">QEMU 内部机制</a></h3><p>进程初始化、QOM / qdev、内存模型、QMP 和事件循环。</p></header>
-    <div class="mechanism-list">
+    <header class="mechanism-topic-header">
+      <div class="mechanism-topic-heading">
+        <h3 id="mechanism-topic-qemu-internals"><a href="mechanisms/qemu-internals.html">QEMU 内部机制</a></h3>
+<button type="button" class="mechanism-topic-toggle" data-mechanism-toggle data-topic-title="QEMU 内部机制" data-article-count="5" aria-expanded="true" aria-controls="mechanism-list-qemu-internals" aria-label="收起QEMU 内部机制的细分文章" hidden><svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="m5 8 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>      </div>
+      <p>进程初始化、QOM / qdev、内存模型、QMP 和事件循环。</p>
+    </header>
+    <div class="mechanism-list" id="mechanism-list-qemu-internals">
 <article class="mechanism-list-item">
         <h4><a href="mechanisms/qemu-qom-device.html">QEMU 对象模型与设备初始化</a></h4>
         <p>从 virtio-net-pci 的创建过程出发，分析 QOM 类型、对象组合、属性配置与设备生命周期。</p>
@@ -259,16 +310,26 @@
       </article>    </div>
   </section>
   <section class="mechanism-topic" id="kvm-internals" aria-labelledby="mechanism-topic-kvm-internals">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-kvm-internals"><a href="mechanisms/kvm-vcpu-run.html">KVM 内部机制</a></h3><p>内核对象、vCPU 请求与跨 CPU 协调，联系执行循环、内存映射及事件处理。</p></header>
-    <div class="mechanism-list">
+    <header class="mechanism-topic-header">
+      <div class="mechanism-topic-heading">
+        <h3 id="mechanism-topic-kvm-internals"><a href="mechanisms/kvm-vcpu-run.html">KVM 内部机制</a></h3>
+<button type="button" class="mechanism-topic-toggle" data-mechanism-toggle data-topic-title="KVM 内部机制" data-article-count="1" aria-expanded="true" aria-controls="mechanism-list-kvm-internals" aria-label="收起KVM 内部机制的细分文章" hidden><svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="m5 8 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>      </div>
+      <p>内核对象、vCPU 请求与跨 CPU 协调，联系执行循环、内存映射及事件处理。</p>
+    </header>
+    <div class="mechanism-list" id="mechanism-list-kvm-internals">
 <article class="mechanism-list-item">
         <h4><a href="mechanisms/kvm-vcpu-requests.html">KVM vCPU 请求与跨 CPU 同步</a></h4>
         <p>跟踪一次远端 TLB 刷新，解释请求位图、vCPU kick、进入竞争，以及 IPI 确认与操作完成之间的边界。</p>
       </article>    </div>
   </section>
   <section class="mechanism-topic" id="libvirt-internals" aria-labelledby="mechanism-topic-libvirt-internals">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-libvirt-internals"><a href="mechanisms/libvirt-internals.html">Libvirt 内部机制</a></h3><p>守护进程启动、连接与驱动选择、RPC 编解码和调用分发。</p></header>
-    <div class="mechanism-list">
+    <header class="mechanism-topic-header">
+      <div class="mechanism-topic-heading">
+        <h3 id="mechanism-topic-libvirt-internals"><a href="mechanisms/libvirt-internals.html">Libvirt 内部机制</a></h3>
+<button type="button" class="mechanism-topic-toggle" data-mechanism-toggle data-topic-title="Libvirt 内部机制" data-article-count="1" aria-expanded="true" aria-controls="mechanism-list-libvirt-internals" aria-label="收起Libvirt 内部机制的细分文章" hidden><svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="m5 8 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>      </div>
+      <p>守护进程启动、连接与驱动选择、RPC 编解码和调用分发。</p>
+    </header>
+    <div class="mechanism-list" id="mechanism-list-libvirt-internals">
 <article class="mechanism-list-item">
         <h4><a href="mechanisms/libvirt-rpc.html">Libvirt RPC 的编码与调用分发</a></h4>
         <p>以一次虚拟机信息查询为例，解析 RPC 报文、XDR 编码、服务端分发与响应匹配，并说明守护进程拆分后的调用边界。</p>
@@ -278,28 +339,63 @@
   <section class="mechanism-group" aria-labelledby="group-walkthroughs">
     <h2 id="group-walkthroughs">交互演示</h2>
   <section class="mechanism-topic" id="block-io-walkthrough" aria-labelledby="mechanism-topic-block-io-walkthrough">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-block-io-walkthrough"><a href="mechanisms/virtio-blk-read.html">磁盘 I/O 读写过程</a></h3><p>观察请求、队列与中断的交接，并比较普通写入、FLUSH 和 FUA 的持久化条件。</p></header>
-    <div class="mechanism-list">
+    <header class="mechanism-topic-header">
+      <div class="mechanism-topic-heading">
+        <h3 id="mechanism-topic-block-io-walkthrough"><a href="mechanisms/virtio-blk-read.html">磁盘 I/O 读写过程</a></h3>
+      </div>
+      <p>观察请求、队列与中断的交接，并比较普通写入、FLUSH 和 FUA 的持久化条件。</p>
+    </header>
+    <div class="mechanism-list" id="mechanism-list-block-io-walkthrough">
     </div>
   </section>
   <section class="mechanism-topic" id="network-io-walkthrough" aria-labelledby="mechanism-topic-network-io-walkthrough">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-network-io-walkthrough"><a href="mechanisms/network-io.html">网络 I/O 收发过程</a></h3><p>比较 QEMU、vhost-net、DPDK 和硬件 vDPA 的收发路径与缓冲区交接。</p></header>
-    <div class="mechanism-list">
+    <header class="mechanism-topic-header">
+      <div class="mechanism-topic-heading">
+        <h3 id="mechanism-topic-network-io-walkthrough"><a href="mechanisms/network-io.html">网络 I/O 收发过程</a></h3>
+      </div>
+      <p>比较 QEMU、vhost-net、DPDK 和硬件 vDPA 的收发路径与缓冲区交接。</p>
+    </header>
+    <div class="mechanism-list" id="mechanism-list-network-io-walkthrough">
     </div>
   </section>
   <section class="mechanism-topic" id="cpu-execution-walkthrough" aria-labelledby="mechanism-topic-cpu-execution-walkthrough">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-cpu-execution-walkthrough"><a href="mechanisms/cpu-execution.html">CPU 指令执行</a></h3><p>观察指令执行、退出处理，以及任务等待、定时唤醒与 vCPU 调度。</p></header>
-    <div class="mechanism-list">
+    <header class="mechanism-topic-header">
+      <div class="mechanism-topic-heading">
+        <h3 id="mechanism-topic-cpu-execution-walkthrough"><a href="mechanisms/cpu-execution.html">CPU 指令执行</a></h3>
+      </div>
+      <p>观察指令执行、退出处理，以及任务等待、定时唤醒与 vCPU 调度。</p>
+    </header>
+    <div class="mechanism-list" id="mechanism-list-cpu-execution-walkthrough">
     </div>
   </section>
   <section class="mechanism-topic" id="memory-access-walkthrough" aria-labelledby="mechanism-topic-memory-access-walkthrough">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-memory-access-walkthrough"><a href="mechanisms/memory-access.html">内存访问过程</a></h3><p>沿地址转换区分 RAM、Guest 缺页、EPT 缺项、宿主缺页与 MMIO。</p></header>
-    <div class="mechanism-list">
+    <header class="mechanism-topic-header">
+      <div class="mechanism-topic-heading">
+        <h3 id="mechanism-topic-memory-access-walkthrough"><a href="mechanisms/memory-access.html">内存访问过程</a></h3>
+      </div>
+      <p>沿地址转换区分 RAM、Guest 缺页、EPT 缺项、宿主缺页与 MMIO。</p>
+    </header>
+    <div class="mechanism-list" id="mechanism-list-memory-access-walkthrough">
     </div>
   </section>
   <section class="mechanism-topic" id="interrupt-delivery-walkthrough" aria-labelledby="mechanism-topic-interrupt-delivery-walkthrough">
-    <header class="mechanism-topic-header"><h3 id="mechanism-topic-interrupt-delivery-walkthrough"><a href="mechanisms/interrupt-delivery.html">中断递送过程</a></h3><p>对照软件 MSI-X、irqfd、屏蔽与延迟递送，以及 APICv posted interrupt 路径。</p></header>
-    <div class="mechanism-list">
+    <header class="mechanism-topic-header">
+      <div class="mechanism-topic-heading">
+        <h3 id="mechanism-topic-interrupt-delivery-walkthrough"><a href="mechanisms/interrupt-delivery.html">中断递送过程</a></h3>
+      </div>
+      <p>对照软件 MSI-X、irqfd、屏蔽与延迟递送，以及 APICv posted interrupt 路径。</p>
+    </header>
+    <div class="mechanism-list" id="mechanism-list-interrupt-delivery-walkthrough">
+    </div>
+  </section>
+  <section class="mechanism-topic" id="gpu-execution-walkthrough" aria-labelledby="mechanism-topic-gpu-execution-walkthrough">
+    <header class="mechanism-topic-header">
+      <div class="mechanism-topic-heading">
+        <h3 id="mechanism-topic-gpu-execution-walkthrough"><a href="mechanisms/gpu-execution.html">GPU 命令提交与完成</a></h3>
+      </div>
+      <p>跟踪 VFIO 直通 GPU 的上传、读回，以及限定 GVT-g 实现的 mdev 命令审核、调度和完成。</p>
+    </header>
+    <div class="mechanism-list" id="mechanism-list-gpu-execution-walkthrough">
     </div>
   </section>
   </section>
@@ -307,6 +403,6 @@
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="assets/site.js?v=85f3a75ef38f"></script>
-</body>
+  <script src="assets/site.js?v=49f2a464e9bd"></script>
+<script src="assets/mechanism-directory.js?v=f8e166670755" defer></script></body>
 </html>

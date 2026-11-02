@@ -191,30 +191,105 @@ async function assertView(page, view) {
 
 async function assertFrame(page, frame, activeScene) {
   assert.equal(await page.locator('[data-vbr-lab]').getAttribute('data-step'), frame.id);
-  for (const key of ['availIndex', 'backendIndex', 'usedIndex', 'driverIndex', 'freeDescriptors']) {
-    const values = await page.locator(`[data-vbr-metric="${key}"]`).allTextContents();
-    assert(values.length && values.every(value => value === String(frame.state[key])), `${frame.id}: ${key}`);
-  }
+  await assertTypedQueue(page, frame, activeScene);
   const filled = page.locator('[data-vbr-byte][data-filled="true"]');
-  assert.equal(await filled.count(), frame.state.bufferReady ? 32 : 0);
+  assert.equal(await filled.count(), frame.state.bufferReady ? 16 : 0);
   const view = await page.locator('[data-vbr-lab]').getAttribute('data-view');
   assert.equal(await page.locator('[data-vbr-byte][data-filled="true"]:visible').count(),
-    frame.state.bufferReady && view !== 'source' ? 16 : 0);
+    frame.state.bufferReady && view === 'overview' ? 16 : 0);
   assert.equal(await page.locator('[data-vbr-node="application"]').getAttribute('data-done'),
     String(frame.state.userReturned), `${frame.id}: application completion indicator`);
   assert.equal(await page.locator('[data-vbr-traveler]').getAttribute('hidden'), '', 'reduced motion disables travel');
-  for (const descriptor of activeScene.request.descriptors) {
-    assert.equal(await page.locator(`[data-vbr-descriptor-address="${descriptor.id}"]`).textContent(),
-      `${descriptor.addr} · ${descriptor.len} B`);
-    if (frame.state.prepared) {
-      const flags = await page.locator(`[data-vbr-descriptor-flags="${descriptor.id}"]`).textContent();
-      assert.equal(flags, descriptor.flags.join(' · '), 'WRITE is a device buffer permission, not the operation');
-    }
-  }
   for (const [stage, key] of Object.entries({signal: 'interruptSignaled', pending: 'irqPending',
     injected: 'irqInjected', handled: 'guestNoticed'})) {
     assert.equal(await page.locator(`[data-vbr-irq-stage="${stage}"]`).getAttribute('data-done'),
       String(frame.state[key]), `${frame.id}: distinct interrupt milestone ${stage}`);
+  }
+}
+
+async function assertTypedQueue(page, frame, activeScene) {
+  const {state, meta} = model.buildQueueSnapshot(activeScene, frame);
+  // One browser round trip per frame; still compare every rendered field/slot.
+  const containers = await page.locator('[data-vbr-queue-overview], [data-vbr-queue-detail]').evaluateAll(nodes => nodes.map(node => ({
+    compact: node.hasAttribute('data-vbr-queue-overview'),
+    summaries: Number(node.hasAttribute('data-queue-summary')) + node.querySelectorAll('[data-queue-summary]').length,
+    summary: Object.fromEntries([...node.querySelectorAll('[data-queue-summary-field]')]
+      .map(field => [field.dataset.queueSummaryField, field.textContent])),
+    tables: node.querySelectorAll('table').length,
+    headings: [...node.querySelectorAll('thead th')].map(cell => cell.textContent),
+    heading: node.querySelector('header span')?.textContent,
+    descriptors: [...node.querySelectorAll('[data-descriptor]')].map(row => ({
+      index: Number(row.dataset.descriptor), state: row.dataset.state, current: row.dataset.current,
+      cells: [...row.querySelectorAll('td')].map(cell => cell.textContent),
+    })),
+    rings: Object.fromEntries([...node.querySelectorAll('[data-queue-ring]')].map(ring => [ring.dataset.queueRing, {
+      text: ring.querySelector(':scope > p').textContent,
+      slots: [...ring.querySelectorAll('.walkthrough-queue-slots > div')].map(slot => ({
+        filled: slot.dataset.filled, returned: slot.dataset.returned, label: slot.querySelector('span').textContent,
+        small: [...slot.querySelectorAll('small')].map(small => small.textContent),
+      })),
+    }])),
+    buffers: [...node.querySelectorAll('[data-buffer]')].map(buffer => ({id:buffer.dataset.buffer,
+      label:buffer.querySelector('strong').textContent, text:buffer.querySelector('span').textContent})),
+    response: node.querySelector('.walkthrough-queue-response')?.textContent,
+  })));
+  assert.equal(containers.length, 2);
+  for (const container of containers) {
+    if (container.compact) {
+      assert.equal(container.summaries, 1, 'overview uses one compact Guest RAM summary');
+      assert.deepEqual(Object.keys(container.summary), ['chain', 'avail', 'used', 'free']);
+      assert.equal(container.summary.chain, state.descriptors.length
+        ? state.descriptors.map(descriptor => descriptor.index).join(' → ') : '尚未准备');
+      assert.equal(container.summary.avail, `idx ${state.avail.index} · 设备消费 ${state.avail.consumer}`);
+      assert.equal(container.summary.used, `idx ${state.used.index} · 驱动回收 ${state.used.consumer}`);
+      assert.equal(container.summary.free, `${state.freeDescriptors} / ${meta.size}`);
+      assert.equal(container.tables, 0, 'overview does not duplicate the detail descriptor table');
+      assert.deepEqual(container.rings, {}, 'overview does not duplicate all ring slots');
+      assert.deepEqual(container.buffers, [], 'overview does not duplicate all buffer cards');
+      continue;
+    }
+    assert.equal(container.summaries, 0, 'queue detail retains the full typed structures');
+    assert.equal(container.tables, 1);
+    assert.deepEqual(container.headings,
+      ['描述符 / 缓冲区', 'addr', 'len', 'flags', 'next']);
+    assert.match(container.heading,
+      new RegExp(`队列 ${meta.index} · ${meta.size} 项 · 空闲描述符 ${state.freeDescriptors}`));
+    const descriptors = state.descriptors.length ? state.descriptors
+      : meta.descriptorIndices.map(index => ({index,label:'尚未填写',state:'unprepared'}));
+    assert.equal(container.descriptors.length, descriptors.length);
+    for (const desc of descriptors) {
+      const row = container.descriptors.find(row => row.index === desc.index);
+      assert.equal(row.state, desc.state);
+      assert.equal(row.current, String(state.changed.includes('descriptors')));
+      assert.deepEqual(row.cells, [
+        `desc[${desc.index}] · ${desc.label}`,
+        desc.addr === undefined ? '—' : typeof desc.addr === 'number' ? `0x${desc.addr.toString(16)}` : desc.addr,
+        String(desc.len ?? '—'), desc.flags ? (desc.flags.join(' | ') || '设备只读') : '—', String(desc.next ?? '—'),
+      ]);
+    }
+    for (const name of ['avail','used']) {
+      const ring = container.rings[name], expected = state[name];
+      assert.equal(ring.text,
+        `${name}.idx = ${expected.index} · ${name === 'avail' ? '设备消费' : '驱动回收'}位置 = ${expected.consumer}`);
+      assert.equal(ring.slots.length, meta.size);
+      for (let n = 0; n < meta.size; n++) {
+        const slot = ring.slots[n], record = expected.slots[n];
+        assert.equal(slot.filled, String(record != null));
+        assert.equal(slot.returned, String(record != null && expected.consumer > n));
+        assert.equal(slot.label, record == null ? '—'
+          : name === 'avail' ? `头 ${record}` : `id ${record.id}`);
+        if (name === 'used' && record != null) assert.equal(slot.small.at(-1), `len ${record.len}`);
+      }
+    }
+    assert.equal(container.buffers.length, state.buffers.length);
+    for (const buffer of state.buffers) {
+      const node = container.buffers.find(node => node.id === buffer.id);
+      assert.equal(node.label, buffer.label);
+      assert.equal(node.text,
+        `${typeof buffer.addr === 'number' ? '0x' + buffer.addr.toString(16) : buffer.addr} · 容量 ${buffer.length} B · 有效 ${buffer.validBytes} B`);
+    }
+    assert.equal(container.response, !state.response.ready ? '尚未回写响应'
+      : state.response.kind === 'scsi' ? 'response OK · status GOOD · resid 0 · sense_len 0' : 'status 0x00 · OK');
   }
 }
 
@@ -229,29 +304,6 @@ async function assertQueueFrame(page, frame, activeScene) {
   } else {
     assert.equal(await page.locator('[data-vbr-queue-step][aria-current="step"]')
       .getAttribute('data-vbr-queue-step'), frame.id);
-  }
-  const expectedOwnership = frame.state.reclaimed ? 'returned' : frame.state.prepared ? 'owned' : 'idle';
-  for (const descriptor of activeScene.request.descriptors) {
-    assert.equal(await page.locator(`[data-vbr-descriptor="${descriptor.id}"]`)
-      .getAttribute('data-queue-state'), expectedOwnership);
-    const responseId = activeScene.request.interface === 'virtio-scsi'
-      && activeScene.request.operation === 'read' ? 1 : 2;
-    const current = [0, 2, 7].includes(frame.queueIndex)
-      || (frame.queueIndex === 3 && descriptor.len === activeScene.request.bytes)
-      || (frame.queueIndex === 4 && descriptor.id === responseId);
-    assert.equal(await page.locator(`[data-vbr-descriptor="${descriptor.id}"]`)
-      .getAttribute('data-current'), String(current));
-  }
-  assert.equal(await page.locator('[data-vbr-queue-link="available"] span:first-child').textContent(), 'avail 槽 0');
-  assert.equal(await page.locator('[data-vbr-queue-link="available"] span:last-child').textContent(),
-    frame.state.published ? '保存链头 0' : '待发布链头 0');
-  assert.equal(await page.locator('[data-vbr-queue-link="used"] code').textContent(),
-    frame.state.usedWritten ? 'used.id=0' : 'used.id');
-  if (frame.state.usedWritten) {
-    const slot = page.locator('[data-vbr-ring="used"] .vbr-slot').first();
-    assert.equal(await slot.getAttribute('data-queue-state'), expectedOwnership);
-    assert.equal(await slot.getAttribute('data-filled'), 'true', 'reclaim preserves the old record');
-    assert.match(await slot.textContent(), /id 0/);
   }
   assert.equal(frame.state.userReturned, false, 'queue view ends before the syscall return');
 }
@@ -290,8 +342,9 @@ async function assertBackends(page, everyStep = false) {
       await assertQueueFrame(page, queue.at(-1), activeScene);
     }
     assert(await page.locator('[data-vbr-next]').isDisabled(), 'queue view stops at descriptor reclamation');
-    assert.match(await page.locator('[data-vbr-used-length]').textContent(), new RegExp(`^${trace.at(-1).state.usedLength} B`));
-    if (backend.endsWith('scsi')) assert.match(await page.locator('[data-vbr-status-byte]').textContent(), /response = OK.*sense_len = 0/);
+    assert.equal(await page.locator('[data-vbr-queue-detail] [data-queue-ring="used"] .walkthrough-queue-slots > div').first().locator('small').last().textContent(),
+      `len ${trace.at(-1).state.usedLength}`);
+    if (backend.endsWith('scsi')) assert.match(await page.locator('[data-vbr-queue-detail] .walkthrough-queue-response').textContent(), /response OK.*sense_len 0/);
     await page.locator('[data-vbr-view="source"]').click();
     await assertCallpaths(page, queue.at(-1), activeScene);
     if (everyStep) {
@@ -322,25 +375,28 @@ async function assertCallpaths(page, frame, activeScene = scene) {
   assert(await paths.isVisible(), 'source view displays the source call paths');
   assert(await page.locator('[data-vbr-board]').isHidden(), 'source view does not duplicate the overview board');
   assert(await page.locator('[data-vbr-structure]').isHidden(), 'source view only shows source paths');
-  assert(await page.locator('[data-vbr-sources]').isVisible(), 'current-step source references remain available');
-  const active = await paths.locator('[data-vbr-source][data-active="true"]')
-    .evaluateAll(items => items.map(item => item.dataset.vbrSource));
+  assert.equal(await page.locator('[data-vbr-sources], [data-vbr-source-list]').count(), 0,
+    'source references are unified in the left source view');
+  const active = await paths.locator('[data-source-id][data-current="true"]')
+    .evaluateAll(items => items.map(item => item.dataset.sourceId));
   const includedSources = new Set(activeScene.callPaths.flatMap(group => group.sourceIds));
-  const expectedActive = [...new Set(frame.sourceIds.filter(id => includedSources.has(id)))];
+  const expectedActive = [...new Set(frame.sourceIds)];
   assert(expectedActive.length > 0, `${frame.id}: at least one referenced source appears in the call paths`);
   assert.deepEqual([...new Set(active)].sort(), expectedActive.sort(), `${frame.id}: active source entries`);
-  const groups = await paths.locator('[data-vbr-callpath]').evaluateAll(items => items.map(item => ({
-    active: item.dataset.active === 'true',
-    sources: [...item.querySelectorAll('[data-vbr-source]')].map(source => source.dataset.vbrSource),
+  const groups = await paths.locator('[data-callpath]').evaluateAll(items => items.map(item => ({
+    active: item.dataset.current === 'true',
+    sources: [...item.querySelectorAll('[data-source-id]')].map(source => source.dataset.sourceId),
   })));
   assert.equal(groups.length, activeScene.callPaths.length);
   for (const group of groups) {
     assert.equal(group.active, group.sources.some(id => frame.sourceIds.includes(id)), 'source group follows the active step');
   }
-  assert.deepEqual(await page.locator('[data-vbr-source-list] a').evaluateAll(items => items.map(a => a.href)),
-    frame.sourceIds.map(id => activeScene.sources[id].url));
-  for (const item of await paths.locator('[data-vbr-source]').evaluateAll(items => items.map(item => ({
-    id: item.dataset.vbrSource, href: item.querySelector('a').href,
+  const supplement = frame.sourceIds.filter(id => !includedSources.has(id));
+  assert.deepEqual(await paths.locator('[data-source-supplement] [data-source-id]')
+    .evaluateAll(items => items.map(item => item.dataset.sourceId)), supplement);
+  assert.equal(await paths.locator('[data-source-supplement]').isVisible(), supplement.length > 0);
+  for (const item of await paths.locator('[data-source-id]').evaluateAll(items => items.map(item => ({
+    id: item.dataset.sourceId, href: item.querySelector('a').href,
   })))) assert.equal(item.href, activeScene.sources[item.id].url);
 }
 
@@ -479,17 +535,18 @@ async function assertCallpaths(page, frame, activeScene = scene) {
     for (const [index, frame] of queueFrames.entries()) {
       await assertQueueFrame(page, frame, scene);
       if (frame.state.usedPublished && !frame.state.reclaimed) {
-        ownedSlotColor = await page.locator('[data-vbr-ring="used"] .vbr-slot').first()
-          .evaluate(node => getComputedStyle(node).backgroundColor);
+        ownedSlotColor = await page.locator('[data-vbr-queue-detail] [data-queue-ring="used"] .walkthrough-queue-slots > div').first()
+          .evaluate(node => { const style = getComputedStyle(node); return [style.backgroundColor, style.borderStyle, style.color]; });
       }
       if (index < queueFrames.length - 1) await button('next').click();
     }
     assert(await button('next').isDisabled());
-    assert.match(await button('used-length').textContent(), /4097 B/);
+    assert.match(await page.locator('[data-vbr-queue-detail] [data-queue-ring="used"] .walkthrough-queue-slots').textContent(), /len 4097/);
     assert.match(await button('ownership').textContent(), /回收/);
-    const returnedSlotColor = await page.locator('[data-vbr-ring="used"] .vbr-slot').first()
-      .evaluate(node => getComputedStyle(node).backgroundColor);
-    assert.notEqual(returnedSlotColor, ownedSlotColor, 'reclaimed records are visually distinct from owned ones');
+    const returnedSlotColor = await page.locator('[data-vbr-queue-detail] [data-queue-ring="used"] .walkthrough-queue-slots > div').first()
+      .evaluate(node => { const style = getComputedStyle(node); return [style.backgroundColor, style.borderStyle, style.color]; });
+    assert.notDeepEqual(returnedSlotColor, ownedSlotColor, 'reclaimed records are visually distinct from owned ones');
+    assert.equal(returnedSlotColor[1], 'dashed', 'shared queue marks retained consumed slots with a dashed border');
     for (const frame of queueFrames) {
       await page.locator(`[data-vbr-queue-step="${frame.id}"]`).click();
       await assertQueueFrame(page, frame, scene);
@@ -499,7 +556,7 @@ async function assertCallpaths(page, frame, activeScene = scene) {
     assert.equal(await page.locator('[data-vbr-node="application"]').getAttribute('data-done'), 'false');
     await button('reset').click();
     assert.equal(await lab.getAttribute('data-step'), queueInitial.id);
-    assert.match(await button('status-byte').textContent(), /未回写/);
+    assert.match(await page.locator('[data-vbr-queue-detail] .walkthrough-queue-response').textContent(), /未回写/);
     assert(await button('prev').isDisabled());
     // URLs from the earlier full-step queue view resolve to an existing queue milestone.
     for (const oldId of [firstFrame.id, 'signal-irqfd', finalFrame.id]) {
@@ -554,16 +611,16 @@ async function assertCallpaths(page, frame, activeScene = scene) {
     assert.equal(new URL(page.url()).searchParams.get('operation'), 'write');
     await page.locator('[data-vbr-view="mechanism"]').click();
     await assertView(page, 'mechanism');
-    assert.match(await button('command').textContent(), /VIRTIO_BLK_T_OUT/);
-    assert.match(await button('transfer').textContent(), /Guest 用户缓冲区 → 后端/);
-    assert.equal(await page.locator('[data-vbr-descriptor-role="1"]').textContent(), writeScene.request.descriptors[1].role);
     await assertQueueFrame(page, model.buildQueueInitial(writeScene), writeScene);
     await button('next').click();
     for (const [index, frame] of writeQueueFrames.entries()) {
       await assertQueueFrame(page, frame, writeScene);
       if (index < writeQueueFrames.length - 1) await button('next').click();
     }
-    assert.match(await button('used-length').textContent(), /^1 B/);
+    assert.match(await page.locator('[data-vbr-queue-detail] [data-queue-ring="used"] .walkthrough-queue-slots').textContent(), /len 1/);
+    assert.match(await page.locator('[data-vbr-queue-detail] [data-buffer="payload"] strong').textContent(), /输入数据/);
+    assert.equal(await page.locator('[data-vbr-queue-detail] [data-descriptor="1"] td').nth(3).textContent(), 'NEXT',
+      'write data is device-readable, unlike read result descriptors');
     assert.match(await button('ownership').textContent(), /回收/);
     await page.locator('[data-vbr-view="source"]').click();
     await assertCallpaths(page, writeQueueFrames.at(-1), writeScene);

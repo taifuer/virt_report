@@ -4,7 +4,8 @@
 <section id="preface" class="mechanism-section">
   <h2>场景与边界</h2>
   <p>使用 KVM 时，QEMU 的 vCPU 线程通过 <code>KVM_RUN</code> 进入宿主内核，再由 VM Entry 开始执行客户机指令。普通加法、客户机内核中的大量代码都可以由物理处理器直接完成。CPUID、模拟设备访问和空闲等待则需要不同的处理路径。</p>
-  <p>下面用指令、设备访问和定时休眠几个例子观察执行位置、状态变化与控制权交接。硬件路径采用 x86-64、Intel VMX 与 EPT，源码对应 QEMU 10.2.0 和 Linux 6.18。各场景分别列出使用的拦截、设备和中断配置。</p>
+  <p>基础场景从同一个位置开始：vCPU 已经运行，QEMU 的 KVM_RUN 尚未返回，物理处理器正在执行 Guest 指令。演示固定显示当前指令、RIP、寄存器、Guest CPL 与 VMX 模式；只有实际跨越执行上下文时才转移时间线位置。Guest 不是物理 CPU 之外的另一个请求处理部件。</p>
+  <p>硬件路径采用 x86-64、Intel VMX 与 EPT，源码对应 QEMU 10.2.0 和 Linux 6.18。普通指令、系统调用、内核处理退出与用户态设备交接先共用执行时间线；HLT 和定时休眠放在“等待与唤醒”组，进一步观察 Guest 任务和宿主线程两层调度。各场景分别列出使用的拦截、设备和中断配置。</p>
   <p>先看“普通 ADD”，再切换到“CPUID 内核处理”和“MMIO 返回 QEMU”：三者依次展示直接执行、内核处理和用户态设备交接。“Guest SYSCALL”区分客户机权限切换与虚拟化退出；“HLT 空闲等待”展示 vCPU 阻塞。两个定时休眠场景再用同一次 <code>nanosleep</code> 对比：客户机继续执行其他任务，或者进入空闲、等待定时器唤醒。</p>
   {% include '_mechanism_baselines.html' %}
 </section>

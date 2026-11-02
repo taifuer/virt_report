@@ -1,10 +1,10 @@
-/* Shared appearance/fullscreen regressions across the five offline demos. */
+/* Shared appearance/fullscreen regressions across the six offline demos. */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
-const slugs = ['virtio-blk-read', 'network-io', 'cpu-execution', 'memory-access', 'interrupt-delivery'];
+const slugs = ['virtio-blk-read', 'network-io', 'cpu-execution', 'memory-access', 'interrupt-delivery', 'gpu-execution'];
 const shots = process.env.WALKTHROUGH_SCREENSHOT_DIR;
 if (shots) fs.mkdirSync(shots, {recursive: true});
 
@@ -34,6 +34,10 @@ async function assertDomainAlignment(page, context, requireInlineQemu = false) {
 (async () => {
   const browser = await chromium.launch({args: ['--no-sandbox']});
   const context = await browser.newContext({viewport: {width: 1440, height: 1100}, reducedMotion: 'reduce'});
+  await context.route('**/*', route => {
+    const host = new URL(route.request().url()).hostname;
+    return ['localhost', '127.0.0.1'].includes(host) ? route.continue() : route.abort();
+  });
   const page = await context.newPage(), errors = [];
   page.on('pageerror', error => errors.push(error.message));
   try {
@@ -91,7 +95,7 @@ async function assertDomainAlignment(page, context, requireInlineQemu = false) {
         }
       }
       if (width >= 390) {
-        for (const [slug, scene] of [['cpu-execution','mmio-userspace'], ['memory-access','mmio-read'],
+        for (const [slug, scene] of [['memory-access','mmio-read'],
           ['interrupt-delivery','msix-software'], ['interrupt-delivery','msix-masked']]) {
           await page.goto(`${base}/mechanisms/${slug}.html?scenario=${scene}`);
           await page.locator('.walkthrough-domain').first().waitFor({state: 'visible'});

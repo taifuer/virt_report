@@ -7,6 +7,8 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from virt_report.source_paths import validate_call_path_metadata
+
 DEMO_PAGES = {
     "network-io": "network-io",
     "memory-access": "memory-access",
@@ -14,6 +16,7 @@ DEMO_PAGES = {
     "interrupt-delivery": "interrupt-delivery",
     "disk-persistence": "virtio-blk-read",
     "vm-lifecycle": "libvirt-domain-start",
+    "gpu-execution": "gpu-execution",
 }
 DEMO_IDS = tuple(DEMO_PAGES)
 CONTENT_DIR = Path(__file__).parent / "content" / "flows"
@@ -52,10 +55,12 @@ def validate_demo(demo: dict) -> None:
         require(text(scene["label"]) and text(scene["summary"]), "scenario labels")
         require(bool(scene["assumptions"]) and all(map(text, scene["assumptions"])), "assumptions")
         nodes = ids(scene["nodes"])
-        require(1 < len(nodes) <= 8, "node count")
+        require(1 < len(nodes) <= 48, "node count")
         require(all(text(node["label"]) and text(node["role"]) for node in scene["nodes"]), "nodes")
         require(all("initial" not in node or text(node["initial"]) for node in scene["nodes"]),
                 "node initial state")
+        require(all("badge" not in node or node["badge"] in {"用户态", "内核态"}
+                    for node in scene["nodes"]), "node execution mode badge")
         links = ids(scene["links"])
         for link in scene["links"]:
             require(link["from"] in nodes and link["to"] in nodes, "link endpoints")
@@ -71,7 +76,7 @@ def validate_demo(demo: dict) -> None:
                 require(field["key"] not in {"__proto__", "constructor", "prototype"}, "unsafe field")
                 fields.append(field["key"])
         require(len(fields) == len(set(fields)), "duplicate fields")
-        require(2 <= len(scene["steps"]) <= 20, "step count")
+        require(2 <= len(scene["steps"]) <= 120, "step count")
         ids(scene["steps"])
         initial = scene["steps"][0]
         require(not initial["active"] and not initial["changes"] and not initial["links"]
@@ -85,6 +90,25 @@ def validate_demo(demo: dict) -> None:
                     and all(map(text, step["nodeStates"].values())), "state values")
             require(bool(step["sourceIds"]) and set(step["sourceIds"]) <= set(sources), "step sources")
             require(isinstance(step["focus"], bool), "focus flag")
+        if "callPaths" in scene:
+            ids(scene["callPaths"])
+            for path in scene["callPaths"]:
+                require(all(text(path.get(key)) for key in ("title", "context", "boundary")),
+                        "call path context")
+                require(bool(path["sourceIds"]) and set(path["sourceIds"]) <= set(sources),
+                        "call path sources")
+                validate_call_path_metadata(path, sources)
+        if "sourceSteps" in scene:
+            ids(scene["sourceSteps"])
+            for step in scene["sourceSteps"]:
+                require(all(text(step.get(key)) for key in ("title", "context", "detail")),
+                        "source step text")
+                require(step.get("kind") in {"instruction", "function", "assembly"},
+                        "source step kind")
+                require(bool(step["stepIds"]) and set(step["stepIds"]) <= ids(scene["steps"]),
+                        "source step mapping")
+                require(bool(step["sourceIds"]) and set(step["sourceIds"]) <= set(sources),
+                        "source step evidence")
 
 
 def validate_selector(selector: dict, scenario_ids: set[str]) -> None:
@@ -146,22 +170,44 @@ def get_demo(demo_id: str) -> dict | None:
     if demo_id not in DEMO_IDS:
         return None
     demo = json.loads((CONTENT_DIR / f"{demo_id}.json").read_text(encoding="utf-8"))
+    if demo_id == "network-io":
+        from virt_report.network_queue import enrich_network_demo
+        enrich_network_demo(demo)
     validate_demo(demo)
     selectors = json.loads((CONTENT_DIR / "execution-selectors.json").read_text(encoding="utf-8"))
-    selector = selectors[demo_id]
+    selector = demo.get("selector", selectors.get(demo_id))
     validate_selector(selector, {scene["id"] for scene in demo["scenarios"]})
     demo["selector"] = selector
     layouts = json.loads((CONTENT_DIR / "execution-layouts.json").read_text(encoding="utf-8"))
     for scene in demo["scenarios"]:
-        layout = layouts[demo_id][scene["id"]]
-        groups = [*layout["domains"]]
-        if layout.get("memory"):
-            groups.append(layout["memory"])
-        represented = [node for group in groups for node in group["nodes"]]
-        expected = {node["id"] for node in scene["nodes"]}
-        if len(represented) != len(expected) or set(represented) != expected:
-            raise ValueError("Execution layout must include each scene node exactly once")
+        layout = scene.get("layout") or layouts[demo_id][scene["id"]]
+        validate_execution_layout(layout, {node["id"] for node in scene["nodes"]})
         scene["layout"] = layout
     if demo["id"] != demo_id:
         raise ValueError("Execution demo identity mismatch")
     return demo
+
+
+def validate_execution_layout(layout: dict, node_ids: set[str]) -> None:
+    """Separate real execution nodes from non-animated background responsibilities."""
+    components = {"guest", "kvm", "qemu", "host-kernel", "hardware",
+                  "host-user", "external", "backend"}
+    domains = layout.get("domains", [])
+    if not domains or len({group["id"] for group in domains}) != len(domains):
+        raise ValueError("Execution layout needs uniquely identified domains")
+    for group in domains:
+        if group.get("component") not in components:
+            raise ValueError("Execution layout has an unknown component")
+        if not isinstance(group.get("nodes"), list):
+            raise ValueError("Execution domain nodes must be a list")
+        if not group["nodes"] and not group.get("note", "").strip():
+            raise ValueError("Background execution domains require an explanatory note")
+        for field in ("title", "context", "note"):
+            if field in group and (not isinstance(group[field], str) or not group[field].strip()):
+                raise ValueError(f"Execution domain {field} must be nonempty text")
+    groups = [*domains]
+    if layout.get("memory"):
+        groups.append(layout["memory"])
+    represented = [node for group in groups for node in group["nodes"]]
+    if len(represented) != len(node_ids) or set(represented) != node_ids:
+        raise ValueError("Execution layout must include each scene node exactly once")

@@ -6,6 +6,8 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
+from virt_report.source_paths import validate_call_path_metadata
+
 FLOW_FILES = {"virtio-blk-read": "virtio-blk-read.json"}
 FLOW_REPOSITORIES = {"QEMU": "qemu/qemu", "Linux": "torvalds/linux"}
 
@@ -102,6 +104,7 @@ def get_flow(slug: str) -> dict | None:
                        for reference in references)):
             raise ValueError("A source path needs a unique identity, context and verified sources")
         path_ids.add(identifier)
+        validate_call_path_metadata(call_path, sources)
     return flow
 
 

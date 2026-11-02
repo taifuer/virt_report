@@ -810,6 +810,11 @@ def test_report_generated_date_uses_site_timezone():
     assert ".back-to-top>span{display:grid;width:40px;height:40px" in css
     assert "border-radius:11px" in css
     assert "var(--footer-offset)" in css
+    assert "--back-to-top-bottom:80px" in css
+    assert "calc((100% - 1180px)/2 - 64px)" in css
+    assert "max(calc(16px + env(safe-area-inset-right,0px))" in css
+    assert "max(var(--back-to-top-bottom),calc(16px + var(--footer-offset)))" in css
+    assert "@media(max-width:700px){.back-to-top{--back-to-top-bottom:60px}}" in css
     assert "safe-area-inset-bottom" in css
     assert "<style>" not in home
 

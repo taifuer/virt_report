@@ -3,107 +3,2060 @@
   "title": "CPU 指令执行过程",
   "defaultScenario": "ordinary-add",
   "sources": {
-    "sdm": {"label": "Intel SDM：ADD、SYSCALL、SYSRET 与 VMX 执行环境", "url": "https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html"},
-    "run-loop": {"label": "Linux 6.18：vcpu_run 的执行与等待分支", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11610-L11617"},
-    "vmx-exits": {"label": "Linux 6.18：VMX 退出分派", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L6109-L6130"},
-    "cpuid": {"label": "Linux 6.18：kvm_emulate_cpuid", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/cpuid.c#L2090-L2105"},
-    "qemu-run": {"label": "QEMU 10.2：KVM_RUN 调用与 MMIO 分派", "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L3179-L3254"},
-    "mmio-api": {"label": "Linux 6.18：用户态 I/O 必须重新进入 KVM_RUN 完成", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst#L6693-L6707"},
-    "mmio-complete": {"label": "Linux 6.18：complete_userspace_io 再入处理", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11936-L11958"},
-    "ept-exit": {"label": "Linux 6.18：EPT violation 与 MMIO 缓存退出入口", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L5746-L5797"},
-    "mmu-emulate": {"label": "Linux 6.18：MMU 退出转入指令模拟", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/mmu.c#L6317-L6388"},
-    "halt": {"label": "Linux 6.18：HLT 模拟与 mp_state", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11646-L11680"},
-    "block": {"label": "Linux 6.18：rcuwait 发布、条件复查与 schedule", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L3644-L3678"},
-    "wake": {"label": "Linux 6.18：vCPU wake 与 kick", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L3800-L3856"},
-    "irq": {"label": "Linux 6.18：LAPIC IRR 与事件请求", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L4242-L4256"},
-    "irq-ack": {"label": "Linux 6.18：LAPIC 中断接受时清 IRR 并设置 ISR", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L3083-L3124"},
-    "halt-resume": {"label": "Linux 6.18：等待结束后的事件与可运行状态复查", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11527-L11592"},
-    "guest-nanosleep": {"label": "Linux 6.18：nanosleep 的等待状态、定时器与 schedule", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/time/hrtimer.c#L2107-L2199"},
-    "guest-timer-wake": {"label": "Linux 6.18：hrtimer_wakeup 清除 sleeper.task 并唤醒任务", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/time/hrtimer.c#L2005-L2016"},
-    "guest-timer-queues": {"label": "Linux 6.18：高分辨率定时中断与到期队列", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/time/hrtimer.c#L1873-L1906"},
-    "guest-deadline": {"label": "Linux 6.18：客户机 clockevent 写入 TSC deadline", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kernel/apic/apic.c#L420-L430"},
-    "guest-timer-vector": {"label": "Linux 6.18：LAPIC 定时中断、EOI 与 clockevent 回调", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kernel/apic/apic.c#L1013-L1062"},
-    "guest-idle": {"label": "Linux 6.18：default_idle 的安全 HLT 路径", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kernel/process.c#L765-L805"},
-    "scheduler-wake": {"label": "Linux 6.18：任务唤醒与就绪状态", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/sched/core.c#L4143-L4250"},
-    "scheduler-switch": {"label": "Linux 6.18：阻塞、抢占与调度选择", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/sched/core.c#L6784-L6910"},
-    "lapic-deadline": {"label": "Linux 6.18：KVM 保存客户机 deadline 并启动定时", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L2651-L2661"},
-    "lapic-software-timer": {"label": "Linux 6.18：软件 deadline、pending 与 UNBLOCK 请求", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L1976-L2044"},
-    "lapic-timer-callback": {"label": "Linux 6.18：宿主 apic_timer_fn 回调", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L2966-L2981"},
-    "lapic-timer-deliver": {"label": "Linux 6.18：pending 定时事件递送至虚拟 LAPIC", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L3075-L3083"},
-    "timer-run-loop": {"label": "Linux 6.18：运行循环处理 pending 定时器与宿主调度工作", "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11605-L11643"}
+    "sdm": {
+      "label": "Intel SDM：ADD、SYSCALL、SYSRET 与 VMX 执行环境",
+      "url": "https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html",
+      "project": "Intel",
+      "revision": "architecture-manual",
+      "path": "Intel SDM",
+      "line": 0,
+      "symbol": "Intel SDM · instruction semantics / VMX",
+      "kind": "spec"
+    },
+    "run-loop": {
+      "label": "Linux 6.18：vcpu_run 的执行与等待分支",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11596-L11643",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/x86.c",
+      "line": 11596,
+      "project": "Linux",
+      "symbol": "vcpu_run()",
+      "kind": "function"
+    },
+    "vmx-exits": {
+      "label": "Linux 6.18：VMX 退出分派",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L6109-L6130",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/vmx/vmx.c",
+      "line": 6109,
+      "project": "Linux",
+      "symbol": "kvm_vmx_exit_handlers[]",
+      "kind": "reference"
+    },
+    "cpuid": {
+      "label": "Linux 6.18：kvm_emulate_cpuid",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/cpuid.c#L2090-L2105",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/cpuid.c",
+      "line": 2090,
+      "project": "Linux",
+      "symbol": "kvm_emulate_cpuid()",
+      "kind": "function"
+    },
+    "qemu-run": {
+      "label": "QEMU 10.2：KVM_RUN 调用与 MMIO 分派",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L3154-L3254",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "accel/kvm/kvm-all.c",
+      "line": 3154,
+      "project": "QEMU",
+      "symbol": "kvm_cpu_exec()",
+      "kind": "function"
+    },
+    "mmio-api": {
+      "label": "Linux 6.18：用户态 I/O 必须重新进入 KVM_RUN 完成",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst#L6693-L6707",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "Documentation/virt/kvm/api.rst",
+      "line": 6693,
+      "project": "Linux",
+      "symbol": "KVM_RUN / KVM_EXIT_MMIO completion contract",
+      "kind": "spec"
+    },
+    "mmio-complete": {
+      "label": "Linux 6.18：complete_userspace_io 再入处理",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11850-L11958",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/x86.c",
+      "line": 11850,
+      "project": "Linux",
+      "symbol": "kvm_arch_vcpu_ioctl_run()",
+      "kind": "function"
+    },
+    "ept-exit": {
+      "label": "Linux 6.18：EPT violation 与 MMIO 缓存退出入口",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L5746-L5797",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/vmx/vmx.c",
+      "line": 5746,
+      "project": "Linux",
+      "symbol": "handle_ept_violation()",
+      "kind": "function"
+    },
+    "mmu-emulate": {
+      "label": "Linux 6.18：MMU 退出转入指令模拟",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/mmu.c#L6317-L6388",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/mmu/mmu.c",
+      "line": 6317,
+      "project": "Linux",
+      "symbol": "kvm_mmu_page_fault()",
+      "kind": "function"
+    },
+    "halt": {
+      "label": "Linux 6.18：HLT 模拟与 mp_state",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11646-L11680",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/x86.c",
+      "line": 11646,
+      "project": "Linux",
+      "symbol": "kvm_emulate_halt()",
+      "kind": "function"
+    },
+    "block": {
+      "label": "Linux 6.18：rcuwait 发布、条件复查与 schedule",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L3644-L3678",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "virt/kvm/kvm_main.c",
+      "line": 3644,
+      "project": "Linux",
+      "symbol": "kvm_vcpu_block()",
+      "kind": "function"
+    },
+    "wake": {
+      "label": "Linux 6.18：vCPU wake 与 kick",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L3800-L3858",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "virt/kvm/kvm_main.c",
+      "line": 3800,
+      "project": "Linux",
+      "symbol": "kvm_vcpu_wake_up() / __kvm_vcpu_kick()",
+      "kind": "function"
+    },
+    "irq": {
+      "label": "Linux 6.18：LAPIC IRR 与事件请求",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L4242-L4256",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/vmx/vmx.c",
+      "line": 4242,
+      "project": "Linux",
+      "symbol": "vmx_deliver_interrupt()",
+      "kind": "function"
+    },
+    "irq-ack": {
+      "label": "Linux 6.18：LAPIC 中断接受时清 IRR 并设置 ISR",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L3085-L3124",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/lapic.c",
+      "line": 3085,
+      "project": "Linux",
+      "symbol": "kvm_apic_ack_interrupt()",
+      "kind": "function"
+    },
+    "halt-resume": {
+      "label": "Linux 6.18：等待结束后的事件与可运行状态复查",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11527-L11592",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/x86.c",
+      "line": 11527,
+      "project": "Linux",
+      "symbol": "vcpu_block()",
+      "kind": "function"
+    },
+    "guest-nanosleep": {
+      "label": "Linux 6.18：nanosleep 的等待状态、定时器与 schedule",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/time/hrtimer.c#L2107-L2199",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "kernel/time/hrtimer.c",
+      "line": 2107,
+      "project": "Linux",
+      "symbol": "do_nanosleep()",
+      "kind": "function"
+    },
+    "guest-timer-wake": {
+      "label": "Linux 6.18：hrtimer_wakeup 清除 sleeper.task 并唤醒任务",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/time/hrtimer.c#L2005-L2016",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "kernel/time/hrtimer.c",
+      "line": 2005,
+      "project": "Linux",
+      "symbol": "hrtimer_wakeup()",
+      "kind": "function"
+    },
+    "guest-timer-queues": {
+      "label": "Linux 6.18：高分辨率定时中断与到期队列",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/time/hrtimer.c#L1873-L1906",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "kernel/time/hrtimer.c",
+      "line": 1873,
+      "project": "Linux",
+      "symbol": "hrtimer_interrupt()",
+      "kind": "function"
+    },
+    "guest-deadline": {
+      "label": "Linux 6.18：客户机 clockevent 写入 TSC deadline",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kernel/apic/apic.c#L420-L430",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kernel/apic/apic.c",
+      "line": 420,
+      "project": "Linux",
+      "symbol": "lapic_next_deadline()",
+      "kind": "function"
+    },
+    "guest-timer-vector": {
+      "label": "Linux 6.18：LAPIC 定时中断、EOI 与 clockevent 回调",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kernel/apic/apic.c#L1052-L1062",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kernel/apic/apic.c",
+      "line": 1052,
+      "project": "Linux",
+      "symbol": "sysvec_apic_timer_interrupt()",
+      "kind": "function"
+    },
+    "guest-idle": {
+      "label": "Linux 6.18：default_idle 的安全 HLT 路径",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kernel/process.c#L765-L805",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kernel/process.c",
+      "line": 765,
+      "project": "Linux",
+      "symbol": "default_idle()",
+      "kind": "function"
+    },
+    "scheduler-wake": {
+      "label": "Linux 6.18：任务唤醒与就绪状态",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/sched/core.c#L4143-L4250",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "kernel/sched/core.c",
+      "line": 4143,
+      "project": "Linux",
+      "symbol": "try_to_wake_up()",
+      "kind": "function"
+    },
+    "scheduler-switch": {
+      "label": "Linux 6.18：阻塞、抢占与调度选择",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/sched/core.c#L6784-L6910",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "kernel/sched/core.c",
+      "line": 6784,
+      "project": "Linux",
+      "symbol": "__schedule()",
+      "kind": "function"
+    },
+    "lapic-deadline": {
+      "label": "Linux 6.18：KVM 保存客户机 deadline 并启动定时",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L2651-L2661",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/lapic.c",
+      "line": 2651,
+      "project": "Linux",
+      "symbol": "kvm_set_lapic_tscdeadline_msr()",
+      "kind": "function"
+    },
+    "lapic-software-timer": {
+      "label": "Linux 6.18：软件 deadline、pending 与 UNBLOCK 请求",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L1976-L2044",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/lapic.c",
+      "line": 1976,
+      "project": "Linux",
+      "symbol": "start_sw_tscdeadline() / apic_timer_expired()",
+      "kind": "function"
+    },
+    "lapic-timer-callback": {
+      "label": "Linux 6.18：宿主 apic_timer_fn 回调",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L2966-L2981",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/lapic.c",
+      "line": 2966,
+      "project": "Linux",
+      "symbol": "apic_timer_fn()",
+      "kind": "function"
+    },
+    "lapic-timer-deliver": {
+      "label": "Linux 6.18：pending 定时事件递送至虚拟 LAPIC",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L3075-L3083",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/lapic.c",
+      "line": 3075,
+      "project": "Linux",
+      "symbol": "kvm_inject_apic_timer_irqs()",
+      "kind": "function"
+    },
+    "timer-run-loop": {
+      "label": "Linux 6.18：运行循环处理 pending 定时器与宿主调度工作",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11605-L11643",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/x86.c",
+      "line": 11605,
+      "project": "Linux",
+      "symbol": "vcpu_run()",
+      "kind": "function"
+    },
+    "guest-syscall-entry": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/entry/entry_64.S",
+      "line": 87,
+      "symbol": "entry_SYSCALL_64",
+      "label": "Linux 6.18：Guest 系统调用汇编入口",
+      "kind": "assembly",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/entry/entry_64.S#L87-L121"
+    },
+    "guest-syscall-dispatch": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/entry/syscall_64.c",
+      "line": 87,
+      "symbol": "do_syscall_64()",
+      "label": "Linux 6.18：系统调用分派与 SYSRET 条件检查",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/entry/syscall_64.c#L87-L141"
+    },
+    "guest-syscall-x64": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/entry/syscall_64.c",
+      "line": 53,
+      "symbol": "do_syscall_x64()",
+      "label": "Linux 6.18：检查调用号并保存 regs->ax",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/entry/syscall_64.c#L53-L67"
+    },
+    "guest-syscall-switch": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/entry/syscall_64.c",
+      "line": 35,
+      "symbol": "x64_sys_call()",
+      "label": "Linux 6.18：按调用号执行 switch 分派",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/entry/syscall_64.c#L35-L41"
+    },
+    "guest-getpid": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "kernel/sys.c",
+      "line": 999,
+      "symbol": "__x64_sys_getpid()",
+      "label": "Linux 6.18：SYSCALL_DEFINE0(getpid) 生成的系统调用实现",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/sys.c#L999-L1002"
+    },
+    "guest-sysret": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/entry/entry_64.S",
+      "line": 137,
+      "symbol": "syscall_return_via_sysret → SYSRETQ",
+      "label": "Linux 6.18：恢复 Guest 用户态寄存器与 SYSRETQ",
+      "kind": "assembly",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/entry/entry_64.S#L137-L166"
+    },
+    "guest-syscall-number": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/entry/syscalls/syscall_64.tbl",
+      "line": 51,
+      "symbol": "39 → getpid",
+      "label": "Linux 6.18：x86-64 getpid 系统调用号",
+      "kind": "reference",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/entry/syscalls/syscall_64.tbl#L51-L51"
+    },
+    "guest-syscall-wrapper": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/include/asm/syscall_wrapper.h",
+      "line": 244,
+      "symbol": "SYSCALL_DEFINE0 / __X64_SYS_STUB0",
+      "label": "Linux 6.18：零参数系统调用包装器生成规则",
+      "kind": "reference",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/include/asm/syscall_wrapper.h#L244-L249"
+    },
+    "vmx-exit-dispatch": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/vmx/vmx.c",
+      "line": 6483,
+      "symbol": "__vmx_handle_exit()",
+      "label": "Linux 6.18：VMX 退出处理与处理函数分派",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L6483-L6635"
+    },
+    "mmio-request": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/x86.c",
+      "line": 8222,
+      "symbol": "emulator_read_write()",
+      "label": "Linux 6.18：填写 KVM_EXIT_MMIO 请求",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L8222-L8274"
+    },
+    "mmio-complete-read": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/x86.c",
+      "line": 11761,
+      "symbol": "complete_emulated_mmio()",
+      "label": "Linux 6.18：复制返回读值并完成 MMIO",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11761-L11804"
+    },
+    "mmio-resume-instruction": {
+      "project": "Linux",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/x86.c",
+      "line": 11731,
+      "symbol": "complete_emulated_io()",
+      "label": "Linux 6.18：恢复原指令模拟",
+      "kind": "function",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11731-L11743"
+    },
+    "qemu-address-read": {
+      "project": "QEMU",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "system/physmem.c",
+      "line": 3456,
+      "symbol": "address_space_rw()",
+      "label": "QEMU 10.2：按读写方向选择地址空间访问",
+      "kind": "function",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/physmem.c#L3456-L3464"
+    },
+    "qemu-memory-read": {
+      "project": "QEMU",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "system/physmem.c",
+      "line": 3425,
+      "symbol": "address_space_read_full()",
+      "label": "QEMU 10.2：翻译地址并进入 MemoryRegion 读路径",
+      "kind": "function",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/physmem.c#L3425-L3440"
+    },
+    "qemu-device-read": {
+      "project": "QEMU",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "system/memory.c",
+      "line": 1466,
+      "symbol": "memory_region_dispatch_read()",
+      "label": "QEMU 10.2：检查访问并分派设备读回调",
+      "kind": "function",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/memory.c#L1466-L1489"
+    }
   },
   "scenarios": [
     {
-      "id": "ordinary-add", "label": "普通 ADD", "summary": "跟踪 add eax, 1：QEMU 进入 KVM 后，物理处理器直接完成客户机加法。",
-      "assumptions": ["x86-64，Intel VMX + EPT，Linux 6.18 / QEMU 10.2.0", "指令页映射有效；不加入调试单步、宿主抢占及无关异步事件", "83 c0 01 编码为 3 字节；示例初值 EAX = 41"],
-      "nodes": [{"id":"qemu","label":"QEMU vCPU 线程","role":"宿主用户态"},{"id":"kvm","label":"KVM 运行循环","role":"宿主内核态"},{"id":"cpu","label":"物理处理器","role":"VMX 硬件"},{"id":"guest","label":"客户机应用","role":"Guest CPL 3"}],
-      "links": [{"id":"run","from":"qemu","to":"kvm","label":"KVM_RUN","kind":"control"},{"id":"entry","from":"kvm","to":"cpu","label":"VM Entry","kind":"control"},{"id":"execute","from":"cpu","to":"guest","label":"执行客户机指令","kind":"control"}],
-      "structures": [{"id":"registers","title":"客户机寄存器","kind":"registers","fields":[{"key":"rip","label":"RIP","initial":"0x400000"},{"key":"eax","label":"EAX","initial":"41"},{"key":"cpl","label":"CPL","initial":"3"},{"key":"flags","label":"ZF / CF / OF","initial":"0 / 0 / 0"}]},{"id":"context","title":"执行边界","kind":"registers","fields":[{"key":"mode","label":"VMX 模式","initial":"root，尚未 VM Entry"},{"key":"run-state","label":"KVM_RUN","initial":"尚未调用"},{"key":"hw-exit","label":"本例 VM Exit","initial":"无"}]}],
+      "id": "ordinary-add",
+      "label": "普通 ADD",
+      "summary": "从已经运行的 Guest 指令 ADD EAX, 1 开始，观察 EAX、标志位与 RIP；本次不发生 VM-exit 或返回 QEMU。",
+      "assumptions": [
+        "x86-64，Intel VMX + EPT，Linux 6.18 / QEMU 10.2.0",
+        "指令页映射有效；不加入调试单步、宿主抢占及无关异步事件",
+        "83 c0 01 编码为 3 字节；示例初值 EAX = 41",
+        "共同起点：QEMU vCPU 线程已经处于 KVM_RUN，处理器正在执行 Guest；初始化只列在源码配置路径中",
+        "Guest 与物理 CPU 不是两个传递请求的部件：Guest 指令直接在物理处理器的 non-root 上下文执行"
+      ],
+      "nodes": [
+        {
+          "id": "guest",
+          "label": "Guest 用户态",
+          "role": "同一物理 CPU 的 non-root / CPL 3",
+          "initial": "准备就绪",
+          "badge": "用户态"
+        },
+        {
+          "id": "kernel",
+          "label": "Guest 内核态",
+          "role": "同一物理 CPU 的 non-root / CPL 0",
+          "initial": "准备就绪",
+          "badge": "内核态"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM",
+          "role": "同一 vCPU 线程的宿主内核上下文",
+          "initial": "准备就绪"
+        },
+        {
+          "id": "qemu",
+          "label": "QEMU",
+          "role": "同一 vCPU 线程的宿主用户态上下文",
+          "initial": "准备就绪"
+        }
+      ],
+      "links": [],
+      "structures": [
+        {
+          "id": "registers",
+          "title": "客户机寄存器",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "rip",
+              "label": "RIP",
+              "initial": "0x400000"
+            },
+            {
+              "key": "eax",
+              "label": "EAX",
+              "initial": "41"
+            },
+            {
+              "key": "cpl",
+              "label": "CPL",
+              "initial": "3"
+            },
+            {
+              "key": "flags",
+              "label": "ZF / CF / OF",
+              "initial": "0 / 0 / 0"
+            }
+          ]
+        },
+        {
+          "id": "context",
+          "title": "执行边界",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "mode",
+              "label": "VMX 模式",
+              "initial": "non-root"
+            },
+            {
+              "key": "run-state",
+              "label": "KVM_RUN",
+              "initial": "调用中，未返回"
+            },
+            {
+              "key": "hw-exit",
+              "label": "本例 VM Exit",
+              "initial": "无"
+            }
+          ]
+        },
+        {
+          "id": "instruction-view",
+          "title": "当前指令",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "instruction",
+              "label": "指令",
+              "initial": "ADD EAX, 1"
+            }
+          ]
+        }
+      ],
       "steps": [
-        {"id":"ready","title":"执行前","actor":"QEMU vCPU 线程","description":"vCPU 已配置，客户机指令位置是 0x400000。","detail":"这里显示架构可见状态；图中的处理器与客户机表示同一段硬件执行的不同观察层。","active":[],"links":[],"changes":{},"nodeStates":{},"sourceIds":["sdm","qemu-run"],"focus":true},
-        {"id":"run","title":"进入 KVM","actor":"QEMU → KVM","description":"vCPU 线程调用 KVM_RUN，进入内核执行循环。","detail":"调用期间，同一个宿主线程可以完成许多客户机指令；此处没有逐条调用设备模型。","active":["qemu","kvm"],"links":["run"],"changes":{"run-state":"调用中，未返回"},"nodeStates":{"kvm":"准备进入客户机"},"sourceIds":["qemu-run","run-loop"],"focus":false},
-        {"id":"entry","title":"进入客户机","actor":"KVM → 物理处理器","description":"VM Entry 恢复客户机执行状态，处理器处于 VMX non-root。","detail":"Guest CPL 保持 3；VMX root / non-root 与 CPL 是两个独立的权限维度。","active":["kvm","cpu","guest"],"links":["entry","execute"],"changes":{"mode":"non-root，客户机执行中"},"nodeStates":{"guest":"RIP 指向 ADD"},"sourceIds":["sdm"],"focus":true},
-        {"id":"add","title":"完成寄存器加法","actor":"物理处理器 · Guest CPL 3","description":"处理器执行 add eax, 1，得到 42，并更新算术标志。","detail":"EAX 写入按 x86-64 规则把 RAX 的高 32 位清零。本例没有异常或拦截条件。","active":["cpu","guest"],"links":["execute"],"changes":{"eax":"42","rip":"0x400003","flags":"0 / 0 / 0"},"nodeStates":{"guest":"ADD 已完成"},"sourceIds":["sdm"],"focus":true},
-        {"id":"continue","title":"继续下一条指令","actor":"客户机应用","description":"客户机继续执行，KVM_RUN 仍在调用中。","detail":"这一条 ADD 没有产生 VM Exit，也没有使线程返回 QEMU。其他时刻仍可发生中断、缺页或调度事件。","active":["guest"],"links":[],"changes":{},"nodeStates":{"guest":"从 0x400003 继续"},"sourceIds":["sdm","run-loop"],"focus":true}
+        {
+          "id": "ready",
+          "title": "当前指令准备执行",
+          "actor": "Guest 用户态 · CPU non-root",
+          "description": "EAX = 41，RIP 指向 ADD EAX, 1。",
+          "detail": "KVM_RUN 已在调用中；QEMU 与 KVM 运行循环此刻不逐条解释普通 Guest 指令。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "sdm"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "guest-user",
+            "instruction": "ADD EAX, 1",
+            "phase": "当前指令准备执行"
+          }
+        },
+        {
+          "id": "run",
+          "title": "识别当前 ADD 指令",
+          "actor": "物理处理器 · Guest 上下文",
+          "description": "处理器执行位于 RIP=0x400000 的寄存器加法。",
+          "detail": "此处展示指令语义，不模拟具体处理器的取指、解码或流水线周期。",
+          "active": [
+            "guest"
+          ],
+          "links": [],
+          "changes": {
+            "instruction": "ADD EAX, 1"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "sdm"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "guest-user",
+            "instruction": "ADD EAX, 1",
+            "phase": "识别当前 ADD 指令"
+          }
+        },
+        {
+          "id": "entry",
+          "title": "观察运算输入",
+          "actor": "物理处理器 · Guest 上下文",
+          "description": "本次加法的输入为 EAX=41 和立即数 1。",
+          "detail": "输入观察与下一步结果是一次架构指令的展示拆分，不意味着中间插入另一条 Guest 指令。",
+          "active": [
+            "guest"
+          ],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "sdm"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "guest-user",
+            "instruction": "ADD EAX, 1",
+            "phase": "观察运算输入"
+          }
+        },
+        {
+          "id": "add",
+          "title": "提交寄存器运算结果",
+          "actor": "物理处理器 · Guest 上下文",
+          "description": "EAX 从 41 变为 42，相关算术标志位按结果更新，RIP 前进。",
+          "detail": "不需要把请求交给另一个 Guest 部件；这就是 CPU 直接执行 Guest 代码。",
+          "active": [
+            "guest"
+          ],
+          "links": [],
+          "changes": {
+            "eax": "42",
+            "flags": "0 / 0 / 0",
+            "rip": "0x400003"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "sdm"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "guest-user",
+            "instruction": "ADD EAX, 1",
+            "phase": "提交寄存器运算结果"
+          }
+        },
+        {
+          "id": "continue",
+          "title": "继续下一条 Guest 指令",
+          "actor": "Guest 用户态 · CPU non-root",
+          "description": "RIP=0x400003，客户机继续执行。",
+          "detail": "本次无硬件 VM-exit；KVM_RUN 保持调用中，也没有 QEMU 设备回调。",
+          "active": [
+            "guest"
+          ],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "sdm"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "guest-user",
+            "instruction": "ADD EAX, 1",
+            "phase": "继续下一条 Guest 指令"
+          }
+        }
+      ],
+      "presentation": "cpu-timeline",
+      "timeline": {
+        "lanes": [
+          {
+            "id": "guest-user",
+            "label": "Guest 用户态 · non-root"
+          },
+          {
+            "id": "guest-kernel",
+            "label": "Guest 内核态 · non-root"
+          },
+          {
+            "id": "kvm",
+            "label": "KVM 宿主内核 · root"
+          },
+          {
+            "id": "qemu",
+            "label": "QEMU 宿主用户态 · root"
+          }
+        ],
+        "fields": [
+          "rip",
+          "eax",
+          "flags",
+          "cpl",
+          "mode",
+          "run-state",
+          "hw-exit"
+        ],
+        "instruction": "ADD EAX, 1"
+      },
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "处理器执行语义",
+          "context": "当前指令 / VMX 架构",
+          "sourceIds": [
+            "sdm"
+          ],
+          "boundary": "普通 Guest 指令由 CPU 直接执行，没有一一对应的 KVM C 函数；不得把指令语义画成跨组件消息。"
+        },
+        {
+          "id": "path-1",
+          "title": "执行前的 vCPU 运行环境",
+          "context": "准备条件 · 不是本条 ADD 的调用链",
+          "sourceIds": [
+            "run-loop"
+          ],
+          "boundary": "初始化与运行循环是上下文。只有所选指令触发退出时才进入对应处理分支；KVM_RUN 返回与硬件 VM-exit 分开。"
+        }
+      ],
+      "sourceSteps": [
+        {
+          "id": "add-input",
+          "title": "当前 Guest 指令与输入",
+          "kind": "instruction",
+          "context": "Guest 用户态 · non-root / CPL 3",
+          "stepIds": [
+            "ready",
+            "run",
+            "entry"
+          ],
+          "sourceIds": [
+            "sdm"
+          ],
+          "detail": "以下是演示用汇编，输入状态已经是 EAX=41。识别指令和观察输入是同一指令的教学拆分，不代表两次软件调用。",
+          "code": "0x400000: ADD EAX, 1"
+        },
+        {
+          "id": "add-result",
+          "title": "提交 ADD 的架构结果",
+          "kind": "instruction",
+          "context": "Guest 用户态 · 同一物理 CPU",
+          "stepIds": [
+            "add"
+          ],
+          "sourceIds": [
+            "sdm"
+          ],
+          "detail": "处理器直接完成普通 Guest 指令；这些是架构状态结果，不是额外执行的赋值指令，也没有 KVM C 函数逐条解释 ADD。",
+          "code": "EAX=42; ZF=0; CF=0; OF=0; RIP=0x400003"
+        },
+        {
+          "id": "add-next",
+          "title": "继续 Guest 指令流",
+          "kind": "instruction",
+          "context": "Guest 用户态 · KVM_RUN 仍在调用中",
+          "stepIds": [
+            "continue"
+          ],
+          "sourceIds": [
+            "sdm"
+          ],
+          "detail": "从下一条 Guest 指令继续执行。本次既没有 VM-exit，也没有返回 QEMU；初始化运行循环只属于准备条件。",
+          "code": "下一条指令：RIP=0x400003"
+        }
       ]
     },
     {
-      "id":"guest-syscall","label":"Guest SYSCALL","summary":"客户机应用通过 syscall 进入自己的内核，再由正常快速返回路径回到应用。",
-      "assumptions":["x86-64 Linux 客户机，SYSCALL 已启用，LSTAR 等 MSR 已配置", "以不发生设备访问和缺页的 getpid 系统调用为例；使用 SYSRETQ 快速返回", "省略信号、调试、抢占与安全缓解细节，聚焦 Guest 权限切换"],
-      "nodes":[{"id":"app","label":"客户机应用","role":"Guest CPL 3"},{"id":"cpu","label":"物理处理器","role":"VMX non-root"},{"id":"kernel","label":"客户机内核","role":"Guest CPL 0"},{"id":"kvm","label":"宿主 KVM","role":"KVM_RUN 保持调用中"}],
-      "links":[{"id":"syscall","from":"app","to":"cpu","label":"SYSCALL","kind":"control"},{"id":"lstar","from":"cpu","to":"kernel","label":"跳转 Guest LSTAR","kind":"control"},{"id":"sysret","from":"kernel","to":"cpu","label":"SYSRETQ","kind":"control"},{"id":"return","from":"cpu","to":"app","label":"恢复 Guest CPL 3","kind":"control"}],
-      "structures":[{"id":"regs","title":"客户机寄存器与入口","kind":"registers","fields":[{"key":"rip","label":"RIP","initial":"0x400100"},{"key":"cpl","label":"CPL","initial":"3"},{"key":"rax","label":"RAX","initial":"39（getpid）"},{"key":"rcx","label":"RCX","initial":"调用前值"},{"key":"r11","label":"R11","initial":"调用前值"},{"key":"lstar","label":"IA32_LSTAR","initial":"客户机 entry_SYSCALL_64"}]},{"id":"host","title":"宿主观察","kind":"registers","fields":[{"key":"mode","label":"VMX 模式","initial":"non-root"},{"key":"run-state","label":"KVM_RUN","initial":"调用中，未返回"},{"key":"hw-exit","label":"本例 VM Exit","initial":"无"}]}],
-      "steps":[
-        {"id":"ready","title":"系统调用前","actor":"客户机应用","description":"应用把系统调用号 39 放入 RAX，即将执行两字节的 syscall。","detail":"IA32_LSTAR 指向客户机内核入口，KVM 已维护好对应的客户机执行环境。","active":[],"links":[],"changes":{},"nodeStates":{},"sourceIds":["sdm"],"focus":true},
-        {"id":"save","title":"保存返回位置","actor":"物理处理器","description":"SYSCALL 把返回 RIP 保存到 RCX，把原 RFLAGS 保存到 R11。","detail":"实际指令执行同时完成下一步的入口切换；分步仅用于展示寄存器含义，期间不能插入其他指令。","active":["app","cpu"],"links":["syscall"],"changes":{"rcx":"0x400102","r11":"调用前的 Guest RFLAGS"},"nodeStates":{"cpu":"执行 SYSCALL"},"sourceIds":["sdm"],"focus":true},
-        {"id":"kernel","title":"进入客户机内核","actor":"物理处理器 → Guest 内核","description":"RIP 切到客户机 LSTAR 指定入口，CPL 变为 0。","detail":"客户机内核保存现场、切换内核栈并分派 getpid；SYSCALL 硬件本身不替软件自动选择内核栈。处理器仍处于 VMX non-root。","active":["cpu","kernel"],"links":["lstar"],"changes":{"rip":"客户机 entry_SYSCALL_64","cpl":"0"},"nodeStates":{"kernel":"处理 getpid"},"sourceIds":["sdm"],"focus":true},
-        {"id":"result","title":"准备返回值","actor":"客户机内核","description":"客户机内核查询当前进程信息，在返回路径把结果放入 RAX。","detail":"示例 PID 取 1234。调用和返回过程中操作的均是客户机进程状态，宿主 QEMU 没有收到一次 getpid 请求。","active":["kernel"],"links":[],"changes":{"rax":"1234（示例 PID）","rip":"客户机 SYSRETQ 返回路径"},"nodeStates":{"kernel":"已准备返回现场"},"sourceIds":["sdm"],"focus":true},
-        {"id":"return","title":"返回客户机应用","actor":"客户机内核 → 应用","description":"正常快速路径执行 SYSRETQ，恢复应用 RIP、标志与 CPL 3。","detail":"这段流程没有要求 VM Exit 或 KVM_RUN 返回。系统调用内部若另行触发设备访问或异常，应按相应事件路径单独分析。","active":["kernel","cpu","app"],"links":["sysret","return"],"changes":{"rip":"0x400102","cpl":"3"},"nodeStates":{"app":"收到 PID 1234"},"sourceIds":["sdm"],"focus":true}
+      "id": "guest-syscall",
+      "label": "Guest SYSCALL",
+      "summary": "客户机应用通过 syscall 进入自己的内核，再由正常快速返回路径回到应用。",
+      "assumptions": [
+        "x86-64 Linux 客户机，SYSCALL 已启用，LSTAR 等 MSR 已配置",
+        "直接执行 x86-64 getpid 系统调用（RAX=39），不发生设备访问和缺页；无信号或调试干预，满足 SYSRETQ 快速返回条件",
+        "省略信号、调试、抢占与安全缓解细节，聚焦 Guest 权限切换",
+        "共同起点：QEMU vCPU 线程已经处于 KVM_RUN，处理器正在执行 Guest；初始化只列在源码配置路径中",
+        "Guest 与物理 CPU 不是两个传递请求的部件：Guest 指令直接在物理处理器的 non-root 上下文执行"
+      ],
+      "nodes": [
+        {
+          "id": "guest",
+          "label": "Guest 用户态",
+          "role": "同一物理 CPU 的 non-root / CPL 3",
+          "initial": "准备就绪",
+          "badge": "用户态"
+        },
+        {
+          "id": "kernel",
+          "label": "Guest 内核态",
+          "role": "同一物理 CPU 的 non-root / CPL 0",
+          "initial": "准备就绪",
+          "badge": "内核态"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM",
+          "role": "同一 vCPU 线程的宿主内核上下文",
+          "initial": "准备就绪"
+        },
+        {
+          "id": "qemu",
+          "label": "QEMU",
+          "role": "同一 vCPU 线程的宿主用户态上下文",
+          "initial": "准备就绪"
+        }
+      ],
+      "links": [],
+      "structures": [
+        {
+          "id": "regs",
+          "title": "客户机寄存器与入口",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "rip",
+              "label": "RIP",
+              "initial": "0x400100"
+            },
+            {
+              "key": "cpl",
+              "label": "CPL",
+              "initial": "3"
+            },
+            {
+              "key": "rax",
+              "label": "RAX",
+              "initial": "39（getpid）"
+            },
+            {
+              "key": "rcx",
+              "label": "RCX",
+              "initial": "调用前值"
+            },
+            {
+              "key": "r11",
+              "label": "R11",
+              "initial": "调用前值"
+            },
+            {
+              "key": "lstar",
+              "label": "IA32_LSTAR",
+              "initial": "客户机 entry_SYSCALL_64"
+            }
+          ]
+        },
+        {
+          "id": "host",
+          "title": "宿主观察",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "mode",
+              "label": "VMX 模式",
+              "initial": "non-root"
+            },
+            {
+              "key": "run-state",
+              "label": "KVM_RUN",
+              "initial": "调用中，未返回"
+            },
+            {
+              "key": "hw-exit",
+              "label": "本例 VM Exit",
+              "initial": "无"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "ready",
+          "title": "系统调用前",
+          "actor": "客户机应用",
+          "description": "应用把系统调用号 39 放入 RAX，即将执行两字节的 syscall。",
+          "detail": "IA32_LSTAR 指向客户机内核入口，KVM 已维护好对应的客户机执行环境。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "guest-syscall-number",
+            "guest-syscall-entry",
+            "sdm"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "guest-user",
+            "instruction": "SYSCALL → getpid → SYSRETQ",
+            "phase": "系统调用前"
+          }
+        },
+        {
+          "id": "save",
+          "title": "保存返回位置",
+          "actor": "物理处理器",
+          "description": "SYSCALL 把返回 RIP 保存到 RCX，把原 RFLAGS 保存到 R11。",
+          "detail": "SYSCALL 在一次架构转换中保存下一条 RIP，清除 RF 后保存 RFLAGS，并切换入口；不是两条独立指令，也不自动切换 RSP。本例调用前 RF=0。",
+          "active": [
+            "guest"
+          ],
+          "links": [],
+          "changes": {
+            "rcx": "0x400102",
+            "r11": "调用前的 Guest RFLAGS"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "sdm",
+            "guest-syscall-entry"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "guest-user",
+            "instruction": "SYSCALL → getpid → SYSRETQ",
+            "phase": "保存返回位置"
+          }
+        },
+        {
+          "id": "kernel",
+          "title": "进入客户机内核",
+          "actor": "物理处理器 → Guest 内核",
+          "description": "RIP 切到客户机 LSTAR 指定入口，CPL 变为 0。",
+          "detail": "entry_SYSCALL_64 执行 swapgs、保存用户 RSP、切到内核栈并构造 pt_regs，再 call do_syscall_64。SYSCALL 硬件不自动选择内核栈；处理器仍为 VMX non-root。",
+          "active": [
+            "kernel"
+          ],
+          "links": [],
+          "changes": {
+            "rip": "客户机 entry_SYSCALL_64",
+            "cpl": "0"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "guest-syscall-entry",
+            "guest-syscall-dispatch"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "guest-kernel",
+            "instruction": "SYSCALL → getpid → SYSRETQ",
+            "phase": "进入客户机内核"
+          }
+        },
+        {
+          "id": "result",
+          "title": "准备返回值",
+          "actor": "客户机内核",
+          "description": "客户机内核查询当前进程信息，在返回路径把结果放入 RAX。",
+          "detail": "do_syscall_x64 经 x64_sys_call 的 switch 分派到 __x64_sys_getpid；SYSCALL_DEFINE0(getpid) 的函数体返回 task_tgid_vnr(current)。结果存入 pt_regs->ax，返回汇编再恢复到 RAX。本例结果 1234；没有向宿主发起 getpid。",
+          "active": [
+            "kernel"
+          ],
+          "links": [],
+          "changes": {
+            "rax": "1234（示例 PID）",
+            "rip": "客户机 SYSRETQ 返回路径"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "guest-syscall-dispatch",
+            "guest-syscall-x64",
+            "guest-syscall-switch",
+            "guest-getpid",
+            "guest-syscall-wrapper"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "guest-kernel",
+            "instruction": "SYSCALL → getpid → SYSRETQ",
+            "phase": "准备返回值"
+          }
+        },
+        {
+          "id": "return",
+          "title": "返回客户机应用",
+          "actor": "客户机内核 → 应用",
+          "description": "正常快速路径执行 SYSRETQ，恢复应用 RIP、标志与 CPL 3。",
+          "detail": "do_syscall_64 检查 RCX/RIP、R11/RFLAGS、用户段与地址等快速返回条件；通过后走 syscall_return_via_sysret，恢复用户栈并执行 SYSRETQ。不满足条件时走 IRET 返回，本例不包含该分支；无需 VM-exit 或 KVM_RUN 返回。",
+          "active": [
+            "guest"
+          ],
+          "links": [],
+          "changes": {
+            "rip": "0x400102",
+            "cpl": "3"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "guest-syscall-dispatch",
+            "guest-sysret",
+            "sdm"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "guest-user",
+            "instruction": "SYSCALL → getpid → SYSRETQ",
+            "phase": "返回客户机应用"
+          }
+        }
+      ],
+      "presentation": "cpu-timeline",
+      "timeline": {
+        "lanes": [
+          {
+            "id": "guest-user",
+            "label": "Guest 用户态 · non-root"
+          },
+          {
+            "id": "guest-kernel",
+            "label": "Guest 内核态 · non-root"
+          },
+          {
+            "id": "kvm",
+            "label": "KVM 宿主内核 · root"
+          },
+          {
+            "id": "qemu",
+            "label": "QEMU 宿主用户态 · root"
+          }
+        ],
+        "fields": [
+          "rip",
+          "rax",
+          "rcx",
+          "r11",
+          "cpl",
+          "mode",
+          "run-state",
+          "hw-exit"
+        ],
+        "instruction": "SYSCALL → getpid → SYSRETQ"
+      },
+      "callPaths": [
+        {
+          "id": "guest-dispatch",
+          "title": "Guest Linux 入口与 getpid 实现",
+          "context": "Guest 内核态 · non-root / CPL 0",
+          "sourceIds": [
+            "guest-syscall-entry",
+            "guest-syscall-dispatch",
+            "guest-syscall-x64",
+            "guest-syscall-switch",
+            "guest-getpid"
+          ],
+          "boundary": "SYSCALL 把控制权交给 Guest 自己的入口；后续均在 Guest Linux 内部。__x64_sys_getpid 是宏生成的入口，不能在源文件中按普通函数定义查找；零参数包装器与函数体为别名关系。",
+          "flow": "call"
+        },
+        {
+          "id": "guest-return",
+          "title": "Guest Linux 正常快速返回",
+          "context": "Guest 内核态 → Guest 用户态 · 始终 non-root",
+          "sourceIds": [
+            "guest-sysret"
+          ],
+          "boundary": "系统调用结果与 SYSRET 可用性已由 do_syscall_64 准备；汇编恢复寄存器和用户栈，最后 SYSRETQ 切回 CPL 3。不是 VM-entry。",
+          "flow": "return",
+          "entry": {
+            "kind": "return",
+            "label": "do_syscall_64 返回后，由 Guest 入口汇编恢复用户现场"
+          }
+        },
+        {
+          "id": "syscall-reference",
+          "title": "调用号、宏与指令依据",
+          "context": "Guest ABI / x86 架构",
+          "sourceIds": [
+            "guest-syscall-number",
+            "guest-syscall-wrapper",
+            "sdm"
+          ],
+          "boundary": "系统调用号表用于生成分派代码，不表示 Linux 6.18 在运行时经 sys_call_table 间接调用。硬件指令语义与 Linux 软件实现分开列出。"
+        }
+      ],
+      "sourceSteps": [
+        {
+          "id": "syscall-instruction",
+          "title": "SYSCALL：Guest 用户态进入 Guest 内核",
+          "kind": "instruction",
+          "context": "同一 vCPU · non-root / CPL 3 → 0",
+          "stepIds": [
+            "ready",
+            "save",
+            "kernel"
+          ],
+          "sourceIds": [
+            "sdm",
+            "guest-syscall-entry",
+            "guest-syscall-number"
+          ],
+          "detail": "调用前 RAX=39。处理器保存 RCX/R11、从 LSTAR 取得内核 RIP；RSP 的切换由下方真实 Linux 入口汇编完成。",
+          "code": "0x400100: SYSCALL"
+        },
+        {
+          "id": "sysret-instruction",
+          "title": "SYSRETQ：返回 Guest 用户态",
+          "kind": "instruction",
+          "context": "同一 vCPU · non-root / CPL 0 → 3",
+          "stepIds": [
+            "return"
+          ],
+          "sourceIds": [
+            "guest-sysret",
+            "sdm"
+          ],
+          "detail": "下方返回汇编先恢复用户栈与寄存器，再由 SYSRETQ 恢复用户 RIP 与权限；RAX 保留系统调用结果。",
+          "code": "SYSRETQ → RIP=0x400102; RAX=1234"
+        }
       ]
     },
     {
-      "id":"cpuid-kernel","label":"CPUID 内核处理","summary":"CPUID 触发 VM Exit，KVM 按虚拟 CPU 配置给出结果，再直接进入客户机。",
-      "assumptions":["Intel VMX，关闭 CPUID faulting 与调试单步", "示例执行 CPUID leaf 0，虚拟 CPU 厂商配置为 GenuineIntel", "返回值由客户机可见 CPU 配置决定，不直接照抄宿主能力"],
-      "nodes":[{"id":"guest","label":"客户机程序","role":"Guest"},{"id":"cpu","label":"物理处理器","role":"VMX"},{"id":"kvm","label":"KVM CPUID 处理","role":"宿主内核"},{"id":"qemu","label":"QEMU vCPU 线程","role":"KVM_RUN 未返回"}],
-      "links":[{"id":"instruction","from":"guest","to":"cpu","label":"CPUID","kind":"control"},{"id":"exit","from":"cpu","to":"kvm","label":"VM Exit","kind":"control"},{"id":"entry","from":"kvm","to":"cpu","label":"VM Entry","kind":"control"},{"id":"resume","from":"cpu","to":"guest","label":"从下一条继续","kind":"control"}],
-      "structures":[{"id":"guest-regs","title":"客户机 CPUID 寄存器","kind":"registers","fields":[{"key":"rip","label":"RIP","initial":"0x400200"},{"key":"eax","label":"EAX","initial":"0（leaf）"},{"key":"ecx","label":"ECX","initial":"0（subleaf）"},{"key":"vendor","label":"EBX / EDX / ECX","initial":"尚未写回结果"}]},{"id":"exit-state","title":"退出与调用边界","kind":"registers","fields":[{"key":"mode","label":"VMX 模式","initial":"non-root"},{"key":"hw-exit","label":"VMCS 退出原因","initial":"本例尚无退出"},{"key":"run-state","label":"KVM_RUN","initial":"调用中，未返回"}]}],
-      "steps":[
-        {"id":"ready","title":"CPUID 执行前","actor":"客户机程序","description":"RIP 指向 CPUID，EAX 与 ECX 指定查询项。","detail":"QEMU 已在启动时配置客户机 CPUID；当前运行阶段由 KVM 使用这套配置。","active":[],"links":[],"changes":{},"nodeStates":{},"sourceIds":["cpuid"],"focus":true},
-        {"id":"exit","title":"硬件退出到 KVM","actor":"物理处理器 → KVM","description":"CPUID 触发 VM Exit，VMCS 记录 CPUID 退出原因。","detail":"处理器从 non-root 返回 root，执行宿主内核 VMX 退出处理；KVM_RUN 此时仍未返回 QEMU。","active":["guest","cpu","kvm"],"links":["instruction","exit"],"changes":{"mode":"root，宿主 KVM","hw-exit":"EXIT_REASON_CPUID"},"nodeStates":{"kvm":"分派到 kvm_emulate_cpuid"},"sourceIds":["vmx-exits"],"focus":true},
-        {"id":"emulate","title":"写回虚拟 CPU 信息","actor":"KVM · kvm_emulate_cpuid","description":"KVM 读取查询项，按配置计算结果，写回四个通用寄存器。","detail":"leaf 0 的厂商串由 EBX、EDX、ECX 依次组成；示例采用 GenuineIntel，EAX 为配置的最大基础 leaf。","active":["kvm"],"links":[],"changes":{"eax":"配置的最大基础 leaf","ecx":"0x6c65746e","vendor":"0x756e6547 / 0x49656e69 / 0x6c65746e"},"nodeStates":{"kvm":"结果已写回 Guest 寄存器"},"sourceIds":["cpuid"],"focus":true},
-        {"id":"advance","title":"推进指令位置","actor":"KVM","description":"KVM 跳过已模拟的两字节 CPUID，RIP 变为 0x400202。","detail":"退出处理返回“已完成、允许继续”，内核运行循环无需把此事件交给用户态。","active":["kvm"],"links":[],"changes":{"rip":"0x400202"},"nodeStates":{"kvm":"内核处理完成"},"sourceIds":["cpuid","vmx-exits","run-loop"],"focus":true},
-        {"id":"resume","title":"重新进入客户机","actor":"KVM → 客户机","description":"VM Entry 后，客户机从 CPUID 的下一条指令继续。","detail":"本例有一次硬件退出，KVM_RUN 用户态返回次数仍为零；VMCS 留存的退出原因描述刚才的事件。","active":["kvm","cpu","guest"],"links":["entry","resume"],"changes":{"mode":"non-root"},"nodeStates":{"guest":"使用 CPUID 结果"},"sourceIds":["run-loop","cpuid"],"focus":true}
+      "id": "cpuid-kernel",
+      "label": "CPUID 内核处理",
+      "summary": "CPUID 触发 VM Exit，KVM 按虚拟 CPU 配置给出结果，再直接进入客户机。",
+      "assumptions": [
+        "Intel VMX，关闭 CPUID faulting 与调试单步",
+        "示例执行 CPUID leaf 0，虚拟 CPU 厂商配置为 GenuineIntel",
+        "返回值由客户机可见 CPU 配置决定，不直接照抄宿主能力",
+        "共同起点：QEMU vCPU 线程已经处于 KVM_RUN，处理器正在执行 Guest；初始化只列在源码配置路径中",
+        "Guest 与物理 CPU 不是两个传递请求的部件：Guest 指令直接在物理处理器的 non-root 上下文执行"
+      ],
+      "nodes": [
+        {
+          "id": "guest",
+          "label": "Guest 用户态",
+          "role": "同一物理 CPU 的 non-root / CPL 3",
+          "initial": "准备就绪",
+          "badge": "用户态"
+        },
+        {
+          "id": "kernel",
+          "label": "Guest 内核态",
+          "role": "同一物理 CPU 的 non-root / CPL 0",
+          "initial": "准备就绪",
+          "badge": "内核态"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM",
+          "role": "同一 vCPU 线程的宿主内核上下文",
+          "initial": "准备就绪"
+        },
+        {
+          "id": "qemu",
+          "label": "QEMU",
+          "role": "同一 vCPU 线程的宿主用户态上下文",
+          "initial": "准备就绪"
+        }
+      ],
+      "links": [],
+      "structures": [
+        {
+          "id": "guest-regs",
+          "title": "客户机 CPUID 寄存器",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "rip",
+              "label": "RIP",
+              "initial": "0x400200"
+            },
+            {
+              "key": "eax",
+              "label": "EAX",
+              "initial": "0（leaf）"
+            },
+            {
+              "key": "ecx",
+              "label": "ECX",
+              "initial": "0（subleaf）"
+            },
+            {
+              "key": "vendor",
+              "label": "EBX / EDX / ECX",
+              "initial": "尚未写回结果"
+            }
+          ]
+        },
+        {
+          "id": "exit-state",
+          "title": "退出与调用边界",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "mode",
+              "label": "VMX 模式",
+              "initial": "non-root"
+            },
+            {
+              "key": "hw-exit",
+              "label": "VMCS 退出原因",
+              "initial": "本例尚无退出"
+            },
+            {
+              "key": "run-state",
+              "label": "KVM_RUN",
+              "initial": "调用中，未返回"
+            }
+          ]
+        },
+        {
+          "id": "execution-context",
+          "title": "持续执行上下文",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "cpl",
+              "label": "Guest CPL",
+              "initial": "3"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "ready",
+          "title": "CPUID 执行前",
+          "actor": "客户机程序",
+          "description": "RIP 指向 CPUID，EAX 与 ECX 指定查询项。",
+          "detail": "QEMU 已在启动时配置客户机 CPUID；当前运行阶段由 KVM 使用这套配置。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "cpuid"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "guest-user",
+            "instruction": "CPUID (leaf=0, subleaf=0)",
+            "phase": "CPUID 执行前"
+          }
+        },
+        {
+          "id": "exit",
+          "title": "硬件退出到 KVM",
+          "actor": "物理处理器 → KVM",
+          "description": "CPUID 触发 VM Exit，VMCS 记录 CPUID 退出原因。",
+          "detail": "处理器从 non-root 返回 root，执行宿主内核 VMX 退出处理；KVM_RUN 此时仍未返回 QEMU。",
+          "active": [
+            "kvm"
+          ],
+          "links": [],
+          "changes": {
+            "mode": "root，宿主 KVM",
+            "hw-exit": "EXIT_REASON_CPUID"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "vmx-exit-dispatch",
+            "vmx-exits"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "kvm",
+            "instruction": "CPUID (leaf=0, subleaf=0)",
+            "phase": "硬件退出到 KVM"
+          }
+        },
+        {
+          "id": "emulate",
+          "title": "写回虚拟 CPU 信息",
+          "actor": "KVM · kvm_emulate_cpuid",
+          "description": "KVM 读取查询项，按配置计算结果，写回四个通用寄存器。",
+          "detail": "leaf 0 的厂商串由 EBX、EDX、ECX 依次组成；示例采用 GenuineIntel，EAX 为配置的最大基础 leaf。",
+          "active": [
+            "kvm"
+          ],
+          "links": [],
+          "changes": {
+            "eax": "配置的最大基础 leaf",
+            "ecx": "0x6c65746e",
+            "vendor": "0x756e6547 / 0x49656e69 / 0x6c65746e"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "cpuid"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "kvm",
+            "instruction": "CPUID (leaf=0, subleaf=0)",
+            "phase": "写回虚拟 CPU 信息"
+          }
+        },
+        {
+          "id": "advance",
+          "title": "推进指令位置",
+          "actor": "KVM",
+          "description": "KVM 跳过已模拟的两字节 CPUID，RIP 变为 0x400202。",
+          "detail": "退出处理返回“已完成、允许继续”，内核运行循环无需把此事件交给用户态。",
+          "active": [
+            "kvm"
+          ],
+          "links": [],
+          "changes": {
+            "rip": "0x400202"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "cpuid",
+            "vmx-exits",
+            "run-loop"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "kvm",
+            "instruction": "CPUID (leaf=0, subleaf=0)",
+            "phase": "推进指令位置"
+          }
+        },
+        {
+          "id": "resume",
+          "title": "重新进入客户机",
+          "actor": "KVM → 客户机",
+          "description": "VM Entry 后，客户机从 CPUID 的下一条指令继续。",
+          "detail": "本例有一次硬件退出，KVM_RUN 用户态返回次数仍为零；VMCS 留存的退出原因描述刚才的事件。",
+          "active": [
+            "guest"
+          ],
+          "links": [],
+          "changes": {
+            "mode": "non-root"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "run-loop",
+            "cpuid"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "guest-user",
+            "instruction": "CPUID (leaf=0, subleaf=0)",
+            "phase": "重新进入客户机"
+          }
+        }
+      ],
+      "presentation": "cpu-timeline",
+      "timeline": {
+        "lanes": [
+          {
+            "id": "guest-user",
+            "label": "Guest 用户态 · non-root"
+          },
+          {
+            "id": "guest-kernel",
+            "label": "Guest 内核态 · non-root"
+          },
+          {
+            "id": "kvm",
+            "label": "KVM 宿主内核 · root"
+          },
+          {
+            "id": "qemu",
+            "label": "QEMU 宿主用户态 · root"
+          }
+        ],
+        "fields": [
+          "rip",
+          "eax",
+          "ecx",
+          "vendor",
+          "cpl",
+          "mode",
+          "run-state",
+          "hw-exit"
+        ],
+        "instruction": "CPUID (leaf=0, subleaf=0)"
+      },
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "vCPU 进入、退出与恢复",
+          "context": "QEMU vCPU 线程 → KVM 内核",
+          "sourceIds": [
+            "run-loop",
+            "vmx-exit-dispatch",
+            "vmx-exits",
+            "cpuid"
+          ],
+          "boundary": "初始化与运行循环是上下文。只有所选指令触发退出时才进入对应处理分支；KVM_RUN 返回与硬件 VM-exit 分开。"
+        }
       ]
     },
     {
-      "id":"mmio-userspace","label":"MMIO 返回 QEMU","summary":"读取 QEMU 模拟的 32 位设备寄存器，观察 MMIO 请求、读结果与下一次 KVM_RUN 的继续执行。",
-      "assumptions":["Intel EPT，客户机页表有效，GPA 0xf0001000 对应 QEMU 模拟 MMIO 区域", "读取无法由内核设备处理；单片段长度 4 字节，无 ioeventfd 读处理", "示例指令为 mov eax, [rbx]，RBX 已映射到目标地址；设备返回 0x12345678"],
-      "nodes":[{"id":"guest","label":"客户机指令","role":"Guest"},{"id":"cpu","label":"处理器 / EPT","role":"硬件地址检查"},{"id":"kvm","label":"KVM 指令模拟","role":"宿主内核"},{"id":"qemu","label":"QEMU vCPU 线程","role":"宿主用户态"},{"id":"device","label":"MemoryRegion 设备回调","role":"QEMU 设备模型"}],
-      "links":[{"id":"load","from":"guest","to":"cpu","label":"读设备 GPA","kind":"data"},{"id":"exit","from":"cpu","to":"kvm","label":"EPT 退出并模拟访问","kind":"control"},{"id":"return","from":"kvm","to":"qemu","label":"KVM_EXIT_MMIO","kind":"control"},{"id":"callback","from":"qemu","to":"device","label":"address_space_rw","kind":"data"},{"id":"result","from":"device","to":"qemu","label":"读取结果","kind":"data"},{"id":"reenter","from":"qemu","to":"kvm","label":"再次 KVM_RUN","kind":"control"},{"id":"resume","from":"kvm","to":"guest","label":"完成指令后进入 Guest","kind":"control"}],
-      "structures":[{"id":"regs","title":"客户机执行状态","kind":"registers","fields":[{"key":"rip","label":"RIP","initial":"0x400300"},{"key":"eax","label":"EAX","initial":"旧值"},{"key":"pending","label":"待完成的 MMIO","initial":"无"}]},{"id":"shared","title":"共享 kvm_run.mmio","kind":"address","fields":[{"key":"exit-reason","label":"exit_reason","initial":"尚未返回"},{"key":"address","label":"phys_addr / len","initial":"尚无请求"},{"key":"direction","label":"is_write","initial":"—"},{"key":"data","label":"data[0..3]","initial":"—"},{"key":"run-state","label":"KVM_RUN","initial":"第一次调用中"}]}],
-      "steps":[
-        {"id":"ready","title":"设备读取前","actor":"客户机程序","description":"客户机准备读取设备寄存器，EAX 还保留旧值。","detail":"这里固定一条需要用户态处理的 MMIO 读；普通 RAM 与 KVM 内核设备访问另有路径。","active":[],"links":[],"changes":{},"nodeStates":{},"sourceIds":["qemu-run","mmio-api"],"focus":true},
-        {"id":"exit","title":"转入内核设备访问处理","actor":"物理处理器 → KVM","description":"EPT 访问触发退出，KVM 分析并模拟这条设备读取。","detail":"本例无可用的设备 RAM 映射；KVM 不能在内核中完成读结果，因此建立待完成 I/O。首次访问可以是 EPT violation；已有 MMIO 标记时还可能经 EPT misconfiguration 识别。","active":["guest","cpu","kvm"],"links":["load","exit"],"changes":{"pending":"等待 4 字节设备读结果"},"nodeStates":{"kvm":"准备用户态 MMIO 请求"},"sourceIds":["ept-exit","mmu-emulate","mmio-api"],"focus":true},
-        {"id":"request","title":"返回 MMIO 请求","actor":"KVM → QEMU","description":"第一次 KVM_RUN 返回，QEMU 读取共享区中的地址、方向与长度。","detail":"本次请求还没完成客户机读指令；EAX 和后续执行仍需等待设备数据。","active":["kvm","qemu"],"links":["return"],"changes":{"exit-reason":"KVM_EXIT_MMIO","address":"0xf0001000 / 4 B","direction":"0（读）","data":"等待 QEMU 填入","run-state":"第一次已返回"},"nodeStates":{"qemu":"分派 MMIO"},"sourceIds":["qemu-run","mmio-api"],"focus":true},
-        {"id":"read","title":"读取设备模型","actor":"QEMU → MemoryRegion","description":"address_space_rw 根据 GPA 找到设备区，读取回调返回 0x12345678。","detail":"x86 小端格式下，共享 data 中的 4 字节依次是 78 56 34 12。此刻 KVM 尚未消费读结果。","active":["qemu","device"],"links":["callback","result"],"changes":{"data":"78 56 34 12","pending":"设备结果已备好，等待再入"},"nodeStates":{"device":"读取回调完成"},"sourceIds":["qemu-run"],"focus":true},
-        {"id":"complete","title":"再入并完成读指令","actor":"QEMU → KVM","description":"第二次 KVM_RUN 先调用 complete_userspace_io，消费共享区结果。","detail":"内核把结果写入客户机 EAX，并完成这条两字节 mov eax, [rbx]；完成之前不能把客户机状态当成已执行完本次读取。","active":["qemu","kvm"],"links":["reenter"],"changes":{"run-state":"第二次调用中","eax":"0x12345678","rip":"0x400302","pending":"无，读指令已完成"},"nodeStates":{"kvm":"继续处理函数已完成"},"sourceIds":["mmio-complete","mmio-api"],"focus":true},
-        {"id":"resume","title":"继续客户机执行","actor":"KVM → 客户机","description":"处理器进入客户机，下一条指令可以使用 EAX 的新值。","detail":"exit_reason 是上次正常用户态返回的记录，不能把其残留值当成新的待处理请求。这里的第二次 KVM_RUN 仍在执行。","active":["kvm","guest"],"links":["resume"],"changes":{},"nodeStates":{"guest":"使用 0x12345678"},"sourceIds":["mmio-complete","qemu-run"],"focus":true}
+      "id": "mmio-userspace",
+      "label": "MMIO 返回 QEMU",
+      "summary": "读取 QEMU 模拟的 32 位设备寄存器，观察 MMIO 请求、读结果与下一次 KVM_RUN 的继续执行。",
+      "assumptions": [
+        "Intel EPT，客户机页表有效，GPA 0xf0001000 对应 QEMU 模拟 MMIO 区域",
+        "读取无法由内核设备处理；单片段长度 4 字节，无 ioeventfd 读处理",
+        "示例指令为 mov eax, [rbx]，RBX 已映射到目标地址；设备返回 0x12345678",
+        "共同起点：QEMU vCPU 线程已经处于 KVM_RUN，处理器正在执行 Guest；初始化只列在源码配置路径中",
+        "Guest 与物理 CPU 不是两个传递请求的部件：Guest 指令直接在物理处理器的 non-root 上下文执行"
+      ],
+      "nodes": [
+        {
+          "id": "guest",
+          "label": "Guest 用户态",
+          "role": "同一物理 CPU 的 non-root / CPL 3",
+          "initial": "准备就绪",
+          "badge": "用户态"
+        },
+        {
+          "id": "kernel",
+          "label": "Guest 内核态",
+          "role": "同一物理 CPU 的 non-root / CPL 0",
+          "initial": "准备就绪",
+          "badge": "内核态"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM",
+          "role": "同一 vCPU 线程的宿主内核上下文",
+          "initial": "准备就绪"
+        },
+        {
+          "id": "qemu",
+          "label": "QEMU",
+          "role": "同一 vCPU 线程的宿主用户态上下文",
+          "initial": "准备就绪"
+        }
+      ],
+      "links": [],
+      "structures": [
+        {
+          "id": "regs",
+          "title": "客户机执行状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "rip",
+              "label": "RIP",
+              "initial": "0x400300"
+            },
+            {
+              "key": "eax",
+              "label": "EAX",
+              "initial": "旧值"
+            },
+            {
+              "key": "pending",
+              "label": "待完成的 MMIO",
+              "initial": "无"
+            }
+          ]
+        },
+        {
+          "id": "shared",
+          "title": "共享 kvm_run.mmio",
+          "kind": "address",
+          "fields": [
+            {
+              "key": "exit-reason",
+              "label": "exit_reason",
+              "initial": "尚未返回"
+            },
+            {
+              "key": "address",
+              "label": "phys_addr / len",
+              "initial": "尚无请求"
+            },
+            {
+              "key": "direction",
+              "label": "is_write",
+              "initial": "—"
+            },
+            {
+              "key": "data",
+              "label": "data[0..3]",
+              "initial": "—"
+            },
+            {
+              "key": "run-state",
+              "label": "KVM_RUN",
+              "initial": "第一次调用中"
+            }
+          ]
+        },
+        {
+          "id": "execution-context",
+          "title": "持续执行上下文",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "cpl",
+              "label": "Guest CPL",
+              "initial": "3"
+            },
+            {
+              "key": "mode",
+              "label": "VMX 模式",
+              "initial": "non-root"
+            },
+            {
+              "key": "hw-exit",
+              "label": "本次 VM-exit",
+              "initial": "无"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "ready",
+          "title": "设备读取前",
+          "actor": "客户机程序",
+          "description": "客户机准备读取设备寄存器，EAX 还保留旧值。",
+          "detail": "这里固定一条需要用户态处理的 MMIO 读；普通 RAM 与 KVM 内核设备访问另有路径。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-run",
+            "mmio-api"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "guest-user",
+            "instruction": "MOV EAX, [设备寄存器]",
+            "phase": "设备读取前"
+          }
+        },
+        {
+          "id": "exit",
+          "title": "转入内核设备访问处理",
+          "actor": "物理处理器 → KVM",
+          "description": "EPT 访问触发退出，KVM 分析并模拟这条设备读取。",
+          "detail": "本例无可用的设备 RAM 映射；KVM 不能在内核中完成读结果，因此建立待完成 I/O。首次访问可以是 EPT violation；已有 MMIO 标记时还可能经 EPT misconfiguration 识别。",
+          "active": [
+            "kvm"
+          ],
+          "links": [],
+          "changes": {
+            "pending": "等待 4 字节设备读结果",
+            "mode": "root",
+            "hw-exit": "EPT 相关设备访问退出"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "ept-exit",
+            "mmu-emulate",
+            "mmio-api"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "kvm",
+            "instruction": "MOV EAX, [设备寄存器]",
+            "phase": "转入内核设备访问处理"
+          }
+        },
+        {
+          "id": "request",
+          "title": "返回 MMIO 请求",
+          "actor": "KVM → QEMU",
+          "description": "第一次 KVM_RUN 返回，QEMU 读取共享区中的地址、方向与长度。",
+          "detail": "本次请求还没完成客户机读指令；EAX 和后续执行仍需等待设备数据。",
+          "active": [
+            "qemu"
+          ],
+          "links": [],
+          "changes": {
+            "exit-reason": "KVM_EXIT_MMIO",
+            "address": "0xf0001000 / 4 B",
+            "direction": "0（读）",
+            "data": "等待 QEMU 填入",
+            "run-state": "第一次已返回",
+            "mode": "root"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "mmio-request",
+            "mmio-api"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "qemu",
+            "instruction": "MOV EAX, [设备寄存器]",
+            "phase": "返回 MMIO 请求"
+          }
+        },
+        {
+          "id": "read",
+          "title": "读取设备模型",
+          "actor": "QEMU → MemoryRegion",
+          "description": "address_space_rw 根据 GPA 找到设备区，读取回调返回 0x12345678。",
+          "detail": "x86 小端格式下，共享 data 中的 4 字节依次是 78 56 34 12。此刻 KVM 尚未消费读结果。",
+          "active": [
+            "qemu"
+          ],
+          "links": [],
+          "changes": {
+            "data": "78 56 34 12",
+            "pending": "设备结果已备好，等待再入",
+            "mode": "root"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "qemu-run",
+            "qemu-address-read",
+            "qemu-memory-read",
+            "qemu-device-read"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "qemu",
+            "instruction": "MOV EAX, [设备寄存器]",
+            "phase": "读取设备模型"
+          }
+        },
+        {
+          "id": "complete",
+          "title": "再入并完成读指令",
+          "actor": "QEMU → KVM",
+          "description": "第二次 KVM_RUN 先调用 complete_userspace_io，消费共享区结果。",
+          "detail": "内核把结果写入客户机 EAX，并完成这条两字节 mov eax, [rbx]；完成之前不能把客户机状态当成已执行完本次读取。",
+          "active": [
+            "kvm"
+          ],
+          "links": [],
+          "changes": {
+            "run-state": "第二次调用中",
+            "eax": "0x12345678",
+            "rip": "0x400302",
+            "pending": "无，读指令已完成",
+            "mode": "root"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "mmio-complete",
+            "mmio-complete-read",
+            "mmio-resume-instruction"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "kvm",
+            "instruction": "MOV EAX, [设备寄存器]",
+            "phase": "再入并完成读指令"
+          }
+        },
+        {
+          "id": "resume",
+          "title": "继续客户机执行",
+          "actor": "KVM → 客户机",
+          "description": "处理器进入客户机，下一条指令可以使用 EAX 的新值。",
+          "detail": "exit_reason 是上次正常用户态返回的记录，不能把其残留值当成新的待处理请求。这里的第二次 KVM_RUN 仍在执行。",
+          "active": [
+            "guest"
+          ],
+          "links": [],
+          "changes": {
+            "mode": "non-root"
+          },
+          "nodeStates": {},
+          "sourceIds": [
+            "mmio-complete",
+            "qemu-run"
+          ],
+          "focus": true,
+          "execution": {
+            "lane": "guest-user",
+            "instruction": "MOV EAX, [设备寄存器]",
+            "phase": "继续客户机执行"
+          }
+        }
+      ],
+      "presentation": "cpu-timeline",
+      "timeline": {
+        "lanes": [
+          {
+            "id": "guest-user",
+            "label": "Guest 用户态 · non-root"
+          },
+          {
+            "id": "guest-kernel",
+            "label": "Guest 内核态 · non-root"
+          },
+          {
+            "id": "kvm",
+            "label": "KVM 宿主内核 · root"
+          },
+          {
+            "id": "qemu",
+            "label": "QEMU 宿主用户态 · root"
+          }
+        ],
+        "fields": [
+          "rip",
+          "eax",
+          "pending",
+          "data",
+          "cpl",
+          "mode",
+          "run-state",
+          "hw-exit"
+        ],
+        "instruction": "MOV EAX, [设备寄存器]"
+      },
+      "callPaths": [
+        {
+          "id": "kvm-request",
+          "title": "KVM 退出与设备访问请求",
+          "context": "宿主 KVM · root",
+          "sourceIds": [
+            "ept-exit",
+            "mmu-emulate",
+            "mmio-request"
+          ],
+          "boundary": "硬件 VM-exit 先进入 KVM；只有本例无法在内核完成的设备访问才填写 KVM_EXIT_MMIO 并返回 QEMU。"
+        },
+        {
+          "id": "qemu-read",
+          "title": "QEMU 设备读回调",
+          "context": "宿主用户态 · QEMU vCPU 线程",
+          "sourceIds": [
+            "qemu-run",
+            "qemu-address-read",
+            "qemu-memory-read",
+            "qemu-device-read"
+          ],
+          "boundary": "地址空间路由最终调用具体设备的 MemoryRegionOps.read；本例只规定返回值，不虚构具体设备名称。",
+          "entry": {
+            "kind": "return",
+            "label": "KVM_EXIT_MMIO 使 KVM_RUN 返回，再由 QEMU 分派设备访问"
+          }
+        },
+        {
+          "id": "kvm-complete",
+          "title": "再次 KVM_RUN 后恢复原指令",
+          "context": "宿主 KVM → Guest",
+          "sourceIds": [
+            "mmio-complete",
+            "mmio-complete-read",
+            "mmio-resume-instruction",
+            "mmio-api"
+          ],
+          "boundary": "先完成保留的读指令，再执行后续 Guest 入口检查；填回 kvm_run.mmio.data 不等于 Guest EAX 已更新。",
+          "entry": {
+            "kind": "callback",
+            "label": "再次 KVM_RUN 时，先执行保留的 MMIO 完成回调"
+          }
+        }
       ]
     },
     {
-      "id":"hlt-wakeup","label":"HLT 等待与唤醒","summary":"客户机空闲时执行 HLT，KVM 让宿主 vCPU 线程睡眠；可接受的中断到达后再唤醒并继续。",
-      "assumptions":["Intel VMX 拦截 HLT；KVM 管理 LAPIC，APICv 关闭", "halt-poll 预算为 0，展示真正阻塞；Guest IF = 1，向量 0x51 优先级允许", "没有待处理中断，随后后端完成事件通过软件 LAPIC 路径到达"],
-      "nodes":[{"id":"guest","label":"客户机空闲线程","role":"Guest CPL 0"},{"id":"kvm","label":"KVM HLT 处理","role":"宿主内核"},{"id":"scheduler","label":"Linux 调度器","role":"宿主任务调度"},{"id":"backend","label":"设备完成事件","role":"异步事件源"},{"id":"lapic","label":"虚拟 LAPIC","role":"KVM 中断状态"}],
-      "links":[{"id":"halt","from":"guest","to":"kvm","label":"HLT VM Exit","kind":"control"},{"id":"sleep","from":"kvm","to":"scheduler","label":"schedule","kind":"control"},{"id":"event","from":"backend","to":"lapic","label":"完成向量 0x51","kind":"notification"},{"id":"wake","from":"lapic","to":"scheduler","label":"唤醒等待线程","kind":"notification"},{"id":"schedule","from":"scheduler","to":"kvm","label":"再次取得 CPU","kind":"control"},{"id":"resume","from":"kvm","to":"guest","label":"注入后 VM Entry","kind":"control"}],
-      "structures":[{"id":"activity","title":"客户机与宿主活动状态","kind":"registers","fields":[{"key":"rip","label":"Guest RIP","initial":"0xffffffff81001000（HLT）"},{"key":"mp-state","label":"arch.mp_state","initial":"RUNNABLE"},{"key":"task-state","label":"宿主 task 状态","initial":"TASK_RUNNING，执行中"},{"key":"run-state","label":"KVM_RUN","initial":"调用中，未返回"}]},{"id":"interrupt","title":"事件与等待者","kind":"interrupt","fields":[{"key":"irr","label":"IRR[0x51]","initial":"0"},{"key":"wait","label":"rcuwait 等待者","initial":"未发布"},{"key":"if","label":"Guest IF","initial":"1"}]}],
-      "steps":[
-        {"id":"ready","title":"执行 HLT 前","actor":"客户机空闲线程","description":"客户机暂时没有可运行任务，准备执行 HLT。","detail":"整台虚拟机仍在运行；此处只跟踪一个 vCPU 的空闲等待。","active":[],"links":[],"changes":{},"nodeStates":{},"sourceIds":["halt"],"focus":true},
-        {"id":"halt","title":"记录客户机等待状态","actor":"KVM · kvm_emulate_halt","description":"HLT 退出后，KVM 跳过该指令，把无可用事件的 vCPU 记为 HALTED。","detail":"内核 LAPIC 模式下，HLT 的常规等待留在内核；本例没有 KVM_EXIT_HLT 用户态返回。","active":["guest","kvm"],"links":["halt"],"changes":{"rip":"0xffffffff81001001（HLT 之后）","mp-state":"HALTED"},"nodeStates":{"kvm":"进入等待分支"},"sourceIds":["halt","run-loop"],"focus":true},
-        {"id":"prepare","title":"发布等待者并复查","actor":"KVM · kvm_vcpu_block","description":"KVM 发布 rcuwait 等待者，设置 TASK_INTERRUPTIBLE，再检查事件。","detail":"先发布等待者再复查，避免事件在检查与休眠之间到达造成丢失唤醒。此时还未调用 schedule。","active":["kvm"],"links":[],"changes":{"wait":"当前 vCPU 宿主线程","task-state":"TASK_INTERRUPTIBLE，尚在执行"},"nodeStates":{"kvm":"复查仍无事件"},"sourceIds":["block"],"focus":true},
-        {"id":"sleep","title":"宿主线程休眠","actor":"Linux 调度器","description":"没有可运行事件，schedule 让出物理 CPU。","detail":"这里发生宿主任务调度切换；它晚于 HLT 的 VM Exit，并未结束 KVM_RUN。","active":["kvm","scheduler"],"links":["sleep"],"changes":{"task-state":"TASK_INTERRUPTIBLE，已睡眠"},"nodeStates":{"scheduler":"可运行其他任务"},"sourceIds":["block"],"focus":true},
-        {"id":"wake","title":"发布中断并唤醒","actor":"事件源 → LAPIC → 调度器","description":"完成事件设置 IRR[0x51]，KVM kick 找到等待线程并唤醒。","detail":"TASK_RUNNING 表示可以被调度；宿主繁忙时，线程还需要等待物理 CPU。","active":["backend","lapic","scheduler"],"links":["event","wake"],"changes":{"irr":"1","task-state":"TASK_RUNNING，等待调度"},"nodeStates":{"lapic":"0x51 待处理","scheduler":"vCPU 可运行"},"sourceIds":["irq","wake"],"focus":true},
-        {"id":"scheduled","title":"线程重新获得 CPU","actor":"Linux 调度器 → KVM","description":"vCPU 线程继续内核等待循环，复查后撤销等待者。","detail":"本例的中断可被客户机接受，因此 x86 运行路径把 mp_state 恢复为 RUNNABLE。其他信号或维护请求未必使客户机立即可运行。","active":["scheduler","kvm"],"links":["schedule"],"changes":{"task-state":"TASK_RUNNING，执行中","wait":"已撤销","mp-state":"RUNNABLE"},"nodeStates":{"kvm":"准备客户机事件"},"sourceIds":["block","halt-resume"],"focus":true},
-        {"id":"resume","title":"恢复客户机并处理事件","actor":"KVM → 客户机","description":"满足注入条件后，KVM 进入客户机的中断处理入口。","detail":"HLT 之后的执行随后由客户机中断返回继续。完整 IRR、ISR、EOI 变化见虚拟中断递送过程；这里的 KVM_RUN 仍未返回。","active":["kvm","guest"],"links":["resume"],"changes":{"irr":"0（已取出用于注入）","rip":"客户机向量 0x51 处理入口"},"nodeStates":{"guest":"处理中断"},"sourceIds":["halt-resume","irq-ack"],"focus":true}
+      "id": "hlt-wakeup",
+      "label": "HLT 等待与唤醒",
+      "summary": "客户机空闲时执行 HLT，KVM 让宿主 vCPU 线程睡眠；可接受的中断到达后再唤醒并继续。",
+      "assumptions": [
+        "Intel VMX 拦截 HLT；KVM 管理 LAPIC，APICv 关闭",
+        "halt-poll 预算为 0，展示真正阻塞；Guest IF = 1，向量 0x51 优先级允许",
+        "没有待处理中断，随后后端完成事件通过软件 LAPIC 路径到达"
+      ],
+      "nodes": [
+        {
+          "id": "guest",
+          "label": "客户机空闲线程",
+          "role": "Guest CPL 0",
+          "badge": "内核态"
+        },
+        {
+          "id": "kvm",
+          "label": "KVM HLT 处理",
+          "role": "宿主内核"
+        },
+        {
+          "id": "scheduler",
+          "label": "Linux 调度器",
+          "role": "宿主任务调度"
+        },
+        {
+          "id": "backend",
+          "label": "设备完成事件",
+          "role": "异步事件源"
+        },
+        {
+          "id": "lapic",
+          "label": "虚拟 LAPIC",
+          "role": "KVM 中断状态"
+        }
+      ],
+      "links": [
+        {
+          "id": "halt",
+          "from": "guest",
+          "to": "kvm",
+          "label": "HLT VM Exit",
+          "kind": "control"
+        },
+        {
+          "id": "sleep",
+          "from": "kvm",
+          "to": "scheduler",
+          "label": "schedule",
+          "kind": "control"
+        },
+        {
+          "id": "event",
+          "from": "backend",
+          "to": "lapic",
+          "label": "完成向量 0x51",
+          "kind": "notification"
+        },
+        {
+          "id": "wake",
+          "from": "lapic",
+          "to": "scheduler",
+          "label": "唤醒等待线程",
+          "kind": "notification"
+        },
+        {
+          "id": "schedule",
+          "from": "scheduler",
+          "to": "kvm",
+          "label": "再次取得 CPU",
+          "kind": "control"
+        },
+        {
+          "id": "resume",
+          "from": "kvm",
+          "to": "guest",
+          "label": "注入后 VM Entry",
+          "kind": "control"
+        }
+      ],
+      "structures": [
+        {
+          "id": "activity",
+          "title": "客户机与宿主活动状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "rip",
+              "label": "Guest RIP",
+              "initial": "0xffffffff81001000（HLT）"
+            },
+            {
+              "key": "mp-state",
+              "label": "arch.mp_state",
+              "initial": "RUNNABLE"
+            },
+            {
+              "key": "task-state",
+              "label": "宿主 task 状态",
+              "initial": "TASK_RUNNING，执行中"
+            },
+            {
+              "key": "run-state",
+              "label": "KVM_RUN",
+              "initial": "调用中，未返回"
+            }
+          ]
+        },
+        {
+          "id": "interrupt",
+          "title": "事件与等待者",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "irr",
+              "label": "IRR[0x51]",
+              "initial": "0"
+            },
+            {
+              "key": "wait",
+              "label": "rcuwait 等待者",
+              "initial": "未发布"
+            },
+            {
+              "key": "if",
+              "label": "Guest IF",
+              "initial": "1"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "ready",
+          "title": "执行 HLT 前",
+          "actor": "客户机空闲线程",
+          "description": "客户机暂时没有可运行任务，准备执行 HLT。",
+          "detail": "整台虚拟机仍在运行；此处只跟踪一个 vCPU 的空闲等待。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "halt"
+          ],
+          "focus": true
+        },
+        {
+          "id": "halt",
+          "title": "记录客户机等待状态",
+          "actor": "KVM · kvm_emulate_halt",
+          "description": "HLT 退出后，KVM 跳过该指令，把无可用事件的 vCPU 记为 HALTED。",
+          "detail": "内核 LAPIC 模式下，HLT 的常规等待留在内核；本例没有 KVM_EXIT_HLT 用户态返回。",
+          "active": [
+            "guest",
+            "kvm"
+          ],
+          "links": [
+            "halt"
+          ],
+          "changes": {
+            "rip": "0xffffffff81001001（HLT 之后）",
+            "mp-state": "HALTED"
+          },
+          "nodeStates": {
+            "kvm": "进入等待分支"
+          },
+          "sourceIds": [
+            "halt",
+            "run-loop"
+          ],
+          "focus": true
+        },
+        {
+          "id": "prepare",
+          "title": "发布等待者并复查",
+          "actor": "KVM · kvm_vcpu_block",
+          "description": "KVM 发布 rcuwait 等待者，设置 TASK_INTERRUPTIBLE，再检查事件。",
+          "detail": "先发布等待者再复查，避免事件在检查与休眠之间到达造成丢失唤醒。此时还未调用 schedule。",
+          "active": [
+            "kvm"
+          ],
+          "links": [],
+          "changes": {
+            "wait": "当前 vCPU 宿主线程",
+            "task-state": "TASK_INTERRUPTIBLE，尚在执行"
+          },
+          "nodeStates": {
+            "kvm": "复查仍无事件"
+          },
+          "sourceIds": [
+            "block"
+          ],
+          "focus": true
+        },
+        {
+          "id": "sleep",
+          "title": "宿主线程休眠",
+          "actor": "Linux 调度器",
+          "description": "没有可运行事件，schedule 让出物理 CPU。",
+          "detail": "这里发生宿主任务调度切换；它晚于 HLT 的 VM Exit，并未结束 KVM_RUN。",
+          "active": [
+            "kvm",
+            "scheduler"
+          ],
+          "links": [
+            "sleep"
+          ],
+          "changes": {
+            "task-state": "TASK_INTERRUPTIBLE，已睡眠"
+          },
+          "nodeStates": {
+            "scheduler": "可运行其他任务"
+          },
+          "sourceIds": [
+            "block"
+          ],
+          "focus": true
+        },
+        {
+          "id": "wake",
+          "title": "发布中断并唤醒",
+          "actor": "事件源 → LAPIC → 调度器",
+          "description": "完成事件设置 IRR[0x51]，KVM kick 找到等待线程并唤醒。",
+          "detail": "TASK_RUNNING 表示可以被调度；宿主繁忙时，线程还需要等待物理 CPU。",
+          "active": [
+            "backend",
+            "lapic",
+            "scheduler"
+          ],
+          "links": [
+            "event",
+            "wake"
+          ],
+          "changes": {
+            "irr": "1",
+            "task-state": "TASK_RUNNING，等待调度"
+          },
+          "nodeStates": {
+            "lapic": "0x51 待处理",
+            "scheduler": "vCPU 可运行"
+          },
+          "sourceIds": [
+            "irq",
+            "wake"
+          ],
+          "focus": true
+        },
+        {
+          "id": "scheduled",
+          "title": "线程重新获得 CPU",
+          "actor": "Linux 调度器 → KVM",
+          "description": "vCPU 线程继续内核等待循环，复查后撤销等待者。",
+          "detail": "本例的中断可被客户机接受，因此 x86 运行路径把 mp_state 恢复为 RUNNABLE。其他信号或维护请求未必使客户机立即可运行。",
+          "active": [
+            "scheduler",
+            "kvm"
+          ],
+          "links": [
+            "schedule"
+          ],
+          "changes": {
+            "task-state": "TASK_RUNNING，执行中",
+            "wait": "已撤销",
+            "mp-state": "RUNNABLE"
+          },
+          "nodeStates": {
+            "kvm": "准备客户机事件"
+          },
+          "sourceIds": [
+            "block",
+            "halt-resume"
+          ],
+          "focus": true
+        },
+        {
+          "id": "resume",
+          "title": "恢复客户机并处理事件",
+          "actor": "KVM → 客户机",
+          "description": "满足注入条件后，KVM 进入客户机的中断处理入口。",
+          "detail": "HLT 之后的执行随后由客户机中断返回继续。完整 IRR、ISR、EOI 变化见虚拟中断递送过程；这里的 KVM_RUN 仍未返回。",
+          "active": [
+            "kvm",
+            "guest"
+          ],
+          "links": [
+            "resume"
+          ],
+          "changes": {
+            "irr": "0（已取出用于注入）",
+            "rip": "客户机向量 0x51 处理入口"
+          },
+          "nodeStates": {
+            "guest": "处理中断"
+          },
+          "sourceIds": [
+            "halt-resume",
+            "irq-ack"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "vCPU 进入、退出与恢复",
+          "context": "QEMU vCPU 线程 → KVM 内核",
+          "sourceIds": [
+            "run-loop"
+          ],
+          "boundary": "初始化与运行循环是上下文。只有所选指令触发退出时才进入对应处理分支；KVM_RUN 返回与硬件 VM-exit 分开。"
+        },
+        {
+          "id": "path-1",
+          "title": "宿主等待、定时与中断交接",
+          "context": "KVM / 宿主调度器 / 定时回调",
+          "sourceIds": [
+            "halt",
+            "block",
+            "wake",
+            "irq",
+            "irq-ack",
+            "halt-resume"
+          ],
+          "boundary": "定时回调、唤醒和调度不是同一同步调用链；相同调度函数可在 Guest 与宿主各自内核运行。"
+        }
       ]
     },
     {
@@ -118,59 +2071,577 @@
         "A 离开 CPU 后 B 可以运行。演示在 D 之前安排一次宿主抢占并重新调度；Guest 无需因此执行自己的任务切换。A 到期后最终得到 Guest 调度，不指定具体调度延迟。"
       ],
       "nodes": [
-        {"id":"app","label":"任务 A · nanosleep","role":"Guest 用户任务","initial":"A 在用户态，尚未请求休眠"},
-        {"id":"peer","label":"任务 B · 计算工作","role":"Guest 另一用户任务","initial":"B 已就绪，等待 Guest 调度"},
-        {"id":"guest-scheduler","label":"Guest 调度器","role":"客户机内核","initial":"当前任务为 A"},
-        {"id":"guest-timer","label":"Guest hrtimer 与 clockevent","role":"客户机内核","initial":"尚未建立 A 的休眠定时器"},
-        {"id":"kvm","label":"vCPU 运行循环与虚拟 LAPIC","role":"宿主 KVM","initial":"KVM_RUN 中，Guest 正在执行"},
-        {"id":"host-timer","label":"宿主 hrtimer","role":"宿主内核定时回调","initial":"本次软件定时器尚未启动"},
-        {"id":"host-scheduler","label":"宿主调度器","role":"调度 QEMU vCPU 线程","initial":"vCPU 线程正在占用物理 CPU"}
+        {
+          "id": "app",
+          "label": "任务 A · nanosleep",
+          "role": "Guest 用户任务",
+          "initial": "A 在用户态，尚未请求休眠",
+          "badge": "用户态"
+        },
+        {
+          "id": "peer",
+          "label": "任务 B · 计算工作",
+          "role": "Guest 另一用户任务",
+          "initial": "B 已就绪，等待 Guest 调度",
+          "badge": "用户态"
+        },
+        {
+          "id": "guest-scheduler",
+          "label": "Guest 调度器",
+          "role": "客户机内核",
+          "initial": "当前任务为 A",
+          "badge": "内核态"
+        },
+        {
+          "id": "guest-timer",
+          "label": "Guest hrtimer 与 clockevent",
+          "role": "客户机内核",
+          "initial": "尚未建立 A 的休眠定时器",
+          "badge": "内核态"
+        },
+        {
+          "id": "kvm",
+          "label": "vCPU 运行循环与虚拟 LAPIC",
+          "role": "宿主 KVM",
+          "initial": "KVM_RUN 中，Guest 正在执行"
+        },
+        {
+          "id": "host-timer",
+          "label": "宿主 hrtimer",
+          "role": "宿主内核定时回调",
+          "initial": "本次软件定时器尚未启动"
+        },
+        {
+          "id": "host-scheduler",
+          "label": "宿主调度器",
+          "role": "调度 QEMU vCPU 线程",
+          "initial": "vCPU 线程正在占用物理 CPU"
+        }
       ],
       "links": [
-        {"id":"sleep-call","from":"app","to":"guest-timer","label":"建立 hrtimer_sleeper","kind":"control"},
-        {"id":"clockevent","from":"guest-timer","to":"kvm","label":"写入 TSC deadline","kind":"control"},
-        {"id":"arm-host","from":"kvm","to":"host-timer","label":"安排软件 hrtimer","kind":"control"},
-        {"id":"guest-switch","from":"guest-scheduler","to":"peer","label":"切换到 B","kind":"control"},
-        {"id":"host-preempt","from":"kvm","to":"host-scheduler","label":"退出 Guest 并让出 CPU","kind":"control"},
-        {"id":"host-dispatch","from":"host-scheduler","to":"kvm","label":"vCPU 线程重新运行","kind":"control"},
-        {"id":"timer-expiry","from":"host-timer","to":"kvm","label":"pending + UNBLOCK / kick","kind":"notification"},
-        {"id":"timer-vector","from":"kvm","to":"guest-timer","label":"Guest 定时中断","kind":"notification"},
-        {"id":"guest-wake","from":"guest-timer","to":"guest-scheduler","label":"wake_up_process(A)","kind":"notification"},
-        {"id":"guest-dispatch","from":"guest-scheduler","to":"app","label":"选择 A 继续执行","kind":"control"}
+        {
+          "id": "sleep-call",
+          "from": "app",
+          "to": "guest-timer",
+          "label": "建立 hrtimer_sleeper",
+          "kind": "control"
+        },
+        {
+          "id": "clockevent",
+          "from": "guest-timer",
+          "to": "kvm",
+          "label": "写入 TSC deadline",
+          "kind": "control"
+        },
+        {
+          "id": "arm-host",
+          "from": "kvm",
+          "to": "host-timer",
+          "label": "安排软件 hrtimer",
+          "kind": "control"
+        },
+        {
+          "id": "guest-switch",
+          "from": "guest-scheduler",
+          "to": "peer",
+          "label": "切换到 B",
+          "kind": "control"
+        },
+        {
+          "id": "host-preempt",
+          "from": "kvm",
+          "to": "host-scheduler",
+          "label": "退出 Guest 并让出 CPU",
+          "kind": "control"
+        },
+        {
+          "id": "host-dispatch",
+          "from": "host-scheduler",
+          "to": "kvm",
+          "label": "vCPU 线程重新运行",
+          "kind": "control"
+        },
+        {
+          "id": "timer-expiry",
+          "from": "host-timer",
+          "to": "kvm",
+          "label": "pending + UNBLOCK / kick",
+          "kind": "notification"
+        },
+        {
+          "id": "timer-vector",
+          "from": "kvm",
+          "to": "guest-timer",
+          "label": "Guest 定时中断",
+          "kind": "notification"
+        },
+        {
+          "id": "guest-wake",
+          "from": "guest-timer",
+          "to": "guest-scheduler",
+          "label": "wake_up_process(A)",
+          "kind": "notification"
+        },
+        {
+          "id": "guest-dispatch",
+          "from": "guest-scheduler",
+          "to": "app",
+          "label": "选择 A 继续执行",
+          "kind": "control"
+        }
       ],
       "structures": [
-        {"id":"tasks","title":"客户机任务与等待对象","kind":"registers","fields":[
-          {"key":"appState","label":"任务 A","initial":"TASK_RUNNING，用户态执行"},
-          {"key":"guestCurrent","label":"Guest 当前执行","initial":"任务 A"},
-          {"key":"sleeperTask","label":"hrtimer_sleeper.task","initial":"尚未建立"},
-          {"key":"syscallResult","label":"nanosleep 返回值","initial":"尚未调用"}
-        ]},
-        {"id":"timer","title":"定时目标与递送进度","kind":"interrupt","fields":[
-          {"key":"deadline","label":"Guest clockevent 目标","initial":"尚未安排本次 D"},
-          {"key":"hostTimer","label":"宿主软件定时器","initial":"尚未安排本次事件"},
-          {"key":"timerPending","label":"lapic_timer.pending","initial":"0"},
-          {"key":"vector","label":"虚拟定时中断","initial":"尚未产生"}
-        ]},
-        {"id":"execution","title":"vCPU 与宿主执行状态","kind":"registers","fields":[
-          {"key":"mpState","label":"KVM mp_state","initial":"RUNNABLE"},
-          {"key":"hostState","label":"宿主 vCPU 线程","initial":"TASK_RUNNING，正在执行"},
-          {"key":"hostContext","label":"该线程的执行位置","initial":"Guest non-root"},
-          {"key":"kvmRun","label":"KVM_RUN","initial":"调用中，未返回 QEMU 用户态"}
-        ]}
+        {
+          "id": "tasks",
+          "title": "客户机任务与等待对象",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "appState",
+              "label": "任务 A",
+              "initial": "TASK_RUNNING，用户态执行"
+            },
+            {
+              "key": "guestCurrent",
+              "label": "Guest 当前执行",
+              "initial": "任务 A"
+            },
+            {
+              "key": "sleeperTask",
+              "label": "hrtimer_sleeper.task",
+              "initial": "尚未建立"
+            },
+            {
+              "key": "syscallResult",
+              "label": "nanosleep 返回值",
+              "initial": "尚未调用"
+            }
+          ]
+        },
+        {
+          "id": "timer",
+          "title": "定时目标与递送进度",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "deadline",
+              "label": "Guest clockevent 目标",
+              "initial": "尚未安排本次 D"
+            },
+            {
+              "key": "hostTimer",
+              "label": "宿主软件定时器",
+              "initial": "尚未安排本次事件"
+            },
+            {
+              "key": "timerPending",
+              "label": "lapic_timer.pending",
+              "initial": "0"
+            },
+            {
+              "key": "vector",
+              "label": "虚拟定时中断",
+              "initial": "尚未产生"
+            }
+          ]
+        },
+        {
+          "id": "execution",
+          "title": "vCPU 与宿主执行状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "mpState",
+              "label": "KVM mp_state",
+              "initial": "RUNNABLE"
+            },
+            {
+              "key": "hostState",
+              "label": "宿主 vCPU 线程",
+              "initial": "TASK_RUNNING，正在执行"
+            },
+            {
+              "key": "hostContext",
+              "label": "该线程的执行位置",
+              "initial": "Guest non-root"
+            },
+            {
+              "key": "kvmRun",
+              "label": "KVM_RUN",
+              "initial": "调用中，未返回 QEMU 用户态"
+            }
+          ]
+        }
       ],
       "steps": [
-        {"id":"ready","title":"任务 A 准备休眠","actor":"Guest 用户态 · 任务 A","description":"A 即将请求休眠 1 ms，B 也具备运行条件。","detail":"Guest 内核调度 A、B；宿主内核调度承载整个 vCPU 的 QEMU 线程。两层有各自的任务状态和运行队列。","active":[],"links":[],"changes":{},"nodeStates":{},"sourceIds":["guest-nanosleep","qemu-run"],"focus":true},
-        {"id":"request-sleep","title":"建立任务等待对象","actor":"Guest 内核 · do_nanosleep","description":"Guest 为 A 建立 hrtimer_sleeper，task 指向 A，并设置可中断等待标志。","detail":"源码设置 TASK_INTERRUPTIBLE | TASK_FREEZABLE，随后启动定时器；此刻 A 仍在内核执行，真正离开 CPU 发生在 schedule。信号与冻结处理不在本次成功路径内。","active":["app","guest-timer"],"links":["sleep-call"],"changes":{"appState":"TASK_INTERRUPTIBLE | TASK_FREEZABLE，仍在内核执行","guestCurrent":"A 的系统调用路径","sleeperTask":"A","syscallResult":"尚未返回"},"nodeStates":{"app":"准备等待到期","guest-timer":"已建立 A 的休眠定时器"},"sourceIds":["guest-nanosleep"],"focus":true},
-        {"id":"arm-deadline","title":"安排虚拟定时事件","actor":"Guest clockevent → KVM → 宿主 hrtimer","description":"Guest 选定下一事件 D 并写 TSC deadline；KVM 安排对应的宿主软件定时器。","detail":"TSC deadline 写入由 KVM 处理。start_sw_tscdeadline() 将剩余 Guest TSC 计数换算成宿主等待间隔；处理完成后继续 Guest 调用路径。Guest 的 sleeper 与宿主 hrtimer 是两个不同对象。","active":["guest-timer","kvm","host-timer"],"links":["clockevent","arm-host"],"changes":{"deadline":"D：本次选定的 clockevent 时刻","hostTimer":"已启动，等待对应的 D"},"nodeStates":{"host-timer":"等待 D","kvm":"已保存虚拟 LAPIC deadline"},"sourceIds":["guest-deadline","lapic-deadline","lapic-software-timer"],"focus":true},
-        {"id":"run-other","title":"客户机切换到任务 B","actor":"Guest 调度器","description":"A 调用 schedule 离开运行队列，Guest 选择 B 继续计算。","detail":"A 阻塞后，vCPU 仍有客户机指令可以执行，mp_state 保持 RUNNABLE。本次任务切换由 Guest 内核完成，宿主没有因 A 的 nanosleep 而把 vCPU 线程挂到等待队列。","active":["app","guest-scheduler","peer"],"links":["guest-switch"],"changes":{"appState":"TASK_INTERRUPTIBLE | TASK_FREEZABLE，已阻塞","guestCurrent":"任务 B"},"nodeStates":{"app":"等待定时到期","peer":"正在计算","guest-scheduler":"已选择 B"},"sourceIds":["guest-nanosleep","scheduler-switch"],"focus":true},
-        {"id":"host-preempt","title":"宿主抢占 vCPU 线程","actor":"宿主调度器","description":"在 D 之前，宿主调度事件让处理器退出 Guest，并改为执行另一个宿主任务。","detail":"vCPU 线程仍为 TASK_RUNNING，只是当前未占用物理 CPU；KVM mp_state 仍为 RUNNABLE。Guest 保存的当前任务仍是 B，不能把这段停顿记为 B 主动睡眠。","active":["kvm","host-scheduler"],"links":["host-preempt"],"changes":{"hostState":"TASK_RUNNING，被抢占后等待物理 CPU","hostContext":"宿主正在执行其他任务；vCPU 现场已保存","guestCurrent":"任务 B，暂未获得宿主执行时间"},"nodeStates":{"peer":"现场保留，暂未执行","host-scheduler":"当前执行其他宿主任务"},"sourceIds":["scheduler-switch","timer-run-loop"],"focus":true},
-        {"id":"host-resume","title":"宿主重新调度 vCPU","actor":"宿主调度器 → KVM","description":"宿主重新选择该线程，KVM 进入 Guest，B 从保存的位置继续执行。","detail":"这次恢复发生在 D 之前。A 的定时器保持有效，A 仍在等待；Guest 不需要为宿主这次抢占重新选择一个任务。","active":["host-scheduler","kvm","peer"],"links":["host-dispatch"],"changes":{"hostState":"TASK_RUNNING，正在执行","hostContext":"Guest non-root","guestCurrent":"任务 B"},"nodeStates":{"peer":"继续计算","host-scheduler":"vCPU 线程已获得 CPU"},"sourceIds":["scheduler-switch","run-loop"],"focus":true},
-        {"id":"timer-expire","title":"宿主定时回调到期","actor":"宿主内核 · apic_timer_fn","description":"宿主时钟中断打断 Guest 执行，回调记录 lapic_timer.pending = 1，并提交 UNBLOCK 请求。","detail":"本例采用软件定时器和非 APICv 路径。apic_timer_expired() 记录 pending 并 kick；目标 vCPU 正在运行，无需从睡眠队列唤醒。A 的 Guest sleeper 尚未执行到期回调。","active":["host-timer","kvm"],"links":["timer-expiry"],"changes":{"hostTimer":"本次回调已到期","timerPending":"1","hostContext":"宿主内核处理中","guestCurrent":"任务 B 的现场被暂时保存"},"nodeStates":{"host-timer":"到期已记录","kvm":"有待处理定时事件","peer":"现场已保存，等待恢复 Guest"},"sourceIds":["lapic-timer-callback","lapic-software-timer","wake"],"focus":true},
-        {"id":"stage-vector","title":"安排虚拟定时中断","actor":"KVM 运行循环与虚拟 LAPIC","description":"KVM 消费 pending 定时事件，经 LVT 定时器向虚拟 LAPIC 提交向量。","detail":"pending 归零，向量进入待递送状态。此时 Guest 尚未执行定时中断处理，任务 A 仍然阻塞。KVM_RUN 全程保持在内核调用中。","active":["kvm"],"links":[],"changes":{"timerPending":"0","vector":"LAPIC 中有待递送的定时向量"},"nodeStates":{"kvm":"准备向 Guest 递送定时中断"},"sourceIds":["timer-run-loop","lapic-timer-deliver","irq-ack"],"focus":true},
-        {"id":"guest-timer","title":"客户机处理定时中断","actor":"Guest 内核 · LAPIC clockevent","description":"满足中断条件后，处理器进入 Guest 定时中断入口；Guest hrtimer 检查到期队列。","detail":"中断发生在 B 的执行上下文上，B 的现场等待恢复。Linux 入口先做 APIC EOI，再调用 clockevent 处理函数；随后运行到期 hrtimer，EOI 本身不会把 A 变为就绪。","active":["kvm","guest-timer"],"links":["timer-vector"],"changes":{"vector":"Guest 已接受；入口已完成 APIC EOI","hostContext":"Guest non-root，内核中断上下文","guestCurrent":"B 的中断上下文"},"nodeStates":{"guest-timer":"检查 Guest 到期队列","kvm":"定时中断已递送，正在执行 Guest","peer":"中断上下文执行，B 的计算暂停"},"sourceIds":["guest-timer-vector","guest-timer-queues"],"focus":true},
-        {"id":"task-ready","title":"任务 A 变为就绪","actor":"Guest 内核 · hrtimer_wakeup","description":"hrtimer_wakeup 将 sleeper.task 清为 NULL，并通过 wake_up_process(A) 使 A 可运行。","detail":"A 此时具备调度资格，尚未执行系统调用的返回路径。Guest 需要在可调度点选择它；定时到期、任务唤醒与任务运行是三个不同的时刻。","active":["guest-timer","guest-scheduler","app"],"links":["guest-wake"],"changes":{"appState":"TASK_RUNNING，就绪但尚未执行","sleeperTask":"NULL（到期回调已执行）"},"nodeStates":{"app":"已就绪，等待 Guest 调度","guest-scheduler":"可以选择 A","guest-timer":"本次到期回调已完成"},"sourceIds":["guest-timer-wake","scheduler-wake"],"focus":true},
-        {"id":"guest-dispatch","title":"客户机调度任务 A","actor":"Guest 调度器","description":"Guest 在调度点选择 A，恢复它在 do_nanosleep 中的执行现场。","detail":"本例展示 A 最终被选择的顺序，不规定它在唤醒后立即抢占 B。B 可以继续保持可运行，稍后再获得 Guest CPU 时间。","active":["guest-scheduler","app"],"links":["guest-dispatch"],"changes":{"appState":"TASK_RUNNING，正在 Guest 内核执行","guestCurrent":"任务 A 的系统调用返回路径"},"nodeStates":{"app":"继续 do_nanosleep","peer":"等待下一次 Guest 调度","guest-scheduler":"已选择 A"},"sourceIds":["scheduler-switch","guest-nanosleep"],"focus":true},
-        {"id":"return-app","title":"nanosleep 返回用户态","actor":"Guest 用户态 · 任务 A","description":"到期等待已完成，nanosleep 返回 0，A 继续后续代码。","detail":"do_nanosleep 发现 sleeper.task 已清空，完成定时对象收尾并返回成功。实际返回时间包含允许的定时松弛、事件递送和两层调度等待，不能按动画步数推算延迟。","active":["app"],"links":[],"changes":{"appState":"TASK_RUNNING，用户态执行","guestCurrent":"任务 A","syscallResult":"0（休眠完成）","sleeperTask":"本次栈上等待对象已结束","hostContext":"Guest non-root"},"nodeStates":{"app":"用户态继续执行"},"sourceIds":["guest-nanosleep"],"focus":true}
+        {
+          "id": "ready",
+          "title": "任务 A 准备休眠",
+          "actor": "Guest 用户态 · 任务 A",
+          "description": "A 即将请求休眠 1 ms，B 也具备运行条件。",
+          "detail": "Guest 内核调度 A、B；宿主内核调度承载整个 vCPU 的 QEMU 线程。两层有各自的任务状态和运行队列。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "guest-nanosleep",
+            "qemu-run"
+          ],
+          "focus": true
+        },
+        {
+          "id": "request-sleep",
+          "title": "建立任务等待对象",
+          "actor": "Guest 内核 · do_nanosleep",
+          "description": "Guest 为 A 建立 hrtimer_sleeper，task 指向 A，并设置可中断等待标志。",
+          "detail": "源码设置 TASK_INTERRUPTIBLE | TASK_FREEZABLE，随后启动定时器；此刻 A 仍在内核执行，真正离开 CPU 发生在 schedule。信号与冻结处理不在本次成功路径内。",
+          "active": [
+            "app",
+            "guest-timer"
+          ],
+          "links": [
+            "sleep-call"
+          ],
+          "changes": {
+            "appState": "TASK_INTERRUPTIBLE | TASK_FREEZABLE，仍在内核执行",
+            "guestCurrent": "A 的系统调用路径",
+            "sleeperTask": "A",
+            "syscallResult": "尚未返回"
+          },
+          "nodeStates": {
+            "app": "准备等待到期",
+            "guest-timer": "已建立 A 的休眠定时器"
+          },
+          "sourceIds": [
+            "guest-nanosleep"
+          ],
+          "focus": true
+        },
+        {
+          "id": "arm-deadline",
+          "title": "安排虚拟定时事件",
+          "actor": "Guest clockevent → KVM → 宿主 hrtimer",
+          "description": "Guest 选定下一事件 D 并写 TSC deadline；KVM 安排对应的宿主软件定时器。",
+          "detail": "TSC deadline 写入由 KVM 处理。start_sw_tscdeadline() 将剩余 Guest TSC 计数换算成宿主等待间隔；处理完成后继续 Guest 调用路径。Guest 的 sleeper 与宿主 hrtimer 是两个不同对象。",
+          "active": [
+            "guest-timer",
+            "kvm",
+            "host-timer"
+          ],
+          "links": [
+            "clockevent",
+            "arm-host"
+          ],
+          "changes": {
+            "deadline": "D：本次选定的 clockevent 时刻",
+            "hostTimer": "已启动，等待对应的 D"
+          },
+          "nodeStates": {
+            "host-timer": "等待 D",
+            "kvm": "已保存虚拟 LAPIC deadline"
+          },
+          "sourceIds": [
+            "guest-deadline",
+            "lapic-deadline",
+            "lapic-software-timer"
+          ],
+          "focus": true
+        },
+        {
+          "id": "run-other",
+          "title": "客户机切换到任务 B",
+          "actor": "Guest 调度器",
+          "description": "A 调用 schedule 离开运行队列，Guest 选择 B 继续计算。",
+          "detail": "A 阻塞后，vCPU 仍有客户机指令可以执行，mp_state 保持 RUNNABLE。本次任务切换由 Guest 内核完成，宿主没有因 A 的 nanosleep 而把 vCPU 线程挂到等待队列。",
+          "active": [
+            "app",
+            "guest-scheduler",
+            "peer"
+          ],
+          "links": [
+            "guest-switch"
+          ],
+          "changes": {
+            "appState": "TASK_INTERRUPTIBLE | TASK_FREEZABLE，已阻塞",
+            "guestCurrent": "任务 B"
+          },
+          "nodeStates": {
+            "app": "等待定时到期",
+            "peer": "正在计算",
+            "guest-scheduler": "已选择 B"
+          },
+          "sourceIds": [
+            "guest-nanosleep",
+            "scheduler-switch"
+          ],
+          "focus": true
+        },
+        {
+          "id": "host-preempt",
+          "title": "宿主抢占 vCPU 线程",
+          "actor": "宿主调度器",
+          "description": "在 D 之前，宿主调度事件让处理器退出 Guest，并改为执行另一个宿主任务。",
+          "detail": "vCPU 线程仍为 TASK_RUNNING，只是当前未占用物理 CPU；KVM mp_state 仍为 RUNNABLE。Guest 保存的当前任务仍是 B，不能把这段停顿记为 B 主动睡眠。",
+          "active": [
+            "kvm",
+            "host-scheduler"
+          ],
+          "links": [
+            "host-preempt"
+          ],
+          "changes": {
+            "hostState": "TASK_RUNNING，被抢占后等待物理 CPU",
+            "hostContext": "宿主正在执行其他任务；vCPU 现场已保存",
+            "guestCurrent": "任务 B，暂未获得宿主执行时间"
+          },
+          "nodeStates": {
+            "peer": "现场保留，暂未执行",
+            "host-scheduler": "当前执行其他宿主任务"
+          },
+          "sourceIds": [
+            "scheduler-switch",
+            "timer-run-loop"
+          ],
+          "focus": true
+        },
+        {
+          "id": "host-resume",
+          "title": "宿主重新调度 vCPU",
+          "actor": "宿主调度器 → KVM",
+          "description": "宿主重新选择该线程，KVM 进入 Guest，B 从保存的位置继续执行。",
+          "detail": "这次恢复发生在 D 之前。A 的定时器保持有效，A 仍在等待；Guest 不需要为宿主这次抢占重新选择一个任务。",
+          "active": [
+            "host-scheduler",
+            "kvm",
+            "peer"
+          ],
+          "links": [
+            "host-dispatch"
+          ],
+          "changes": {
+            "hostState": "TASK_RUNNING，正在执行",
+            "hostContext": "Guest non-root",
+            "guestCurrent": "任务 B"
+          },
+          "nodeStates": {
+            "peer": "继续计算",
+            "host-scheduler": "vCPU 线程已获得 CPU"
+          },
+          "sourceIds": [
+            "scheduler-switch",
+            "run-loop"
+          ],
+          "focus": true
+        },
+        {
+          "id": "timer-expire",
+          "title": "宿主定时回调到期",
+          "actor": "宿主内核 · apic_timer_fn",
+          "description": "宿主时钟中断打断 Guest 执行，回调记录 lapic_timer.pending = 1，并提交 UNBLOCK 请求。",
+          "detail": "本例采用软件定时器和非 APICv 路径。apic_timer_expired() 记录 pending 并 kick；目标 vCPU 正在运行，无需从睡眠队列唤醒。A 的 Guest sleeper 尚未执行到期回调。",
+          "active": [
+            "host-timer",
+            "kvm"
+          ],
+          "links": [
+            "timer-expiry"
+          ],
+          "changes": {
+            "hostTimer": "本次回调已到期",
+            "timerPending": "1",
+            "hostContext": "宿主内核处理中",
+            "guestCurrent": "任务 B 的现场被暂时保存"
+          },
+          "nodeStates": {
+            "host-timer": "到期已记录",
+            "kvm": "有待处理定时事件",
+            "peer": "现场已保存，等待恢复 Guest"
+          },
+          "sourceIds": [
+            "lapic-timer-callback",
+            "lapic-software-timer",
+            "wake"
+          ],
+          "focus": true
+        },
+        {
+          "id": "stage-vector",
+          "title": "安排虚拟定时中断",
+          "actor": "KVM 运行循环与虚拟 LAPIC",
+          "description": "KVM 消费 pending 定时事件，经 LVT 定时器向虚拟 LAPIC 提交向量。",
+          "detail": "pending 归零，向量进入待递送状态。此时 Guest 尚未执行定时中断处理，任务 A 仍然阻塞。KVM_RUN 全程保持在内核调用中。",
+          "active": [
+            "kvm"
+          ],
+          "links": [],
+          "changes": {
+            "timerPending": "0",
+            "vector": "LAPIC 中有待递送的定时向量"
+          },
+          "nodeStates": {
+            "kvm": "准备向 Guest 递送定时中断"
+          },
+          "sourceIds": [
+            "timer-run-loop",
+            "lapic-timer-deliver",
+            "irq-ack"
+          ],
+          "focus": true
+        },
+        {
+          "id": "guest-timer",
+          "title": "客户机处理定时中断",
+          "actor": "Guest 内核 · LAPIC clockevent",
+          "description": "满足中断条件后，处理器进入 Guest 定时中断入口；Guest hrtimer 检查到期队列。",
+          "detail": "中断发生在 B 的执行上下文上，B 的现场等待恢复。Linux 入口先做 APIC EOI，再调用 clockevent 处理函数；随后运行到期 hrtimer，EOI 本身不会把 A 变为就绪。",
+          "active": [
+            "kvm",
+            "guest-timer"
+          ],
+          "links": [
+            "timer-vector"
+          ],
+          "changes": {
+            "vector": "Guest 已接受；入口已完成 APIC EOI",
+            "hostContext": "Guest non-root，内核中断上下文",
+            "guestCurrent": "B 的中断上下文"
+          },
+          "nodeStates": {
+            "guest-timer": "检查 Guest 到期队列",
+            "kvm": "定时中断已递送，正在执行 Guest",
+            "peer": "中断上下文执行，B 的计算暂停"
+          },
+          "sourceIds": [
+            "guest-timer-vector",
+            "guest-timer-queues"
+          ],
+          "focus": true
+        },
+        {
+          "id": "task-ready",
+          "title": "任务 A 变为就绪",
+          "actor": "Guest 内核 · hrtimer_wakeup",
+          "description": "hrtimer_wakeup 将 sleeper.task 清为 NULL，并通过 wake_up_process(A) 使 A 可运行。",
+          "detail": "A 此时具备调度资格，尚未执行系统调用的返回路径。Guest 需要在可调度点选择它；定时到期、任务唤醒与任务运行是三个不同的时刻。",
+          "active": [
+            "guest-timer",
+            "guest-scheduler",
+            "app"
+          ],
+          "links": [
+            "guest-wake"
+          ],
+          "changes": {
+            "appState": "TASK_RUNNING，就绪但尚未执行",
+            "sleeperTask": "NULL（到期回调已执行）"
+          },
+          "nodeStates": {
+            "app": "已就绪，等待 Guest 调度",
+            "guest-scheduler": "可以选择 A",
+            "guest-timer": "本次到期回调已完成"
+          },
+          "sourceIds": [
+            "guest-timer-wake",
+            "scheduler-wake"
+          ],
+          "focus": true
+        },
+        {
+          "id": "guest-dispatch",
+          "title": "客户机调度任务 A",
+          "actor": "Guest 调度器",
+          "description": "Guest 在调度点选择 A，恢复它在 do_nanosleep 中的执行现场。",
+          "detail": "本例展示 A 最终被选择的顺序，不规定它在唤醒后立即抢占 B。B 可以继续保持可运行，稍后再获得 Guest CPU 时间。",
+          "active": [
+            "guest-scheduler",
+            "app"
+          ],
+          "links": [
+            "guest-dispatch"
+          ],
+          "changes": {
+            "appState": "TASK_RUNNING，正在 Guest 内核执行",
+            "guestCurrent": "任务 A 的系统调用返回路径"
+          },
+          "nodeStates": {
+            "app": "继续 do_nanosleep",
+            "peer": "等待下一次 Guest 调度",
+            "guest-scheduler": "已选择 A"
+          },
+          "sourceIds": [
+            "scheduler-switch",
+            "guest-nanosleep"
+          ],
+          "focus": true
+        },
+        {
+          "id": "return-app",
+          "title": "nanosleep 返回用户态",
+          "actor": "Guest 用户态 · 任务 A",
+          "description": "到期等待已完成，nanosleep 返回 0，A 继续后续代码。",
+          "detail": "do_nanosleep 发现 sleeper.task 已清空，完成定时对象收尾并返回成功。实际返回时间包含允许的定时松弛、事件递送和两层调度等待，不能按动画步数推算延迟。",
+          "active": [
+            "app"
+          ],
+          "links": [],
+          "changes": {
+            "appState": "TASK_RUNNING，用户态执行",
+            "guestCurrent": "任务 A",
+            "syscallResult": "0（休眠完成）",
+            "sleeperTask": "本次栈上等待对象已结束",
+            "hostContext": "Guest non-root"
+          },
+          "nodeStates": {
+            "app": "用户态继续执行"
+          },
+          "sourceIds": [
+            "guest-nanosleep"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "vCPU 进入、退出与恢复",
+          "context": "QEMU vCPU 线程 → KVM 内核",
+          "sourceIds": [
+            "qemu-run",
+            "run-loop"
+          ],
+          "boundary": "初始化与运行循环是上下文。只有所选指令触发退出时才进入对应处理分支；KVM_RUN 返回与硬件 VM-exit 分开。"
+        },
+        {
+          "id": "path-1",
+          "title": "Guest 等待与定时处理",
+          "context": "Guest 内核任务 / IRQ 上下文",
+          "sourceIds": [
+            "guest-nanosleep",
+            "guest-deadline",
+            "guest-timer-vector",
+            "guest-timer-queues",
+            "guest-timer-wake"
+          ],
+          "boundary": "Guest 定时器和任务状态是客户机对象，不是宿主 vCPU 线程的状态。"
+        },
+        {
+          "id": "path-2",
+          "title": "宿主等待、定时与中断交接",
+          "context": "KVM / 宿主调度器 / 定时回调",
+          "sourceIds": [
+            "lapic-deadline",
+            "lapic-software-timer",
+            "lapic-timer-callback",
+            "wake",
+            "timer-run-loop",
+            "lapic-timer-deliver",
+            "irq-ack",
+            "scheduler-wake",
+            "scheduler-switch"
+          ],
+          "boundary": "定时回调、唤醒和调度不是同一同步调用链；相同调度函数可在 Guest 与宿主各自内核运行。"
+        }
       ]
     },
     {
@@ -185,64 +2656,667 @@
         "虚拟定时向量未屏蔽，Guest IF、interrupt shadow 与 APIC 优先级允许接受。宿主到期后有一段运行队列等待，再调度该 vCPU；Guest 随后运行到期回调并选择 A。"
       ],
       "nodes": [
-        {"id":"app","label":"任务 A · nanosleep","role":"Guest 用户任务","initial":"A 在用户态，尚未请求休眠"},
-        {"id":"peer","label":"Guest idle · HLT","role":"Guest 内核空闲路径","initial":"尚未进入 idle"},
-        {"id":"guest-scheduler","label":"Guest 调度器","role":"客户机内核","initial":"当前任务为 A"},
-        {"id":"guest-timer","label":"Guest hrtimer 与 clockevent","role":"客户机内核","initial":"尚未建立 A 的休眠定时器"},
-        {"id":"kvm","label":"vCPU 运行循环与虚拟 LAPIC","role":"宿主 KVM","initial":"KVM_RUN 中，Guest 正在执行"},
-        {"id":"host-timer","label":"宿主 hrtimer","role":"宿主内核定时回调","initial":"本次软件定时器尚未启动"},
-        {"id":"host-scheduler","label":"宿主调度器","role":"调度 QEMU vCPU 线程","initial":"vCPU 线程正在占用物理 CPU"}
+        {
+          "id": "app",
+          "label": "任务 A · nanosleep",
+          "role": "Guest 用户任务",
+          "initial": "A 在用户态，尚未请求休眠",
+          "badge": "用户态"
+        },
+        {
+          "id": "peer",
+          "label": "Guest idle · HLT",
+          "role": "Guest 内核空闲路径",
+          "initial": "尚未进入 idle",
+          "badge": "内核态"
+        },
+        {
+          "id": "guest-scheduler",
+          "label": "Guest 调度器",
+          "role": "客户机内核",
+          "initial": "当前任务为 A",
+          "badge": "内核态"
+        },
+        {
+          "id": "guest-timer",
+          "label": "Guest hrtimer 与 clockevent",
+          "role": "客户机内核",
+          "initial": "尚未建立 A 的休眠定时器",
+          "badge": "内核态"
+        },
+        {
+          "id": "kvm",
+          "label": "vCPU 运行循环与虚拟 LAPIC",
+          "role": "宿主 KVM",
+          "initial": "KVM_RUN 中，Guest 正在执行"
+        },
+        {
+          "id": "host-timer",
+          "label": "宿主 hrtimer",
+          "role": "宿主内核定时回调",
+          "initial": "本次软件定时器尚未启动"
+        },
+        {
+          "id": "host-scheduler",
+          "label": "宿主调度器",
+          "role": "调度 QEMU vCPU 线程",
+          "initial": "vCPU 线程正在占用物理 CPU"
+        }
       ],
       "links": [
-        {"id":"sleep-call","from":"app","to":"guest-timer","label":"建立 hrtimer_sleeper","kind":"control"},
-        {"id":"clockevent","from":"guest-timer","to":"kvm","label":"写入 TSC deadline","kind":"control"},
-        {"id":"arm-host","from":"kvm","to":"host-timer","label":"安排软件 hrtimer","kind":"control"},
-        {"id":"guest-idle","from":"guest-scheduler","to":"peer","label":"没有其他可运行任务","kind":"control"},
-        {"id":"halt-exit","from":"peer","to":"kvm","label":"HLT 触发 VM Exit","kind":"control"},
-        {"id":"host-sleep","from":"kvm","to":"host-scheduler","label":"schedule 让出物理 CPU","kind":"control"},
-        {"id":"timer-expiry","from":"host-timer","to":"kvm","label":"记录 pending 与 UNBLOCK","kind":"notification"},
-        {"id":"host-wake","from":"kvm","to":"host-scheduler","label":"kick 唤醒等待线程","kind":"notification"},
-        {"id":"host-dispatch","from":"host-scheduler","to":"kvm","label":"重新选择 vCPU 线程","kind":"control"},
-        {"id":"timer-vector","from":"kvm","to":"guest-timer","label":"Guest 定时中断","kind":"notification"},
-        {"id":"guest-wake","from":"guest-timer","to":"guest-scheduler","label":"wake_up_process(A)","kind":"notification"},
-        {"id":"guest-dispatch","from":"guest-scheduler","to":"app","label":"选择 A 继续执行","kind":"control"}
+        {
+          "id": "sleep-call",
+          "from": "app",
+          "to": "guest-timer",
+          "label": "建立 hrtimer_sleeper",
+          "kind": "control"
+        },
+        {
+          "id": "clockevent",
+          "from": "guest-timer",
+          "to": "kvm",
+          "label": "写入 TSC deadline",
+          "kind": "control"
+        },
+        {
+          "id": "arm-host",
+          "from": "kvm",
+          "to": "host-timer",
+          "label": "安排软件 hrtimer",
+          "kind": "control"
+        },
+        {
+          "id": "guest-idle",
+          "from": "guest-scheduler",
+          "to": "peer",
+          "label": "没有其他可运行任务",
+          "kind": "control"
+        },
+        {
+          "id": "halt-exit",
+          "from": "peer",
+          "to": "kvm",
+          "label": "HLT 触发 VM Exit",
+          "kind": "control"
+        },
+        {
+          "id": "host-sleep",
+          "from": "kvm",
+          "to": "host-scheduler",
+          "label": "schedule 让出物理 CPU",
+          "kind": "control"
+        },
+        {
+          "id": "timer-expiry",
+          "from": "host-timer",
+          "to": "kvm",
+          "label": "记录 pending 与 UNBLOCK",
+          "kind": "notification"
+        },
+        {
+          "id": "host-wake",
+          "from": "kvm",
+          "to": "host-scheduler",
+          "label": "kick 唤醒等待线程",
+          "kind": "notification"
+        },
+        {
+          "id": "host-dispatch",
+          "from": "host-scheduler",
+          "to": "kvm",
+          "label": "重新选择 vCPU 线程",
+          "kind": "control"
+        },
+        {
+          "id": "timer-vector",
+          "from": "kvm",
+          "to": "guest-timer",
+          "label": "Guest 定时中断",
+          "kind": "notification"
+        },
+        {
+          "id": "guest-wake",
+          "from": "guest-timer",
+          "to": "guest-scheduler",
+          "label": "wake_up_process(A)",
+          "kind": "notification"
+        },
+        {
+          "id": "guest-dispatch",
+          "from": "guest-scheduler",
+          "to": "app",
+          "label": "选择 A 继续执行",
+          "kind": "control"
+        }
       ],
       "structures": [
-        {"id":"tasks","title":"客户机任务与等待对象","kind":"registers","fields":[
-          {"key":"appState","label":"任务 A","initial":"TASK_RUNNING，用户态执行"},
-          {"key":"guestCurrent","label":"Guest 当前执行","initial":"任务 A"},
-          {"key":"sleeperTask","label":"hrtimer_sleeper.task","initial":"尚未建立"},
-          {"key":"syscallResult","label":"nanosleep 返回值","initial":"尚未调用"}
-        ]},
-        {"id":"timer","title":"定时目标与递送进度","kind":"interrupt","fields":[
-          {"key":"deadline","label":"Guest clockevent 目标","initial":"尚未安排本次 D"},
-          {"key":"hostTimer","label":"宿主软件定时器","initial":"尚未安排本次事件"},
-          {"key":"timerPending","label":"lapic_timer.pending","initial":"0"},
-          {"key":"vector","label":"虚拟定时中断","initial":"尚未产生"}
-        ]},
-        {"id":"execution","title":"vCPU 与宿主执行状态","kind":"registers","fields":[
-          {"key":"mpState","label":"KVM mp_state","initial":"RUNNABLE"},
-          {"key":"hostState","label":"宿主 vCPU 线程","initial":"TASK_RUNNING，正在执行"},
-          {"key":"hostContext","label":"该线程的执行位置","initial":"Guest non-root"},
-          {"key":"kvmRun","label":"KVM_RUN","initial":"调用中，未返回 QEMU 用户态"}
-        ]}
+        {
+          "id": "tasks",
+          "title": "客户机任务与等待对象",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "appState",
+              "label": "任务 A",
+              "initial": "TASK_RUNNING，用户态执行"
+            },
+            {
+              "key": "guestCurrent",
+              "label": "Guest 当前执行",
+              "initial": "任务 A"
+            },
+            {
+              "key": "sleeperTask",
+              "label": "hrtimer_sleeper.task",
+              "initial": "尚未建立"
+            },
+            {
+              "key": "syscallResult",
+              "label": "nanosleep 返回值",
+              "initial": "尚未调用"
+            }
+          ]
+        },
+        {
+          "id": "timer",
+          "title": "定时目标与递送进度",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "deadline",
+              "label": "Guest clockevent 目标",
+              "initial": "尚未安排本次 D"
+            },
+            {
+              "key": "hostTimer",
+              "label": "宿主软件定时器",
+              "initial": "尚未安排本次事件"
+            },
+            {
+              "key": "timerPending",
+              "label": "lapic_timer.pending",
+              "initial": "0"
+            },
+            {
+              "key": "vector",
+              "label": "虚拟定时中断",
+              "initial": "尚未产生"
+            }
+          ]
+        },
+        {
+          "id": "execution",
+          "title": "vCPU 与宿主执行状态",
+          "kind": "registers",
+          "fields": [
+            {
+              "key": "mpState",
+              "label": "KVM mp_state",
+              "initial": "RUNNABLE"
+            },
+            {
+              "key": "hostState",
+              "label": "宿主 vCPU 线程",
+              "initial": "TASK_RUNNING，正在执行"
+            },
+            {
+              "key": "hostContext",
+              "label": "该线程的执行位置",
+              "initial": "Guest non-root"
+            },
+            {
+              "key": "kvmRun",
+              "label": "KVM_RUN",
+              "initial": "调用中，未返回 QEMU 用户态"
+            }
+          ]
+        }
       ],
       "steps": [
-        {"id":"ready","title":"任务 A 准备休眠","actor":"Guest 用户态 · 任务 A","description":"A 即将请求休眠 1 ms；本次等待期间没有其他普通 Guest 任务需要执行。","detail":"客户机仍保留 idle 任务。进入 idle、执行 HLT、宿主线程阻塞分别是后续三个阶段。","active":[],"links":[],"changes":{},"nodeStates":{},"sourceIds":["guest-nanosleep","guest-idle"],"focus":true},
-        {"id":"request-sleep","title":"建立任务等待对象","actor":"Guest 内核 · do_nanosleep","description":"Guest 建立指向 A 的 hrtimer_sleeper，并设置可中断等待标志。","detail":"TASK_INTERRUPTIBLE | TASK_FREEZABLE 先于定时器启动和 schedule 设置。当前仍由 A 执行内核路径，尚未进入 Guest idle。","active":["app","guest-timer"],"links":["sleep-call"],"changes":{"appState":"TASK_INTERRUPTIBLE | TASK_FREEZABLE，仍在内核执行","guestCurrent":"A 的系统调用路径","sleeperTask":"A","syscallResult":"尚未返回"},"nodeStates":{"app":"准备等待到期","guest-timer":"已建立 A 的休眠定时器"},"sourceIds":["guest-nanosleep"],"focus":true},
-        {"id":"arm-deadline","title":"安排虚拟定时事件","actor":"Guest clockevent → KVM → 宿主 hrtimer","description":"Guest 将 D 写入 TSC deadline，KVM 用宿主软件 hrtimer 安排到期事件。","detail":"到期通知由宿主定时设施推进，即使 vCPU 稍后停止执行 Guest，软件定时器也能触发。此处固定软件路径；运行中的硬件定时辅助及阻塞时切换见虚拟时钟文章。","active":["guest-timer","kvm","host-timer"],"links":["clockevent","arm-host"],"changes":{"deadline":"D：本次选定的 clockevent 时刻","hostTimer":"已启动，等待对应的 D"},"nodeStates":{"host-timer":"等待 D","kvm":"已保存虚拟 LAPIC deadline"},"sourceIds":["guest-deadline","lapic-deadline","lapic-software-timer"],"focus":true},
-        {"id":"guest-idle","title":"客户机进入空闲路径","actor":"Guest 调度器 → idle","description":"A 调用 schedule 并阻塞，Guest 没有其他可运行的普通任务，转入 idle。","detail":"idle 任务自身仍可执行内核指令；此时 mp_state 还是 RUNNABLE，宿主 vCPU 线程也尚未睡眠。","active":["app","guest-scheduler","peer"],"links":["guest-idle"],"changes":{"appState":"TASK_INTERRUPTIBLE | TASK_FREEZABLE，已阻塞","guestCurrent":"Guest idle，准备 HLT"},"nodeStates":{"app":"等待定时到期","peer":"进入空闲路径","guest-scheduler":"当前选择 idle"},"sourceIds":["guest-nanosleep","guest-idle","scheduler-switch"],"focus":true},
-        {"id":"halt-exit","title":"HLT 退出到 KVM","actor":"Guest idle → KVM","description":"本例空闲路径执行 HLT，KVM 处理退出并将 vCPU 记录为 HALTED。","detail":"HLT 的硬件退出先于宿主线程睡眠。内核 LAPIC 模式下，这段等待留在 KVM_RUN 内，不产生需要 QEMU 用户态处理的 KVM_EXIT_HLT。","active":["peer","kvm"],"links":["halt-exit"],"changes":{"mpState":"HALTED","hostContext":"宿主 KVM，准备等待"},"nodeStates":{"peer":"已执行 HLT，等待中断","kvm":"客户机处于 HALTED"},"sourceIds":["halt","run-loop"],"focus":true},
-        {"id":"prepare-block","title":"发布宿主等待者并复查","actor":"KVM · kvm_vcpu_block","description":"KVM 发布 vCPU 的 rcuwait 等待者，设置 TASK_INTERRUPTIBLE 并复查事件。","detail":"本例 halt-poll 预算为 0，定时器尚未到期。先发布等待者再检查事件，可以覆盖检查与真正休眠之间的唤醒竞争。设置等待状态时线程仍在 CPU 上执行。","active":["kvm"],"links":[],"changes":{"hostState":"TASK_INTERRUPTIBLE，已发布等待者但仍在执行"},"nodeStates":{"kvm":"复查无 pending 定时器或中断"},"sourceIds":["block","halt-resume"],"focus":true},
-        {"id":"host-sleep","title":"宿主 vCPU 线程睡眠","actor":"宿主调度器","description":"事件仍未到来，schedule 让出物理 CPU，宿主可以执行其他任务。","detail":"A 的 Guest 等待与 vCPU 线程的宿主等待是两份独立状态。宿主定时器继续计时；QEMU 用户态没有接管一次 nanosleep 请求。","active":["kvm","host-scheduler"],"links":["host-sleep"],"changes":{"hostState":"TASK_INTERRUPTIBLE，已睡眠","hostContext":"宿主执行其他任务；vCPU 线程在等待"},"nodeStates":{"host-scheduler":"vCPU 线程已离开 CPU","kvm":"在 KVM_RUN 内等待"},"sourceIds":["block","qemu-run"],"focus":true},
-        {"id":"timer-expire","title":"宿主定时回调到期","actor":"宿主内核 · apic_timer_fn","description":"软件 hrtimer 回调执行，设置 lapic_timer.pending = 1 并提交 KVM_REQ_UNBLOCK。","detail":"这里记录的是宿主 KVM 的定时事件。Guest 的 hrtimer_wakeup 尚未执行，A 仍阻塞；本步与下一步拆开呈现同一到期回调中的记录和 kick。","active":["host-timer","kvm"],"links":["timer-expiry"],"changes":{"hostTimer":"本次回调已到期","timerPending":"1"},"nodeStates":{"host-timer":"到期已记录","kvm":"pending 与 UNBLOCK 已设置"},"sourceIds":["lapic-timer-callback","lapic-software-timer"],"focus":true},
-        {"id":"host-ready","title":"宿主线程进入就绪队列","actor":"KVM kick → 宿主调度器","description":"kick 找到等待中的 vCPU 线程并唤醒它；线程变为 TASK_RUNNING，暂时还没有获得 CPU。","detail":"此时 mp_state 仍为 HALTED，Guest 定时处理尚未开始。宿主唤醒 vCPU 只解决执行机会问题，不会直接把客户机任务 A 从休眠队列移出。","active":["kvm","host-scheduler"],"links":["host-wake"],"changes":{"hostState":"TASK_RUNNING，已唤醒但等待物理 CPU"},"nodeStates":{"host-scheduler":"vCPU 已就绪，等待调度"},"sourceIds":["wake","scheduler-wake"],"focus":true},
-        {"id":"host-dispatch","title":"宿主重新调度 vCPU","actor":"宿主调度器 → KVM","description":"宿主选择该线程，KVM 撤销等待者并回到运行循环。","detail":"pending 定时器使等待结束；这时虚拟 LAPIC 还未收到定时向量。KVM 后续先消费 pending，再复查可递送事件，因此不能在唤醒时直接把 HALTED 改成 Guest 应用运行。","active":["host-scheduler","kvm"],"links":["host-dispatch"],"changes":{"hostState":"TASK_RUNNING，正在执行","hostContext":"宿主 KVM，处理等待后的事件"},"nodeStates":{"host-scheduler":"vCPU 线程已获得 CPU","kvm":"等待已结束，处理 pending 定时器"},"sourceIds":["block","halt-resume","timer-run-loop"],"focus":true},
-        {"id":"stage-vector","title":"安排虚拟定时中断","actor":"KVM 运行循环与虚拟 LAPIC","description":"KVM 将 pending 定时事件递送至虚拟 LAPIC，清除 pending 计数。","detail":"定时向量现在可以解除本例的 HLT 等待。随后运行路径复查事件，把 mp_state 恢复为 RUNNABLE，再准备 VM Entry；A 仍要等 Guest 自己处理定时器。","active":["kvm"],"links":[],"changes":{"timerPending":"0","vector":"LAPIC 中有待递送的定时向量"},"nodeStates":{"kvm":"定时向量待递送，准备恢复 Guest"},"sourceIds":["timer-run-loop","lapic-timer-deliver","halt-resume"],"focus":true},
-        {"id":"guest-timer","title":"客户机处理定时中断","actor":"KVM → Guest 内核","description":"事件复查允许 vCPU 继续，VM Entry 后进入 Guest 定时中断，开始检查到期 hrtimer。","detail":"中断发生在 idle 的上下文上；Linux 定时中断入口先应答 APIC，再调用 clockevent 处理函数。进入处理程序时 A 仍阻塞，到期回调在下一步才会唤醒 A。","active":["kvm","guest-timer","peer"],"links":["timer-vector"],"changes":{"mpState":"RUNNABLE","vector":"Guest 已接受；入口已完成 APIC EOI","hostContext":"Guest non-root，内核中断上下文","guestCurrent":"idle 的定时中断上下文"},"nodeStates":{"guest-timer":"检查 Guest 到期队列","peer":"idle 现场等待中断处理结束","kvm":"定时中断已递送，正在执行 Guest"},"sourceIds":["halt-resume","guest-timer-vector","guest-timer-queues"],"focus":true},
-        {"id":"task-ready","title":"任务 A 变为就绪","actor":"Guest 内核 · hrtimer_wakeup","description":"Guest 到期回调把 sleeper.task 清为 NULL，并唤醒 A。","detail":"A 变为 TASK_RUNNING，调度器随后才能选择它。与前面的宿主 vCPU 唤醒相比，这是另一次唤醒，操作的是客户机自己的任务对象。","active":["guest-timer","guest-scheduler","app"],"links":["guest-wake"],"changes":{"appState":"TASK_RUNNING，就绪但尚未执行","sleeperTask":"NULL（到期回调已执行）"},"nodeStates":{"app":"已就绪，等待 Guest 调度","guest-scheduler":"已有可运行任务 A","guest-timer":"本次到期回调已完成"},"sourceIds":["guest-timer-wake","scheduler-wake"],"focus":true},
-        {"id":"guest-dispatch","title":"客户机调度任务 A","actor":"Guest 调度器","description":"Guest 离开 idle 并选择 A，恢复 do_nanosleep 中等待之后的代码。","detail":"本例 A 已满足返回条件。宿主取得 CPU、Guest 处理定时中断和 Guest 选择 A 分别是不同的调度与执行阶段。","active":["guest-scheduler","app"],"links":["guest-dispatch"],"changes":{"appState":"TASK_RUNNING，正在 Guest 内核执行","guestCurrent":"任务 A 的系统调用返回路径"},"nodeStates":{"app":"继续 do_nanosleep","peer":"idle 不再执行","guest-scheduler":"已选择 A"},"sourceIds":["scheduler-switch","guest-nanosleep"],"focus":true},
-        {"id":"return-app","title":"nanosleep 返回用户态","actor":"Guest 用户态 · 任务 A","description":"休眠等待完成，nanosleep 返回 0，A 继续运行。","detail":"延迟可能来自定时安排、宿主运行队列、Guest 中断处理和 Guest 调度。仅有“定时器已经到期”不足以判断用户代码何时继续；本次 KVM_RUN 始终没有返回 QEMU 用户态。","active":["app"],"links":[],"changes":{"appState":"TASK_RUNNING，用户态执行","guestCurrent":"任务 A","syscallResult":"0（休眠完成）","sleeperTask":"本次栈上等待对象已结束","hostContext":"Guest non-root"},"nodeStates":{"app":"用户态继续执行"},"sourceIds":["guest-nanosleep","qemu-run"],"focus":true}
+        {
+          "id": "ready",
+          "title": "任务 A 准备休眠",
+          "actor": "Guest 用户态 · 任务 A",
+          "description": "A 即将请求休眠 1 ms；本次等待期间没有其他普通 Guest 任务需要执行。",
+          "detail": "客户机仍保留 idle 任务。进入 idle、执行 HLT、宿主线程阻塞分别是后续三个阶段。",
+          "active": [],
+          "links": [],
+          "changes": {},
+          "nodeStates": {},
+          "sourceIds": [
+            "guest-nanosleep",
+            "guest-idle"
+          ],
+          "focus": true
+        },
+        {
+          "id": "request-sleep",
+          "title": "建立任务等待对象",
+          "actor": "Guest 内核 · do_nanosleep",
+          "description": "Guest 建立指向 A 的 hrtimer_sleeper，并设置可中断等待标志。",
+          "detail": "TASK_INTERRUPTIBLE | TASK_FREEZABLE 先于定时器启动和 schedule 设置。当前仍由 A 执行内核路径，尚未进入 Guest idle。",
+          "active": [
+            "app",
+            "guest-timer"
+          ],
+          "links": [
+            "sleep-call"
+          ],
+          "changes": {
+            "appState": "TASK_INTERRUPTIBLE | TASK_FREEZABLE，仍在内核执行",
+            "guestCurrent": "A 的系统调用路径",
+            "sleeperTask": "A",
+            "syscallResult": "尚未返回"
+          },
+          "nodeStates": {
+            "app": "准备等待到期",
+            "guest-timer": "已建立 A 的休眠定时器"
+          },
+          "sourceIds": [
+            "guest-nanosleep"
+          ],
+          "focus": true
+        },
+        {
+          "id": "arm-deadline",
+          "title": "安排虚拟定时事件",
+          "actor": "Guest clockevent → KVM → 宿主 hrtimer",
+          "description": "Guest 将 D 写入 TSC deadline，KVM 用宿主软件 hrtimer 安排到期事件。",
+          "detail": "到期通知由宿主定时设施推进，即使 vCPU 稍后停止执行 Guest，软件定时器也能触发。此处固定软件路径；运行中的硬件定时辅助及阻塞时切换见虚拟时钟文章。",
+          "active": [
+            "guest-timer",
+            "kvm",
+            "host-timer"
+          ],
+          "links": [
+            "clockevent",
+            "arm-host"
+          ],
+          "changes": {
+            "deadline": "D：本次选定的 clockevent 时刻",
+            "hostTimer": "已启动，等待对应的 D"
+          },
+          "nodeStates": {
+            "host-timer": "等待 D",
+            "kvm": "已保存虚拟 LAPIC deadline"
+          },
+          "sourceIds": [
+            "guest-deadline",
+            "lapic-deadline",
+            "lapic-software-timer"
+          ],
+          "focus": true
+        },
+        {
+          "id": "guest-idle",
+          "title": "客户机进入空闲路径",
+          "actor": "Guest 调度器 → idle",
+          "description": "A 调用 schedule 并阻塞，Guest 没有其他可运行的普通任务，转入 idle。",
+          "detail": "idle 任务自身仍可执行内核指令；此时 mp_state 还是 RUNNABLE，宿主 vCPU 线程也尚未睡眠。",
+          "active": [
+            "app",
+            "guest-scheduler",
+            "peer"
+          ],
+          "links": [
+            "guest-idle"
+          ],
+          "changes": {
+            "appState": "TASK_INTERRUPTIBLE | TASK_FREEZABLE，已阻塞",
+            "guestCurrent": "Guest idle，准备 HLT"
+          },
+          "nodeStates": {
+            "app": "等待定时到期",
+            "peer": "进入空闲路径",
+            "guest-scheduler": "当前选择 idle"
+          },
+          "sourceIds": [
+            "guest-nanosleep",
+            "guest-idle",
+            "scheduler-switch"
+          ],
+          "focus": true
+        },
+        {
+          "id": "halt-exit",
+          "title": "HLT 退出到 KVM",
+          "actor": "Guest idle → KVM",
+          "description": "本例空闲路径执行 HLT，KVM 处理退出并将 vCPU 记录为 HALTED。",
+          "detail": "HLT 的硬件退出先于宿主线程睡眠。内核 LAPIC 模式下，这段等待留在 KVM_RUN 内，不产生需要 QEMU 用户态处理的 KVM_EXIT_HLT。",
+          "active": [
+            "peer",
+            "kvm"
+          ],
+          "links": [
+            "halt-exit"
+          ],
+          "changes": {
+            "mpState": "HALTED",
+            "hostContext": "宿主 KVM，准备等待"
+          },
+          "nodeStates": {
+            "peer": "已执行 HLT，等待中断",
+            "kvm": "客户机处于 HALTED"
+          },
+          "sourceIds": [
+            "halt",
+            "run-loop"
+          ],
+          "focus": true
+        },
+        {
+          "id": "prepare-block",
+          "title": "发布宿主等待者并复查",
+          "actor": "KVM · kvm_vcpu_block",
+          "description": "KVM 发布 vCPU 的 rcuwait 等待者，设置 TASK_INTERRUPTIBLE 并复查事件。",
+          "detail": "本例 halt-poll 预算为 0，定时器尚未到期。先发布等待者再检查事件，可以覆盖检查与真正休眠之间的唤醒竞争。设置等待状态时线程仍在 CPU 上执行。",
+          "active": [
+            "kvm"
+          ],
+          "links": [],
+          "changes": {
+            "hostState": "TASK_INTERRUPTIBLE，已发布等待者但仍在执行"
+          },
+          "nodeStates": {
+            "kvm": "复查无 pending 定时器或中断"
+          },
+          "sourceIds": [
+            "block",
+            "halt-resume"
+          ],
+          "focus": true
+        },
+        {
+          "id": "host-sleep",
+          "title": "宿主 vCPU 线程睡眠",
+          "actor": "宿主调度器",
+          "description": "事件仍未到来，schedule 让出物理 CPU，宿主可以执行其他任务。",
+          "detail": "A 的 Guest 等待与 vCPU 线程的宿主等待是两份独立状态。宿主定时器继续计时；QEMU 用户态没有接管一次 nanosleep 请求。",
+          "active": [
+            "kvm",
+            "host-scheduler"
+          ],
+          "links": [
+            "host-sleep"
+          ],
+          "changes": {
+            "hostState": "TASK_INTERRUPTIBLE，已睡眠",
+            "hostContext": "宿主执行其他任务；vCPU 线程在等待"
+          },
+          "nodeStates": {
+            "host-scheduler": "vCPU 线程已离开 CPU",
+            "kvm": "在 KVM_RUN 内等待"
+          },
+          "sourceIds": [
+            "block",
+            "qemu-run"
+          ],
+          "focus": true
+        },
+        {
+          "id": "timer-expire",
+          "title": "宿主定时回调到期",
+          "actor": "宿主内核 · apic_timer_fn",
+          "description": "软件 hrtimer 回调执行，设置 lapic_timer.pending = 1 并提交 KVM_REQ_UNBLOCK。",
+          "detail": "这里记录的是宿主 KVM 的定时事件。Guest 的 hrtimer_wakeup 尚未执行，A 仍阻塞；本步与下一步拆开呈现同一到期回调中的记录和 kick。",
+          "active": [
+            "host-timer",
+            "kvm"
+          ],
+          "links": [
+            "timer-expiry"
+          ],
+          "changes": {
+            "hostTimer": "本次回调已到期",
+            "timerPending": "1"
+          },
+          "nodeStates": {
+            "host-timer": "到期已记录",
+            "kvm": "pending 与 UNBLOCK 已设置"
+          },
+          "sourceIds": [
+            "lapic-timer-callback",
+            "lapic-software-timer"
+          ],
+          "focus": true
+        },
+        {
+          "id": "host-ready",
+          "title": "宿主线程进入就绪队列",
+          "actor": "KVM kick → 宿主调度器",
+          "description": "kick 找到等待中的 vCPU 线程并唤醒它；线程变为 TASK_RUNNING，暂时还没有获得 CPU。",
+          "detail": "此时 mp_state 仍为 HALTED，Guest 定时处理尚未开始。宿主唤醒 vCPU 只解决执行机会问题，不会直接把客户机任务 A 从休眠队列移出。",
+          "active": [
+            "kvm",
+            "host-scheduler"
+          ],
+          "links": [
+            "host-wake"
+          ],
+          "changes": {
+            "hostState": "TASK_RUNNING，已唤醒但等待物理 CPU"
+          },
+          "nodeStates": {
+            "host-scheduler": "vCPU 已就绪，等待调度"
+          },
+          "sourceIds": [
+            "wake",
+            "scheduler-wake"
+          ],
+          "focus": true
+        },
+        {
+          "id": "host-dispatch",
+          "title": "宿主重新调度 vCPU",
+          "actor": "宿主调度器 → KVM",
+          "description": "宿主选择该线程，KVM 撤销等待者并回到运行循环。",
+          "detail": "pending 定时器使等待结束；这时虚拟 LAPIC 还未收到定时向量。KVM 后续先消费 pending，再复查可递送事件，因此不能在唤醒时直接把 HALTED 改成 Guest 应用运行。",
+          "active": [
+            "host-scheduler",
+            "kvm"
+          ],
+          "links": [
+            "host-dispatch"
+          ],
+          "changes": {
+            "hostState": "TASK_RUNNING，正在执行",
+            "hostContext": "宿主 KVM，处理等待后的事件"
+          },
+          "nodeStates": {
+            "host-scheduler": "vCPU 线程已获得 CPU",
+            "kvm": "等待已结束，处理 pending 定时器"
+          },
+          "sourceIds": [
+            "block",
+            "halt-resume",
+            "timer-run-loop"
+          ],
+          "focus": true
+        },
+        {
+          "id": "stage-vector",
+          "title": "安排虚拟定时中断",
+          "actor": "KVM 运行循环与虚拟 LAPIC",
+          "description": "KVM 将 pending 定时事件递送至虚拟 LAPIC，清除 pending 计数。",
+          "detail": "定时向量现在可以解除本例的 HLT 等待。随后运行路径复查事件，把 mp_state 恢复为 RUNNABLE，再准备 VM Entry；A 仍要等 Guest 自己处理定时器。",
+          "active": [
+            "kvm"
+          ],
+          "links": [],
+          "changes": {
+            "timerPending": "0",
+            "vector": "LAPIC 中有待递送的定时向量"
+          },
+          "nodeStates": {
+            "kvm": "定时向量待递送，准备恢复 Guest"
+          },
+          "sourceIds": [
+            "timer-run-loop",
+            "lapic-timer-deliver",
+            "halt-resume"
+          ],
+          "focus": true
+        },
+        {
+          "id": "guest-timer",
+          "title": "客户机处理定时中断",
+          "actor": "KVM → Guest 内核",
+          "description": "事件复查允许 vCPU 继续，VM Entry 后进入 Guest 定时中断，开始检查到期 hrtimer。",
+          "detail": "中断发生在 idle 的上下文上；Linux 定时中断入口先应答 APIC，再调用 clockevent 处理函数。进入处理程序时 A 仍阻塞，到期回调在下一步才会唤醒 A。",
+          "active": [
+            "kvm",
+            "guest-timer",
+            "peer"
+          ],
+          "links": [
+            "timer-vector"
+          ],
+          "changes": {
+            "mpState": "RUNNABLE",
+            "vector": "Guest 已接受；入口已完成 APIC EOI",
+            "hostContext": "Guest non-root，内核中断上下文",
+            "guestCurrent": "idle 的定时中断上下文"
+          },
+          "nodeStates": {
+            "guest-timer": "检查 Guest 到期队列",
+            "peer": "idle 现场等待中断处理结束",
+            "kvm": "定时中断已递送，正在执行 Guest"
+          },
+          "sourceIds": [
+            "halt-resume",
+            "guest-timer-vector",
+            "guest-timer-queues"
+          ],
+          "focus": true
+        },
+        {
+          "id": "task-ready",
+          "title": "任务 A 变为就绪",
+          "actor": "Guest 内核 · hrtimer_wakeup",
+          "description": "Guest 到期回调把 sleeper.task 清为 NULL，并唤醒 A。",
+          "detail": "A 变为 TASK_RUNNING，调度器随后才能选择它。与前面的宿主 vCPU 唤醒相比，这是另一次唤醒，操作的是客户机自己的任务对象。",
+          "active": [
+            "guest-timer",
+            "guest-scheduler",
+            "app"
+          ],
+          "links": [
+            "guest-wake"
+          ],
+          "changes": {
+            "appState": "TASK_RUNNING，就绪但尚未执行",
+            "sleeperTask": "NULL（到期回调已执行）"
+          },
+          "nodeStates": {
+            "app": "已就绪，等待 Guest 调度",
+            "guest-scheduler": "已有可运行任务 A",
+            "guest-timer": "本次到期回调已完成"
+          },
+          "sourceIds": [
+            "guest-timer-wake",
+            "scheduler-wake"
+          ],
+          "focus": true
+        },
+        {
+          "id": "guest-dispatch",
+          "title": "客户机调度任务 A",
+          "actor": "Guest 调度器",
+          "description": "Guest 离开 idle 并选择 A，恢复 do_nanosleep 中等待之后的代码。",
+          "detail": "本例 A 已满足返回条件。宿主取得 CPU、Guest 处理定时中断和 Guest 选择 A 分别是不同的调度与执行阶段。",
+          "active": [
+            "guest-scheduler",
+            "app"
+          ],
+          "links": [
+            "guest-dispatch"
+          ],
+          "changes": {
+            "appState": "TASK_RUNNING，正在 Guest 内核执行",
+            "guestCurrent": "任务 A 的系统调用返回路径"
+          },
+          "nodeStates": {
+            "app": "继续 do_nanosleep",
+            "peer": "idle 不再执行",
+            "guest-scheduler": "已选择 A"
+          },
+          "sourceIds": [
+            "scheduler-switch",
+            "guest-nanosleep"
+          ],
+          "focus": true
+        },
+        {
+          "id": "return-app",
+          "title": "nanosleep 返回用户态",
+          "actor": "Guest 用户态 · 任务 A",
+          "description": "休眠等待完成，nanosleep 返回 0，A 继续运行。",
+          "detail": "延迟可能来自定时安排、宿主运行队列、Guest 中断处理和 Guest 调度。仅有“定时器已经到期”不足以判断用户代码何时继续；本次 KVM_RUN 始终没有返回 QEMU 用户态。",
+          "active": [
+            "app"
+          ],
+          "links": [],
+          "changes": {
+            "appState": "TASK_RUNNING，用户态执行",
+            "guestCurrent": "任务 A",
+            "syscallResult": "0（休眠完成）",
+            "sleeperTask": "本次栈上等待对象已结束",
+            "hostContext": "Guest non-root"
+          },
+          "nodeStates": {
+            "app": "用户态继续执行"
+          },
+          "sourceIds": [
+            "guest-nanosleep",
+            "qemu-run"
+          ],
+          "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "path-0",
+          "title": "vCPU 进入、退出与恢复",
+          "context": "QEMU vCPU 线程 → KVM 内核",
+          "sourceIds": [
+            "qemu-run",
+            "run-loop"
+          ],
+          "boundary": "初始化与运行循环是上下文。只有所选指令触发退出时才进入对应处理分支；KVM_RUN 返回与硬件 VM-exit 分开。"
+        },
+        {
+          "id": "path-1",
+          "title": "Guest 等待与定时处理",
+          "context": "Guest 内核任务 / IRQ 上下文",
+          "sourceIds": [
+            "guest-nanosleep",
+            "guest-deadline",
+            "guest-idle",
+            "guest-timer-vector",
+            "guest-timer-queues",
+            "guest-timer-wake"
+          ],
+          "boundary": "Guest 定时器和任务状态是客户机对象，不是宿主 vCPU 线程的状态。"
+        },
+        {
+          "id": "path-2",
+          "title": "宿主等待、定时与中断交接",
+          "context": "KVM / 宿主调度器 / 定时回调",
+          "sourceIds": [
+            "halt",
+            "block",
+            "lapic-deadline",
+            "lapic-software-timer",
+            "lapic-timer-callback",
+            "wake",
+            "timer-run-loop",
+            "lapic-timer-deliver",
+            "halt-resume",
+            "scheduler-wake",
+            "scheduler-switch"
+          ],
+          "boundary": "定时回调、唤醒和调度不是同一同步调用链；相同调度函数可在 Guest 与宿主各自内核运行。"
+        }
       ]
     }
   ]

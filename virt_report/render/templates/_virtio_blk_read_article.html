@@ -4,6 +4,7 @@
   <p>为看清设备路径，本例不经过 Guest 文件系统与页缓存：缓冲区已按 4 KiB 对齐，固定为一个页面、一个 bio 和一个块请求 <strong>R1</strong>，不发生拆分、合并或错误。Guest 内核固定用户页并建立 I/O 映射；读取时后端填充这份内存，写入时后端读取其内容，各层通过映射访问同一份缓冲区。普通文件读写的差异见后文。</p>
   <p>共同前提是 x86 / KVM、modern virtio PCI 与 split ring；队列大小为 8，本次使用 3 个直接描述符，未启用 Guest vIOMMU。不同后端采用各自的执行上下文、通知与完成路径；具体配置随选择一起更新。本地文件可能命中宿主页缓存，SPDK 场景固定为轮询与 NVMe 后端，Ceph 展示到 QEMU / librbd 的异步接口边界，不展开集群内部协议。</p>
   <p>演示从设备已就绪开始。队列建立过程见<a href="virtio-device-initialization.html">设备初始化与特性协商</a>，另一种队列布局见 <a href="packed-virtqueue.html">Packed virtqueue</a>。</p>
+  <p>选择本地写入时可以进一步观察完成保证：写后 FLUSH 沿用应用起点，后续显式提交刷新 F1；FUA 则从已携带该要求的块请求 R1 开始，止于上层块请求完成，不推断应用的系统调用方式。</p>
 </section>
 <section id="walkthrough" class="mechanism-section">
   <h2>逐步演示</h2>
@@ -12,6 +13,7 @@
       <div class="walkthrough-choice"><label for="vbr-backend">设备与后端</label>
       <select id="vbr-backend" class="vbr-backend-select" data-vbr-backend-select aria-label="设备接口与存储后端">{% for route in io_scenarios.routes %}<option value="{{ route.id }}">{{ route.label }}</option>{% endfor %}</select></div>
       <div class="vbr-operation-buttons" role="group" aria-label="读写操作"><button type="button" data-vbr-operation="read" aria-pressed="true">读取</button><button type="button" data-vbr-operation="write" aria-pressed="false">写入</button></div>
+      <div class="walkthrough-choice" data-vbr-completion-choice hidden><label for="vbr-completion">写入完成要求</label><select id="vbr-completion" data-vbr-completion><option value="ordinary">普通写入</option></select></div>
       <span data-vbr-operation-note>4 KiB · 单请求成功路径</span>
       <button type="button" class="walkthrough-expand" data-walkthrough-expand aria-pressed="false">放大演示</button>
     </div>
@@ -31,50 +33,59 @@
       {% for phase in flow.phases %}<button type="button" data-vbr-phase="{{ phase.id }}"><span>{{ '%02d'|format(loop.index) }}</span><strong>{{ phase.title }}</strong></button>{% endfor %}
     </nav>
     <div class="vbr-workspace walkthrough-workspace">
+      <aside class="vbr-inspector walkthrough-inspector" aria-labelledby="vbr-step-title">
+        <div class="walkthrough-step-heading">
+          <p class="vbr-step-counter" data-vbr-counter>请求 R1</p>
+          <h3 id="vbr-step-title" data-vbr-title>{{ flow.steps[0].title }}</h3>
+          <p class="vbr-actor" data-vbr-actor>Guest · 用户态应用</p>
+        </div>
+        <div class="walkthrough-step-body">
+          <p class="walkthrough-step-description" data-vbr-description>{{ flow.steps[0].description }}</p>
+          <p class="walkthrough-step-detail" data-vbr-detail hidden></p>
+          <div class="walkthrough-step-context">
+            <p data-vbr-event hidden></p>
+            <p class="vbr-state-note" data-vbr-state-note data-vbr-ownership>同一请求在两端有不同的本地对象；通过描述符链头关联完成。</p>
+          </div>
+        </div>
+      </aside>
       <div class="vbr-visual">
         <div class="vbr-board" data-vbr-board>
           <svg class="vbr-connections" data-vbr-connections aria-hidden="true"><defs><marker id="vbr-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9" fill="none" stroke="currentColor" stroke-width="1.6"/></marker></defs><path class="vbr-edge" data-vbr-edge fill="none" marker-end="url(#vbr-arrow)"/><circle class="vbr-traveler" data-vbr-traveler r="4" hidden/></svg>
           <div class="vbr-domains">
-            <section class="vbr-domain" data-vbr-domain="guest" aria-label="客户机内部"><header><small>客户机</small><h4>Guest</h4></header>
-              <div class="vbr-guest-user"><button type="button" class="vbr-node" data-vbr-node="application" disabled><strong><span class="vbr-mode-tag">用户态</span><b data-vbr-app-title>应用 · pread()</b></strong><span data-vbr-node-state="application">4 KiB 直接读取待发起</span></button></div>
-              <div class="vbr-guest-kernel"><button type="button" class="vbr-node" data-vbr-node="driver" disabled><strong><span class="vbr-mode-tag">内核态</span>系统调用与块层</strong><span data-vbr-node-state="driver">R1 尚未形成</span></button>
+            <section class="vbr-domain" data-vbr-domain="guest" data-component="guest" aria-label="客户机内部"><header><small>客户机</small><h4>Guest</h4></header>
+              <div class="vbr-guest-user"><button type="button" class="vbr-node" data-vbr-node="application" disabled><strong class="vbr-node-heading"><b data-vbr-app-title>应用 · pread()</b><span class="vbr-mode-tag">用户态</span></strong><span data-vbr-node-state="application">4 KiB 直接读取待发起</span></button></div>
+              <div class="vbr-guest-kernel"><button type="button" class="vbr-node" data-vbr-node="driver" disabled><strong class="vbr-node-heading"><b data-vbr-driver-title>系统调用与块层</b><span class="vbr-mode-tag">内核态</span></strong><span data-vbr-node-state="driver">R1 尚未形成</span></button>
               <button type="button" class="vbr-node" data-vbr-node="reclaim" disabled><strong>完成与回收</strong><span data-vbr-node-state="reclaim">等待设备完成</span></button></div>
             </section>
-            <section class="vbr-domain" data-vbr-domain="kvm" aria-label="宿主内核 KVM"><header><small>宿主内核</small><h4>KVM</h4></header>
+            <section class="vbr-domain" data-vbr-domain="kvm" data-component="kvm" aria-label="宿主内核 KVM"><header><small>宿主内核 · 虚拟化</small><h4>KVM</h4></header>
               <button type="button" class="vbr-node" data-vbr-node="notify" disabled><strong data-vbr-notify-title>提交通知</strong><span data-vbr-node-state="notify">ioeventfd</span></button>
               <button type="button" class="vbr-node" data-vbr-node="interrupt" disabled><strong>中断路由与注入</strong><span data-vbr-node-state="interrupt">irqfd → vLAPIC → VM-entry</span></button>
             </section>
-            <section class="vbr-domain" data-vbr-domain="device" aria-label="宿主用户态设备处理"><header><small data-vbr-device-context>宿主用户态 · IOThread</small><h4 data-vbr-device-domain>QEMU</h4></header>
+            <section class="vbr-domain" data-vbr-domain="device" data-component="qemu" aria-label="宿主用户态设备处理"><header><small data-vbr-device-context>宿主用户态 · IOThread</small><h4 data-vbr-device-domain>QEMU</h4></header>
               <button type="button" class="vbr-node" data-vbr-node="device" disabled><strong data-vbr-device-title>virtio-blk</strong><span data-vbr-node-state="device">IOThread 等待队列</span></button><p data-vbr-device-summary>设备模型与块层。通过映射访问同一份 Guest RAM。</p>
             </section>
-            <section class="vbr-domain" data-vbr-domain="backend" aria-label="存储后端"><header><small data-vbr-storage-context>QEMU 后端 / 宿主 I/O</small><h4 data-vbr-backend-title>本地文件</h4></header>
+            <section class="vbr-domain" data-vbr-domain="backend" data-component="backend" aria-label="存储后端"><header><small data-vbr-storage-context>QEMU worker / 宿主 I/O</small><h4 data-vbr-backend-title>本地文件</h4></header>
               <button type="button" class="vbr-node" data-vbr-node="storage" disabled><strong data-vbr-storage-title>异步读取</strong><span data-vbr-node-state="storage">偏移 1 MiB · 长度 4 KiB</span></button><p data-vbr-storage-summary>raw 格式与文件协议；宿主页缓存与物理设备另有边界。</p>
             </section>
           </div>
           <section class="vbr-memory" aria-labelledby="vbr-memory-title"><h4 id="vbr-memory-title">Guest RAM <span>共享内存，同一份后备数据</span></h4>
             <div class="vbr-memory-grid">
               <button type="button" class="vbr-node" data-vbr-node="queue" disabled><strong>描述符与 available</strong><span data-vbr-node-state="queue">链 0 → 1 → 2 尚未发布</span></button>
-              <button type="button" class="vbr-node" data-vbr-node="buffer" disabled><strong>用户缓冲区 · 4 KiB</strong><span class="vbr-bytes" aria-hidden="true">{% for i in range(16) %}<i data-vbr-byte></i>{% endfor %}</span><span data-vbr-node-state="buffer">读结果尚未就绪</span></button>
+              <button type="button" class="vbr-node" data-vbr-node="buffer" disabled><strong data-vbr-buffer-title>用户缓冲区 · 4 KiB</strong><span class="vbr-bytes" aria-hidden="true">{% for i in range(16) %}<i data-vbr-byte></i>{% endfor %}</span><span data-vbr-node-state="buffer">读结果尚未就绪</span></button>
               <button type="button" class="vbr-node" data-vbr-node="completion" disabled><strong>状态与 used</strong><span data-vbr-node-state="completion">尚未发布完成</span></button>
             </div>
-            <dl class="vbr-metrics"><div><dt>avail.idx</dt><dd data-vbr-metric="availIndex">0</dd></div><div><dt>used.idx</dt><dd data-vbr-metric="usedIndex">0</dd></div><div><dt>可用描述符</dt><dd><span data-vbr-metric="freeDescriptors">8</span> / 8</dd></div></dl>
+            <div data-vbr-queue-overview></div>
           </section>
+          <div data-vbr-contexts hidden></div>
         </div>
         {% include '_virtio_blk_queue.html' %}
+        <section class="walkthrough-durability" data-vbr-durability hidden aria-label="同一请求的完成保证"><h4>写入完成与持久化</h4><dl><div><dt>宿主文件后端</dt><dd data-vbr-durable-host></dd></div><div><dt>设备易失缓存</dt><dd data-vbr-durable-device></dd></div><div><dt>稳定存储</dt><dd data-vbr-durable-stable></dd></div></dl></section>
         <div class="vbr-callpaths" data-vbr-callpaths hidden aria-label="按执行上下文分段的关键源码路径">
           {% for path in flow.callPaths %}<section class="vbr-callpath" data-vbr-callpath="{{ path.id }}"><h4>{{ loop.index }}. {{ path.title }}</h4><p class="vbr-callpath-context">{{ path.context }}</p><ol>{% for id in path.sourceIds %}{% set source = flow.sources[id] %}<li data-vbr-source="{{ id }}"><a href="{{ source.url }}" title="{{ source.path }}:{{ source.line }}" target="_blank" rel="noopener noreferrer"><strong>{{ source.symbol }}</strong><span>{{ source.path }}:{{ source.line }}</span></a></li>{% endfor %}</ol><p class="vbr-callpath-boundary">{{ path.boundary }}</p></section>{% endfor %}
         </div>
         <div class="vbr-interrupt-path" data-vbr-interrupt-path aria-label="中断递送状态"><span data-vbr-irq-stage="signal">irqfd 通知</span><span data-vbr-irq-stage="pending">vLAPIC 待注入</span><span data-vbr-irq-stage="injected">VM-entry 注入</span><span data-vbr-irq-stage="handled">Guest 处理</span></div>
         <p class="vbr-legend" data-vbr-legend>实线：数据或队列访问 · 虚线：通知。KVM 不转发每个数据字节；各区域也不代表固定的串行流水线。</p>
       </div>
-      <aside class="vbr-inspector walkthrough-inspector" aria-labelledby="vbr-step-title">
-        <p class="vbr-step-counter" data-vbr-counter>请求 R1</p><p class="vbr-actor" data-vbr-actor>Guest · 用户态应用</p>
-        <h3 id="vbr-step-title" data-vbr-title>{{ flow.steps[0].title }}</h3>
-        <p data-vbr-description>{{ flow.steps[0].description }}</p><p data-vbr-detail hidden></p>
-        <p data-vbr-event hidden></p>
-        <div data-vbr-sources hidden><h4>本步源码</h4><ul class="vbr-source-list" data-vbr-source-list></ul></div>
-        <p class="vbr-state-note" data-vbr-state-note data-vbr-ownership>同一请求在两端有不同的本地对象；通过描述符链头关联完成。</p>
-      </aside>
     </div>
     <div class="vbr-fallback" data-vbr-fallback><p>启用 JavaScript 后可逐步查看；完整流程也可直接阅读：</p><ol>{% for phase in flow.phases %}<li><strong>{{ phase.title }}</strong><p>{{ phase.summary }}</p></li>{% endfor %}</ol></div>
     <noscript><p>以下默认流程为 virtio-blk 本地文件读取；切换其他接口、后端与操作需要启用 JavaScript。</p>{% include '_mechanism_baselines.html' %}</noscript>

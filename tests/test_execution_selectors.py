@@ -10,6 +10,10 @@ from virt_report.render.render import render_mechanisms_html
 
 
 SELECTORS = json.loads((CONTENT_DIR / "execution-selectors.json").read_text(encoding="utf-8"))
+for demo_id in DEMO_IDS:
+    original = json.loads((CONTENT_DIR / f"{demo_id}.json").read_text(encoding="utf-8"))
+    if "selector" in original:
+        SELECTORS[demo_id] = original["selector"]
 
 
 def groups(selector):
@@ -32,7 +36,8 @@ def test_selector_represents_each_original_scenario_exactly_once(demo_id):
     assert sorted(options) == sorted(expected)
     assert len(options) == len(set(options))
     assert get_demo(demo_id)["selector"] == selector
-    assert "selector" not in original
+    if "selector" in original:
+        assert original["selector"] == selector
 
 
 def test_network_category_and_direction_preserve_supported_fallbacks():
@@ -54,7 +59,9 @@ def test_memory_object_selector_keeps_ram_conditions_together():
     ram, mmio = selector["categories"]
     assert [ram["id"], mmio["id"]] == ["ram", "mmio"]
     assert [group["label"] for group in ram["groups"]] == ["正常访问", "Guest 缺页", "宿主处理"]
-    assert [option["id"] for group in mmio["groups"] for option in group["scenarios"]] == ["mmio-read"]
+    assert [option["id"] for group in mmio["groups"] for option in group["scenarios"]] == [
+        "mmio-read", "mmio-kernel-lapic", "mmio-ioeventfd", "mmio-vfio-direct",
+    ]
 
 
 @pytest.mark.parametrize("demo_id,labels", [
@@ -108,6 +115,12 @@ def test_selector_rejects_incomplete_or_ambiguous_presets(mutation):
 def test_selector_template_preserves_complete_no_script_fallback(demo_id):
     page = render_mechanisms_html(Config(), DEMO_PAGES[demo_id])
     selector = SELECTORS[demo_id]
+    if demo_id == "disk-persistence":
+        assert "data-vbr-completion" in page
+        assert "data-execution-lab" not in page
+        assert "FLUSH" in page and "FUA" in page
+        assert "完成保证" in page and "稳定存储" in page
+        return
     assert "data-execution-controls hidden" in page
     assert "data-execution-scenario-choice" in page
     assert ("data-execution-category" in page) == ("categories" in selector)

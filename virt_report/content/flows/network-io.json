@@ -161,18 +161,21 @@
       "nodes": [
         {
           "id": "application",
-          "label": "应用 · 用户态",
-          "role": "guest"
+          "label": "应用",
+          "role": "guest",
+          "badge": "用户态"
         },
         {
           "id": "stack",
-          "label": "UDP/IP · 内核态",
-          "role": "guest"
+          "label": "UDP/IP 协议栈",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "guest",
-          "label": "virtio-net · 内核态",
-          "role": "guest"
+          "label": "virtio-net 驱动",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "queue",
@@ -726,7 +729,7 @@
         "x86 + KVM；QEMU 10.2.0 / Linux 6.18；modern virtio-net、split ring、单队列对。",
         "P1 为 60 B 以太网帧（不含 FCS），virtio-net 基础头为 12 B；不启用分段、校验和卸载、合并 RX 缓冲区或间接描述符。",
         "QEMU 设备与 TAP FD 已连接。",
-        "用一条 2048 B 可写描述符链表示接收空间；实际驱动可把头与数据分散在多个描述符中。",
+        "用一条 1530 B 可写描述符链表示接收空间；实际驱动可把头与数据分散在多个描述符中。",
         "UDP/IPv4 小数据报：用户载荷 virt-report-demo01 为 18 B；8 B UDP + 20 B IPv4 + 14 B Ethernet，共 60 B 帧；virtio-net 另加 12 B 头。无 IP 选项、VLAN 或分片。",
         "普通阻塞 recvfrom(..., 128, 0, ...)，无 MSG_PEEK、MSG_TRUNC；socket 已绑定，路由、校验与接收内存预算满足本次报文，应用缓冲区容量足够。",
         "本例只收一帧，received 小于 NAPI budget；GRO_NORMAL 普通列表尚未达到提前刷新条件。驱动先 refill，随后在 NAPI 完成阶段将列表交给协议栈；补充空间无需等待 recvfrom 返回。"
@@ -734,18 +737,21 @@
       "nodes": [
         {
           "id": "application",
-          "label": "应用 · 用户态",
-          "role": "guest"
+          "label": "应用",
+          "role": "guest",
+          "badge": "用户态"
         },
         {
           "id": "stack",
-          "label": "UDP/IP · 内核态",
-          "role": "guest"
+          "label": "UDP/IP 协议栈",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "guest",
-          "label": "virtio-net · 内核态",
-          "role": "guest"
+          "label": "virtio-net 驱动",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "queue",
@@ -1036,7 +1042,7 @@
           "id": "publish-buffer",
           "title": "发布 RX 空间",
           "actor": "Guest virtio-net 驱动",
-          "description": "准备一条 2048 B 可写链，发布 head 2，avail.idx = 1。",
+          "description": "准备一条 1530 B 可写链，发布 head 2，avail.idx = 1。",
           "detail": "RX 描述符带 WRITE，允许设备写入头和报文。空缓冲区在来包之前提供；available 记录表示空间已准备好，不代表里面已经有新帧。",
           "active": [
             "guest",
@@ -1046,11 +1052,11 @@
             "publish"
           ],
           "changes": {
-            "desc": "head 2：2048 B，WRITE（设备可写）",
+            "desc": "head 2：1530 B，WRITE（设备可写）",
             "availHead": "slot 0 → head 2",
             "availIdx": "1",
             "guestBufferOwner": "设备可写；驱动等待归还",
-            "payload": "2048 B 空间，尚无 P1",
+            "payload": "1530 B 空间，尚无 P1",
             "notification": "按需提示 RX 缓冲区已补充"
           },
           "nodeStates": {},
@@ -1089,7 +1095,7 @@
           "title": "取得可写链",
           "actor": "QEMU 用户态",
           "description": "后端观察到 avail.idx = 1，取出 head 2 并检查容量和 WRITE 权限。",
-          "detail": "virtio_net_has_buffers() 确认空间，virtqueue_pop() 取出可写描述符。本例 2048 B 足以容纳 72 B 头与帧。",
+          "detail": "virtio_net_has_buffers() 确认空间，virtqueue_pop() 取出可写描述符。本例 1530 B 足以容纳 72 B 头与帧。",
           "active": [
             "queue",
             "backend"
@@ -1099,7 +1105,7 @@
           ],
           "changes": {
             "consumedIdx": "1",
-            "backendState": "已取得 head 2，可写容量 2048 B"
+            "backendState": "已取得 head 2，可写容量 1530 B"
           },
           "nodeStates": {},
           "sourceIds": [
@@ -1136,7 +1142,7 @@
           "title": "发布 RX 完成",
           "actor": "QEMU 用户态",
           "description": "发布 used = {id: 2, len: 72}，used.idx = 1。",
-          "detail": "完成记录包含本次实际写入量 72 B，容量仍是 2048 B。数据写入必须先于完成进度对驱动可见，驱动据此判断缓冲区可读。",
+          "detail": "完成记录包含本次实际写入量 72 B，容量仍是 1530 B。数据写入必须先于完成进度对驱动可见，驱动据此判断缓冲区可读。",
           "active": [
             "backend",
             "queue"
@@ -1224,7 +1230,7 @@
             "publish"
           ],
           "changes": {
-            "desc": "head 2：新的 2048 B 可写缓冲区",
+            "desc": "head 2：新的 1530 B 可写缓冲区",
             "availHead": "slot 1 → head 2（新缓冲区）",
             "availIdx": "2",
             "guestBufferOwner": "新缓冲区供设备写；旧 P1 引用仍由 NAPI 接收路径管理",
@@ -1352,18 +1358,21 @@
       "nodes": [
         {
           "id": "application",
-          "label": "应用 · 用户态",
-          "role": "guest"
+          "label": "应用",
+          "role": "guest",
+          "badge": "用户态"
         },
         {
           "id": "stack",
-          "label": "UDP/IP · 内核态",
-          "role": "guest"
+          "label": "UDP/IP 协议栈",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "guest",
-          "label": "virtio-net · 内核态",
-          "role": "guest"
+          "label": "virtio-net 驱动",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "queue",
@@ -1928,7 +1937,7 @@
         "x86 + KVM；QEMU 10.2.0 / Linux 6.18；modern virtio-net、split ring、单队列对。",
         "P1 为 60 B 以太网帧（不含 FCS），virtio-net 基础头为 12 B；不启用分段、校验和卸载、合并 RX 缓冲区或间接描述符。",
         "QEMU 已向 vhost-net 配置内存、队列、kick/call 和 TAP 后端；使用普通复制路径。",
-        "用一条 2048 B 可写描述符链表示接收空间；实际驱动可把头与数据分散在多个描述符中。",
+        "用一条 1530 B 可写描述符链表示接收空间；实际驱动可把头与数据分散在多个描述符中。",
         "UDP/IPv4 小数据报：用户载荷 virt-report-demo01 为 18 B；8 B UDP + 20 B IPv4 + 14 B Ethernet，共 60 B 帧；virtio-net 另加 12 B 头。无 IP 选项、VLAN 或分片。",
         "普通阻塞 recvfrom(..., 128, 0, ...)，无 MSG_PEEK、MSG_TRUNC；socket 已绑定，路由、校验与接收内存预算满足本次报文，应用缓冲区容量足够。",
         "本例只收一帧，received 小于 NAPI budget；GRO_NORMAL 普通列表尚未达到提前刷新条件。驱动先 refill，随后在 NAPI 完成阶段将列表交给协议栈；补充空间无需等待 recvfrom 返回。"
@@ -1936,18 +1945,21 @@
       "nodes": [
         {
           "id": "application",
-          "label": "应用 · 用户态",
-          "role": "guest"
+          "label": "应用",
+          "role": "guest",
+          "badge": "用户态"
         },
         {
           "id": "stack",
-          "label": "UDP/IP · 内核态",
-          "role": "guest"
+          "label": "UDP/IP 协议栈",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "guest",
-          "label": "virtio-net · 内核态",
-          "role": "guest"
+          "label": "virtio-net 驱动",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "queue",
@@ -2250,7 +2262,7 @@
           "id": "publish-buffer",
           "title": "发布 RX 空间",
           "actor": "Guest virtio-net 驱动",
-          "description": "准备一条 2048 B 可写链，发布 head 2，avail.idx = 1。",
+          "description": "准备一条 1530 B 可写链，发布 head 2，avail.idx = 1。",
           "detail": "RX 描述符带 WRITE，允许设备写入头和报文。空缓冲区在来包之前提供；available 记录表示空间已准备好，不代表里面已经有新帧。",
           "active": [
             "guest",
@@ -2260,11 +2272,11 @@
             "publish"
           ],
           "changes": {
-            "desc": "head 2：2048 B，WRITE（设备可写）",
+            "desc": "head 2：1530 B，WRITE（设备可写）",
             "availHead": "slot 0 → head 2",
             "availIdx": "1",
             "guestBufferOwner": "设备可写；驱动等待归还",
-            "payload": "2048 B 空间，尚无 P1",
+            "payload": "1530 B 空间，尚无 P1",
             "notification": "按需提示 RX 缓冲区已补充"
           },
           "nodeStates": {},
@@ -2312,7 +2324,7 @@
           ],
           "changes": {
             "consumedIdx": "1",
-            "backendState": "已取得 head 2，可写容量 2048 B"
+            "backendState": "已取得 head 2，可写容量 1530 B"
           },
           "nodeStates": {},
           "sourceIds": [
@@ -2348,7 +2360,7 @@
           "title": "发布 RX 完成",
           "actor": "宿主内核 vhost-net",
           "description": "发布 used = {id: 2, len: 72}，used.idx = 1。",
-          "detail": "完成记录包含本次实际写入量 72 B，容量仍是 2048 B。数据写入必须先于完成进度对驱动可见，驱动据此判断缓冲区可读。",
+          "detail": "完成记录包含本次实际写入量 72 B，容量仍是 1530 B。数据写入必须先于完成进度对驱动可见，驱动据此判断缓冲区可读。",
           "active": [
             "backend",
             "queue"
@@ -2436,7 +2448,7 @@
             "publish"
           ],
           "changes": {
-            "desc": "head 2：新的 2048 B 可写缓冲区",
+            "desc": "head 2：新的 1530 B 可写缓冲区",
             "availHead": "slot 1 → head 2（新缓冲区）",
             "availIdx": "2",
             "guestBufferOwner": "新缓冲区供设备写；旧 P1 引用仍由 NAPI 接收路径管理",
@@ -2564,18 +2576,21 @@
       "nodes": [
         {
           "id": "application",
-          "label": "应用 · 用户态",
-          "role": "guest"
+          "label": "应用",
+          "role": "guest",
+          "badge": "用户态"
         },
         {
           "id": "stack",
-          "label": "UDP/IP · 内核态",
-          "role": "guest"
+          "label": "UDP/IP 协议栈",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "guest",
-          "label": "virtio-net · 内核态",
-          "role": "guest"
+          "label": "virtio-net 驱动",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "queue",
@@ -3190,7 +3205,7 @@
         "x86 + KVM；QEMU 10.2.0 / Linux 6.18；modern virtio-net、split ring、单队列对。",
         "P1 为 60 B 以太网帧（不含 FCS），virtio-net 基础头为 12 B；不启用分段、校验和卸载、合并 RX 缓冲区或间接描述符。",
         "DPDK 24.11 同步复制路径；共享 RAM、virtqueue、PMD 队列已配置，vhost-user socket 仅承担控制面。",
-        "用一条 2048 B 可写描述符链表示接收空间；实际驱动可把头与数据分散在多个描述符中。",
+        "用一条 1530 B 可写描述符链表示接收空间；实际驱动可把头与数据分散在多个描述符中。",
         "UDP/IPv4 小数据报：用户载荷 virt-report-demo01 为 18 B；8 B UDP + 20 B IPv4 + 14 B Ethernet，共 60 B 帧；virtio-net 另加 12 B 头。无 IP 选项、VLAN 或分片。",
         "普通阻塞 recvfrom(..., 128, 0, ...)，无 MSG_PEEK、MSG_TRUNC；socket 已绑定，路由、校验与接收内存预算满足本次报文，应用缓冲区容量足够。",
         "本例只收一帧，received 小于 NAPI budget；GRO_NORMAL 普通列表尚未达到提前刷新条件。驱动先 refill，随后在 NAPI 完成阶段将列表交给协议栈；补充空间无需等待 recvfrom 返回。"
@@ -3198,18 +3213,21 @@
       "nodes": [
         {
           "id": "application",
-          "label": "应用 · 用户态",
-          "role": "guest"
+          "label": "应用",
+          "role": "guest",
+          "badge": "用户态"
         },
         {
           "id": "stack",
-          "label": "UDP/IP · 内核态",
-          "role": "guest"
+          "label": "UDP/IP 协议栈",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "guest",
-          "label": "virtio-net · 内核态",
-          "role": "guest"
+          "label": "virtio-net 驱动",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "queue",
@@ -3534,7 +3552,7 @@
           "id": "publish-buffer",
           "title": "发布 RX 空间",
           "actor": "Guest virtio-net 驱动",
-          "description": "准备一条 2048 B 可写链，发布 head 2，avail.idx = 1。",
+          "description": "准备一条 1530 B 可写链，发布 head 2，avail.idx = 1。",
           "detail": "RX 描述符带 WRITE，允许设备写入头和报文。空缓冲区在来包之前提供；available 记录表示空间已准备好，不代表里面已经有新帧。",
           "active": [
             "guest",
@@ -3544,11 +3562,11 @@
             "publish"
           ],
           "changes": {
-            "desc": "head 2：2048 B，WRITE（设备可写）",
+            "desc": "head 2：1530 B，WRITE（设备可写）",
             "availHead": "slot 0 → head 2",
             "availIdx": "1",
             "guestBufferOwner": "设备可写；驱动等待归还",
-            "payload": "2048 B 空间，尚无 P1",
+            "payload": "1530 B 空间，尚无 P1",
             "notification": "按需提示 RX 缓冲区已补充"
           },
           "nodeStates": {},
@@ -3600,7 +3618,7 @@
           ],
           "changes": {
             "consumedIdx": "1",
-            "backendState": "已取得 head 2，可写容量 2048 B"
+            "backendState": "已取得 head 2，可写容量 1530 B"
           },
           "nodeStates": {},
           "sourceIds": [
@@ -3636,7 +3654,7 @@
           "title": "发布 RX 完成",
           "actor": "DPDK 数据线程",
           "description": "发布 used = {id: 2, len: 72}，used.idx = 1。",
-          "detail": "完成记录包含本次实际写入量 72 B，容量仍是 2048 B。数据写入必须先于完成进度对驱动可见，驱动据此判断缓冲区可读。",
+          "detail": "完成记录包含本次实际写入量 72 B，容量仍是 1530 B。数据写入必须先于完成进度对驱动可见，驱动据此判断缓冲区可读。",
           "active": [
             "backend",
             "queue"
@@ -3745,7 +3763,7 @@
             "publish"
           ],
           "changes": {
-            "desc": "head 2：新的 2048 B 可写缓冲区",
+            "desc": "head 2：新的 1530 B 可写缓冲区",
             "availHead": "slot 1 → head 2（新缓冲区）",
             "availIdx": "2",
             "guestBufferOwner": "新缓冲区供设备写；旧 P1 引用仍由 NAPI 接收路径管理",
@@ -3873,18 +3891,21 @@
       "nodes": [
         {
           "id": "application",
-          "label": "应用 · 用户态",
-          "role": "guest"
+          "label": "应用",
+          "role": "guest",
+          "badge": "用户态"
         },
         {
           "id": "stack",
-          "label": "UDP/IP · 内核态",
-          "role": "guest"
+          "label": "UDP/IP 协议栈",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "guest",
-          "label": "virtio-net · 内核态",
-          "role": "guest"
+          "label": "virtio-net 驱动",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "queue",
@@ -4468,7 +4489,7 @@
         "x86 + KVM；QEMU 10.2.0 / Linux 6.18；modern virtio-net、split ring、单队列对。",
         "P1 为 60 B 以太网帧（不含 FCS），virtio-net 基础头为 12 B；不启用分段、校验和卸载、合并 RX 缓冲区或间接描述符。",
         "硬件 vhost-vDPA direct 模式，不启用 SVQ；DMA 映射和队列已经建立，无客户机 vIOMMU。",
-        "用一条 2048 B 可写描述符链表示接收空间；实际驱动可把头与数据分散在多个描述符中。",
+        "用一条 1530 B 可写描述符链表示接收空间；实际驱动可把头与数据分散在多个描述符中。",
         "UDP/IPv4 小数据报：用户载荷 virt-report-demo01 为 18 B；8 B UDP + 20 B IPv4 + 14 B Ethernet，共 60 B 帧；virtio-net 另加 12 B 头。无 IP 选项、VLAN 或分片。",
         "普通阻塞 recvfrom(..., 128, 0, ...)，无 MSG_PEEK、MSG_TRUNC；socket 已绑定，路由、校验与接收内存预算满足本次报文，应用缓冲区容量足够。",
         "本例只收一帧，received 小于 NAPI budget；GRO_NORMAL 普通列表尚未达到提前刷新条件。驱动先 refill，随后在 NAPI 完成阶段将列表交给协议栈；补充空间无需等待 recvfrom 返回。"
@@ -4476,18 +4497,21 @@
       "nodes": [
         {
           "id": "application",
-          "label": "应用 · 用户态",
-          "role": "guest"
+          "label": "应用",
+          "role": "guest",
+          "badge": "用户态"
         },
         {
           "id": "stack",
-          "label": "UDP/IP · 内核态",
-          "role": "guest"
+          "label": "UDP/IP 协议栈",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "guest",
-          "label": "virtio-net · 内核态",
-          "role": "guest"
+          "label": "virtio-net 驱动",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "queue",
@@ -4807,7 +4831,7 @@
           "id": "publish-buffer",
           "title": "发布 RX 空间",
           "actor": "Guest virtio-net 驱动",
-          "description": "准备一条 2048 B 可写链，发布 head 2，avail.idx = 1。",
+          "description": "准备一条 1530 B 可写链，发布 head 2，avail.idx = 1。",
           "detail": "RX 描述符带 WRITE，允许设备写入头和报文。空缓冲区在来包之前提供；available 记录表示空间已准备好，不代表里面已经有新帧。",
           "active": [
             "guest",
@@ -4817,11 +4841,11 @@
             "publish"
           ],
           "changes": {
-            "desc": "head 2：2048 B，WRITE（设备可写）",
+            "desc": "head 2：1530 B，WRITE（设备可写）",
             "availHead": "slot 0 → head 2",
             "availIdx": "1",
             "guestBufferOwner": "设备可写；驱动等待归还",
-            "payload": "2048 B 空间，尚无 P1",
+            "payload": "1530 B 空间，尚无 P1",
             "notification": "按需提示 RX 缓冲区已补充"
           },
           "nodeStates": {},
@@ -4869,7 +4893,7 @@
           ],
           "changes": {
             "consumedIdx": "1",
-            "backendState": "已取得 head 2，可写容量 2048 B"
+            "backendState": "已取得 head 2，可写容量 1530 B"
           },
           "nodeStates": {},
           "sourceIds": [
@@ -4905,7 +4929,7 @@
           "title": "发布 RX 完成",
           "actor": "vDPA 硬件设备",
           "description": "发布 used = {id: 2, len: 72}，used.idx = 1。",
-          "detail": "完成记录包含本次实际写入量 72 B，容量仍是 2048 B。数据写入必须先于完成进度对驱动可见，驱动据此判断缓冲区可读。",
+          "detail": "完成记录包含本次实际写入量 72 B，容量仍是 1530 B。数据写入必须先于完成进度对驱动可见，驱动据此判断缓冲区可读。",
           "active": [
             "backend",
             "queue"
@@ -4993,7 +5017,7 @@
             "publish"
           ],
           "changes": {
-            "desc": "head 2：新的 2048 B 可写缓冲区",
+            "desc": "head 2：新的 1530 B 可写缓冲区",
             "availHead": "slot 1 → head 2（新缓冲区）",
             "availIdx": "2",
             "guestBufferOwner": "新缓冲区供设备写；旧 P1 引用仍由 NAPI 接收路径管理",
@@ -5122,18 +5146,21 @@
       "nodes": [
         {
           "id": "application",
-          "label": "应用 · 用户态",
-          "role": "guest"
+          "label": "应用",
+          "role": "guest",
+          "badge": "用户态"
         },
         {
           "id": "stack",
-          "label": "UDP/IP · 内核态",
-          "role": "guest"
+          "label": "UDP/IP 协议栈",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "guest",
-          "label": "virtio-net · 内核态",
-          "role": "guest"
+          "label": "virtio-net 驱动",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "queue",
@@ -5713,7 +5740,7 @@
         "x86 + KVM；QEMU 10.2.0 / Linux 6.18；modern virtio-net、split ring、单队列对。",
         "P1 为 60 B 以太网帧（不含 FCS），virtio-net 基础头为 12 B；不启用分段、校验和卸载、合并 RX 缓冲区或间接描述符。",
         "QEMU 设备与 TAP FD 已连接。",
-        "用一条 2048 B 可写描述符链表示接收空间；实际驱动可把头与数据分散在多个描述符中。",
+        "用一条 1530 B 可写描述符链表示接收空间；实际驱动可把头与数据分散在多个描述符中。",
         "本例保留一帧并等待补充，随后恢复成功；实际路径有有限队列，持续拥塞仍可能丢包。",
         "UDP/IPv4 小数据报：用户载荷 virt-report-demo01 为 18 B；8 B UDP + 20 B IPv4 + 14 B Ethernet，共 60 B 帧；virtio-net 另加 12 B 头。无 IP 选项、VLAN 或分片。",
         "普通阻塞 recvfrom(..., 128, 0, ...)，无 MSG_PEEK、MSG_TRUNC；socket 已绑定，路由、校验与接收内存预算满足本次报文，应用缓冲区容量足够。",
@@ -5722,18 +5749,21 @@
       "nodes": [
         {
           "id": "application",
-          "label": "应用 · 用户态",
-          "role": "guest"
+          "label": "应用",
+          "role": "guest",
+          "badge": "用户态"
         },
         {
           "id": "stack",
-          "label": "UDP/IP · 内核态",
-          "role": "guest"
+          "label": "UDP/IP 协议栈",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "guest",
-          "label": "virtio-net · 内核态",
-          "role": "guest"
+          "label": "virtio-net 驱动",
+          "role": "guest",
+          "badge": "内核态"
         },
         {
           "id": "queue",
@@ -6073,7 +6103,7 @@
           "id": "replenish",
           "title": "Guest 补充缓冲区",
           "actor": "Guest virtio-net 驱动",
-          "description": "准备一条 2048 B 可写链，发布 head 2，avail.idx = 1。",
+          "description": "准备一条 1530 B 可写链，发布 head 2，avail.idx = 1。",
           "detail": "驱动现在准备 head 2 的可写空间并推进 avail.idx。QEMU 已请求缓冲区到达通知，本例 kick 使等待的报文重新获得交付机会。",
           "active": [
             "guest",
@@ -6083,11 +6113,11 @@
             "publish"
           ],
           "changes": {
-            "desc": "head 2：2048 B，WRITE（设备可写）",
+            "desc": "head 2：1530 B，WRITE（设备可写）",
             "availHead": "slot 0 → head 2",
             "availIdx": "1",
             "guestBufferOwner": "设备可写；驱动等待归还",
-            "payload": "2048 B 空间，尚无 P1",
+            "payload": "1530 B 空间，尚无 P1",
             "notification": "RX 补充通知到达，触发重试"
           },
           "nodeStates": {},
@@ -6111,7 +6141,7 @@
           ],
           "changes": {
             "consumedIdx": "1",
-            "backendState": "已取得 head 2，可写容量 2048 B"
+            "backendState": "已取得 head 2，可写容量 1530 B"
           },
           "nodeStates": {},
           "sourceIds": [
@@ -6148,7 +6178,7 @@
           "title": "发布 RX 完成",
           "actor": "QEMU 用户态",
           "description": "发布 used = {id: 2, len: 72}，used.idx = 1。",
-          "detail": "完成记录包含本次实际写入量 72 B，容量仍是 2048 B。数据写入必须先于完成进度对驱动可见，驱动据此判断缓冲区可读。",
+          "detail": "完成记录包含本次实际写入量 72 B，容量仍是 1530 B。数据写入必须先于完成进度对驱动可见，驱动据此判断缓冲区可读。",
           "active": [
             "backend",
             "queue"
@@ -6237,7 +6267,7 @@
             "publish"
           ],
           "changes": {
-            "desc": "head 2：新的 2048 B 可写缓冲区",
+            "desc": "head 2：新的 1530 B 可写缓冲区",
             "availHead": "slot 1 → head 2（新缓冲区）",
             "availIdx": "2",
             "guestBufferOwner": "新缓冲区供设备写；旧 P1 引用仍由 NAPI 接收路径管理",

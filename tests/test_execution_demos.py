@@ -18,6 +18,12 @@ def test_execution_demo_integrity_and_rendering(demo_id):
     demo = execution_demos.get_demo(demo_id)
     execution_demos.validate_demo(demo)
     page = render_mechanisms_html(Config(), execution_demos.DEMO_PAGES[demo_id])
+    if demo_id == "disk-persistence":
+        assert 'data-vbr-completion' in page
+        assert 'data-execution-lab' not in page
+        assert 'assets/disk-completion-model.js?v=' in page
+        assert 'F1' in page and 'FUA' in page
+        return
     assert 'data-execution-lab' in page
     assert 'data-execution-controls hidden' in page
     assert 'data-execution-fallback' in page
@@ -46,14 +52,14 @@ def test_demo_registry_points_to_existing_articles_without_duplicate_directory_e
     for demo_id, page_id in execution_demos.DEMO_PAGES.items():
         article = next(article for article in articles if article['slug'] == page_id)
         assert article['execution_demo'] == demo_id
-    assert sum(article.get('presentation') == 'walkthrough' for article in articles) == 5
+    assert sum(article.get('presentation') == 'walkthrough' for article in articles) == 6
     assert not {'disk-persistence', 'vm-lifecycle'} & {article['slug'] for article in articles}
 
 
 def test_embedded_labs_share_assets_without_overwriting_primary_disk_controls():
     page = render_mechanisms_html(Config(), "virtio-blk-read")
-    assert 'data-vbr-lab' in page and 'data-execution-lab' in page
-    assert 'data-execution-url-prefix="persistence-"' in page
+    assert 'data-vbr-lab' in page and 'data-execution-lab' not in page
+    assert 'data-vbr-completion' in page
     assert '../assets/virtio-blk-read.js?v=' in page
     assert 'href="#persistence"' in page
     lifecycle = render_mechanisms_html(Config(), "libvirt-domain-start")
