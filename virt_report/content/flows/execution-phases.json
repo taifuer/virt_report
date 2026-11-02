@@ -1,0 +1,369 @@
+{
+  "network-io": {
+    "qemu-tx": [
+      {"id":"initial","title":"应用发送","start":"initial"},
+      {"id":"prepare","title":"准备队列","start":"prepare"},
+      {"id":"publish","title":"发布与通知","start":"publish"},
+      {"id":"consume","title":"后端发送","start":"consume"},
+      {"id":"fill-used","title":"发布完成","start":"fill-used"},
+      {"id":"notify","title":"中断递送","start":"notify"},
+      {"id":"reclaim","title":"驱动回收","start":"reclaim"},
+      {"id":"egress","title":"本地转发","start":"egress"}
+    ],
+    "qemu-rx": [
+      {"id":"initial","title":"接收准备","start":"initial"},
+      {"id":"arrive","title":"后端接收","start":"arrive"},
+      {"id":"fill-used","title":"发布完成","start":"fill-used"},
+      {"id":"notify","title":"中断递送","start":"notify"},
+      {"id":"receive","title":"驱动接收","start":"receive"},
+      {"id":"refill-prepare","title":"补充队列","start":"refill-prepare"},
+      {"id":"socket-enqueue","title":"应用接收","start":"socket-enqueue"}
+    ],
+    "vhost-tx": [
+      {"id":"initial","title":"应用发送","start":"initial"},
+      {"id":"prepare","title":"准备队列","start":"prepare"},
+      {"id":"publish","title":"发布与通知","start":"publish"},
+      {"id":"consume","title":"后端发送","start":"consume"},
+      {"id":"fill-used","title":"发布完成","start":"fill-used"},
+      {"id":"notify","title":"中断递送","start":"notify"},
+      {"id":"reclaim","title":"驱动回收","start":"reclaim"},
+      {"id":"egress","title":"本地转发","start":"egress"}
+    ],
+    "vhost-rx": [
+      {"id":"initial","title":"接收准备","start":"initial"},
+      {"id":"arrive","title":"后端接收","start":"arrive"},
+      {"id":"fill-used","title":"发布完成","start":"fill-used"},
+      {"id":"notify","title":"中断递送","start":"notify"},
+      {"id":"receive","title":"驱动接收","start":"receive"},
+      {"id":"refill-prepare","title":"补充队列","start":"refill-prepare"},
+      {"id":"socket-enqueue","title":"应用接收","start":"socket-enqueue"}
+    ],
+    "dpdk-tx": [
+      {"id":"initial","title":"应用发送","start":"initial"},
+      {"id":"prepare","title":"准备队列","start":"prepare"},
+      {"id":"publish","title":"发布与轮询","start":"publish"},
+      {"id":"consume","title":"后端取包","start":"consume"},
+      {"id":"fill-used","title":"发布完成","start":"fill-used"},
+      {"id":"notify","title":"中断递送","start":"notify"},
+      {"id":"reclaim","title":"驱动回收","start":"reclaim"},
+      {"id":"pmd","title":"PMD 发送","start":"pmd"}
+    ],
+    "dpdk-rx": [
+      {"id":"initial","title":"接收准备","start":"initial"},
+      {"id":"arrive","title":"后端接收","start":"arrive"},
+      {"id":"fill-used","title":"发布完成","start":"fill-used"},
+      {"id":"notify","title":"中断递送","start":"notify"},
+      {"id":"receive","title":"驱动接收","start":"receive"},
+      {"id":"refill-prepare","title":"补充队列","start":"refill-prepare"},
+      {"id":"socket-enqueue","title":"应用接收","start":"socket-enqueue"}
+    ],
+    "vdpa-tx": [
+      {"id":"initial","title":"应用发送","start":"initial"},
+      {"id":"prepare","title":"准备队列","start":"prepare"},
+      {"id":"publish","title":"发布与门铃","start":"publish"},
+      {"id":"consume","title":"硬件取包","start":"consume"},
+      {"id":"fill-used","title":"发布完成","start":"fill-used"},
+      {"id":"notify","title":"中断递送","start":"notify"},
+      {"id":"reclaim","title":"驱动回收","start":"reclaim"},
+      {"id":"egress","title":"本地转发","start":"egress"}
+    ],
+    "vdpa-rx": [
+      {"id":"initial","title":"接收准备","start":"initial"},
+      {"id":"arrive","title":"硬件接收","start":"arrive"},
+      {"id":"fill-used","title":"发布完成","start":"fill-used"},
+      {"id":"notify","title":"中断递送","start":"notify"},
+      {"id":"receive","title":"驱动接收","start":"receive"},
+      {"id":"refill-prepare","title":"补充队列","start":"refill-prepare"},
+      {"id":"socket-enqueue","title":"应用接收","start":"socket-enqueue"}
+    ],
+    "qemu-tx-backpressure": [
+      {"id":"initial","title":"应用发送","start":"initial"},
+      {"id":"prepare","title":"准备队列","start":"prepare"},
+      {"id":"publish","title":"发布与通知","start":"publish"},
+      {"id":"consume","title":"背压与重试","start":"consume"},
+      {"id":"fill-used","title":"发布完成","start":"fill-used"},
+      {"id":"notify","title":"中断递送","start":"notify"},
+      {"id":"reclaim","title":"驱动回收","start":"reclaim"},
+      {"id":"egress","title":"本地转发","start":"egress"}
+    ],
+    "qemu-rx-no-buffer": [
+      {"id":"initial","title":"等待报文","start":"initial"},
+      {"id":"no-buffer","title":"等待缓冲区","start":"no-buffer"},
+      {"id":"retry","title":"恢复接收","start":"retry"},
+      {"id":"fill-used","title":"发布完成","start":"fill-used"},
+      {"id":"notify","title":"中断递送","start":"notify"},
+      {"id":"receive","title":"驱动接收","start":"receive"},
+      {"id":"refill-prepare","title":"补充队列","start":"refill-prepare"},
+      {"id":"socket-enqueue","title":"应用接收","start":"socket-enqueue"}
+    ]
+  },
+  "cpu-execution": {
+    "ordinary-add": [
+      {"id":"ready","title":"指令输入","start":"ready"},
+      {"id":"add","title":"执行运算","start":"add"},
+      {"id":"continue","title":"继续执行","start":"continue"}
+    ],
+    "guest-syscall": [
+      {"id":"ready","title":"系统调用入口","start":"ready"},
+      {"id":"kernel","title":"内核执行","start":"kernel"},
+      {"id":"return","title":"返回应用","start":"return"}
+    ],
+    "cpuid-kernel": [
+      {"id":"ready","title":"硬件退出","start":"ready"},
+      {"id":"emulate","title":"KVM 处理","start":"emulate"},
+      {"id":"resume","title":"恢复执行","start":"resume"}
+    ],
+    "mmio-userspace": [
+      {"id":"ready","title":"捕获访问","start":"ready"},
+      {"id":"request","title":"请求交接","start":"request"},
+      {"id":"read","title":"设备读取","start":"read"},
+      {"id":"complete","title":"恢复执行","start":"complete"}
+    ],
+    "hlt-wakeup": [
+      {"id":"ready","title":"进入等待","start":"ready"},
+      {"id":"sleep","title":"宿主休眠","start":"sleep"},
+      {"id":"wake","title":"事件唤醒","start":"wake"},
+      {"id":"resume","title":"恢复客户机","start":"resume"}
+    ],
+    "sleep-other-task": [
+      {"id":"ready","title":"任务休眠","start":"ready"},
+      {"id":"run-other","title":"继续运行","start":"run-other"},
+      {"id":"timer-expire","title":"定时到期","start":"timer-expire"},
+      {"id":"guest-timer","title":"定时中断","start":"guest-timer"},
+      {"id":"guest-dispatch","title":"恢复任务","start":"guest-dispatch"}
+    ],
+    "sleep-idle-vcpu": [
+      {"id":"ready","title":"任务休眠","start":"ready"},
+      {"id":"guest-idle","title":"vCPU 挂起","start":"guest-idle"},
+      {"id":"timer-expire","title":"宿主唤醒","start":"timer-expire"},
+      {"id":"host-dispatch","title":"恢复 vCPU","start":"host-dispatch"},
+      {"id":"guest-timer","title":"定时中断","start":"guest-timer"},
+      {"id":"guest-dispatch","title":"恢复任务","start":"guest-dispatch"}
+    ]
+  },
+  "memory-access": {
+    "ram-hit": [
+      {"id":"ready","title":"地址转换","start":"ready"},
+      {"id":"load","title":"读取内存","start":"load"},
+      {"id":"complete","title":"完成读取","start":"complete"}
+    ],
+    "tlb-miss": [
+      {"id":"ready","title":"缓存查询","start":"ready"},
+      {"id":"guest-leaf","title":"两级查表","start":"guest-leaf"},
+      {"id":"load","title":"完成读取","start":"load"}
+    ],
+    "guest-page-fault": [
+      {"id":"ready","title":"产生缺页","start":"ready"},
+      {"id":"validate","title":"建立 Guest 映射","start":"validate"},
+      {"id":"retry","title":"重试访问","start":"retry"}
+    ],
+    "ept-missing": [
+      {"id":"ready","title":"EPT 退出","start":"ready"},
+      {"id":"slot","title":"定位后备页","start":"slot"},
+      {"id":"map","title":"建立 EPT","start":"map"},
+      {"id":"complete","title":"重试访问","start":"complete"}
+    ],
+    "host-page-fault": [
+      {"id":"ready","title":"定位缺页","start":"ready"},
+      {"id":"wait","title":"等待换入","start":"wait"},
+      {"id":"resident","title":"页面驻留","start":"resident"},
+      {"id":"map","title":"恢复访问","start":"map"}
+    ],
+    "mmio-read": [
+      {"id":"ready","title":"识别设备访问","start":"ready"},
+      {"id":"userspace","title":"交给 QEMU","start":"userspace"},
+      {"id":"device","title":"设备读回","start":"device"},
+      {"id":"complete","title":"恢复指令","start":"complete"}
+    ],
+    "dirty-write-protect": [
+      {"id":"ready","title":"写保护退出","start":"ready"},
+      {"id":"repair","title":"恢复权限与记脏","start":"repair"},
+      {"id":"retry","title":"重试写入","start":"retry"}
+    ],
+    "mmio-kernel-lapic": [
+      {"id":"ready","title":"设备访问退出","start":"ready"},
+      {"id":"dispatch","title":"内核设备处理","start":"dispatch"},
+      {"id":"complete","title":"恢复指令","start":"complete"}
+    ],
+    "mmio-ioeventfd": [
+      {"id":"ready","title":"捕获门铃","start":"ready"},
+      {"id":"match","title":"匹配与通知","start":"match"},
+      {"id":"complete","title":"继续执行","start":"complete"}
+    ],
+    "mmio-vfio-direct": [
+      {"id":"ready","title":"解析地址映射","start":"ready"},
+      {"id":"access","title":"直访设备","start":"access"},
+      {"id":"return","title":"完成读取","start":"return"}
+    ]
+  },
+  "interrupt-delivery": {
+    "msix-software": [
+      {"id":"ready","title":"发布设备完成","start":"ready"},
+      {"id":"notify-check","title":"生成 MSI-X","start":"notify-check"},
+      {"id":"submit","title":"KVM 路由","start":"submit"},
+      {"id":"inject","title":"注入与接受","start":"inject"},
+      {"id":"eoi","title":"应答与回收","start":"eoi"}
+    ],
+    "irqfd": [
+      {"id":"ready","title":"发布设备完成","start":"ready"},
+      {"id":"notify-check","title":"发出完成通知","start":"notify-check"},
+      {"id":"route","title":"irqfd 路由","start":"route"},
+      {"id":"inject","title":"注入与接受","start":"inject"},
+      {"id":"eoi","title":"应答与回收","start":"eoi"}
+    ],
+    "if-masked": [
+      {"id":"ready","title":"发布设备完成","start":"ready"},
+      {"id":"notify-check","title":"登记待处理中断","start":"notify-check"},
+      {"id":"blocked","title":"等待接收条件","start":"blocked"},
+      {"id":"inject","title":"注入与接受","start":"inject"},
+      {"id":"eoi","title":"应答与回收","start":"eoi"}
+    ],
+    "msix-masked": [
+      {"id":"ready","title":"发布设备完成","start":"ready"},
+      {"id":"notify-check","title":"屏蔽与暂存","start":"notify-check"},
+      {"id":"unmask","title":"解除屏蔽并补发","start":"unmask"},
+      {"id":"lapic","title":"LAPIC 路由","start":"lapic"},
+      {"id":"inject","title":"注入与接受","start":"inject"},
+      {"id":"eoi","title":"应答与回收","start":"eoi"}
+    ],
+    "apicv-posted": [
+      {"id":"ready","title":"发布设备完成","start":"ready"},
+      {"id":"notify-check","title":"提交中断消息","start":"notify-check"},
+      {"id":"post","title":"PIR 登记与通知","start":"post"},
+      {"id":"sync","title":"硬件同步与交付","start":"sync"},
+      {"id":"eoi","title":"应答与回收","start":"eoi"}
+    ],
+    "notify-suppressed": [
+      {"id":"ready","title":"发布设备完成","start":"ready"},
+      {"id":"notify-check","title":"检查通知条件","start":"notify-check"},
+      {"id":"poll","title":"轮询与回收","start":"poll"}
+    ],
+    "vtd-remapped": [
+      {"id":"ready","title":"设备发出消息","start":"ready"},
+      {"id":"validate","title":"校验与重映射","start":"validate"},
+      {"id":"host","title":"宿主转发","start":"host"},
+      {"id":"pending","title":"KVM 路由","start":"pending"},
+      {"id":"inject","title":"注入与接受","start":"inject"},
+      {"id":"eoi","title":"中断应答","start":"eoi"}
+    ],
+    "vtd-posted": [
+      {"id":"ready","title":"设备发出消息","start":"ready"},
+      {"id":"validate","title":"IRTE 校验","start":"validate"},
+      {"id":"post","title":"PIR 登记与通知","start":"post"},
+      {"id":"sync","title":"硬件同步与交付","start":"sync"},
+      {"id":"eoi","title":"中断应答","start":"eoi"}
+    ]
+  },
+  "gpu-execution": {
+    "vfio-upload": [
+      {"id":"initial","title":"应用提交","start":"initial"},
+      {"id":"dispatch","title":"作业调度","start":"dispatch"},
+      {"id":"doorbell","title":"发布与门铃","start":"doorbell"},
+      {"id":"fetch","title":"GPU 执行","start":"fetch"},
+      {"id":"fence-write","title":"写回完成","start":"fence-write"},
+      {"id":"physical-irq","title":"中断递送","start":"physical-irq"},
+      {"id":"signal-fence","title":"Guest 确认完成","start":"signal-fence"},
+      {"id":"return","title":"应用使用结果","start":"return"}
+    ],
+    "vfio-readback": [
+      {"id":"initial","title":"应用提交","start":"initial"},
+      {"id":"dispatch","title":"作业调度","start":"dispatch"},
+      {"id":"doorbell","title":"发布与门铃","start":"doorbell"},
+      {"id":"fetch","title":"GPU 执行","start":"fetch"},
+      {"id":"fence-write","title":"写回完成","start":"fence-write"},
+      {"id":"physical-irq","title":"中断递送","start":"physical-irq"},
+      {"id":"signal-fence","title":"Guest 确认完成","start":"signal-fence"},
+      {"id":"return","title":"应用使用结果","start":"return"}
+    ],
+    "mdev-copy": [
+      {"id":"initial","title":"Guest 提交","start":"initial"},
+      {"id":"elsp-write","title":"捕获虚拟提交","start":"elsp-write"},
+      {"id":"workload","title":"排队与审核","start":"workload"},
+      {"id":"dispatch","title":"物理 GPU 执行","start":"dispatch"},
+      {"id":"host-complete","title":"发布虚拟完成","start":"host-complete"},
+      {"id":"notify","title":"中断递送","start":"notify"},
+      {"id":"guest-complete","title":"Guest 确认完成","start":"guest-complete"},
+      {"id":"return","title":"应用使用结果","start":"return"}
+    ]
+  },
+  "virtio-gpu-rendering": {
+    "virgl-render": [
+      {"id":"initial","title":"准备资源与命令","start":"initial"},
+      {"id":"publish-submit","title":"提交 controlq","start":"publish-submit"},
+      {"id":"dispatch-submit","title":"宿主还原与提交","start":"dispatch-submit"},
+      {"id":"execute-gpu","title":"GPU 绘制","start":"execute-gpu"},
+      {"id":"observe-fence","title":"完成与同步","start":"observe-fence"},
+      {"id":"present-image","title":"显示交接","start":"present-image"}
+    ],
+    "virgl-decode": [
+      {"id":"initial","title":"准备会话与码流","start":"initial"},
+      {"id":"publish-submit","title":"提交 controlq","start":"publish-submit"},
+      {"id":"dispatch-submit","title":"宿主解码提交","start":"dispatch-submit"},
+      {"id":"execute-gpu","title":"GPU 解码","start":"execute-gpu"},
+      {"id":"sync-surface","title":"同步解码结果","start":"sync-surface"},
+      {"id":"return-response","title":"完成响应","start":"return-response"},
+      {"id":"present-image","title":"播放交接","start":"present-image"}
+    ],
+    "virgl-encode": [
+      {"id":"initial","title":"准备会话与图像","start":"initial"},
+      {"id":"publish-submit","title":"提交 controlq","start":"publish-submit"},
+      {"id":"dispatch-submit","title":"宿主编码提交","start":"dispatch-submit"},
+      {"id":"execute-gpu","title":"GPU 编码","start":"execute-gpu"},
+      {"id":"sync-coded-output","title":"同步码流与反馈","start":"sync-coded-output"},
+      {"id":"return-response","title":"完成响应","start":"return-response"},
+      {"id":"consume-result","title":"应用取回码流","start":"consume-result"}
+    ]
+  },
+  "vm-lifecycle": {
+    "cold-start": [
+      {"id":"initial","title":"启动请求","start":"initial"},
+      {"id":"prepare-host","title":"准备宿主资源","start":"prepare-host"},
+      {"id":"launch-qemu","title":"创建进程与 KVM","start":"launch-qemu"},
+      {"id":"map-ram","title":"配置内存与设备","start":"map-ram"},
+      {"id":"start-cpus","title":"启动客户机","start":"start-cpus"},
+      {"id":"boot-kernel","title":"内核与驱动初始化","start":"boot-kernel"},
+      {"id":"application-ready","title":"应用就绪","start":"application-ready"}
+    ],
+    "acpi-shutdown": [
+      {"id":"initial","title":"提交关机请求","start":"initial"},
+      {"id":"guest-shutdown","title":"客户机有序关机","start":"guest-shutdown"},
+      {"id":"shutdown-event","title":"确认关机结果","start":"shutdown-event"},
+      {"id":"exit-qemu","title":"回收宿主资源","start":"exit-qemu"},
+      {"id":"shutoff","title":"关机完成","start":"shutoff"}
+    ],
+    "force-stop": [
+      {"id":"initial","title":"建立销毁作业","start":"initial"},
+      {"id":"signal-vmm","title":"终止 VMM","start":"signal-vmm"},
+      {"id":"release-instance","title":"回收实例资源","start":"release-instance"},
+      {"id":"destroyed","title":"销毁完成","start":"destroyed"}
+    ],
+    "pause-resume": [
+      {"id":"initial","title":"请求与执行暂停","start":"initial"},
+      {"id":"paused","title":"确认暂停","start":"paused"},
+      {"id":"request-resume","title":"请求与执行恢复","start":"request-resume"},
+      {"id":"continue-service","title":"检查业务恢复","start":"continue-service"}
+    ]
+  },
+  "disk-persistence": {
+    "write-cache": [
+      {"id":"initial","title":"提交写入","start":"initial"},
+      {"id":"write-cached","title":"后端接受数据","start":"write-cached"},
+      {"id":"write-complete","title":"发布与返回完成","start":"write-complete"},
+      {"id":"write-boundary","title":"确认完成边界","start":"write-boundary"}
+    ],
+    "write-flush": [
+      {"id":"initial","title":"提交与执行写入","start":"initial"},
+      {"id":"write-complete","title":"写入完成","start":"write-complete"},
+      {"id":"sync-call","title":"提交显式刷新","start":"sync-call"},
+      {"id":"flush-submit","title":"后端回写","start":"flush-submit"},
+      {"id":"stable-confirm","title":"确认稳定存储","start":"stable-confirm"},
+      {"id":"flush-complete","title":"同步完成","start":"flush-complete"}
+    ],
+    "write-fua": [
+      {"id":"initial","title":"提交 FUA 请求","start":"initial"},
+      {"id":"fua-cached","title":"后端写入与同步","start":"fua-cached"},
+      {"id":"fua-stable","title":"确认本次持久化","start":"fua-stable"},
+      {"id":"fua-complete","title":"完成块请求","start":"fua-complete"}
+    ]
+  }
+}

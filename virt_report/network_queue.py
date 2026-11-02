@@ -54,6 +54,17 @@ FUNCTIONS = {
     "ring-add-split": ("Linux", "drivers/virtio/virtio_ring.c", 533, "virtqueue_add_split()"),
     "ring-kick": ("Linux", "drivers/virtio/virtio_ring.c", 2468, "virtqueue_kick_prepare()"),
     "ring-notify": ("Linux", "drivers/virtio/virtio_ring.c", 2485, "virtqueue_notify()"),
+    "pci-notify": ("Linux", "drivers/virtio/virtio_pci_common.c", 51, "vp_notify()"),
+    "kvm-ioeventfd": ("Linux", "virt/kvm/eventfd.c", 804, "ioeventfd_write()"),
+    "kvm-irqfd": ("Linux", "virt/kvm/eventfd.c", 195, "irqfd_wakeup()"),
+    "kvm-msi-route": ("Linux", "arch/x86/kvm/irq.c", 225, "kvm_set_msi()"),
+    "kvm-msi-inatomic": ("Linux", "arch/x86/kvm/irq.c", 241, "kvm_arch_set_irq_inatomic()"),
+    "vmx-pending": ("Linux", "arch/x86/kvm/vmx/vmx.c", 4242, "vmx_deliver_interrupt()"),
+    "vmx-irq-allowed": ("Linux", "arch/x86/kvm/vmx/vmx.c", 5048, "vmx_interrupt_allowed()"),
+    "lapic-ack": ("Linux", "arch/x86/kvm/lapic.c", 3085, "kvm_apic_ack_interrupt()"),
+    "vmx-irq-inject": ("Linux", "arch/x86/kvm/vmx/vmx.c", 4915, "vmx_inject_irq()"),
+    "guest-ring-irq": ("Linux", "drivers/virtio/virtio_ring.c", 2693, "vring_interrupt()"),
+    "guest-edge-irq": ("Linux", "kernel/irq/chip.c", 823, "handle_edge_irq()"),
     "net-rx-poll": ("Linux", "drivers/net/virtio_net.c", 3114, "virtnet_poll()"),
     "net-receive": ("Linux", "drivers/net/virtio_net.c", 3022, "virtnet_receive()"),
     "net-receive-packets": ("Linux", "drivers/net/virtio_net.c", 2994, "virtnet_receive_packets()"),
@@ -75,6 +86,16 @@ FUNCTIONS = {
     "qemu-flush": ("QEMU", "hw/virtio/virtio.c", 1177, "virtqueue_flush()"),
     "qemu-notify-check": ("QEMU", "hw/virtio/virtio.c", 2650, "virtio_should_notify()"),
     "qemu-notify": ("QEMU", "hw/virtio/virtio.c", 2701, "virtio_notify()"),
+    "qemu-virtio-irq": ("QEMU", "hw/virtio/virtio.c", 2669, "virtio_irq()"),
+    "qemu-msix-notify": ("QEMU", "hw/pci/msix.c", 540, "msix_notify()"),
+    "qemu-msi-send": ("QEMU", "accel/kvm/kvm-all.c", 2189, "kvm_irqchip_send_msi()"),
+    "qemu-host-notifier": ("QEMU", "hw/virtio/virtio.c", 3949, "virtio_queue_host_notifier_read()"),
+    "qemu-queue-output": ("QEMU", "hw/virtio/virtio.c", 2468, "virtio_queue_notify_vq()"),
+    "qemu-tx-kick": ("QEMU", "hw/net/virtio-net.c", 2849, "virtio_net_handle_tx_bh()"),
+    "qemu-rx-kick": ("QEMU", "hw/net/virtio-net.c", 1621, "virtio_net_handle_rx()"),
+    "vdpa-host-notifier": ("QEMU", "hw/virtio/vhost-vdpa.c", 704, "vhost_vdpa_host_notifier_init()"),
+    "pci-host-notifier": ("QEMU", "hw/virtio/virtio-pci.c", 1372, "virtio_pci_set_host_notifier_mr()"),
+    "vdpa-kick-setup": ("QEMU", "hw/virtio/vhost-vdpa.c", 1497, "vhost_vdpa_set_vring_kick()"),
     "qemu-tap-write": ("QEMU", "net/tap.c", 123, "tap_write_packet()"),
     "qemu-tap-iov": ("QEMU", "net/tap.c", 137, "tap_receive_iov()"),
     "qemu-tap-send": ("QEMU", "net/tap.c", 180, "tap_send()"),
@@ -208,6 +229,206 @@ def _descriptor(index: int, address: int, length: int, flags: list[str],
             "next": next_index, "label": label, "state": "prepared"}
 
 
+def _backend_notifications(scene: dict) -> None:
+    """Show queue publication and the transport notification as separate events."""
+    backend = scene["id"].split("-", 1)[0]
+    tx = "-tx" in scene["id"]
+    queue_index = 1 if tx else 0
+    sources = ["ring-kick", "ring-notify", "pci-notify"]
+    if backend in {"qemu", "vhost"}:
+        scene["links"].extend([
+            {"id": "queue-doorbell", "from": "guest", "to": "kick",
+             "label": f"写 notify 区：队列 {queue_index}", "kind": "notification"},
+            {"id": "backend-kick", "from": "kick", "to": "backend",
+             "label": "eventfd → QEMU 事件处理" if backend == "qemu" else "eventfd → vhost worker",
+             "kind": "notification"},
+        ])
+        sources += ["kvm-ioeventfd"]
+        if backend == "qemu":
+            sources += ["qemu-host-notifier", "qemu-queue-output", "qemu-tx-kick" if tx else "qemu-rx-kick"]
+        else:
+            sources += ["vhost-setup", "vhost-kick-tx" if tx else "vhost-handle-rx"]
+        scene["assumptions"].append(
+            "通知路径启用 KVM ioeventfd；本例首次发布新链时后端请求 kick，未协商 VIRTIO_F_NOTIFICATION_DATA。"
+            "notify 区写入队列编号，由 KVM 触发预先注册的 eventfd；发送载荷保存在 Guest RAM。"
+        )
+    elif backend == "vdpa":
+        scene["links"].append({"id": "backend-kick", "from": "guest", "to": "backend",
+                               "label": f"notify 区 → 硬件队列 {queue_index} 门铃", "kind": "notification"})
+        sources += ["vdpa-host-notifier", "pci-host-notifier", "vdpa-kick-setup"]
+        scene["assumptions"].append(
+            "本例设备支持 host-notifier mmap，QEMU 已把硬件门铃页映射到 Guest notify 区；"
+            "未协商 VIRTIO_F_NOTIFICATION_DATA，发布时需要 kick。direct 数据面本身不保证门铃可直接映射。"
+        )
+    else:
+        # The selected polling path deliberately has no notification edge.
+        scene["assumptions"].append(
+            "DPDK 数据线程持续轮询，本例已通过 split-ring 通知抑制规则请求 Guest 不发 kick；"
+            "驱动仍执行通知条件检查。完成通知使用普通 callfd 路径，未使用 guest_notify offload。"
+            "vhost-user socket 用于配置，稳态报文不经该 socket 发送。"
+        )
+
+    publications = [step for step in scene["steps"]
+                    if step["id"] in {"publish", "publish-buffer", "replenish", "refill"}]
+    for published in publications:
+        refill = published["id"] == "refill"
+        suppressed = backend == "dpdk" or (refill and backend in {"qemu", "vhost"})
+        published["changes"]["notification"] = "新索引已发布，尚未检查 kick 条件"
+        if published["id"] == "publish":
+            published["detail"] = "发布屏障使描述符和 available 环项先于新索引可见。后端依据 avail.idx 判断可消费的范围。"
+        elif published["id"] == "replenish":
+            published["detail"] = "head 2 的可写空间现在已发布。QEMU 先前因缺少 RX 缓冲区暂停了交付，下一步通知它重新检查队列。"
+        published["sourceIds"] = ["ring-add-split"] if tx else ["net-refill", "ring-add-split"]
+        step = {
+            "id": "kick-refill" if refill else "kick", "title": "检查通知条件" if suppressed else "通知后端",
+            "actor": "Guest virtio-net 驱动", "description": "", "detail": "",
+            "active": ["guest"], "links": [], "changes": {}, "nodeStates": {},
+            "sourceIds": sources, "focus": False,
+        }
+        if backend == "dpdk":
+            step["description"] = "驱动检查通知抑制状态，本次无需写 notify 区；DPDK 数据线程继续轮询 available。"
+            step["detail"] = ("virtqueue_kick_prepare() 返回 false，跳过 virtqueue_notify()。"
+                              "TX 由 dequeue_burst 发现新链；RX 由 enqueue_burst 在来包时检查可写空间。")
+            step["changes"] = {"notification": "kick 被抑制；DPDK 轮询共享队列"}
+            step["nodeStates"] = {"guest": "通知检查完成，按约定不发 kick"}
+            step["sourceIds"] = ["ring-kick"]
+        elif suppressed:
+            step["description"] = "驱动检查通知条件，本次补充 RX 空间无需发送 kick。"
+            step["detail"] = (
+                "后端处理本帧时已关闭 RX 队列通知，本例尚无下一帧；后续来包时会再次检查 available。"
+                "若后端因缺少空间重新启用通知，驱动按相应规则发送 kick。"
+            )
+            step["changes"] = {"notification": "RX kick 被抑制；等待下一次网络事件"}
+            step["nodeStates"] = {"guest": "已补充 RX 空间，本次不发 kick"}
+            step["sourceIds"] = ["ring-kick", "qemu-rx-buffer" if backend == "qemu" else "vhost-handle-rx"]
+        else:
+            step["description"] = (
+                f"驱动确认需要通知，vp_notify() 向 notify 区写入队列号 {queue_index}。"
+                + ("该写入直达已映射的硬件门铃。" if backend == "vdpa" else
+                   "KVM 匹配 ioeventfd 注册项，触发对应 eventfd。")
+            )
+            if backend == "qemu":
+                step["detail"] = (
+                    "QEMU 事件循环读取并清除 eventfd，调用队列处理函数；"
+                    + ("TX handler 调度 bottom half，随后读取 available。" if tx else
+                       "RX handler 尝试刷新等待队列。已有报文可重试交付；没有来包时保留可写空间。")
+                    + "这次门铃写由 KVM 内核处理，不必让 KVM_RUN 以 MMIO 退出返回 QEMU。"
+                )
+            elif backend == "vhost":
+                step["detail"] = (
+                    "eventfd 唤起 vhost 的等待项并调度 worker，由 "
+                    + ("handle_tx_kick() 进入发送处理。" if tx else "RX kick handler 进入接收处理；无来包时等待 TAP 可读事件。")
+                    + "QEMU 已完成 kick FD 和后端配置，稳态通知无需经 QEMU 用户态转发。"
+                )
+            else:
+                step["detail"] = (
+                    "硬件收到门铃后按共享 available 索引读取队列。若设备不支持门铃 mmap，"
+                    "后备路径为 KVM ioeventfd → vhost-vDPA kick 回调 → 设备门铃；报文 DMA 仍由硬件执行。"
+                )
+            step["active"] += (["kick"] if backend in {"qemu", "vhost"} else []) + ["backend"]
+            step["links"] = (["queue-doorbell"] if backend in {"qemu", "vhost"} else []) + ["backend-kick"]
+            step["changes"] = {"notification": "硬件队列门铃已写入" if backend == "vdpa" else "ioeventfd kick 已交给后端"}
+            step["nodeStates"] = {"guest": "队列通知已发送", "backend": "已获新链通知，等待处理" if tx else "已获新 RX 空间通知，等待报文交付"}
+            if backend in {"qemu", "vhost"}:
+                step["nodeStates"]["kick"] = f"队列 {queue_index} 门铃已匹配，eventfd 已触发"
+        offset = scene["steps"].index(published) + 1
+        scene["steps"].insert(offset, step)
+
+
+def _completion_interrupts(scene: dict) -> None:
+    """Separate device notification, pending IRQ, injection and Guest handling."""
+    backend = scene["id"].split("-", 1)[0]
+    tx = "-tx" in scene["id"]
+    notify = next(step for step in scene["steps"] if step["id"] == "notify")
+    scene["assumptions"].append(
+        "完成中断固定为 MSI-X，表项未屏蔽，队列允许本次通知；未协商 EVENT_IDX。"
+        "使用 KVM 内核 LAPIC 与 VMX 软件注入，未启用 APICv / posted interrupt；"
+        "目标 vCPU 的 IF=1、无中断阴影且优先级允许接受向量 0x51。"
+        + ("Guest 开启 TX NAPI，TX 回调安排后续 NAPI 回收。" if tx else
+           "RX 回调安排 NAPI；NAPI 获得调度后再消费完成项。")
+    )
+    if backend != "qemu":
+        scene["assumptions"].append("call eventfd 已绑定 KVM irqfd；本次 MSI 快速路由成功，不进入工作队列回退。")
+    if backend == "qemu":
+        description = "QEMU 检查队列通知条件和 MSI-X 屏蔽状态，通过 KVM_SIGNAL_MSI 提交本次完成中断。"
+        detail = (
+            "固定 QEMU 主事件循环持有 BQL 的设备处理路径：virtio_irq() 经 MSI-X 设备通知进入 KVM。"
+            "此时 used 已发布，Guest 尚未执行中断处理；使用 IOThread 的设备可另走 guest notifier / irqfd。"
+        )
+        label = "MSI-X → KVM_SIGNAL_MSI"
+        sources = ["qemu-notify", "qemu-notify-check", "qemu-virtio-irq", "qemu-msix-notify", "qemu-msi-send"]
+    elif backend == "vhost":
+        description = "vhost 检查队列通知条件，触发 call eventfd；已绑定的 KVM irqfd 接收该事件。"
+        detail = "callfd 承载完成提示，和 Guest 提交请求时的 kickfd 方向相反。used 已发布，irqfd 按预先配置的 MSI 路由转交中断。"
+        label = "call eventfd → KVM irqfd"
+        sources = ["vhost-notify-check", "vhost-notify-signal", "vhost-setup", "kvm-irqfd"]
+    elif backend == "dpdk":
+        description = "DPDK vhost 库检查队列通知条件，向 callfd 写入 eventfd 事件，交给 KVM irqfd。"
+        detail = "DPDK 轮询的是 Guest 提交队列；Guest 本例仍依靠完成中断安排回收。callfd 由 vhost-user 控制面事先传递，本次通知不通过控制 socket 传送报文。"
+        label = "callfd → KVM irqfd"
+        sources = ["dpdk-split-tx" if tx else "dpdk-split-rx", "vhost-user", "kvm-irqfd"]
+    else:
+        description = "vDPA 硬件发布完成后产生设备中断，宿主 vDPA 回调触发 call eventfd，再进入 KVM irqfd。"
+        detail = "本例选择宿主回调与 irqfd 的软件递送路径；硬件直接处理 virtqueue 不等于中断也直投 Guest。厂商中断寄存器与固件内部实现不在图中展开。"
+        label = "设备 IRQ → vDPA 回调 → irqfd"
+        sources = ["virtio-ring-spec", "vhost-setup", "kvm-irqfd"]
+    notify.update(
+        title="提交完成中断", description=description, detail=detail,
+        active=["backend", "interrupt"], links=["notify"], sourceIds=sources,
+        changes={"notification": "完成通知已提交，等待 KVM 路由",
+                 "completionNotification": "KVM_SIGNAL_MSI 已提交" if backend == "qemu" else "call eventfd / irqfd 已触发"},
+        nodeStates={"interrupt": "收到完成通知，准备查找目标 vCPU",
+                    "guest": "used 已发布，尚未执行本次 Guest 中断"}, focus=False,
+    )
+    notify_link = next(link for link in scene["links"] if link["id"] == "notify")
+    notify_link.update(to="interrupt", label=label)
+    scene["links"].extend([
+        {"id": "prepare-interrupt", "from": "interrupt", "to": "vcpu",
+         "label": "待处理中断 → VM-entry 注入字段", "kind": "notification"},
+        {"id": "guest-interrupt", "from": "vcpu", "to": "guest",
+         "label": "成功 VM-entry → Guest IRQ → NAPI", "kind": "notification"},
+    ])
+    injections = [
+        {
+            "id": "route-interrupt", "title": "记录待处理中断", "actor": "KVM · MSI 路由与 vLAPIC",
+            "description": "KVM 按 MSI 地址与数据选中目标 vCPU，在其虚拟 LAPIC 中记录向量 0x51。",
+            "detail": "IRR 记录待处理状态，并请求目标 vCPU 处理事件；必要时唤醒或踢出正在运行的 vCPU。此时尚未跳转到 Guest 中断入口。",
+            "active": ["interrupt"], "links": [],
+            "changes": {"lapicState": "IRR：0x51 待处理"},
+            "nodeStates": {"interrupt": "IRR 中有 0x51，等待 vCPU 检查接受条件"},
+            "sourceIds": ["kvm-msi-route" if backend == "qemu" else "kvm-msi-inatomic", "vmx-pending"], "focus": False,
+        },
+        {
+            "id": "prepare-interrupt", "title": "准备中断注入", "actor": "KVM · 目标 vCPU 线程",
+            "description": "目标 vCPU 线程检查中断接受条件，应答 LAPIC 请求，并准备下一次 VM-entry 的中断注入字段。",
+            "detail": "本例 IF、优先级和中断阴影检查均通过。vmx_inject_irq() 填写 VMCS；设置注入字段还没有执行 Guest 指令。若当前不可接受，KVM 保留待处理状态，等待合适窗口。",
+            "active": ["interrupt", "vcpu"], "links": ["prepare-interrupt"],
+            "changes": {"lapicState": "IRR 已应答；ISR：0x51", "entryState": "VM-entry 中断字段：0x51"},
+            "nodeStates": {"interrupt": "0x51 已从待处理转入服务状态", "vcpu": "VMCS 已准备，尚未成功进入 Guest"},
+            "sourceIds": ["vmx-irq-allowed", "lapic-ack", "vmx-irq-inject"], "focus": False,
+        },
+        {
+            "id": "guest-interrupt", "title": "进入 Guest 中断", "actor": "Guest 内核 · IRQ 与 virtio 回调",
+            "description": "VM-entry 成功后，CPU 按 Guest IDT 转入中断入口；virtio 队列回调安排 NAPI。",
+            "detail": ("本例开启 TX NAPI，skb_xmit_done() 安排发送完成清理。" if tx else
+                       "vring_interrupt() 调用 skb_recv_done()，安排 RX NAPI。")
+                      + "中断入口的 APIC 应答只更新中断服务状态；NAPI 随后依据 used.idx 回收队列，两个进度各自维护。",
+            "active": ["vcpu", "guest"], "links": ["guest-interrupt"],
+            "changes": {"entryState": "VM-entry 成功，Guest 已接受 0x51",
+                        "lapicState": "本次中断已由 Guest 应答（EOI）",
+                        "guestIrqState": "队列回调已安排 NAPI，尚未回收 used"},
+            "nodeStates": {"vcpu": "已成功进入 Guest IRQ 处理路径",
+                           "interrupt": "Guest 已发送 EOI，ISR 中的 0x51 已清除",
+                           "guest": "NAPI 已安排，等待消费 used 完成项"},
+            "sourceIds": ["vmx-irq-inject", "guest-edge-irq", "guest-ring-irq"], "focus": False,
+        },
+    ]
+    offset = scene["steps"].index(notify) + 1
+    scene["steps"][offset:offset] = injections
+    reclaim = next(step for step in scene["steps"] if step["id"] == ("reclaim" if tx else "receive"))
+    reclaim["changes"]["guestIrqState"] = "NAPI 已消费本次 used；中断计数与完成数独立"
+
+
 def _snapshot_queue(scene: dict) -> None:
     """Replay known event IDs into typed snapshots; no translated text parsing."""
     tx = "-tx" in scene["id"]
@@ -334,6 +555,9 @@ def _node_states(scene: dict) -> None:
         "port": "尚未接受本次发送帧" if tx else "等待本次帧到达",
         "network": "尚未发出本次帧；远端状态未知" if tx else "本次帧尚未到达本机",
         "control": "队列与后端已配置，不逐包处理",
+        "kick": "notify 地址与 eventfd 已登记，尚无本次 kick",
+        "interrupt": "MSI 路由已配置，尚无本次待处理中断",
+        "vcpu": "尚未准备本次完成中断的 VM-entry 注入",
     }
     for node in scene["nodes"]:
         node["initial"] = initial[node["id"]]
@@ -487,6 +711,29 @@ def _call_paths(scene: dict) -> None:
                        ["vdpa-map", "virtio-ring-spec", "virtio-net-spec"],
                        "QEMU 配置 DMA 映射，硬件按协议执行队列。此处引用硬件接口规范，不虚构设备固件内部函数；未启用 SVQ。")]
     scene["callPaths"].extend(paths)
+    step_by_id = {step["id"]: step for step in scene["steps"]}
+    kick_sources = list(dict.fromkeys(
+        source for step in scene["steps"] if step["id"] in {"kick", "kick-refill"}
+        for source in step["sourceIds"]
+    ))
+    scene["callPaths"].insert(3, _path(
+        "queue-kick", "发布后的通知检查与后端交接", "Guest 驱动 · 传输通知边界",
+        kick_sources,
+        "DPDK 轮询场景检查后跳过 notify。QEMU / vhost 通过 ioeventfd，"
+        "选定的 vDPA 场景通过直接映射的门铃；RX 再补充空间时需重新判断通知条件。",
+    ))
+    scene["callPaths"].extend([
+        _path("completion-signal", "后端提交完成通知", "后端 → KVM · MSI / irqfd 边界",
+              step_by_id["notify"]["sourceIds"],
+              "QEMU 主事件循环使用 KVM_SIGNAL_MSI；vhost、DPDK 与本例 vDPA 使用 call eventfd / irqfd。"
+              "提交中断不表示目标 vCPU 已进入 Guest IRQ。"),
+        _path("kvm-injection", "KVM 路由、挂起与注入", "宿主内核 · KVM 与目标 vCPU 线程",
+              step_by_id["route-interrupt"]["sourceIds"] + step_by_id["prepare-interrupt"]["sourceIds"],
+              "向量先进入虚拟 LAPIC 待处理状态。接受条件通过后准备 VMCS，成功 VM-entry 才能进入 Guest 中断入口。"),
+        _path("guest-interrupt", "Guest IRQ 与 NAPI 调度", "Guest 内核 · 中断入口与 virtio 回调",
+              step_by_id["guest-interrupt"]["sourceIds"],
+              "中断应答与 used 回收分别推进；TX 本例开启 NAPI，RX 回调安排接收 NAPI，稍后消费队列。"),
+    ])
     scene["callPaths"].append(_path(
         "guest-complete", "Guest 消费完成", "Guest 内核 · virtio-net 完成 / NAPI",
         ["net-free-tx", "ring-get", "ring-get-split"] if tx else
@@ -581,6 +828,8 @@ def enrich_network_demo(demo: dict) -> None:
             "设备可写长度 12 + GOOD_PACKET_LEN = 1530 B，不等于页片段的实际分配大小。"
         )
         _split_publications(scene)
+        _backend_notifications(scene)
+        _completion_interrupts(scene)
         _snapshot_queue(scene)
         _node_states(scene)
         _call_paths(scene)

@@ -196,6 +196,21 @@
           "id": "network",
           "label": "外部网络",
           "role": "external"
+        },
+        {
+          "id": "kick",
+          "label": "提交通知 · ioeventfd",
+          "role": "kernel"
+        },
+        {
+          "id": "interrupt",
+          "label": "中断路由 · vLAPIC",
+          "role": "kernel"
+        },
+        {
+          "id": "vcpu",
+          "label": "VM-entry 注入",
+          "role": "kernel"
         }
       ],
       "links": [
@@ -361,6 +376,33 @@
               "key": "delivery",
               "label": "交付范围",
               "initial": "远端是否收到：未确认"
+            }
+          ]
+        },
+        {
+          "id": "interrupt-state",
+          "title": "完成通知与中断交付",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "completionNotification",
+              "label": "设备完成通知",
+              "initial": "尚未发送"
+            },
+            {
+              "key": "lapicState",
+              "label": "vLAPIC",
+              "initial": "无本次待处理中断"
+            },
+            {
+              "key": "entryState",
+              "label": "VM-entry 注入",
+              "initial": "尚未准备"
+            },
+            {
+              "key": "guestIrqState",
+              "label": "Guest 中断处理",
+              "initial": "尚未进入"
             }
           ]
         },
@@ -579,8 +621,8 @@
           "id": "consume",
           "title": "取得描述符链",
           "actor": "QEMU 用户态",
-          "description": "后端读取 available，取得链头 0 并检查设备可读区域。",
-          "detail": "virtio_net_flush_tx() 调用 virtqueue_pop()，解析可读 iovec 与网络头。",
+          "description": "后端观察 available 新索引，取出链头 0，检查设备可读缓冲区。",
+          "detail": "virtio_net_flush_tx() 通过 virtqueue_pop() 取得 iovec，解析 virtio-net 头；报文仍在 Guest RAM，下一步交给 TAP。",
           "active": [
             "queue",
             "backend"
@@ -675,8 +717,8 @@
           "id": "reclaim",
           "title": "回收 TX 链",
           "actor": "Guest virtio-net 驱动",
-          "description": "驱动消费 used 项，找到链头 0 并释放本次发送引用。",
-          "detail": "回收位置更新为 1。Guest 链和原始发送缓冲区现在可以复用；描述符槽中的旧值无需清零，是否有效由环索引决定。 应用 U0 早已独立可用。socket 发送计账可能随 skb_orphan() 提前解除，也可能在 skb 释放时回收，不能与 used.idx 简单等同。",
+          "description": "驱动依据 used.idx 取得链头 0，回收描述符并释放发送 skb 的设备引用。",
+          "detail": "回收位置推进到 1，缓冲区可复用；槽位旧值可保留。应用 U0 在 sendto 返回时已独立可用；socket 计账可能在 skb_orphan() 时提前解除，与 TX used 无固定对应关系。",
           "active": [
             "queue",
             "guest"
@@ -772,6 +814,21 @@
           "id": "network",
           "label": "外部网络",
           "role": "external"
+        },
+        {
+          "id": "kick",
+          "label": "提交通知 · ioeventfd",
+          "role": "kernel"
+        },
+        {
+          "id": "interrupt",
+          "label": "中断路由 · vLAPIC",
+          "role": "kernel"
+        },
+        {
+          "id": "vcpu",
+          "label": "VM-entry 注入",
+          "role": "kernel"
         }
       ],
       "links": [
@@ -951,6 +1008,33 @@
               "key": "delivery",
               "label": "交付范围",
               "initial": "尚未交给 Guest 协议栈"
+            }
+          ]
+        },
+        {
+          "id": "interrupt-state",
+          "title": "完成通知与中断交付",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "completionNotification",
+              "label": "设备完成通知",
+              "initial": "尚未发送"
+            },
+            {
+              "key": "lapicState",
+              "label": "vLAPIC",
+              "initial": "无本次待处理中断"
+            },
+            {
+              "key": "entryState",
+              "label": "VM-entry 注入",
+              "initial": "尚未准备"
+            },
+            {
+              "key": "guestIrqState",
+              "label": "Guest 中断处理",
+              "initial": "尚未进入"
             }
           ]
         },
@@ -1250,8 +1334,8 @@
           "id": "socket-enqueue",
           "title": "送入 UDP socket",
           "actor": "Guest IPv4 / UDP 协议栈",
-          "description": "本轮 NAPI 完成后，普通列表交给 IPv4 / UDP 协议栈，校验并分发 P1，将 18 B 载荷排入目标 socket。",
-          "detail": "本例 received 小于 budget，virtnet_poll() 经 virtqueue_napi_complete() 调用 napi_complete_done()，由 gro_flush_normal() 刷新普通列表。UDP 根据地址和端口查找 socket，接收预算足够时排队并通知等待者。Linux 6.18 可能经 producer queue 归并，再由 reader_queue 供 recvmsg 消费；这里显示逻辑上一个待收数据报。唤醒只使线程可运行。",
+          "description": "本轮 NAPI 完成后，普通接收列表交给 IPv4/UDP 协议栈；协议检查通过，18 B 载荷进入目标 socket。",
+          "detail": "本例 received 小于 budget，napi_complete_done() 经 gro_flush_normal() 刷新 GRO_NORMAL 列表。UDP 校验地址、端口和内存预算后排队，唤醒 recvfrom 等待者；线程仍需获得 CPU 才能复制数据。Linux 6.18 的 producer/reader 队列在图中合为逻辑接收队列。",
           "active": [
             "guest",
             "stack",
@@ -1398,6 +1482,21 @@
           "id": "control",
           "label": "QEMU · 配置控制",
           "role": "control"
+        },
+        {
+          "id": "kick",
+          "label": "提交通知 · ioeventfd",
+          "role": "kernel"
+        },
+        {
+          "id": "interrupt",
+          "label": "中断路由 · vLAPIC",
+          "role": "kernel"
+        },
+        {
+          "id": "vcpu",
+          "label": "VM-entry 注入",
+          "role": "kernel"
         }
       ],
       "links": [
@@ -1570,6 +1669,33 @@
               "key": "delivery",
               "label": "交付范围",
               "initial": "远端是否收到：未确认"
+            }
+          ]
+        },
+        {
+          "id": "interrupt-state",
+          "title": "完成通知与中断交付",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "completionNotification",
+              "label": "设备完成通知",
+              "initial": "尚未发送"
+            },
+            {
+              "key": "lapicState",
+              "label": "vLAPIC",
+              "initial": "无本次待处理中断"
+            },
+            {
+              "key": "entryState",
+              "label": "VM-entry 注入",
+              "initial": "尚未准备"
+            },
+            {
+              "key": "guestIrqState",
+              "label": "Guest 中断处理",
+              "initial": "尚未进入"
             }
           ]
         },
@@ -1788,8 +1914,8 @@
           "id": "consume",
           "title": "取得描述符链",
           "actor": "宿主内核 vhost-net",
-          "description": "后端读取 available，取得链头 0 并检查设备可读区域。",
-          "detail": "handle_tx() 选择本例的 handle_tx_copy()，vhost 获取可读 iovec，正常收发不需要 QEMU 逐包参与。",
+          "description": "后端观察 available 新索引，取出链头 0，检查设备可读缓冲区。",
+          "detail": "vhost worker 进入 handle_tx() 的普通复制分支，取得可读 iovec；QEMU 控制线程不参与逐包处理。",
           "active": [
             "queue",
             "backend"
@@ -1883,8 +2009,8 @@
           "id": "reclaim",
           "title": "回收 TX 链",
           "actor": "Guest virtio-net 驱动",
-          "description": "驱动消费 used 项，找到链头 0 并释放本次发送引用。",
-          "detail": "回收位置更新为 1。Guest 链和原始发送缓冲区现在可以复用；描述符槽中的旧值无需清零，是否有效由环索引决定。 应用 U0 早已独立可用。socket 发送计账可能随 skb_orphan() 提前解除，也可能在 skb 释放时回收，不能与 used.idx 简单等同。",
+          "description": "驱动依据 used.idx 取得链头 0，回收描述符并释放发送 skb 的设备引用。",
+          "detail": "回收位置推进到 1，缓冲区可复用；槽位旧值可保留。应用 U0 在 sendto 返回时已独立可用；socket 计账可能在 skb_orphan() 时提前解除，与 TX used 无固定对应关系。",
           "active": [
             "queue",
             "guest"
@@ -1985,6 +2111,21 @@
           "id": "control",
           "label": "QEMU · 配置控制",
           "role": "control"
+        },
+        {
+          "id": "kick",
+          "label": "提交通知 · ioeventfd",
+          "role": "kernel"
+        },
+        {
+          "id": "interrupt",
+          "label": "中断路由 · vLAPIC",
+          "role": "kernel"
+        },
+        {
+          "id": "vcpu",
+          "label": "VM-entry 注入",
+          "role": "kernel"
         }
       ],
       "links": [
@@ -2171,6 +2312,33 @@
               "key": "delivery",
               "label": "交付范围",
               "initial": "尚未交给 Guest 协议栈"
+            }
+          ]
+        },
+        {
+          "id": "interrupt-state",
+          "title": "完成通知与中断交付",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "completionNotification",
+              "label": "设备完成通知",
+              "initial": "尚未发送"
+            },
+            {
+              "key": "lapicState",
+              "label": "vLAPIC",
+              "initial": "无本次待处理中断"
+            },
+            {
+              "key": "entryState",
+              "label": "VM-entry 注入",
+              "initial": "尚未准备"
+            },
+            {
+              "key": "guestIrqState",
+              "label": "Guest 中断处理",
+              "initial": "尚未进入"
             }
           ]
         },
@@ -2468,8 +2636,8 @@
           "id": "socket-enqueue",
           "title": "送入 UDP socket",
           "actor": "Guest IPv4 / UDP 协议栈",
-          "description": "本轮 NAPI 完成后，普通列表交给 IPv4 / UDP 协议栈，校验并分发 P1，将 18 B 载荷排入目标 socket。",
-          "detail": "本例 received 小于 budget，virtnet_poll() 经 virtqueue_napi_complete() 调用 napi_complete_done()，由 gro_flush_normal() 刷新普通列表。UDP 根据地址和端口查找 socket，接收预算足够时排队并通知等待者。Linux 6.18 可能经 producer queue 归并，再由 reader_queue 供 recvmsg 消费；这里显示逻辑上一个待收数据报。唤醒只使线程可运行。",
+          "description": "本轮 NAPI 完成后，普通接收列表交给 IPv4/UDP 协议栈；协议检查通过，18 B 载荷进入目标 socket。",
+          "detail": "本例 received 小于 budget，napi_complete_done() 经 gro_flush_normal() 刷新 GRO_NORMAL 列表。UDP 校验地址、端口和内存预算后排队，唤醒 recvfrom 等待者；线程仍需获得 CPU 才能复制数据。Linux 6.18 的 producer/reader 队列在图中合为逻辑接收队列。",
           "active": [
             "guest",
             "stack",
@@ -2616,6 +2784,16 @@
           "id": "control",
           "label": "QEMU · 配置控制",
           "role": "control"
+        },
+        {
+          "id": "interrupt",
+          "label": "中断路由 · vLAPIC",
+          "role": "kernel"
+        },
+        {
+          "id": "vcpu",
+          "label": "VM-entry 注入",
+          "role": "kernel"
         }
       ],
       "links": [
@@ -2810,6 +2988,33 @@
               "key": "pmdQueue",
               "label": "PMD 队列",
               "initial": "TX 尚未提交 P1"
+            }
+          ]
+        },
+        {
+          "id": "interrupt-state",
+          "title": "完成通知与中断交付",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "completionNotification",
+              "label": "设备完成通知",
+              "initial": "尚未发送"
+            },
+            {
+              "key": "lapicState",
+              "label": "vLAPIC",
+              "initial": "无本次待处理中断"
+            },
+            {
+              "key": "entryState",
+              "label": "VM-entry 注入",
+              "initial": "尚未准备"
+            },
+            {
+              "key": "guestIrqState",
+              "label": "Guest 中断处理",
+              "initial": "尚未进入"
             }
           ]
         },
@@ -3028,8 +3233,8 @@
           "id": "consume",
           "title": "取得描述符链",
           "actor": "DPDK 数据线程",
-          "description": "后端读取 available，取得链头 0 并检查设备可读区域。",
-          "detail": "应用调用 rte_vhost_dequeue_burst(vid, 1, ...) 从 Guest TX 队列取包；队列地址通过共享内存映射解释。",
+          "description": "后端观察 available 新索引，取出链头 0，检查设备可读缓冲区。",
+          "detail": "DPDK 数据线程调用 rte_vhost_dequeue_burst(vid, 1, ...) 轮询 TX 队列，通过共享内存映射读取描述符。",
           "active": [
             "queue",
             "backend"
@@ -3126,8 +3331,8 @@
           "id": "reclaim",
           "title": "回收 TX 链",
           "actor": "Guest virtio-net 驱动",
-          "description": "驱动消费 used 项，找到链头 0 并释放本次发送引用。",
-          "detail": "回收位置更新为 1。Guest 链和原始发送缓冲区现在可以复用；描述符槽中的旧值无需清零，是否有效由环索引决定。 应用 U0 早已独立可用。socket 发送计账可能随 skb_orphan() 提前解除，也可能在 skb 释放时回收，不能与 used.idx 简单等同。",
+          "description": "驱动依据 used.idx 取得链头 0，回收描述符并释放发送 skb 的设备引用。",
+          "detail": "回收位置推进到 1，缓冲区可复用；槽位旧值可保留。应用 U0 在 sendto 返回时已独立可用；socket 计账可能在 skb_orphan() 时提前解除，与 TX used 无固定对应关系。",
           "active": [
             "queue",
             "guest"
@@ -3253,6 +3458,16 @@
           "id": "control",
           "label": "QEMU · 配置控制",
           "role": "control"
+        },
+        {
+          "id": "interrupt",
+          "label": "中断路由 · vLAPIC",
+          "role": "kernel"
+        },
+        {
+          "id": "vcpu",
+          "label": "VM-entry 注入",
+          "role": "kernel"
         }
       ],
       "links": [
@@ -3461,6 +3676,33 @@
               "key": "pmdQueue",
               "label": "PMD 队列",
               "initial": "RX 缓冲区已经准备"
+            }
+          ]
+        },
+        {
+          "id": "interrupt-state",
+          "title": "完成通知与中断交付",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "completionNotification",
+              "label": "设备完成通知",
+              "initial": "尚未发送"
+            },
+            {
+              "key": "lapicState",
+              "label": "vLAPIC",
+              "initial": "无本次待处理中断"
+            },
+            {
+              "key": "entryState",
+              "label": "VM-entry 注入",
+              "initial": "尚未准备"
+            },
+            {
+              "key": "guestIrqState",
+              "label": "Guest 中断处理",
+              "initial": "尚未进入"
             }
           ]
         },
@@ -3783,8 +4025,8 @@
           "id": "socket-enqueue",
           "title": "送入 UDP socket",
           "actor": "Guest IPv4 / UDP 协议栈",
-          "description": "本轮 NAPI 完成后，普通列表交给 IPv4 / UDP 协议栈，校验并分发 P1，将 18 B 载荷排入目标 socket。",
-          "detail": "本例 received 小于 budget，virtnet_poll() 经 virtqueue_napi_complete() 调用 napi_complete_done()，由 gro_flush_normal() 刷新普通列表。UDP 根据地址和端口查找 socket，接收预算足够时排队并通知等待者。Linux 6.18 可能经 producer queue 归并，再由 reader_queue 供 recvmsg 消费；这里显示逻辑上一个待收数据报。唤醒只使线程可运行。",
+          "description": "本轮 NAPI 完成后，普通接收列表交给 IPv4/UDP 协议栈；协议检查通过，18 B 载荷进入目标 socket。",
+          "detail": "本例 received 小于 budget，napi_complete_done() 经 gro_flush_normal() 刷新 GRO_NORMAL 列表。UDP 校验地址、端口和内存预算后排队，唤醒 recvfrom 等待者；线程仍需获得 CPU 才能复制数据。Linux 6.18 的 producer/reader 队列在图中合为逻辑接收队列。",
           "active": [
             "guest",
             "stack",
@@ -3931,6 +4173,16 @@
           "id": "control",
           "label": "QEMU · 配置控制",
           "role": "control"
+        },
+        {
+          "id": "interrupt",
+          "label": "中断路由 · vLAPIC",
+          "role": "kernel"
+        },
+        {
+          "id": "vcpu",
+          "label": "VM-entry 注入",
+          "role": "kernel"
         }
       ],
       "links": [
@@ -4120,6 +4372,33 @@
               "key": "svq",
               "label": "SVQ",
               "initial": "关闭；硬件直接访问 Guest virtqueue"
+            }
+          ]
+        },
+        {
+          "id": "interrupt-state",
+          "title": "完成通知与中断交付",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "completionNotification",
+              "label": "设备完成通知",
+              "initial": "尚未发送"
+            },
+            {
+              "key": "lapicState",
+              "label": "vLAPIC",
+              "initial": "无本次待处理中断"
+            },
+            {
+              "key": "entryState",
+              "label": "VM-entry 注入",
+              "initial": "尚未准备"
+            },
+            {
+              "key": "guestIrqState",
+              "label": "Guest 中断处理",
+              "initial": "尚未进入"
             }
           ]
         },
@@ -4338,8 +4617,8 @@
           "id": "consume",
           "title": "取得描述符链",
           "actor": "vDPA 硬件设备",
-          "description": "后端读取 available，取得链头 0 并检查设备可读区域。",
-          "detail": "硬件按照协商后的 virtio 队列格式读取描述符，设备地址经过已建立的 DMA 映射。此处不展开厂商内部调度。",
+          "description": "后端观察 available 新索引，取出链头 0，检查设备可读缓冲区。",
+          "detail": "硬件收到队列门铃后读取共享描述符；已建立的 DMA 映射限定可访问的 Guest 缓冲区。",
           "active": [
             "queue",
             "backend"
@@ -4435,8 +4714,8 @@
           "id": "reclaim",
           "title": "回收 TX 链",
           "actor": "Guest virtio-net 驱动",
-          "description": "驱动消费 used 项，找到链头 0 并释放本次发送引用。",
-          "detail": "回收位置更新为 1。Guest 链和原始发送缓冲区现在可以复用；描述符槽中的旧值无需清零，是否有效由环索引决定。 应用 U0 早已独立可用。socket 发送计账可能随 skb_orphan() 提前解除，也可能在 skb 释放时回收，不能与 used.idx 简单等同。",
+          "description": "驱动依据 used.idx 取得链头 0，回收描述符并释放发送 skb 的设备引用。",
+          "detail": "回收位置推进到 1，缓冲区可复用；槽位旧值可保留。应用 U0 在 sendto 返回时已独立可用；socket 计账可能在 skb_orphan() 时提前解除，与 TX used 无固定对应关系。",
           "active": [
             "queue",
             "guest"
@@ -4537,6 +4816,16 @@
           "id": "control",
           "label": "QEMU · 配置控制",
           "role": "control"
+        },
+        {
+          "id": "interrupt",
+          "label": "中断路由 · vLAPIC",
+          "role": "kernel"
+        },
+        {
+          "id": "vcpu",
+          "label": "VM-entry 注入",
+          "role": "kernel"
         }
       ],
       "links": [
@@ -4740,6 +5029,33 @@
               "key": "svq",
               "label": "SVQ",
               "initial": "关闭；硬件直接访问 Guest virtqueue"
+            }
+          ]
+        },
+        {
+          "id": "interrupt-state",
+          "title": "完成通知与中断交付",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "completionNotification",
+              "label": "设备完成通知",
+              "initial": "尚未发送"
+            },
+            {
+              "key": "lapicState",
+              "label": "vLAPIC",
+              "initial": "无本次待处理中断"
+            },
+            {
+              "key": "entryState",
+              "label": "VM-entry 注入",
+              "initial": "尚未准备"
+            },
+            {
+              "key": "guestIrqState",
+              "label": "Guest 中断处理",
+              "initial": "尚未进入"
             }
           ]
         },
@@ -5037,8 +5353,8 @@
           "id": "socket-enqueue",
           "title": "送入 UDP socket",
           "actor": "Guest IPv4 / UDP 协议栈",
-          "description": "本轮 NAPI 完成后，普通列表交给 IPv4 / UDP 协议栈，校验并分发 P1，将 18 B 载荷排入目标 socket。",
-          "detail": "本例 received 小于 budget，virtnet_poll() 经 virtqueue_napi_complete() 调用 napi_complete_done()，由 gro_flush_normal() 刷新普通列表。UDP 根据地址和端口查找 socket，接收预算足够时排队并通知等待者。Linux 6.18 可能经 producer queue 归并，再由 reader_queue 供 recvmsg 消费；这里显示逻辑上一个待收数据报。唤醒只使线程可运行。",
+          "description": "本轮 NAPI 完成后，普通接收列表交给 IPv4/UDP 协议栈；协议检查通过，18 B 载荷进入目标 socket。",
+          "detail": "本例 received 小于 budget，napi_complete_done() 经 gro_flush_normal() 刷新 GRO_NORMAL 列表。UDP 校验地址、端口和内存预算后排队，唤醒 recvfrom 等待者；线程仍需获得 CPU 才能复制数据。Linux 6.18 的 producer/reader 队列在图中合为逻辑接收队列。",
           "active": [
             "guest",
             "stack",
@@ -5181,6 +5497,21 @@
           "id": "network",
           "label": "外部网络",
           "role": "external"
+        },
+        {
+          "id": "kick",
+          "label": "提交通知 · ioeventfd",
+          "role": "kernel"
+        },
+        {
+          "id": "interrupt",
+          "label": "中断路由 · vLAPIC",
+          "role": "kernel"
+        },
+        {
+          "id": "vcpu",
+          "label": "VM-entry 注入",
+          "role": "kernel"
         }
       ],
       "links": [
@@ -5346,6 +5677,33 @@
               "key": "delivery",
               "label": "交付范围",
               "initial": "远端是否收到：未确认"
+            }
+          ]
+        },
+        {
+          "id": "interrupt-state",
+          "title": "完成通知与中断交付",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "completionNotification",
+              "label": "设备完成通知",
+              "initial": "尚未发送"
+            },
+            {
+              "key": "lapicState",
+              "label": "vLAPIC",
+              "initial": "无本次待处理中断"
+            },
+            {
+              "key": "entryState",
+              "label": "VM-entry 注入",
+              "initial": "尚未准备"
+            },
+            {
+              "key": "guestIrqState",
+              "label": "Guest 中断处理",
+              "initial": "尚未进入"
             }
           ]
         },
@@ -5564,8 +5922,8 @@
           "id": "consume",
           "title": "取得描述符链",
           "actor": "QEMU 用户态",
-          "description": "后端读取 available，取得链头 0 并检查设备可读区域。",
-          "detail": "virtio_net_flush_tx() 调用 virtqueue_pop()，解析可读 iovec 与网络头。",
+          "description": "后端观察 available 新索引，取出链头 0，检查设备可读缓冲区。",
+          "detail": "virtio_net_flush_tx() 通过 virtqueue_pop() 取得 iovec，解析 virtio-net 头；报文仍在 Guest RAM，下一步交给 TAP。",
           "active": [
             "queue",
             "backend"
@@ -5686,8 +6044,8 @@
           "id": "reclaim",
           "title": "回收 TX 链",
           "actor": "Guest virtio-net 驱动",
-          "description": "驱动消费 used 项，找到链头 0 并释放本次发送引用。",
-          "detail": "回收位置更新为 1。Guest 链和原始发送缓冲区现在可以复用；描述符槽中的旧值无需清零，是否有效由环索引决定。 应用 U0 早已独立可用。socket 发送计账可能随 skb_orphan() 提前解除，也可能在 skb 释放时回收，不能与 used.idx 简单等同。",
+          "description": "驱动依据 used.idx 取得链头 0，回收描述符并释放发送 skb 的设备引用。",
+          "detail": "回收位置推进到 1，缓冲区可复用；槽位旧值可保留。应用 U0 在 sendto 返回时已独立可用；socket 计账可能在 skb_orphan() 时提前解除，与 TX used 无固定对应关系。",
           "active": [
             "queue",
             "guest"
@@ -5784,6 +6142,21 @@
           "id": "network",
           "label": "外部网络",
           "role": "external"
+        },
+        {
+          "id": "kick",
+          "label": "提交通知 · ioeventfd",
+          "role": "kernel"
+        },
+        {
+          "id": "interrupt",
+          "label": "中断路由 · vLAPIC",
+          "role": "kernel"
+        },
+        {
+          "id": "vcpu",
+          "label": "VM-entry 注入",
+          "role": "kernel"
         }
       ],
       "links": [
@@ -5963,6 +6336,33 @@
               "key": "delivery",
               "label": "交付范围",
               "initial": "尚未交给 Guest 协议栈"
+            }
+          ]
+        },
+        {
+          "id": "interrupt-state",
+          "title": "完成通知与中断交付",
+          "kind": "interrupt",
+          "fields": [
+            {
+              "key": "completionNotification",
+              "label": "设备完成通知",
+              "initial": "尚未发送"
+            },
+            {
+              "key": "lapicState",
+              "label": "vLAPIC",
+              "initial": "无本次待处理中断"
+            },
+            {
+              "key": "entryState",
+              "label": "VM-entry 注入",
+              "initial": "尚未准备"
+            },
+            {
+              "key": "guestIrqState",
+              "label": "Guest 中断处理",
+              "initial": "尚未进入"
             }
           ]
         },
@@ -6287,8 +6687,8 @@
           "id": "socket-enqueue",
           "title": "送入 UDP socket",
           "actor": "Guest IPv4 / UDP 协议栈",
-          "description": "本轮 NAPI 完成后，普通列表交给 IPv4 / UDP 协议栈，校验并分发 P1，将 18 B 载荷排入目标 socket。",
-          "detail": "本例 received 小于 budget，virtnet_poll() 经 virtqueue_napi_complete() 调用 napi_complete_done()，由 gro_flush_normal() 刷新普通列表。UDP 根据地址和端口查找 socket，接收预算足够时排队并通知等待者。Linux 6.18 可能经 producer queue 归并，再由 reader_queue 供 recvmsg 消费；这里显示逻辑上一个待收数据报。唤醒只使线程可运行。",
+          "description": "本轮 NAPI 完成后，普通接收列表交给 IPv4/UDP 协议栈；协议检查通过，18 B 载荷进入目标 socket。",
+          "detail": "本例 received 小于 budget，napi_complete_done() 经 gro_flush_normal() 刷新 GRO_NORMAL 列表。UDP 校验地址、端口和内存预算后排队，唤醒 recvfrom 等待者；线程仍需获得 CPU 才能复制数据。Linux 6.18 的 producer/reader 队列在图中合为逻辑接收队列。",
           "active": [
             "guest",
             "stack",

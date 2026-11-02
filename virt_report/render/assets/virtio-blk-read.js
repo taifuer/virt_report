@@ -329,7 +329,6 @@
     renderProgress(frame);
     one('[data-vbr-prev]').disabled = index === firstIndex();
     one('[data-vbr-next]').disabled = index === lastIndex();
-    one('[data-vbr-detail]').hidden = view === 'overview';
     one('[data-vbr-structure]').hidden = view !== 'mechanism';
     board.hidden = view !== 'overview';
     one('[data-vbr-callpaths]').hidden = view !== 'source';
@@ -352,10 +351,7 @@
     const title = queueFrame?.queueTitle || frame.title;
     const description = queueFrame?.queueDescription || frame.description;
     setText('[data-vbr-title]', title);
-    setText('[data-vbr-description]', description);
-    setText('[data-vbr-detail]', queueFrame?.queueDetail || frame.detail);
-    // Explain diagram edges in the inspector, never repeat the step title below
-    // the visualization. Detailed views already include the full explanation.
+    // Keep the diagram's edge meaning accessible without another visible caption.
     const eventLabel = frame.edge?.label || '';
     setText('[data-vbr-event]', eventLabel);
     one('[data-vbr-event]').hidden = view !== 'overview' || !eventLabel
@@ -409,7 +405,7 @@
     const queue = window.VirtioBlkReadModel.buildQueueSnapshot(scene, frame);
     window.WalkthroughComponents.queue(one('[data-vbr-queue-overview]'), queue.state, queue.meta, true);
     window.WalkthroughComponents.queue(one('[data-vbr-queue-detail]'), queue.state, queue.meta);
-    const ownership = s.userReturned ? (writing ? 'pwrite() 已返回，可复用缓冲区；本演示未执行 flush / FUA'
+    let ownership = s.userReturned ? (writing ? 'pwrite() 已返回，可复用缓冲区；本演示未执行 flush / FUA'
       : 'pread() 已返回，应用可读取结果')
       : s.completed ? '块请求结束，应用调用尚未返回'
         : s.bioCompleted ? 'bio 等待条件已满足，块请求与直接 I/O 路径仍需清理'
@@ -417,13 +413,12 @@
         : s.usedPublished ? '设备已完成，等待 Guest 消费完成'
           : s.published ? '设备可访问，驱动必须保持缓冲区有效'
             : s.pagesMapped ? '用户页已固定，尚未发布给设备' : '用户缓冲区尚未交给设备';
-    setText('[data-vbr-ownership]', ownership);
     const durability = one('[data-vbr-durability]'); durability.hidden = !writing;
     if (frame.durability) {
       for (const key of ['host', 'device', 'stable']) setText(`[data-vbr-durable-${key}]`, frame.durability[key]);
       durability.dataset.confirmed = String(frame.durability.stableConfirmed);
       if (frame.durability.stableConfirmed) setText('[data-vbr-node-state="storage"]', '本次数据已确认持久化');
-      if (completionMode === 'fua') setText('[data-vbr-ownership]', s.completed ? '上层块请求 R1 完成，数据已获持久化保证；不推断应用调用返回。' : '跟踪已有 REQ_FUA 的 R1；不模拟应用系统调用。');
+      if (completionMode === 'fua') ownership = s.completed ? '上层块请求 R1 完成，数据已获持久化保证；不推断应用调用返回。' : '跟踪已有 REQ_FUA 的 R1；不模拟应用系统调用。';
     }
     if (frame.followup) {
       setText('[data-vbr-node-state="application"]', frame.id === 'sync-return' ? 'fsync() 返回 0' : 'pwrite 已返回 · fsync 等待中');
@@ -441,8 +436,12 @@
       all('[data-vbr-metric]').forEach(node => {
         node.textContent = {availIndex:frame.queueState.avail.index,usedIndex:frame.queueState.used.index,freeDescriptors:frame.queueState.freeDescriptors}[node.dataset.vbrMetric];
       });
-      setText('[data-vbr-ownership]', frame.id === 'sync-return' ? 'R1 与独立刷新 F1 均成功，fsync 返回。' : 'R1 已完成；正在跟踪后续独立刷新 F1。');
+      ownership = frame.id === 'sync-return' ? 'R1 与独立刷新 F1 均成功，fsync 返回。' : 'R1 已完成；正在跟踪后续独立刷新 F1。';
     }
+    window.WalkthroughComponents.explanation(one('[data-step-explanation]'), {
+      description, detail: queueFrame?.queueDetail || frame.detail,
+      state: /[。！？.!?]$/.test(ownership) ? ownership : `${ownership}。`,
+    });
     if (speak) announce(`${title}。${description}`);
     if (updateURL) writeLocation();
     scheduleDrawing(animate);

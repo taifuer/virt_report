@@ -28,5 +28,19 @@
     return direction > 0 ? (points.find(value => value > index) ?? points.at(-1))
       : ([...points].reverse().find(value => value < index) ?? 0);
   }
-  return {buildTrace, stops, project, next};
+  function phases(scene, trace) {
+    // Navigation groups reviewed operations; playback retains every causal step.
+    const entries = scene.phases || trace.map(frame => ({id: frame.id, title: frame.title, start: frame.id}));
+    return entries.map((phase, ordinal) => {
+      const index = trace.findIndex(frame => frame.id === phase.start);
+      const next = entries[ordinal + 1];
+      return {...phase, index, end: next ? trace.findIndex(frame => frame.id === next.start) - 1 : trace.length - 1};
+    });
+  }
+  function navigation(scene, trace, view) {
+    return view === 'structure'
+      ? stops(trace, view).map(index => ({id: trace[index].id, title: trace[index].title, index, end: index}))
+      : phases(scene, trace);
+  }
+  return {buildTrace, stops, project, next, phases, navigation};
 });

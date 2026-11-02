@@ -81,6 +81,15 @@ def validate_demo(demo: dict) -> None:
         require(len(fields) == len(set(fields)), "duplicate fields")
         require(2 <= len(scene["steps"]) <= 120, "step count")
         ids(scene["steps"])
+        if "phases" in scene:
+            phases = scene["phases"]
+            require(2 <= len(phases) <= 10, "phase count")
+            ids(phases)
+            require(all(text(phase.get("title")) for phase in phases), "phase titles")
+            step_positions = {step["id"]: n for n, step in enumerate(scene["steps"])}
+            require(all(phase.get("start") in step_positions for phase in phases), "phase start")
+            starts = [step_positions[phase["start"]] for phase in phases]
+            require(starts[0] == 0 and starts == sorted(set(starts)), "phase order and coverage")
         initial = scene["steps"][0]
         require(not initial["active"] and not initial["changes"] and not initial["links"]
                 and initial["focus"], "initial state must be neutral")
@@ -176,6 +185,11 @@ def get_demo(demo_id: str) -> dict | None:
     if demo_id == "network-io":
         from virt_report.network_queue import enrich_network_demo
         enrich_network_demo(demo)
+    phases = json.loads((CONTENT_DIR / "execution-phases.json").read_text(encoding="utf-8"))
+    if set(phases[demo_id]) != {scene["id"] for scene in demo["scenarios"]}:
+        raise ValueError("Execution phases must cover each scenario exactly once")
+    for scene in demo["scenarios"]:
+        scene["phases"] = phases[demo_id][scene["id"]]
     validate_demo(demo)
     selectors = json.loads((CONTENT_DIR / "execution-selectors.json").read_text(encoding="utf-8"))
     selector = demo.get("selector", selectors.get(demo_id))

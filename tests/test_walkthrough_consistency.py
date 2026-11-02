@@ -11,7 +11,7 @@ from virt_report.render.render import render_mechanisms_html
 
 @pytest.mark.parametrize("slug", [
     "virtio-blk-read", "network-io", "cpu-execution", "memory-access",
-    "interrupt-delivery", "gpu-execution", "libvirt-domain-start",
+    "interrupt-delivery", "gpu-execution", "virtio-gpu-rendering", "libvirt-domain-start",
 ])
 def test_inspector_contains_explanations_not_duplicate_source_lists(slug):
     page = render_mechanisms_html(Config(), slug)
@@ -27,7 +27,7 @@ def test_inspector_contains_explanations_not_duplicate_source_lists(slug):
 
 @pytest.mark.parametrize("slug", [
     "virtio-blk-read", "network-io", "cpu-execution", "memory-access",
-    "interrupt-delivery", "gpu-execution", "libvirt-domain-start",
+    "interrupt-delivery", "gpu-execution", "virtio-gpu-rendering", "libvirt-domain-start",
 ])
 def test_step_explanation_precedes_full_width_visual_in_reading_order(slug):
     page = render_mechanisms_html(Config(), slug)
@@ -40,9 +40,12 @@ def test_step_explanation_precedes_full_width_visual_in_reading_order(slug):
     inspector = page[explanation:inspector_end]
     assert 'class="walkthrough-step-heading"' in inspector
     assert 'class="walkthrough-step-body"' in inspector
-    assert "walkthrough-step-description" in inspector
-    assert "walkthrough-step-detail" in inspector
-    assert "walkthrough-step-context" in inspector
+    assert inspector.count('class="walkthrough-step-explanation"') == 1
+    assert 'data-step-part="description"' in inspector
+    assert 'data-step-part="detail"' in inspector
+    assert "walkthrough-step-context" not in inspector
+    assert "data-execution-connections" not in inspector
+    assert "data-vbr-event" not in inspector
     # Both ordinary articles and full walkthroughs share the same reading order.
     assert inspector_end < visual
 

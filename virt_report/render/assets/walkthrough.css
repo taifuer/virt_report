@@ -49,25 +49,26 @@
 .walkthrough-lab .walkthrough-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; min-width: 0; }
 .walkthrough-lab .walkthrough-inspector { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(0, 3fr); gap: 14px 26px; min-width: 0; padding: 0 0 18px; border: 0; border-bottom: 1px solid var(--line); }
 .walkthrough-step-heading, .walkthrough-step-body { min-width: 0; }
-.walkthrough-step-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); align-content: start; gap: 10px 24px; }
+.walkthrough-step-body { display: block; }
 .walkthrough-lab .walkthrough-inspector h3 { margin: 5px 0 7px; color: var(--ink); font: 700 20px/1.5 var(--sans); }
 .walkthrough-lab .walkthrough-inspector p { margin: 0; max-width: none; font: 400 16px/1.8 var(--sans); }
 .walkthrough-lab .walkthrough-inspector :is(.execution-counter, .vbr-step-counter) { margin: 0; font: 13px/1.7 var(--mono); color: var(--muted); }
 .walkthrough-lab .walkthrough-inspector :is(.execution-actor, .vbr-actor) { margin: 0; font: 650 14px/1.7 var(--sans); color: var(--brand-2); }
-.walkthrough-lab .walkthrough-inspector .walkthrough-step-detail { padding: 0; border: 0; color: var(--ink-2); font-size: 16px; }
-.walkthrough-step-description:has(+ [hidden]), .walkthrough-step-description:has(+ :empty) { grid-column: 1 / -1; }
-.walkthrough-lab .walkthrough-step-context { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 22px; min-height: 0; margin: 0; padding: 0; border: 0; }
-.walkthrough-lab .walkthrough-step-context:empty { display: none; }
-.walkthrough-lab .walkthrough-inspector .walkthrough-step-context p { margin: 0; padding: 0; border: 0; font: 400 14px/1.7 var(--sans); }
-.walkthrough-lab .walkthrough-inspector .vbr-state-note { color: var(--muted); }
-/* Embedded lifecycle demos have less width because the article retains its TOC. */
-.execution-lab--embedded:not(.walkthrough-expanded) .walkthrough-step-body { grid-template-columns: minmax(0, 1fr); }
+.walkthrough-step-explanation > span { font: inherit; color: inherit; }
 .walkthrough-configuration { margin-top: 14px; font-size: 14px; line-height: 1.8; }
 .walkthrough-configuration summary { cursor: pointer; color: var(--ink-2); }
 .walkthrough-configuration li { margin-block: 6px; }
 /* Domain-based overview, matching the block-I/O Guest/host/shared-RAM layout. */
 .execution-nodes { position: relative; display: block; padding: 8px; }
-.walkthrough-domains { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px 17px; }
+.walkthrough-domains { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--domain-min-width, 180px)), 1fr)); gap: 12px 17px; }
+/* Keep Guest, KVM, backend, host network and external network together on laptops. */
+[data-execution-lab="network-io"] { --domain-min-width: 160px; }
+@media (min-width: 1366px) {
+  /* DPDK adds a separate PMD/NIC domain; do not leave it on an isolated row. */
+  [data-execution-lab="network-io"] .walkthrough-domains {
+    grid-template-columns: repeat(var(--domain-count), minmax(0, 1fr));
+  }
+}
 .walkthrough-domain { display: grid; grid-template-rows: auto 1fr; gap: 12px; min-width: 0; }
 /* Share the header row height: wrapped captions must not offset adjacent cards. */
 @supports (grid-template-rows: subgrid) {
@@ -98,7 +99,6 @@
 .walkthrough-memory h4 > span { display: inline-block; margin-left: 8px; color: var(--muted); font: 400 13px/1.7 var(--sans); }
 .walkthrough-memory-grid { display: grid; grid-template-columns: repeat(var(--memory-count, 1), minmax(0, 1fr)); gap: 15px; margin-top: 14px; }
 .walkthrough-memory-grid .execution-node { margin: 0; }
-.execution-connections { margin-top: 12px; min-height: 0; }
 .execution-arrows { z-index: 3; }
 .execution-arrows path { stroke-linejoin: round; stroke-linecap: round; stroke-width: 1.7; }
 .execution-arrows path[data-kind="control"] { stroke: #687486; stroke-dasharray: 2 5; }
@@ -240,7 +240,7 @@
     overflow: auto; overscroll-behavior: contain;
     scrollbar-width: thin; scrollbar-gutter: stable; scroll-padding: 12px;
   }
-  .walkthrough-expanded .walkthrough-step-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 14px; }
+  .walkthrough-expanded .walkthrough-step-body { margin-top: 14px; }
   .walkthrough-expanded :is(.execution-canvas, .vbr-board) { padding: 14px; }
   /* Keep an outer channel for arrows to route around full-width RAM headings. */
   .walkthrough-expanded .execution-nodes { padding: 8px; }
@@ -253,7 +253,6 @@
   .walkthrough-expanded .vbr-domain > header { min-height: 48px; }
 }
 @media (max-width: 1100px) {
-  .walkthrough-step-body { grid-template-columns: minmax(0, 1fr); }
   .walkthrough-toolbar { justify-content: flex-start; }
 }
 @media (max-width: 700px) {

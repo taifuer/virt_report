@@ -7,6 +7,18 @@
     if (cls) node.className = cls;
     return node;
   };
+  function explanation(container, parts) {
+    // One reading paragraph; preserve reviewed qualifications in every view.
+    // Only exact duplicates are omitted, never inferred semantic equivalents.
+    const seen = new Set();
+    container.querySelectorAll('[data-step-part]').forEach(node => {
+      const text = String(parts[node.dataset.stepPart] || '').trim();
+      const key = text.replace(/\s+/g, ' ').replace(/[。.!！?？;；]+$/u, '');
+      node.textContent = text;
+      node.hidden = !text || seen.has(key);
+      if (text) seen.add(key);
+    });
+  }
   function contexts(container, groups) {
     // Background responsibilities are not animation nodes or mandatory handoffs.
     container.classList.add('walkthrough-contexts');
@@ -289,5 +301,5 @@
     handoff.dataset.current = String(frame.changed.some(key => ['guestSkb', 'userBuffer', 'socketBuffers'].includes(key)));
     container.append(handoff);
   }
-  window.WalkthroughComponents = {sourceLink, sourcePaths, highlightSources, queue, contexts, networkMemory};
+  window.WalkthroughComponents = {explanation, sourceLink, sourcePaths, highlightSources, queue, contexts, networkMemory};
 })();

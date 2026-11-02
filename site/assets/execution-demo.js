@@ -210,11 +210,15 @@
   }
 
   function progress() {
-    one('[data-execution-progress]').replaceChildren(...model.stops(trace, view).map((position, ordinal) => {
-      const button = el('button'); button.type = 'button'; button.dataset.executionStep = String(position);
-      button.append(el('span', position === 0 ? '○' : String(ordinal).padStart(2, '0')),
-        el('strong', trace[position].title));
-      button.addEventListener('click', () => move(position)); return button;
+    const nav = one('[data-execution-progress]');
+    nav.setAttribute('aria-label', view === 'structure' ? '关键结构步骤' : '演示阶段');
+    nav.replaceChildren(...model.navigation(scene, trace, view).map((entry, ordinal) => {
+      const button = el('button'); button.type = 'button'; button.dataset.executionStep = String(entry.index);
+      button.dataset.executionEnd = String(entry.end);
+      if (view !== 'structure') button.dataset.executionPhase = entry.id;
+      button.append(el('span', view === 'structure' && entry.index === 0 ? '○'
+        : String(ordinal + (view === 'structure' ? 0 : 1)).padStart(2, '0')), el('strong', entry.title));
+      button.addEventListener('click', () => move(entry.index)); return button;
     }));
   }
 
@@ -296,26 +300,32 @@
     lab.dataset.scenario = scene.id; lab.dataset.view = view; lab.dataset.step = frame.id;
     all('[data-execution-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.executionView === view)));
     all('[data-execution-step]').forEach(button => {
-      const current = Number(button.dataset.executionStep) === index;
+      const current = Number(button.dataset.executionStep) <= index && index <= Number(button.dataset.executionEnd);
       button.setAttribute('aria-current', current ? 'step' : 'false');
-      button.dataset.done = String(Number(button.dataset.executionStep) < index);
+      button.dataset.done = String(Number(button.dataset.executionEnd) < index);
     });
     one('[data-execution-overview]').hidden = view !== 'overview';
     one('[data-execution-structures]').hidden = view !== 'structure';
     one('[data-execution-sources]').hidden = view !== 'source';
     setText('[data-execution-help]', {
-      overview: '观察各组件与执行上下文的交接；箭头标出当前的数据、通知或地址转换路径。',
+      overview: '按阶段查看完整流程；播放和单步会依次展示阶段内的操作，箭头标出本步交接。',
       structure: '只保留与关键结构相关的步骤。高亮本步更新的字段，索引、地址和状态可逐步对照。',
-      source: '沿当前场景核对关键实现；点击函数或规范链接查看固定版本原文。',
+      source: '按阶段定位实现；单步查看具体操作，点击函数或规范链接查看固定版本原文。',
     }[view]);
     if (scene.presentation === 'cpu-timeline' && view === 'overview') setText('[data-execution-help]', '沿同一个 vCPU 观察当前指令、寄存器与执行位置；Guest 权限切换、VM-exit 和返回 QEMU 分别标示。');
     const stops = model.stops(trace, view), count = stops.length - 1;
-    setText('[data-execution-counter]', index === 0 ? `准备前 · 共 ${count} 步`
-      : `第 ${stops.indexOf(index)} / ${count} 步`);
+    const stages = model.phases(scene, trace), phaseIndex = stages.findIndex(phase => phase.index <= index && index <= phase.end);
+    const phase = stages[phaseIndex];
+    const firstAction = Math.max(1, phase.index);
+    setText('[data-execution-counter]', view === 'structure'
+      ? (index === 0 ? `准备前 · 共 ${count} 步` : `第 ${stops.indexOf(index)} / ${count} 步`)
+      : (index === 0 ? `准备前 · 共 ${stages.length} 个阶段`
+        : `阶段 ${phaseIndex + 1} / ${stages.length} · 阶段内第 ${index - firstAction + 1} / ${phase.end - firstAction + 1} 步`));
     setText('[data-execution-actor]', frame.actor);
     setText('[data-execution-title]', frame.title);
-    setText('[data-execution-description]', frame.description);
-    setText('[data-execution-detail]', frame.detail);
+    components.explanation(one('[data-step-explanation]'), {
+      description: frame.description, detail: frame.detail,
+    });
     all('[data-execution-node]').forEach(node => {
       node.dataset.active = String(frame.active.includes(node.dataset.executionNode));
       node.querySelector('.execution-node-status').textContent = frame.nodes[node.dataset.executionNode];
@@ -372,7 +382,7 @@
     });
     const edges = frame.links.map(id => scene.links.find(link => link.id === id));
     one('[data-execution-connections]').replaceChildren(...(edges.length ? edges.map(edge => {
-      const row = el('p', undefined, 'execution-connection'); row.dataset.kind = edge.kind;
+      const row = el('p'); row.dataset.kind = edge.kind;
       const from = scene.nodes.find(node => node.id === edge.from).label;
       const to = scene.nodes.find(node => node.id === edge.to).label;
       row.append(el('strong', from), el('span', ` → ${edge.label} → `), el('strong', to)); return row;

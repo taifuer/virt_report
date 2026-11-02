@@ -179,12 +179,13 @@ def test_step_explanations_are_grouped_in_the_inspector_not_below_the_diagram():
     assert inspector_start < visual_start
     visual = page[visual_start:page.index('<div class="vbr-fallback"', visual_start)]
     inspector = page[inspector_start:page.index("</aside>", inspector_start)]
-    for attribute in ("data-vbr-event", "data-vbr-ownership"):
-        assert attribute not in visual
-        assert attribute in inspector
-        assert page.count(attribute) == 1
-    assert re.search(r'<p\b(?=[^>]*\bdata-vbr-ownership\b)'
-                     r'(?=[^>]*\bdata-vbr-state-note\b)[^>]*>', inspector)
+    assert "data-vbr-ownership" not in visual
+    assert "data-vbr-ownership" in inspector
+    assert page.count("data-vbr-ownership") == 1
+    assert re.search(r'<span\b(?=[^>]*\bdata-vbr-ownership\b)'
+                     r'(?=[^>]*\bdata-step-part="state")[^>]*>', inspector)
+    assert "data-vbr-event" not in inspector
+    assert re.search(r'<p class="sr-only" data-vbr-event', visual)
 
 
 def test_backend_selection_is_part_of_the_playback_not_a_separate_comparison():

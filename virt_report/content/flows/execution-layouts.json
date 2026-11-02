@@ -2,36 +2,216 @@
   "virtio-gpu-rendering": {
     "virgl-render": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机 · 应用、Mesa 与 DRM", "nodes": ["application", "mesa", "guest", "output"], "component": "guest", "span": 2, "inline": true},
-        {"id": "qemu", "title": "QEMU", "context": "宿主用户态 · 设备与渲染库", "nodes": ["qemu", "renderer"], "component": "qemu", "note": "virglrenderer 是 QEMU 调用的库。"},
-        {"id": "host-driver", "title": "宿主图形驱动", "context": "用户态 · OpenGL / VA 接口", "nodes": ["host-driver"], "component": "host-user"},
-        {"id": "physical-gpu", "title": "物理 GPU", "context": "硬件 · 图形或视频执行单元", "nodes": ["gpu"], "component": "hardware"},
-        {"id": "kvm-context", "title": "KVM", "context": "宿主内核 · vCPU 与虚拟中断", "nodes": [], "component": "kvm", "note": "运行客户机 CPU，递送设备事件；不解释 OpenGL 或视频命令。"},
-        {"id": "drm-context", "title": "Host kernel", "context": "宿主内核 · DRM 驱动", "nodes": [], "component": "host-kernel", "note": "管理硬件作业、映射与调度，厂商内部命令未展开。"}
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机 · 应用、Mesa 与 DRM",
+          "nodes": [
+            "application",
+            "mesa",
+            "guest",
+            "output"
+          ],
+          "component": "guest",
+          "span": 2,
+          "inline": true
+        },
+        {
+          "id": "qemu",
+          "title": "QEMU",
+          "context": "宿主用户态 · 设备与渲染库",
+          "nodes": [
+            "qemu",
+            "renderer"
+          ],
+          "component": "qemu",
+          "note": "virglrenderer 是 QEMU 调用的库。"
+        },
+        {
+          "id": "host-driver",
+          "title": "宿主图形驱动",
+          "context": "用户态 · OpenGL / VA 接口",
+          "nodes": [
+            "host-driver"
+          ],
+          "component": "host-user"
+        },
+        {
+          "id": "physical-gpu",
+          "title": "物理 GPU",
+          "context": "硬件 · 图形或视频执行单元",
+          "nodes": [
+            "gpu"
+          ],
+          "component": "hardware"
+        },
+        {
+          "id": "kvm-context",
+          "title": "KVM",
+          "context": "宿主内核 · vCPU 与虚拟中断",
+          "nodes": [],
+          "component": "kvm",
+          "note": "运行客户机 CPU，递送设备事件；不解释 OpenGL 或视频命令。"
+        },
+        {
+          "id": "drm-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · DRM 驱动",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "管理硬件作业、映射与调度，厂商内部命令未展开。"
+        }
       ],
-      "memory": {"title": "队列与资源", "description": "controlq 位于 Guest RAM；资源编号关联客户机缓冲区与宿主纹理，二者不保证同一存储。", "nodes": ["queue", "resources"]}
+      "memory": {
+        "title": "队列与资源",
+        "description": "controlq 位于 Guest RAM；资源编号关联客户机缓冲区与宿主纹理，二者不保证同一存储。",
+        "nodes": [
+          "queue",
+          "resources"
+        ]
+      }
     },
     "virgl-decode": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机 · 播放器、Mesa 与 DRM", "nodes": ["application", "mesa", "guest", "output"], "component": "guest", "span": 2, "inline": true},
-        {"id": "qemu", "title": "宿主 VMM", "context": "用户态 · 已接通 VirGL video", "nodes": ["qemu", "renderer"], "component": "qemu", "note": "QEMU 10.2 默认缺少此视频接入。"},
-        {"id": "host-driver", "title": "宿主视频驱动", "context": "用户态 · VA-API 接口", "nodes": ["host-driver"], "component": "host-user"},
-        {"id": "physical-gpu", "title": "物理 GPU", "context": "硬件 · 视频解码单元", "nodes": ["gpu"], "component": "hardware"},
-        {"id": "kvm-context", "title": "KVM", "context": "宿主内核 · vCPU 与虚拟中断", "nodes": [], "component": "kvm", "note": "运行客户机 CPU，递送设备事件；不解释视频码流。"},
-        {"id": "drm-context", "title": "Host kernel", "context": "宿主内核 · DRM 驱动", "nodes": [], "component": "host-kernel", "note": "管理硬件作业、映射与调度，厂商内部命令未展开。"}
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机 · 播放器、Mesa 与 DRM",
+          "nodes": [
+            "application",
+            "mesa",
+            "guest",
+            "output"
+          ],
+          "component": "guest",
+          "span": 2,
+          "inline": true
+        },
+        {
+          "id": "qemu",
+          "title": "宿主 VMM",
+          "context": "用户态 · 已接通 VirGL video",
+          "nodes": [
+            "qemu",
+            "renderer"
+          ],
+          "component": "qemu",
+          "note": "QEMU 10.2 默认缺少此视频接入。"
+        },
+        {
+          "id": "host-driver",
+          "title": "宿主视频驱动",
+          "context": "用户态 · VA-API 接口",
+          "nodes": [
+            "host-driver"
+          ],
+          "component": "host-user"
+        },
+        {
+          "id": "physical-gpu",
+          "title": "物理 GPU",
+          "context": "硬件 · 视频解码单元",
+          "nodes": [
+            "gpu"
+          ],
+          "component": "hardware"
+        },
+        {
+          "id": "kvm-context",
+          "title": "KVM",
+          "context": "宿主内核 · vCPU 与虚拟中断",
+          "nodes": [],
+          "component": "kvm",
+          "note": "运行客户机 CPU，递送设备事件；不解释视频码流。"
+        },
+        {
+          "id": "drm-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · DRM 驱动",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "管理硬件作业、映射与调度，厂商内部命令未展开。"
+        }
       ],
-      "memory": {"title": "队列与资源", "description": "controlq 位于 Guest RAM；压缩码流、VA surface 和输出纹理分别管理，通过资源句柄与同步关联。", "nodes": ["queue", "resources"]}
+      "memory": {
+        "title": "队列与资源",
+        "description": "controlq 位于 Guest RAM；压缩码流、VA surface 和输出纹理分别管理，通过资源句柄与同步关联。",
+        "nodes": [
+          "queue",
+          "resources"
+        ]
+      }
     },
     "virgl-encode": {
       "domains": [
-        {"id": "guest", "title": "Guest", "context": "客户机 · 编码器、Mesa 与 DRM", "nodes": ["application", "mesa", "guest", "output"], "component": "guest", "span": 2, "inline": true},
-        {"id": "qemu", "title": "宿主 VMM", "context": "用户态 · 已接通 VirGL video", "nodes": ["qemu", "renderer"], "component": "qemu", "note": "QEMU 10.2 默认缺少此视频接入。"},
-        {"id": "host-driver", "title": "宿主视频驱动", "context": "用户态 · VA-API 接口", "nodes": ["host-driver"], "component": "host-user"},
-        {"id": "physical-gpu", "title": "物理 GPU", "context": "硬件 · 视频编码单元", "nodes": ["gpu"], "component": "hardware"},
-        {"id": "kvm-context", "title": "KVM", "context": "宿主内核 · vCPU 与虚拟中断", "nodes": [], "component": "kvm", "note": "运行客户机 CPU，递送设备事件；不执行视频压缩。"},
-        {"id": "drm-context", "title": "Host kernel", "context": "宿主内核 · DRM 驱动", "nodes": [], "component": "host-kernel", "note": "管理硬件作业、映射与调度，厂商内部命令未展开。"}
+        {
+          "id": "guest",
+          "title": "Guest",
+          "context": "客户机 · 编码器、Mesa 与 DRM",
+          "nodes": [
+            "application",
+            "mesa",
+            "guest",
+            "output"
+          ],
+          "component": "guest",
+          "span": 2,
+          "inline": true
+        },
+        {
+          "id": "qemu",
+          "title": "宿主 VMM",
+          "context": "用户态 · 已接通 VirGL video",
+          "nodes": [
+            "qemu",
+            "renderer"
+          ],
+          "component": "qemu",
+          "note": "QEMU 10.2 默认缺少此视频接入。"
+        },
+        {
+          "id": "host-driver",
+          "title": "宿主视频驱动",
+          "context": "用户态 · VA-API 接口",
+          "nodes": [
+            "host-driver"
+          ],
+          "component": "host-user"
+        },
+        {
+          "id": "physical-gpu",
+          "title": "物理 GPU",
+          "context": "硬件 · 视频编码单元",
+          "nodes": [
+            "gpu"
+          ],
+          "component": "hardware"
+        },
+        {
+          "id": "kvm-context",
+          "title": "KVM",
+          "context": "宿主内核 · vCPU 与虚拟中断",
+          "nodes": [],
+          "component": "kvm",
+          "note": "运行客户机 CPU，递送设备事件；不执行视频压缩。"
+        },
+        {
+          "id": "drm-context",
+          "title": "Host kernel",
+          "context": "宿主内核 · DRM 驱动",
+          "nodes": [],
+          "component": "host-kernel",
+          "note": "管理硬件作业、映射与调度，厂商内部命令未展开。"
+        }
       ],
-      "memory": {"title": "队列与资源", "description": "controlq 位于 Guest RAM；NV12 输入、宿主编码输出和 Guest 码流 / feedback 资源分别管理。", "nodes": ["queue", "resources"]}
+      "memory": {
+        "title": "队列与资源",
+        "description": "controlq 位于 Guest RAM；NV12 输入、宿主编码输出和 Guest 码流 / feedback 资源分别管理。",
+        "nodes": [
+          "queue",
+          "resources"
+        ]
+      }
     }
   },
   "network-io": {
@@ -52,9 +232,12 @@
           "id": "kvm-context",
           "title": "KVM",
           "context": "宿主内核 · 虚拟化子系统",
-          "nodes": [],
-          "component": "kvm",
-          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
+          "nodes": [
+            "kick",
+            "interrupt",
+            "vcpu"
+          ],
+          "component": "kvm"
         },
         {
           "id": "qemu",
@@ -117,9 +300,12 @@
           "id": "kvm-context",
           "title": "KVM",
           "context": "宿主内核 · 虚拟化子系统",
-          "nodes": [],
-          "component": "kvm",
-          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
+          "nodes": [
+            "kick",
+            "interrupt",
+            "vcpu"
+          ],
+          "component": "kvm"
         },
         {
           "id": "qemu",
@@ -182,9 +368,12 @@
           "id": "kvm-context",
           "title": "KVM",
           "context": "宿主内核 · 虚拟化子系统",
-          "nodes": [],
-          "component": "kvm",
-          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
+          "nodes": [
+            "kick",
+            "interrupt",
+            "vcpu"
+          ],
+          "component": "kvm"
         },
         {
           "id": "qemu",
@@ -248,9 +437,12 @@
           "id": "kvm-context",
           "title": "KVM",
           "context": "宿主内核 · 虚拟化子系统",
-          "nodes": [],
-          "component": "kvm",
-          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
+          "nodes": [
+            "kick",
+            "interrupt",
+            "vcpu"
+          ],
+          "component": "kvm"
         },
         {
           "id": "qemu",
@@ -314,9 +506,11 @@
           "id": "kvm-context",
           "title": "KVM",
           "context": "宿主内核 · 虚拟化子系统",
-          "nodes": [],
-          "component": "kvm",
-          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
+          "nodes": [
+            "interrupt",
+            "vcpu"
+          ],
+          "component": "kvm"
         },
         {
           "id": "qemu",
@@ -388,9 +582,11 @@
           "id": "kvm-context",
           "title": "KVM",
           "context": "宿主内核 · 虚拟化子系统",
-          "nodes": [],
-          "component": "kvm",
-          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
+          "nodes": [
+            "interrupt",
+            "vcpu"
+          ],
+          "component": "kvm"
         },
         {
           "id": "qemu",
@@ -462,9 +658,11 @@
           "id": "kvm-context",
           "title": "KVM",
           "context": "宿主内核 · 虚拟化子系统",
-          "nodes": [],
-          "component": "kvm",
-          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
+          "nodes": [
+            "interrupt",
+            "vcpu"
+          ],
+          "component": "kvm"
         },
         {
           "id": "qemu",
@@ -528,9 +726,11 @@
           "id": "kvm-context",
           "title": "KVM",
           "context": "宿主内核 · 虚拟化子系统",
-          "nodes": [],
-          "component": "kvm",
-          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
+          "nodes": [
+            "interrupt",
+            "vcpu"
+          ],
+          "component": "kvm"
         },
         {
           "id": "qemu",
@@ -594,9 +794,12 @@
           "id": "kvm-context",
           "title": "KVM",
           "context": "宿主内核 · 虚拟化子系统",
-          "nodes": [],
-          "component": "kvm",
-          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
+          "nodes": [
+            "kick",
+            "interrupt",
+            "vcpu"
+          ],
+          "component": "kvm"
         },
         {
           "id": "qemu",
@@ -659,9 +862,12 @@
           "id": "kvm-context",
           "title": "KVM",
           "context": "宿主内核 · 虚拟化子系统",
-          "nodes": [],
-          "component": "kvm",
-          "note": "KVM 属于宿主内核，负责 vCPU 与虚拟中断；通知路由未在此单独展开，报文载荷不经 KVM 转发。"
+          "nodes": [
+            "kick",
+            "interrupt",
+            "vcpu"
+          ],
+          "component": "kvm"
         },
         {
           "id": "qemu",

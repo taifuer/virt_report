@@ -43,7 +43,7 @@ def test_memory_demo_schema_sources_and_initial_state(demo):
     validate_demo(demo)
     enriched = get_demo("memory-access")
     assert {**{key: value for key, value in enriched.items() if key != "selector"}, "scenarios": [
-        {key: value for key, value in scene.items() if key != "layout"}
+        {key: value for key, value in scene.items() if key not in {"layout", "phases"}}
         for scene in enriched["scenarios"]
     ]} == demo
     assert demo["defaultScenario"] == "ram-hit"

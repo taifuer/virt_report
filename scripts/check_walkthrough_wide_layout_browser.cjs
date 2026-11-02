@@ -30,7 +30,7 @@ async function checkLayout(lab, tag) {
       const r = node.getBoundingClientRect();
       return {left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height};
     };
-    const paragraphs = [...inspector.querySelectorAll('.walkthrough-step-description, .walkthrough-step-detail')]
+    const paragraphs = [...inspector.querySelectorAll('.walkthrough-step-explanation')]
       .filter(node => node.getClientRects().length && node.textContent.trim());
     return {
       workspace: bounds(workspace), inspector: bounds(inspector), visual: bounds(visual),
@@ -50,7 +50,7 @@ async function checkLayout(lab, tag) {
   assert.equal(result.separator, '0px', `${tag}: old sidebar divider must not remain`);
   assert(!result.inspectorClipped, `${tag}: explanations must not be clipped`);
   assert.equal(result.sourcesInInspector, 0, `${tag}: keep source links in the source view`);
-  assert(result.paragraphs.length > 0, `${tag}: keep current-step explanation visible`);
+  assert.equal(result.paragraphs.length, 1, `${tag}: one continuous step explanation`);
   for (const paragraph of result.paragraphs) {
     assert.equal(paragraph.font, '16px', `${tag}: explanation keeps readable body size`);
     assert(!paragraph.overflow && !['hidden', 'clip', 'scroll'].includes(paragraph.hidden),

@@ -61,7 +61,13 @@ async function assertPicture(page, expected) {
 
 async function goToFrame(lab, frame) {
   await lab.locator('[data-execution-view="overview"]').click();
-  await lab.locator(`[data-execution-step="${frame.index}"]`).click();
+  await lab.evaluate((lab, target) => {
+    for (let n = 0; lab.executionSnapshot.frame.index !== target && n < 120; n++) {
+      const direction = lab.executionSnapshot.frame.index < target ? 'next' : 'prev';
+      lab.querySelector(`[data-execution-${direction}]`).click();
+    }
+    if (lab.executionSnapshot.frame.index !== target) throw new Error(`Cannot reach frame ${target}`);
+  }, frame.index);
 }
 
 (async () => {

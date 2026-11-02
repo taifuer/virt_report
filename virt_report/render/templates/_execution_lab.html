@@ -1,4 +1,4 @@
-<div class="execution-lab walkthrough-lab{% if article.presentation != 'walkthrough' %} execution-lab--embedded{% endif %}" data-execution-lab data-walkthrough-lab{% if article.flow %} data-execution-url-prefix="persistence-"{% endif %} aria-label="{{ demo.title }}">
+<div class="execution-lab walkthrough-lab{% if article.presentation != 'walkthrough' %} execution-lab--embedded{% endif %}" data-execution-lab="{{ demo.id }}" data-walkthrough-lab{% if article.flow %} data-execution-url-prefix="persistence-"{% endif %} aria-label="{{ demo.title }}">
   <script type="application/json" id="execution-demo-data">{{ demo|tojson }}</script>
   <div data-execution-controls hidden>
     <div class="walkthrough-selection">
@@ -42,13 +42,12 @@
           <p class="execution-actor" data-execution-actor></p>
         </div>
         <div class="walkthrough-step-body">
-          <p class="walkthrough-step-description" data-execution-description></p>
-          <p class="walkthrough-step-detail" data-execution-detail></p>
-          <div class="execution-connections walkthrough-step-context" data-execution-connections aria-label="本步交接"></div>
+          <p class="walkthrough-step-explanation" data-step-explanation><span data-step-part="description" data-execution-description></span> <span data-step-part="detail" data-execution-detail></span></p>
         </div>
       </aside>
       <div class="execution-canvas" tabindex="0" aria-label="演示区域，可用左右方向键切换步骤">
         <div data-execution-overview>
+          <div class="sr-only" data-execution-connections aria-label="图中交接路径"></div>
           <div data-execution-timeline class="walkthrough-cpu" hidden></div>
           <div class="execution-nodes" data-execution-nodes></div>
         </div>

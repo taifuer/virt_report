@@ -171,12 +171,12 @@ async function assertSingleSummary(page, activeScene) {
 }
 
 async function assertView(page, view) {
-  assert.equal(await page.locator('.vbr-visual [data-vbr-event], .vbr-visual [data-vbr-ownership]').count(), 0,
-    'step explanations are not repeated below the diagram');
-  assert.equal(await page.locator('.vbr-inspector [data-vbr-event]').count(), 1);
-  assert.equal(await page.locator('.vbr-inspector [data-vbr-state-note][data-vbr-ownership]').count(), 1);
-  if (view !== 'overview') assert(await page.locator('[data-vbr-event]').isHidden(),
-    'detailed views do not repeat the step title or edge caption');
+  assert.equal(await page.locator('.vbr-visual [data-vbr-ownership]').count(), 0,
+    'state explanation is merged into the reading paragraph');
+  assert.equal(await page.locator('.vbr-inspector [data-vbr-event]').count(), 0);
+  assert.equal(await page.locator('.walkthrough-step-explanation [data-vbr-ownership]').count(), 1);
+  assert(await page.locator('[data-vbr-event]').evaluate(node => node.classList.contains('sr-only')),
+    'diagram relation remains accessible without repeating a visible caption');
   for (const [key, selected] of Object.entries({board: 'overview', structure: 'mechanism', callpaths: 'source'})) {
     assert.equal(await page.locator(`[data-vbr-${key}]`).isVisible(), view === selected,
       `${view}: only its own visualization is visible (${key})`);

@@ -175,7 +175,7 @@ GPU 直通明确分开命令内存、门铃与完成：Guest AMDGPU 写 GTT 中�
 
 同一组件还嵌入 `libvirt-domain-start.html#lifecycle`，串起冷启动、暂停恢复、正常关机和强制停止，不新增主分类。对应数据为 `vm-lifecycle.json`，页面映射由 `execution_demos.DEMO_PAGES` 维护。生命周期内容固定 Libvirt 12.0.0、QEMU 10.2.0 与 Linux 6.18，区分命令返回、客户机状态、应用就绪与宿主资源回收。`disk-persistence.json` 保留独立核验资料，但磁盘页不再用 `persistence-scenario` 等参数维护第二个交互状态；读写与同步要求统一由主播放器选择。
 
-七个演示共用 `walkthrough.css` 与 `walkthrough-fullscreen.js`，统一场景选择、视图切换、播放控制、进度和说明栏。配置与源码版本位于演示下方；放大入口位于选择区，退出后保留场景与步骤。执行域和共享内存布局由 `execution-layouts.json` 或场景内嵌的 `layout` 指定；CPU 的指令场景使用专门时间线，而不是强行套设备卡片。连线使用 `walkthrough-routing.js` 避开结构，数据、通知、控制切换和地址映射采用不同图例，必要说明集中到解释栏。修改布局须保留实际归属，不能把页表、宿主后备页、硬件中断状态或 GPU VRAM 都标成 Guest RAM。样式回归覆盖 320–1440px、下拉箭头和两种全屏方式；新增 virtio-gpu 演示另检查命令与图像状态切换。
+七个演示共用 `walkthrough.css` 与 `walkthrough-fullscreen.js`，统一场景选择、视图切换、播放控制、进度和说明栏。总览和源码视图按 `execution-phases.json` 中的流程阶段导航，单步与播放保留阶段内全部操作；关键结构视图只停在结构相关的状态。当前操作、技术细节和磁盘缓冲区归属合成一段说明，图上的交接不再另起一行复述。配置与源码版本位于演示下方；放大入口位于选择区，退出后保留场景与步骤。执行域和共享内存布局由 `execution-layouts.json` 或场景内嵌的 `layout` 指定；CPU 指令场景使用专门时间线。连线使用 `walkthrough-routing.js` 避开结构，数据、通知、控制切换和地址映射采用不同图例。修改布局须保留实际归属，不能把页表、宿主后备页、硬件中断状态或 GPU VRAM 都标成 Guest RAM。样式回归覆盖 320–1440px、下拉箭头和两种全屏方式；新增 virtio-gpu 演示另检查命令与图像状态切换。
 
 `execution-selectors.json` 将场景入口与技术状态分开维护，新 GPU 演示将对应 `selector` 内嵌在自己的场景文件中。网络按后端与发送／接收选择，仅在相应路径下展示背压或缓冲不足；内存先选 RAM / MMIO，再按具体处理路径分组；CPU、中断使用分组预设；GPU 先选 VFIO PCI 或 mdev，再选已实现的操作。每个场景必须恰好被收录一次，界面只提供已核验的组合。网络总览从一次 18 B UDP 载荷的应用收发开始，区分用户缓冲区、Guest 协议栈与队列，以及本地后端；关键结构视图不逐步展开系统调用。应用返回、队列完成和网络交付分别解释，不能用 TX used 表示远端收到，也不能把驱动补充 RX 空间画成等待应用读取之后才进行。
 

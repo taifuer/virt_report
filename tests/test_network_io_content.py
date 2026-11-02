@@ -55,7 +55,7 @@ def test_network_initial_state_is_neutral_and_steps_are_bounded(scene_id):
     assert not initial["changes"]
     assert initial["focus"] is True
     assert 13 <= len(scene["steps"]) <= 14
-    assert len(scene["nodes"]) <= 8
+    assert len(scene["nodes"]) <= 11
     assert snapshot(scene_id, "initial")["availIdx"] == "0"
     assert snapshot(scene_id, "initial")["usedIdx"] == "0"
     assert any(not step["focus"] for step in scene["steps"])

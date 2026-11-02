@@ -3,6 +3,23 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const model = require('../virt_report/render/assets/execution-model.js');
+test('phase navigation groups operations without dropping playback or deep-link positions', () => {
+  const scene = {nodes: [], structures: [], phases: [
+    {id: 'submit', title: '提交请求', start: 'initial'},
+    {id: 'process', title: '后端处理', start: 'consume'},
+    {id: 'finish', title: '完成回收', start: 'complete'},
+  ], steps: ['initial', 'prepare', 'publish', 'consume', 'transfer', 'complete', 'reclaim']
+    .map((id, index) => ({id, title: id, changes: {}, nodeStates: {}, focus: index !== 4}))};
+  const trace = model.buildTrace(scene);
+  assert.deepEqual(model.navigation(scene, trace, 'overview').map(p => [p.index, p.end]),
+    [[0, 2], [3, 4], [5, 6]]);
+  assert.deepEqual(model.navigation(scene, trace, 'source'), model.phases(scene, trace));
+  assert.deepEqual(model.stops(trace, 'overview'), [0, 1, 2, 3, 4, 5, 6]);
+  assert.equal(model.next(trace, 'overview', 3, 1), 4);
+  assert.equal(model.project(trace, 'source', 4), 4);
+  assert.deepEqual(model.navigation(scene, trace, 'structure').map(p => p.index), [0, 1, 2, 3, 5, 6]);
+  assert.equal(trace[0].phase, undefined, 'navigation does not mutate snapshots');
+});
 test('node initial descriptions are neutral and retained until explicitly changed', () => {
   const scene = {nodes: [{id: 'vm', initial: '尚未创建'}, {id: 'manager'}], structures: [],
     steps: [{changes: {}, nodeStates: {}, active: [], focus: true},

@@ -217,7 +217,10 @@ async function assertFrame(page, frame) {
             assert(stops.every(stop => scene.steps[stop].focus), `${scene.id}: queue view has queue-related steps only`);
           }
           assert.deepEqual(await page.locator('[data-execution-step] > span').allTextContents(),
-            stops.map((_, n) => n === 0 ? '○' : String(n).padStart(2, '0')));
+            model.navigation(scene, trace, view).map((_, n) => view === 'structure' && n === 0
+              ? '○' : String(n + (view === 'structure' ? 0 : 1)).padStart(2, '0')));
+          assert.deepEqual(await page.locator('[data-execution-step] > strong').allTextContents(),
+            model.navigation(scene, trace, view).map(entry => entry.title));
           for (const [position, stop] of stops.entries()) {
             await assertFrame(page, trace[stop]); checkedSteps++;
             if (position < stops.length - 1) await button(page, 'next').click();

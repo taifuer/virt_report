@@ -13,6 +13,15 @@ fs.mkdirSync(shots, {recursive:true});
 async function settle(page) {
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
+async function seekFrame(page, target) {
+  await page.locator('[data-execution-lab]').evaluate((lab, target) => {
+    for (let n = 0; lab.executionSnapshot.frame.index !== target && n < 120; n++) {
+      const direction = lab.executionSnapshot.frame.index < target ? 'next' : 'prev';
+      lab.querySelector(`[data-execution-${direction}]`).click();
+    }
+    if (lab.executionSnapshot.frame.index !== target) throw new Error(`Cannot reach frame ${target}`);
+  }, target);
+}
 
 // Kept serializable so every step is inspected without changing the application model.
 function readMemory() {
@@ -110,16 +119,23 @@ async function switchView(page,view) {
 
 async function assertMemoryArrows(page,demo) {
   let checked=0;
-  const events=new Set(['publish','publish-buffer','replenish','fill-used','used']);
-  for(const viewport of [{width:320,height:740},{width:390,height:844},{width:768,height:1024},{width:1440,height:900}]) {
+  const events=new Set(['publish','publish-buffer','replenish','kick','kick-refill','fill-used','used',
+    'notify','route-interrupt','prepare-interrupt','guest-interrupt']);
+  for(const viewport of [{width:320,height:740},{width:390,height:844},{width:768,height:1024},
+    {width:1366,height:768},{width:1440,height:900}]) {
     await page.setViewportSize(viewport);
     for(const scene of demo.scenarios) {
       const frames=model.buildTrace(scene).filter(frame=>events.has(frame.id));
       await page.goto(`${base}/mechanisms/network-io.html?scenario=${scene.id}`);
       await page.waitForFunction(id=>document.querySelector('[data-execution-lab]')?.executionSnapshot?.scene.id===id,scene.id);
       await page.locator('[data-walkthrough-expand]').first().click();
+      if(viewport.width >= 1366) {
+        const rows=await page.locator('.walkthrough-domains').evaluate(domains =>
+          new Set([...domains.children].map(domain=>Math.round(domain.getBoundingClientRect().top))).size);
+        assert.equal(rows,1,`${scene.id}/${viewport.width}: Guest, KVM and backend domains belong on one row`);
+      }
       for(const frame of frames) {
-        await page.locator(`[data-execution-step="${frame.index}"]`).evaluate(button=>button.click());
+        await seekFrame(page, frame.index);
         await settle(page);
         const actual=await page.locator('[data-execution-lab]').evaluate(lab=>{
           const svg=lab.querySelector('.execution-arrows'),box=svg.viewBox.baseVal;
@@ -148,10 +164,15 @@ async function assertMemoryArrows(page,demo) {
         if(scene.id==='qemu-rx' && viewport.width===1440 && frame.id==='used') {
           await page.screenshot({path:path.join(shots,'qemu-rx-1440-used-arrow.png')});
         }
+        if(viewport.width===1366 && ['qemu-tx','vhost-tx','dpdk-tx','vdpa-tx'].includes(scene.id)
+            && ['kick','prepare-interrupt','guest-interrupt'].includes(frame.id)) {
+          await page.screenshot({path:path.join(shots,`${scene.id}-1366-${frame.id}.png`)});
+        }
       }
-      // These normal TX/RX presets must exercise publication and both completion boundaries.
+      // Normal presets exercise publication, backend notification and actual Guest IRQ entry.
       if(scene.id==='qemu-tx' || scene.id==='qemu-rx') assert.deepEqual(frames.map(frame=>frame.id),
-        [scene.id==='qemu-tx'?'publish':'publish-buffer','fill-used','used']);
+        [scene.id==='qemu-tx'?'publish':'publish-buffer','kick','fill-used','used','notify',
+          'route-interrupt','prepare-interrupt','guest-interrupt',...(scene.id==='qemu-rx'?['kick-refill']:[])]);
       await page.locator('[data-walkthrough-expand]').first().click();
       await page.waitForFunction(()=>!document.fullscreenElement &&
         !document.querySelector('[data-execution-lab]').classList.contains('walkthrough-expanded'));
@@ -203,7 +224,7 @@ async function assertMemoryArrows(page,demo) {
         assertMemory(await page.evaluate(readMemory),trace[0],scene,`${tag}/reset`);
         // Freeze after completion is filled but before used.idx publication.
         const filled=trace.find(frame=>frame.id==='fill-used');
-        await page.locator(`[data-execution-step="${filled.index}"]`).evaluate(button=>button.click());
+        await seekFrame(page, filled.index);
         await settle(page);
         assertMemory(await page.evaluate(readMemory),filled,scene,`${tag}/unpublished-completion`);
         if(['qemu-rx','qemu-tx','dpdk-tx','qemu-rx-no-buffer'].includes(scene.id)) {
