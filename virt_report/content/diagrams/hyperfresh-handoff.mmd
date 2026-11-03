@@ -1,0 +1,20 @@
+flowchart TB
+  accTitle: HyperFresh 的 L0、L1、L2 与内存交接
+  accDescr: 同一物理宿主上，L0 hyperplexor 始终保留。旧、新 L1 分别运行 Linux、KVM 和 QEMU，承载 L2 业务虚机。新端提前映射同一批 Guest 内存页，再在暂停窗口接收 vCPU 与 I/O 状态。两个 L2 框表示同一虚机交接前后的位置，不会同时执行；被替换的是 L1，L0 不在更新范围内。
+  G0["L2 · 数据库虚机<br/>交接前：旧端暂停执行"]
+  G1["L2 · 同一数据库虚机<br/>接管后：新端恢复执行"]
+  K0["L1 · 旧 Linux / KVM / QEMU"]
+  K1["L1 · 新 Linux / KVM / QEMU"]
+  L0["L0 · hyperplexor：持续运行<br/>同一宿主上管理新旧 L1 与内存映射"]
+  R["Guest RAM · 原宿主物理页<br/>内容保留，无需复制整块 RAM"]
+  G0 --> K0
+  G1 --> K1
+  K0 --> L0
+  K1 --> L0
+  L0 --> R
+  classDef old fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef new fill:#e4f1ec,stroke:#438575,color:#173e34;
+  classDef retained fill:#f5f3ed,stroke:#989387,color:#343b3a;
+  class G0,K0 old;
+  class G1,K1 new;
+  class L0,R retained;

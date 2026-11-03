@@ -1,0 +1,26 @@
+---
+config:
+  sequence:
+    actorMargin: 100
+    messageMargin: 18
+    noteMargin: 8
+    wrap: false
+---
+sequenceDiagram
+  accTitle: Orthus VM grafting 的内存保留与执行接管
+  accDescr: 旧端保留 Guest RAM 并 fork 子进程，随后暂停 vCPU、保存 CPU 与设备状态。子进程 execv 新 QEMU，经新版 KVM 建立 VM 和 vCPU，加载状态并映射原物理页、交接设备。成功后仅新端恢复执行；接管前失败则清理新端、由旧端恢复。MAP_KVM_RESERVED 是论文实现的内核扩展。
+  participant O as 旧 QEMU／旧 KVM
+  participant N as 子进程／新 QEMU／新 KVM
+  Note over O,N: 保留同一批 8 GiB Guest RAM 物理页<br/>MAP_KVM_RESERVED 为论文扩展
+  O->>N: fork 创建子进程
+  Note over O,N: Guest 暂停窗口开始
+  O->>O: 暂停 4 个 vCPU；savevm_state 保存状态
+  N->>N: execv 新 QEMU；建立 VM / vCPU
+  O-->>N: CPU 与设备状态 → loadvm_state
+  N->>N: 映射原 RAM；交接 VFIO 与通知关联
+  alt 接管成功：新端取得唯一执行权
+    N->>N: 恢复 vCPU，Guest 暂停结束
+    N-->>O: 确认成功，旧端退出
+  else 接管前初始化或恢复失败
+    N-->>O: 清理新端，由旧端恢复 Guest
+  end

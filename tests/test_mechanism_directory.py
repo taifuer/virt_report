@@ -31,8 +31,9 @@ def test_directory_metadata_covers_each_topic_and_article_once():
     assert len(set(topic_slugs)) == len(topic_slugs)
     for topic in content['topics']:
         assert topic['group'] in group_slugs
-        overview = mechanisms.get_article(topic['overview'])
-        assert overview is not None and overview['topic'] == topic['slug']
+        if topic.get('overview'):
+            overview = mechanisms.get_article(topic['overview'])
+            assert overview is not None and overview['topic'] == topic['slug']
     groups = mechanisms.topic_groups()
     assert [topic['slug'] for group in groups for topic in group['topics']] == topic_slugs
     members = [article['slug'] for group in groups for topic in group['published_topics']
@@ -168,7 +169,14 @@ def test_article_lists_are_progressively_collapsible_without_hiding_links_from_n
                          page, re.S).group()
         assert f'id="mechanism-list-{topic["slug"]}"' in body
         assert re.search(r'<div class="mechanism-list"[^>]*>', body).group().find('hidden') == -1
-        assert f'href="mechanisms/{topic["overview"]}.html"' in body
+        if topic.get('overview'):
+            assert f'href="mechanisms/{topic["overview"]}.html"' in body
+        else:
+            assert topic['detail_articles'] == topic['articles']
+            heading = re.search(r'<h3[^>]*>(.*?)</h3>', body, re.S).group(1)
+            assert '<a ' not in heading
+            assert 'class="mechanism-topic-label"' in heading
+            assert topic['title'] in heading
         if topic['detail_articles'] and topic['group'] != 'walkthroughs':
             button = re.search(r'<button[^>]*data-mechanism-toggle[^>]*>', body).group()
             assert f'aria-controls="mechanism-list-{topic["slug"]}"' in button

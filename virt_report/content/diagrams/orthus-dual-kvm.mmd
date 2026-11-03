@@ -1,0 +1,29 @@
+flowchart TB
+  accTitle: Orthus 的新旧 KVM 共存与逐台接管
+  accDescr: Orthus 将主要 KVM 实现放入经过改造的可替换模块，薄 kvm.ko 和宿主内核保持运行。旧、新 QEMU 分别经 /dev/kvm0 和 /dev/kvm1 使用对应实现。每台虚拟机暂停并完成状态交接后才在新版恢复；交接双方引用同一批 Guest RAM 物理页，不同时执行同一虚拟机。全部虚拟机交接后才卸载旧实现。
+  O["旧 QEMU<br/>交接前执行 Guest"]
+  N["新 QEMU<br/>接管后执行 Guest"]
+  subgraph HOST["同一宿主内核：本次升级保持运行"]
+    subgraph THIN["thin kvm.ko：保留的接口层"]
+      I0["/dev/kvm0"]
+      I1["/dev/kvm1"]
+    end
+    K0["旧 kvm-intel-0.ko<br/>经改造的主要 KVM 实现"]
+    K1["新 kvm-intel-1.ko<br/>经改造的主要 KVM 实现"]
+    R["示例虚拟机的 Guest RAM<br/>同一批宿主物理页原地保留"]
+    I0 --> K0
+    I1 --> K1
+  end
+  O --> I0
+  N --> I1
+  O -. "原有映射" .-> R
+  N -. "接管保留页" .-> R
+  C["Intel VT-x<br/>新旧实现所属 VM 按宿主调度分时运行"]
+  K0 --> C
+  K1 --> C
+  classDef old fill:#eaf0f6,stroke:#8198ac,color:#263c4c;
+  classDef new fill:#e4f1ec,stroke:#438575,color:#173e34;
+  classDef retained fill:#f5f3ed,stroke:#989387,color:#343b3a;
+  class O,K0 old;
+  class N,K1 new;
+  class I0,I1,R,C retained;

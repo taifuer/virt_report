@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=49f2a464e9bd">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=49f2a464e9bd">
   <link rel="stylesheet" href="../assets/site.css?v=49f2a464e9bd">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=06061d659afe">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=06061d659afe">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=a5df719fb3d6">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=a5df719fb3d6">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -73,9 +73,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看同一个报文的数据路径与通知路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="同一个报文的数据路径与通知路径">
-    <img src="../assets/interrupt-delivery-overview.svg?v=06061d659afe" alt="缓冲区和 used 保存结果；中断通知驱动检查队列。数据就绪、通知等待、vCPU 执行与驱动消费是不同阶段。下面先说明通知怎样确定目标，再展开宿主的交付过程。" loading="lazy">
+    <img src="../assets/interrupt-delivery-overview.svg?v=a5df719fb3d6" alt="缓冲区和 used 保存结果；中断通知驱动检查队列。数据就绪、通知等待、vCPU 执行与驱动消费是不同阶段。下面先说明通知怎样确定目标，再展开宿主的交付过程。" loading="lazy">
   </div>
-  <figcaption>缓冲区和 used 保存结果；中断通知驱动检查队列。数据就绪、通知等待、vCPU 执行与驱动消费是不同阶段。下面先说明通知怎样确定目标，再展开宿主的交付过程。 <a href="../assets/interrupt-delivery-overview.svg?v=06061d659afe" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>缓冲区和 used 保存结果；中断通知驱动检查队列。数据就绪、通知等待、vCPU 执行与驱动消费是不同阶段。下面先说明通知怎样确定目标，再展开宿主的交付过程。 <a href="../assets/interrupt-delivery-overview.svg?v=a5df719fb3d6" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 从设备完成到客户机驱动处理
     accDescr: 完成记录先于通知发布，通知按路由进入虚拟 LAPIC 并等待客户机接受。vCPU 阻塞时需要先唤醒宿主线程；客户机驱动最终读取 used 队列确定完成项。
@@ -112,9 +112,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看设备、平台与 CPU 中的中断路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="设备、平台与 CPU 中的中断路径">
-    <img src="../assets/interrupt-controller-paths.svg?v=06061d659afe" alt="先按物理机器理解各组件的位置。INTx 经平台 I/O APIC 路由，MSI-X 从设备发送消息；两条路径均到达目标 LAPIC。图中省略总线和可能存在的中断重映射。" loading="lazy">
+    <img src="../assets/interrupt-controller-paths.svg?v=a5df719fb3d6" alt="先按物理机器理解各组件的位置。INTx 经平台 I/O APIC 路由，MSI-X 从设备发送消息；两条路径均到达目标 LAPIC。图中省略总线和可能存在的中断重映射。" loading="lazy">
   </div>
-  <figcaption>先按物理机器理解各组件的位置。INTx 经平台 I/O APIC 路由，MSI-X 从设备发送消息；两条路径均到达目标 LAPIC。图中省略总线和可能存在的中断重映射。 <a href="../assets/interrupt-controller-paths.svg?v=06061d659afe" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>先按物理机器理解各组件的位置。INTx 经平台 I/O APIC 路由，MSI-X 从设备发送消息；两条路径均到达目标 LAPIC。图中省略总线和可能存在的中断重映射。 <a href="../assets/interrupt-controller-paths.svg?v=a5df719fb3d6" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart LR
   accTitle: 设备、平台与 CPU 中的中断路径
   accDescr: 按物理组件分组。设备的 INTx 引脚经平台 I/O APIC 路由，MSI-X 消息直接指向目标 LAPIC；CPU 接受中断后按 IDT 进入操作系统处理入口。图中省略总线和可能存在的中断重映射。
@@ -155,9 +155,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看QEMU 设备模型经 KVM 软件注入的完整路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="QEMU 设备模型经 KVM 软件注入的完整路径">
-    <img src="../assets/interrupt-software-delivery.svg?v=06061d659afe" alt="沿用队列 0、APIC ID 1 和向量 0x51。图中区分消息提交、LAPIC 状态、客户机执行与驱动消费；未启用 APICv 的交付路径用于后续加速方案的对照。" loading="lazy">
+    <img src="../assets/interrupt-software-delivery.svg?v=a5df719fb3d6" alt="沿用队列 0、APIC ID 1 和向量 0x51。图中区分消息提交、LAPIC 状态、客户机执行与驱动消费；未启用 APICv 的交付路径用于后续加速方案的对照。" loading="lazy">
   </div>
-  <figcaption>沿用队列 0、APIC ID 1 和向量 0x51。图中区分消息提交、LAPIC 状态、客户机执行与驱动消费；未启用 APICv 的交付路径用于后续加速方案的对照。 <a href="../assets/interrupt-software-delivery.svg?v=06061d659afe" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>沿用队列 0、APIC ID 1 和向量 0x51。图中区分消息提交、LAPIC 状态、客户机执行与驱动消费；未启用 APICv 的交付路径用于后续加速方案的对照。 <a href="../assets/interrupt-software-delivery.svg?v=a5df719fb3d6" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: QEMU virtio-net 经 KVM 软件注入向量 0x51
     accDescr: QEMU 先写报文和 used 记录，再提交 MSI 消息。KVM 按 APIC ID 找到 vCPU 1，设置 IRR 并请求事件处理；条件满足后经 VM Entry 注入，客户机按 IDT 进入处理程序。驱动消费和 EOI 分别推进队列与 APIC 状态。
@@ -214,9 +214,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看事件接入与 vCPU 交付的两层优化" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="事件接入与 vCPU 交付的两层优化">
-    <img src="../assets/interrupt-acceleration-layers.svg?v=06061d659afe" alt="直通设备两条路径都从 MSI-X 消息开始，由预先配置的普通或 posted IRTE 决定后续递送。普通路径经 VFIO / irqfd 进入 KVM，仍可使用 CPU 侧 posted；VT-d posted 则由 IOMMU 直接写 PIR。分支表示配置差异，不是逐次 I/O 的应用选项。" loading="lazy">
+    <img src="../assets/interrupt-acceleration-layers.svg?v=a5df719fb3d6" alt="直通设备两条路径都从 MSI-X 消息开始，由预先配置的普通或 posted IRTE 决定后续递送。普通路径经 VFIO / irqfd 进入 KVM，仍可使用 CPU 侧 posted；VT-d posted 则由 IOMMU 直接写 PIR。分支表示配置差异，不是逐次 I/O 的应用选项。" loading="lazy">
   </div>
-  <figcaption>直通设备两条路径都从 MSI-X 消息开始，由预先配置的普通或 posted IRTE 决定后续递送。普通路径经 VFIO / irqfd 进入 KVM，仍可使用 CPU 侧 posted；VT-d posted 则由 IOMMU 直接写 PIR。分支表示配置差异，不是逐次 I/O 的应用选项。 <a href="../assets/interrupt-acceleration-layers.svg?v=06061d659afe" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>直通设备两条路径都从 MSI-X 消息开始，由预先配置的普通或 posted IRTE 决定后续递送。普通路径经 VFIO / irqfd 进入 KVM，仍可使用 CPU 侧 posted；VT-d posted 则由 IOMMU 直接写 PIR。分支表示配置差异，不是逐次 I/O 的应用选项。 <a href="../assets/interrupt-acceleration-layers.svg?v=a5df719fb3d6" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>%%{init: {&#34;flowchart&#34;: {&#34;rankSpacing&#34;: 24, &#34;nodeSpacing&#34;: 32, &#34;padding&#34;: 10}}}%%
 flowchart TB
   accTitle: irqfd、APICv 与直通设备 interrupt posting 的不同位置
@@ -296,6 +296,6 @@ cat /proc/interrupts</code></pre>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=49f2a464e9bd"></script>
-<script src="../assets/mechanism-viewer.js?v=06061d659afe" defer></script>
+<script src="../assets/mechanism-viewer.js?v=a5df719fb3d6" defer></script>
 </body>
 </html>

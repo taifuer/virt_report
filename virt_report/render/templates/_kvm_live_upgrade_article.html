@@ -1,75 +1,147 @@
 {% from '_mechanism_diagram.html' import diagram with context %}
-{% set linux_source = 'https://github.com/torvalds/linux/blob/05f7e89ab9731565d8a62e3b5d1ec206485eeb0b/' %}
+{% set orthus_doi = 'https://doi.org/10.1145/3297858.3304034' %}
+{% set forum_slides = 'https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2020/Kvm-live-upgrade-with-properly-handling%20of%20passthrough%20devices.pdf' %}
+{% set forum_2022_slides = 'https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2022/kvm-forum-2022-Deep-Optimization-of-VMM-Live-Upgrade.pdf' %}
+{% set hyperfresh_2017_doi = 'https://doi.org/10.1145/3124680.3124734' %}
+{% set hyperfresh_2019_doi = 'https://doi.org/10.1145/3313808.3313821' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>从进程替换到宿主内核更新</h2>
-  <p><a href="qemu-cpr-transfer.html">QEMU CPR-transfer</a> 替换用户态进程，宿主内核继续运行。更新 KVM 或整个宿主内核则会触及 VM / vCPU、内存映射、中断路由和设备所有权，不能只交接 QEMU 的状态文件。</p>
-  <p>KVM 热升级有不同范围：修补正在运行的代码、在新旧 KVM 之间接管虚拟机，或保留资源后切换整个宿主内核。Guest 不重启、vCPU 持续执行和业务无停顿是三个不同目标；保留了 RAM，不代表后三者自动成立。</p>
-  <table><thead><tr><th scope="col">方案</th><th scope="col">更新对象</th><th scope="col">能力与状态边界</th></tr></thead><tbody>
-    <tr><td>Linux livepatch</td><td>适合热补丁的内核函数，包括模块中的函数</td><td>主线框架；不等于任意 KVM 版本原地替换</td></tr>
-    <tr><td>Orthus / Dual KVM</td><td>经专门改造的 KVM 与 QEMU</td><td>ASPLOS 2019 论文披露的厂商方案；不是主线通用模块升级接口</td></tr>
-    <tr><td>KHO + LUO</td><td>通过 kexec 更新宿主内核，保留受支持的资源</td><td>基础设施已有主线实现；Linux 6.19 文档列出的文件保留类型是 memfd，不能外推为整台 VM 与所有设备均可保留</td></tr>
-    <tr><td>QEMU cpr-luo</td><td>利用 KHO / LUO 保留 RAM，重启宿主后恢复虚拟机</td><td>本文分析 2026-10-12 的补丁版本；Guest 在交接期间暂停，该版禁止 VFIO</td></tr>
-    <tr><td>Orphaned VMs / Caretaker</td><td>在宿主切换期间继续执行已准备的 vCPU</td><td>2026-09-20 RFC 概念验证；只处理部分 VM-exit，并非通用零停顿方案</td></tr>
-  </tbody></table>
-  <p>下文按固定版本和公开材料的日期说明能力，不把补丁提案、会议计划或厂商实现当作任意发行版已具备的功能。</p>
+  <h2>云平台在线升级的需求</h2>
+  <p>一台虚拟机长期运行时，支撑它的虚拟化软件仍需要修复漏洞、改进性能和增加功能。KVM 在宿主内核中管理 vCPU 执行，QEMU 在用户态组织虚拟机内存和设备。安装新版软件包后，已有的 QEMU 进程和 KVM 实例仍在执行旧代码；运行中的虚拟机需要一次明确的状态交接，才能用上新实现。</p>
+  <p>以一台运行数据库服务的虚拟机为例：它有 4 vCPU、8 GiB RAM 和一块直通网卡。宿主需要更新 KVM，客户机中已有的进程、内存内容和网络连接都应保留。如果每次修复都要求客户重启业务，更新就会受维护窗口限制；如果先把所有虚机迁走，云平台又要准备接收它们的服务器与网络容量。单台机器上的维护步骤，到了数万台宿主上就会成为升级进度的瓶颈。</p>
+  <p>Orthus 利用同机升级的条件，把 Guest RAM 和物理设备留在原处，由新 KVM 与新 QEMU 接管运行状态。虚拟机会短暂停顿，随后从原来的执行位置继续，客户机操作系统不重新引导。本文沿上述数据库虚机的一次升级，介绍这条路径的设计、实现和效果；示例配置用于讲解，不代表论文的测试配置。只更新 QEMU 的方式见 <a href="qemu-cpr-transfer.html">QEMU 热升级：CPR 的资源交接与状态恢复</a>。</p>
+  <p>后文再对照字节跳动的 VMM Live Upgrade 和 HyperFresh：前者继续处理同机模块交接中的设备与通知，后者借助嵌套虚拟化替换承载业务虚机的 Hypervisor。本文关注实际 KVM 实现的在线替换，保留 Guest 运行状态，允许切换时短暂停顿；宿主基础内核或底层管理层保持运行。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
-<section id="livepatch" class="mechanism-section">
-  <h2>热补丁：修改代码，保留现有内核对象</h2>
-  <p>Linux livepatch 可以把合适的函数调用切换到修补后的实现，并通过一致性模型协调任务从旧代码过渡到新代码。目标既可以是内核本体，也可以是已加载模块中的函数；VM 和 vCPU 不因此被重新创建。机制见 <a href="https://docs.kernel.org/livepatch/livepatch.html">Linux livepatch 文档</a>。</p>
-  <p>修复某个 KVM 判断条件，与替换整套 KVM 对象布局并不是同一件事。锁、数据结构和新旧调用关系都要满足补丁的安全条件；不能把任意两个内核版本的差异包装成一个函数替换。运行中直接卸载再加载 KVM，也不提供 VM 状态交接协议。</p>
+<section id="alternatives" class="mechanism-section">
+  <h2>已有升级方式与同机接管的挑战</h2>
+  <p>升级方案首先取决于准备替换哪一层，以及业务能接受多大的中断。下面把三种路径放到这台虚拟机上比较；CPR 用于说明用户态进程替换的范围，不属于 Orthus 论文当年的实验对照。</p>
+  <table><thead><tr><th scope="col">路径</th><th scope="col">操作与收益</th><th scope="col">主要代价或限制</th></tr></thead><tbody>
+    <tr><td>停机更新并重启虚机</td><td>关闭虚拟机，释放旧实现的引用，完成更新后重新启动</td><td>业务中断包含关机、更新、引导及应用恢复</td></tr>
+    <tr><td>跨主机热迁移后更新</td><td>在另一台宿主恢复虚机，腾空原宿主；也适合原宿主的硬件维护</td><td>需要目标容量、迁移带宽和兼容配置；直通设备还要有受支持的迁移或替代路径</td></tr>
+    <tr><td>只替换 QEMU，例如 CPR-transfer</td><td>共享 RAM，交接进程资源及运行状态</td><td>这一步保留原来的宿主内核与 KVM 实现，无法独自完成 KVM 版本替换</td></tr>
+  </tbody></table>
+  <p>内存复制的成本可以用一个简单估算理解：假设这台虚机的 8 GiB RAM 全部需要传送，有效带宽为 1 GiB/s，第一轮就需要约 8 秒，尚未计入重传脏页和其他开销。预拷贝期间客户机可以继续运行，因此这 8 秒属于迁移总耗时，不能直接算成停机时间。批量迁移还会让多台虚机竞争同一条网络链路。</p>
+  <p>同机升级省去了更换物理宿主的必要，但仍有三个难点。首先，旧 KVM 正被 VM 和 vCPU 引用，必须让新实现能先准备好。其次，客户机的内存、寄存器和设备状态需要形成可恢复的运行现场。最后，直通设备独立于 vCPU 工作，CPU 暂停时，设备仍可能 DMA 写入内存并产生中断。Orthus 的三个机制分别处理这些困难。<a href="{{ orthus_doi }}">论文 §2–3</a></p>
 </section>
 
 <section id="dual-kvm" class="mechanism-section">
-  <h2>Dual KVM：在两套实现之间接管虚拟机</h2>
-  <p>Orthus 论文描述了新旧 KVM 并存、逐台接管的设计：将可替换的主要实现集中到经改造的 <code>kvm-intel.ko</code>，保留一个不随此次升级替换的薄 <code>kvm.ko</code>；不同实现通过各自的设备入口提供服务。它还需要符号隔离和硬件资源协调，而不是在普通发行版上重复加载同名模块。参见 <a href="https://www.cs.fsu.edu/~zwang/files/asplos19.pdf">Orthus 原论文，ASPLOS 2019</a>。</p>
-  <p>VM grafting 让新实现接管原有 Guest 内存和执行状态，device handover 处理设备与 DMA 资源的交接；目标是减少整份 RAM 的复制，并缩短接管停顿。这里不应推导出“所有客户机指令都在升级期间持续执行”。论文报告的部署经验，也不是当前主线 KVM 对任意版本组合的兼容保证。<a href="https://www.alibabacloud.com/blog/alibaba-cloud-releases-major-paper-at-asplos19_594741">厂商发布说明</a>给出了这项方案的背景。</p>
+  <h2>Orthus 的整体设计与新旧 KVM 共存</h2>
+  <p>Orthus 是完整的升级系统，Dual KVM 是其中负责新旧实现共存的一部分。只有模块共存，还不能让原虚机自动转入新版；内存、运行状态和设备都要沿着各自的路径交接。</p>
+  <table><thead><tr><th scope="col">需要解决的困难</th><th scope="col">机制</th><th scope="col">示例中的结果</th></tr></thead><tbody>
+    <tr><td>旧 KVM 仍服务运行中的虚机，不能直接卸载</td><td>Dual KVM：保留稳定接口，让新旧实现并存</td><td>数据库虚机仍用旧版时，新版已经可以接受接管</td></tr>
+    <tr><td>RAM 很大，执行状态分散在 QEMU 与 KVM 中</td><td>VM grafting：原地保留内存，保存并恢复其余状态</td><td>8 GiB 物理页保留，4 个 vCPU 从保存的位置继续</td></tr>
+    <tr><td>网卡还有正在进行的 DMA 与完成通知</td><td>Device handover：保留设备连接，交接控制与通知关联</td><td>设备仍访问原来的内存，接收完成由接管后的客户机处理</td></tr>
+  </tbody></table>
+  <p>具体到 KVM，Orthus 将原来 <code>kvm.ko</code> 的大部分实现移入经过改造的 <code>kvm-intel.ko</code>，留下与宿主内核衔接的薄层。新旧模块通过各自的函数接口注册到这个薄层，再分别提供 <code>/dev/kvm0</code> 和 <code>/dev/kvm1</code>。全局变量按实例隔离，函数符号的可见范围也作相应调整，避免两份实现相互覆盖。</p>
+  {{ diagram('orthus-dual-kvm', '同一宿主上的新旧 KVM 与 QEMU', '左侧服务交接前的虚拟机，右侧服务接管后的虚拟机。两端使用同一批 Guest RAM；薄 kvm.ko 和宿主内核不在本次替换范围内。') }}
+  <p>对示例虚机，旧 QEMU 仍通过旧入口运行，新的 QEMU 将通过新入口建立 VM 和 vCPU。宿主按调度安排不同 vCPU 使用硬件虚拟化能力；同一台虚拟机的旧、新 vCPU 不会同时推进客户机执行。</p>
+  <p>其他虚拟机可以暂时继续使用旧实现。等旧实例上的最后一台完成接管，才卸载旧模块。这样就能逐台升级，并把失败处理限制在尚未完成切换的虚机上。代价是预先改造模块边界，并维护两套实例的隔离与资源协调；原版发行版重复加载模块不具备这套协议。<a href="{{ orthus_doi }}">论文 §3.1</a></p>
 </section>
 
-<section id="kernel-handoff" class="mechanism-section">
-  <h2>KHO 与 LUO：跨内核保留内存和受支持的资源</h2>
-  <p>kexec 将控制权交给新内核，但普通重启不会自动把旧内核的文件、KVM 对象和设备关联变成新内核可用的对象。Kexec Handover（KHO）保留指定的物理内存，并传递描述这些资源的元数据；新内核使用预留的 scratch 区启动，避免覆盖保留页。它保留的是字节和交接信息，不是让任意旧内核指针在新内核中继续有效。参见 <a href="https://docs.kernel.org/6.16/core-api/kho/concepts.html">Linux 6.16 KHO 概念文档</a>。</p>
-  <p>Live Update Orchestrator（LUO）在此基础上组织有名字的会话，由各资源的处理器执行保留、冻结和恢复。新内核重新构建受支持的文件对象，并向新进程返回可用的 fd；fd 数值不必与旧进程相同。Linux 6.19 的接口和 memfd 支持见 <a href="https://docs.kernel.org/6.19/core-api/liveupdate.html">LUO 文档</a>及<a href="{{ linux_source }}Documentation/core-api/liveupdate.rst#L8-L31">固定源码中的文档入口</a>。</p>
-  <p>因此有两种需要区分的路径：保留 Guest RAM 后重新创建 KVM VM / vCPU，再加载迁移状态；或者为 KVM 对象本身增加专门的保留与接管协议。后者需要额外实现，不能由“memfd 已能保留”推出。VFIO、IOMMU、PCI 和中断关联同样各有生命周期。</p>
+<section id="grafting" class="mechanism-section">
+  <h2>一台虚拟机的完整升级</h2>
+  <h3>保留内存，区分运行状态与实现对象</h3>
+  <p>数据库缓存、应用堆栈和接收缓冲区都在这 8 GiB Guest RAM 中。交接后这些字节应继续留在原来的宿主物理页上；客户机看到的地址也要保持一致。新 QEMU 可以重新映射这些页，但不必另外复制 8 GiB 内容。</p>
+  <p>4 个 vCPU 的寄存器和模拟设备状态则需要保存、加载。新 KVM 创建自己的 VM / vCPU 对象，再恢复客户机可见的执行状态。旧对象中的内核指针、锁和实现布局不能原封不动地当成新对象使用。这也是内存保留与状态恢复必须分别处理的原因。</p>
+  <p>Orthus 使用 <code>fork()</code> 创建接管进程，再用 <code>execv()</code> 加载新 QEMU。普通 exec 会替换进程地址空间，fork 继承下来的匿名映射不能直接沿用。论文为 Guest 内存增加 <code>MAP_KVM_RESERVED</code> 保留与映射支持，这是它的内核扩展。基于文件的共享内存也可以通过保留后备文件再建立映射；关键在于后备页的生命周期能够跨过进程替换。</p>
+
+  <h3>从旧端暂停到新端恢复</h3>
+  <p>新版 KVM 已加载后，单台虚机依次完成下面的交接。新端需要采用与原虚机兼容的 CPU、机型和设备配置；执行新的 QEMU 程序不等于让 Guest 再次经过固件引导。</p>
+  {{ diagram('orthus-vm-grafting', '数据库虚机从旧实现转入新实现', '8 GiB Guest RAM 留在原处。4 个 vCPU 在旧端暂停，待新端恢复状态并完成设备交接后继续执行；接管前的失败分支回到旧端。') }}
+  <ol>
+    <li>准备保留页，fork 子进程。旧父进程暂时保留，它掌握原 VM 的状态和失败恢复所需的资源。</li>
+    <li>暂停旧端 vCPU，通过 <code>savevm_state</code> 保存 CPU 与设备状态。数据库线程在这个窗口中不继续执行，直通网卡的已有操作另行处理。</li>
+    <li>子进程 execv 新 QEMU，经 <code>/dev/kvm1</code> 使用新版 KVM，初始化 VM、vCPU 和相应设备模型。</li>
+    <li>新端通过 <code>loadvm_state</code> 加载保存的状态，建立保留 RAM 的映射。数据库内存中的内容继续存在，寄存器对应旧端停止时的执行位置。</li>
+    <li>完成设备与通知关联的交接后，新端取得执行权并恢复 vCPU；确认成功再让旧 QEMU 退出。此后数据库线程继续执行，其他尚未升级的虚机仍可留在旧 KVM 上。</li>
+  </ol>
+  <p>论文把保存状态到恢复执行之间的间隔作为停顿窗口。省去 RAM 复制后，新端初始化、状态加载与恢复运行成为主要工作；它们仍需要时间。<a href="{{ orthus_doi }}">论文 §3.2、图 3</a></p>
+
+  <h3>接管前失败与单一执行权</h3>
+  <p>新 QEMU 初始化或加载状态失败时，保留的旧父进程使回退成为可能：清理失败的新端，确认设备和通知的控制关系回到旧端，再恢复原虚机。保留旧进程的价值就在于，新端失败不必立刻演变成一次客户机重启。</p>
+  <p>成功恢复后，新端会继续修改同一份 RAM 和设备状态。此时旧端保存的寄存器现场已经过时，不能再直接恢复旧 vCPU。回退边界因此位于新端真正开始推进客户机状态之前；后续若要回到旧版本，需要一次新的受控交接。</p>
 </section>
 
-<section id="cpr-luo" class="mechanism-section">
-  <h2>cpr-luo：保留 RAM，暂停后恢复执行</h2>
-  <p><a href="https://www.mail-archive.com/qemu-devel%40nongnu.org/msg1233836.html">2026-10-12 的 cpr-luo 补丁系列</a>将 CPR 与 KHO / LUO 连接起来：保留 CPR 状态 memfd 和 RAMBlock 的后备 fd，其余 VM 状态继续经迁移框架保存与恢复。它不是 QEMU 10.2 的 cpr-transfer 自带的能力，也不要求 Guest 在宿主切换期间一直执行。</p>
-  {{ diagram('kernel-upgrade-handoff', '宿主内核切换与 Guest 暂停窗口', 'Guest 在交接期间不继续运行指令；内存和执行状态保留后由新端恢复，不重新走固件引导。此图只表示 cpr-luo 路径，不表示 Caretaker 的持续执行目标。') }}
-  <p>该补丁版本要求共享内存配置和虚拟机标识匹配；旧 QEMU 应保持 postmigrate 直到 kexec，不能提前退出，否则 LUO 会话及其资源会被释放。该版明确阻止 VFIO，作者提到的另行实验不等于这组补丁已支持直通设备。CPR-transfer 的 VFIO 交接支持也不能直接搬来证明跨内核更新可用。</p>
+<section id="device-handover" class="mechanism-section">
+  <h2>直通网卡的 DMA 与中断交接</h2>
+  <p>继续观察这台数据库虚机。暂停前，Guest 驱动已经给网卡提供了接收缓冲区 B；暂停期间，一帧报文 P 到达。网卡可以继续把 P 写进 B，客户机驱动则要等 vCPU 恢复后才能处理它。因此升级期间需要同时保住数据目标、设备控制关系和完成通知。</p>
+  <p>本例采用设备 DMA 地址与 Guest 物理地址一致的映射，IOMMU 把它转换到宿主物理页。新旧 QEMU 共用原来的 Guest RAM，物理页未移动，原有 IOMMU 映射就可以继续使用。保留数据页时还必须保留这些映射及其引用，避免设备仍在访问时把页面释放给别的用途。</p>
+  <p>Orthus 的 VFIO connector 在用户态集中管理 VFIO 描述符以及 eventfd、KVM irqfd 相关接口。旧 QEMU 把 connector 的控制权交给新 QEMU，底层 VFIO 连接保持打开，避免关闭再打开时重置设备或撤销 DMA 关系。设备内部正在进行的操作留在硬件上，PCI 配置和相关软件状态仍要按升级协议保存、恢复。</p>
+  {{ diagram('orthus-device-handover', '暂停窗口中的报文与完成通知', '数据沿保留的 IOMMU 映射写入原接收缓冲区；设备连接和通知关联交给新端。恢复后的 Guest 驱动检查完成状态，继续处理报文。') }}
+  <p>对报文 P，可以分开检查两件事：B 中的数据是否完整，以及驱动能否获知接收已经完成。eventfd 提供事件通知，不保存报文载荷；保住 B 并不能自动保证完成通知也连续。</p>
+  <p>论文通过保留的通知关联接续中断，但在大规模测试中仍发现遗漏中断，因而在设备交接后补充注入虚拟 IRQ，使客户机重新检查完成状态。这项补救体现了设备交接中较难的部分：DMA 可以持续，通知路径却跨越了新旧 VM 的切换。vCPU 恢复和 Guest 的中断接收条件允许后，驱动才实际处理完成；暂停较长时还要考虑设备队列容量与业务超时。<a href="{{ orthus_doi }}">论文 §3.3</a></p>
 </section>
 
-<section id="caretaker" class="mechanism-section">
-  <h2>Caretaker：让部分客户机执行跨越宿主重启</h2>
-  <p>Orphaned VMs 尝试让经过准备的 vCPU 留在保留的 CPU 上，在宿主内核切换期间继续运行；Caretaker 在这个窗口中接手有限的 VM-exit 处理。<a href="https://lore.kernel.org/all/20260920193650.3373435-1-pasha.tatashin@soleen.com/">2026-09-20 的 RFC 00/46</a>明确是概念验证，不是生产就绪的通用方案。</p>
-  <p>Caretaker 不是完整的 KVM 或 QEMU 替代品。遇到其不能处理的退出，vCPU 仍要等待新宿主就绪；依赖用户态设备模型、尚未接管的 I/O 后端或设备资源时，也不能承诺业务继续无停顿。这个限制在 <a href="https://lpc.events/event/20/contributions/2554/">LPC 2026 的 Orphaned VMs 介绍</a>中有明确说明。</p>
-  <p>它与<a href="kvm-vcpu-halt.html">Idle Passthrough</a>也不是同一个机制：后者讨论正常运行时是否拦截空闲指令，Caretaker 讨论宿主内核暂时不可用时由谁维持客户机执行。减少某类 VM-exit，不能代替完整的升级状态交接。</p>
+<section id="downtime" class="mechanism-section">
+  <h2>实验效果与开销来源</h2>
+  <h3>暂停时间与迁移总耗时</h3>
+  <p>暂停时间衡量客户机停止推进的窗口；迁移总耗时还包含运行期间的准备和数据传送。Orthus 不迭代复制 RAM，论文中单台交接的总耗时与暂停窗口接近。跨机预拷贝则可能运行较长时间，最终才短暂停机。</p>
+  <p>以下是论文 §4.2 的两组测量，均为作者实验结果。普通计算 VM 配置为 16 vCPU、32 GB RAM、40 GB 云盘，使用 2 MB 大页；测试宿主只运行这一台 VM，以减少同机其他虚机的干扰。</p>
+  <table><thead><tr><th scope="col">测量对象</th><th scope="col">采样</th><th scope="col">客户机暂停</th><th scope="col">迁移或交接总耗时</th></tr></thead><tbody>
+    <tr><td>Orthus：空闲、Web、MySQL、SPEC CPU2006</td><td>每类 100 次，间隔 5 秒</td><td>29–37 ms，平均约 30 ms</td><td>按论文定义与暂停窗口接近</td></tr>
+    <tr><td>MySQL 的跨机热迁移对照</td><td>800 次</td><td>平均 268 ms</td><td>平均 27.3 s</td></tr>
+  </tbody></table>
+  <p>两行的负载和采样范围分别列出。论文还单独比较了 16 GB MySQL VM 的本机热迁移：Orthus 平均暂停约 31 ms，普通本机迁移约 268 ms。把源和目的端放在同一台机器上能省去跨机网络传输，但仍需解决 RAM 保留、KVM 实现替换和设备交接。</p>
+
+  <h3>省下的复制时间与剩余的恢复开销</h3>
+  <p>这些结果与设计相对应：原有内存直接交给新端，省去了复制大块 RAM 及反复追踪脏页的过程。对本文的 8 GiB 示例，内存内容也无需经过前面估算的那轮传输；它仍然要经历对象创建、状态恢复与映射关联。</p>
+  <p>论文图 6 把一次约 30 ms 的停顿进一步拆开：等待 Libvirt 的启动信号占 12 ms，恢复 16 个 vCPU 占 4 ms，其他时间用于 VGA、virtio-net、virtio-balloon 等设备。这说明，消除内存复制后，管理端协调和设备恢复同样值得优化。</p>
+  <p>GPU 实验也体现了这个边界：增加设备会增加 PCI 配置与 VFIO-pci 状态处理，空闲 GPU 的唤醒还可能拉长停顿。GPU 已提交的任务可以在 vCPU 暂停时继续工作，但新的客户机指令仍要等待恢复。CPU 停顿、设备工作和应用响应应分别观察。<a href="{{ orthus_doi }}">论文 §4.2–4.3、图 5–7</a></p>
+
+  <h3>从单台交接到整批升级</h3>
+  <p>云平台更大的收益来自资源调度。跨机迁移通常要等待空闲宿主，并限制带宽和同时迁移的数量；同机交接保留原资源，多台宿主可以分别推进。分发新版 KVM/QEMU 仍有成本，但不再需要逐台通过网络复制 Guest RAM。</p>
+  <p>论文 §4.4 记录，使用传统迁移部署 halt polling 功能时，4.5 万台 VM 的升级历时 15 天，受到备用容量、夜间维护窗口和灰度安排限制。随后使用 Orthus 更新其余百万量级 VM，作者报告升级执行合计约 45 分钟，分三天灰度推进。两次记录的规模与运维条件不同，不能直接用日历时间相除得到算法加速比；它们反映的是批量更新对备用容量和迁移网络的依赖显著下降。<a href="{{ orthus_doi }}">部署记录</a></p>
+</section>
+
+<section id="evolution" class="mechanism-section">
+  <h2>字节跳动：设备连续性与暂停窗口优化</h2>
+  <p>省去 RAM 复制后，设备恢复和通知交接成为影响暂停时间的重要因素。字节跳动在 KVM Forum 2020、2022 的两次分享采用多 KVM 模块、共享 RAM 和新旧 QEMU 交接的结构，分别讨论直通设备中断与外部后端的处理。</p>
+
+  <h3>2020：让待处理中断跨过交接窗口</h3>
+  <p>设报文 P 恰好在新旧端交接时完成 DMA。2020 年方案让两端共享 posted-interrupt descriptor（<code>pi_desc</code>），用其中的 PIR 位保留待处理向量。新端不重新初始化或复制 PIR，也不改写原有 Interrupt Remapping Table，让通知继续落到同一份记录上。这条路径依赖 VT-d Posted Interrupt；恢复后的 vCPU 才能继续处理客户机中断。</p>
+  <p>暂停窗口还可以缩短：新端提前创建 virtio eventfd，旧端在升级成功后清理，并通过共享内存并发保存与加载状态。分享报告的 vCPU 暂停范围为 11–38 ms，来自不同配置与负载，不能直接与 Orthus 的平均值比较。<a href="{{ forum_slides }}">2020 年分享：中断交接与测量</a></p>
+
+  <h3>2022：保持 vhost-user 后端运行</h3>
+  <p>若示例虚机使用 DPDK vhost-user 网络后端或 SPDK vhost-user 存储后端，替换 QEMU 时也要处理独立的后端进程。2022 年方案继承连接及共享文件描述符，让后端继续运行，跳过重复初始化；配置在暂停前预保存，发生变化再补传。KVM 升级仍通过多模块交接完成。<a href="{{ forum_2022_slides }}">2022 年分享：后端连接与配置</a></p>
+  {{ diagram('kvm-upgrade-vhost-handover', 'QEMU 与 KVM 切换，vhost-user 后端持续运行', '以正常接管路径说明工作安排。Guest 暂停期间后端仍可能写入完成项和产生通知；新端需处理通知与地址关联，确认接管后才恢复 vCPU。') }}
+  <p>持续运行也带来约束：交接期间可能遗漏中断，分享采用恢复前补充 IRQ 的办法；后端保存的内存地址需要更新或保持有效；后端崩溃及部分异步消息会使本次升级失败。其 QEMU-only 模式直接继承 KVM 描述符，保留旧 KVM，需与替换 KVM 的模式分开。<a href="{{ forum_2022_slides }}">2022 年分享：一致性处理与模式边界</a></p>
+</section>
+
+<section id="hyperfresh" class="mechanism-section">
+  <h2>HyperFresh：通过嵌套虚拟化接管</h2>
+  <h3>把可替换的 Hypervisor 放到 L1</h3>
+  <p>Orthus 在同一个宿主内核内安排两份 KVM。HyperFresh 则预先增加 L0 hyperplexor 管理层：旧、新 Linux/KVM/QEMU 分别运行在 L1，数据库虚机运行在 L2。L0 在整个交接期间保留，负责让新 L1 接管原有客户机内存。这套结构需要事先部署，不能直接套到普通单层 KVM 宿主上。<a href="{{ hyperfresh_2017_doi }}">APSys 2017 论文</a></p>
+  {{ diagram('hyperfresh-handoff', 'HyperFresh 的三层结构与同机交接', '旧、新 L1 上的两个 Guest 框表示同一台虚机交接前后的运行位置。L0 hyperplexor 持续存在，两端使用同一批 Guest 内存页；同一虚机只在一端执行。') }}
+  <p>沿用前文的数据库虚机，交接可分为三步：先启动新 L1，并提前映射原 Guest 内存页；再暂停旧端的数据库虚机，转移 vCPU 和 I/O 状态；最后由新 L1 恢复虚机，旧端停止服务它。数据库缓存留在原页上，客户机操作系统不重新引导。这里替换的是 L1 Hypervisor，L0 的更新不在此次接管范围内。<a href="{{ hyperfresh_2017_doi }}">内存共映射与执行权转移</a></p>
+
+  <h3>从 2017 年原型到 2019 年实现</h3>
+  <p>APSys 2017 报告约 100 ms 的切换时间；VEE 2019 的后续论文扩展了多虚机支持，并报告约 10 ms 的替换时间。后者还处理嵌套运行的额外开销，包括向 L1 直通设备、使用专用物理 CPU，以及减少不必要的轮询和退出。两篇是同一工作的演进，数字均来自各自实验。<a href="{{ hyperfresh_2019_doi }}">VEE 2019 论文</a></p>
+  <p>HyperFresh 把替换边界放在完整的 L1 环境上；代价则出现在日常运行中：L0 仍需维护，嵌套执行和设备路径需要优化。评价它时，应同时观察交接停顿与平时的运行成本，不能只比较最短暂停时间。嵌套层级的基础机制见 <a href="kvm-nested-vmx.html">KVM 嵌套虚拟化</a>。</p>
 </section>
 
 <section id="compatibility" class="mechanism-section">
-  <h2>兼容性与升级验收</h2>
-  <p><a href="https://lkml.rescloud.iu.edu/2610.3/01296.html">2026-10-19 社区会议纪要（10 月 25 日发布）</a>仍在讨论跨子系统状态头、KVM 保留，以及 PCI、VFIO 与 IOMMU 的衔接。这里引用的是该次进展快照；邮件中的目标版本和下一版计划不代表功能已发布。</p>
-  <p>选型时先核对实际内核配置、资源处理器、新旧状态格式和设备支持，再讨论 downtime。仅仅能加载新内核，或新 QEMU 能启动，都不足以证明原虚拟机被正确接管。Guest 的 RAM、寄存器、中断与 I/O 状态必须对应同一个可恢复的执行点；恢复失败也不意味着能够随时回到旧端。</p>
-  <table><thead><tr><th scope="col">验收目标</th><th scope="col">测试环境中的观察</th><th scope="col">不能据此推断</th></tr></thead><tbody>
-    <tr><td>Guest 未重启</td><td>启动标识不变，原进程的内存计数继续递增</td><td>不能证明期间没有暂停</td></tr>
-    <tr><td>执行与服务连续性</td><td>从独立观察端记录请求时延、超时和最长无进展间隔</td><td>串口计数连续不等于零停顿，平均延迟也不能代表尾延迟</td></tr>
-    <tr><td>状态与 I/O 完整</td><td>校验内存内容、应用事务和升级前后的设备行为</td><td>能恢复 CPU 不等于 DMA、网络或存储已正确交接</td></tr>
-    <tr><td>失败可控</td><td>在测试环境验证每个切换阶段的资源归属和故障恢复</td><td>新端已执行后，旧端不能直接继续运行同一份 Guest 状态</td></tr>
+  <h2>方案对比与适用范围</h2>
+  <p>几种实现都保留客户机运行状态，并让新实现接管执行。下表按替换边界和主要成本归纳；不同论文与分享的硬件、虚机配置及测量口径不同，暂停时间应回到各自实验中理解。</p>
+  <table><thead><tr><th scope="col">方案</th><th scope="col">替换与保留</th><th scope="col">主要收益与代价</th></tr></thead><tbody>
+    <tr><td>Orthus / Dual KVM</td><td>替换主要 KVM 实现和 QEMU，保留薄接口层、宿主内核与 Guest RAM</td><td>同机接管减少内存搬运；需要改造模块边界，并维护状态和设备兼容性</td></tr>
+    <tr><td>字节跳动 VMM Live Upgrade</td><td>同机多 KVM 模块交接，按设备路径保留通知记录或后端连接</td><td>进一步压缩设备恢复工作；硬件能力、地址有效性和异步事件约束仍需处理</td></tr>
+    <tr><td>HyperFresh</td><td>替换 L1 Hypervisor，保留 L0 hyperplexor 和 Guest 内存页</td><td>可交接整个 L1 环境；增加嵌套层级，需要兼顾平时的运行开销</td></tr>
   </tbody></table>
-  <p>这些是验证建议，不是本文执行过的虚拟机升级测试。实际部署须采用明确支持的版本组合与运维方案；本文不提供可直接在业务宿主上运行的 kexec 或模块卸载命令。</p>
+  <p>Orthus 保留薄 <code>kvm.ko</code>、宿主内核与设备基础设施。它的优势来自这些部分在交接时持续存在；修改保留层或维护物理硬件，需要另行选择升级路径。厂商实现中可替换的边界，也需要随内核演进持续维护。</p>
+  <p>新 QEMU 必须能读取旧 QEMU 保存的状态格式，CPU 与设备配置也要兼容。原有状态无法被新端正确解释时，保持同一份内存并不能解决问题。论文把不兼容的恢复失败纳入回退设计，再通过兼容代码支持相应版本；这项条件与迁移的状态兼容要求相通。<a href="{{ orthus_doi }}">Orthus 论文 §6</a></p>
+  <p>回到数据库虚机，一次成功升级应同时满足：进程与内存内容继续存在、vCPU 只在一端运行、设备访问正确缓冲区、完成通知能够接续。再结合外部请求的时延、超时和数据校验，才能评价升级对业务的影响。选型也应先确认可替换层与保留层，再检查状态兼容、设备支持和失败恢复。</p>
 </section>
 
 <section id="sources" class="mechanism-section">
-  <h2>参考资料与阅读路径</h2>
+  <h2>论文与相关资料</h2>
   <ul>
-    <li><a href="qemu-cpr-transfer.html">QEMU CPR：共享内存、状态通道与单一执行权</a>；进程级更新与本文的内核级交接分开阅读。</li>
-    <li><a href="{{ linux_source }}Documentation/livepatch/livepatch.rst#L1">Linux 6.19 livepatch 文档源码</a>；<a href="https://docs.kernel.org/6.16/core-api/kho/concepts.html">KHO 概念</a>；<a href="https://docs.kernel.org/6.19/core-api/liveupdate.html">LUO 资源生命周期</a>。</li>
-    <li><a href="https://www.cs.fsu.edu/~zwang/files/asplos19.pdf">Fast and Scalable VMM Live Upgrade in Large Cloud Infrastructure</a>，ASPLOS 2019，DOI 10.1145/3297858.3304034。</li>
-    <li><a href="https://www.mail-archive.com/qemu-devel%40nongnu.org/msg1233836.html">QEMU cpr-luo PATCH 00/21，2026-10-12</a>；按这版补丁的能力与限制解读。</li>
-    <li><a href="https://lore.kernel.org/all/20260920193650.3373435-1-pasha.tatashin@soleen.com/">Orphaned VMs RFC，2026-09-20</a>；<a href="https://lpc.events/event/20/contributions/2554/">LPC 2026 Caretaker 方案介绍</a>。</li>
-    <li><a href="https://lkml.rescloud.iu.edu/2610.3/01296.html">Live Update 会议纪要，2026-10-19</a>；跟踪跨版本状态与设备保留进展。</li>
+    <li><a href="{{ orthus_doi }}">Fast and Scalable VMM Live Upgrade in Large Cloud Infrastructure</a>，ASPLOS 2019，93–105 页；<a href="https://dl.acm.org/doi/pdf/10.1145/3297858.3304034">出版方 PDF</a>。§2 介绍升级成本，§3 给出设计，§4 给出实验与部署记录，§6 讨论适用范围和兼容性。</li>
+    <li><a href="{{ forum_slides }}">KVM Live Upgrade with Properly Handling of Passthrough Devices</a>，Zhimin Feng，KVM Forum 2020；<a href="https://kvm-forum.qemu.org/2020/">官方日程与录像入口</a>。</li>
+    <li><a href="{{ forum_2022_slides }}">Deep Optimization of VMM Live Upgrade</a>，Shenming Lu，KVM Forum 2022；<a href="https://kvm-forum.qemu.org/2022/">官方日程与录像入口</a>。</li>
+    <li><a href="{{ hyperfresh_2017_doi }}">HyperFresh: Live Refresh of Hypervisors Using Nested Virtualization</a>，APSys 2017；<a href="https://kartikgopalan.github.io/publications/bagdi17hyperfresh.pdf">作者公开全文</a>。介绍嵌套架构、内存共映射与早期原型。</li>
+    <li><a href="{{ hyperfresh_2019_doi }}">Fast and Live Hypervisor Replacement</a>，VEE 2019；<a href="https://kartikgopalan.github.io/publications/doddamani19fast.pdf">作者公开全文</a>。扩展 HyperFresh 的多虚机支持及运行开销优化；<a href="../conference-papers.html?q=HyperFresh#paper-vee19-live-replacement">论文目录</a>。</li>
+    <li><a href="qemu-cpr-transfer.html">QEMU 热升级：CPR 的资源交接与状态恢复</a>，对照用户态进程替换；<a href="qemu-vfio-dma.html">VFIO 设备直通的 DMA 地址转换与隔离</a>，补充设备与内存映射关系。</li>
   </ul>
 </section>

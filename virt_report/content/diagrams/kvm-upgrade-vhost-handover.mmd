@@ -1,0 +1,24 @@
+---
+config:
+  sequence:
+    actorMargin: 85
+    messageMargin: 18
+    noteMargin: 8
+    wrap: false
+---
+sequenceDiagram
+  accTitle: 字节跳动 2022 年方案的 vhost-user 后端交接
+  accDescr: 按准备、暂停交接和恢复三个阶段归纳正常路径。旧端预保存配置，新端继承后端通道和共享文件描述符。Guest 暂停期间 DPDK 或 SPDK 后端继续工作；新 QEMU 和新 KVM 完成状态交接、地址关联与通知处理后恢复 vCPU。后端自身不升级。后端崩溃等异常需要中止升级，不能按正常路径恢复。
+  participant O as 旧 QEMU／旧 KVM
+  participant N as 新 QEMU／新 KVM
+  participant B as DPDK／SPDK 后端
+  O->>O: 提前保存配置，跟踪后续变化
+  O-->>N: 准备通道和共享文件描述符的继承
+  Note over O,N: Guest 暂停：交接 vCPU 与设备状态
+  O->>N: 传递运行状态；补传变化的配置
+  Note over B: 后端继续运行<br/>可能写入完成项、产生通知
+  N->>N: 接管地址关联，处理可能遗漏的中断
+  Note over N,B: 复用已有通道和队列，跳过重复初始化
+  N->>N: 完成接管，恢复 vCPU
+  B-->>N: 后续控制消息交给新端处理
+  Note over O,N: 同一 Guest 仅由新端继续执行

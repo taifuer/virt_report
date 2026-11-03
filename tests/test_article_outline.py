@@ -96,10 +96,16 @@ def test_published_outline_matches_section_and_subsection_numbers_without_js(art
     assert 'counter(section' not in page  # Actual text, not CSS-only numbering.
 
 
-def test_every_topic_has_a_complete_intro_and_detail_links():
+def test_topic_overviews_are_complete_and_categories_list_all_articles():
     index = render.render_mechanisms_html(Config())
     for topic in mechanisms.topics():
         overview = topic["overview_article"]
+        if not overview:
+            assert not topic.get("overview")
+            assert topic["detail_articles"] == topic["articles"]
+            for article in topic["articles"]:
+                assert f'<a href="mechanisms/{article["slug"]}.html">{article["title"]}</a>' in index
+            continue
         assert overview and overview["slug"] == topic["overview"]
         assert f'<a href="mechanisms/{overview["slug"]}.html">{topic["title"]}</a>' in index
         page = render.render_mechanisms_html(Config(), overview["slug"])

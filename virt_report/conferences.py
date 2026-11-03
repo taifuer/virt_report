@@ -255,7 +255,9 @@ def fetch_dblp_edition(session: requests.Session, venue: str,
             "year": requested_year, "title": title,
             "authors": info["authors"],
             "doi": doi_url.removeprefix("https://doi.org/") if doi_url else None,
-            "official_url": ee_values[0] if ee_values else source_url,
+            # DBLP can list an author copy before the publisher's DOI.
+            # Keep the catalogue record as provenance, not the primary link.
+            "official_url": doi_url or (ee_values[0] if ee_values else source_url),
             "source_url": source_url, "raw": info,
         })
     return result

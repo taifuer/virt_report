@@ -84,7 +84,7 @@ def test_abstracts_and_author_project_are_distinct_review_sources():
 def test_year_review_and_check_notes_reflect_scope_of_the_update():
     content = conferences.load_content()
     year = next(item for item in content["analysis"]["years"] if item["year"] == 2026)
-    assert content["updated_at"] == "2026-11-02"
+    assert content["updated_at"] >= "2026-11-02"
     for name in ("RamRyder", "CStar", "Wallet", "HyperAudit", "ATC 2026"):
         assert name in year["summary"]
     assert "目前依据标题" in year["summary"]

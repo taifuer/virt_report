@@ -108,7 +108,7 @@ cp .env.example .env
 - 启动（`#vm-startup`）：`libvirt-domain-start.html`、`qemu-vm-startup.html`，从管理请求、进程握手到 QEMU 机器初始化和 vCPU 执行。
 - 热迁移（`#migration`）：`qemu-memory-migration.html`、`qemu-migration-stream.html`、`qemu-multifd.html`、`qemu-postcopy.html`、`libvirt-live-migration.html`，内存迭代、流格式、多通道、后拷贝，以及管理层五阶段协调与失败恢复。
 - 热插拔（`#hotplug`）：`qemu-pcie-hotplug.html`、`qemu-virtio-mem.html`、`x86-vcpu-hotplug.html`，分别跟踪 PCIe、内存和 vCPU 的添加、客户机协作及移除完成。
-- 热升级（`#live-upgrade`）：`qemu-cpr-transfer.html`、`kvm-live-upgrade.html`，分别解释 QEMU 进程替换与 KVM / 宿主内核更新。后者区分 livepatch、Orthus / Dual KVM、KHO / LUO、cpr-luo 和 Caretaker，标注固定版本、提案日期及 Guest 暂停和设备支持边界，不把基础设施合入等同于任意 VM 都可无停顿升级。
+- 热升级（`#live-upgrade`）：目录中使用不跳转的灰色专题标题，下面并列展示 QEMU CPR 与 KVM Orthus 两篇文章的完整标题。`qemu-cpr-transfer.html` 解释 QEMU 进程替换；`kvm-live-upgrade.html` 用一台数据库虚机贯穿 Orthus 的新旧 KVM 共存、状态接管、DMA 与中断交接，再对照字节跳动在 KVM Forum 2020／2022 的设备连续性优化，以及 HyperFresh 在 APSys 2017／VEE 2019 的嵌套接管路线。正文区分可替换层、保留层、暂停开销与日常运行成本，不展开宿主内核重启方案。论文型文章使用正式 DOI 标注依据，不标记无关的源码版本。
 - QEMU 内部机制（`#qemu-internals`）：`qemu-qom-device.html`、`qemu-memory-region.html`、`qemu-aio-iothread.html`、`qemu-qcow2.html`、`qemu-live-block-operations.html`，对象生命周期、内存初始化与地址空间、异步 I/O、镜像映射，以及外部快照与在线块图变更。
 - KVM 内部机制（`#kvm-internals`）：`kvm-vcpu-run.html`、`kvm-vcpu-requests.html`，执行循环与 I/O 退出，以及 request 位图、vCPU 模式与 kick 协作；区分内核请求、宿主 IPI、客户机中断及 QEMU 信号。
 - Libvirt 内部机制（`#libvirt-internals`）：`libvirt-rpc.html`，XDR 报文、服务端分发、响应匹配与守护进程边界。
@@ -225,7 +225,7 @@ Markdown 使用普通段落、列表、表格、链接及代码块。每个二�
 
 `baselines` 只在首节出现一次；`diagram` 名称须已注册，并生成对应离线 SVG；`component` 模板须列入该文章元数据的 `components`。Markdown 正文不执行 Jinja，也不直接解析 HTML，需要交互时复用独立的 HTML/CSS/JS 组件。普通代码块始终作为示例显示。新增渲染依赖通过 `.venv/bin/pip install -e .` 安装；旧文章无需批量转换，后续修订按实际需要选择格式，并保留 URL 和锚点。
 
-共用阅读样式为 `mechanisms.css`，每篇的交互脚本与样式由元数据指定；纯正文与图表文章可省略 `script` / `stylesheet`，不加载空脚本。元数据 `groups` 定义分组，`topics[].group` 指定分组，文章 `topic` 指定主归属，`topics[].overview` 指定导读文章 slug。增加已审核文章后，会自动进入目录并显示篇数。内容绑定源码版本与提交，不随日报生成，不调用模型。
+共用阅读样式为 `mechanisms.css`，每篇的交互脚本与样式由元数据指定；纯正文与图表文章可省略 `script` / `stylesheet`，不加载空脚本。元数据 `groups` 定义分组，`topics[].group` 指定分组，文章 `topic` 指定主归属；可选的 `topics[].overview` 指定导读文章 slug，省略时专题标题不跳转，全部文章以完整标题列出。增加已审核文章后，会自动进入目录并显示篇数。内容注明固定源码版本或论文依据，不随日报生成，不调用模型。
 
 核验实现时读取指定 tag/commit，不切换或覆盖已有源码工作区。交互是明确标注假设的教学模型，不是实际迁移跟踪或性能预测。
 内存迭代演示采用带单位的轮次近似，停机附加开销为明示的示例值，不等同于 QMP 测量结果；
@@ -299,7 +299,7 @@ Mermaid 图源保存在 `virt_report/content/diagrams/*.mmd`，已生成的 SVG 
   --discover-dois --enrich-affiliations --sync-public-metadata
 ```
 
-学术会议条目需要人工复核后才能进入公开内容；维护过程不读取论文 PDF。
+学术会议条目需要人工复核后才能进入公开内容；目录采集不下载论文全文，人工写作与校核时可按需阅读原论文。公开主链接优先采用出版方、会议官方页或已核实的 DOI；DBLP 记录用于目录溯源，有 DOI 时不再将聚合页作为主链接。历史覆盖年份只说明选录范围，不代表每一届均已导入或全部论文已收录。
 `conference-check` 的来源在 `virt_report/content/conferences.json` 的 `edition_checks` 中配置，
 核对报告保存在数据库同目录的 `conference-checks.json`（默认 `data/`，不提交）。
 首次检查列出全部标题作为基线，后续列出新增标题和仍未收录的匹配候选；来源出错时保留上次成功数据并返回失败状态。

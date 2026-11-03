@@ -91,10 +91,9 @@
     },
     {
       "slug": "live-upgrade",
-      "overview": "qemu-cpr-transfer",
       "group": "operations",
       "title": "热升级",
-      "summary": "QEMU 进程替换、KVM 热补丁与宿主内核交接，区分资源保留、执行停顿和方案成熟度。"
+      "summary": "QEMU 与 KVM 的在线升级：运行状态保留、设备交接与暂停控制。"
     },
     {
       "slug": "qemu-internals",
@@ -1999,27 +1998,39 @@
     {
       "slug": "kvm-live-upgrade",
       "topic": "live-upgrade",
-      "title": "KVM 与宿主内核热升级：状态保留与执行接管",
-      "summary": "区分 livepatch、Dual KVM、KHO / LUO、cpr-luo 与 Caretaker，说明 Guest 不重启与持续执行的差别，以及主线基础设施和社区提案的边界。",
+      "title": "KVM 热升级：Orthus 与 Dual KVM",
+      "summary": "以数据库虚机的同机接管讲解 Orthus，再对比字节跳动 VMM Live Upgrade 与 HyperFresh 的替换边界、设备连续性和暂停开销。",
       "reviewed_on": "2026-11-03",
       "template": "_kvm_live_upgrade_article.html",
-      "baselines": [
+      "baselines": [],
+      "publications": [
         {
-          "project": "Linux",
-          "version": "6.19（livepatch / LUO 基础设施）",
-          "commit": "05f7e89ab9731565d8a62e3b5d1ec206485eeb0b",
-          "url": "https://github.com/torvalds/linux/tree/05f7e89ab9731565d8a62e3b5d1ec206485eeb0b"
+          "title": "Orthus · ASPLOS 2019",
+          "doi": "10.1145/3297858.3304034",
+          "url": "https://doi.org/10.1145/3297858.3304034"
+        },
+        {
+          "title": "HyperFresh · APSys 2017",
+          "doi": "10.1145/3124680.3124734",
+          "url": "https://doi.org/10.1145/3124680.3124734"
+        },
+        {
+          "title": "HyperFresh · VEE 2019",
+          "doi": "10.1145/3313808.3313821",
+          "url": "https://doi.org/10.1145/3313808.3313821"
         }
       ],
       "sections": [
-        {"id": "preface", "title": "从进程替换到宿主内核更新"},
-        {"id": "livepatch", "title": "热补丁：修改代码，保留现有内核对象"},
-        {"id": "dual-kvm", "title": "Dual KVM：在两套实现之间接管虚拟机"},
-        {"id": "kernel-handoff", "title": "KHO 与 LUO：跨内核保留内存和受支持的资源"},
-        {"id": "cpr-luo", "title": "cpr-luo：保留 RAM，暂停后恢复执行"},
-        {"id": "caretaker", "title": "Caretaker：让部分客户机执行跨越宿主重启"},
-        {"id": "compatibility", "title": "兼容性与升级验收"},
-        {"id": "sources", "title": "参考资料与阅读路径"}
+        {"id": "preface", "title": "云平台在线升级的需求"},
+        {"id": "alternatives", "title": "已有升级方式与同机接管的挑战"},
+        {"id": "dual-kvm", "title": "Orthus 的整体设计与新旧 KVM 共存"},
+        {"id": "grafting", "title": "一台虚拟机的完整升级"},
+        {"id": "device-handover", "title": "直通网卡的 DMA 与中断交接"},
+        {"id": "downtime", "title": "实验效果与开销来源"},
+        {"id": "evolution", "title": "字节跳动：设备连续性与暂停窗口优化"},
+        {"id": "hyperfresh", "title": "HyperFresh：通过嵌套虚拟化接管"},
+        {"id": "compatibility", "title": "方案对比与适用范围"},
+        {"id": "sources", "title": "论文与相关资料"}
       ]
     },
     {

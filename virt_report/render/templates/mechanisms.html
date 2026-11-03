@@ -30,7 +30,7 @@
     {% for alias in topic.aliases|default([]) %}<span id="{{ alias }}" class="mechanism-topic-alias" aria-hidden="true"></span>{% endfor %}
     <header class="mechanism-topic-header">
       <div class="mechanism-topic-heading">
-        <h3 id="mechanism-topic-{{ topic.slug }}">{% if topic.overview_article %}<a href="mechanisms/{{ topic.overview_article.slug }}.html">{{ topic.title }}</a>{% else %}{{ topic.title }}{% endif %}</h3>
+        <h3 id="mechanism-topic-{{ topic.slug }}">{% if topic.overview_article %}<a href="mechanisms/{{ topic.overview_article.slug }}.html">{{ topic.title }}</a>{% else %}<span class="mechanism-topic-label">{{ topic.title }}</span>{% endif %}</h3>
         {% if topic.detail_articles and group.slug != 'walkthroughs' %}<button type="button" class="mechanism-topic-toggle" data-mechanism-toggle data-topic-title="{{ topic.title }}" data-article-count="{{ topic.detail_articles|length }}" aria-expanded="true" aria-controls="mechanism-list-{{ topic.slug }}" aria-label="收起{{ topic.title }}的细分文章" hidden><svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="m5 8 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>{% endif %}
       </div>
       <p>{{ topic.summary }}</p>

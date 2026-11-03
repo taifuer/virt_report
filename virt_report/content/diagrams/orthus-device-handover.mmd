@@ -1,0 +1,20 @@
+flowchart TB
+  accTitle: Orthus 交接期间的网卡 DMA 与完成通知
+  accDescr: 在客户机 vCPU 暂停时，直通网卡仍可沿保留的 IOMMU 映射把报文 P 写入原接收缓冲区 B。VFIO 连接及事件关联由 connector 保留并交给新端，完成通知转入新 VM 的中断处理。论文还在交接后补充虚拟 IRQ 作为遗漏中断的补救。vCPU 恢复且客户机能接受中断后，驱动检查完成状态并处理缓冲区中的报文。
+  D["直通网卡<br/>收到报文 P"]
+  subgraph DATA["数据路径：物理页与 DMA 映射保留"]
+    I["IOMMU<br/>沿用原来的地址映射"]
+    B["Guest RAM：接收缓冲区 B<br/>报文 P 留在原宿主物理页"]
+    I --> B
+  end
+  subgraph NOTIFY["通知路径：交给新 QEMU / KVM"]
+    F["VFIO 连接与事件关联<br/>由 connector 保留并交接"]
+    K["新 VM 的中断处理<br/>接续待处理通知"]
+    G["恢复后的 Guest 驱动<br/>检查接收完成状态"]
+    F --> K
+    K -->|vCPU 恢复且可接收中断| G
+  end
+  D -->|DMA 写入| I
+  D -->|完成通知| F
+  S["论文中的补救措施<br/>交接后补充虚拟 IRQ"] -.-> K
+  G -->|读取并处理 P| B

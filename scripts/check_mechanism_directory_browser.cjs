@@ -70,7 +70,10 @@ async function check(page,width) {
   const buttons=page.locator('[data-mechanism-toggle]');
   assert.equal(await buttons.count(),published.filter(topic => topic.details.length).length,
     'only topics with detail articles get a toggle');
-  assert.equal(await page.locator('.mechanism-topic h3 a').count(),published.length,'all overview links remain available');
+  assert.equal(await page.locator('.mechanism-topic h3 a').count(),published.filter(item=>item.overview).length,
+    'only actual overview articles are linked from topic headings');
+  assert.equal(await topic(page,'live-upgrade').locator('h3 a').count(),0,
+    'live upgrade is a category, not an alias for the QEMU article');
   assert.equal(await page.locator('.mechanism-list-item:visible').count(),0,'detail lists initially collapsed');
   assert.equal(await page.locator('.mechanism-topic-header p:visible').count(),published.length,'topic summaries remain visible');
   for(const id of ['virtualization-basics','block-io-walkthrough','network-io-walkthrough',
@@ -88,17 +91,26 @@ async function check(page,width) {
   const colors=await page.evaluate(()=>{
     const probe=document.createElement('i');document.body.append(probe);
     const resolve=value=>{probe.style.color=value;return getComputedStyle(probe).color;};
-    const brand=resolve('var(--brand)'), ink=resolve('var(--ink)');probe.remove();
-    return {brand,ink,headings:[...document.querySelectorAll('.mechanism-topic h3 a,.mechanism-list-item h4 a')]
+    const brand=resolve('var(--brand)'), ink=resolve('var(--ink)'), muted=resolve('var(--muted)');probe.remove();
+    return {brand,ink,muted,category:getComputedStyle(document.querySelector('#live-upgrade .mechanism-topic-label')).color,
+      headings:[...document.querySelectorAll('.mechanism-topic h3 a,.mechanism-list-item h4 a')]
       .map(a=>getComputedStyle(a).color),chip:getComputedStyle(document.querySelector('.mechanism-directory a')).color};
   });
   assert(colors.headings.every(color=>color===colors.brand),'article/overview titles use the site link color');
   assert.equal(colors.chip,colors.ink,'directory chips retain their neutral style');
+  assert.equal(colors.category,colors.muted,'non-linked category heading is gray');
   await responsive(page,width);
   await page.screenshot({path:path.join(shots,`directory-${width}-collapsed.png`)});
 
   await toggle(page,'live-upgrade').click(); await expanded(page,'live-upgrade');
+  assert.equal(await list(page,'live-upgrade').locator('.mechanism-list-item').count(),2);
+  assert.equal(await list(page,'live-upgrade').locator('a[href="mechanisms/qemu-cpr-transfer.html"]').textContent(),
+    'QEMU 热升级：CPR 的资源交接与状态恢复');
   assert(await list(page,'live-upgrade').locator('a[href="mechanisms/kvm-live-upgrade.html"]').isVisible());
+  await topic(page,'live-upgrade').screenshot({path:path.join(shots,`directory-${width}-live-upgrade.png`)});
+  await list(page,'live-upgrade').locator('a[href="mechanisms/qemu-cpr-transfer.html"]').click();
+  await page.waitForURL(`${base}/mechanisms/qemu-cpr-transfer.html`);
+  await page.goto(`${url}#live-upgrade`); await ready(page); await expanded(page,'live-upgrade');
   await toggle(page,'live-upgrade').click(); await expanded(page,'live-upgrade',false);
 
   await toggle(page,'cpu-virtualization').focus();

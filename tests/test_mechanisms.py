@@ -47,7 +47,11 @@ def test_editorial_metadata_pins_each_repository_and_only_published_articles():
                 assert (render.TEMPLATES_DIR / component).is_file()
         else:
             assert (render.TEMPLATES_DIR / article["template"]).is_file()
-        assert article["baselines"]
+        assert article["baselines"] or article.get("publications")
+        for publication in article.get("publications", []):
+            assert publication["title"]
+            assert re.fullmatch(r"10\.\d{4,9}/\S+", publication["doi"])
+            assert publication["url"] == f'https://doi.org/{publication["doi"]}'
         assert {item["project"] for item in article["baselines"]} <= {
             "QEMU", "Linux", "Libvirt", "SPDK", "DPDK", "Mesa", "virglrenderer", "SeaBIOS",
         }
@@ -136,8 +140,12 @@ def test_article_has_matching_toc_source_evidence_and_no_inline_scripts(slug):
     assert "在线文档随开发版本更新" not in page
     assert "在线文档持续更新，正文实现以固定版本为准" not in page
     assert "本文细节以固定源码为准" not in page
-    assert "#L" in page
-    assert any(f'/blob/{baseline["commit"]}/' in page for baseline in article["baselines"])
+    if article["baselines"]:
+        assert "#L" in page
+        assert any(f'/blob/{baseline["commit"]}/' in page for baseline in article["baselines"])
+    if article.get("publications"):
+        assert "论文依据：" in preface.group(1)
+        assert all(publication["url"] in parsed.links for publication in article["publications"])
     assert "/root/codes/" not in page
     assert all(link[1:] in parsed.ids for link in parsed.links if link.startswith("#"))
 
