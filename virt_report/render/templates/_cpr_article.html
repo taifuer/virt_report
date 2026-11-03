@@ -5,7 +5,7 @@
   <h2>QEMU 进程替换中的资源与状态保留</h2>
   <p>更新 QEMU 二进制后，已经运行的虚拟机仍由旧进程维护。要让新版本接管，需要保留客户机内存，交接 CPU 和设备状态，并重新连接相关宿主资源。QEMU 的 CheckPoint and Restart（CPR）为同一宿主机上的进程替换提供了几种迁移模式。</p>
   <p>本文重点分析 <code>cpr-transfer</code>：旧、新 QEMU 进程短暂并存，内存在原共享后端中保留，文件描述符通过 Unix socket 传递，CPU 与设备状态通过主迁移通道恢复。客户机在交接期间暂停，随后从原执行进度继续；共享 RAM 减少了停机窗口中的内存搬运。</p>
-  <p>CPR 处理 QEMU 进程替换。Libvirt 守护进程更新主要通过重连已有 QEMU 恢复管理，vhost-user 后端和宿主内核的更新则还需各自的状态交接与恢复协议。</p>
+  <p>本文的 QEMU 10.2 CPR-transfer 处理用户态进程替换，宿主内核继续运行。Libvirt 守护进程更新主要通过重连已有 QEMU 恢复管理；KVM 热补丁、Dual KVM，以及利用 KHO / LUO 更新整个宿主内核，另见<a href="kvm-live-upgrade.html">KVM 与宿主内核热升级</a>。这些路径的资源交接和版本条件不同，不能把 Guest 不重启等同于全程不停顿。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -142,6 +142,7 @@ TARGET_PID=$!</code></pre>
     <tr><td>cpr-exec</td><td>保留 PID，通过 exec 启动新程序；CPR 清单写入 memfd 并跨 exec 保留 fd</td><td>省去两个并存进程的 CPR socket，状态主通道需要支持先写后读；exec 后的恢复失败不能靠旧进程继续运行</td></tr>
   </tbody></table>
   <p>这些机制把“更新运行虚拟机的软件”拆成可检查的资源保留、状态恢复和执行切换。选择方案时，首先确定哪些资源能够保留、哪些必须重建，再评估状态兼容和失败恢复，最后才比较停机时长。</p>
+  <p>社区后续提出的 <a href="kvm-live-upgrade.html#cpr-luo">cpr-luo</a> 尝试结合 KHO / LUO 跨宿主内核更新保留 RAM。它属于不同的交接路径，本文固定版本的功能和 VFIO 支持不能直接外推到该方案。</p>
 </section>
 
 <section id="implementation" class="mechanism-section">

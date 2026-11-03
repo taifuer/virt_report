@@ -1,0 +1,13 @@
+flowchart TB
+  accTitle: cpr-luo 的宿主内核切换与 Guest 暂停窗口
+  accDescr: 旧端停止 Guest 并保存执行状态，通过 LUO 登记受支持的 RAM 与 CPR 资源。kexec 切换期间 KHO 保留内存。新内核和新 QEMU 恢复资源与状态后继续执行同一个 Guest。中间是暂停窗口，不是重新引导 Guest，也不是 Caretaker 持续运行路径。
+  A[旧内核与旧 QEMU<br/>Guest 正在运行] --> B[停止 Guest 并保存执行状态<br/>LUO 登记受支持的资源]
+  subgraph pause[Guest 暂停窗口]
+    B --> C[kexec 切换宿主内核<br/>KHO 保留内存与交接信息]
+    C --> D[新内核恢复资源<br/>新 QEMU 取回后备 fd 并加载状态]
+  end
+  D --> E[新内核与新 QEMU<br/>Guest 从原执行点继续]
+  classDef active fill:#dff2ee,stroke:#267c73,color:#153f3a
+  classDef handoff fill:#f5f3ed,stroke:#989387,color:#343b3a
+  class A,E active
+  class B,C,D handoff

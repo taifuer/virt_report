@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>KVM 与宿主内核热升级：状态保留与执行接管 - virt-report</title>
+  <meta name="description" content="区分 livepatch、Dual KVM、KHO / LUO、cpr-luo 与 Caretaker，说明 Guest 不重启与持续执行的差别，以及主线基础设施和社区提案的边界。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=49f2a464e9bd">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=49f2a464e9bd">
+  <link rel="stylesheet" href="../assets/site.css?v=49f2a464e9bd">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=06061d659afe">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=06061d659afe">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=49f2a464e9bd" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="qemu-cpr-transfer.html">热升级</a></div>
+    <h1>KVM 与宿主内核热升级：状态保留与执行接管</h1>
+    <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、从进程替换到宿主内核更新</a></li><li><a href="#livepatch">二、热补丁：修改代码，保留现有内核对象</a></li><li><a href="#dual-kvm">三、Dual KVM：在两套实现之间接管虚拟机</a></li><li><a href="#kernel-handoff">四、KHO 与 LUO：跨内核保留内存和受支持的资源</a></li><li><a href="#cpr-luo">五、cpr-luo：保留 RAM，暂停后恢复执行</a></li><li><a href="#caretaker">六、Caretaker：让部分客户机执行跨越宿主重启</a></li><li><a href="#compatibility">七、兼容性与升级验收</a></li><li><a href="#sources">八、参考资料与阅读路径</a></li></ol></nav>
+    <div class="mechanism-prose">
+<section id="preface" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">一、</span>从进程替换到宿主内核更新</h2>
+  <p><a href="qemu-cpr-transfer.html">QEMU CPR-transfer</a> 替换用户态进程，宿主内核继续运行。更新 KVM 或整个宿主内核则会触及 VM / vCPU、内存映射、中断路由和设备所有权，不能只交接 QEMU 的状态文件。</p>
+  <p>KVM 热升级有不同范围：修补正在运行的代码、在新旧 KVM 之间接管虚拟机，或保留资源后切换整个宿主内核。Guest 不重启、vCPU 持续执行和业务无停顿是三个不同目标；保留了 RAM，不代表后三者自动成立。</p>
+  <table><thead><tr><th scope="col">方案</th><th scope="col">更新对象</th><th scope="col">能力与状态边界</th></tr></thead><tbody>
+    <tr><td>Linux livepatch</td><td>适合热补丁的内核函数，包括模块中的函数</td><td>主线框架；不等于任意 KVM 版本原地替换</td></tr>
+    <tr><td>Orthus / Dual KVM</td><td>经专门改造的 KVM 与 QEMU</td><td>ASPLOS 2019 论文披露的厂商方案；不是主线通用模块升级接口</td></tr>
+    <tr><td>KHO + LUO</td><td>通过 kexec 更新宿主内核，保留受支持的资源</td><td>基础设施已有主线实现；Linux 6.19 文档列出的文件保留类型是 memfd，不能外推为整台 VM 与所有设备均可保留</td></tr>
+    <tr><td>QEMU cpr-luo</td><td>利用 KHO / LUO 保留 RAM，重启宿主后恢复虚拟机</td><td>本文分析 2026-10-12 的补丁版本；Guest 在交接期间暂停，该版禁止 VFIO</td></tr>
+    <tr><td>Orphaned VMs / Caretaker</td><td>在宿主切换期间继续执行已准备的 vCPU</td><td>2026-09-20 RFC 概念验证；只处理部分 VM-exit，并非通用零停顿方案</td></tr>
+  </tbody></table>
+  <p>下文按固定版本和公开材料的日期说明能力，不把补丁提案、会议计划或厂商实现当作任意发行版已具备的功能。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/torvalds/linux/tree/05f7e89ab9731565d8a62e3b5d1ec206485eeb0b" target="_blank" rel="noopener noreferrer" title="commit 05f7e89ab9731565d8a62e3b5d1ec206485eeb0b">Linux 6.19（livepatch / LUO 基础设施）</a>。</p></section>
+
+<section id="livepatch" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">二、</span>热补丁：修改代码，保留现有内核对象</h2>
+  <p>Linux livepatch 可以把合适的函数调用切换到修补后的实现，并通过一致性模型协调任务从旧代码过渡到新代码。目标既可以是内核本体，也可以是已加载模块中的函数；VM 和 vCPU 不因此被重新创建。机制见 <a href="https://docs.kernel.org/livepatch/livepatch.html">Linux livepatch 文档</a>。</p>
+  <p>修复某个 KVM 判断条件，与替换整套 KVM 对象布局并不是同一件事。锁、数据结构和新旧调用关系都要满足补丁的安全条件；不能把任意两个内核版本的差异包装成一个函数替换。运行中直接卸载再加载 KVM，也不提供 VM 状态交接协议。</p>
+</section>
+
+<section id="dual-kvm" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">三、</span>Dual KVM：在两套实现之间接管虚拟机</h2>
+  <p>Orthus 论文描述了新旧 KVM 并存、逐台接管的设计：将可替换的主要实现集中到经改造的 <code>kvm-intel.ko</code>，保留一个不随此次升级替换的薄 <code>kvm.ko</code>；不同实现通过各自的设备入口提供服务。它还需要符号隔离和硬件资源协调，而不是在普通发行版上重复加载同名模块。参见 <a href="https://www.cs.fsu.edu/~zwang/files/asplos19.pdf">Orthus 原论文，ASPLOS 2019</a>。</p>
+  <p>VM grafting 让新实现接管原有 Guest 内存和执行状态，device handover 处理设备与 DMA 资源的交接；目标是减少整份 RAM 的复制，并缩短接管停顿。这里不应推导出“所有客户机指令都在升级期间持续执行”。论文报告的部署经验，也不是当前主线 KVM 对任意版本组合的兼容保证。<a href="https://www.alibabacloud.com/blog/alibaba-cloud-releases-major-paper-at-asplos19_594741">厂商发布说明</a>给出了这项方案的背景。</p>
+</section>
+
+<section id="kernel-handoff" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">四、</span>KHO 与 LUO：跨内核保留内存和受支持的资源</h2>
+  <p>kexec 将控制权交给新内核，但普通重启不会自动把旧内核的文件、KVM 对象和设备关联变成新内核可用的对象。Kexec Handover（KHO）保留指定的物理内存，并传递描述这些资源的元数据；新内核使用预留的 scratch 区启动，避免覆盖保留页。它保留的是字节和交接信息，不是让任意旧内核指针在新内核中继续有效。参见 <a href="https://docs.kernel.org/6.16/core-api/kho/concepts.html">Linux 6.16 KHO 概念文档</a>。</p>
+  <p>Live Update Orchestrator（LUO）在此基础上组织有名字的会话，由各资源的处理器执行保留、冻结和恢复。新内核重新构建受支持的文件对象，并向新进程返回可用的 fd；fd 数值不必与旧进程相同。Linux 6.19 的接口和 memfd 支持见 <a href="https://docs.kernel.org/6.19/core-api/liveupdate.html">LUO 文档</a>及<a href="https://github.com/torvalds/linux/blob/05f7e89ab9731565d8a62e3b5d1ec206485eeb0b/Documentation/core-api/liveupdate.rst#L8-L31">固定源码中的文档入口</a>。</p>
+  <p>因此有两种需要区分的路径：保留 Guest RAM 后重新创建 KVM VM / vCPU，再加载迁移状态；或者为 KVM 对象本身增加专门的保留与接管协议。后者需要额外实现，不能由“memfd 已能保留”推出。VFIO、IOMMU、PCI 和中断关联同样各有生命周期。</p>
+</section>
+
+<section id="cpr-luo" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">五、</span>cpr-luo：保留 RAM，暂停后恢复执行</h2>
+  <p><a href="https://www.mail-archive.com/qemu-devel%40nongnu.org/msg1233836.html">2026-10-12 的 cpr-luo 补丁系列</a>将 CPR 与 KHO / LUO 连接起来：保留 CPR 状态 memfd 和 RAMBlock 的后备 fd，其余 VM 状态继续经迁移框架保存与恢复。它不是 QEMU 10.2 的 cpr-transfer 自带的能力，也不要求 Guest 在宿主切换期间一直执行。</p>
+  <figure class="mechanism-diagram" data-diagram="kernel-upgrade-handoff" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>宿主内核切换与 Guest 暂停窗口</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看宿主内核切换与 Guest 暂停窗口" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="宿主内核切换与 Guest 暂停窗口">
+    <img src="../assets/kernel-upgrade-handoff.svg?v=06061d659afe" alt="Guest 在交接期间不继续运行指令；内存和执行状态保留后由新端恢复，不重新走固件引导。此图只表示 cpr-luo 路径，不表示 Caretaker 的持续执行目标。" loading="lazy">
+  </div>
+  <figcaption>Guest 在交接期间不继续运行指令；内存和执行状态保留后由新端恢复，不重新走固件引导。此图只表示 cpr-luo 路径，不表示 Caretaker 的持续执行目标。 <a href="../assets/kernel-upgrade-handoff.svg?v=06061d659afe" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+  accTitle: cpr-luo 的宿主内核切换与 Guest 暂停窗口
+  accDescr: 旧端停止 Guest 并保存执行状态，通过 LUO 登记受支持的 RAM 与 CPR 资源。kexec 切换期间 KHO 保留内存。新内核和新 QEMU 恢复资源与状态后继续执行同一个 Guest。中间是暂停窗口，不是重新引导 Guest，也不是 Caretaker 持续运行路径。
+  A[旧内核与旧 QEMU&lt;br/&gt;Guest 正在运行] --&gt; B[停止 Guest 并保存执行状态&lt;br/&gt;LUO 登记受支持的资源]
+  subgraph pause[Guest 暂停窗口]
+    B --&gt; C[kexec 切换宿主内核&lt;br/&gt;KHO 保留内存与交接信息]
+    C --&gt; D[新内核恢复资源&lt;br/&gt;新 QEMU 取回后备 fd 并加载状态]
+  end
+  D --&gt; E[新内核与新 QEMU&lt;br/&gt;Guest 从原执行点继续]
+  classDef active fill:#dff2ee,stroke:#267c73,color:#153f3a
+  classDef handoff fill:#f5f3ed,stroke:#989387,color:#343b3a
+  class A,E active
+  class B,C,D handoff
+</code></pre></details>
+</figure>
+  <p>该补丁版本要求共享内存配置和虚拟机标识匹配；旧 QEMU 应保持 postmigrate 直到 kexec，不能提前退出，否则 LUO 会话及其资源会被释放。该版明确阻止 VFIO，作者提到的另行实验不等于这组补丁已支持直通设备。CPR-transfer 的 VFIO 交接支持也不能直接搬来证明跨内核更新可用。</p>
+</section>
+
+<section id="caretaker" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>Caretaker：让部分客户机执行跨越宿主重启</h2>
+  <p>Orphaned VMs 尝试让经过准备的 vCPU 留在保留的 CPU 上，在宿主内核切换期间继续运行；Caretaker 在这个窗口中接手有限的 VM-exit 处理。<a href="https://lore.kernel.org/all/20260920193650.3373435-1-pasha.tatashin@soleen.com/">2026-09-20 的 RFC 00/46</a>明确是概念验证，不是生产就绪的通用方案。</p>
+  <p>Caretaker 不是完整的 KVM 或 QEMU 替代品。遇到其不能处理的退出，vCPU 仍要等待新宿主就绪；依赖用户态设备模型、尚未接管的 I/O 后端或设备资源时，也不能承诺业务继续无停顿。这个限制在 <a href="https://lpc.events/event/20/contributions/2554/">LPC 2026 的 Orphaned VMs 介绍</a>中有明确说明。</p>
+  <p>它与<a href="kvm-vcpu-halt.html">Idle Passthrough</a>也不是同一个机制：后者讨论正常运行时是否拦截空闲指令，Caretaker 讨论宿主内核暂时不可用时由谁维持客户机执行。减少某类 VM-exit，不能代替完整的升级状态交接。</p>
+</section>
+
+<section id="compatibility" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">七、</span>兼容性与升级验收</h2>
+  <p><a href="https://lkml.rescloud.iu.edu/2610.3/01296.html">2026-10-19 社区会议纪要（10 月 25 日发布）</a>仍在讨论跨子系统状态头、KVM 保留，以及 PCI、VFIO 与 IOMMU 的衔接。这里引用的是该次进展快照；邮件中的目标版本和下一版计划不代表功能已发布。</p>
+  <p>选型时先核对实际内核配置、资源处理器、新旧状态格式和设备支持，再讨论 downtime。仅仅能加载新内核，或新 QEMU 能启动，都不足以证明原虚拟机被正确接管。Guest 的 RAM、寄存器、中断与 I/O 状态必须对应同一个可恢复的执行点；恢复失败也不意味着能够随时回到旧端。</p>
+  <table><thead><tr><th scope="col">验收目标</th><th scope="col">测试环境中的观察</th><th scope="col">不能据此推断</th></tr></thead><tbody>
+    <tr><td>Guest 未重启</td><td>启动标识不变，原进程的内存计数继续递增</td><td>不能证明期间没有暂停</td></tr>
+    <tr><td>执行与服务连续性</td><td>从独立观察端记录请求时延、超时和最长无进展间隔</td><td>串口计数连续不等于零停顿，平均延迟也不能代表尾延迟</td></tr>
+    <tr><td>状态与 I/O 完整</td><td>校验内存内容、应用事务和升级前后的设备行为</td><td>能恢复 CPU 不等于 DMA、网络或存储已正确交接</td></tr>
+    <tr><td>失败可控</td><td>在测试环境验证每个切换阶段的资源归属和故障恢复</td><td>新端已执行后，旧端不能直接继续运行同一份 Guest 状态</td></tr>
+  </tbody></table>
+  <p>这些是验证建议，不是本文执行过的虚拟机升级测试。实际部署须采用明确支持的版本组合与运维方案；本文不提供可直接在业务宿主上运行的 kexec 或模块卸载命令。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">八、</span>参考资料与阅读路径</h2>
+  <ul>
+    <li><a href="qemu-cpr-transfer.html">QEMU CPR：共享内存、状态通道与单一执行权</a>；进程级更新与本文的内核级交接分开阅读。</li>
+    <li><a href="https://github.com/torvalds/linux/blob/05f7e89ab9731565d8a62e3b5d1ec206485eeb0b/Documentation/livepatch/livepatch.rst#L1">Linux 6.19 livepatch 文档源码</a>；<a href="https://docs.kernel.org/6.16/core-api/kho/concepts.html">KHO 概念</a>；<a href="https://docs.kernel.org/6.19/core-api/liveupdate.html">LUO 资源生命周期</a>。</li>
+    <li><a href="https://www.cs.fsu.edu/~zwang/files/asplos19.pdf">Fast and Scalable VMM Live Upgrade in Large Cloud Infrastructure</a>，ASPLOS 2019，DOI 10.1145/3297858.3304034。</li>
+    <li><a href="https://www.mail-archive.com/qemu-devel%40nongnu.org/msg1233836.html">QEMU cpr-luo PATCH 00/21，2026-10-12</a>；按这版补丁的能力与限制解读。</li>
+    <li><a href="https://lore.kernel.org/all/20260920193650.3373435-1-pasha.tatashin@soleen.com/">Orphaned VMs RFC，2026-09-20</a>；<a href="https://lpc.events/event/20/contributions/2554/">LPC 2026 Caretaker 方案介绍</a>。</li>
+    <li><a href="https://lkml.rescloud.iu.edu/2610.3/01296.html">Live Update 会议纪要，2026-10-19</a>；跟踪跨版本状态与设备保留进展。</li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#live-upgrade">热升级原理</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=49f2a464e9bd"></script>
+<script src="../assets/mechanism-viewer.js?v=06061d659afe" defer></script>
+</body>
+</html>

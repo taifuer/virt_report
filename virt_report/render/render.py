@@ -38,7 +38,7 @@ MECHANISM_DIAGRAM_NAMES = (
     "qom-types-objects", "qom-device-lifecycle",
     "qemu-startup-phases", "qemu-startup-vcpu",
     "libvirt-domain-start", "libvirt-domain-state",
-    "cpr-state-ownership", "cpr-transfer-sequence",
+    "cpr-state-ownership", "cpr-transfer-sequence", "kernel-upgrade-handoff",
     "memory-region-publication", "qemu-memory-initialization", "q35-memory-layout",
     "virtio-blk-request", "virtio-blk-completion",
     "virtio-blk-request-cycle",

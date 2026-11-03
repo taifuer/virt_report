@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=49f2a464e9bd">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=49f2a464e9bd">
   <link rel="stylesheet" href="../assets/site.css?v=49f2a464e9bd">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=f62c8836f843">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=f62c8836f843">
-<link rel="stylesheet" href="../assets/iommu-lab.css?v=f62c8836f843"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=06061d659afe">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=06061d659afe">
+<link rel="stylesheet" href="../assets/iommu-lab.css?v=06061d659afe"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -117,9 +117,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看一次 DMA 写入的转换路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="一次 DMA 写入的转换路径">
-    <img src="../assets/iommu-address-path.svg?v=f62c8836f843" alt="设备上下文确定地址空间，IOTLB 与页表提供转换和权限。图中的“遍历页表”由硬件执行，Linux 的映射函数负责事先维护页表。" loading="lazy">
+    <img src="../assets/iommu-address-path.svg?v=06061d659afe" alt="设备上下文确定地址空间，IOTLB 与页表提供转换和权限。图中的“遍历页表”由硬件执行，Linux 的映射函数负责事先维护页表。" loading="lazy">
   </div>
-  <figcaption>设备上下文确定地址空间，IOTLB 与页表提供转换和权限。图中的“遍历页表”由硬件执行，Linux 的映射函数负责事先维护页表。 <a href="../assets/iommu-address-path.svg?v=f62c8836f843" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>设备上下文确定地址空间，IOTLB 与页表提供转换和权限。图中的“遍历页表”由硬件执行，Linux 的映射函数负责事先维护页表。 <a href="../assets/iommu-address-path.svg?v=06061d659afe" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 设备标识、IOTLB 与 I/O 页表共同确定一次 DMA 写入
     accDescr: PCIe 网卡携带 Requester ID 和 IOVA 发起 DMA 写。设备上下文确定地址空间，IOTLB 命中时复用转换，未命中时硬件遍历页表。有效映射并且写权限允许时访问 HPA；缺失映射或权限不足则阻止访问。
@@ -208,9 +208,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看从停止使用到解除映射" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="从停止使用到解除映射">
-    <img src="../assets/iommu-buffer-lifetime.svg?v=f62c8836f843" alt="示意按安全回收顺序拆开设备停止、页表修改、转换缓存失效及后备页释放。图中 UNMAP 内的子步骤不表示调用返回后还允许保留旧转换。" loading="lazy">
+    <img src="../assets/iommu-buffer-lifetime.svg?v=06061d659afe" alt="示意按安全回收顺序拆开设备停止、页表修改、转换缓存失效及后备页释放。图中 UNMAP 内的子步骤不表示调用返回后还允许保留旧转换。" loading="lazy">
   </div>
-  <figcaption>示意按安全回收顺序拆开设备停止、页表修改、转换缓存失效及后备页释放。图中 UNMAP 内的子步骤不表示调用返回后还允许保留旧转换。 <a href="../assets/iommu-buffer-lifetime.svg?v=f62c8836f843" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>示意按安全回收顺序拆开设备停止、页表修改、转换缓存失效及后备页释放。图中 UNMAP 内的子步骤不表示调用返回后还允许保留旧转换。 <a href="../assets/iommu-buffer-lifetime.svg?v=06061d659afe" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: DMA 缓冲区从停止使用到安全回收
     accDescr: 设备队列停止并确认在途访问结束后，宿主执行撤销映射，内核清除页表并同步转换缓存。等待失效完成后再释放映射对后备页的引用。示意采用无 ATS 的同步撤销路径。
@@ -323,6 +323,6 @@ IOMMU 子系统执行 iotlb_sync
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=49f2a464e9bd"></script>
-<script src="../assets/mechanism-viewer.js?v=f62c8836f843" defer></script>
-<script src="../assets/iommu-lab.js?v=f62c8836f843" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=06061d659afe" defer></script>
+<script src="../assets/iommu-lab.js?v=06061d659afe" defer></script></body>
 </html>

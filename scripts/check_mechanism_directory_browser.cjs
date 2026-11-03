@@ -7,6 +7,11 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
 const url = `${base}/mechanisms.html`;
 const shots = process.env.MECHANISM_DIRECTORY_SCREENSHOT_DIR || '/tmp/mechanism-directory-review';
+const catalogue = JSON.parse(fs.readFileSync(path.join(__dirname, '../virt_report/content/mechanisms.json'), 'utf8'));
+const published = catalogue.topics.map(topic => ({...topic,
+  details: catalogue.articles.filter(article => article.topic === topic.slug && article.slug !== topic.overview),
+})).filter(topic => catalogue.articles.some(article => article.topic === topic.slug));
+const detailCount = published.reduce((sum, topic) => sum + topic.details.length, 0);
 const topic = (page, id) => page.locator(`.mechanism-topic[id="${id}"]`);
 const toggle = (page, id) => topic(page,id).locator('[data-mechanism-toggle]');
 const list = (page, id) => topic(page,id).locator('.mechanism-list');
@@ -63,11 +68,12 @@ async function check(page,width) {
   await page.setViewportSize({width,height:900});
   await page.goto(url); await ready(page);
   const buttons=page.locator('[data-mechanism-toggle]');
-  assert.equal(await buttons.count(),10,'only topics with detail articles get a toggle');
-  assert.equal(await page.locator('.mechanism-topic h3 a').count(),19,'all overview links remain available');
+  assert.equal(await buttons.count(),published.filter(topic => topic.details.length).length,
+    'only topics with detail articles get a toggle');
+  assert.equal(await page.locator('.mechanism-topic h3 a').count(),published.length,'all overview links remain available');
   assert.equal(await page.locator('.mechanism-list-item:visible').count(),0,'detail lists initially collapsed');
-  assert.equal(await page.locator('.mechanism-topic-header p:visible').count(),19,'topic summaries remain visible');
-  for(const id of ['virtualization-basics','live-upgrade','block-io-walkthrough','network-io-walkthrough',
+  assert.equal(await page.locator('.mechanism-topic-header p:visible').count(),published.length,'topic summaries remain visible');
+  for(const id of ['virtualization-basics','block-io-walkthrough','network-io-walkthrough',
     'cpu-execution-walkthrough','memory-access-walkthrough','interrupt-delivery-walkthrough','gpu-execution-walkthrough',
     'virtio-gpu-walkthrough']) {
     assert.equal(await toggle(page,id).count(),0,`${id}: no empty or demo disclosure`);
@@ -90,6 +96,10 @@ async function check(page,width) {
   assert.equal(colors.chip,colors.ink,'directory chips retain their neutral style');
   await responsive(page,width);
   await page.screenshot({path:path.join(shots,`directory-${width}-collapsed.png`)});
+
+  await toggle(page,'live-upgrade').click(); await expanded(page,'live-upgrade');
+  assert(await list(page,'live-upgrade').locator('a[href="mechanisms/kvm-live-upgrade.html"]').isVisible());
+  await toggle(page,'live-upgrade').click(); await expanded(page,'live-upgrade',false);
 
   await toggle(page,'cpu-virtualization').focus();
   await page.keyboard.press('Enter'); await expanded(page,'cpu-virtualization');
@@ -140,7 +150,7 @@ async function check(page,width) {
     const nojs=await browser.newContext({javaScriptEnabled:false,viewport:{width:390,height:900}});
     await nojs.route('**/*',route=>route.request().url().startsWith(base+'/')?route.continue():route.abort());
     const plain=await nojs.newPage();await plain.goto(url);
-    assert.equal(await plain.locator('.mechanism-list-item:visible').count(),41,
+    assert.equal(await plain.locator('.mechanism-list-item:visible').count(),detailCount,
       'all detail articles remain readable without JavaScript');
     assert.equal(await plain.locator('[data-mechanism-toggle]:visible').count(),0,
       'inert controls remain hidden without JavaScript');

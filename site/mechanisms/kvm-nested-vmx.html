@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=49f2a464e9bd">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=49f2a464e9bd">
   <link rel="stylesheet" href="../assets/site.css?v=49f2a464e9bd">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=f62c8836f843">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=f62c8836f843">
-<link rel="stylesheet" href="../assets/nested-vmx-lab.css?v=f62c8836f843"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=06061d659afe">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=06061d659afe">
+<link rel="stylesheet" href="../assets/nested-vmx-lab.css?v=06061d659afe"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -97,9 +97,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看VMCS12 表达请求，VMCS02 承担实际执行" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="VMCS12 表达请求，VMCS02 承担实际执行">
-    <img src="../assets/nested-vmx-controls.svg?v=f62c8836f843" alt="实线表示物理 CPU 使用的控制结构；虚线表示 L0 的状态合成与退出同步。VMCS01 和 VMCS02 在同一 vCPU 上切换使用。" loading="lazy">
+    <img src="../assets/nested-vmx-controls.svg?v=06061d659afe" alt="实线表示物理 CPU 使用的控制结构；虚线表示 L0 的状态合成与退出同步。VMCS01 和 VMCS02 在同一 vCPU 上切换使用。" loading="lazy">
   </div>
-  <figcaption>实线表示物理 CPU 使用的控制结构；虚线表示 L0 的状态合成与退出同步。VMCS01 和 VMCS02 在同一 vCPU 上切换使用。 <a href="../assets/nested-vmx-controls.svg?v=f62c8836f843" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>实线表示物理 CPU 使用的控制结构；虚线表示 L0 的状态合成与退出同步。VMCS01 和 VMCS02 在同一 vCPU 上切换使用。 <a href="../assets/nested-vmx-controls.svg?v=06061d659afe" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 嵌套 VMX 的三个控制结构
     accDescr: L0 的 VMCS01 运行 L1；L1 提供 VMCS12 表达 L2 状态和拦截要求；L0 合成 VMCS02 实际运行 L2。两份硬件执行用 VMCS 的宿主状态都属于 L0。退出转发时 L0 同步 VMCS12 并恢复 L1。
@@ -184,9 +184,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看同一条 OUT 指令的退出归属" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="同一条 OUT 指令的退出归属">
-    <img src="../assets/nested-vmx-exit-path.svg?v=f62c8836f843" alt="两种配置都先发生 L2 到 L0 的硬件退出。向 L1 转发时切换 VMCS，并恢复 L1 的虚拟宿主状态；留在 L0 处理时可经内核后端完成，也可按需交给外层 QEMU。" loading="lazy">
+    <img src="../assets/nested-vmx-exit-path.svg?v=06061d659afe" alt="两种配置都先发生 L2 到 L0 的硬件退出。向 L1 转发时切换 VMCS，并恢复 L1 的虚拟宿主状态；留在 L0 处理时可经内核后端完成，也可按需交给外层 QEMU。" loading="lazy">
   </div>
-  <figcaption>两种配置都先发生 L2 到 L0 的硬件退出。向 L1 转发时切换 VMCS，并恢复 L1 的虚拟宿主状态；留在 L0 处理时可经内核后端完成，也可按需交给外层 QEMU。 <a href="../assets/nested-vmx-exit-path.svg?v=f62c8836f843" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>两种配置都先发生 L2 到 L0 的硬件退出。向 L1 转发时切换 VMCS，并恢复 L1 的虚拟宿主状态；留在 L0 处理时可经内核后端完成，也可按需交给外层 QEMU。 <a href="../assets/nested-vmx-exit-path.svg?v=06061d659afe" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 一条 L2 OUT 指令的嵌套退出分派
     accDescr: L2 端口写先产生硬件退出到 L0，L0 检查 L1 的 I/O bitmap。拦截时把退出写入 VMCS12，再用 VMCS01 恢复 L1，处理后重新合成 VMCS02；不拦截时由 L0 内核或外层 QEMU 完成，再继续 L2。
@@ -385,6 +385,6 @@ L2: OUT → 真实 VM-Exit → L0
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=49f2a464e9bd"></script>
-<script src="../assets/mechanism-viewer.js?v=f62c8836f843" defer></script>
-<script src="../assets/nested-vmx-lab.js?v=f62c8836f843" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=06061d659afe" defer></script>
+<script src="../assets/nested-vmx-lab.js?v=06061d659afe" defer></script></body>
 </html>

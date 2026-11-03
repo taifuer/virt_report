@@ -108,7 +108,7 @@ cp .env.example .env
 - 启动（`#vm-startup`）：`libvirt-domain-start.html`、`qemu-vm-startup.html`，从管理请求、进程握手到 QEMU 机器初始化和 vCPU 执行。
 - 热迁移（`#migration`）：`qemu-memory-migration.html`、`qemu-migration-stream.html`、`qemu-multifd.html`、`qemu-postcopy.html`、`libvirt-live-migration.html`，内存迭代、流格式、多通道、后拷贝，以及管理层五阶段协调与失败恢复。
 - 热插拔（`#hotplug`）：`qemu-pcie-hotplug.html`、`qemu-virtio-mem.html`、`x86-vcpu-hotplug.html`，分别跟踪 PCIe、内存和 vCPU 的添加、客户机协作及移除完成。
-- 热升级（`#live-upgrade`）：`qemu-cpr-transfer.html`，同机更新中的共享 RAM、文件描述符与执行权交接。
+- 热升级（`#live-upgrade`）：`qemu-cpr-transfer.html`、`kvm-live-upgrade.html`，分别解释 QEMU 进程替换与 KVM / 宿主内核更新。后者区分 livepatch、Orthus / Dual KVM、KHO / LUO、cpr-luo 和 Caretaker，标注固定版本、提案日期及 Guest 暂停和设备支持边界，不把基础设施合入等同于任意 VM 都可无停顿升级。
 - QEMU 内部机制（`#qemu-internals`）：`qemu-qom-device.html`、`qemu-memory-region.html`、`qemu-aio-iothread.html`、`qemu-qcow2.html`、`qemu-live-block-operations.html`，对象生命周期、内存初始化与地址空间、异步 I/O、镜像映射，以及外部快照与在线块图变更。
 - KVM 内部机制（`#kvm-internals`）：`kvm-vcpu-run.html`、`kvm-vcpu-requests.html`，执行循环与 I/O 退出，以及 request 位图、vCPU 模式与 kick 协作；区分内核请求、宿主 IPI、客户机中断及 QEMU 信号。
 - Libvirt 内部机制（`#libvirt-internals`）：`libvirt-rpc.html`，XDR 报文、服务端分发、响应匹配与守护进程边界。

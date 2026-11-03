@@ -77,7 +77,7 @@ def test_directory_counts_primary_articles_without_extra_related_rows():
     assert counts == {'virtualization-basics': 1, 'cpu-virtualization': 6, 'memory-virtualization': 5,
                       'device-virtualization': 16, 'interrupt-virtualization': 2,
                       'vm-startup': 2, 'migration': 7, 'hotplug': 4,
-                      'live-upgrade': 1, 'qemu-internals': 6, 'libvirt-internals': 2,
+                      'live-upgrade': 2, 'qemu-internals': 6, 'libvirt-internals': 2,
                       'kvm-internals': 2, 'block-io-walkthrough': 1,
                       'network-io-walkthrough': 1, 'cpu-execution-walkthrough': 1,
                       'memory-access-walkthrough': 1, 'interrupt-delivery-walkthrough': 1,
