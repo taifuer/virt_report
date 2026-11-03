@@ -52,7 +52,7 @@ def test_interrupt_guide_traces_software_delivery_before_acceleration():
     # Message semantics and host event delivery must not be taught as one layer.
     assert 'MSI-X / irqfd 路由' not in page
     assert '现在把收包处理从 QEMU 切换到 vhost-net' in page
-    assert '换成 VFIO 分配的物理网卡后' in page
+    assert '换成 VFIO 分配的物理设备后' in page
     source = (render.ASSETS_DIR.parents[1] / 'content/diagrams'
               / 'interrupt-software-delivery.mmd').read_text()
     assert source.index('Linux 边沿应答') < source.index('V->>K: EOI') < source.index('驱动回调 → NAPI')

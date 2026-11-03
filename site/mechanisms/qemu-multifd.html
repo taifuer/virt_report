@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=49f2a464e9bd">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=49f2a464e9bd">
   <link rel="stylesheet" href="../assets/site.css?v=49f2a464e9bd">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=93907fc093e4">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=93907fc093e4">
-<link rel="stylesheet" href="../assets/multifd.css?v=93907fc093e4"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=f62c8836f843">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=f62c8836f843">
+<link rel="stylesheet" href="../assets/multifd.css?v=f62c8836f843"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -79,7 +79,7 @@
   <h2><span class="mechanism-heading-number">三、</span>RAM 批次的分发与装载</h2>
   <p>以下示例先传输 16 页，再更新其中 8 页并传输一次。每批用两页展示任务边界。先观察正常进度下多个通道同时工作，再把通道 1 的接收进度调慢：其余通道可以先处理完本轮数据，却要在 SYNC 等待；主流只有等全部通道到齐才放行下一轮。这个等待正是并行传输为保持页面版本顺序付出的代价。</p>
 <section class="multifd-lab" data-multifd-lab data-mechanism-view="lab" aria-labelledby="multifd-lab-title">
-  <div class="mechanism-view-heading"><h3 id="multifd-lab-title">并行页传输与同步屏障</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <div class="mechanism-view-heading"><h3 id="multifd-lab-title">并行页传输与同步屏障</h3><button type="button" data-mechanism-expand hidden>全屏演示</button></div>
   <p>源端分发页面，数据通道并行接收，主迁移流在 FLUSH 处等待全部通道完成。P00—P15 为页编号，v1 / v2 为内容版本。</p>
   <div class="multifd-controls" data-multifd-controls hidden>
     <label>数据通道<select data-multifd-channels><option value="2">2 条</option><option value="4" selected>4 条</option><option value="8">8 条</option></select></label>
@@ -144,9 +144,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看MultiFD 主流与数据通道的同步时序" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="MultiFD 主流与数据通道的同步时序">
-    <img src="../assets/multifd-synchronization.svg?v=93907fc093e4" alt="以 FLUSH 先到目的端为例。发送端等待本地写入，接收端等待所有通道的 SYNC；两端等待的条件不同。" loading="lazy">
+    <img src="../assets/multifd-synchronization.svg?v=f62c8836f843" alt="以 FLUSH 先到目的端为例。发送端等待本地写入，接收端等待所有通道的 SYNC；两端等待的条件不同。" loading="lazy">
   </div>
-  <figcaption>以 FLUSH 先到目的端为例。发送端等待本地写入，接收端等待所有通道的 SYNC；两端等待的条件不同。 <a href="../assets/multifd-synchronization.svg?v=93907fc093e4" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>以 FLUSH 先到目的端为例。发送端等待本地写入，接收端等待所有通道的 SYNC；两端等待的条件不同。 <a href="../assets/multifd-synchronization.svg?v=f62c8836f843" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: MultiFD 主流与数据通道的同步时序
     accDescr: 源端主线程提交剩余批次，各发送线程完成页面写入并排入 SYNC 后报告本地完成。主线程发送 FLUSH；目的端等待所有通道装载前序页面并读到 SYNC，然后放行接收线程。示例选择 FLUSH 先到的时序。
@@ -222,6 +222,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=49f2a464e9bd"></script>
-<script src="../assets/mechanism-viewer.js?v=93907fc093e4" defer></script>
-<script src="../assets/multifd.js?v=93907fc093e4" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=f62c8836f843" defer></script>
+<script src="../assets/multifd.js?v=f62c8836f843" defer></script></body>
 </html>

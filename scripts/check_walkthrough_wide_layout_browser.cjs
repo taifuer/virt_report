@@ -14,6 +14,7 @@ const cases = [
   {slug: 'memory-access', prefix: 'execution', detail: 'structure'},
   {slug: 'interrupt-delivery', prefix: 'execution', detail: 'structure'},
   {slug: 'gpu-execution', prefix: 'execution', detail: 'structure'},
+  {slug: 'virtio-gpu-execution', prefix: 'execution', detail: 'structure'},
   {slug: 'gpu-execution', query: '?scenario=vfio-readback', prefix: 'execution', detail: 'structure'},
   {slug: 'gpu-execution', query: '?scenario=mdev-copy', prefix: 'execution', detail: 'structure'},
   {slug: 'virtio-blk-read', query: '?backend=rbd-blk', prefix: 'vbr', detail: 'mechanism'},
@@ -34,21 +35,30 @@ async function checkLayout(lab, tag) {
       .filter(node => node.getClientRects().length && node.textContent.trim());
     return {
       workspace: bounds(workspace), inspector: bounds(inspector), visual: bounds(visual),
+      expanded: root.classList.contains('walkthrough-expanded'),
       explanationFirst: workspace.firstElementChild === inspector,
       separator: getComputedStyle(inspector).borderLeftWidth,
       pageWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth,
       paragraphs: paragraphs.map(node => ({...bounds(node), font: getComputedStyle(node).fontSize,
         overflow: node.scrollHeight > node.clientHeight + 1, hidden: getComputedStyle(node).overflowY})),
       inspectorClipped: inspector.scrollHeight > inspector.clientHeight + 1,
+      inspectorOverflow: getComputedStyle(inspector).overflowY,
       sourcesInInspector: inspector.querySelectorAll('a').length,
     };
   });
   assert(result.explanationFirst, `${tag}: explanation must come first in DOM reading order`);
-  assert(result.inspector.bottom <= result.visual.top + 1, `${tag}: explanation must be above the diagram`);
-  assert(Math.abs(result.visual.width - result.workspace.width) <= 2,
-    `${tag}: diagram must use the full workspace ${JSON.stringify(result)}`);
-  assert.equal(result.separator, '0px', `${tag}: old sidebar divider must not remain`);
-  assert(!result.inspectorClipped, `${tag}: explanations must not be clipped`);
+  if (result.expanded && result.viewportWidth >= 1100) {
+    assert(result.visual.right <= result.inspector.left && Math.abs(result.visual.top-result.inspector.top)<2,
+      `${tag}: desktop fullscreen places explanation beside the drawing`);
+    assert(result.visual.width >= result.workspace.width*.6, `${tag}: drawing retains most of the fullscreen width`);
+    assert(['auto', 'scroll'].includes(result.inspectorOverflow), `${tag}: long fullscreen explanations remain scrollable`);
+  } else {
+    assert(result.inspector.bottom <= result.visual.top + 1, `${tag}: explanation must be above the diagram`);
+    assert(Math.abs(result.visual.width - result.workspace.width) <= 2,
+      `${tag}: diagram must use the full workspace ${JSON.stringify(result)}`);
+    assert.equal(result.separator, '0px', `${tag}: normal reading has no sidebar divider`);
+    assert(!result.inspectorClipped, `${tag}: explanations must not be clipped`);
+  }
   assert.equal(result.sourcesInInspector, 0, `${tag}: keep source links in the source view`);
   assert.equal(result.paragraphs.length, 1, `${tag}: one continuous step explanation`);
   for (const paragraph of result.paragraphs) {

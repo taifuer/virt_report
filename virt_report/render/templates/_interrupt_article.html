@@ -8,7 +8,7 @@
   <p>本文跟踪现代 virtio-pci 设备的一个 split virtqueue，采用 x86、内核 irqchip、QEMU 用户态后端的普通通知路径。示例在非 IOThread 的设备处理上下文中直接发送 MSI-X；guest notifier 与 irqfd 是后文单独分析的替代路径。APIC 状态转换先按软件注入路径展开，再讨论硬件辅助。</p>
   <p>一次完成经过四个检查点：used 已发布、通知条件满足、MSI-X 消息到达目标 LAPIC、客户机驱动取走 used 项。任一检查点之后都可能继续等待，因此“后端完成”与“客户机发现完成”之间仍有延迟。以下用队列 0 接收一个 1500 字节以太网帧，采用 12 字节 virtio 网络头，按 MSI-X 表项 2 向 APIC ID 1 投递向量 0x51。先追踪数据完成和通知，再对照编号、字段与源码。</p>
   {% include '_mechanism_baselines.html' %}
-  <p><a href="interrupt-delivery.html">中断传递</a>交互演示可逐步对照 MSI-X、irqfd、屏蔽与 APICv 路径，分别观察 PBA、IRR、ISR 与 Guest 接受中断的时机。</p>
+  <p><a href="interrupt-delivery.html">中断传递</a>交互演示对照 QEMU 直接 MSI、DPDK irqfd，以及直通设备同为 MSI-X 的宿主转发和 VT-d posted 路径，分清通知入口与 CPU 交付。屏蔽与等待作为进阶条件展开，可分别观察 PBA、IRR、ISR 与 Guest 接受中断的时机。</p>
 </section>
 
 
@@ -80,7 +80,7 @@ old = 7, new = 8, event = 8 → 65535 &lt; 1 为假，暂不通知</code></pre>
   <p>QEMU 为 guest notifier 配置 irqfd 时，先通过 <code>KVM_SET_GSI_ROUTING</code> 建立 GSI 37 到 MSI 地址及 data 的路由，再通过 <code>KVM_IRQFD</code> 绑定 eventfd 与 GSI 37。<code>struct kvm_irqfd</code> 的 <code>fd</code>、<code>gsi</code>、<code>flags</code> 和 <code>resamplefd</code> 均为 32 位字段；本例边沿 MSI 路径不使用电平中断的 resamplefd 应答协议。</p>
   <p>后端发出 eventfd 事件后，KVM 的 <code>irqfd_wakeup()</code> 读取事件并尝试用缓存路由直接投递；当前上下文无法完成时，再安排工作队列。原先需要由用户态监听完成事件并调用 MSI 注入接口的场景，可以省去这次中转。进入目标 LAPIC 后，仍按前文的待处理、交付和驱动回收流程继续。eventfd 计数不等于客户机应收到同样次数的中断，请求完成仍以队列为准。</p>
   <p>QEMU 10.2 的 <code>virtio_irq()</code> 在 IOThread 中使用 guest notifier；非 IOThread 的普通路径调用 <code>virtio_notify_vector()</code>。<a href="qemu-vhost-net.html#notification">vhost 的完成通知</a>也可以接到 eventfd，但其后端执行者已经不同。irqfd 路径必须随 MSI-X 路由修改、屏蔽、解除绑定同步更新，不能绕开这些设备语义。</p>
-  <p>irqfd 描述的是 eventfd 到虚拟中断的内核接口。硬件 posted interrupt 则属于后续的中断投递优化；是否启用还受处理器能力、虚拟机配置及 KVM 当前状态限制。使用 irqfd 并不自动意味着完全绕过宿主软件，更不保证没有 VM Exit。</p>
+  <p>irqfd 描述的是 eventfd 到虚拟中断的内核接口。消息进入 KVM 后，可以由 KVM 写 PID.PIR，使用 CPU 侧 posted-interrupt processing 加速交付。直通设备还有 VT-d 根据 posted IRTE 直接写 PIR 的路径，设备仍发送 MSI-X，但省去逐次 VFIO / irqfd 转发。两者都受硬件能力、配置及运行条件限制；使用 irqfd 并不自动意味着启用 posted，更不保证没有 VM Exit。</p>
 </section>
 
 <section id="implementation" class="mechanism-section">

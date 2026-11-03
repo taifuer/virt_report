@@ -4,30 +4,32 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
-const slugs = ['virtio-blk-read', 'network-io', 'cpu-execution', 'memory-access', 'interrupt-delivery', 'gpu-execution', 'virtio-gpu-rendering'];
+const slugs = ['virtio-blk-read', 'network-io', 'cpu-execution', 'memory-access', 'interrupt-delivery', 'gpu-execution', 'virtio-gpu-execution'];
 const shots = process.env.WALKTHROUGH_SCREENSHOT_DIR;
 if (shots) fs.mkdirSync(shots, {recursive: true});
 
-async function assertDomainAlignment(page, context, requireInlineQemu = false) {
-  const domains = await page.locator('.walkthrough-domain').evaluateAll(nodes => nodes.map(domain => {
+async function assertDomainAlignment(page, context, inspectQemuNodes = false) {
+  const domains = await page.locator('[data-component-column]').evaluateAll(nodes => nodes.filter(node => node.getClientRects().length).map(domain => {
     const rect = node => { const r = node.getBoundingClientRect(); return {top:r.top,bottom:r.bottom,left:r.left,right:r.right}; };
-    return {id: domain.dataset.executionDomain, title: domain.querySelector('h4')?.textContent,
-      header: rect(domain.querySelector('header')), cards: [...domain.querySelectorAll('[data-execution-node]')].map(rect)};
+    return {id: domain.dataset.componentColumn, title: domain.querySelector('h4')?.textContent,
+      header: rect(domain.querySelector('header')), body: rect(domain.querySelector('.walkthrough-domain-body')),
+      cards: [...domain.querySelectorAll('[data-execution-node]')].map(rect)};
   }));
+  assert.deepEqual(domains.map(domain => domain.id), ['guest','kvm','qemu','host-kernel','hardware']);
   for (const left of domains) for (const right of domains) {
     if (left === right || Math.abs(left.header.top - right.header.top) > 2) continue;
     assert(Math.abs(left.header.bottom - right.header.bottom) <= 2,
       `${context}: headers in one visual row must align ${JSON.stringify({left,right})}`);
-    assert(Math.abs(left.cards[0].top - right.cards[0].top) <= 2,
-      `${context}: cards below peer headers must align ${JSON.stringify({left,right})}`);
+    assert(Math.abs(left.body.top - right.body.top) <= 2,
+      `${context}: component bodies below peer headers must align ${JSON.stringify({left,right})}`);
   }
-  if (requireInlineQemu) {
+  if (inspectQemuNodes) {
     const qemu = domains.find(domain => domain.title === 'QEMU');
     assert(qemu && qemu.cards.length === 2, `${context}: expected both QEMU components`);
-    assert(Math.abs(qemu.cards[0].top - qemu.cards[1].top) <= 2,
-      `${context}: QEMU components should be side by side ${JSON.stringify(qemu)}`);
-    assert(qemu.cards[0].right <= qemu.cards[1].left + 1 || qemu.cards[1].right <= qemu.cards[0].left + 1,
-      `${context}: QEMU cards must not overlap ${JSON.stringify(qemu)}`);
+    assert(Math.abs(qemu.cards[0].left - qemu.cards[1].left) <= 2,
+      `${context}: both QEMU callbacks share one fixed component column ${JSON.stringify(qemu)}`);
+    assert(qemu.cards[0].bottom <= qemu.cards[1].top,
+      `${context}: QEMU callbacks stack without widening or shifting peer components ${JSON.stringify(qemu)}`);
   }
 }
 
@@ -52,7 +54,8 @@ async function assertDomainAlignment(page, context, requireInlineQemu = false) {
           const style = node => {
             const c = getComputedStyle(node);
             return {height: node.getBoundingClientRect().height, fontSize: c.fontSize,
-              fontWeight: c.fontWeight, radius: c.borderRadius, color: c.color, background: c.backgroundColor};
+              fontWeight: c.fontWeight, lineHeight: c.lineHeight,
+              radius: c.borderRadius, color: c.color, background: c.backgroundColor};
           };
           const visible = node => node.getClientRects().length && getComputedStyle(node).visibility !== 'hidden';
           const selects = [...lab.querySelectorAll('.walkthrough-choice select')].filter(visible);
@@ -64,9 +67,15 @@ async function assertDomainAlignment(page, context, requireInlineQemu = false) {
           const config = lab.querySelector('.walkthrough-configuration').getBoundingClientRect();
           const board = lab.querySelector('.walkthrough-workspace').getBoundingClientRect();
           const domainNodes = [...lab.querySelectorAll('[data-execution-node]')];
+          const inactive = [...lab.querySelectorAll('.execution-node:not([data-active="true"]), .vbr-node:not([data-active="true"]):enabled')].find(visible);
+          const card = getComputedStyle(inactive), title = getComputedStyle(inactive.querySelector('strong'));
+          const header = [...lab.querySelectorAll('[data-component-header] h4')].find(visible);
           return {page: document.documentElement.scrollWidth, width: innerWidth,
             base: {select: style(select), speed: style(speed), play: style(lab.querySelector('[data-walkthrough-play]')),
-              tab: style(lab.querySelector('.walkthrough-tabs button')), expand: style(lab.querySelector('[data-walkthrough-expand]'))},
+              tab: style(lab.querySelector('.walkthrough-tabs button')), expand: style(lab.querySelector('[data-walkthrough-expand]')),
+              componentHeading: {...style(header), margin:getComputedStyle(header).margin}, node: {minHeight:card.minHeight, padding:card.padding,
+                radius:card.borderRadius, border:card.border, background:card.backgroundColor, color:card.color,
+                titleFont:title.font}},
             arrows: [...selects, speed].map(node => ({image: getComputedStyle(node).backgroundImage, padding: parseFloat(getComputedStyle(node).paddingRight)})),
             selectorGap: toolbar.top - selector.bottom, summaryHeight: summary.height, configBelow: config.top >= board.bottom,
             allDomains: domainNodes.every(node => node.closest('.walkthrough-domain, .walkthrough-memory')),
@@ -78,7 +87,7 @@ async function assertDomainAlignment(page, context, requireInlineQemu = false) {
         assert(result.arrows.every(x => x.image.includes('data:image/svg+xml') && x.padding >= 23), `${slug}: visible select arrows`);
         assert(result.controlsContained && result.configBelow && result.allDomains, `${slug}/${width}: layout ${JSON.stringify(result)}`);
         assert(result.selectorGap < result.summaryHeight + 45, `${slug}: controls separated by configuration text ${JSON.stringify(result)}`);
-        if (width >= 768 && slug !== 'virtio-blk-read') await assertDomainAlignment(page, `${slug}/${width}`);
+        await assertDomainAlignment(page, `${slug}/${width}`);
         if (!standard) standard = result.base;
         else assert.deepEqual(result.base, standard, `${slug}/${width}: shared control styling ${JSON.stringify({actual: result.base, expected: standard})}`);
         const expand = page.locator('[data-walkthrough-expand]').first();

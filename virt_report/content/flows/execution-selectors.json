@@ -2,11 +2,28 @@
   "virtio-gpu-rendering": {
     "scenarioLabel": "演示场景",
     "groups": [
-      {"label": "OpenGL 渲染", "scenarios": [{"id": "virgl-render", "label": "绘制三角形 · OpenGL"}]},
-      {"label": "VirGL video · 需额外接入", "scenarios": [
-        {"id": "virgl-decode", "label": "H.264 解码 · NV12 输出"},
-        {"id": "virgl-encode", "label": "NV12 编码 · H.264 输出"}
-      ]}
+      {
+        "label": "OpenGL 渲染",
+        "scenarios": [
+          {
+            "id": "virgl-render",
+            "label": "绘制三角形 · OpenGL"
+          }
+        ]
+      },
+      {
+        "label": "VirGL video · 需额外接入",
+        "scenarios": [
+          {
+            "id": "virgl-decode",
+            "label": "H.264 解码 · NV12 输出"
+          },
+          {
+            "id": "virgl-encode",
+            "label": "NV12 编码 · H.264 输出"
+          }
+        ]
+      }
     ]
   },
   "network-io": {
@@ -168,12 +185,18 @@
             ]
           },
           {
-            "label": "宿主处理",
+            "label": "KVM 建立映射",
             "scenarios": [
               {
                 "id": "ept-missing",
-                "label": "EPT 映射尚未建立"
-              },
+                "label": "RAM 首次补建 EPT"
+              }
+            ]
+          },
+          {
+            "label": "换页与写保护",
+            "advanced": true,
+            "scenarios": [
               {
                 "id": "host-page-fault",
                 "label": "宿主后备页换入"
@@ -188,7 +211,7 @@
       },
       {
         "id": "mmio",
-        "label": "MMIO 设备寄存器",
+        "label": "MMIO / 设备内存",
         "groups": [
           {
             "label": "用户态设备处理",
@@ -218,6 +241,10 @@
               {
                 "id": "mmio-vfio-direct",
                 "label": "VFIO BAR 已建立直接映射"
+              },
+              {
+                "id": "mmio-ivshmem-direct",
+                "label": "共享内存 BAR · ivshmem"
               }
             ]
           }
@@ -264,7 +291,11 @@
         "scenarios": [
           {
             "id": "hlt-wakeup",
-            "label": "HLT 空闲等待"
+            "label": "HLT · KVM 阻塞等待"
+          },
+          {
+            "id": "hlt-passthrough",
+            "label": "HLT · Idle Passthrough"
           },
           {
             "id": "sleep-other-task",
@@ -282,24 +313,42 @@
     "scenarioLabel": "演示场景",
     "groups": [
       {
-        "label": "通知路径",
+        "label": "软件后端",
         "scenarios": [
           {
             "id": "msix-software",
-            "label": "QEMU 直接提交 MSI-X"
+            "label": "QEMU · 直接提交 MSI"
           },
           {
             "id": "irqfd",
-            "label": "irqfd 事件通知"
+            "label": "DPDK · irqfd 软件注入"
+          },
+          {
+            "id": "apicv-posted",
+            "label": "DPDK · irqfd + posted interrupt"
+          }
+        ]
+      },
+      {
+        "label": "直通设备",
+        "scenarios": [
+          {
+            "id": "vtd-remapped",
+            "label": "MSI-X · 宿主转发"
+          },
+          {
+            "id": "vtd-posted",
+            "label": "MSI-X · VT-d posted"
           }
         ]
       },
       {
         "label": "屏蔽与等待",
+        "advanced": true,
         "scenarios": [
           {
             "id": "notify-suppressed",
-            "label": "队列完成但通知被抑制"
+            "label": "队列通知抑制"
           },
           {
             "id": "msix-masked",
@@ -307,29 +356,7 @@
           },
           {
             "id": "if-masked",
-            "label": "Guest IF 关闭与延迟交付"
-          }
-        ]
-      },
-      {
-        "label": "硬件递送",
-        "scenarios": [
-          {
-            "id": "apicv-posted",
-            "label": "APICv · KVM 软件投递"
-          }
-        ]
-      },
-      {
-        "label": "设备直通与 VT-d",
-        "scenarios": [
-          {
-            "id": "vtd-remapped",
-            "label": "中断重映射 · 宿主转发"
-          },
-          {
-            "id": "vtd-posted",
-            "label": "VT-d Posted Interrupt"
+            "label": "Guest IF 关闭与等待"
           }
         ]
       }

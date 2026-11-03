@@ -155,7 +155,7 @@ mmio.data[0..3]   = 78 56 34 12</code></pre>
   <p>用户态设备模拟便于实现多种设备，但高频寄存器访问会反复经过 KVM_RUN 返回、地址空间分派和重新进入。virtio 将大量工作描述放进共享队列，把寄存器访问集中到配置与通知；队列记录和实际数据留在客户机内存中。这降低了每个请求必须经过用户态寄存器处理的需求。</p>
   <p>2009 年，Linux 引入 <a href="https://github.com/torvalds/linux/commit/d34e6b175e61821026893ec5298cc8e7558df43a">ioeventfd</a> 和 <a href="https://github.com/torvalds/linux/commit/721eecbf4fe995ca94a9edec0c9843b1cc0eaaf3">irqfd</a>。ioeventfd 的原始设计抓住了两类访问的区别：设备寄存器读取需要同步返回数据，而队列 doorbell 写入只负责通知后端有新工作，可以在发布事件后继续执行客户机。这为通知路径提供了比完整设备模拟更短的交接方式。</p>
   <p>ioeventfd / irqfd 缩短通知交接，<a href="qemu-vhost-net.html">vhost 与 vhost-user</a>再调整由谁执行队列的数据处理。两项优化可以组合，但收益来源不同：前者减少控制通知往返，后者改变数据面的执行上下文。配置变更、异常处理及不匹配访问仍需完整设备语义。</p>
-  <p>客户机执行 HLT 后，宿主线程还需要决定是否继续轮询或进入睡眠，具体过程见<a href="kvm-vcpu-halt.html">KVM vCPU 的阻塞、轮询与唤醒</a>。</p>
+  <p>在启用 HLT 截获的配置下，客户机执行 HLT 后，KVM 决定是否短暂轮询或阻塞宿主线程，具体过程见<a href="kvm-vcpu-halt.html">KVM vCPU 的阻塞、轮询与唤醒</a>。Idle Passthrough 则可让 HLT 直接进入硬件等待，不经过这条阻塞路径；<a href="cpu-execution.html?scenario=hlt-passthrough#walkthrough">对照演示</a>同时说明 posted 唤醒的额外条件，不能由 HLT 直通推断所有事件都免退出。</p>
   <table><thead><tr><th scope="col">机制</th><th scope="col">减少的工作</th><th scope="col">增加的约束或代价</th></tr></thead><tbody>
     <tr><td>共享 virtqueue</td><td>逐项寄存器交接，允许批量提交与完成</td><td>描述符所有权、内存顺序及通知抑制需要双方配合</td></tr>
     <tr><td>ioeventfd</td><td>特定队列通知返回 vCPU 用户态线程的往返</td><td>需要建立地址匹配与事件生命周期</td></tr>

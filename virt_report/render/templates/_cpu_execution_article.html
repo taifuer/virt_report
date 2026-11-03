@@ -6,7 +6,7 @@
   <p>使用 KVM 时，QEMU 的 vCPU 线程通过 <code>KVM_RUN</code> 进入宿主内核，再由 VM Entry 开始执行客户机指令。普通加法、客户机内核中的大量代码都可以由物理处理器直接完成。CPUID、模拟设备访问和空闲等待则需要不同的处理路径。</p>
   <p>基础场景从同一个位置开始：vCPU 已经运行，QEMU 的 KVM_RUN 尚未返回，物理处理器正在执行 Guest 指令。演示固定显示当前指令、RIP、寄存器、Guest CPL 与 VMX 模式；只有跨越执行上下文时才转移时间线位置。</p>
   <p>硬件路径采用 x86-64、Intel VMX 与 EPT，源码对应 QEMU 10.2.0 和 Linux 6.18。普通指令、系统调用、内核处理退出与用户态设备交接先共用执行时间线；HLT 和定时休眠放在“等待与唤醒”组，进一步观察 Guest 任务和宿主线程两层调度。各场景分别列出使用的拦截、设备和中断配置。</p>
-  <p>先看“普通 ADD”，再切换到“CPUID 内核处理”和“MMIO 返回 QEMU”：三者依次展示直接执行、内核处理和用户态设备交接。“Guest SYSCALL”区分客户机权限切换与虚拟化退出；“HLT 空闲等待”展示 vCPU 阻塞。两个定时休眠场景再用同一次 <code>nanosleep</code> 对比：客户机继续执行其他任务，或者进入空闲、等待定时器唤醒。</p>
+  <p>先看“普通 ADD”，再切换到“CPUID 内核处理”和“MMIO 返回 QEMU”：三者依次展示直接执行、内核处理和用户态设备交接。“Guest SYSCALL”区分客户机权限切换与虚拟化退出；“HLT · KVM 阻塞等待”和“HLT · Idle Passthrough”对比退出后阻塞线程与直接硬件等待。两个定时休眠场景再用同一次 <code>nanosleep</code> 对比：客户机继续执行其他任务，或者进入空闲、等待定时器唤醒。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -26,11 +26,16 @@
       <tr><td>Guest SYSCALL</td><td>权限切换本身不要求退出</td><td>不需要</td><td>Guest CPL 3 → 0 → 3，使用客户机 LSTAR</td></tr>
       <tr><td>CPUID</td><td>有，进入内核 CPUID 处理</td><td>常规路径不需要</td><td>KVM 写回虚拟 CPU 信息并推进 RIP</td></tr>
       <tr><td>QEMU 模拟 MMIO 读</td><td>有，分析设备访问</td><td>需要一次请求交接</td><td><code>kvm_run.mmio</code> 传递读请求；再入后完成指令</td></tr>
-      <tr><td>内核 LAPIC 下的 HLT</td><td>本例拦截 HLT</td><td>常规等待不需要</td><td><code>mp_state</code> 与宿主 task 状态分别变化</td></tr>
+      <tr><td>HLT · KVM 阻塞等待</td><td>有，本例拦截 HLT</td><td>常规等待不需要</td><td>KVM <code>mp_state = HALTED</code>；宿主线程随后阻塞</td></tr>
+      <tr><td>HLT · Idle Passthrough</td><td>HLT 本身不退出；本例另用 posted 唤醒</td><td>不需要</td><td>硬件进入 HLT；KVM <code>mp_state</code> 仍为 RUNNABLE，宿主线程未阻塞</td></tr>
     </tbody>
   </table>
   <p>CPUID 的结果由虚拟 CPU 配置决定，KVM 在内核中完成查询。MMIO 示例需要设备模型提供读结果：第一次 KVM_RUN 返回请求，QEMU 填入数据，第二次进入内核才消费数据并完成指令。<a href="{{ linux }}arch/x86/kvm/cpuid.c#L2090-L2105">CPUID 处理</a>与<a href="{{ linux }}arch/x86/kvm/x86.c#L11936-L11958">用户态 I/O 继续处理</a>分别体现了这两种分工。</p>
-  <p>在 HLT 场景中，客户机已进入空闲，宿主线程可以继续短暂轮询，也可以进入睡眠。后端事件到达后，线程先变为可运行，随后才有机会被调度。<code>TASK_RUNNING</code> 同时覆盖运行队列中的等待者和当前执行者，分析延迟时还要观察调度事件。</p>
+  <p>在 HLT 截获场景中，客户机已进入空闲，KVM 可以短暂轮询，也可以阻塞宿主线程；本例固定轮询预算为 0。后端事件到达后，线程先变为可运行，随后才有机会被调度。<code>TASK_RUNNING</code> 同时覆盖运行队列中的等待者和当前执行者，分析延迟时还要观察调度事件。</p>
+  <h3>Idle Passthrough 与硬件等待</h3>
+  <p>Idle Passthrough 是利用硬件能力的运行策略，不是一条新的指令。以 Intel VMX 为例，KVM 根据预先启用的 <code>KVM_X86_DISABLE_EXITS_HLT</code> 清除 <code>HLT exiting</code>，Guest HLT 便直接进入 non-root 下的硬件等待，不执行 <code>kvm_emulate_halt()</code>、halt polling 或宿主 <code>schedule()</code>。这不是忙轮询；硬件 HLT 状态也不是 KVM 软件的 HALTED。<a href="{{ linux }}arch/x86/kvm/vmx/vmx.c#L4435-L4477">执行控制配置</a></p>
+  <p>直通选项固定采用另一宿主 CPU 发布的 posted interrupt：发送方运行 KVM 代码，目标 CPU 同步 PIR 并唤醒 Guest，不能把发送方的执行误认为目标 vCPU 退出。这里同时选用了两项独立条件：HLT 不截获，以及 APICv posted 交付。前者不保证所有唤醒都无退出；普通宿主 IRQ、定时器、抢占或配置变化仍可能要求退出。本例不插入这些额外事件，故目标 vCPU 的退出次数保持 0。</p>
+  <p>QEMU 的 <code>-overcommit cpu-pm=on</code> 可请求关闭受支持的相关退出，默认关闭；并非所有平台与安全策略都允许。它主要适合绑定独占逻辑 CPU 的低延迟场景：Guest 空闲不会经常规阻塞路径主动归还 CPU，超卖共享时可能拖延其他线程，宿主 CPU 使用率统计也可能不计入 Guest 的硬件空闲。MONITOR/MWAIT 直通还有监视地址唤醒等语义，不混入本次 HLT 演示。<a href="{{ qemu }}qemu-options.hx#L4894-L4912">QEMU 的配置与取舍</a>、<a href="{{ linux }}arch/x86/kvm/x86.c#L4763-L4778">KVM 能力限制</a></p>
   <h3>任务休眠与两层调度</h3>
   <p>定时休眠示例中，任务 A 请求等待 1 ms。Guest 内核创建 <code>hrtimer_sleeper</code>，登记到期回调，再把 A 交给调度器等待。如果任务 B 可以运行，Guest 就选择 B，vCPU 继续执行指令；没有其他可运行的普通任务时，Guest 进入 idle，本例通过 HLT 把等待机会交给 KVM。这样，同一个应用请求会对应两条不同的 vCPU 路径。</p>
   <table>
@@ -55,7 +60,7 @@
   <h2>退出处理与优化</h2>
   <p>硬件辅助虚拟化把大量客户机代码交给处理器直接执行，同时把需要控制的操作交回宿主。KVM 把 CPU、内存和中断的高频处理放在内核，QEMU 保留机器与设备模型。这个分工让 CPUID 等常见操作只经过内核，设备回调仍可复用完整的用户态实现。</p>
   <p>设备通知还可以缩短路径。virtio 驱动先把描述符放入共享队列，再写 doorbell 提醒后端。匹配 <code>ioeventfd</code> 的通知写入可由 KVM 直接触发事件，省去一次通用用户态 MMIO 回调；它通常仍需要 VM Exit。后端完成方向的 <code>irqfd</code> 则把 eventfd 接到 KVM 中断路由。同步设备寄存器读取仍需返回实际值，不能直接替换成无数据的通知。</p>
-  <p>空闲等待可以使用有限 halt polling，以宿主 CPU 时间换取较低的短等待延迟；长时间等待应及时睡眠。优化前先按路径区分 VM Exit、用户态返回和调度等待，再对齐请求延迟与 CPU 消耗，避免仅根据退出次数判断收益。</p>
+  <p>在 HLT 截获路径中，有限 halt polling 以宿主 CPU 时间换取较低的短等待延迟；长时间等待可让线程阻塞。Idle Passthrough 则直接让硬件等待，避免空闲指令退出，但不通过同一路径把 CPU 归还调度器。两者不是同一种轮询优化；应按独占或共享 CPU 的目标选择，再对齐退出、调度延迟和 CPU 消耗。</p>
   <p>定时事件也有不同实现：硬件定时辅助、定时器提前量和中断加速可以减少部分处理或交付延迟，但不能保证宿主与 Guest 调度器立即选中相应任务。定位定时唤醒抖动时，可以沿宿主定时回调、vCPU 唤醒与切入、Guest 中断、任务 A 唤醒与切入逐段对齐时间，再判断延迟主要来自哪一层。</p>
 </section>
 
@@ -64,6 +69,7 @@
   <ul>
     <li><a href="{{ qemu }}accel/kvm/kvm-all.c#L3179-L3254">QEMU：KVM_RUN 调用与用户态 I/O 分派</a>；<a href="{{ linux }}arch/x86/kvm/vmx/vmx.c#L6109-L6130">Linux：VMX 退出分发表</a>。</li>
     <li><a href="{{ linux }}virt/kvm/kvm_main.c#L3644-L3678">Linux：等待者发布、条件复查与 schedule</a>；<a href="https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html">Intel SDM：指令语义、权限与 VMX</a>。</li>
+    <li><a href="https://docs.kernel.org/virt/kvm/api.html#kvm-cap-x86-disable-exits">KVM：关闭 HLT / MWAIT 等退出的接口</a>；<a href="{{ qemu }}target/i386/kvm/kvm.c#L3142-L3155">QEMU：查询并请求可用能力</a>；<a href="{{ linux }}arch/x86/kvm/vmx/common.h#L110-L178">KVM：软件发布 PIR 与跨 CPU 通知</a>。</li>
     <li><a href="{{ linux }}kernel/time/hrtimer.c#L2107-L2199">Guest：nanosleep 与 hrtimer_sleeper</a>；<a href="{{ linux }}arch/x86/kvm/x86.c#L11605-L11643">KVM：等待后的定时事件处理</a>；<a href="{{ linux }}kernel/sched/core.c#L6784-L6910">Linux：阻塞、抢占与任务切换</a>。</li>
     <li><a href="kvm-vcpu-run.html">KVM vCPU 的运行循环与用户态交接</a>：对象、调用链、MMIO 收尾及 ioeventfd / irqfd。</li>
     <li><a href="kvm-vcpu-halt.html">KVM 的空闲等待与唤醒</a>：轮询预算、阻塞竞态与调度延迟；<a href="kvm-virtual-time.html">客户机时钟与运行时间</a>：运行与等待时间的计量。</li>

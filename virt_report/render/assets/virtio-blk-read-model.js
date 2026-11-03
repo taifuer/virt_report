@@ -517,7 +517,7 @@
         label, addr: Number(descriptor.addr), length: descriptor.len, validBytes,
         writable: descriptor.flags.includes('WRITE'),
         state: !s.usedPublished && ((response && s.statusWritten) || (payload && !writing && s.dataReady))
-          ? 'data-ready' : holding};
+          ? 'data-ready' : !payload && s.completed ? 'reusable' : holding};
     }) : [];
     const avail = Array(request.queueSize).fill(null), used = Array(request.queueSize).fill(null);
     if (s.published) avail[0] = request.head;

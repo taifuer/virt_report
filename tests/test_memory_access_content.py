@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from virt_report.execution_demos import get_demo, validate_demo
+from virt_report.config import Config
+from virt_report.render.render import render_mechanisms_html
 
 
 CONTENT = Path(__file__).resolve().parents[1] / "virt_report" / "content" / "flows"
@@ -14,6 +16,7 @@ SCENARIOS = {
     "ram-hit", "tlb-miss", "guest-page-fault", "ept-missing",
     "host-page-fault", "mmio-read", "dirty-write-protect",
     "mmio-kernel-lapic", "mmio-ioeventfd", "mmio-vfio-direct",
+    "mmio-ivshmem-direct",
 }
 
 
@@ -148,7 +151,9 @@ def test_dirty_tracking_marks_before_guest_retries_store(demo):
                for assumption in item["assumptions"])
 
 
-@pytest.mark.parametrize("scenario_id", ["mmio-kernel-lapic", "mmio-ioeventfd", "mmio-vfio-direct"])
+@pytest.mark.parametrize("scenario_id", [
+    "mmio-kernel-lapic", "mmio-ioeventfd", "mmio-vfio-direct", "mmio-ivshmem-direct",
+])
 def test_additional_mmio_paths_do_not_return_kvm_run_to_qemu(demo, scenario_id):
     item = scene(demo, scenario_id)
     states = snapshots(item)
@@ -184,6 +189,67 @@ def test_vfio_bar_steady_mapping_is_not_device_dma_or_qemu_callback(demo):
     assert any("不是设备 DMA" in text for text in item["assumptions"])
 
 
+@pytest.mark.parametrize("scenario_id,hpa,target", [
+    ("mmio-vfio-direct", "0xd0001000", "物理设备 MMIO"),
+    ("mmio-ivshmem-direct", "0x21001000", "宿主共享 RAM"),
+])
+def test_bar_comparison_resolves_the_same_gpa_to_different_host_targets(demo, scenario_id, hpa, target):
+    item = scene(demo, scenario_id)
+    states = snapshots(item)
+    assert states[0]["hpa"] == "待本次转换"
+    assert states[1]["hpa"] == hpa
+    assert [step["id"] for step in item["steps"]] == [
+        "ready", "translate", "access", "return", "complete",
+    ]
+    for state in states:
+        assert int(state["guest-bar-base"], 16) + int(state["offset"], 16) == int(state["gpa"], 16)
+        assert state["gpa"] == "0xf0001000"
+        assert state["offset"] == "0x1000"
+        assert state["target"] == target
+        assert state["hw-exit"] == "无" and state["userspace"] == "否"
+    assert states[-2]["value"] == "旧值"
+    assert states[-1]["value"] == "0x12345678"
+    assert [field["key"] for field in item["completion"]] == ["gpa", "hpa", "offset", "target"]
+    assert all(not {"qemu", "kvm"} & set(step["active"]) for step in item["steps"])
+    assert all(part["kind"] == "instruction" for part in item["sourceSteps"])
+
+
+def test_vfio_host_address_is_a_device_window_not_ram_or_a_dma_iova(demo):
+    item = scene(demo, "mmio-vfio-direct")
+    state = snapshots(item)[-1]
+    assert int(state["host-bar-base"], 16) + int(state["offset"], 16) == int(state["hpa"], 16)
+    assert state["pci-address"] == "0xd0001000（本例恒等窗口）"
+    assert {node["id"] for node in item["nodes"]} == {"guest", "mmu", "device"}
+    assert any("恒等" in text and "宿主桥" in text for text in item["assumptions"])
+    assert item["callPaths"][0]["sourceIds"] == ["vfio-region-map", "ram-device-map"]
+
+
+def test_ivshmem_bar2_reads_existing_shared_ram_without_vfio_or_device_callbacks(demo):
+    item = scene(demo, "mmio-ivshmem-direct")
+    assert {node["id"] for node in item["nodes"]} == {"guest", "mmu", "ram"}
+    assert {state["memory-value"] for state in snapshots(item)} == {"0x12345678"}
+    assert {state["backing"] for state in snapshots(item)} == {"share=on 的宿主共享 RAM"}
+    assert any("BAR0" in text and "BAR2" in text for text in item["assumptions"])
+    assert any("不保证整个 BAR2" in text and "连续" in text for text in item["assumptions"])
+    assert "vfio-region-map" not in {source for path in item["callPaths"] for source in path["sourceIds"]}
+    assert (demo["sources"]["ivshmem-setup"]["path"], demo["sources"]["ivshmem-setup"]["line"]) == (
+        "hw/misc/ivshmem-pci.c", 845,
+    )
+    assert demo["sources"]["ivshmem-spec"]["path"] == "docs/specs/ivshmem-spec.rst"
+
+
+def test_memory_article_explains_resource_dispatch_and_separates_postcopy_from_mmio():
+    page = render_mechanisms_html(Config(), "memory-access")
+    routing = page.split('<section id="address-routing"', 1)[1].split('</section>', 1)[0]
+    assert all(text in routing for text in (
+        "PCI 枚举", "readl()", "MemoryRegion", "memslot", "KVM_EXIT_MMIO",
+        "普通 Guest RAM", "VFIO 物理 BAR0", "ivshmem 共享 BAR2", "CPU 物理地址与 PCI 总线地址",
+    ))
+    assert 'href="qemu-postcopy.html"' in page and "userfaultfd" in page
+    assert "QEMU 的缺页处理线程" in page and "不是把 vCPU 的 EPT 退出" in page
+    assert not any("QEMU 建 EPT" == item["label"] for item in get_demo("memory-access")["scenarios"])
+
+
 def test_memory_source_paths_name_symbols_and_keep_context_boundaries(demo):
     for item in demo["scenarios"]:
         assert item["callPaths"]
@@ -213,7 +279,7 @@ def test_qemu_mmio_has_real_request_device_and_completion_paths(demo):
     assert demo["sources"]["mmio-qemu"]["symbol"] == "kvm_cpu_exec()"
 
 
-@pytest.mark.parametrize("scene_id", ["ram-hit", "tlb-miss", "mmio-vfio-direct"])
+@pytest.mark.parametrize("scene_id", ["ram-hit", "tlb-miss", "mmio-vfio-direct", "mmio-ivshmem-direct"])
 def test_hardware_memory_paths_explain_instruction_steps_without_inventing_calls(demo, scene_id):
     item = next(scene for scene in demo["scenarios"] if scene["id"] == scene_id)
     assert item["sourceSteps"]

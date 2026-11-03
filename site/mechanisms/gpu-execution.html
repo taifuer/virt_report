@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=49f2a464e9bd">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=49f2a464e9bd">
   <link rel="stylesheet" href="../assets/site.css?v=49f2a464e9bd">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=a2517933691e">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=a2517933691e">
-<link rel="stylesheet" href="../assets/execution-demo.css?v=a2517933691e"><link rel="stylesheet" href="../assets/walkthrough.css?v=a2517933691e"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=b0137ff2a84f">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=b0137ff2a84f">
+<link rel="stylesheet" href="../assets/execution-demo.css?v=b0137ff2a84f"><link rel="stylesheet" href="../assets/walkthrough.css?v=b0137ff2a84f"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -68,7 +68,7 @@
       <div class="walkthrough-choice" data-execution-scenario-choice><label for="execution-scenario">操作</label>
         <select id="execution-scenario" data-execution-scenario></select>
       </div>
-      <button type="button" class="walkthrough-expand" data-execution-expand data-walkthrough-expand aria-pressed="false">放大演示</button>
+      <button type="button" class="walkthrough-expand" data-execution-expand data-walkthrough-expand aria-pressed="false">全屏演示</button>
     </div>
     <p class="execution-summary walkthrough-summary" data-execution-summary></p>
     <div class="walkthrough-toolbar">
@@ -89,8 +89,8 @@
     <nav class="walkthrough-progress" data-execution-progress aria-label="演示步骤"></nav>
     <div class="execution-stage walkthrough-workspace">
       <aside class="execution-inspector walkthrough-inspector" aria-label="当前步骤解释">
+        <p class="execution-counter" data-execution-counter></p>
         <div class="walkthrough-step-heading">
-          <p class="execution-counter" data-execution-counter></p>
           <h3 data-execution-title></h3>
           <p class="execution-actor" data-execution-actor></p>
         </div>
@@ -101,6 +101,7 @@
       <div class="execution-canvas" tabindex="0" aria-label="演示区域，可用左右方向键切换步骤">
         <div data-execution-overview>
           <div class="sr-only" data-execution-connections aria-label="图中交接路径"></div>
+          <dl class="walkthrough-state-grid walkthrough-completion" data-execution-completion aria-label="关键状态摘要，各字段随步骤更新" hidden></dl>
           <div data-execution-timeline class="walkthrough-cpu" hidden></div>
           <div class="execution-nodes" data-execution-nodes></div>
         </div>
@@ -113,7 +114,7 @@
     <p class="sr-only" role="status" aria-live="polite" data-execution-status></p>
   </div>
   <div class="execution-fallback" data-execution-fallback>
-    <p>以下列出各场景的处理路径；并行分支分别列出，不规定分支之间的先后。启用 JavaScript 后可逐步观察结构与状态变化。</p>
+    <p>以下列出各场景的处理路径。启用 JavaScript 后可逐步观察结构与状态变化；演示顺序不表示独立执行上下文必须互相等待。</p>
     <details open>
       <summary>上传 · Guest RAM → VRAM</summary>
       <p>跟踪作业 G1：应用提交一条 4 KiB SDMA 复制命令，从 Guest RAM / GTT 搬运到 GPU VRAM，等待 fence 后再使用结果。</p>
@@ -215,7 +216,7 @@
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vfio/pci/vfio_pci_intrs.c#L373">VFIO MSI eventfd</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/eventfd.c#L195">KVM irqfd 路由</a>与<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L4915">VM-entry 注入</a>。</li>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/gpu/drm/i915/gvt/handlers.c#L1993">GVT-g ELSP 提交</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/gpu/drm/i915/gvt/scheduler.c#L800">命令审核与调度</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/gpu/drm/i915/gvt/scheduler.c#L1067">完成交接</a>与<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/gpu/drm/i915/gvt/interrupt.c#L677">虚拟事件</a>。</li>
     <li><a href="qemu-vfio-dma.html">VFIO 直通与 DMA 映射</a>、<a href="memory-access.html">内存访问与 MMIO</a>、<a href="interrupt-delivery.html">中断传递</a>及<a href="virtio-gpu.html">virtio-gpu 的二维资源路径</a>。</li>
-    <li><a href="virtio-gpu-rendering.html">virtio-gpu 渲染与编解码</a>：比较虚拟图形协议、宿主渲染器及视频扩展的执行分工。</li>
+    <li><a href="virtio-gpu-execution.html">virtio-gpu 渲染与编解码过程</a>：另一组独立交互演示；协议与同步分析见<a href="virtio-gpu-rendering.html">原理文章</a>。</li>
   </ul>
 </section></div>
   </div>
@@ -225,6 +226,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=49f2a464e9bd"></script>
-<script src="../assets/mechanism-viewer.js?v=a2517933691e" defer></script>
-<script src="../assets/walkthrough-fullscreen.js?v=a2517933691e" defer></script><script src="../assets/walkthrough-routing.js?v=a2517933691e" defer></script><script src="../assets/walkthrough-components.js?v=a2517933691e" defer></script><script src="../assets/execution-model.js?v=a2517933691e" defer></script><script src="../assets/execution-demo.js?v=a2517933691e" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=b0137ff2a84f" defer></script>
+<script src="../assets/walkthrough-fullscreen.js?v=b0137ff2a84f" defer></script><script src="../assets/walkthrough-routing.js?v=b0137ff2a84f" defer></script><script src="../assets/walkthrough-components.js?v=b0137ff2a84f" defer></script><script src="../assets/execution-model.js?v=b0137ff2a84f" defer></script><script src="../assets/execution-demo.js?v=b0137ff2a84f" defer></script></body>
 </html>

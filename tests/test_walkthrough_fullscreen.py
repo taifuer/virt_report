@@ -65,7 +65,7 @@ const key=(name,shift=false)=>{const e={type:'keydown',key:name,shiftKey:shift,p
   await click(); // no requestFullscreen: modal fallback
   assert.equal(lab.getAttribute('data-walkthrough-expanded'),'fallback');
   assert.equal(expand.getAttribute('aria-pressed'),'true');
-  assert.equal(expand.textContent,'退出放大');
+  assert.equal(expand.textContent,'退出全屏');
   assert.equal(document.activeElement,expand);
   assert.equal(lab.getAttribute('role'),'dialog');assert.equal(lab.getAttribute('aria-modal'),'true');
   assert.equal(lab.getAttribute('aria-label'),'已有名称');
@@ -76,7 +76,7 @@ const key=(name,shift=false)=>{const e={type:'keydown',key:name,shiftKey:shift,p
   assert(key('Tab',true).prevented);assert.equal(document.activeElement,last);
   outside.focus();assert.equal(document.activeElement,expand,'focus cannot escape fallback');
   key('Escape');await tick();
-  assert.equal(expand.getAttribute('aria-pressed'),'false');assert.equal(expand.textContent,'放大演示');
+  assert.equal(expand.getAttribute('aria-pressed'),'false');assert.equal(expand.textContent,'全屏演示');
   assert(!lab.classList.contains('walkthrough-expanded'));assert(!lab.hasAttribute('data-walkthrough-expanded'));
   assert.equal(lab.getAttribute('role'),'region');assert(!lab.hasAttribute('aria-modal'));
   assert.equal(lab.getAttribute('aria-label'),'已有名称');

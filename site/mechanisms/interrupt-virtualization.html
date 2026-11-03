@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=49f2a464e9bd">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=49f2a464e9bd">
   <link rel="stylesheet" href="../assets/site.css?v=49f2a464e9bd">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=93907fc093e4">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=93907fc093e4">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=f62c8836f843">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=f62c8836f843">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -73,9 +73,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看同一个报文的数据路径与通知路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="同一个报文的数据路径与通知路径">
-    <img src="../assets/interrupt-delivery-overview.svg?v=93907fc093e4" alt="缓冲区和 used 保存结果；中断通知驱动检查队列。数据就绪、通知等待、vCPU 执行与驱动消费是不同阶段。下面先说明通知怎样确定目标，再展开宿主的交付过程。" loading="lazy">
+    <img src="../assets/interrupt-delivery-overview.svg?v=f62c8836f843" alt="缓冲区和 used 保存结果；中断通知驱动检查队列。数据就绪、通知等待、vCPU 执行与驱动消费是不同阶段。下面先说明通知怎样确定目标，再展开宿主的交付过程。" loading="lazy">
   </div>
-  <figcaption>缓冲区和 used 保存结果；中断通知驱动检查队列。数据就绪、通知等待、vCPU 执行与驱动消费是不同阶段。下面先说明通知怎样确定目标，再展开宿主的交付过程。 <a href="../assets/interrupt-delivery-overview.svg?v=93907fc093e4" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>缓冲区和 used 保存结果；中断通知驱动检查队列。数据就绪、通知等待、vCPU 执行与驱动消费是不同阶段。下面先说明通知怎样确定目标，再展开宿主的交付过程。 <a href="../assets/interrupt-delivery-overview.svg?v=f62c8836f843" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 从设备完成到客户机驱动处理
     accDescr: 完成记录先于通知发布，通知按路由进入虚拟 LAPIC 并等待客户机接受。vCPU 阻塞时需要先唤醒宿主线程；客户机驱动最终读取 used 队列确定完成项。
@@ -112,9 +112,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看设备、平台与 CPU 中的中断路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="设备、平台与 CPU 中的中断路径">
-    <img src="../assets/interrupt-controller-paths.svg?v=93907fc093e4" alt="先按物理机器理解各组件的位置。INTx 经平台 I/O APIC 路由，MSI-X 从设备发送消息；两条路径均到达目标 LAPIC。图中省略总线和可能存在的中断重映射。" loading="lazy">
+    <img src="../assets/interrupt-controller-paths.svg?v=f62c8836f843" alt="先按物理机器理解各组件的位置。INTx 经平台 I/O APIC 路由，MSI-X 从设备发送消息；两条路径均到达目标 LAPIC。图中省略总线和可能存在的中断重映射。" loading="lazy">
   </div>
-  <figcaption>先按物理机器理解各组件的位置。INTx 经平台 I/O APIC 路由，MSI-X 从设备发送消息；两条路径均到达目标 LAPIC。图中省略总线和可能存在的中断重映射。 <a href="../assets/interrupt-controller-paths.svg?v=93907fc093e4" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>先按物理机器理解各组件的位置。INTx 经平台 I/O APIC 路由，MSI-X 从设备发送消息；两条路径均到达目标 LAPIC。图中省略总线和可能存在的中断重映射。 <a href="../assets/interrupt-controller-paths.svg?v=f62c8836f843" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart LR
   accTitle: 设备、平台与 CPU 中的中断路径
   accDescr: 按物理组件分组。设备的 INTx 引脚经平台 I/O APIC 路由，MSI-X 消息直接指向目标 LAPIC；CPU 接受中断后按 IDT 进入操作系统处理入口。图中省略总线和可能存在的中断重映射。
@@ -155,9 +155,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看QEMU 设备模型经 KVM 软件注入的完整路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="QEMU 设备模型经 KVM 软件注入的完整路径">
-    <img src="../assets/interrupt-software-delivery.svg?v=93907fc093e4" alt="沿用队列 0、APIC ID 1 和向量 0x51。图中区分消息提交、LAPIC 状态、客户机执行与驱动消费；未启用 APICv 的交付路径用于后续加速方案的对照。" loading="lazy">
+    <img src="../assets/interrupt-software-delivery.svg?v=f62c8836f843" alt="沿用队列 0、APIC ID 1 和向量 0x51。图中区分消息提交、LAPIC 状态、客户机执行与驱动消费；未启用 APICv 的交付路径用于后续加速方案的对照。" loading="lazy">
   </div>
-  <figcaption>沿用队列 0、APIC ID 1 和向量 0x51。图中区分消息提交、LAPIC 状态、客户机执行与驱动消费；未启用 APICv 的交付路径用于后续加速方案的对照。 <a href="../assets/interrupt-software-delivery.svg?v=93907fc093e4" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>沿用队列 0、APIC ID 1 和向量 0x51。图中区分消息提交、LAPIC 状态、客户机执行与驱动消费；未启用 APICv 的交付路径用于后续加速方案的对照。 <a href="../assets/interrupt-software-delivery.svg?v=f62c8836f843" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: QEMU virtio-net 经 KVM 软件注入向量 0x51
     accDescr: QEMU 先写报文和 used 记录，再提交 MSI 消息。KVM 按 APIC ID 找到 vCPU 1，设置 IRR 并请求事件处理；条件满足后经 VM Entry 注入，客户机按 IDT 进入处理程序。驱动消费和 EOI 分别推进队列与 APIC 状态。
@@ -205,29 +205,33 @@
   <p>事件进入 KVM 后，前一节的软件路径还要记录 IRR、促使 vCPU 检查事件，并安排 VM Entry 注入；部分 APIC 寄存器访问也会使客户机退出。Intel APICv 用虚拟 APIC 状态与执行控制，让硬件接管部分访问、优先级判断和中断交付；AMD AVIC 也沿硬件辅助方向降低开销，但使用不同的数据结构和通知机制。</p>
   <p>以 Intel posted interrupt 为例，KVM 可以先把向量记入 Posted Interrupt Descriptor 的 PIR 位图，再按需发送通知。目标 vCPU 正在合适的运行状态时，处理器可同步待处理向量并向客户机交付，避免为这段交付专门退出。客户机的屏蔽和优先级规则仍然有效。irqfd 的投递也可以进入这条路径，因此 irqfd 与 APICv 可以配合使用。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L4217-L4256">KVM 的 posted 与软件回退路径</a></p>
   <h3 id="acceleration-part-3"><span class="mechanism-heading-number">3. </span>直通设备分支：用 interrupt posting 减少宿主转发</h3>
-  <p>前面讨论的是 virtio 软件后端。换成 VFIO 分配的物理网卡后，数据与通知由实际设备产生，驱动和设备路径也随之改变。如果物理中断先进入宿主处理程序，再由 VFIO 等路径转交 KVM，即使 CPU 支持虚拟中断加速，仍然保留这段转发。支持 Intel VT-d interrupt posting 的硬件可把设备中断经中断重映射单元直接写入目标 vCPU 的 posted 描述符，在符合条件时省去宿主软件转发。</p>
-  <p>这需要设备分配、IOMMU、CPU 和内核配置共同支持。vCPU 阻塞时仍需宿主唤醒线程；vCPU 被抢占时要保存待处理状态，等待重新调度。硬件能够减少投递开销，不能替宿主调度器分配 CPU 时间。AMD 的 AVIC/中断重映射有自己的实现，不能套用 Intel 描述符字段。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/posted_intr.c#L154-L255">阻塞与调度处理</a></p>
+  <p>前面讨论的是 virtio 软件后端。换成 VFIO 分配的物理设备后，数据与通知由实际设备产生。这里两条直通路径都使用 MSI-X：普通 remapped IRTE 把消息送到宿主 IRQ / VFIO，再经 eventfd / irqfd 转交 KVM；posted IRTE 则由 VT-d IOMMU 直接把 Guest 向量写入目标 vCPU 的 PID，省去逐次宿主转发。MSI-X 是设备消息机制，VT-d posted 是递送加速，两者不是替代关系。普通宿主转发进入 KVM 后，也仍可使用 CPU 侧 APICv posted 交付。</p>
+  <p>同一网卡、NVMe 控制器或 GPU 都可能走这两条路径，取决于平台和路由，不是设备类型或应用逐次 I/O 的选择。设备 posting 要求 IOMMU / CPU 能力与内核配置支持、VFIO irq-bypass 绑定成功，并能投递给单一 vCPU；未启用或不满足条件时使用宿主转发。已经配置的路由变为广播、多播等不支持的形式时，KVM 可恢复普通 remapped 模式。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/irq.c#L426-L475">单目标路由条件与回退</a></p>
+  <p>vCPU 暂时未运行不等于自动切回普通 IRTE。阻塞时可能需要宿主唤醒线程；被抢占时保留 pending、等待调度；迁核时更新 PID 通知目标。硬件能减少投递开销，不能替宿主调度器分配 CPU 时间。AMD 的 AVIC/中断重映射有自己的实现，不能套用 Intel 描述符字段。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/posted_intr.c#L57-L140">PID 目标与状态维护</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/posted_intr.c#L223-L267">阻塞与调度处理</a></p>
   <figure class="mechanism-diagram" data-diagram="interrupt-acceleration-layers" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
     <span data-mechanism-title>事件接入与 vCPU 交付的两层优化</span>
     <button type="button" data-mechanism-expand aria-label="放大查看事件接入与 vCPU 交付的两层优化" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="事件接入与 vCPU 交付的两层优化">
-    <img src="../assets/interrupt-acceleration-layers.svg?v=93907fc093e4" alt="软件后端经 irqfd 进入 KVM 后，仍可选择软件注入或 posted 路径。VFIO 物理设备是另一条数据路径，满足条件时可由 VT-d 直接投递；它不要求先经过软件后端的 eventfd。" loading="lazy">
+    <img src="../assets/interrupt-acceleration-layers.svg?v=f62c8836f843" alt="直通设备两条路径都从 MSI-X 消息开始，由预先配置的普通或 posted IRTE 决定后续递送。普通路径经 VFIO / irqfd 进入 KVM，仍可使用 CPU 侧 posted；VT-d posted 则由 IOMMU 直接写 PIR。分支表示配置差异，不是逐次 I/O 的应用选项。" loading="lazy">
   </div>
-  <figcaption>软件后端经 irqfd 进入 KVM 后，仍可选择软件注入或 posted 路径。VFIO 物理设备是另一条数据路径，满足条件时可由 VT-d 直接投递；它不要求先经过软件后端的 eventfd。 <a href="../assets/interrupt-acceleration-layers.svg?v=93907fc093e4" target="_blank" rel="noopener">打开原图</a></figcaption>
-  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+  <figcaption>直通设备两条路径都从 MSI-X 消息开始，由预先配置的普通或 posted IRTE 决定后续递送。普通路径经 VFIO / irqfd 进入 KVM，仍可使用 CPU 侧 posted；VT-d posted 则由 IOMMU 直接写 PIR。分支表示配置差异，不是逐次 I/O 的应用选项。 <a href="../assets/interrupt-acceleration-layers.svg?v=f62c8836f843" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>%%{init: {&#34;flowchart&#34;: {&#34;rankSpacing&#34;: 24, &#34;nodeSpacing&#34;: 32, &#34;padding&#34;: 10}}}%%
+flowchart TB
   accTitle: irqfd、APICv 与直通设备 interrupt posting 的不同位置
-  accDescr: 软件后端可以通过 irqfd 进入 KVM 路由，再使用软件注入或 APICv posted 路径。满足条件的 Intel VT-d 直通设备可由 IOMMU 写入 posted 描述符。阻塞或抢占状态仍需宿主调度配合。
-  BACK[&#34;独立软件后端&lt;br/&gt;如 vhost-net / vhost-user&#34;] --&gt; EVENT[&#34;事件接入：eventfd → KVM irqfd&lt;br/&gt;按已配置路由投递&#34;]
-  EVENT --&gt; SW[&#34;KVM 虚拟 LAPIC：软件注入&lt;br/&gt;IRR → 事件检查 → VM Entry 注入&#34;]
-  EVENT --&gt;|可用时| PI[&#34;Intel Posted Interrupt Descriptor&lt;br/&gt;PIR 待处理位图 + 通知状态&#34;]
-  DEV[&#34;另一条路径：VFIO 物理设备&lt;br/&gt;设备发出 MSI/MSI-X&#34;] --&gt;|已配置且平台支持| IOMMU[&#34;VT-d 中断重映射&lt;br/&gt;interrupt posting&#34;]
-  IOMMU --&gt; PI
+  accDescr: 直通设备两条路径都发送 MSI-X。普通 IRTE 经宿主 VFIO 和 irqfd 进入 KVM，posted IRTE 由 IOMMU 直接写 PID.PIR。软件后端同样可经 irqfd 进入 KVM，再使用软件注入或由 KVM 写 PIR。路由由平台能力和配置决定，vCPU 暂时未运行不等于自动切回普通 IRTE。
+  BACK[&#34;独立软件后端&lt;br/&gt;如 vhost-net / vhost-user&#34;] --&gt; EVENT[&#34;eventfd → KVM irqfd&lt;br/&gt;按配置路由投递&#34;]
+  EVENT --&gt; SW[&#34;KVM 软件 LAPIC&lt;br/&gt;IRR → VM-entry 注入&#34;]
+  EVENT --&gt;|CPU 侧 posted 可用时&lt;br/&gt;KVM 写 PIR| PI[&#34;Posted Interrupt Descriptor&lt;br/&gt;PID.PIR 与通知状态&#34;]
+  DEV[&#34;直通 PCIe 设备&lt;br/&gt;两条路径都发送 MSI-X&#34;] --&gt; IOMMU[&#34;VT-d 中断重映射&lt;br/&gt;来源校验与已配置的 IRTE&#34;]
+  IOMMU --&gt;|普通 remapped IRTE| VFIO[&#34;宿主 IRQ / VFIO&lt;br/&gt;触发已绑定的 eventfd&#34;]
+  VFIO --&gt; EVENT
+  IOMMU --&gt;|posted IRTE&lt;br/&gt;IOMMU 写 PIR| PI
   PI --&gt; HW[&#34;目标 vCPU 运行时&lt;br/&gt;APICv 辅助接收与交付&#34;]
   SW --&gt; GUEST[&#34;客户机中断入口&lt;br/&gt;驱动处理队列&#34;]
   HW --&gt; GUEST
-  PI -.-&gt;|目标未运行| SCHED[&#34;宿主唤醒或后续调度&lt;br/&gt;同步待处理状态再执行&#34;]
+  PI -.-&gt;|目标未运行| SCHED[&#34;宿主唤醒或后续调度&lt;br/&gt;保留 pending 再同步&#34;]
   SCHED -.-&gt; HW
 </code></pre></details>
 </figure>
@@ -253,7 +257,7 @@
 lspci -nn
 lspci -vv -s 0000:00:03.0
 cat /proc/interrupts</code></pre>
-  <p><code>MSI-X: Enable+</code> 表示客户机已启用该设备的 MSI-X。收包前后对照 <code>/proc/interrupts</code> 中网卡相关行，可以看到客户机各 CPU 的中断处理计数变化。多个包可以共用一次通知，后续还可能由 NAPI 轮询处理，因此这些计数既不等于报文数量，也不能证明宿主启用了 irqfd 或 APICv。宿主的 <code>/proc/interrupts</code> 则反映宿主自身的中断处理，须与客户机视图分开。</p>
+  <p><code>MSI-X: Enable+</code> 表示客户机已启用该设备的 MSI-X，不能据此判断宿主采用普通转发还是 VT-d posted。收包前后对照 <code>/proc/interrupts</code> 中网卡相关行，可以看到客户机各 CPU 的中断处理计数变化。多个包可以共用一次通知，后续还可能由 NAPI 轮询处理，因此这些计数既不等于报文数量，也不能证明宿主启用了 irqfd 或 APICv。宿主的 <code>/proc/interrupts</code> 则反映宿主自身的中断处理，须与客户机视图分开。</p>
   <p>报文到达后仍长时间未被客户机处理，可以按顺序检查以下阶段：</p>
   <ol>
     <li><strong>结果发布。</strong>查看缓冲区、used 索引和驱动消费位置。后端尚未完成时，优化中断注入没有帮助。</li>
@@ -292,6 +296,6 @@ cat /proc/interrupts</code></pre>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=49f2a464e9bd"></script>
-<script src="../assets/mechanism-viewer.js?v=93907fc093e4" defer></script>
+<script src="../assets/mechanism-viewer.js?v=f62c8836f843" defer></script>
 </body>
 </html>

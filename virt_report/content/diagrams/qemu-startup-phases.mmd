@@ -22,9 +22,10 @@ flowchart LR
     direction TB
     J["同步 CPU 状态、初始化完成通知<br/>登记 ROM、整机复位"]
     J --> L["本例 -S：prelaunch<br/>QMP 查询 CPU / 磁盘，随后 cont"]
-    L --> N["vm_start / resume_all_vcpus<br/>BSP 执行 BIOS；AP 等待启动事件"]
-    N --> FW["固件枚举 PCI 设备<br/>从系统盘装载引导程序与内核"]
-    FW --> OS["客户机初始化磁盘与网络驱动<br/>挂载文件系统、配置网络、启动服务"]
+    L --> N["vCPU 线程 → KVM_RUN → VM-entry<br/>BSP 从 0xfffffff0 取固件指令"]
+    N --> FW["SeaBIOS → 磁盘引导程序<br/>装载内核与 initramfs，跳入内核入口"]
+    FW --> OS["Guest 启动汇编 → start_kernel<br/>初始化驱动与调度，创建 PID 1"]
+    OS --> USER["kernel_init → exec 用户程序<br/>/init 或 /sbin/init → 服务与应用"]
   end
   PREP --> BOARD --> RUN
   classDef setup fill:#e4f1ed,stroke:#78a399,color:#163c38;
@@ -32,4 +33,4 @@ flowchart LR
   classDef run fill:#fff4db,stroke:#b89a55,color:#59491e;
   class A,B,EB,MP,C,D,E setup;
   class F,G,H,I,J board;
-  class L,N,FW,OS run;
+  class L,N,FW,OS,USER run;

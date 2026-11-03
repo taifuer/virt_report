@@ -5,7 +5,7 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
 assert(['localhost', '127.0.0.1', '[::1]'].includes(new URL(base).hostname), 'use a local preview');
 const routes = ['network-io', 'cpu-execution', 'memory-access', 'interrupt-delivery',
-  'gpu-execution', 'virtio-gpu-rendering', 'libvirt-domain-start'];
+  'gpu-execution', 'virtio-gpu-execution', 'libvirt-domain-start'];
 const diskCases = [
   ['local-blk', 'read', 'ordinary'], ['local-blk', 'write', 'ordinary'],
   ['local-scsi', 'read', 'ordinary'], ['local-scsi', 'write', 'ordinary'],
@@ -100,6 +100,10 @@ const diskCases = [
               control.value = category.id; control.dispatchEvent(new Event('change', {bubbles: true}));
             }
             if (demo.selector.operations) one(`[data-execution-operation="${group.operation}"]`).click();
+            if (group.advanced) {
+              one(`[data-execution-advanced-scenario="${scene.id}"]`).click();
+              return;
+            }
             const select = one('[data-execution-scenario]');
             if (select.value !== scene.id) {
               select.value = scene.id; select.dispatchEvent(new Event('change', {bubbles: true}));
@@ -120,7 +124,7 @@ const diskCases = [
                 if (button.querySelector('strong').textContent !== navigation[n].title)
                   throw new Error(`${scene.id}: phase title mismatch`);
                 button.click();
-                if (lab.executionSnapshot.frame.index !== navigation[n].index)
+                if (lab.executionSnapshot.frame.index !== (view === 'structure' ? navigation[n].index : Math.max(1, navigation[n].index)))
                   throw new Error(`${scene.id}: phase jump skipped its first operation`);
               });
               one('[data-execution-reset]').click();
@@ -138,7 +142,7 @@ const diskCases = [
                   const branch = scene.parallel?.branches.find(branch => branch.id === phase.branch);
                   const label = branch ? `${branch.title} · 阶段 ${peers.indexOf(phase) + 1} / ${peers.length}`
                     : `${scene.parallel ? '共同前序' : '阶段'} ${peers.indexOf(phase) + 1} / ${peers.length}`;
-                  const counter = `${label} · 阶段内第 ${index - start + 1} / ${phase.end - start + 1} 步`;
+                  const counter = `${label} · 步骤 ${index - start + 1} / ${phase.end - start + 1}`;
                   if (one('[data-execution-counter]').textContent !== counter)
                     throw new Error(`${tag}: neutral initial state must not count as an action`);
                 }

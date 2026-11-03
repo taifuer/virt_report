@@ -35,8 +35,9 @@
     <tr><td>计算 3 + 4</td><td>QEMU 用户态执行翻译后的宿主代码，更新客户机状态</td><td>物理 CPU 在客户机环境直接执行，结果为 7</td></tr>
     <tr><td>查询 CPUID</td><td>QEMU 按虚拟 CPU 配置模拟能力</td><td>退出到宿主内核，由 KVM 填写结果后继续客户机</td></tr>
     <tr><td>读取用户态模拟的设备</td><td>访存辅助路径进入 QEMU 设备回调</td><td>KVM_RUN 返回 QEMU；设备回调填写 kvm_run.mmio，下一次进入 KVM 完成读取</td></tr>
-    <tr><td>HLT 等待</td><td>QEMU 记录客户机停止状态，由执行循环处理等待</td><td>常见内核 LAPIC 路径由 KVM 轮询或阻塞，Linux 调度宿主线程</td></tr>
+    <tr><td>HLT 等待</td><td>QEMU 记录客户机停止状态，由执行循环处理等待</td><td>启用 HLT 截获时，常见内核 LAPIC 路径由 KVM 轮询或阻塞，Linux 调度宿主线程</td></tr>
   </tbody></table>
+  <p>HLT 不一定退出：Idle Passthrough 可关闭 HLT exiting，让 Guest 直接进入硬件等待；是否能免退出唤醒，还取决于中断递送方式与运行条件。可在<a href="cpu-execution.html?scenario=hlt-passthrough#walkthrough">HLT 对照演示</a>中比较它与常规 KVM 阻塞等待。</p>
   <p>本例的加法结果是 7，设备读取结果是 0x12345678；选用 TCG 或 KVM 都应保持这些结果。区别在于执行每一步时，宿主做了多少翻译、退出、设备处理与调度工作。优化需要减少这些额外工作，同时保持客户机可观察的行为。<a href="{{ qemu }}accel/kvm/kvm-all.c#L3154-L3254">QEMU 的 KVM 执行循环</a>给出了用户态处理分支，退出总数本身无法说明哪一步最慢。</p>
 </section>
 <section id="evolution" class="mechanism-section">

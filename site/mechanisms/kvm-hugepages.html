@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=49f2a464e9bd">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=49f2a464e9bd">
   <link rel="stylesheet" href="../assets/site.css?v=49f2a464e9bd">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=93907fc093e4">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=93907fc093e4">
-<link rel="stylesheet" href="../assets/hugepage-map.css?v=93907fc093e4"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=f62c8836f843">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=f62c8836f843">
+<link rel="stylesheet" href="../assets/hugepage-map.css?v=f62c8836f843"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -92,7 +92,7 @@
   <p>QEMU 的内存监听器通过槽标志开启 <code>KVM_MEM_LOG_DIRTY_PAGES</code>。在启用 eager splitting、未使用 initially-all-set 的路径中，KVM 尝试预先将大页拆到 4 KiB，再设置跟踪所需的写保护或脏位状态。提前拆分把页表分配工作移出首次写入路径；分配失败时仍可先保护大页，随后由缺页路径处理。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L657-L753">QEMU 标志更新</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L13530-L13556">KVM 启停处理</a></p>
   <p>下面选择软件写保护式记录：没有 PML，eager splitting 成功，未启用 initially-all-set，宿主页允许写入且不启用 NX 大页缓解。开启操作完成后，512 个子项均为 W=0。写 P3 时产生写保护缺页，KVM 记录 P3 并恢复该项的 W；P4 仍可保持 W=0。显示的 dirty 是逐页日志标记，与 EPT 硬件 D 位分开。</p>
 <section class="hugepage-lab" data-hugepage-lab data-mechanism-view="lab" aria-labelledby="hugepage-lab-title">
-  <div class="mechanism-view-heading"><h3 id="hugepage-lab-title">一段 2 MiB RAM 的映射生命周期</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <div class="mechanism-view-heading"><h3 id="hugepage-lab-title">一段 2 MiB RAM 的映射生命周期</h3><button type="button" data-mechanism-expand hidden>全屏演示</button></div>
   <p>选择一个 4 KiB 子页，比较拆分前后的地址、W 权限和逐页日志。修改场景会重新开始。</p>
   <div class="hugepage-controls" data-hugepage-controls hidden>
     <label>宿主映射级别<select data-hugepage-host><option value="2097152">2 MiB 大页</option><option value="4096">4 KiB 页（PFN 恰好连续）</option></select></label>
@@ -132,9 +132,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看EPT 大页的拆分与原位恢复" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="EPT 大页的拆分与原位恢复">
-    <img src="../assets/kvm-hugepage-lifecycle.svg?v=93907fc093e4" alt="示例采用预先拆分和软件写保护。2 MiB 叶子拆成 512 个 4 KiB 叶子，关闭跟踪后核验条件并原位恢复。宿主后备范围与子页 PFN 始终不变。" loading="lazy">
+    <img src="../assets/kvm-hugepage-lifecycle.svg?v=f62c8836f843" alt="示例采用预先拆分和软件写保护。2 MiB 叶子拆成 512 个 4 KiB 叶子，关闭跟踪后核验条件并原位恢复。宿主后备范围与子页 PFN 始终不变。" loading="lazy">
   </div>
-  <figcaption>示例采用预先拆分和软件写保护。2 MiB 叶子拆成 512 个 4 KiB 叶子，关闭跟踪后核验条件并原位恢复。宿主后备范围与子页 PFN 始终不变。 <a href="../assets/kvm-hugepage-lifecycle.svg?v=93907fc093e4" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>示例采用预先拆分和软件写保护。2 MiB 叶子拆成 512 个 4 KiB 叶子，关闭跟踪后核验条件并原位恢复。宿主后备范围与子页 PFN 始终不变。 <a href="../assets/kvm-hugepage-lifecycle.svg?v=f62c8836f843" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: KVM TDP MMU 大页拆分与原位恢复
     accDescr: 在宿主两兆字节后备映射稳定的条件下，KVM 将一个两兆字节 EPT 叶子拆分为五百一十二个四千字节叶子，完成写保护和 TLB 刷新后逐页记录写入。关闭记录时重新核验大页条件，原位恢复大页并刷新 TLB。宿主物理范围始终不变，映射转换不复制客户机数据。
@@ -194,6 +194,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=49f2a464e9bd"></script>
-<script src="../assets/mechanism-viewer.js?v=93907fc093e4" defer></script>
-<script src="../assets/hugepage-map.js?v=93907fc093e4" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=f62c8836f843" defer></script>
+<script src="../assets/hugepage-map.js?v=f62c8836f843" defer></script></body>
 </html>

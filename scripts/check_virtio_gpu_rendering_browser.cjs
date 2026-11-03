@@ -80,7 +80,7 @@ async function goToFrame(lab, frame) {
   try {
     for (const width of [320, 390, 768, 1440]) {
       await page.setViewportSize({width, height: 1100});
-      const response = await page.goto(`${base}/mechanisms/virtio-gpu-rendering.html`);
+      const response = await page.goto(`${base}/mechanisms/virtio-gpu-execution.html`);
       assert.equal(response.status(), 200);
       const lab = page.locator('[data-execution-lab]');
       await lab.locator('[data-execution-controls]').waitFor({state: 'visible'});

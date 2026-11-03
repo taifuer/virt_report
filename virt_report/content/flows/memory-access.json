@@ -173,6 +173,46 @@
       "kind": "function",
       "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/eventfd.c#L803-L815"
     },
+    "ivshmem-setup": {
+      "project": "QEMU",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "hw/misc/ivshmem-pci.c",
+      "line": 845,
+      "symbol": "ivshmem_common_realize()",
+      "label": "QEMU 10.2：BAR0 寄存器与 BAR2 共享后备内存分开注册",
+      "kind": "function",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/misc/ivshmem-pci.c#L845-L928"
+    },
+    "ivshmem-spec": {
+      "project": "QEMU",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "docs/specs/ivshmem-spec.rst",
+      "line": 5,
+      "symbol": "ivshmem BAR2 shared memory",
+      "label": "ivshmem 规范：BAR2 映射共享内存对象",
+      "kind": "spec",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/specs/ivshmem-spec.rst#L5-L44"
+    },
+    "qemu-slot-map": {
+      "project": "QEMU",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "accel/kvm/kvm-all.c",
+      "line": 1505,
+      "symbol": "kvm_set_phys_mem()",
+      "label": "QEMU 10.2：把可映射的 GPA 区间与 HVA 后备注册为 memslot",
+      "kind": "function",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L1505-L1627"
+    },
+    "ram-device-map": {
+      "project": "QEMU",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "system/memory.c",
+      "line": 1705,
+      "symbol": "memory_region_init_ram_device_ptr()",
+      "label": "QEMU 10.2：设备映射也可使用 RAM-device 后备接口",
+      "kind": "function",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/memory.c#L1705-L1722"
+    },
     "vfio-region-map": {
       "project": "QEMU",
       "revision": "698104725efad4b29079d857dfdebbd804e34c99",
@@ -1196,8 +1236,8 @@
     },
     {
       "id": "ept-missing",
-      "label": "EPT · 映射尚未建立",
-      "summary": "Guest 页表有效，目标 RAM 页没有 EPT 叶子。KVM 由 memslot 找到已有宿主页，建立第二级映射后重试。",
+      "label": "RAM · 首次补建 EPT",
+      "summary": "Guest 页表有效，目标 RAM 页没有 EPT 叶子。退出先由 KVM 接管；本例后备页已驻留，KVM 取得 PFN、补建 EPT 并重试，不返回 QEMU。",
       "assumptions": [
         "Intel VMX + EPT，Linux 6.18 TDP MMU，QEMU 10.2，4 KiB 页。",
         "Guest 页表页的 EPT 映射已经存在，只有目标数据页 EPT 缺失。",
@@ -1538,7 +1578,7 @@
     {
       "id": "host-page-fault",
       "label": "宿主后备页 · 换入等待",
-      "summary": "Guest PTE 有效，但 RAM 后备页已被宿主换出。KVM 取得 PFN 时进入宿主缺页慢路径，等待页面驻留后重新建立 EPT。",
+      "summary": "这是补建 EPT 时取后备页的慢路径：Guest PTE 有效，但 RAM 后备页已换出。宿主内存管理先换入，KVM 再建图；不是 QEMU 设备模拟。",
       "assumptions": [
         "普通 HVA 后备 RAM，4 KiB 页；匿名宿主页已换出，相关 EPT 已通过失效机制撤销。",
         "Guest 页表页和内核所需页面均驻留，本例只跟踪目标 RAM 数据页。",
@@ -2245,7 +2285,7 @@
     {
       "id": "dirty-write-protect",
       "label": "脏页记录 · EPT 写保护",
-      "summary": "Guest PTE 允许写入，KVM 为记录脏页撤掉 EPT 写权限。首次写入触发退出，KVM 记录脏页并恢复写权限后重试。",
+      "summary": "这是已有 EPT 映射的权限处理，不是缺少后备页。Guest PTE 允许写入，KVM 为脏页跟踪撤掉 EPT 写权限；本例首次写入退出后恢复权限、记录脏页并重试。",
       "assumptions": [
         "普通 RAM，4 KiB EPT 叶子，Guest 用户态写入 0x12345678。",
         "memslot 启用 KVM_MEM_LOG_DIRTY_PAGES，使用位图；未启用 Dirty Ring 或硬件 PML。",
@@ -3082,286 +3122,246 @@
     {
       "id": "mmio-vfio-direct",
       "label": "VFIO BAR 已建立直接映射",
-      "summary": "访问已映射且允许直访的 VFIO BAR 区间，CPU 经 Guest 页表与 EPT 访问设备，无需逐次陷入 QEMU。",
+      "summary": "CPU 经 Guest 页表与 EPT，把 Guest BAR GPA 转换为宿主 MMIO HPA，再由 PCIe 访问设备。HPA 是设备窗口地址，不是先访问一份宿主 RAM；本例稳态读取不退出。",
       "assumptions": [
-        "x86-64 / Intel VMX，Linux 6.18 与 QEMU 10.2.0；仅跟踪所选设备访问",
-        "硬件 VM-exit 与 KVM_RUN 返回用户态是两个不同边界；没有其他异步退出",
-        "固定可 mmap 的 BAR 区间，宿主 VFIO 映射、KVM memslot 与有效 EPT 映射均已建立",
-        "不包括 MSI-X 表、需模拟寄存器、首次建图故障、权限变更、设备复位和映射撤销",
-        "本例观察 CPU 对设备 BAR 的读取，不是设备 DMA；IOMMU 的设备地址转换不串入这条 CPU 路径",
-        "示意地址和读值仅用于观察；实际可映射范围、内存类型和访问语义以具体设备为准"
+        "x86-64 / Intel VMX，Linux 6.18 与 QEMU 10.2.0；4 KiB 页，只跟踪一次 4 B CPU 读取。",
+        "固定可 mmap 的 BAR0 区间，VFIO 映射、KVM memslot 与有效 EPT 均已建立；本例不发生额外 VM-exit。",
+        "Guest BAR0 基址 GPA 0xf0000000，宿主 BAR0 的 CPU 物理资源基址 HPA 0xd0000000；访问 offset 0x1000，得到 GPA 0xf0001000 / HPA 0xd0001000。",
+        "本例固定宿主桥的 CPU 物理地址与 PCI 总线地址恒等；其他平台可能由宿主桥换算。BAR offset 是区域内偏移，不是额外一级页表。",
+        "不包括 MSI-X 表、需模拟寄存器、首次建图故障、权限变更、设备复位和映射撤销；内存类型与顺序满足设备要求。",
+        "本例观察 CPU 对设备 BAR 的读取，不是设备 DMA；设备发起的 IOMMU 翻译不串入这条 CPU 路径。普通 Guest RAM 仍映射宿主 RAM，不因启用 VFIO 就指向 BAR。",
+        "QEMU 的 HVA 仅参与 mmap / memslot 配置与 KVM 后备解析；本次 CPU 稳态转换不逐次查询 HVA。所有地址和读值为教学示例。"
       ],
       "nodes": [
-        {
-          "id": "guest",
-          "label": "Guest 驱动指令",
-          "role": "客户机内核",
-          "initial": "准备就绪",
-          "badge": "内核态"
-        },
-        {
-          "id": "mmu",
-          "label": "处理器 · EPT",
-          "role": "地址转换与指令执行",
-          "initial": "准备就绪"
-        },
-        {
-          "id": "kvm",
-          "label": "KVM",
-          "role": "宿主内核",
-          "initial": "准备就绪"
-        },
-        {
-          "id": "qemu",
-          "label": "QEMU",
-          "role": "宿主用户态",
-          "initial": "准备就绪"
-        },
-        {
-          "id": "device",
-          "label": "物理设备 BAR",
-          "role": "PCIe 设备可映射区域",
-          "initial": "准备就绪"
-        }
+        {"id": "guest", "label": "Guest 驱动", "role": "客户机内核", "initial": "准备读取 BAR0 + 0x1000", "badge": "内核态"},
+        {"id": "mmu", "label": "CPU · 地址转换", "role": "Guest 页表与 EPT", "initial": "映射有效，尚未执行本次读取"},
+        {"id": "device", "label": "物理设备 · BAR0", "role": "宿主 MMIO 窗口", "initial": "宿主资源基址 0xd0000000"}
       ],
       "links": [
-        {
-          "id": "translate",
-          "from": "guest",
-          "to": "mmu",
-          "label": "Guest VA → GPA → BAR",
-          "kind": "translation"
-        },
-        {
-          "id": "read",
-          "from": "mmu",
-          "to": "device",
-          "label": "CPU 设备读取",
-          "kind": "data"
-        },
-        {
-          "id": "return",
-          "from": "device",
-          "to": "guest",
-          "label": "读值返回 CPU",
-          "kind": "data"
-        }
+        {"id": "translate", "from": "guest", "to": "mmu", "label": "GVA → GPA → HPA", "kind": "translation"},
+        {"id": "read", "from": "mmu", "to": "device", "label": "HPA MMIO → PCIe · offset 0x1000", "kind": "data"},
+        {"id": "return", "from": "device", "to": "guest", "label": "设备读值返回 CPU", "kind": "data"}
       ],
       "structures": [
         {
-          "id": "address",
-          "title": "CPU 地址转换",
-          "kind": "address",
+          "id": "address", "title": "CPU 地址转换与 BAR 窗口", "kind": "address",
           "fields": [
-            {
-              "key": "gva",
-              "label": "Guest VA",
-              "initial": "0xffffc900f0001000"
-            },
-            {
-              "key": "gpa",
-              "label": "Guest PA",
-              "initial": "0xf0001000"
-            },
-            {
-              "key": "bar",
-              "label": "宿主物理设备区间",
-              "initial": "已建立有效 EPT 映射"
-            }
+            {"key": "gva", "label": "Guest VA", "initial": "0xffffc900f0001000"},
+            {"key": "guest-bar-base", "label": "Guest BAR0 基址 · GPA", "initial": "0xf0000000"},
+            {"key": "offset", "label": "BAR offset", "initial": "0x1000"},
+            {"key": "gpa", "label": "Guest BAR GPA", "initial": "0xf0001000"},
+            {"key": "ept-leaf", "label": "已配置 EPT 叶子", "initial": "0xf0001000 → 0xd0001000，允许读"},
+            {"key": "hpa", "label": "本次转换结果 · HPA", "initial": "待本次转换"},
+            {"key": "host-bar-base", "label": "宿主 BAR0 资源基址 · HPA", "initial": "0xd0000000"},
+            {"key": "pci-address", "label": "本次 PCI 总线地址", "initial": "尚未发出访问"}
           ]
         },
         {
-          "id": "state",
-          "title": "执行与映射",
-          "kind": "registers",
+          "id": "state", "title": "访问落点与执行状态", "kind": "registers",
           "fields": [
-            {
-              "key": "hw-exit",
-              "label": "因本次访问 VM-exit",
-              "initial": "无"
-            },
-            {
-              "key": "userspace",
-              "label": "KVM_RUN 返回 QEMU",
-              "initial": "否"
-            },
-            {
-              "key": "value",
-              "label": "Guest 目标寄存器",
-              "initial": "旧值"
-            },
-            {
-              "key": "instruction",
-              "label": "原指令",
-              "initial": "尚未执行"
-            }
+            {"key": "target", "label": "访问落点", "initial": "物理设备 MMIO"},
+            {"key": "hw-exit", "label": "因本次访问 VM-exit", "initial": "无"},
+            {"key": "userspace", "label": "KVM_RUN 返回 QEMU", "initial": "否"},
+            {"key": "value", "label": "Guest EAX", "initial": "旧值"},
+            {"key": "instruction", "label": "原指令", "initial": "尚未执行"}
           ]
         }
       ],
+      "completion": [
+        {"key": "gpa", "label": "Guest BAR GPA"},
+        {"key": "hpa", "label": "HPA"},
+        {"key": "offset", "label": "BAR offset"},
+        {"key": "target", "label": "访问落点"}
+      ],
       "steps": [
         {
-          "id": "ready",
-          "title": "稳态映射已经就绪",
-          "actor": "Guest 驱动",
-          "description": "准备读取已允许直接映射的设备区间。",
-          "detail": "vfio_region_mmap 与 memslot 配置发生在准备阶段；每次访问不会重新执行这些设置函数。",
-          "active": [],
-          "links": [],
-          "changes": {},
-          "nodeStates": {},
-          "sourceIds": [
-            "vfio-region-map",
-            "memory-slot"
-          ],
-          "focus": true
+          "id": "ready", "title": "稳态映射已经就绪", "actor": "Guest 驱动",
+          "description": "驱动已识别并映射 Guest BAR0，准备读取 offset 0x1000。",
+          "detail": "QEMU/VFIO 事先建立宿主映射，KVM 已配置 GPA 0xf0001000 → HPA 0xd0001000。Guest 驱动知道自己访问设备资源，但不需要知道宿主 BAR 的地址。",
+          "active": [], "links": [], "changes": {}, "nodeStates": {},
+          "sourceIds": ["vfio-region-map", "ram-device-map", "qemu-slot-map", "memory-slot"], "focus": true
         },
         {
-          "id": "translate",
-          "title": "硬件解析 CPU 地址",
-          "actor": "处理器",
-          "description": "CPU 使用 Guest 页表和有效 EPT 找到设备 BAR 目标。",
-          "detail": "此处无软件页表遍历，也不经过设备 DMA 的 IOMMU 翻译；配置假设保证本次映射与权限有效。",
-          "active": [
-            "guest",
-            "mmu"
-          ],
-          "links": [
-            "translate"
-          ],
-          "changes": {
-            "instruction": "地址转换完成"
-          },
-          "nodeStates": {
-            "guest": "硬件解析 CPU 地址",
-            "mmu": "硬件解析 CPU 地址"
-          },
-          "sourceIds": [
-            "address-model",
-            "vfio-region-map"
-          ],
-          "focus": true
+          "id": "translate", "title": "GPA 转换为宿主 MMIO HPA", "actor": "CPU · Guest 页表与 EPT",
+          "description": "Guest 页表将 GVA 映射到 GPA 0xf0001000；EPT 再得到 HPA 0xd0001000。",
+          "detail": "HPA 指向宿主物理地址空间中的设备窗口，并非宿主 RAM 页。已配置的转换由硬件使用，不逐次调用 QEMU、查询 HVA 或经过设备 DMA 的 IOMMU。",
+          "active": ["guest", "mmu"], "links": ["translate"],
+          "changes": {"gpa": "0xf0001000", "hpa": "0xd0001000", "instruction": "地址转换完成"},
+          "nodeStates": {"guest": "Guest BAR0 GPA = 0xf0001000", "mmu": "EPT 输出 HPA = 0xd0001000"},
+          "sourceIds": ["address-model", "vfio-region-map"], "focus": true
         },
         {
-          "id": "access",
-          "title": "访问物理设备区间",
-          "actor": "物理处理器 / PCIe",
-          "description": "CPU 把读取送往映射对应的设备区域。",
-          "detail": "QEMU vCPU 线程仍处于 KVM_RUN；本次没有调用 vfio_region_read。",
-          "active": [
-            "mmu",
-            "device"
-          ],
-          "links": [
-            "read"
-          ],
-          "changes": {
-            "instruction": "等待设备读取结果"
-          },
-          "nodeStates": {
-            "mmu": "访问物理设备区间",
-            "device": "访问物理设备区间"
-          },
-          "sourceIds": [
-            "vfio-region-map"
-          ],
-          "focus": true
+          "id": "access", "title": "宿主桥将访问送往 BAR0", "actor": "CPU / 宿主桥 / PCIe",
+          "description": "物理地址译码把 HPA 0xd0001000 的读取路由到设备 BAR0 + 0x1000。",
+          "detail": "本例宿主桥采用恒等地址窗口，PCI 总线地址也是 0xd0001000。不是先读宿主 RAM 再转发；其他平台可能有桥窗口换算，但 BAR 内偏移仍是设备访问位置。",
+          "active": ["mmu", "device"], "links": ["read"],
+          "changes": {"offset": "0x1000", "pci-address": "0xd0001000（本例恒等窗口）", "instruction": "等待设备读取结果"},
+          "nodeStates": {"mmu": "访问 HPA MMIO 窗口", "device": "读取 BAR0 + 0x1000"},
+          "sourceIds": ["address-model", "vfio-region-map"], "focus": true
         },
         {
-          "id": "return",
-          "title": "设备返回读值",
-          "actor": "物理设备 → CPU",
-          "description": "设备提供示意值 0x12345678。",
-          "detail": "这是设备读完成，不代表 GPU 或其他设备上此前提交的异步任务全部完成。",
-          "active": [
-            "device",
-            "guest"
-          ],
-          "links": [
-            "return"
-          ],
-          "changes": {
-            "instruction": "读值已返回"
-          },
-          "nodeStates": {
-            "device": "设备返回读值",
-            "guest": "设备返回读值"
-          },
-          "sourceIds": [
-            "vfio-region-map"
-          ],
-          "focus": true
+          "id": "return", "title": "设备返回读值", "actor": "物理设备 → CPU",
+          "description": "设备提供示意值 0x12345678，CPU 收到本次读取结果。",
+          "detail": "这是寄存器读的返回，不保证设备此前的异步任务全部完成。本次不调用 vfio_region_read，也不向 QEMU 返回 KVM_EXIT_MMIO。",
+          "active": ["device", "guest"], "links": ["return"],
+          "changes": {"instruction": "读值已返回"},
+          "nodeStates": {"device": "返回 0x12345678", "guest": "读值待写入目标寄存器"},
+          "sourceIds": ["vfio-region-map", "address-model"], "focus": true
         },
         {
-          "id": "complete",
-          "title": "完成 Guest 读取",
-          "actor": "Guest 驱动",
-          "description": "CPU 更新目标寄存器，执行下一条指令。",
-          "detail": "这条稳态直接映射路径不因本次访问退出；其他寄存器区间与异常条件可能仍需要 KVM/QEMU 处理。",
-          "active": [
-            "guest"
-          ],
-          "links": [],
-          "changes": {
-            "value": "0x12345678",
-            "instruction": "读取完成"
-          },
-          "nodeStates": {
-            "guest": "完成 Guest 读取"
-          },
-          "sourceIds": [
-            "vfio-region-map",
-            "address-model"
-          ],
-          "focus": true
+          "id": "complete", "title": "完成 Guest 读取", "actor": "Guest 驱动",
+          "description": "CPU 更新 EAX，继续下一条 Guest 指令；KVM_RUN 仍未返回。",
+          "detail": "无退出仅适用于本例已建立映射、权限有效的可直访 BAR 区间。换成普通 Guest RAM 会访问宿主 RAM 页，不会因为有 VFIO 设备而自动转向 BAR。",
+          "active": ["guest"], "links": [],
+          "changes": {"value": "0x12345678", "instruction": "读取完成"},
+          "nodeStates": {"guest": "EAX = 0x12345678，继续执行", "mmu": "本次 CPU 读取完成"},
+          "sourceIds": ["address-model", "vfio-region-map"], "focus": true
         }
       ],
       "callPaths": [
         {
-          "id": "path-0",
-          "title": "硬件地址转换与准备条件",
-          "context": "处理器 / 初始化配置",
-          "sourceIds": [
-            "vfio-region-map",
-            "memory-slot",
-            "address-model"
-          ],
-          "boundary": "这些入口解释映射与拦截配置；硬件命中路径不会逐次调用软件设置函数。"
+          "id": "path-0", "title": "事先建立 VFIO 后备映射", "context": "QEMU 初始化 · 非逐次读取",
+          "sourceIds": ["vfio-region-map", "ram-device-map"],
+          "flow": "call",
+          "boundary": "vfio_region_mmap 用设备 fd 建立 HVA 映射，再注册 RAM-device MemoryRegion；接口名中的 RAM 不表示物理落点一定是 DRAM。"
+        },
+        {
+          "id": "memslot", "title": "发布可映射区与准备 EPT", "context": "QEMU MemoryListener / 宿主 KVM",
+          "sourceIds": ["qemu-slot-map", "memory-slot", "backing-page", "ept-install"],
+          "boundary": "MemoryListener 发布 GPA→HVA；KVM 取得设备窗口 PFN 并建立 EPT。这是映射准备的相关入口，不是每次 CPU 读 BAR 的调用栈。"
         }
       ],
       "sourceSteps": [
         {
-          "id": "direct-load",
-          "title": "Guest 读取已直映射的 BAR 区间",
-          "kind": "instruction",
-          "context": "Guest CPU 地址访问 · 不是设备 DMA",
-          "stepIds": [
-            "ready",
-            "translate"
-          ],
-          "sourceIds": [
-            "address-model",
-            "vfio-region-map"
-          ],
-          "detail": "vfio_region_mmap 与 memslot 在准备阶段建立映射；本次稳态访问由 CPU 转换，不能画成每次调用 vfio_region_read。",
-          "code": "MOV EAX, DWORD PTR [RDI]"
+          "id": "direct-load", "title": "Guest 读取已直映射的 BAR 区间", "kind": "instruction",
+          "context": "Guest CPU 地址访问 · 不是设备 DMA", "stepIds": ["ready", "translate"],
+          "sourceIds": ["address-model", "vfio-region-map"],
+          "detail": "地址链包含 HPA；HVA 只用于后备映射准备，硬件访问不逐次经过 HVA。",
+          "code": "GVA → GPA 0xf0001000 → HPA 0xd0001000"
         },
         {
-          "id": "bar-result",
-          "title": "设备返回读值并完成原指令",
-          "kind": "instruction",
-          "context": "处理器与已映射的物理设备区间",
-          "stepIds": [
-            "access",
-            "return",
-            "complete"
-          ],
-          "sourceIds": [
-            "address-model",
-            "vfio-region-map"
-          ],
-          "detail": "具体寄存器副作用由设备定义；在本例可直映射区间与有效权限条件下，不因这次访问 VM-exit。源码链只列初始化映射依据。",
-          "code": "EAX ← BAR 寄存器读值"
+          "id": "bar-result", "title": "总线译码、设备返回与指令完成", "kind": "instruction",
+          "context": "CPU / 宿主桥 / 物理设备", "stepIds": ["access", "return", "complete"],
+          "sourceIds": ["address-model", "vfio-region-map"],
+          "detail": "本例宿主桥恒等映射；BAR offset = 0x1000。无软件设备回调，也没有先访问一份宿主 RAM。",
+          "code": "HPA MMIO → PCIe BAR0 + 0x1000 → EAX"
         }
+      ]
+    },
+    {
+      "id": "mmio-ivshmem-direct",
+      "label": "共享内存 BAR · ivshmem",
+      "summary": "ivshmem BAR2 暴露宿主共享 RAM。Guest 经页表与 EPT 直接读同一后备页；没有物理 PCIe 设备或 VFIO。BAR 是客户机资源窗口的形式，不代表落点一定是设备寄存器。",
+      "assumptions": [
+        "x86-64 / Intel VMX，QEMU 10.2.0、Linux 6.18；固定 ivshmem-plain，memdev 指向 share=on 的宿主共享内存后备。",
+        "只读 BAR2 中 offset 0x1000 的 4 B 数据；不访问 BAR0 控制寄存器，不使用 ivshmem-doorbell、MSI-X、通知或任何设备 DMA。",
+        "Guest 驱动已枚举并映射 BAR2；GVA 0xffffc900f0001000 → GPA 0xf0001000。BAR2 的 Guest 基址为 0xf0000000。",
+        "对应宿主共享页已驻留，示例 HPA 0x21001000，EPT 有效且允许读。该页的示意值已预先写为 0x12345678；本例没有并发写入。",
+        "QEMU 已将共享后备的 MemoryRegion 注册为 BAR2，并由 MemoryListener 发布 memslot。HVA 只用于准备与后备解析，不是硬件逐次访问的一层。",
+        "同一个共享对象可以被宿主或其他 VM 映射，但不同地址空间的虚拟地址和 Guest BAR 基址无需相同；本例不展开多方同步协议。",
+        "与 VFIO 场景复用 Guest 示意地址便于对照，二者是不同配置，不在同一地址空间重叠。这里的 HPA 指向共享 RAM 页，不是物理设备 BAR，也不保证整个 BAR2 在宿主物理内存中连续。"
+      ],
+      "nodes": [
+        {"id": "guest", "label": "Guest 驱动", "role": "客户机内核", "initial": "准备读取 BAR2 + 0x1000", "badge": "内核态"},
+        {"id": "mmu", "label": "CPU · 地址转换", "role": "Guest 页表与 EPT", "initial": "共享页已映射，允许读取"},
+        {"id": "ram", "label": "共享后备页", "role": "宿主共享 RAM", "initial": "HPA 0x21001000 · 值 0x12345678"}
+      ],
+      "links": [
+        {"id": "translate", "from": "guest", "to": "mmu", "label": "GVA → BAR2 GPA → HPA", "kind": "translation"},
+        {"id": "read", "from": "mmu", "to": "ram", "label": "读取 HPA 对应共享页", "kind": "data"},
+        {"id": "return", "from": "ram", "to": "guest", "label": "共享页读值返回 CPU", "kind": "data"}
+      ],
+      "structures": [
+        {
+          "id": "address", "title": "共享 BAR 与后备地址", "kind": "address",
+          "fields": [
+            {"key": "gva", "label": "Guest VA", "initial": "0xffffc900f0001000"},
+            {"key": "guest-bar-base", "label": "Guest BAR2 基址 · GPA", "initial": "0xf0000000"},
+            {"key": "offset", "label": "BAR offset", "initial": "0x1000"},
+            {"key": "gpa", "label": "Guest BAR GPA", "initial": "0xf0001000"},
+            {"key": "ept-leaf", "label": "已配置 EPT 叶子", "initial": "0xf0001000 → 0x21001000，允许读"},
+            {"key": "hpa", "label": "本次转换结果 · HPA", "initial": "待本次转换"},
+            {"key": "backing", "label": "后备对象", "initial": "share=on 的宿主共享 RAM"},
+            {"key": "memory-value", "label": "共享页已有数据", "initial": "0x12345678"}
+          ]
+        },
+        {
+          "id": "state", "title": "访问落点与执行状态", "kind": "registers",
+          "fields": [
+            {"key": "target", "label": "访问落点", "initial": "宿主共享 RAM"},
+            {"key": "hw-exit", "label": "因本次访问 VM-exit", "initial": "无"},
+            {"key": "userspace", "label": "KVM_RUN 返回 QEMU", "initial": "否"},
+            {"key": "value", "label": "Guest EAX", "initial": "旧值"},
+            {"key": "instruction", "label": "原指令", "initial": "尚未执行"}
+          ]
+        }
+      ],
+      "completion": [
+        {"key": "gpa", "label": "Guest BAR GPA"},
+        {"key": "hpa", "label": "HPA"},
+        {"key": "offset", "label": "BAR offset"},
+        {"key": "target", "label": "访问落点"}
+      ],
+      "steps": [
+        {
+          "id": "ready", "title": "共享 BAR2 已映射", "actor": "Guest 驱动",
+          "description": "驱动准备读取 BAR2 + 0x1000，所访问的共享页已驻留。",
+          "detail": "QEMU 用宿主共享内存对象作为 BAR2 后备，而不是模拟一次寄存器读取。BAR0 的控制接口属于另一片区域，不能把整个设备都说成无退出。",
+          "active": [], "links": [], "changes": {}, "nodeStates": {},
+          "sourceIds": ["ivshmem-setup", "ivshmem-spec", "qemu-slot-map", "memory-slot"], "focus": true
+        },
+        {
+          "id": "translate", "title": "GPA 转换为共享 RAM HPA", "actor": "CPU · Guest 页表与 EPT",
+          "description": "Guest 页表给出 BAR2 GPA 0xf0001000；EPT 将它映射到共享页 HPA 0x21001000。",
+          "detail": "Guest 仍把这片区域视为 PCI BAR 资源，但实际落点是宿主 RAM，不是物理设备寄存器。相同的 Guest 示意地址在不同配置下可以有不同后备，硬件不会根据 MOV 指令猜测用途。",
+          "active": ["guest", "mmu"], "links": ["translate"],
+          "changes": {"gpa": "0xf0001000", "hpa": "0x21001000", "instruction": "地址转换完成"},
+          "nodeStates": {"guest": "BAR2 GPA = 0xf0001000", "mmu": "EPT 输出 HPA = 0x21001000"},
+          "sourceIds": ["address-model", "ivshmem-spec"], "focus": true
+        },
+        {
+          "id": "access", "title": "直接读取共享后备页", "actor": "CPU · 宿主 RAM",
+          "description": "CPU 读取 HPA 0x21001000 对应的共享内存数据。",
+          "detail": "没有经过物理 PCIe 设备、VFIO 或逐次 QEMU 设备回调；也没有额外复制到一份 Guest 专用缓冲区。地址转换与 CPU 数据缓存是不同层次，本例不模拟缓存时延。",
+          "active": ["mmu", "ram"], "links": ["read"],
+          "changes": {"offset": "0x1000", "instruction": "读取共享后备页"},
+          "nodeStates": {"ram": "同一共享页提供本次数据", "mmu": "目标是 RAM，不发起 PCIe 设备访问"},
+          "sourceIds": ["ivshmem-setup", "ivshmem-spec", "address-model"], "focus": true
+        },
+        {
+          "id": "return", "title": "返回共享页中的读值", "actor": "共享 RAM → CPU",
+          "description": "CPU 取得共享页中预先存在的 0x12345678。",
+          "detail": "数据来自共享后备页，不是 QEMU 合成的寄存器响应。跨进程或跨 VM 使用共享内存时仍需同步协议，本例固定没有并发写入。",
+          "active": ["ram", "guest"], "links": ["return"],
+          "changes": {"instruction": "读值已返回"},
+          "nodeStates": {"ram": "已有数据保持 0x12345678", "guest": "读值待写入目标寄存器"},
+          "sourceIds": ["ivshmem-spec", "address-model"], "focus": true
+        },
+        {
+          "id": "complete", "title": "完成 Guest 读取", "actor": "Guest 驱动",
+          "description": "CPU 更新 EAX 并继续执行；本次没有 VM-exit，KVM_RUN 没有返回。",
+          "detail": "这提供了非 VFIO 的直接映射对照：BAR2 背后是共享 RAM。普通 Guest RAM、共享 BAR 与物理 MMIO 可以使用相似的 CPU 转换链，但资源语义和最终落点不同。",
+          "active": ["guest"], "links": [],
+          "changes": {"value": "0x12345678", "instruction": "读取完成"},
+          "nodeStates": {"guest": "EAX = 0x12345678，继续执行", "mmu": "本次共享页读取完成"},
+          "sourceIds": ["address-model", "ivshmem-spec"], "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "setup", "title": "事先注册共享 BAR2", "context": "QEMU 设备初始化 · 非逐次读取",
+          "sourceIds": ["ivshmem-setup"],
+          "boundary": "ivshmem_common_realize 将 hostmem 的 MemoryRegion 注册为 BAR2；BAR0 则单独使用设备寄存器回调。"
+        },
+        {
+          "id": "memslot", "title": "发布后备映射与准备 EPT", "context": "QEMU MemoryListener / 宿主 KVM",
+          "sourceIds": ["qemu-slot-map", "memory-slot", "backing-page", "ept-install"],
+          "boundary": "这些入口分别发布 GPA→HVA、取得后备页并建立 EPT。本次已经完成准备，读取指令不再次调用这些函数。"
+        }
+      ],
+      "sourceSteps": [
+        {"id": "shared-map", "title": "硬件转换共享 BAR 地址", "kind": "instruction", "context": "Guest CPU · 已建立映射", "stepIds": ["ready", "translate"], "sourceIds": ["address-model", "ivshmem-spec"], "detail": "Guest 看到 BAR2 资源；EPT 输出的是共享 RAM 页 HPA，而非真实设备窗口。", "code": "GVA → BAR2 GPA 0xf0001000 → RAM HPA 0x21001000"},
+        {"id": "shared-read", "title": "读取同一共享后备页", "kind": "instruction", "context": "CPU / 宿主共享 RAM", "stepIds": ["access", "return", "complete"], "sourceIds": ["address-model", "ivshmem-spec"], "detail": "没有物理设备、VFIO 或逐次软件回调；读操作不修改共享页的原值。", "code": "EAX ← RAM[0x21001000] = 0x12345678"}
       ]
     }
   ]

@@ -154,7 +154,7 @@ def test_walkthrough_links_queue_basics_and_backend_sources():
 
 def test_walkthrough_has_distinct_views_guest_domains_and_no_sharing_ui():
     page = render.render_mechanisms_html(Config(), "virtio-blk-read")
-    for view, label in (("overview", "流程总览"), ("mechanism", "队列机制"), ("source", "源码路径")):
+    for view, label in (("overview", "流程总览"), ("mechanism", "关键结构"), ("source", "源码路径")):
         assert re.search(rf'<button\b[^>]*data-vbr-view="{view}"[^>]*>{label}</button>', page)
     assert "data-vbr-callpaths" in page
     assert "vbr-guest-user" in page and "vbr-guest-kernel" in page

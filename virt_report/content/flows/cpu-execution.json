@@ -4,7 +4,7 @@
   "defaultScenario": "ordinary-add",
   "sources": {
     "sdm": {
-      "label": "Intel SDM：ADD、SYSCALL、SYSRET 与 VMX 执行环境",
+      "label": "Intel SDM：指令语义、HLT 活动状态与 posted interrupt",
       "url": "https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html",
       "project": "Intel",
       "revision": "architecture-manual",
@@ -101,6 +101,66 @@
       "line": 11646,
       "project": "Linux",
       "symbol": "kvm_emulate_halt()",
+      "kind": "function"
+    },
+    "idle-qemu": {
+      "label": "QEMU 10.2：cpu-pm 请求关闭受支持的指令退出",
+      "url": "https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/target/i386/kvm/kvm.c#L3142-L3155",
+      "revision": "698104725efad4b29079d857dfdebbd804e34c99",
+      "path": "target/i386/kvm/kvm.c",
+      "line": 3142,
+      "project": "QEMU",
+      "symbol": "kvm_vm_enable_disable_exits()",
+      "kind": "function"
+    },
+    "idle-controls": {
+      "label": "Linux 6.18：按 VM 配置清除 HLT exiting",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L4435-L4477",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/vmx/vmx.c",
+      "line": 4435,
+      "project": "Linux",
+      "symbol": "vmx_exec_control()",
+      "kind": "function"
+    },
+    "idle-allowed": {
+      "label": "Linux 6.18：允许关闭的退出类型与安全限制",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L4763-L4778",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/x86.c",
+      "line": 4763,
+      "project": "Linux",
+      "symbol": "kvm_get_allowed_disable_exits()",
+      "kind": "function"
+    },
+    "idle-posted": {
+      "label": "Linux 6.18：APICv 可用时递送 posted 中断",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L4225-L4256",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/vmx/vmx.c",
+      "line": 4225,
+      "project": "Linux",
+      "symbol": "vmx_deliver_posted_interrupt()",
+      "kind": "function"
+    },
+    "idle-pir": {
+      "label": "Linux 6.18：软件发布 PIR 并登记 ON",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/common.h#L159-L178",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/vmx/common.h",
+      "line": 159,
+      "project": "Linux",
+      "symbol": "__vmx_deliver_posted_interrupt()",
+      "kind": "function"
+    },
+    "idle-notify": {
+      "label": "Linux 6.18：向仍在 Guest 模式的目标发送 posted notification",
+      "url": "https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/common.h#L110-L153",
+      "revision": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449",
+      "path": "arch/x86/kvm/vmx/common.h",
+      "line": 110,
+      "project": "Linux",
+      "symbol": "kvm_vcpu_trigger_posted_interrupt()",
       "kind": "function"
     },
     "block": {
@@ -1742,8 +1802,8 @@
     },
     {
       "id": "hlt-wakeup",
-      "label": "HLT 等待与唤醒",
-      "summary": "客户机空闲时执行 HLT，KVM 让宿主 vCPU 线程睡眠；可接受的中断到达后再唤醒并继续。",
+      "label": "HLT · KVM 阻塞等待",
+      "summary": "本例开启 HLT 截获、关闭 halt polling：Guest HLT 先退出到 KVM，再阻塞宿主 vCPU 线程。可接受的中断到达后，线程经唤醒、调度和 VM-entry 恢复；可与 Idle Passthrough 对照。",
       "assumptions": [
         "Intel VMX 拦截 HLT；KVM 管理 LAPIC，APICv 关闭",
         "halt-poll 预算为 0，展示阻塞等待；Guest IF = 1，向量 0x51 优先级允许",
@@ -1754,27 +1814,32 @@
           "id": "guest",
           "label": "客户机空闲线程",
           "role": "Guest CPL 0",
-          "badge": "内核态"
+          "badge": "内核态",
+          "initial": "准备执行 HLT，IF = 1"
         },
         {
           "id": "kvm",
           "label": "KVM HLT 处理",
-          "role": "宿主内核"
+          "role": "宿主内核",
+          "initial": "HLT exiting = 1，等待退出"
         },
         {
           "id": "scheduler",
           "label": "Linux 调度器",
-          "role": "宿主任务调度"
+          "role": "宿主任务调度",
+          "initial": "vCPU 线程正在执行 Guest"
         },
         {
           "id": "backend",
           "label": "设备完成事件",
-          "role": "异步事件源"
+          "role": "异步事件源",
+          "initial": "本次完成事件尚未到达"
         },
         {
           "id": "lapic",
           "label": "虚拟 LAPIC",
-          "role": "KVM 中断状态"
+          "role": "KVM 中断状态",
+          "initial": "IRR[0x51] = 0"
         }
       ],
       "links": [
@@ -1828,6 +1893,16 @@
           "kind": "registers",
           "fields": [
             {
+              "key": "mode",
+              "label": "目标 vCPU 执行状态",
+              "initial": "non-root"
+            },
+            {
+              "key": "exit-count",
+              "label": "本例 VM-exit 次数",
+              "initial": "0"
+            },
+            {
               "key": "rip",
               "label": "Guest RIP",
               "initial": "0xffffffff81001000（HLT）"
@@ -1872,12 +1947,18 @@
           ]
         }
       ],
+      "completion": [
+        {"key": "mode", "label": "目标 vCPU"},
+        {"key": "exit-count", "label": "本例 VM-exit"},
+        {"key": "task-state", "label": "宿主线程"},
+        {"key": "run-state", "label": "KVM_RUN"}
+      ],
       "steps": [
         {
           "id": "ready",
           "title": "执行 HLT 前",
           "actor": "客户机空闲线程",
-          "description": "客户机暂时没有可运行任务，准备执行 HLT。",
+          "description": "客户机暂时没有可运行的普通任务，idle 准备执行 HLT。",
           "detail": "整台虚拟机仍在运行；此处只跟踪一个 vCPU 的空闲等待。",
           "active": [],
           "links": [],
@@ -1903,10 +1984,14 @@
           ],
           "changes": {
             "rip": "0xffffffff81001001（HLT 之后）",
-            "mp-state": "HALTED"
+            "mp-state": "HALTED",
+            "mode": "已退出 Guest",
+            "exit-count": "1（HLT）"
           },
           "nodeStates": {
-            "kvm": "进入等待分支"
+            "guest": "HLT 已退出，等待中断",
+            "kvm": "进入等待分支",
+            "scheduler": "vCPU 线程正在执行 KVM"
           },
           "sourceIds": [
             "halt",
@@ -1953,6 +2038,7 @@
             "task-state": "TASK_INTERRUPTIBLE，已睡眠"
           },
           "nodeStates": {
+            "kvm": "已阻塞，等待唤醒",
             "scheduler": "可运行其他任务"
           },
           "sourceIds": [
@@ -1980,6 +2066,8 @@
             "task-state": "TASK_RUNNING，等待调度"
           },
           "nodeStates": {
+            "backend": "已发布本次完成向量 0x51",
+            "kvm": "等待宿主线程重新调入",
             "lapic": "0x51 待处理",
             "scheduler": "vCPU 可运行"
           },
@@ -2008,7 +2096,8 @@
             "mp-state": "RUNNABLE"
           },
           "nodeStates": {
-            "kvm": "准备客户机事件"
+            "kvm": "准备客户机事件",
+            "scheduler": "vCPU 线程已调入，执行 KVM"
           },
           "sourceIds": [
             "block",
@@ -2031,10 +2120,14 @@
           ],
           "changes": {
             "irr": "0（已取出用于注入）",
-            "rip": "客户机向量 0x51 处理入口"
+            "rip": "客户机向量 0x51 处理入口",
+            "mode": "non-root"
           },
           "nodeStates": {
-            "guest": "处理中断"
+            "guest": "处理中断",
+            "kvm": "本次中断已递送",
+            "lapic": "0x51 已交付 Guest",
+            "scheduler": "vCPU 线程继续执行 Guest"
           },
           "sourceIds": [
             "halt-resume",
@@ -2085,6 +2178,150 @@
           "boundary": "线程恢复后退出等待，运行循环检查可递送事件并恢复 RUNNABLE，随后接受向量、准备 Guest 入口。中断记录、宿主唤醒和实际执行分别发生。",
           "entry": {"kind": "async", "label": "宿主调度器选择已就绪的 vCPU 线程"}
         }
+      ]
+    },
+    {
+      "id": "hlt-passthrough",
+      "label": "HLT · Idle Passthrough",
+      "summary": "关闭 HLT exiting：Guest 直接进入硬件等待，宿主 vCPU 线程不阻塞。本例再配合 APICv posted interrupt 唤醒，目标 vCPU 不发生 VM-exit；这不是所有唤醒路径的保证。",
+      "assumptions": [
+        "Intel VMX、Linux 6.18 / QEMU 10.2.0；已确认 KVM 允许 KVM_X86_DISABLE_EXITS_HLT，创建 vCPU 前启用，HLT exiting = 0。不是在运行中任意开关硬件拦截。",
+        "目标 vCPU 绑定独占的宿主逻辑 CPU，不超卖；本例没有宿主抢占、迁核、普通宿主 IRQ 或其他退出事件。硬件等待不是忙轮询，也不调用 KVM 的 halt polling。",
+        "Guest 使用内核 LAPIC，APICv / posted-interrupt processing / virtual-interrupt delivery 已启用，PID 与 VMCS 通知向量匹配。HLT 直通本身不要求 posted；这里另选 posted 唤醒作为固定对照。",
+        "同一次设备完成的向量 0x51 由另一宿主 CPU 的 KVM 中断提交上下文发布到 PIR；不使用 VT-d 设备 posting，也不把发送方执行的 KVM 代码算作目标 vCPU 的 VM-exit。",
+        "Guest CPL = 0、IF = 1，无 interrupt shadow，优先级允许；初始 PIR[0x51] = 0、ON = 0、SN = 0，无并发通知。EOI-exit bitmap 不要求向量 0x51 退出。",
+        "硬件活动状态表示处理器当前的逻辑状态，不是在每个演示步骤读取 VMCS 的实测值。KVM arch.mp_state 保持 RUNNABLE，不能把硬件 HLT 状态等同于 KVM 软件 HALTED。",
+        "此处只演示 HLT，不把 MONITOR/MWAIT 的监视地址唤醒混入同一条路径。QEMU cpu-pm 默认关闭，实际可用性还受硬件、内核安全策略和虚拟机配置限制。"
+      ],
+      "nodes": [
+        {"id": "guest", "label": "Guest idle / IRQ", "role": "客户机内核", "badge": "内核态", "initial": "准备执行 HLT，IF = 1"},
+        {"id": "sender", "label": "posted 中断提交", "role": "另一宿主 CPU 的 KVM 上下文", "initial": "尚未提交本次完成向量"},
+        {"id": "thread", "label": "目标 vCPU 线程", "role": "宿主线程状态", "initial": "TASK_RUNNING，未阻塞"},
+        {"id": "cpu", "label": "CPU · VMX / APICv", "role": "执行目标 vCPU 的物理处理器", "initial": "non-root · active"},
+        {"id": "pid", "label": "Posted Interrupt Descriptor", "role": "宿主内存 · 目标 vCPU 的 PID", "initial": "PIR[0x51] = 0，ON = 0"}
+      ],
+      "layout": {
+        "domains": [
+          {"id": "guest", "component": "guest", "title": "Guest", "context": "客户机内核 · 空闲与中断处理", "nodes": ["guest"]},
+          {"id": "sender", "component": "kvm", "title": "KVM", "context": "另一宿主 CPU · 异步提交", "nodes": ["sender"], "note": "发送方执行 KVM 代码，不代表目标 vCPU 退出 Guest。"},
+          {"id": "qemu", "component": "qemu", "title": "QEMU", "context": "宿主用户态 · 事先配置", "nodes": [], "note": "预先请求关闭 HLT exiting；目标 vCPU 的 KVM_RUN 持续调用中，不返回用户态。"},
+          {"id": "host", "component": "host-kernel", "title": "Host kernel", "context": "目标线程 · 调度视角", "nodes": ["thread"], "note": "未调用 schedule / rcuwait。宿主不因这次 Guest 空闲主动换入其他任务。"},
+          {"id": "cpu", "component": "hardware", "title": "物理硬件", "context": "同一目标 CPU · non-root 等待", "nodes": ["cpu"]}
+        ],
+        "memory": {"title": "宿主内存 · PID", "description": "保存 Guest 待处理向量与通知状态，不属于 Guest RAM", "nodes": ["pid"]}
+      },
+      "links": [
+        {"id": "publish", "from": "sender", "to": "pid", "label": "KVM 写 PIR[0x51]", "kind": "control"},
+        {"id": "notify", "from": "sender", "to": "cpu", "label": "POSTED_INTR_VECTOR", "kind": "notification"},
+        {"id": "sync", "from": "pid", "to": "cpu", "label": "硬件同步与交付", "kind": "control"}
+      ],
+      "structures": [
+        {
+          "id": "cpu-state", "title": "硬件活动状态", "kind": "registers",
+          "fields": [
+            {"key": "hlt-exiting", "label": "HLT exiting", "initial": "0（不截获）"},
+            {"key": "activity", "label": "VMX activity（硬件）", "initial": "active"},
+            {"key": "mode", "label": "目标 vCPU 执行状态", "initial": "non-root"},
+            {"key": "exit-count", "label": "本例 VM-exit 次数", "initial": "0"},
+            {"key": "rip", "label": "Guest RIP", "initial": "0xffffffff81001000（HLT）"},
+            {"key": "if", "label": "Guest IF", "initial": "1"}
+          ]
+        },
+        {
+          "id": "host-state", "title": "KVM 与宿主线程", "kind": "registers",
+          "fields": [
+            {"key": "mp-state", "label": "arch.mp_state", "initial": "RUNNABLE"},
+            {"key": "task-state", "label": "宿主 task 状态", "initial": "TASK_RUNNING，未阻塞"},
+            {"key": "wait", "label": "rcuwait 等待者", "initial": "未发布"},
+            {"key": "run-state", "label": "KVM_RUN", "initial": "调用中，未返回"}
+          ]
+        },
+        {
+          "id": "interrupt", "title": "posted 中断状态", "kind": "interrupt",
+          "fields": [
+            {"key": "pir", "label": "PIR[0x51]", "initial": "0"},
+            {"key": "on", "label": "PID.ON", "initial": "0"},
+            {"key": "isr", "label": "vISR[0x51]", "initial": "0"},
+            {"key": "notification", "label": "posted notification", "initial": "尚未发起"}
+          ]
+        }
+      ],
+      "completion": [
+        {"key": "mode", "label": "目标 vCPU"},
+        {"key": "exit-count", "label": "本例 VM-exit"},
+        {"key": "task-state", "label": "宿主线程"},
+        {"key": "run-state", "label": "KVM_RUN"}
+      ],
+      "steps": [
+        {
+          "id": "ready", "title": "执行 HLT 前", "actor": "Guest idle · non-root",
+          "description": "目标 vCPU 已在运行，idle 准备执行 HLT；硬件的 HLT exiting 已关闭。",
+          "detail": "这是预先配置好的直通场景，不是在 HLT 时才调用 QEMU 或 KVM 改配置。初始没有 pending，KVM_RUN 尚未返回。",
+          "active": [], "links": [], "changes": {}, "nodeStates": {},
+          "sourceIds": ["idle-qemu", "idle-controls", "idle-allowed"], "focus": true
+        },
+        {
+          "id": "halt", "title": "直接进入硬件等待", "actor": "目标 CPU · VMX non-root",
+          "description": "处理器执行 HLT，进入硬件 HLT 活动状态。HLT 本身没有触发 VM-exit，目标 vCPU 仍处于 non-root。",
+          "detail": "未进入 kvm_emulate_halt、halt polling 或 schedule。KVM 的 mp_state 仍为 RUNNABLE，宿主线程仍为 TASK_RUNNING；这只说明它未被阻塞，不代表 CPU 正在执行指令或忙轮询。硬件 HLT 与 KVM 软件 HALTED 是不同状态。",
+          "active": ["guest", "cpu"], "links": [],
+          "changes": {"activity": "HLT（硬件等待）", "rip": "0xffffffff81001001（HLT 之后）"},
+          "nodeStates": {"guest": "已执行 HLT，等待中断", "cpu": "non-root · 硬件 HLT", "thread": "TASK_RUNNING，CPU 在硬件等待"},
+          "sourceIds": ["sdm", "idle-controls"], "focus": true
+        },
+        {
+          "id": "post", "title": "另一 CPU 发布完成向量", "actor": "另一宿主 CPU · KVM posted 路径",
+          "description": "后端完成事件进入 KVM 的中断提交路径。发送方将 Guest 向量 0x51 写入目标 PID.PIR，设置 ON，准备发出 posted notification。",
+          "detail": "目标 vCPU 没有退出；这里运行 KVM 的是另一宿主 CPU。固定初始 ON = 0、无并发通知，因此需要发送一次通知。发布与通知分步仅为讲解，源码在同一次调用内推进。",
+          "active": ["sender", "pid"], "links": ["publish"],
+          "changes": {"pir": "1", "on": "1", "notification": "待发送 · POSTED_INTR_VECTOR"},
+          "nodeStates": {"sender": "已发布 0x51，准备通知目标 CPU", "pid": "PIR[0x51] = 1，ON = 1"},
+          "sourceIds": ["idle-posted", "idle-pir", "idle-notify"], "focus": true
+        },
+        {
+          "id": "deliver", "title": "硬件唤醒并交付中断", "actor": "目标 CPU · APICv",
+          "description": "匹配的 posted notification 到达目标 CPU。硬件将 PIR 同步至虚拟 IRR，满足 IF 与优先级条件后解除 HLT，交付 Guest 向量 0x51。",
+          "detail": "这一步把硬件同步、唤醒与接受合并展示，不是宿主线程的 sched_wakeup。PIR 与 ON 清零，向量被接受后 vISR 置位；目标 vCPU 无需 VM-exit 或重新 VM-entry。POSTED_INTR_VECTOR 是宿主通知向量，不是第二次设备完成。",
+          "active": ["cpu", "pid", "guest"], "links": ["notify", "sync"],
+          "changes": {"activity": "active", "pir": "0", "on": "0", "isr": "1", "if": "0（Guest interrupt gate）", "notification": "已由目标 CPU 处理", "rip": "客户机向量 0x51 处理入口"},
+          "nodeStates": {"sender": "已发送本次 posted notification", "cpu": "non-root · 已交付 0x51", "pid": "PIR = 0，ON = 0", "guest": "执行 Guest IRQ handler", "thread": "TASK_RUNNING，继续执行 Guest"},
+          "sourceIds": ["sdm", "idle-notify"], "focus": true
+        },
+        {
+          "id": "eoi", "title": "Guest 应答中断", "actor": "Guest IRQ / APICv",
+          "description": "Guest 按设备协议处理完成，并通过虚拟 APIC EOI 应答本次中断；硬件清除 vISR[0x51]。",
+          "detail": "本例固定 EOI-exit bitmap 不要求退出，不调用宿主的软件 LAPIC EOI 处理。这里不展开设备数据处理，也不把 EOI 当成新的完成通知。",
+          "active": ["guest", "cpu"], "links": [], "changes": {"isr": "0"},
+          "nodeStates": {"guest": "已应答，准备返回 idle", "cpu": "non-root · vISR[0x51] = 0"},
+          "sourceIds": ["sdm"], "focus": true
+        },
+        {
+          "id": "resume", "title": "继续 HLT 之后的代码", "actor": "Guest idle · non-root",
+          "description": "Guest 从中断返回，恢复 HLT 之后的 RIP。目标 vCPU 的 KVM_RUN 仍未返回，本例 VM-exit 次数保持 0。",
+          "detail": "本例的 0 次退出依赖 HLT 直通、posted 交付及无额外宿主事件。普通 IRQ、宿主定时器或抢占仍可能导致退出；关闭 HLT exiting 不等于所有唤醒都免退出。应用任务是否被调度由 Guest 决定，不由此处硬件唤醒直接保证。",
+          "active": ["guest", "cpu"], "links": [],
+          "changes": {"rip": "0xffffffff81001001（HLT 之后）", "if": "1"},
+          "nodeStates": {"guest": "继续 idle；后续任务由 Guest 调度", "cpu": "non-root · active"},
+          "sourceIds": ["sdm", "idle-controls", "idle-notify"], "focus": true
+        }
+      ],
+      "callPaths": [
+        {
+          "id": "setup", "title": "事先配置 HLT 直通", "context": "QEMU / KVM 初始化 · 非逐次等待路径",
+          "sourceIds": ["idle-qemu", "idle-allowed", "idle-controls"],
+          "boundary": "QEMU 请求能力，KVM 检查可用位并在构建执行控制时关闭 HLT exiting。这些是配置阶段的相关入口，不在每次 Guest HLT 时调用。"
+        },
+        {
+          "id": "post", "title": "另一宿主 CPU 发布与通知", "context": "后端完成后的 KVM 中断提交上下文",
+          "sourceIds": ["idle-posted", "idle-pir", "idle-notify"],
+          "boundary": "目标仍在 IN_GUEST_MODE；发送方向其 CPU 发 posted notification。没有把目标 vCPU 线程先唤醒、再调入或重新 VM-entry。",
+          "entry": {"kind": "notification", "label": "完成事件异步到达另一宿主 CPU，不是目标 vCPU 的 HLT 退出调用栈"}
+        }
+      ],
+      "sourceSteps": [
+        {"id": "hlt-hardware", "title": "硬件执行 HLT", "kind": "instruction", "context": "目标 CPU · HLT exiting = 0", "stepIds": ["halt"], "sourceIds": ["sdm"], "detail": "Guest 指令由硬件执行，不调用 kvm_emulate_halt 或宿主阻塞函数。", "code": "HLT → 硬件活动状态 HLT；VMX non-root 保持"},
+        {"id": "posted-hardware", "title": "posted 处理与硬件唤醒", "kind": "instruction", "context": "目标 CPU · 配置匹配且中断可接受", "stepIds": ["deliver"], "sourceIds": ["sdm"], "detail": "硬件同步、接受与解除 HLT 合并展示，不伪造软件的注入调用链。", "code": "PIR → vIRR → 接受 0x51；HLT → active；vISR[0x51] = 1"},
+        {"id": "guest-return", "title": "虚拟 EOI 与 Guest 返回", "kind": "instruction", "context": "Guest 中断处理 · 本例无需 EOI 退出", "stepIds": ["eoi", "resume"], "sourceIds": ["sdm"], "detail": "Guest 应答后通过 IRETQ 返回原来的执行位置，不是宿主再次 VM-entry。", "code": "虚拟 EOI → IRETQ → HLT 后的 Guest RIP"}
       ]
     },
     {

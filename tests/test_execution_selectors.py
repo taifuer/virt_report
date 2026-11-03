@@ -35,7 +35,7 @@ def test_selector_represents_each_original_scenario_exactly_once(demo_id):
     options = [option["id"] for group in groups(selector) for option in group["scenarios"]]
     assert sorted(options) == sorted(expected)
     assert len(options) == len(set(options))
-    assert get_demo(demo_id)["selector"] == selector
+    assert get_demo(demo_id, presentation=False)["selector"] == selector
     if "selector" in original:
         assert original["selector"] == selector
 
@@ -58,20 +58,77 @@ def test_memory_object_selector_keeps_ram_conditions_together():
     assert "operations" not in selector
     ram, mmio = selector["categories"]
     assert [ram["id"], mmio["id"]] == ["ram", "mmio"]
-    assert [group["label"] for group in ram["groups"]] == ["正常访问", "Guest 缺页", "宿主处理"]
-    assert [option["id"] for group in mmio["groups"] for option in group["scenarios"]] == [
-        "mmio-read", "mmio-kernel-lapic", "mmio-ioeventfd", "mmio-vfio-direct",
+    assert [group["label"] for group in ram["groups"] if not group.get("advanced")] == [
+        "正常访问", "Guest 缺页", "KVM 建立映射",
     ]
+    assert [option["id"] for group in ram["groups"] if not group.get("advanced")
+            for option in group["scenarios"]] == [
+        "ram-hit", "tlb-miss", "guest-page-fault", "ept-missing",
+    ]
+    assert [option["id"] for group in ram["groups"] if group.get("advanced")
+            for option in group["scenarios"]] == ["host-page-fault", "dirty-write-protect"]
+    assert [option["id"] for group in mmio["groups"] for option in group["scenarios"]] == [
+        "mmio-read", "mmio-kernel-lapic", "mmio-ioeventfd", "mmio-vfio-direct", "mmio-ivshmem-direct",
+    ]
+
+
+def test_memory_advanced_presets_are_scoped_to_ram_and_keep_old_scene_ids():
+    page = render_mechanisms_html(Config(), "memory-access")
+    assert 'data-execution-advanced-category="ram" hidden' in page
+    assert page.count('data-execution-advanced-scenario="') == 2
+    for scene_id in ("host-page-fault", "dirty-write-protect"):
+        assert f'data-execution-advanced-scenario="{scene_id}"' in page
+        assert any(item["id"] == scene_id for item in get_demo("memory-access")["scenarios"])
+    assert 'data-execution-advanced-category="mmio"' not in page
 
 
 @pytest.mark.parametrize("demo_id,labels", [
     ("cpu-execution", ["Guest 直接执行", "KVM 内核处理", "QEMU 设备处理", "等待与唤醒"]),
-    ("interrupt-delivery", ["通知路径", "屏蔽与等待", "硬件递送", "设备直通与 VT-d"]),
+    ("interrupt-delivery", ["软件后端", "直通设备", "屏蔽与等待"]),
 ])
 def test_single_selector_groups_examples_without_free_combination(demo_id, labels):
     selector = SELECTORS[demo_id]
     assert "categories" not in selector and "operations" not in selector
     assert [group["label"] for group in selector["groups"]] == labels
+
+
+def test_interrupt_main_menu_separates_sender_from_advanced_conditions():
+    selector = SELECTORS["interrupt-delivery"]
+    primary = [group for group in groups(selector) if not group.get("advanced")]
+    advanced = [group for group in groups(selector) if group.get("advanced")]
+    assert [[item["id"] for item in group["scenarios"]] for group in primary] == [
+        ["msix-software", "irqfd", "apicv-posted"], ["vtd-remapped", "vtd-posted"],
+    ]
+    assert [item["id"] for item in advanced[0]["scenarios"]] == [
+        "notify-suppressed", "msix-masked", "if-masked",
+    ]
+    page = render_mechanisms_html(Config(), "interrupt-delivery")
+    assert '<details class="walkthrough-advanced" data-execution-advanced>' in page
+    assert page.count('data-execution-advanced-scenario="') == 3
+
+
+@pytest.mark.parametrize("demo_id", ["interrupt-delivery", "memory-access"])
+@pytest.mark.parametrize("mutation", ["all-advanced", "non-boolean"])
+def test_advanced_selector_requires_primary_choices_and_a_boolean_flag(demo_id, mutation):
+    selector = copy.deepcopy(SELECTORS[demo_id])
+    expected = {item["id"] for group in groups(selector) for item in group["scenarios"]}
+    # Making just one category all-advanced must fail, even if another has primary choices.
+    selected_groups = selector["categories"][0]["groups"] if "categories" in selector else selector["groups"]
+    if mutation == "all-advanced":
+        for group in selected_groups:
+            group["advanced"] = True
+    else:
+        selected_groups[0]["advanced"] = "false"
+    with pytest.raises(ValueError, match="Invalid execution selector"):
+        validate_selector(selector, expected)
+
+
+def test_advanced_selector_cannot_hide_a_direction_from_operation_controls():
+    selector = copy.deepcopy(SELECTORS["network-io"])
+    expected = {item["id"] for group in groups(selector) for item in group["scenarios"]}
+    selector["categories"][0]["groups"][0]["advanced"] = True
+    with pytest.raises(ValueError, match="cannot combine with operation controls"):
+        validate_selector(selector, expected)
 
 
 @pytest.mark.parametrize("mutation", [

@@ -12,9 +12,7 @@
             "guest",
             "output"
           ],
-          "component": "guest",
-          "span": 2,
-          "inline": true
+          "component": "guest"
         },
         {
           "id": "qemu",
@@ -83,9 +81,7 @@
             "guest",
             "output"
           ],
-          "component": "guest",
-          "span": 2,
-          "inline": true
+          "component": "guest"
         },
         {
           "id": "qemu",
@@ -154,9 +150,7 @@
             "guest",
             "output"
           ],
-          "component": "guest",
-          "span": 2,
-          "inline": true
+          "component": "guest"
         },
         {
           "id": "qemu",
@@ -1231,8 +1225,6 @@
             "qemu",
             "device"
           ],
-          "span": 2,
-          "inline": true,
           "component": "qemu"
         },
         {
@@ -1411,60 +1403,22 @@
     },
     "mmio-vfio-direct": {
       "domains": [
-        {
-          "id": "guest",
-          "title": "Guest",
-          "context": "客户机内核",
-          "nodes": [
-            "guest"
-          ],
-          "component": "guest"
-        },
-        {
-          "id": "host",
-          "title": "KVM",
-          "context": "宿主内核",
-          "nodes": [
-            "kvm"
-          ],
-          "component": "kvm"
-        },
-        {
-          "id": "qemu",
-          "title": "QEMU",
-          "context": "宿主用户态",
-          "nodes": [
-            "qemu"
-          ],
-          "component": "qemu"
-        },
-        {
-          "id": "host-kernel-context",
-          "title": "Host kernel",
-          "context": "宿主内核 · 非 KVM 子系统",
-          "nodes": [],
-          "component": "host-kernel",
-          "note": "VFIO 已建立可 mmap 的 BAR 映射；本次 CPU 直接访问设备，不逐次调用 VFIO，且不是设备 DMA。"
-        },
-        {
-          "id": "cpu",
-          "title": "CPU",
-          "context": "地址转换与设备访问",
-          "nodes": [
-            "mmu"
-          ],
-          "component": "hardware"
-        },
-        {
-          "id": "device",
-          "title": "物理设备",
-          "context": "可映射 BAR 区间",
-          "nodes": [
-            "device"
-          ],
-          "component": "hardware"
-        }
+        {"id": "guest", "title": "Guest", "context": "客户机内核 · PCI BAR 资源", "nodes": ["guest"], "component": "guest"},
+        {"id": "host", "title": "KVM", "context": "宿主内核 · 映射维护", "nodes": [], "component": "kvm", "note": "已建立 GPA→HPA 的 EPT；本次读取不进入退出处理。"},
+        {"id": "qemu", "title": "QEMU", "context": "宿主用户态 · 事先配置", "nodes": [], "component": "qemu", "note": "已注册 Guest BAR 与 VFIO 后备映射；KVM_RUN 持续调用中，不逐次执行设备回调。"},
+        {"id": "host-kernel-context", "title": "Host kernel", "context": "宿主内核 · VFIO", "nodes": [], "component": "host-kernel", "note": "已提供可 mmap 的物理设备区间；CPU 访问不是 DMA，也不逐次调用 VFIO。"},
+        {"id": "cpu", "title": "物理硬件", "context": "CPU 转换 · PCIe 与设备", "nodes": ["mmu", "device"], "component": "hardware"}
       ]
+    },
+    "mmio-ivshmem-direct": {
+      "domains": [
+        {"id": "guest", "title": "Guest", "context": "客户机内核 · 共享 BAR2", "nodes": ["guest"], "component": "guest"},
+        {"id": "kvm", "title": "KVM", "context": "宿主内核 · 映射维护", "nodes": [], "component": "kvm", "note": "已把 BAR2 GPA 映射到共享 RAM 页 HPA；本次读取不进入退出处理。"},
+        {"id": "qemu", "title": "QEMU", "context": "宿主用户态 · 事先配置", "nodes": [], "component": "qemu", "note": "ivshmem 已注册共享内存 BAR2；本次数据读取不调用 BAR0 的寄存器回调。"},
+        {"id": "host", "title": "Host kernel", "context": "宿主内核 · 共享内存后备", "nodes": [], "component": "host-kernel", "note": "共享页已驻留；不需要换入，也没有 VFIO 或物理 PCI 设备。"},
+        {"id": "cpu", "title": "物理硬件", "context": "CPU · 地址转换与内存访问", "nodes": ["mmu"], "component": "hardware"}
+      ],
+      "memory": {"title": "宿主共享 RAM · BAR2 后备", "description": "Guest 看到 PCI BAR 窗口，实际读取同一共享页；不是物理设备寄存器", "nodes": ["ram"]}
     }
   },
   "cpu-execution": {
@@ -1866,8 +1820,6 @@
             "device",
             "msix"
           ],
-          "span": 2,
-          "inline": true,
           "component": "qemu"
         },
         {
@@ -1911,7 +1863,6 @@
           "title": "KVM",
           "context": "宿主内核 · irqfd 与虚拟中断",
           "nodes": [
-            "eventfd",
             "route",
             "lapic"
           ],
@@ -1919,20 +1870,22 @@
         },
         {
           "id": "backend",
-          "title": "QEMU",
-          "context": "宿主用户态 · virtio-net 完成通知",
+          "title": "DPDK",
+          "context": "独立宿主用户态进程 · vhost-user",
           "nodes": [
             "backend"
           ],
-          "component": "qemu"
+          "component": "host-user"
         },
         {
           "id": "host-kernel-context",
           "title": "Host kernel",
-          "context": "宿主内核 · 非 KVM 子系统",
-          "nodes": [],
+          "context": "宿主内核 · eventfd",
+          "nodes": [
+            "eventfd"
+          ],
           "component": "host-kernel",
-          "note": "宿主 eventfd、调度等基础设施支持通知；虚拟中断的路由与待处理状态由内核 KVM 管理。"
+          "note": "eventfd write 触发 KVM 已注册的 irqfd 回调；无需另一个用户态监听线程。"
         },
         {
           "id": "hardware-context",
@@ -1940,7 +1893,15 @@
           "context": "处理器与物理设备",
           "nodes": [],
           "component": "hardware",
-          "note": "物理 CPU 在条件允许时向 Guest 交付中断；此处发起方是 QEMU 模拟设备，不是物理网卡直投。"
+          "note": "CPU 在成功 VM-entry 时交付 Guest 向量；本例关闭 APICv。"
+        },
+        {
+          "id": "qemu-control",
+          "title": "QEMU",
+          "context": "宿主用户态 · 配置与 fd 传递",
+          "nodes": [],
+          "component": "qemu",
+          "note": "已配置内存共享、MSI 路由与 callfd；本次完成不经 QEMU 转发。"
         }
       ],
       "memory": {
@@ -2035,8 +1996,6 @@
             "device",
             "msix"
           ],
-          "span": 2,
-          "inline": true,
           "component": "qemu"
         },
         {
@@ -2096,20 +2055,22 @@
         },
         {
           "id": "device",
-          "title": "QEMU",
-          "context": "宿主用户态 · virtio-net 完成通知",
+          "title": "DPDK",
+          "context": "独立宿主用户态进程 · vhost-user",
           "nodes": [
             "device"
           ],
-          "component": "qemu"
+          "component": "host-user"
         },
         {
           "id": "host-kernel-context",
           "title": "Host kernel",
-          "context": "宿主内核 · 非 KVM 子系统",
-          "nodes": [],
+          "context": "宿主内核 · eventfd",
+          "nodes": [
+            "eventfd"
+          ],
           "component": "host-kernel",
-          "note": "宿主 eventfd、调度等基础设施支持通知；虚拟中断的路由与待处理状态由内核 KVM 管理。"
+          "note": "eventfd write 触发 KVM 已注册的 irqfd 回调；无需另一个用户态监听线程。"
         },
         {
           "id": "hardware",
@@ -2119,6 +2080,14 @@
             "cpu"
           ],
           "component": "hardware"
+        },
+        {
+          "id": "qemu-control",
+          "title": "QEMU",
+          "context": "宿主用户态 · 配置与 fd 传递",
+          "nodes": [],
+          "component": "qemu",
+          "note": "已配置内存共享、MSI 路由与 callfd；本次完成不经 QEMU 转发。"
         }
       ],
       "memory": {
@@ -2158,8 +2127,6 @@
             "device",
             "msix"
           ],
-          "span": 2,
-          "inline": true,
           "component": "qemu"
         },
         {
@@ -2392,8 +2359,6 @@
             "qemu",
             "vcpu"
           ],
-          "span": 2,
-          "inline": true,
           "component": "qemu"
         },
         {
@@ -2459,8 +2424,6 @@
             "qemu",
             "vcpu"
           ],
-          "span": 2,
-          "inline": true,
           "component": "qemu"
         },
         {
@@ -2526,8 +2489,6 @@
             "qemu",
             "vcpu"
           ],
-          "span": 2,
-          "inline": true,
           "component": "qemu"
         },
         {
@@ -2593,8 +2554,6 @@
             "qemu",
             "vcpu"
           ],
-          "span": 2,
-          "inline": true,
           "component": "qemu"
         },
         {

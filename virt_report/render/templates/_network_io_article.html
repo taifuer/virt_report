@@ -1,11 +1,12 @@
 <section id="preface" class="mechanism-section">
   <h2>场景与边界</h2>
-  <p>客户机应用调用 <code>sendto()</code> 后，UDP/IP 协议栈把用户数据封装为网络帧，再由 virtio-net 驱动交给后端。接收方向则从后端写入 RX 缓冲区开始，经过驱动、协议栈和 socket 排队，最后由 <code>recvfrom()</code> 把 UDP 载荷复制给应用。QEMU、内核 vhost-net、DPDK vhost-user 与硬件 vDPA 使用相同的客户机设备接口，数据处理位置和缓冲区交接方式各有不同。</p>
+  <p>发送由客户机应用调用 <code>sendto()</code>，UDP/IP 协议栈封装网络帧，再由 virtio-net 驱动交给后端。接收则由驱动预置空 RX 缓冲区，外部报文可以主动到达；经过设备、驱动和协议栈后，数据进入已绑定的 socket，应用再用 <code>recvfrom()</code> 读取。收包不由某次 recvfrom 发起，也不是让网卡去获取指定报文。</p>
+  <p>QEMU、内核 vhost-net、DPDK vhost-user 与硬件 vDPA 使用相同的客户机设备接口，但数据处理位置和缓冲区交接方式不同。本页分别观察应用调用、Guest 队列、完成中断与宿主处理；它们的“完成”不代表同一件事。</p>
   <p>示例发送 ASCII 字符串 <code>virt-report-demo01</code>，共 18 B。加上 8 B UDP 头、20 B IPv4 头和 14 B Ethernet 头，得到 60 B 帧 P1；virtio-net 另外使用 12 B 网络头，设备 RX 的实际写入量为 72 B。接收应用提供 128 B 缓冲区，成功时 <code>recvfrom()</code> 返回 18。</p>
   <p>队列按 8 个槽位展示，使用直接描述符。发送选取头部不能直接压入 skb 的分支，<code>desc[0] → desc[2]</code> 分别指向 12 B 网络头和 60 B 帧；接收采用 <code>add_recvbuf_small()</code>，<code>desc[2]</code> 提供 <code>12 + GOOD_PACKET_LEN = 1530 B</code> 可写空间。本次实际写入仍为 72 B。页片段还会分配 headroom 和 skb 元数据，分配大小不等于描述符向设备暴露的长度。</p>
   <p>演示采用 x86 + KVM、QEMU 10.2.0、Linux 6.18；DPDK 路径采用 24.11。设备为 modern virtio-net，使用 split ring 和一个队列对：队列 0 接收，队列 1 发送。路由、邻居、设备协商与内存映射已经就绪；使用普通 UDP 复制路径，关闭分段、校验和卸载、合并 RX 缓冲区、UDP cork 和零拷贝发送。报文不带 IP 选项或 VLAN，也无需分片。</p>
   {% include '_mechanism_baselines.html' %}
-  <p>先选择后端及 TX / RX，再逐步观察处理者与字段变化。流程总览从应用调用开始，包含协议栈、队列、后端和返回；关键结构展示描述符的地址、长度、权限和 next，以及 available / used 的环项、发布索引、消费位置和缓冲区。填写环项与发布索引分成不同步骤，源码路径则按执行上下文列出关键函数。额外两个场景演示 TAP 背压与 RX 空间不足。</p>
+  <p>先选择后端及 TX / RX，再沿一条成功路径观察处理者与字段变化。TX 从应用发送开始；RX 展示驱动预置空间、外部到包、socket 排队、应用随后读取。关键结构分别展示描述符表、内存缓冲区、available ring 和 used ring；点击描述符地址可对照相应缓冲区。填写环项与发布索引分成不同步骤，源码路径按执行上下文列出关键函数。</p>
 </section>
 
 <section id="walkthrough" class="mechanism-section">
@@ -17,6 +18,7 @@
   <h2>缓冲区与完成语义</h2>
   <p>普通发送会把用户数据复制到客户机内核的 skb。应用缓冲区 U0、内核 skb S1、设备描述符，以及 DPDK 路径中的宿主 mbuf 是不同对象。<code>sendto()</code> 返回后，应用可以复用 U0，已经复制出的数据仍可沿后续路径转发。UDP 发送内存预算用于约束本地资源使用；普通无 cork UDP 不会像 TCP 那样保留可靠重传队列。</p>
   <p>TX 发布的是已准备好的帧，后端获得设备可读的缓冲区；RX 提前发布空闲空间，后端获得设备可写的缓冲区。两种方向都先写内容或描述符，再发布索引。通知只提示另一端检查队列，完成记录由 used 保存，多个报文可以共用一次通知。</p>
+  <p>“发布完成”与“Guest 处理中断”不是通知两次。本例先发布 used，再发起一次完成提示；KVM 记录 vLAPIC 待处理中断，目标 vCPU 随后接受它，Guest 回调安排 NAPI。提交、待处理、注入和处理是同一次中断的不同位置。驱动依据 used 消费完成记录，不根据中断次数判断完成了几个报文；实际通知也可以被抑制或由轮询替代。</p>
   <p><code>avail.ring[n]</code> 保存链头编号，不保存报文本身；描述符的 <code>addr</code> 才指向缓冲区。<code>used.ring[n]</code> 保存链头与本次设备写入长度。槽位已有数据不代表已发布：只有观察到新的索引，另一端才能消费。TX 的 <code>used.len = 0</code> 表示设备没有向可写描述符写入字节，不是帧长为零；RX 的 <code>used.len = 72</code> 则不等于空间容量 1530 B。</p>
   <table>
     <thead><tr><th scope="col">观察点</th><th scope="col">已经完成</th><th scope="col">后续工作</th></tr></thead>
@@ -33,10 +35,10 @@
   <p>发送在队列发布后分成并行的两条路径：Guest 沿系统调用返回，宿主后端消费已发布的链。本页展示先返回、后处理的一种调度顺序，后端也可能更早运行。图中返回边直接连接客户机协议栈和应用，设备完成不会作为 <code>sendto()</code> 返回的前置条件。真实系统若先把 skb 排入客户机 qdisc，返回还可能早于 virtqueue 发布。</p>
   <p>QEMU + TAP 的普通 TX 路径在 <code>writev()</code> 成功返回后发布 used，再判断完成通知条件。此时宿主已经接受了帧，网络转发可以独立推进；Guest 侧依次处理虚拟中断和队列回收。宿主转发可能在写 TAP 的调用内部就已开始，两条路径之间没有“Guest 回收后才发送”的依赖。TAP 暂不可写时则保留请求，等待重试成功后发布 used。<a href="{{ demo.sources['qemu-tx'].url }}">QEMU 发送与完成</a>、<a href="{{ demo.sources['qemu-tap-write'].url }}">TAP 写入</a></p>
   <p>RX 演示选取单帧接收路径：NAPI poll 从 used 取回链，构造 skb 并交给 GRO；<code>GRO_NORMAL</code> 普通列表尚未达到提前刷新条件，驱动先补充新 RX 空间。本轮处理量小于 budget，随后在 NAPI 完成阶段由 <code>gro_flush_normal()</code> 把普通列表交给协议栈。IPv4 / UDP 校验与分发完成后，数据才进入 socket。批量阈值或处理预算不同，协议交付与 refill 可以交错；补充新空间始终不以应用读完旧数据为前提。</p>
-  <p>数据进入 socket 后，等待的应用变为可运行；获得 CPU 后才能复制载荷并返回。设备完成也不保证数据能进入 socket：协议校验、接收预算和应用消费速度都可能成为后续限制。本例选择空间充足、校验通过的一条成功路径。</p>
+  <p>本例数据先进入 socket，应用随后调用 recvfrom，直接读取已有数据。若应用先调用、socket 尚无数据，阻塞调用会等待；入队时再唤醒等待者，线程获得 CPU 后才能复制载荷。非阻塞调用在无数据时返回 EAGAIN。这是同一接收机制下调用时机的区别，不需要另选一种收包模式。设备完成也不保证数据能进入 socket：协议校验、接收预算等可能导致后续丢弃。</p>
   <p>DPDK 的普通同步路径有两份独立存储。TX 将 Guest 帧复制为 mbuf，在发布 used 并检查通知条件后返回；应用取得 mbuf，即可交给 PMD，无需等待 Guest 执行中断或回收描述符。RX 则从 mbuf 复制到 Guest 空间；<code>rte_vhost_enqueue_burst()</code> 成功返回后，应用可释放已复制报文对应的宿主 mbuf，Guest 的 NAPI 与协议栈继续处理自己的副本。<code>rte_vhost_dequeue_burst()</code> 从 Guest 取包，<code>rte_vhost_enqueue_burst()</code> 向 Guest 送包，两个名字以 vhost 接口为视角。</p>
   <p>硬件 vDPA 直接访问 Guest 缓冲区。设备必须结束对本次发送链及其数据的使用，才可发布 TX used；DMA 刚开始或报文刚进入硬件处理流程都不足以满足这一条件。内部缓存、流水线和发送完成策略由具体设备实现，通用 virtio 接口只保证 used 之后可以归还缓冲区。演示保留这条保证，不把设备完成解释为远端收包确认。</p>
-  <p>队列空间和网络交付能力也应分别观察。TX 的 TAP 暂不可写时，QEMU 保留异步请求，写入恢复后才归还链。RX 没有可写缓冲区时，QEMU 等待 refill 并暂停上游交付；本例演示恢复成功，持续超载仍受有限队列约束，可能丢包。有关 NAPI、缓冲区补充与竞态的细节见<a href="virtio-net-rx.html">virtio-net 接收路径</a>。</p>
+  <p>队列空间和网络交付能力也应分别观察。TX 的 TAP 暂不可写时，QEMU 会保留异步请求；RX 没有可写缓冲区时，也可能暂停上游交付。持续超载受有限队列约束，仍可能丢包。默认演示固定空间充足的成功路径，不额外设置“正常/缓冲区不足”选择。有关 NAPI、缓冲区补充与竞态的细节见<a href="virtio-net-rx.html">virtio-net 接收路径</a>。</p>
 </section>
 
 <section id="evolution" class="mechanism-section">

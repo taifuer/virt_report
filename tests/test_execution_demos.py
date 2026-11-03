@@ -1,5 +1,6 @@
 """Offline validation, rendering and model tests for execution walkthroughs."""
 import copy
+import html
 import json
 import shutil
 import subprocess
@@ -39,7 +40,7 @@ def test_execution_demo_integrity_and_rendering(demo_id):
         assert len(scene["steps"]) > 2
         assert any(step["focus"] for step in scene["steps"][1:])
         for step in scene["steps"]:
-            assert step["description"] in page
+            assert step["description"] in html.unescape(page)
 
 
 def test_execution_demo_lookup_does_not_allow_arbitrary_files():

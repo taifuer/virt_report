@@ -13,6 +13,7 @@ CONTENT = Path(__file__).resolve().parents[1] / "virt_report" / "content"
 TEMPLATES = CONTENT.parent / "render" / "templates"
 LINUX_COMMIT = "7d0a66e4bb9081d75c82ec4957c50034cb0ea449"
 QEMU_COMMIT = "698104725efad4b29079d857dfdebbd804e34c99"
+DPDK_COMMIT = "1b3bf1128d9bda5595861814792f74b8f57160c8"
 
 
 def load_demo(name):
@@ -64,7 +65,9 @@ def test_execution_sources_are_fixed_code_or_official_architecture_manual(name):
     for source in load_demo(name)["sources"].values():
         url = urlsplit(source["url"])
         if url.netloc == "github.com":
-            expected = LINUX_COMMIT if "/torvalds/linux/" in url.path else QEMU_COMMIT
+            repository = "/".join(url.path.split("/")[1:3])
+            expected = {"torvalds/linux": LINUX_COMMIT, "qemu/qemu": QEMU_COMMIT,
+                        "DPDK/dpdk": DPDK_COMMIT}[repository]
             assert f"/blob/{expected}/" in url.path
             assert re.fullmatch(r"L\d+(?:-L\d+)?", url.fragment)
         else:
@@ -77,7 +80,8 @@ def test_cpu_scenarios_cover_distinct_execution_boundaries():
     assert demo["defaultScenario"] == "ordinary-add"
     assert {scene["id"] for scene in demo["scenarios"]} == {
         "ordinary-add", "guest-syscall", "cpuid-kernel",
-        "mmio-userspace", "hlt-wakeup", "sleep-other-task", "sleep-idle-vcpu",
+        "mmio-userspace", "hlt-wakeup", "hlt-passthrough",
+        "sleep-other-task", "sleep-idle-vcpu",
     }
 
 

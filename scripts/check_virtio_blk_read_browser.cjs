@@ -183,8 +183,8 @@ async function assertView(page, view) {
   }
   assert.equal(await page.locator('.vbr-visual > [data-vbr-structure]').count(), 1,
     'queue mechanism belongs in the main visualization area');
-  assert.equal(await page.locator('[data-vbr-interrupt-path]').isVisible(), view === 'overview',
-    'interrupt injection details stay in the overview');
+  assert.equal(await page.locator('[data-vbr-domain="kvm"] [data-vbr-interrupt-path]').count(), 1,
+    'interrupt stages belong to KVM, not an isolated footer');
   assert.equal(await page.locator('[data-vbr-queue-step]').count(), view === 'mechanism' ? 8 : 0);
   assert.equal(await page.locator('[data-vbr-phase]').count(), view === 'mechanism' ? 0 : 10);
 }
@@ -192,11 +192,9 @@ async function assertView(page, view) {
 async function assertFrame(page, frame, activeScene) {
   assert.equal(await page.locator('[data-vbr-lab]').getAttribute('data-step'), frame.id);
   await assertTypedQueue(page, frame, activeScene);
-  const filled = page.locator('[data-vbr-byte][data-filled="true"]');
-  assert.equal(await filled.count(), frame.state.bufferReady ? 16 : 0);
   const view = await page.locator('[data-vbr-lab]').getAttribute('data-view');
-  assert.equal(await page.locator('[data-vbr-byte][data-filled="true"]:visible').count(),
-    frame.state.bufferReady && view === 'overview' ? 16 : 0);
+  assert.equal(await page.locator('[data-vbr-interrupt-path]').isVisible(),
+    view === 'overview' && Boolean(frame.state.interruptSignaled));
   assert.equal(await page.locator('[data-vbr-node="application"]').getAttribute('data-done'),
     String(frame.state.userReturned), `${frame.id}: application completion indicator`);
   assert.equal(await page.locator('[data-vbr-traveler]').getAttribute('hidden'), '', 'reduced motion disables travel');
@@ -216,8 +214,19 @@ async function assertTypedQueue(page, frame, activeScene) {
     summary: Object.fromEntries([...node.querySelectorAll('[data-queue-summary-field]')]
       .map(field => [field.dataset.queueSummaryField, field.textContent])),
     tables: node.querySelectorAll('table').length,
+    memory: [...node.querySelectorAll('[data-network-memory-part]')].map(panel => ({
+      id: panel.dataset.networkMemoryPart, chain: panel.querySelector('.network-memory-chain')?.textContent,
+      title: panel.querySelector('h5').textContent, current: panel.dataset.current,
+      index: panel.querySelector('.network-memory-index')?.textContent,
+      pointers: [...panel.querySelectorAll('.network-memory-pointer')].map(n => n.textContent),
+      slots: [...panel.querySelectorAll('.network-memory-slots > span')].map(n => ({text: n.textContent, published: n.dataset.published, returned: n.dataset.returned})),
+      buffers: [...panel.querySelectorAll('[data-network-buffer]')].map(n => ({id: n.dataset.networkBuffer,
+        valid: Number(n.querySelector('[role="meter"]').getAttribute('aria-valuenow'))})),
+    })),
     headings: [...node.querySelectorAll('thead th')].map(cell => cell.textContent),
     heading: node.querySelector('header span')?.textContent,
+    free: node.querySelector('[data-free-descriptors]')?.textContent,
+    freeRegion: node.querySelector('[data-free-descriptors]')?.closest('[data-queue-region]')?.dataset.queueRegion,
     descriptors: [...node.querySelectorAll('[data-descriptor]')].map(row => ({
       index: Number(row.dataset.descriptor), state: row.dataset.state, current: row.dataset.current,
       cells: [...row.querySelectorAll('td')].map(cell => cell.textContent),
@@ -236,13 +245,29 @@ async function assertTypedQueue(page, frame, activeScene) {
   assert.equal(containers.length, 2);
   for (const container of containers) {
     if (container.compact) {
-      assert.equal(container.summaries, 1, 'overview uses one compact Guest RAM summary');
-      assert.deepEqual(Object.keys(container.summary), ['chain', 'avail', 'used', 'free']);
-      assert.equal(container.summary.chain, state.descriptors.length
-        ? state.descriptors.map(descriptor => descriptor.index).join(' → ') : '尚未准备');
-      assert.equal(container.summary.avail, `idx ${state.avail.index} · 设备消费 ${state.avail.consumer}`);
-      assert.equal(container.summary.used, `idx ${state.used.index} · 驱动回收 ${state.used.consumer}`);
-      assert.equal(container.summary.free, `${state.freeDescriptors} / ${meta.size}`);
+      assert.equal(container.summaries, 0, 'do not duplicate the four memory panels with a summary');
+      assert.deepEqual(container.memory.map(p => p.id), ['descriptors', 'buffers', 'available', 'completion']);
+      const [descriptors, buffers, available, completion] = container.memory;
+      assert.equal(descriptors.chain, `链 ${state.descriptors.length ? state.descriptors.map(d => d.index).join(' → ') : '尚未填写'}`);
+      for (const desc of state.descriptors) assert(descriptors.pointers.includes(
+        `desc[${desc.index}] → ${typeof desc.addr === 'number' ? '0x' + desc.addr.toString(16) : desc.addr} · ${desc.len} B · ${desc.flags.includes('WRITE') ? '设备可写' : '设备只读'}`));
+      for (const [panel, name] of [[available, 'avail'], [completion, 'used']]) {
+        assert.equal(panel.index, `${name}.idx ${state[name].index} · ${name === 'avail' ? '设备消费' : '驱动回收'} ${state[name].consumer}`);
+        assert.equal(panel.slots.length, meta.size);
+        panel.slots.forEach((slot, i) => {
+          const entry = state[name].slots[i];
+          assert.equal(slot.text, entry == null ? '·' : String(name === 'avail' ? entry : entry.id));
+          assert.equal(slot.published, String(entry != null && i < state[name].index));
+          assert.equal(slot.returned, String(entry != null && i < state[name].consumer));
+        });
+      }
+      assert.deepEqual(buffers.buffers, state.buffers.filter(b => b.id === 'payload').map(b => ({id: b.id, valid: b.validBytes})));
+      assert(descriptors.pointers.includes(`Free descriptors ${state.freeDescriptors} / ${meta.size}`));
+      assert(!completion.pointers.some(text => text.includes('Free descriptors')));
+      assert.deepEqual(container.memory.map(p => p.title), ['Descriptor table', 'Buffers', 'Available ring', 'Used ring']);
+      if (state.descriptors.length && state.avail.index === 0 && state.used.index === 0) {
+        assert.equal(completion.current, 'false', 'descriptor preparation must not highlight Used ring');
+      }
       assert.equal(container.tables, 0, 'overview does not duplicate the detail descriptor table');
       assert.deepEqual(container.rings, {}, 'overview does not duplicate all ring slots');
       assert.deepEqual(container.buffers, [], 'overview does not duplicate all buffer cards');
@@ -251,9 +276,10 @@ async function assertTypedQueue(page, frame, activeScene) {
     assert.equal(container.summaries, 0, 'queue detail retains the full typed structures');
     assert.equal(container.tables, 1);
     assert.deepEqual(container.headings,
-      ['描述符 / 缓冲区', 'addr', 'len', 'flags', 'next']);
-    assert.match(container.heading,
-      new RegExp(`队列 ${meta.index} · ${meta.size} 项 · 空闲描述符 ${state.freeDescriptors}`));
+      ['描述符', 'addr', 'len', 'flags', 'next']);
+    assert.equal(container.heading, `队列 ${meta.index} · ${meta.size} 项`);
+    assert.equal(container.free, `Free descriptors ${state.freeDescriptors} / ${meta.size}`);
+    assert.equal(container.freeRegion, 'descriptors');
     const descriptors = state.descriptors.length ? state.descriptors
       : meta.descriptorIndices.map(index => ({index,label:'尚未填写',state:'unprepared'}));
     assert.equal(container.descriptors.length, descriptors.length);
@@ -263,7 +289,7 @@ async function assertTypedQueue(page, frame, activeScene) {
       assert.equal(row.current, String(state.changed.includes('descriptors')));
       assert.deepEqual(row.cells, [
         `desc[${desc.index}] · ${desc.label}`,
-        desc.addr === undefined ? '—' : typeof desc.addr === 'number' ? `0x${desc.addr.toString(16)}` : desc.addr,
+        desc.addr === undefined ? '—' : `${typeof desc.addr === 'number' ? '0x' + desc.addr.toString(16) : desc.addr}${state.buffers.some(b => b.addr === desc.addr) ? ' →' : ''}`,
         String(desc.len ?? '—'), desc.flags ? (desc.flags.join(' | ') || '设备只读') : '—', String(desc.next ?? '—'),
       ]);
     }
@@ -286,7 +312,7 @@ async function assertTypedQueue(page, frame, activeScene) {
       const node = container.buffers.find(node => node.id === buffer.id);
       assert.equal(node.label, buffer.label);
       assert.equal(node.text,
-        `${typeof buffer.addr === 'number' ? '0x' + buffer.addr.toString(16) : buffer.addr} · 容量 ${buffer.length} B · 有效 ${buffer.validBytes} B`);
+        `有效 ${buffer.validBytes} / 容量 ${buffer.length} B`);
     }
     assert.equal(container.response, !state.response.ready ? '尚未回写响应'
       : state.response.kind === 'scsi' ? 'response OK · status GOOD · resid 0 · sense_len 0' : 'status 0x00 · OK');
@@ -520,7 +546,7 @@ async function assertCallpaths(page, frame, activeScene = scene) {
     await assertView(page, 'overview');
     assert(await button('fallback').isHidden());
     assert.equal(await page.locator('[data-vbr-share],[data-vbr-share-fallback],[data-vbr-share-url]').count(), 0);
-    assert.deepEqual(await page.locator('[data-vbr-view]').allTextContents(), ['流程总览', '队列机制', '源码路径']);
+    assert.deepEqual(await page.locator('[data-vbr-view]').allTextContents(), ['流程总览', '关键结构', '源码路径']);
     assert.equal(await page.locator('.vbr-guest-user [data-vbr-node="application"]').count(), 1);
     assert.equal(await page.locator('.vbr-guest-kernel [data-vbr-node="driver"]').count(), 1);
     assert.equal(await page.locator('.vbr-guest-kernel [data-vbr-node="reclaim"]').count(), 1);

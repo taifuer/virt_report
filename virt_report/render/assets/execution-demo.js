@@ -25,9 +25,6 @@
   // Embedded persistence and the main disk walkthrough keep independent links.
   const urlKey = name => (lab.dataset.executionUrlPrefix || '') + name;
   const nodesBoard = one('[data-execution-nodes]');
-  const contextsBoard = el('div');
-  contextsBoard.dataset.executionContexts = '';
-  nodesBoard.after(contextsBoard);
   let svg;
 
   // Options are curated scenario presets, not freely combinable simulation flags.
@@ -37,7 +34,8 @@
     group.scenarios.map(option => [option.id, {category, group}]))));
 
   function selectorGroups(category, operation) {
-    return category.groups.filter(group => !selector.operations || group.operation === operation);
+    return category.groups.filter(group => !group.advanced
+      && (!selector.operations || group.operation === operation));
   }
 
   function syncSelector() {
@@ -57,8 +55,23 @@
       const optgroup = el('optgroup'); optgroup.label = item.label;
       optgroup.append(...children); return [optgroup];
     }));
+    if (group.advanced) {
+      const current = el('option', `进阶 · ${scene.label}`);
+      current.value = scene.id; current.disabled = true;
+      scenarioControl.prepend(current);
+    }
     scenarioControl.value = scene.id;
-    one('[data-execution-scenario-choice]').hidden = Boolean(selector.categories && options.length === 1);
+    all('[data-execution-advanced]').forEach(details => {
+      const inCategory = !details.dataset.executionAdvancedCategory
+        || details.dataset.executionAdvancedCategory === category.id;
+      details.hidden = !inCategory;
+      const selected = details.querySelector(`[data-execution-advanced-scenario="${scene.id}"]`);
+      details.open = inCategory && Boolean(selected);
+    });
+    all('[data-execution-advanced-scenario]').forEach(button =>
+      button.setAttribute('aria-pressed', String(button.dataset.executionAdvancedScenario === scene.id)));
+    const hasAdvanced = category.groups.some(item => item.advanced);
+    one('[data-execution-scenario-choice]').hidden = Boolean(selector.categories && options.length === 1 && !hasAdvanced);
   }
 
   function selectScenario(id) {
@@ -78,7 +91,16 @@
     lab.dataset.presentation = scene.presentation || 'domains';
     syncSelector();
     setText('[data-execution-summary]', scene.summary);
+    const completion = one('[data-execution-completion]');
+    completion.hidden = !scene.completion;
+    completion.replaceChildren(...(scene.completion || []).map(item => {
+      const cell = el('div'); cell.dataset.completionField = item.key;
+      cell.append(el('dt', item.label), el('dd'));
+      return cell;
+    }));
     one('[data-execution-assumptions]').replaceChildren(...scene.assumptions.map(text => el('li', text)));
+    if (scene.parallel) one('[data-execution-assumptions]').append(el('li', scene.parallel.description),
+      ...scene.parallel.branches.map(branch => el('li', `${branch.title}：${branch.summary}`)));
     const makeNode = id => {
       const node = scene.nodes.find(item => item.id === id);
       const card = el('div', undefined, 'execution-node'); card.dataset.executionNode = node.id;
@@ -88,23 +110,15 @@
       card.append(heading, el('span', '', 'execution-node-status'));
       return card;
     };
-    const domains = el('div', undefined, 'walkthrough-domains');
-    const lanes = scene.layout.domains.filter(group => group.nodes.length);
-    domains.style.setProperty('--domain-count', lanes.reduce((sum, group) => sum + (group.span || 1), 0));
-    for (const group of lanes) {
-      const domain = el('section', undefined, 'walkthrough-domain');
-      domain.dataset.executionDomain = group.id;
-      if (group.component) domain.dataset.component = group.component;
-      if (group.span) domain.style.gridColumn = `span ${group.span}`;
-      if (group.inline) domain.classList.add('walkthrough-domain--inline');
-      const header = el('header'); header.append(el('small', group.context), el('h4', group.title));
+    const domains = el('div');
+    components.componentLayout(domains, scene.layout.domains, group => {
       const nodes = el('div', undefined, 'walkthrough-domain-nodes');
+      nodes.dataset.executionDomain = group.id;
       nodes.append(...group.nodes.map(makeNode));
       if (group.note) nodes.append(el('p', group.note, 'walkthrough-domain-note'));
-      domain.append(header, nodes); domains.append(domain);
-    }
+      return nodes;
+    });
     nodesBoard.replaceChildren(domains);
-    components.contexts(contextsBoard, scene.layout.domains.filter(group => !group.nodes.length));
     if (scene.layout.memory) {
       const group = scene.layout.memory, memory = el('section', undefined, 'walkthrough-memory');
       const heading = el('h4', group.title); heading.append(el('span', group.description));
@@ -182,33 +196,57 @@
     timeline.hidden = !active; nodesBoard.hidden = active;
     if (!active) return;
     timeline.replaceChildren();
-    const lanes = el('ol', undefined, 'walkthrough-cpu-lanes');
-    for (const lane of scene.timeline.lanes) {
-      const node = el('li', lane.label); node.dataset.current = String(frame.execution?.lane === lane.id);
+    const previous = trace[Math.max(0, index - 1)];
+    const lanes = el('div', undefined, 'walkthrough-cpu-lanes');
+    const byNode = {'guest': 'guest-user', kernel: 'guest-kernel', kvm: 'kvm', qemu: 'qemu'};
+    const makeLane = id => {
+      const lane = scene.timeline.lanes.find(item => item.id === byNode[id]);
+      const current = frame.execution?.lane === lane.id;
+      const node = el('div', undefined, 'execution-node'); node.dataset.current = String(current);
+      node.dataset.active = String(current);
+      node.dataset.cpuLane = lane.id;
       node.dataset.component = lane.id.startsWith('guest-') ? 'guest' : lane.id;
-      lanes.append(node);
-    }
-    timeline.append(el('h4', '同一个 vCPU · 当前执行位置'), lanes);
+      const heading = el('div', undefined, 'execution-node-heading');
+      const [name, mode] = lane.label.split(' · ');
+      heading.append(el('strong', name), el('span', mode, 'walkthrough-node-badge'));
+      node.append(heading);
+      if (current) {
+        node.setAttribute('aria-current', 'location');
+        node.append(el('span', '当前执行位置', 'execution-node-status'));
+      }
+      return node;
+    };
+    components.componentLayout(lanes, scene.layout.domains, group => {
+      const nodes = el('div', undefined, 'walkthrough-domain-nodes');
+      nodes.append(...group.nodes.map(makeLane));
+      if (group.note) nodes.append(el('p', group.note, 'walkthrough-domain-note'));
+      return nodes;
+    });
+    timeline.append(el('h4', '同一个 vCPU · 执行位置'), lanes);
     const instruction = el('div', undefined, 'walkthrough-cpu-instruction');
-    instruction.append(el('small', frame.execution?.phase || '准备执行'),
-      el('code', frame.execution?.instruction || '等待下一步'));
+    instruction.append(el('small', '本次跟踪'), el('code', scene.timeline.instruction));
+    const transition = el('p', frame.execution?.phase || '准备执行', 'walkthrough-cpu-transition');
+    if (previous.execution?.lane !== frame.execution?.lane) {
+      const from = scene.timeline.lanes.find(lane => lane.id === previous.execution?.lane);
+      const to = scene.timeline.lanes.find(lane => lane.id === frame.execution?.lane);
+      transition.append(el('span', `${from.label} → ${to.label}`));
+    }
+    instruction.append(transition);
     timeline.append(instruction);
-    const fields = el('dl', undefined, 'execution-fields');
+    const fields = el('dl', undefined, 'walkthrough-state-grid walkthrough-cpu-registers');
     const labels = Object.fromEntries(scene.structures.flatMap(s => s.fields.map(f => [f.key, f.label])));
     for (const key of scene.timeline.fields) {
-      const cell = el('div'); cell.dataset.current = String(frame.changed.includes(key));
-      cell.append(el('dt', labels[key] || key), el('dd', frame.values[key])); fields.append(cell);
+      const cell = el('div'), changed = frame.values[key] !== previous.values[key];
+      cell.dataset.current = String(changed); cell.dataset.cpuField = key;
+      const value = el('dd');
+      if (changed) {
+        value.append(el('span', previous.values[key], 'walkthrough-value-before'),
+          el('span', ' → ', 'walkthrough-value-arrow'));
+      }
+      value.append(el('strong', frame.values[key]));
+      cell.append(el('dt', labels[key] || key), value); fields.append(cell);
     }
     timeline.append(fields);
-    const steps = el('ol', undefined, 'walkthrough-cpu-history');
-    for (let n = Math.max(0, index - 1); n <= Math.min(trace.length - 1, index + 1); n++) {
-      const item = el('li'); item.dataset.current = String(n === index);
-      const lane = scene.timeline.lanes.find(lane => lane.id === trace[n].execution?.lane);
-      item.append(el('small', n < index ? '上一步' : n === index ? '当前' : '下一步'),
-        el('strong', trace[n].title), el('span', lane?.label || trace[n].actor));
-      steps.append(item);
-    }
-    timeline.append(steps);
   }
 
   function progress() {
@@ -223,7 +261,7 @@
       if (view !== 'structure') button.dataset.executionPhase = entry.id;
       button.append(el('span', view === 'structure' && entry.index === 0 ? '○'
         : prefix + String(ordinal + (view === 'structure' ? 0 : 1)).padStart(2, '0')), el('strong', entry.title));
-      button.addEventListener('click', () => move(entry.index)); return button;
+      button.addEventListener('click', () => move(view === 'structure' ? entry.index : Math.max(1, entry.index))); return button;
     };
     if (!branched) { nav.replaceChildren(...entries.map((entry, n) => makeButton(entry, n))); return; }
     const common = el('div', undefined, 'walkthrough-common-phases');
@@ -231,11 +269,11 @@
     const fork = el('section', undefined, 'walkthrough-fork');
     fork.dataset.executionFork = '';
     const heading = el('header');
-    heading.append(el('strong', scene.parallel.title), el('span', scene.parallel.description));
+    heading.append(el('strong', scene.parallel.title));
     const branches = el('div', undefined, 'walkthrough-branches');
     scene.parallel.branches.forEach((branch, ordinal) => {
       const section = el('section', undefined, 'walkthrough-branch'); section.dataset.executionBranch = branch.id;
-      const header = el('header'), choose = el('button', '先观察此分支', 'walkthrough-branch-order');
+      const header = el('header'), choose = el('button', '先看此路', 'walkthrough-branch-order');
       choose.type = 'button'; choose.dataset.executionOrder = branch.id;
       choose.setAttribute('aria-pressed', String(firstBranch === branch.id));
       choose.setAttribute('aria-label', `从分叉处先观察${branch.title}`);
@@ -248,7 +286,7 @@
       const phases = el('div', undefined, 'walkthrough-branch-phases');
       phases.append(...entries.filter(entry => entry.branch === branch.id)
         .map((entry, n) => makeButton(entry, n, String.fromCharCode(65 + ordinal))));
-      section.append(header, el('p', branch.summary), phases); branches.append(section);
+      section.append(header, phases); branches.append(section);
     });
     fork.append(heading, branches); nav.replaceChildren(common, fork);
   }
@@ -281,7 +319,7 @@
           : keys.includes('buffers') && !keys.includes('descriptors') ? 'buffers' : 'descriptors';
         bounds.queue = memoryBounds[part];
       }
-      const textObstacles = all('.walkthrough-domain header, .walkthrough-memory > h4, .execution-network-memory > .execution-node-status').map(node => {
+      const textObstacles = all('.walkthrough-domain header, .walkthrough-domain-note, .walkthrough-memory > h4, .execution-network-memory > .execution-node-status').map(node => {
         const box = node.getBoundingClientRect();
         return {left:box.left-rect.left,right:box.right-rect.left,top:box.top-rect.top,bottom:box.bottom-rect.top};
       }).filter(box => box.right > box.left && box.bottom > box.top);
@@ -333,20 +371,18 @@
     lab.dataset.scenario = scene.id; lab.dataset.view = view; lab.dataset.step = frame.id;
     all('[data-execution-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.executionView === view)));
     all('[data-execution-step]').forEach(button => {
-      const current = Number(button.dataset.executionStep) <= index && index <= Number(button.dataset.executionEnd);
-      button.setAttribute('aria-current', current ? 'step' : 'false');
-      button.dataset.done = String(Number(button.dataset.executionEnd) < index);
+      components.phaseProgress(button, index, Number(button.dataset.executionStep), Number(button.dataset.executionEnd), true);
     });
     one('[data-execution-overview]').hidden = view !== 'overview';
     one('[data-execution-structures]').hidden = view !== 'structure';
     one('[data-execution-sources]').hidden = view !== 'source';
     setText('[data-execution-help]', {
-      overview: '按阶段查看完整流程；播放和单步会依次展示阶段内的操作，箭头标出本步交接。',
+      overview: '点击阶段从第 1 步开始；播放与下一步按同一顺序推进，填色表示阶段内进度。',
       structure: '只保留与关键结构相关的步骤。高亮本步更新的字段，索引、地址和状态可逐步对照。',
       source: '按阶段定位实现；单步查看具体操作，点击函数或规范链接查看固定版本原文。',
     }[view]);
     if (scene.presentation === 'cpu-timeline' && view === 'overview') setText('[data-execution-help]', '沿同一个 vCPU 观察当前指令、寄存器与执行位置；Guest 权限切换、VM-exit 和返回 QEMU 分别标示。');
-    if (scene.parallel && view !== 'structure') setText('[data-execution-help]', '共同前序完成后，两条分支独立推进。可切换先观察哪条分支；播放顺序不表示两条路径之间存在等待关系。');
+    if (scene.parallel && view !== 'structure') setText('[data-execution-help]', '共同前序后，两路独立推进；“先看此路”只改变观看顺序，不表示另一条路径在等待。');
     const stops = model.stops(trace, view), count = stops.length - 1;
     const stages = model.phases(scene, trace), phaseIndex = stages.findIndex(phase => phase.index <= index && index <= phase.end);
     const phase = stages[phaseIndex];
@@ -358,7 +394,7 @@
     setText('[data-execution-counter]', view === 'structure'
       ? (index === 0 ? `准备前 · 共 ${count} 步` : `第 ${stops.indexOf(index)} / ${count} 步`)
       : (index === 0 ? (scene.parallel ? `准备前 · ${peers.length} 个共同阶段，随后分两路` : `准备前 · 共 ${stages.length} 个阶段`)
-        : `${phaseLabel} · 阶段内第 ${index - firstAction + 1} / ${phase.end - firstAction + 1} 步`));
+        : `${phaseLabel} · 步骤 ${index - firstAction + 1} / ${phase.end - firstAction + 1}`));
     all('[data-execution-branch]').forEach(node => {
       node.dataset.current = String(node.dataset.executionBranch === phase.branch);
     });
@@ -369,15 +405,21 @@
     });
     all('[data-execution-node]').forEach(node => {
       node.dataset.active = String(frame.active.includes(node.dataset.executionNode));
-      node.querySelector('.execution-node-status').textContent = frame.nodes[node.dataset.executionNode];
+      const status = node.querySelector('.execution-node-status');
+      status.textContent = frame.nodes[node.dataset.executionNode];
+      status.hidden = !status.textContent;
     });
     all('[data-execution-field]').forEach(node => {
       node.dataset.current = String(frame.changed.includes(node.dataset.executionField));
       node.querySelector('dd').textContent = frame.values[node.dataset.executionField];
     });
+    all('[data-completion-field]').forEach(node => {
+      node.dataset.current = String(frame.changed.includes(node.dataset.completionField));
+      node.querySelector('dd').textContent = frame.values[node.dataset.completionField];
+    });
     if (scene.queue && frame.queueState) {
       const networkMemory = one('[data-execution-network-memory]');
-      if (networkMemory) components.networkMemory(networkMemory, frame.queueState, scene.queue, frame);
+      if (networkMemory) components.queueMemory(networkMemory, frame.queueState, scene.queue, frame);
       all('[data-execution-typed-queue]').forEach(node =>
         components.queue(node, frame.queueState, scene.queue, node.dataset.executionTypedQueue === 'compact'));
     }
@@ -494,6 +536,9 @@
   one('[data-execution-scenario]').addEventListener('change', event => {
     selectScenario(event.target.value);
   });
+  all('[data-execution-advanced-scenario]').forEach(button => button.addEventListener('click', () => {
+    selectScenario(button.dataset.executionAdvancedScenario);
+  }));
   one('[data-execution-category]')?.addEventListener('change', event => {
     const category = categories.find(item => item.id === event.target.value);
     const operation = membership.get(scene.id).group.operation;

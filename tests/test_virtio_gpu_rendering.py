@@ -17,12 +17,16 @@ DIAGRAMS = (
 )
 
 
-def test_rendering_walkthrough_is_a_single_directory_entry():
+def test_rendering_article_is_separate_from_interactive_walkthrough():
     article = mechanisms.get_article(SLUG)
-    assert article["topic"] == "virtio-gpu-walkthrough"
+    assert article["topic"] == "device-virtualization"
     assert article["source"] == f"{SLUG}.md"
-    assert article["execution_demo"] == SLUG
-    assert article["presentation"] == "walkthrough"
+    assert "execution_demo" not in article
+    assert article.get("presentation") != "walkthrough"
+    walkthrough = mechanisms.get_article("virtio-gpu-execution")
+    assert walkthrough["topic"] == "virtio-gpu-walkthrough"
+    assert walkthrough["execution_demo"] == SLUG
+    assert walkthrough["presentation"] == "walkthrough"
     assert {item["project"] for item in article["baselines"]} == {
         "QEMU", "Linux", "Mesa", "virglrenderer",
     }
@@ -30,11 +34,18 @@ def test_rendering_walkthrough_is_a_single_directory_entry():
                for item in article["baselines"])
     page = render.render_mechanisms_html(Config(), SLUG)
     assert 'virtio-gpu 渲染与编解码 - virt-report' in page
+    assert 'data-execution-lab' not in page
+    assert 'href="virtio-gpu-execution.html"' in page
+    demo_page = render.render_mechanisms_html(Config(), "virtio-gpu-execution")
+    assert 'href="virtio-gpu-rendering.html"' in demo_page
+    assert 'data-execution-lab="virtio-gpu-rendering"' in demo_page
+    assert 'id="render"' not in demo_page
     for section in article["sections"]:
         assert f'id="{section["id"]}"' in page
         assert f'href="#{section["id"]}"' in page
     catalogue = render.render_mechanisms_html(Config())
     assert catalogue.count(f'href="mechanisms/{SLUG}.html"') == 1
+    assert catalogue.count('href="mechanisms/virtio-gpu-execution.html"') == 1
 
 
 def test_gpu_rendering_and_video_diagrams_are_offline_and_zoomable():

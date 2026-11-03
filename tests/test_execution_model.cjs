@@ -25,7 +25,7 @@ test('node initial descriptions are neutral and retained until explicitly change
     steps: [{changes: {}, nodeStates: {}, active: [], focus: true},
       {changes: {}, nodeStates: {vm: '已经创建'}, active: ['vm'], focus: true}]};
   const frames = model.buildTrace(scene);
-  assert.deepEqual(frames[0].nodes, {vm: '尚未创建', manager: '准备就绪'});
+  assert.deepEqual(frames[0].nodes, {vm: '尚未创建', manager: ''});
   assert.deepEqual(frames[0].active, []);
   assert.equal(frames[1].nodes.vm, '已经创建');
   assert.equal(frames[0].nodes.vm, '尚未创建');

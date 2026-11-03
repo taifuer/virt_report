@@ -8,7 +8,7 @@ from virt_report.execution_demos import get_demo
 
 @pytest.fixture
 def demo():
-    return get_demo("network-io")
+    return get_demo("network-io", presentation=False)
 
 
 def scene(demo, identifier):

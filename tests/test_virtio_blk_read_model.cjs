@@ -3,12 +3,21 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {validateScenario, buildTrace, buildQueueTrace, getScenario} = require('../virt_report/render/assets/virtio-blk-read-model.js');
+const {validateScenario, buildTrace, buildQueueTrace, buildQueueSnapshot, getScenario} = require('../virt_report/render/assets/virtio-blk-read-model.js');
 const source = JSON.parse(fs.readFileSync(path.join(__dirname,
   '../virt_report/content/flows/virtio-blk-read.json'), 'utf8'));
 const fresh = () => structuredClone(source);
 const frame = (trace, id) => trace.find(item => item.id === id);
 const step = (scenario, id) => frame(scenario.steps, id);
+
+test('request headers and status are driver objects, not application buffers', () => {
+  for (const operation of ['read', 'write']) {
+    const scene = getScenario(source, operation);
+    const state = buildQueueSnapshot(scene, buildTrace(scene).at(-1)).state;
+    assert.equal(state.buffers.find(b => b.id === 'payload').state, '应用可使用缓冲区');
+    for (const id of ['header', 'response']) assert.equal(state.buffers.find(b => b.id === id).state, 'reusable');
+  }
+});
 
 // Synthetic full scenes exercise the catalog contract without network or collector fixtures.
 function catalogScene(backend, operation, transport = 'virtio-blk') {

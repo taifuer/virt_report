@@ -138,15 +138,15 @@
     },
     {
       "slug": "interrupt-delivery-walkthrough", "group": "walkthroughs", "title": "中断传递",
-      "overview": "interrupt-delivery", "summary": "对照软件 MSI-X、irqfd、屏蔽与延迟递送，以及 APICv posted interrupt 路径。"
+      "overview": "interrupt-delivery", "summary": "区分 QEMU / DPDK 通知入口、CPU 交付，以及直通设备同为 MSI-X 的宿主转发与 VT-d posted 路径。"
     },
     {
       "slug": "gpu-execution-walkthrough", "group": "walkthroughs", "title": "GPU 命令执行",
       "overview": "gpu-execution", "summary": "跟踪 VFIO 直通 GPU 的上传、读回，以及限定 GVT-g 实现的 mdev 命令审核、调度和完成。"
     },
     {
-      "slug": "virtio-gpu-walkthrough", "group": "walkthroughs", "title": "virtio-gpu 渲染与编解码",
-      "overview": "virtio-gpu-rendering", "summary": "逐步观察 OpenGL 绘制、H.264 解码与编码中的命令传输、资源变化、宿主执行和完成通知。"
+      "slug": "virtio-gpu-walkthrough", "group": "walkthroughs", "title": "virtio-gpu 渲染与编解码过程",
+      "overview": "virtio-gpu-execution", "summary": "逐步观察 OpenGL 绘制、H.264 解码与编码中的命令传输、资源变化、宿主执行和完成通知。"
     }
   ],
   "articles": [
@@ -435,7 +435,7 @@
       "topic": "interrupt-virtualization",
       "title": "QEMU/KVM 中断虚拟化：基本原理与演进",
       "summary": "从一次网卡收包出发，理解 PIC、APIC 和 MSI-X，再比较 QEMU 模拟、内核 irqchip、irqfd 与硬件辅助各自解决的问题。",
-      "reviewed_on": "2026-10-19",
+      "reviewed_on": "2026-11-03",
       "template": "_interrupt_overview_article.html",
       "baselines": [
         {
@@ -1423,8 +1423,8 @@
       "slug": "kvm-virtio-interrupt",
       "topic": "interrupt-virtualization",
       "title": "virtio 完成通知与 KVM 中断注入",
-      "summary": "从 used ring 的完成发布出发，分析通知抑制、MSI-X 消息、LAPIC 状态及 irqfd 替代路径。",
-      "reviewed_on": "2026-10-19",
+      "summary": "从 used ring 的完成发布出发，区分通知抑制、MSI-X 消息、irqfd 通知入口与 CPU 交付，跟踪 LAPIC 状态变化。",
+      "reviewed_on": "2026-11-03",
       "template": "_interrupt_article.html",
       "baselines": [
         {
@@ -1882,8 +1882,8 @@
       "slug": "qemu-vm-startup",
       "topic": "vm-startup",
       "title": "QEMU 虚拟机启动与 vCPU 初始化",
-      "summary": "以包含系统盘与网卡的 Q35 虚拟机为例，跟踪后端、KVM、CPU、内存与设备初始化，再到复位、固件和操作系统引导。",
-      "reviewed_on": "2026-10-19",
+      "summary": "从 Q35 机器与 vCPU 创建，追踪 SeaBIOS ROM 映射、复位第一条指令和 VM-entry，再到引导程序、Linux 内核与首个用户进程。",
+      "reviewed_on": "2026-11-03",
       "template": "_qemu_start_article.html",
       "baselines": [
         {
@@ -1891,7 +1891,9 @@
           "version": "10.2.0",
           "commit": "698104725efad4b29079d857dfdebbd804e34c99",
           "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
-        }
+        },
+        {"project": "SeaBIOS", "version": "QEMU 10.2.0 随附固件", "commit": "b52ca86e094d19b58e2304417787e96b940e39c6", "url": "https://github.com/coreboot/seabios/tree/b52ca86e094d19b58e2304417787e96b940e39c6"},
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}
       ],
       "sections": [
         {
@@ -1911,8 +1913,16 @@
           "title": "vCPU 线程与内核接口的建立"
         },
         {
+          "id": "firmware",
+          "title": "固件文件与 Guest 物理地址映射"
+        },
+        {
           "id": "first-run",
           "title": "复位、继续执行与固件入口"
+        },
+        {
+          "id": "guest-boot",
+          "title": "同一个 vCPU：固件 → 内核 → 用户态"
         },
         {
           "id": "objects",
@@ -2211,11 +2221,36 @@
     },
     {
       "slug": "virtio-gpu-rendering",
-      "topic": "virtio-gpu-walkthrough",
+      "topic": "device-virtualization",
       "title": "virtio-gpu 渲染与编解码",
-      "summary": "切换绘制、解码与编码场景，逐步观察 Guest、controlq、QEMU、virglrenderer 和宿主 GPU 之间的命令、资源及完成信号。",
+      "summary": "分析 VirGL 图形与视频命令的传输、资源关联、宿主执行和完成边界，区分现有渲染路径与需要额外接入的视频扩展。",
       "reviewed_on": "2026-11-02",
       "source": "virtio-gpu-rendering.md",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"},
+        {"project": "Mesa", "version": "25.0.0", "commit": "4fa244fddfebb21378042556862e197284ef65ac", "url": "https://gitlab.freedesktop.org/mesa/mesa/-/tree/4fa244fddfebb21378042556862e197284ef65ac"},
+        {"project": "virglrenderer", "version": "1.2.0", "commit": "500b41d5c8638f9b80dd558f4044f3301c7457a4", "url": "https://gitlab.freedesktop.org/virgl/virglrenderer/-/tree/500b41d5c8638f9b80dd558f4044f3301c7457a4"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "图形与视频命令的执行路径"},
+        {"id": "transport", "title": "两层命令与资源关联"},
+        {"id": "render", "title": "一次 OpenGL 绘制的完整路径"},
+        {"id": "video-support", "title": "视频能力的协商与宿主接入"},
+        {"id": "decode", "title": "一帧 H.264 的解码与显示"},
+        {"id": "encode", "title": "一帧 NV12 图像的编码与取回"},
+        {"id": "completion", "title": "完成信号、缓冲区复用与等待"},
+        {"id": "evolution", "title": "VirGL、Venus 与资源共享的演进"},
+        {"id": "sources", "title": "源码与进一步阅读"}
+      ]
+    },
+    {
+      "slug": "virtio-gpu-execution",
+      "topic": "virtio-gpu-walkthrough",
+      "title": "virtio-gpu 渲染与编解码过程",
+      "summary": "切换绘制、解码与编码场景，逐步观察 Guest、controlq、QEMU、virglrenderer 和宿主 GPU 之间的命令、资源及完成信号。",
+      "reviewed_on": "2026-11-03",
+      "source": "virtio-gpu-execution.md",
       "presentation": "walkthrough",
       "execution_demo": "virtio-gpu-rendering",
       "components": ["_execution_lab.html"],
@@ -2228,16 +2263,10 @@
         {"project": "virglrenderer", "version": "1.2.0", "commit": "500b41d5c8638f9b80dd558f4044f3301c7457a4", "url": "https://gitlab.freedesktop.org/virgl/virglrenderer/-/tree/500b41d5c8638f9b80dd558f4044f3301c7457a4"}
       ],
       "sections": [
-        {"id": "preface", "title": "图形与视频命令的执行路径"},
+        {"id": "preface", "title": "场景与边界"},
         {"id": "walkthrough", "title": "逐步演示"},
-        {"id": "transport", "title": "两层命令与资源关联"},
-        {"id": "render", "title": "一次 OpenGL 绘制的完整路径"},
-        {"id": "video-support", "title": "视频能力的协商与宿主接入"},
-        {"id": "decode", "title": "一帧 H.264 的解码与显示"},
-        {"id": "encode", "title": "一帧 NV12 图像的编码与取回"},
-        {"id": "completion", "title": "完成信号、缓冲区复用与等待"},
-        {"id": "evolution", "title": "VirGL、Venus 与资源共享的演进"},
-        {"id": "sources", "title": "源码与进一步阅读"}
+        {"id": "completion", "title": "完成边界"},
+        {"id": "sources", "title": "源码与相关内容"}
       ]
     },
     {
@@ -2311,8 +2340,8 @@
       "slug": "cpu-execution",
       "topic": "cpu-execution-walkthrough",
       "title": "CPU 指令执行过程",
-      "summary": "对照 x86/KVM 的指令执行、退出与恢复，再沿定时等待区分 Guest 任务阻塞、vCPU 空闲、宿主调度和实际运行。",
-      "reviewed_on": "2026-11-01",
+      "summary": "对照 x86/KVM 的指令执行、退出与恢复，比较 HLT 阻塞等待与 Idle Passthrough，再区分 Guest 任务和宿主线程的调度。",
+      "reviewed_on": "2026-11-03",
       "template": "_cpu_execution_article.html", "presentation": "walkthrough",
       "execution_demo": "cpu-execution", "stylesheet": "execution-demo.css",
       "model_script": "execution-model.js", "script": "execution-demo.js",
@@ -2326,8 +2355,8 @@
       "slug": "memory-access",
       "topic": "memory-access-walkthrough",
       "title": "内存访问与异常处理",
-      "summary": "跟踪 GVA、GPA、HPA 与 memslot，区分缓存命中、页表遍历、Guest 缺页、EPT 映射、宿主后备页、MMIO 和脏页记录。",
-      "reviewed_on": "2026-11-01",
+      "summary": "沿 GVA、GPA 与 HPA 区分 RAM 和 MMIO 分派，对照 VFIO 物理 BAR 与 ivshmem 共享 BAR，并在进阶路径观察换页和写保护。",
+      "reviewed_on": "2026-11-03",
       "template": "_memory_access_article.html", "presentation": "walkthrough",
       "execution_demo": "memory-access", "stylesheet": "execution-demo.css",
       "model_script": "execution-model.js", "script": "execution-demo.js",
@@ -2335,22 +2364,23 @@
         {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
         {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}
       ],
-      "sections": [{"id": "preface", "title": "场景与边界"}, {"id": "walkthrough", "title": "逐步演示"}, {"id": "comparison", "title": "异常处理的分工"}, {"id": "evolution", "title": "映射管理与取舍"}, {"id": "sources", "title": "源码与相关内容"}]
+      "sections": [{"id": "preface", "title": "场景与边界"}, {"id": "walkthrough", "title": "逐步演示"}, {"id": "address-routing", "title": "地址空间与访问分派"}, {"id": "comparison", "title": "异常处理的分工"}, {"id": "evolution", "title": "映射管理与取舍"}, {"id": "sources", "title": "源码与相关内容"}]
     },
     {
       "slug": "interrupt-delivery",
       "topic": "interrupt-delivery-walkthrough",
       "title": "中断传递",
-      "summary": "交互对照 MSI-X 软件递送、irqfd、IF 屏蔽、MSI-X PBA 与 APICv posted interrupt，跟踪请求挂起、接受和 EOI。",
-      "reviewed_on": "2026-11-01",
+      "summary": "对照 QEMU 直接 MSI、DPDK irqfd，以及直通设备同为 MSI-X 的宿主转发和 VT-d posted，说明路径条件与 vCPU 调度边界。",
+      "reviewed_on": "2026-11-03",
       "template": "_interrupt_delivery_article.html", "presentation": "walkthrough",
       "execution_demo": "interrupt-delivery", "stylesheet": "execution-demo.css",
       "model_script": "execution-model.js", "script": "execution-demo.js",
       "baselines": [
         {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
-        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"},
+        {"project": "DPDK", "version": "24.11", "commit": "1b3bf1128d9bda5595861814792f74b8f57160c8", "url": "https://github.com/DPDK/dpdk/tree/1b3bf1128d9bda5595861814792f74b8f57160c8"}
       ],
-      "sections": [{"id": "preface", "title": "场景与边界"}, {"id": "walkthrough", "title": "逐步演示"}, {"id": "comparison", "title": "屏蔽与递送的分工"}, {"id": "evolution", "title": "中断路径的演进"}, {"id": "sources", "title": "源码与相关内容"}]
+      "sections": [{"id": "preface", "title": "场景与边界"}, {"id": "walkthrough", "title": "逐步演示"}, {"id": "comparison", "title": "通知入口与 CPU 递送的分工"}, {"id": "evolution", "title": "中断路径的演进"}, {"id": "sources", "title": "源码与相关内容"}]
     },
     {
       "slug": "gpu-execution",
@@ -2943,8 +2973,8 @@
       "slug": "kvm-vcpu-halt",
       "topic": "cpu-virtualization",
       "title": "KVM vCPU 的阻塞、轮询与唤醒",
-      "summary": "从 HLT 跟踪宿主轮询、等待者发布与中断唤醒，分析丢失唤醒的防护和轮询预算的自适应调整。",
-      "reviewed_on": "2026-10-19",
+      "summary": "从 HLT 截获跟踪轮询、阻塞与中断唤醒，分析丢失唤醒的防护、自适应预算及与 Idle Passthrough 的区别。",
+      "reviewed_on": "2026-11-03",
       "template": "_halt_article.html",
       "stylesheet": "halt-poll.css",
       "script": "halt-poll.js",

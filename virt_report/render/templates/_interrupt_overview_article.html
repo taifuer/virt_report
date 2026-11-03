@@ -80,9 +80,10 @@
   <p>事件进入 KVM 后，前一节的软件路径还要记录 IRR、促使 vCPU 检查事件，并安排 VM Entry 注入；部分 APIC 寄存器访问也会使客户机退出。Intel APICv 用虚拟 APIC 状态与执行控制，让硬件接管部分访问、优先级判断和中断交付；AMD AVIC 也沿硬件辅助方向降低开销，但使用不同的数据结构和通知机制。</p>
   <p>以 Intel posted interrupt 为例，KVM 可以先把向量记入 Posted Interrupt Descriptor 的 PIR 位图，再按需发送通知。目标 vCPU 正在合适的运行状态时，处理器可同步待处理向量并向客户机交付，避免为这段交付专门退出。客户机的屏蔽和优先级规则仍然有效。irqfd 的投递也可以进入这条路径，因此 irqfd 与 APICv 可以配合使用。<a href="{{ linux }}arch/x86/kvm/vmx/vmx.c#L4217-L4256">KVM 的 posted 与软件回退路径</a></p>
   <h3>直通设备分支：用 interrupt posting 减少宿主转发</h3>
-  <p>前面讨论的是 virtio 软件后端。换成 VFIO 分配的物理网卡后，数据与通知由实际设备产生，驱动和设备路径也随之改变。如果物理中断先进入宿主处理程序，再由 VFIO 等路径转交 KVM，即使 CPU 支持虚拟中断加速，仍然保留这段转发。支持 Intel VT-d interrupt posting 的硬件可把设备中断经中断重映射单元直接写入目标 vCPU 的 posted 描述符，在符合条件时省去宿主软件转发。</p>
-  <p>这需要设备分配、IOMMU、CPU 和内核配置共同支持。vCPU 阻塞时仍需宿主唤醒线程；vCPU 被抢占时要保存待处理状态，等待重新调度。硬件能够减少投递开销，不能替宿主调度器分配 CPU 时间。AMD 的 AVIC/中断重映射有自己的实现，不能套用 Intel 描述符字段。<a href="{{ linux }}arch/x86/kvm/vmx/posted_intr.c#L154-L255">阻塞与调度处理</a></p>
-  {{ diagram('interrupt-acceleration-layers', '事件接入与 vCPU 交付的两层优化', '软件后端经 irqfd 进入 KVM 后，仍可选择软件注入或 posted 路径。VFIO 物理设备是另一条数据路径，满足条件时可由 VT-d 直接投递；它不要求先经过软件后端的 eventfd。') }}
+  <p>前面讨论的是 virtio 软件后端。换成 VFIO 分配的物理设备后，数据与通知由实际设备产生。这里两条直通路径都使用 MSI-X：普通 remapped IRTE 把消息送到宿主 IRQ / VFIO，再经 eventfd / irqfd 转交 KVM；posted IRTE 则由 VT-d IOMMU 直接把 Guest 向量写入目标 vCPU 的 PID，省去逐次宿主转发。MSI-X 是设备消息机制，VT-d posted 是递送加速，两者不是替代关系。普通宿主转发进入 KVM 后，也仍可使用 CPU 侧 APICv posted 交付。</p>
+  <p>同一网卡、NVMe 控制器或 GPU 都可能走这两条路径，取决于平台和路由，不是设备类型或应用逐次 I/O 的选择。设备 posting 要求 IOMMU / CPU 能力与内核配置支持、VFIO irq-bypass 绑定成功，并能投递给单一 vCPU；未启用或不满足条件时使用宿主转发。已经配置的路由变为广播、多播等不支持的形式时，KVM 可恢复普通 remapped 模式。<a href="{{ linux }}arch/x86/kvm/irq.c#L426-L475">单目标路由条件与回退</a></p>
+  <p>vCPU 暂时未运行不等于自动切回普通 IRTE。阻塞时可能需要宿主唤醒线程；被抢占时保留 pending、等待调度；迁核时更新 PID 通知目标。硬件能减少投递开销，不能替宿主调度器分配 CPU 时间。AMD 的 AVIC/中断重映射有自己的实现，不能套用 Intel 描述符字段。<a href="{{ linux }}arch/x86/kvm/vmx/posted_intr.c#L57-L140">PID 目标与状态维护</a>、<a href="{{ linux }}arch/x86/kvm/vmx/posted_intr.c#L223-L267">阻塞与调度处理</a></p>
+  {{ diagram('interrupt-acceleration-layers', '事件接入与 vCPU 交付的两层优化', '直通设备两条路径都从 MSI-X 消息开始，由预先配置的普通或 posted IRTE 决定后续递送。普通路径经 VFIO / irqfd 进入 KVM，仍可使用 CPU 侧 posted；VT-d posted 则由 IOMMU 直接写 PIR。分支表示配置差异，不是逐次 I/O 的应用选项。') }}
 </section>
 <section id="evolution" class="mechanism-section">
   <h2>中断机制的演进与实现取舍</h2>
@@ -105,7 +106,7 @@
 lspci -nn
 lspci -vv -s 0000:00:03.0
 cat /proc/interrupts</code></pre>
-  <p><code>MSI-X: Enable+</code> 表示客户机已启用该设备的 MSI-X。收包前后对照 <code>/proc/interrupts</code> 中网卡相关行，可以看到客户机各 CPU 的中断处理计数变化。多个包可以共用一次通知，后续还可能由 NAPI 轮询处理，因此这些计数既不等于报文数量，也不能证明宿主启用了 irqfd 或 APICv。宿主的 <code>/proc/interrupts</code> 则反映宿主自身的中断处理，须与客户机视图分开。</p>
+  <p><code>MSI-X: Enable+</code> 表示客户机已启用该设备的 MSI-X，不能据此判断宿主采用普通转发还是 VT-d posted。收包前后对照 <code>/proc/interrupts</code> 中网卡相关行，可以看到客户机各 CPU 的中断处理计数变化。多个包可以共用一次通知，后续还可能由 NAPI 轮询处理，因此这些计数既不等于报文数量，也不能证明宿主启用了 irqfd 或 APICv。宿主的 <code>/proc/interrupts</code> 则反映宿主自身的中断处理，须与客户机视图分开。</p>
   <p>报文到达后仍长时间未被客户机处理，可以按顺序检查以下阶段：</p>
   <ol>
     <li><strong>结果发布。</strong>查看缓冲区、used 索引和驱动消费位置。后端尚未完成时，优化中断注入没有帮助。</li>

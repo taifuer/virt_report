@@ -1,13 +1,16 @@
+%%{init: {"flowchart": {"rankSpacing": 24, "nodeSpacing": 32, "padding": 10}}}%%
 flowchart TB
   accTitle: irqfd、APICv 与直通设备 interrupt posting 的不同位置
-  accDescr: 软件后端可以通过 irqfd 进入 KVM 路由，再使用软件注入或 APICv posted 路径。满足条件的 Intel VT-d 直通设备可由 IOMMU 写入 posted 描述符。阻塞或抢占状态仍需宿主调度配合。
-  BACK["独立软件后端<br/>如 vhost-net / vhost-user"] --> EVENT["事件接入：eventfd → KVM irqfd<br/>按已配置路由投递"]
-  EVENT --> SW["KVM 虚拟 LAPIC：软件注入<br/>IRR → 事件检查 → VM Entry 注入"]
-  EVENT -->|可用时| PI["Intel Posted Interrupt Descriptor<br/>PIR 待处理位图 + 通知状态"]
-  DEV["另一条路径：VFIO 物理设备<br/>设备发出 MSI/MSI-X"] -->|已配置且平台支持| IOMMU["VT-d 中断重映射<br/>interrupt posting"]
-  IOMMU --> PI
+  accDescr: 直通设备两条路径都发送 MSI-X。普通 IRTE 经宿主 VFIO 和 irqfd 进入 KVM，posted IRTE 由 IOMMU 直接写 PID.PIR。软件后端同样可经 irqfd 进入 KVM，再使用软件注入或由 KVM 写 PIR。路由由平台能力和配置决定，vCPU 暂时未运行不等于自动切回普通 IRTE。
+  BACK["独立软件后端<br/>如 vhost-net / vhost-user"] --> EVENT["eventfd → KVM irqfd<br/>按配置路由投递"]
+  EVENT --> SW["KVM 软件 LAPIC<br/>IRR → VM-entry 注入"]
+  EVENT -->|CPU 侧 posted 可用时<br/>KVM 写 PIR| PI["Posted Interrupt Descriptor<br/>PID.PIR 与通知状态"]
+  DEV["直通 PCIe 设备<br/>两条路径都发送 MSI-X"] --> IOMMU["VT-d 中断重映射<br/>来源校验与已配置的 IRTE"]
+  IOMMU -->|普通 remapped IRTE| VFIO["宿主 IRQ / VFIO<br/>触发已绑定的 eventfd"]
+  VFIO --> EVENT
+  IOMMU -->|posted IRTE<br/>IOMMU 写 PIR| PI
   PI --> HW["目标 vCPU 运行时<br/>APICv 辅助接收与交付"]
   SW --> GUEST["客户机中断入口<br/>驱动处理队列"]
   HW --> GUEST
-  PI -.->|目标未运行| SCHED["宿主唤醒或后续调度<br/>同步待处理状态再执行"]
+  PI -.->|目标未运行| SCHED["宿主唤醒或后续调度<br/>保留 pending 再同步"]
   SCHED -.-> HW

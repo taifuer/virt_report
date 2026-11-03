@@ -15,27 +15,27 @@
       <div class="vbr-operation-buttons" role="group" aria-label="读写操作"><button type="button" data-vbr-operation="read" aria-pressed="true">读取</button><button type="button" data-vbr-operation="write" aria-pressed="false">写入</button></div>
       <div class="walkthrough-choice" data-vbr-completion-choice hidden><label for="vbr-completion">写入完成要求</label><select id="vbr-completion" data-vbr-completion><option value="ordinary">普通写入</option></select></div>
       <span data-vbr-operation-note>4 KiB · 单请求成功路径</span>
-      <button type="button" class="walkthrough-expand" data-walkthrough-expand aria-pressed="false">放大演示</button>
+      <button type="button" class="walkthrough-expand" data-walkthrough-expand aria-pressed="false">全屏演示</button>
     </div>
     <p class="vbr-scenario-note walkthrough-summary" data-vbr-scenario-summary hidden></p>
     <div class="vbr-toolbar walkthrough-toolbar" data-vbr-controls hidden>
-      <div class="vbr-views walkthrough-tabs" role="group" aria-label="查看粒度">
-        <button type="button" data-vbr-view="overview" aria-pressed="true">流程总览</button><button type="button" data-vbr-view="mechanism" aria-pressed="false">队列机制</button><button type="button" data-vbr-view="source" aria-pressed="false">源码路径</button>
+      <div class="vbr-views walkthrough-tabs" role="group" aria-label="演示视图">
+        <button type="button" data-vbr-view="overview" aria-pressed="true">流程总览</button><button type="button" data-vbr-view="mechanism" aria-pressed="false">关键结构</button><button type="button" data-vbr-view="source" aria-pressed="false">源码路径</button>
       </div>
       <div class="vbr-controls walkthrough-controls" role="group" aria-label="演示播放控制">
         <button type="button" data-vbr-prev aria-label="上一步">上一步</button><button type="button" data-vbr-play data-walkthrough-play aria-pressed="false">播放</button><button type="button" data-vbr-next aria-label="下一步">下一步</button><button type="button" data-vbr-reset>重置</button>
         <label>速度<select data-vbr-speed aria-label="播放速度"><option value="3200">慢速</option><option value="2200" selected>标准</option><option value="1200">快速</option></select></label>
       </div>
     </div>
-    <p class="vbr-note" data-vbr-help hidden>流程总览查看请求跨层流转；队列机制用 8 个步骤展示描述符准备、请求交接与回收；源码路径定位关键函数及异步边界。切换视图时按当前进度定位。</p>
+    <p class="vbr-note" data-vbr-help hidden>流程总览查看请求跨层流转；关键结构用 8 个步骤展示描述符准备、请求交接与回收；源码路径定位关键函数及异步边界。切换视图时按当前进度定位。</p>
     <p class="sr-only" data-vbr-announcement role="status" aria-live="polite" aria-atomic="true"></p>
     <nav class="vbr-progress walkthrough-progress" data-vbr-progress aria-label="演示阶段" hidden>
       {% for phase in flow.phases %}<button type="button" data-vbr-phase="{{ phase.id }}"><span>{{ '%02d'|format(loop.index) }}</span><strong>{{ phase.title }}</strong></button>{% endfor %}
     </nav>
     <div class="vbr-workspace walkthrough-workspace">
       <aside class="vbr-inspector walkthrough-inspector" aria-labelledby="vbr-step-title">
+        <p class="vbr-step-counter" data-vbr-counter>请求 R1</p>
         <div class="walkthrough-step-heading">
-          <p class="vbr-step-counter" data-vbr-counter>请求 R1</p>
           <h3 id="vbr-step-title" data-vbr-title>{{ flow.steps[0].title }}</h3>
           <p class="vbr-actor" data-vbr-actor>Guest · 用户态应用</p>
         </div>
@@ -56,6 +56,7 @@
             <section class="vbr-domain" data-vbr-domain="kvm" data-component="kvm" aria-label="宿主内核 KVM"><header><small>宿主内核 · 虚拟化</small><h4>KVM</h4></header>
               <button type="button" class="vbr-node" data-vbr-node="notify" disabled><strong data-vbr-notify-title>提交通知</strong><span data-vbr-node-state="notify">ioeventfd</span></button>
               <button type="button" class="vbr-node" data-vbr-node="interrupt" disabled><strong>中断路由与注入</strong><span data-vbr-node-state="interrupt">irqfd → vLAPIC → VM-entry</span></button>
+              <div class="vbr-interrupt-path" data-vbr-interrupt-path aria-label="中断递送状态"><span data-vbr-irq-stage="signal">irqfd 通知</span><span data-vbr-irq-stage="pending">vLAPIC 待注入</span><span data-vbr-irq-stage="injected">VM-entry 注入</span><span data-vbr-irq-stage="handled">Guest 处理</span></div>
             </section>
             <section class="vbr-domain" data-vbr-domain="device" data-component="qemu" aria-label="宿主用户态设备处理"><header><small data-vbr-device-context>宿主用户态 · IOThread</small><h4 data-vbr-device-domain>QEMU</h4></header>
               <button type="button" class="vbr-node" data-vbr-node="device" disabled><strong data-vbr-device-title>virtio-blk</strong><span data-vbr-node-state="device">IOThread 等待队列</span></button><p data-vbr-device-summary>设备模型与块层。通过映射访问同一份 Guest RAM。</p>
@@ -65,21 +66,19 @@
             </section>
           </div>
           <section class="vbr-memory" aria-labelledby="vbr-memory-title"><h4 id="vbr-memory-title">Guest RAM <span>共享内存，同一份后备数据</span></h4>
-            <div class="vbr-memory-grid">
-              <button type="button" class="vbr-node" data-vbr-node="queue" disabled><strong>描述符与 available</strong><span data-vbr-node-state="queue">链 0 → 1 → 2 尚未发布</span></button>
-              <button type="button" class="vbr-node" data-vbr-node="buffer" disabled><strong data-vbr-buffer-title>用户缓冲区 · 4 KiB</strong><span class="vbr-bytes" aria-hidden="true">{% for i in range(16) %}<i data-vbr-byte></i>{% endfor %}</span><span data-vbr-node-state="buffer">读结果尚未就绪</span></button>
-              <button type="button" class="vbr-node" data-vbr-node="completion" disabled><strong>状态与 used</strong><span data-vbr-node-state="completion">尚未发布完成</span></button>
+            <div class="network-memory-panels vbr-memory-grid" data-vbr-queue-overview data-queue-memory>
+              <section class="network-memory-panel" data-vbr-node="queue" data-network-memory-part="descriptors"><h5><button type="button" class="walkthrough-memory-jump">Descriptor table</button></h5><div data-memory-content></div><span class="sr-only" data-vbr-node-state="queue">链 0 → 1 → 2 尚未发布</span></section>
+              <section class="network-memory-panel" data-vbr-node="buffer" data-network-memory-part="buffers"><h5><button type="button" class="walkthrough-memory-jump" data-vbr-buffer-title>Buffers</button></h5><div data-memory-content></div><p data-vbr-node-state="buffer">读结果尚未就绪</p></section>
+              <section class="network-memory-panel" data-network-memory-part="available"><h5><button type="button" class="walkthrough-memory-jump" data-vbr-available-jump>Available ring</button></h5><div data-memory-content></div></section>
+              <section class="network-memory-panel" data-vbr-node="completion" data-network-memory-part="completion"><h5><button type="button" class="walkthrough-memory-jump">Used ring</button></h5><div data-memory-content></div><span class="sr-only" data-vbr-node-state="completion">尚未发布完成</span></section>
             </div>
-            <div data-vbr-queue-overview></div>
           </section>
-          <div data-vbr-contexts hidden></div>
         </div>
         {% include '_virtio_blk_queue.html' %}
         <section class="walkthrough-durability" data-vbr-durability hidden aria-label="同一请求的完成保证"><h4>写入完成与持久化</h4><dl><div><dt>宿主文件后端</dt><dd data-vbr-durable-host></dd></div><div><dt>设备易失缓存</dt><dd data-vbr-durable-device></dd></div><div><dt>稳定存储</dt><dd data-vbr-durable-stable></dd></div></dl></section>
         <div class="vbr-callpaths" data-vbr-callpaths hidden aria-label="按执行上下文分段的关键源码路径">
           {% for path in flow.callPaths %}<section class="vbr-callpath" data-vbr-callpath="{{ path.id }}"><h4>{{ loop.index }}. {{ path.title }}</h4><p class="vbr-callpath-context">{{ path.context }}</p><ol>{% for id in path.sourceIds %}{% set source = flow.sources[id] %}<li data-vbr-source="{{ id }}"><a href="{{ source.url }}" title="{{ source.path }}:{{ source.line }}" target="_blank" rel="noopener noreferrer"><strong>{{ source.symbol }}</strong><span>{{ source.path }}:{{ source.line }}</span></a></li>{% endfor %}</ol><p class="vbr-callpath-boundary">{{ path.boundary }}</p></section>{% endfor %}
         </div>
-        <div class="vbr-interrupt-path" data-vbr-interrupt-path aria-label="中断递送状态"><span data-vbr-irq-stage="signal">irqfd 通知</span><span data-vbr-irq-stage="pending">vLAPIC 待注入</span><span data-vbr-irq-stage="injected">VM-entry 注入</span><span data-vbr-irq-stage="handled">Guest 处理</span></div>
         <p class="vbr-legend" data-vbr-legend>实线：数据或队列访问 · 虚线：通知。KVM 不转发每个数据字节；各区域也不代表固定的串行流水线。</p>
       </div>
     </div>
@@ -93,9 +92,10 @@
 </section>
 <section id="comparison" class="mechanism-section">
   <h2>缓存与持久化</h2>
+  <p>写请求和读请求一样，需要向 Guest 交付完成状态。后端写入状态并发布 used，驱动通过中断提示或轮询发现完成记录，检查成功或失败，解除数据映射、回收描述符并结束块请求，再唤醒等待者或交付异步完成。中断本身不是成功标志，也不保证每个请求对应一次中断；普通写完成仍不等于掉电后数据可恢复。</p>
   <p>演示覆盖块设备直接读写，不代表所有应用 I/O。普通文件、缓存与持久化还涉及以下区别：</p>
   <table><thead><tr><th>场景</th><th>Guest 内部</th><th>设备与完成语义</th></tr></thead><tbody>
-    <tr><td>块设备直接读（本例）</td><td>固定用户页，经 bio / blk-mq 提交。一次应用调用形成一个 R1 是本例的前提。</td><td>数据描述符带 WRITE，设备把 4096 B 结果写入 Guest 缓冲区；完成结构与 used.len 随设备接口和实现变化，见队列机制视图。</td></tr>
+    <tr><td>块设备直接读（本例）</td><td>固定用户页，经 bio / blk-mq 提交。一次应用调用形成一个 R1 是本例的前提。</td><td>数据描述符带 WRITE，设备把 4096 B 结果写入 Guest 缓冲区；完成结构与 used.len 随设备接口和实现变化，见关键结构视图。</td></tr>
     <tr><td>普通文件缓冲读</td><td>先经过 VFS、文件系统和 Guest 页缓存。命中可能不发起设备 I/O；缺页读取、预读及请求拆分可能产生多个请求。</td><td>设备通常先填充 Guest 缓存页，随后由内核向用户缓冲区交付所需数据，不能等同于本例的直接映射。</td></tr>
     <tr><td>块设备直接写</td><td>应用先准备数据，内核固定缓冲区并提交写请求；完成前不能任意复用。</td><td>数据描述符不带 WRITE，设备从 Guest 读取数据；virtio-blk 使用 OUT 与状态字节，virtio-scsi 使用 SCSI CDB 与响应结构。</td></tr>
     <tr><td>普通文件缓冲写</td><td>写入可能先完成于 Guest 页缓存，设备 I/O 由后续回写触发。</td><td>write() 返回、设备请求完成与掉电后仍可恢复是不同边界，持久化还需看同步操作、flush/FUA 及后端约定。</td></tr>

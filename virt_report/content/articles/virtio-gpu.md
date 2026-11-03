@@ -116,6 +116,7 @@ virtio-gpu 允许控制命令采用异步处理。驱动需要确认命令处理
 
 - [virtio 设备初始化](virtio-device-initialization.html)：功能协商、队列配置和设备状态。
 - [virtio-gpu 渲染与编解码](virtio-gpu-rendering.html)：从应用命令到宿主执行，区分 VirGL 渲染、视频扩展和完成反馈。
+- [virtio-gpu 渲染与编解码过程](virtio-gpu-execution.html)：单独切换绘制、解码与编码，逐步观察命令和资源。
 - [QEMU 的 virtio-net 发送路径](qemu-network-tx.html)：描述符链、avail 与 used 的交接。
 - [VFIO 设备直通与 DMA](qemu-vfio-dma.html)：物理设备分配与 DMA 地址转换，理解另一类设备使用方式。
 

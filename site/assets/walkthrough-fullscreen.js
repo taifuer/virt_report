@@ -40,7 +40,7 @@
   function setButtons(record, expanded) {
     record.buttons.forEach(button => {
       button.setAttribute('aria-pressed', String(expanded));
-      button.textContent = expanded ? '退出放大' : '放大演示';
+      button.textContent = expanded ? '退出全屏' : '全屏演示';
     });
   }
 

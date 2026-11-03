@@ -30,12 +30,7 @@
 .execution-stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(270px, .36fr); gap: 26px; align-items: start; }
 .execution-canvas { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 20px; background: var(--surface); }
 .execution-nodes { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 34px 42px; }
-.execution-node { position: relative; z-index: 1; min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; background: var(--surface); }
 .execution-node small { display: block; color: var(--muted); font-size: 12px; }
-.execution-node strong { display: block; margin: 5px 0; color: var(--ink); font-size: 16px; }
-.execution-node-status { display: block; font-size: 13px; }
-.execution-node[data-active="true"] { border-color: var(--brand); background: var(--brand-soft); }
-.execution-node[data-active="true"]::after { content: ''; position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--brand); right: 8px; top: 8px; }
 .execution-arrows { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .execution-arrows path { fill: none; stroke: var(--brand); stroke-width: 2; }
 .execution-arrows path[data-kind="notification"], .execution-arrows path[data-kind="control"] { stroke: #926326; stroke-dasharray: 4 3; }
@@ -97,38 +92,9 @@
   .execution-playback button { padding: 7px 10px; }
   .execution-canvas { padding: 12px; }
   .execution-nodes { gap: 24px 20px; }
-  .execution-node { padding: 9px; }
-  .execution-node strong { font-size: 14px; }
-  .execution-node-status { font-size: 12px; }
   .execution-fields, .execution-structure[data-kind="address"] .execution-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .execution-fields > div { padding: 9px; }
   .execution-fields dd { font-size: 12px; }
   .execution-queue { grid-template-columns: minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) { .execution-lab *, .execution-lab *::before, .execution-lab *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
-
-/* Network overview uses the same queue state as the detailed ring drawing. */
-.execution-network-memory { min-width: 0; }
-.execution-network-memory > .execution-node-status { margin: 0 0 9px; font-size: 13px; }
-.network-memory-panels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-.network-memory-panel { min-width: 0; border: 1px solid var(--line); background: var(--surface-2); border-radius: 8px; padding: 10px; }
-.network-memory-panel h5 { margin: 0 0 9px; font: 650 14px/1.5 var(--sans); }
-.network-memory-panel[data-current="true"] { border-color: var(--brand); background: var(--brand-soft); }
-.network-memory-chain, .network-memory-pointer { display: block; font: 12px/1.6 var(--mono); overflow-wrap: anywhere; }
-.network-memory-chain { font-weight: 600; margin: 0 0 5px; }
-.network-memory-pointer { color: var(--muted); }
-.network-memory-slots { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 3px; margin-top: 10px; }
-.network-memory-slots > span { text-align: center; border: 1px solid var(--line); border-radius: 3px; background: var(--surface); font: 11px/1.8 var(--mono); }
-.network-memory-slots [data-filled="true"] { border-color: var(--ink-2); }
-.network-memory-slots [data-filled="true"][data-published="false"] { border-style: dotted; }
-.network-memory-slots [data-returned="true"] { border-style: dashed; color: var(--muted); }
-.execution-lab .network-memory-index, .execution-lab .network-memory-panel p { margin: 7px 0 0; font: 12px/1.65 var(--sans); }
-.network-memory-buffer + .network-memory-buffer { margin-top: 9px; }
-.network-memory-buffer strong, .network-memory-buffer > span { display: block; font: 12px/1.6 var(--sans); }
-.network-memory-buffer > span { color: var(--muted); }
-.network-memory-bytes { height: 7px; margin: 5px 0; border: 1px solid var(--line); border-radius: 3px; background: var(--surface); overflow: hidden; }
-.network-memory-bytes i { display: block; height: 100%; background: #83959a; }
-.network-memory-panel[data-current="true"] .network-memory-bytes i { background: var(--brand); }
-.execution-lab .network-memory-handoff { margin: 9px 0 0; color: var(--muted); font: 12px/1.7 var(--sans); }
-.network-memory-handoff[data-current="true"] { color: var(--brand); }
-@media (max-width: 700px) { .network-memory-panels { grid-template-columns: minmax(0, 1fr); gap: 10px; } }

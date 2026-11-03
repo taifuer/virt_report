@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=49f2a464e9bd">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=49f2a464e9bd">
   <link rel="stylesheet" href="../assets/site.css?v=49f2a464e9bd">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=93907fc093e4">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=93907fc093e4">
-<link rel="stylesheet" href="../assets/dirty-ring.css?v=93907fc093e4"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=f62c8836f843">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=f62c8836f843">
+<link rel="stylesheet" href="../assets/dirty-ring.css?v=f62c8836f843"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -93,7 +93,7 @@
   <p>QEMU 的 <code>kvm_fetch_index</code> 跟踪消费位置，KVM 的 <code>dirty_index</code> 与 <code>reset_index</code> 分别跟踪生产和回收位置。下标递增后按环容量取模，物理槽位可以循环使用。QEMU 必须连续收割，不能跳过前面的 DIRTY 条目；置为 RESET 只表示用户态已处理该地址，尚未完成页的重新保护。</p>
   <p>下面先观察单页写入，再逐步执行收割、重置和迁移读取。可以在任意两步之间再次写页，检查新内容由本次读取覆盖，还是进入后续脏页记录。</p>
 <section class="dirty-ring-lab" data-dirty-ring-lab data-mechanism-view="lab" aria-labelledby="dirty-ring-lab-title">
-  <div class="mechanism-view-heading"><h3 id="dirty-ring-lab-title">脏页记录与重新保护</h3><button type="button" data-mechanism-expand hidden>全屏显示</button></div>
+  <div class="mechanism-view-heading"><h3 id="dirty-ring-lab-title">脏页记录与重新保护</h3><button type="button" data-mechanism-expand hidden>全屏演示</button></div>
   <p>两个 vCPU 共用 8 页内存，第一轮复制已完成。写入后依次收割、重置、发布并读取页面，观察源端与目的端内容版本。</p>
   <div class="dirty-ring-controls" data-dirty-ring-controls hidden>
     <label>演示可用槽位<select data-dirty-ring-capacity><option value="2">每环 2 个</option><option value="4" selected>每环 4 个</option><option value="8">每环 8 个</option></select></label>
@@ -145,9 +145,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看Dirty Ring 条目与脏页的交接顺序" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="Dirty Ring 条目与脏页的交接顺序">
-    <img src="../assets/dirty-ring-handoff.svg?v=93907fc093e4" alt="flags 归零表示环位可回收；重新保护完成由 RESET ioctl 返回确定。QEMU 在这条边界之后才把页交给迁移读取路径。" loading="lazy">
+    <img src="../assets/dirty-ring-handoff.svg?v=f62c8836f843" alt="flags 归零表示环位可回收；重新保护完成由 RESET ioctl 返回确定。QEMU 在这条边界之后才把页交给迁移读取路径。" loading="lazy">
   </div>
-  <figcaption>flags 归零表示环位可回收；重新保护完成由 RESET ioctl 返回确定。QEMU 在这条边界之后才把页交给迁移读取路径。 <a href="../assets/dirty-ring-handoff.svg?v=93907fc093e4" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>flags 归零表示环位可回收；重新保护完成由 RESET ioctl 返回确定。QEMU 在这条边界之后才把页交给迁移读取路径。 <a href="../assets/dirty-ring-handoff.svg?v=f62c8836f843" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: Dirty Ring 条目与脏页的交接顺序
     accDescr: KVM 先写入 slot 和 offset，再发布 DIRTY。QEMU 持有 slots 锁收割地址、设置槽位图和 RESET。内核回收环位并完成页跟踪重置，ioctl 返回后 QEMU 才允许迁移路径读取所收割的页面。
@@ -225,6 +225,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=49f2a464e9bd"></script>
-<script src="../assets/mechanism-viewer.js?v=93907fc093e4" defer></script>
-<script src="../assets/dirty-ring.js?v=93907fc093e4" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=f62c8836f843" defer></script>
+<script src="../assets/dirty-ring.js?v=f62c8836f843" defer></script></body>
 </html>

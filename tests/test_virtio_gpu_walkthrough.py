@@ -14,6 +14,7 @@ from virt_report.render.render import render_mechanisms_html
 
 
 SLUG = "virtio-gpu-rendering"
+PAGE = "virtio-gpu-execution"
 SCENE_IDS = ("virgl-render", "virgl-decode", "virgl-encode")
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -47,7 +48,7 @@ def test_gpu_rendering_is_an_interactive_demo_with_three_curated_paths(demo):
     assert {scene["id"] for scene in demo["scenarios"]} == set(SCENE_IDS)
     assert demo["defaultScenario"] == "virgl-render"
     validate_selector(demo["selector"], set(SCENE_IDS))
-    article = get_article(SLUG)
+    article = get_article(PAGE)
     assert article["execution_demo"] == SLUG
     assert article["presentation"] == "walkthrough"
 
@@ -132,8 +133,26 @@ def test_gpu_sources_are_pinned_for_qemu_linux_mesa_and_virglrenderer(demo):
         assert all(step["sourceIds"] for step in scene["steps"])
 
 
+@pytest.mark.parametrize("scene_id", SCENE_IDS)
+def test_resource_and_submission_cards_advance_with_completion(demo, scene_id):
+    scene = scene_for(demo, scene_id)
+    nodes = {node["id"]: node.get("initial", "") for node in scene["nodes"]}
+    for step in scene["steps"]:
+        nodes.update(step["nodeStates"])
+        if step["id"] == "publish-submit":
+            assert "已提交" in nodes["mesa"]
+            assert "等待 flush" not in nodes["mesa"]
+        if step["id"] == "execute-gpu" and scene_id == "virgl-render":
+            assert "颜色纹理已写入" in nodes["resources"]
+            assert "尚未确认" in nodes["resources"]
+        if step["id"] == "signal-guest-fence":
+            assert "F1 已确认" in nodes["resources"]
+    assert "等待 F1" not in nodes["resources"]
+    assert "颜色目标为空" not in nodes["resources"]
+
+
 def test_gpu_walkthrough_uses_shared_controls_and_an_offline_no_script_fallback(demo):
-    page = render_mechanisms_html(Config(), SLUG)
+    page = render_mechanisms_html(Config(), PAGE)
     assert page.count('id="execution-demo-data"') == 1
     encoded = re.search(r'<script[^>]*id="execution-demo-data"[^>]*>(.*?)</script>',
                         page, flags=re.S)
@@ -154,7 +173,7 @@ def test_gpu_walkthrough_uses_shared_controls_and_an_offline_no_script_fallback(
 
 
 def test_video_support_boundary_is_visible_before_the_player(demo):
-    page = render_mechanisms_html(Config(), SLUG)
+    page = render_mechanisms_html(Config(), PAGE)
     introduction = page.split("data-execution-lab", 1)[0]
     assert "QEMU 10.2" in introduction
     assert "视频" in introduction

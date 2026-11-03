@@ -11,7 +11,7 @@ from virt_report.render.render import render_mechanisms_html
 
 @pytest.mark.parametrize("slug", [
     "virtio-blk-read", "network-io", "cpu-execution", "memory-access",
-    "interrupt-delivery", "gpu-execution", "virtio-gpu-rendering", "libvirt-domain-start",
+    "interrupt-delivery", "gpu-execution", "virtio-gpu-execution", "libvirt-domain-start",
 ])
 def test_inspector_contains_explanations_not_duplicate_source_lists(slug):
     page = render_mechanisms_html(Config(), slug)
@@ -27,7 +27,7 @@ def test_inspector_contains_explanations_not_duplicate_source_lists(slug):
 
 @pytest.mark.parametrize("slug", [
     "virtio-blk-read", "network-io", "cpu-execution", "memory-access",
-    "interrupt-delivery", "gpu-execution", "virtio-gpu-rendering", "libvirt-domain-start",
+    "interrupt-delivery", "gpu-execution", "virtio-gpu-execution", "libvirt-domain-start",
 ])
 def test_step_explanation_precedes_full_width_visual_in_reading_order(slug):
     page = render_mechanisms_html(Config(), slug)
@@ -57,6 +57,17 @@ def test_disk_uses_one_queue_component_in_both_views():
     assert "data-vbr-descriptor-address" not in page
     assert "data-vbr-followup-queue" not in page
     assert "assets/walkthrough-components.js?v=" in page
+    for part in ("descriptors", "buffers", "completion"):
+        assert page.count(f'data-network-memory-part="{part}"') == 1
+    assert "data-vbr-byte" not in page
+
+
+def test_disk_interrupt_path_is_part_of_kvm_not_a_separate_caption():
+    page = render_mechanisms_html(Config(), "virtio-blk-read")
+    domain = re.search(r'<section[^>]*data-vbr-domain="kvm".*?</section>', page, re.S).group()
+    assert "data-vbr-interrupt-path" in domain
+    assert domain.count("data-vbr-irq-stage=") == 4
+    assert page.count("data-vbr-interrupt-path") == 1
 
 
 def test_guest_mode_labels_follow_the_title_in_a_shared_heading_row():

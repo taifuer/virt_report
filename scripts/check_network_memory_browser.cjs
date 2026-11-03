@@ -31,6 +31,7 @@ function readMemory() {
   const bounds = root.getBoundingClientRect();
   const panels = [...root.querySelectorAll('[data-network-memory-part]')].map(panel => ({
     id:panel.dataset.networkMemoryPart, current:panel.dataset.current, text:panel.textContent,
+    title:panel.querySelector('h5').textContent,
     chain:panel.querySelector('.network-memory-chain')?.textContent,
     pointers:[...panel.querySelectorAll('.network-memory-pointer')].map(node=>node.textContent),
     index:panel.querySelector('.network-memory-index')?.textContent,
@@ -51,6 +52,8 @@ function readMemory() {
     bounds:{left:bounds.left,right:bounds.right},documentWidth:document.documentElement.scrollWidth,
     viewport:innerWidth,lab:{scroll:lab.scrollWidth,client:lab.clientWidth,left:r.left,right:r.right},
     detail:{tables:detail.querySelectorAll('.walkthrough-descriptors').length,
+      titles:[...detail.querySelectorAll('[data-queue-region] > h5')].map(node=>node.textContent),
+      freeRegion:detail.querySelector('[data-free-descriptors]').closest('[data-queue-region]').dataset.queueRegion,
       descriptors:[...detail.querySelectorAll('tbody tr')].map(row=>({id:Number(row.dataset.descriptor),state:row.dataset.state,text:row.textContent})),
       rings:Object.fromEntries([...detail.querySelectorAll('[data-queue-ring]')].map(ring=>[
         ring.dataset.queueRing,[...ring.querySelectorAll('.walkthrough-queue-slots > div')].map(slot=>slot.querySelector('span').textContent)]))},
@@ -63,7 +66,11 @@ function assertMemory(actual, frame, scene, tag) {
   assert.equal(actual.frame.id,frame.id,`${tag}: playback position`);
   assert.deepEqual(actual.frame.queueState,frame.queueState,`${tag}: model snapshot`);
   assert.deepEqual(actual.nodes,frame.nodes,`${tag}: cumulative node status`);
-  assert.deepEqual(actual.panels.map(panel=>panel.id),['descriptors','buffers','completion'],`${tag}: three memory regions`);
+  assert.deepEqual(actual.panels.map(panel=>panel.id),['descriptors','buffers','available','completion'],`${tag}: four memory regions`);
+  assert.deepEqual(actual.panels.map(panel=>panel.title),
+    ['Descriptor table','Buffers','Available ring','Used ring'],`${tag}: standard queue terminology`);
+  assert.deepEqual(actual.detail.titles,['Descriptor table','Buffers','Available ring','Used ring']);
+  assert.equal(actual.detail.freeRegion,'descriptors',`${tag}: detailed free count belongs to the descriptor allocator`);
   assert.equal(actual.tableCount,0,`${tag}: full descriptor table belongs in the structure view`);
   assert(actual.documentWidth<=actual.viewport+1,`${tag}: document horizontal overflow ${JSON.stringify(actual.lab)}`);
   assert(actual.lab.scroll<=actual.lab.client+1,`${tag}: walkthrough horizontal overflow ${JSON.stringify(actual.lab)}`);
@@ -72,15 +79,34 @@ function assertMemory(actual, frame, scene, tag) {
   }
   assert.deepEqual([actual.meta.headerLength,actual.meta.packetLength,actual.meta.payloadLength],[12,60,18]);
   const state=frame.queueState;
-  const [desc,buffers,done]=actual.panels;
+  const [desc,buffers,available,done]=actual.panels;
   const changed=(...keys)=>(state.changed||[]).some(value=>keys.some(key=>value===key||value.startsWith(key+'.')));
-  assert.equal(desc.current,String(changed('descriptors','avail')),`${tag}: descriptor highlight`);
+  assert.equal(desc.current,String(changed('descriptors','freeDescriptors')),`${tag}: descriptor highlight`);
+  assert.equal(available.current,String(changed('avail')),`${tag}: available highlight`);
   assert.equal(buffers.current,String(changed('buffers','ownership')),`${tag}: buffer highlight`);
-  assert.equal(done.current,String(changed('used','freeDescriptors')),`${tag}: completion highlight`);
+  assert.equal(done.current,String(changed('used')),`${tag}: used-ring highlight must not follow descriptor allocation`);
+  // Semantic regression: allocation precedes both ring publication and backend
+  // completion. Do not derive these expected highlights from state.changed.
+  if (['prepare','prepare-buffer'].includes(frame.id)) {
+    const count = scene.queue.name === 'TX' ? 2 : 1;
+    assert.equal(state.descriptors.length,count,`${tag}: direct descriptor allocation`);
+    assert.equal(state.freeDescriptors,scene.queue.size-count,`${tag}: locally reserved descriptors`);
+    assert.equal(state.avail.index,0); assert.equal(state.used.index,0);
+    assert(state.avail.slots.every(slot=>slot===null),`${tag}: no available entry yet`);
+    assert(state.used.slots.every(slot=>slot===null),`${tag}: no completion entry yet`);
+    assert.equal(desc.current,'true'); assert.equal(buffers.current,'true');
+    assert.equal(available.current,'false',`${tag}: allocation is not publication`);
+    assert.equal(done.current,'false',`${tag}: allocation is not completion`);
+  }
+  if (frame.id === 'refill-prepare') {
+    assert.equal(desc.current,'true');
+    assert.equal(available.current,'false'); assert.equal(done.current,'false');
+  }
+  if (['fill-used','used'].includes(frame.id)) assert.equal(done.current,'true',`${tag}: actual used-ring change`);
   assert.equal(desc.chain,`链 ${state.descriptors.length?state.descriptors.map(d=>d.index).join(' → '):'尚未填写'}`);
   for(const d of state.descriptors) assert(desc.pointers.includes(
     `desc[${d.index}] → 0x${d.addr.toString(16)} · ${d.len} B · ${d.flags.includes('WRITE')?'设备可写':'设备只读'}`),`${tag}: descriptor pointer`);
-  for(const [panel,name] of [[desc,'avail'],[done,'used']]) {
+  for(const [panel,name] of [[available,'avail'],[done,'used']]) {
     const ring=state[name];
     assert.equal(panel.index,`${name}.idx ${ring.index} · ${name==='avail'?'设备消费':'驱动回收'} ${ring.consumer}`);
     assert.equal(panel.slots.length,scene.queue.size,`${tag}: ${name} ring size`);
@@ -102,7 +128,8 @@ function assertMemory(actual, frame, scene, tag) {
     if(scene.queue.name==='RX' && expected.validBytes>0) assert(buffer.text.includes(
       `12 B virtio-net 头 + ${expected.validBytes-12} B Ethernet 帧`),`${tag}: RX bytes include virtio header`);
   }
-  assert(done.pointers.includes(`空闲描述符 ${state.freeDescriptors} / ${scene.queue.size}`));
+  assert(desc.pointers.includes(`Free descriptors ${state.freeDescriptors} / ${scene.queue.size}`));
+  assert(!done.text.includes('Free descriptors'),`${tag}: descriptor allocation does not belong to Used ring`);
   const completion=state.used.slots.find(record=>record!=null);
   assert.equal(done.chain,completion?`id ${completion.id} · len ${completion.len}`:'尚无完成项');
   assert.equal(actual.detail.tables,1,`${tag}: full queue remains available`);
@@ -194,7 +221,7 @@ async function assertMemoryArrows(page,demo) {
     await page.goto(`${base}/mechanisms/network-io.html`);
     await page.waitForFunction(()=>document.querySelector('[data-execution-lab]')?.executionSnapshot);
     const demo=JSON.parse(await page.locator('#execution-demo-data').textContent());
-    assert.equal(demo.scenarios.length,10,'all ten curated network scenarios');
+    assert.equal(demo.scenarios.length,8,'eight backend/direction success paths');
     if(!arrowsOnly) for(const viewport of [{width:320,height:740},{width:390,height:844},{width:768,height:1024},{width:1440,height:900}]) {
       await page.setViewportSize(viewport);
       for(const scene of demo.scenarios) {
@@ -205,6 +232,10 @@ async function assertMemoryArrows(page,demo) {
         // Both the overview and full queue are rendered from the snapshot at every step.
         for(const frame of trace) {
           assertMemory(await page.evaluate(readMemory),frame,scene,`${tag}/${frame.id}`);checked++;
+          if(scene.id==='qemu-tx' && viewport.width===1440 && frame.id==='prepare') {
+            await page.locator('[data-execution-network-memory]').scrollIntoViewIfNeeded();
+            await page.screenshot({path:path.join(shots,'qemu-tx-1440-prepare.png')});
+          }
           if(frame.index<trace.length-1) {
             await page.locator('[data-execution-next]').evaluate(button=>button.click());
             await settle(page);

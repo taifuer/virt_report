@@ -10,6 +10,8 @@ from __future__ import annotations
 from copy import deepcopy
 from urllib.parse import urlsplit
 
+from virt_report.network_presentation import clarify_network_presentation
+
 
 LINUX = "7d0a66e4bb9081d75c82ec4957c50034cb0ea449"
 QEMU = "698104725efad4b29079d857dfdebbd804e34c99"
@@ -909,3 +911,65 @@ def enrich_network_demo(demo: dict) -> None:
         _node_states(scene)
         _call_paths(scene)
         _parallel_network_paths(scene)
+
+
+def simplify_network_presentation(demo: dict) -> None:
+    """Publish one successful trace per backend/direction, without branch controls.
+
+    Keep exceptional traces and independent-event regression data in the source
+    catalog. A reading order is not a new dependency between Guest and host.
+    """
+    excluded = {"qemu-tx-backpressure", "qemu-rx-no-buffer"}
+    demo["scenarios"] = [scene for scene in demo["scenarios"] if scene["id"] not in excluded]
+    for category in demo["selector"]["categories"]:
+        for group in category["groups"]:
+            group["scenarios"] = [item for item in group["scenarios"] if item["id"] not in excluded]
+    for scene in demo["scenarios"]:
+        scene.pop("parallel", None)
+        # Preserve queue events when moving independent host-buffer operations.
+        previous, patches = {}, {}
+        for step in scene["steps"]:
+            snapshot = step["queueState"]
+            patches[step["id"]] = {key: deepcopy(value) for key, value in snapshot.items()
+                                    if key != "changed" and previous.get(key) != value}
+            previous = snapshot
+        by_id = {step["id"]: step for step in scene["steps"]}
+        if scene["id"] in {"qemu-tx", "vhost-tx"}:
+            # The TAP call already submits to the host network stack. Do not
+            # invent an extra, later "forwarding" action after Guest reclamation.
+            scene["steps"] = [step for step in scene["steps"] if step["id"] != "egress"]
+            scene["links"] = [link for link in scene["links"] if link["id"] != "egress"]
+            step = by_id["transfer"]
+            step["title"] = "提交宿主网络栈"
+            step["description"] = "报文经 TAP 交给宿主网络栈；本例采用普通复制路径，宿主已有独立的报文存储。"
+            step["detail"] = (
+                "qemu_sendv_packet_async() 经 tap_write_packet() 调用 writev()；成功返回后，QEMU 才发布 TX used。"
+                if scene["id"] == "qemu-tx" else
+                "vhost-net 经 TAP socket 的发送接口提交帧；成功接受且不再使用 Guest 缓冲区后，才发布 TX used。"
+            ) + "这表示宿主已接受报文，不表示物理网卡发完或远端收到；后续转发不等待 Guest 回收。"
+            step["changes"]["networkStage"] = "宿主网络栈已接受；出口发送与远端接收未确认"
+            step["nodeStates"]["port"] = "宿主网络栈已接受，不等待 Guest 回收"
+            scene["summary"] = "18 B UDP 载荷形成 60 B 帧，提交宿主网络栈后归还 TX 链；完成通知表示缓冲区可回收，不是对端收包确认。"
+        elif scene["id"] in {"dpdk-tx", "dpdk-rx"}:
+            # Follow the host caller after the synchronous library API returns,
+            # then observe the Guest. Neither side waits for the other.
+            event = "pmd" if scene["id"] == "dpdk-tx" else "free-mbuf"
+            scene["steps"].remove(by_id[event])
+            position = scene["steps"].index(by_id["route-interrupt"]) + 1
+            scene["steps"].insert(position, by_id[event])
+            by_id["route-interrupt"]["detail"] = by_id["route-interrupt"]["detail"].replace(
+                "以下从这个共同边界分别观察 Guest 中断处理与宿主 mbuf 的后续操作。",
+                "接着跟踪宿主调用者，再观察 Guest 处理；这是演示的阅读顺序，两者不互相等待。",
+            )
+            if scene["id"] == "dpdk-tx":
+                scene["phases"].append({"id": "pmd-cleanup", "title": "宿主回收", "start": "pmd-cleanup"})
+        clarify_network_presentation(scene)
+        positions = {step["id"]: index for index, step in enumerate(scene["steps"])}
+        scene["phases"] = sorted(
+            (phase for phase in scene["phases"] if phase["start"] in positions),
+            key=lambda phase: positions[phase["start"]],
+        )
+        snapshot = {}
+        for step in scene["steps"]:
+            snapshot.update(patches[step["id"]])
+            step["queueState"] = {**deepcopy(snapshot), "changed": step["queueState"]["changed"]}

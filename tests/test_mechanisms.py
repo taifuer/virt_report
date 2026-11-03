@@ -49,7 +49,7 @@ def test_editorial_metadata_pins_each_repository_and_only_published_articles():
             assert (render.TEMPLATES_DIR / article["template"]).is_file()
         assert article["baselines"]
         assert {item["project"] for item in article["baselines"]} <= {
-            "QEMU", "Linux", "Libvirt", "SPDK", "DPDK", "Mesa", "virglrenderer",
+            "QEMU", "Linux", "Libvirt", "SPDK", "DPDK", "Mesa", "virglrenderer", "SeaBIOS",
         }
         for field in ("script", "stylesheet"):
             if article.get(field):

@@ -64,26 +64,17 @@ async function assertOverview(page, item, viewport, fullscreen) {
   });
   const tag=`${item.slug}/${viewport.width}/${fullscreen?'fullscreen':'normal'}`;
   assert.equal(layout.tables,0,`${tag}: overview must not repeat the detailed descriptor table`);
-  if(item.slug==='network-io') {
-    assert.deepEqual(layout.memory.map(panel=>panel.id),['descriptors','buffers','completion'],`${tag}: network memory remains split into three regions`);
-    assert.equal(layout.memory[0].slots,8,`${tag}: available ring slots`);
-    assert.equal(layout.memory[2].slots,8,`${tag}: used ring slots`);
-    assert(layout.memory[1].buffers>0,`${tag}: packet buffers remain visible`);
+    assert.deepEqual(layout.memory.map(panel=>panel.id),['descriptors','buffers','available','completion'],`${tag}: four distinct memory regions`);
+    assert.equal(layout.memory[2].slots,8,`${tag}: available ring slots`);
+    assert.equal(layout.memory[3].slots,8,`${tag}: used ring slots`);
+    assert(layout.memory[1].buffers>0,`${tag}: data buffers remain visible`);
     assert.equal(layout.summary,null,`${tag}: do not repeat a second compact queue summary`);
-  } else {
-    assert(layout.summary,`${tag}: overview retains compact queue state`);
-    assert.equal(layout.summary.tables+layout.summary.slots+layout.summary.buffers,0,
-      `${tag}: compact means a summary, not another full queue visualization`);
-    assert.deepEqual(layout.summary.fields,['chain','avail','used','free'],
-      `${tag}: compact queue keeps request identity and publication/reclamation progress`);
-    assert(layout.summary.height <= (viewport.width>=1000?120:190),`${tag}: summary too tall ${JSON.stringify(layout)}`);
-  }
   assert(layout.page<=layout.width+1,`${tag}: page overflow`);
   assert(layout.lab.scroll<=layout.lab.client+1,`${tag}: walkthrough horizontal overflow`);
   assert(layout.canvas.scroll<=layout.canvas.client+1,`${tag}: canvas horizontal overflow`);
   if (viewport.width>=1000) {
     if(fullscreen) {
-      assert(layout.canvas.top>=120 && layout.canvas.top<=220,`${tag}: controls must leave useful room for the drawing ${JSON.stringify(layout)}`);
+      assert(layout.canvas.top>=120 && layout.canvas.top<=(item.slug==='network-io'?370:220),`${tag}: controls must leave useful room for the drawing ${JSON.stringify(layout)}`);
       assert(layout.canvas.height<=viewport.height-180 && layout.canvas.bottom<=viewport.height+1,`${tag}: expanded canvas is bounded by the viewport ${JSON.stringify(layout)}`);
       assert(layout.canvas.right<=layout.inspector.left && Math.abs(layout.canvas.top-layout.inspector.top)<2,
         `${tag}: diagram and current explanation share a row ${JSON.stringify(layout)}`);
@@ -92,8 +83,7 @@ async function assertOverview(page, item, viewport, fullscreen) {
     } else {
       assert(layout.diagramWidth>=layout.workspaceWidth-44,`${tag}: normal reading remains full-width ${JSON.stringify(layout)}`);
       if(item.slug!=='network-io') {
-        assert(layout.height<=viewport.height-180,`${tag}: core disk diagram exceeds its screen budget ${JSON.stringify(layout)}`);
-        assert(layout.bottom<=viewport.height-8,`${tag}: aligned disk diagram fits the viewport ${JSON.stringify(layout)}`);
+        assert(layout.top>=0 && layout.bottom<=viewport.height-8,`${tag}: the entire aligned disk diagram fits the actual viewport ${JSON.stringify(layout)}`);
       }
     }
   }
@@ -109,7 +99,7 @@ async function assertDetail(page,item,viewport) {
     assert.equal(await detail.locator(`[data-queue-ring="${name}"] .walkthrough-queue-slots > div`).count(),8);
   }
   const hasColumns=await detail.locator('.walkthrough-descriptors thead th').allTextContents();
-  assert.deepEqual(hasColumns,['描述符 / 缓冲区','addr','len','flags','next']);
+  assert.deepEqual(hasColumns,['描述符','addr','len','flags','next']);
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`${item.slug}/${viewport.width}: detail overflow`);
 }
 

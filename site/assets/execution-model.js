@@ -18,7 +18,7 @@
   function buildTrace(scene, firstBranch) {
     let values = Object.fromEntries(scene.structures.flatMap(structure =>
       structure.fields.map(field => [field.key, field.initial])));
-    let nodes = Object.fromEntries(scene.nodes.map(node => [node.id, node.initial || '准备就绪']));
+    let nodes = Object.fromEntries(scene.nodes.map(node => [node.id, node.initial || '']));
     // Queue data is authored as snapshots in the reference order. Replay its
     // per-event changes so an independent branch cannot import future reclaim.
     let previous = {}, queueState = {};

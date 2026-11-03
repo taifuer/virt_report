@@ -17,7 +17,7 @@ DEMO_PAGES = {
     "disk-persistence": "virtio-blk-read",
     "vm-lifecycle": "libvirt-domain-start",
     "gpu-execution": "gpu-execution",
-    "virtio-gpu-rendering": "virtio-gpu-rendering",
+    "virtio-gpu-rendering": "virtio-gpu-execution",
 }
 DEMO_IDS = tuple(DEMO_PAGES)
 CONTENT_DIR = Path(__file__).parent / "content" / "flows"
@@ -79,6 +79,14 @@ def validate_demo(demo: dict) -> None:
                 require(field["key"] not in {"__proto__", "constructor", "prototype"}, "unsafe field")
                 fields.append(field["key"])
         require(len(fields) == len(set(fields)), "duplicate fields")
+        if "completion" in scene:
+            completion = scene["completion"]
+            require(isinstance(completion, list) and 1 <= len(completion) <= 4,
+                    "completion boundary count")
+            keys = [item.get("key") for item in completion]
+            require(len(set(keys)) == len(keys) and set(keys) <= set(fields),
+                    "completion boundary fields")
+            require(all(text(item.get("label")) for item in completion), "completion labels")
         require(2 <= len(scene["steps"]) <= 120, "step count")
         ids(scene["steps"])
         if "parallel" in scene:
@@ -188,20 +196,25 @@ def validate_selector(selector: dict, scenario_ids: set[str]) -> None:
             require(all(identifier(value) for value in represented_operations)
                     and sorted(represented_operations) == sorted(operation_ids), "operation coverage")
         for group in groups:
-            require(set(group) == ({"label", "scenarios", "operation"} if operations
-                                   else {"label", "scenarios"}), "group fields")
+            fields = {"label", "scenarios", "operation"} if operations else {"label", "scenarios"}
+            require(set(group) - {"advanced"} == fields, "group fields")
+            require("advanced" not in group or isinstance(group["advanced"], bool),
+                    "advanced flag")
+            require(not group.get("advanced") or not operations,
+                    "advanced presets cannot combine with operation controls")
             require(text(group["label"]) and bool(group["scenarios"]), "empty group")
             for scene in group["scenarios"]:
                 require(set(scene) == {"id", "label"} and identifier(scene["id"])
                         and text(scene["label"]), "scenario option")
                 represented.append(scene["id"])
+        require(any(not group.get("advanced") for group in groups), "missing primary scenarios")
     require(len(represented) == len(set(represented)), "duplicate scenario")
     require(set(represented) == scenario_ids, "scenario coverage")
 
 
-@lru_cache(maxsize=len(DEMO_IDS))
-def get_demo(demo_id: str) -> dict | None:
-    """Load an allowlisted trace without accessing live systems or services."""
+@lru_cache(maxsize=2 * len(DEMO_IDS))
+def get_demo(demo_id: str, *, presentation: bool = True) -> dict | None:
+    """Load offline traces; reference mode retains alternatives for validation."""
     if demo_id not in DEMO_IDS:
         return None
     demo = json.loads((CONTENT_DIR / f"{demo_id}.json").read_text(encoding="utf-8"))
@@ -223,6 +236,11 @@ def get_demo(demo_id: str) -> dict | None:
         layout = scene.get("layout") or layouts[demo_id][scene["id"]]
         validate_execution_layout(layout, {node["id"] for node in scene["nodes"]})
         scene["layout"] = layout
+    if demo_id == "network-io" and presentation:
+        from virt_report.network_queue import simplify_network_presentation
+        simplify_network_presentation(demo)
+        validate_demo(demo)
+        validate_selector(demo["selector"], {scene["id"] for scene in demo["scenarios"]})
     if demo["id"] != demo_id:
         raise ValueError("Execution demo identity mismatch")
     return demo

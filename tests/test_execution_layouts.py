@@ -39,11 +39,8 @@ def test_execution_layout_places_each_node_once_with_readable_domains(demo_id, s
     placed = []
     for domain in layout["domains"]:
         assert {"id", "title", "context", "nodes", "component"} <= set(domain)
-        assert set(domain) <= {"id", "title", "context", "nodes", "span", "inline",
-                               "component", "note"}
+        assert set(domain) <= {"id", "title", "context", "nodes", "component", "note"}
         assert domain["component"] in COMPONENTS
-        assert domain.get("span", 1) in (1, 2)
-        assert isinstance(domain.get("inline", False), bool)
         assert re.fullmatch(r"[a-z][a-z0-9-]*", domain["id"])
         assert domain["title"].strip()
         assert re.search(r"[\u4e00-\u9fff]", domain["context"])
@@ -79,7 +76,7 @@ def test_network_guest_queue_is_separate_from_execution_domains():
 
 def test_memory_and_posted_interrupt_state_are_not_mislabeled_as_guest_queues():
     for scene_id, layout in LAYOUTS["memory-access"].items():
-        if scene_id.startswith("mmio-"):
+        if scene_id.startswith("mmio-") and scene_id != "mmio-ivshmem-direct":
             assert "memory" not in layout
             continue
         assert layout["memory"]["nodes"] == ["ram"]
@@ -95,6 +92,23 @@ def test_memory_and_posted_interrupt_state_are_not_mislabeled_as_guest_queues():
     assert "宿主内存" in host_state["context"]
 
 
+def test_direct_bar_comparison_keeps_configuration_in_background_and_ram_out_of_hardware():
+    for scene_id in ("mmio-vfio-direct", "mmio-ivshmem-direct"):
+        layout = LAYOUTS["memory-access"][scene_id]
+        domains = {domain["component"]: domain for domain in layout["domains"]}
+        for component in ("kvm", "qemu", "host-kernel"):
+            assert domains[component]["nodes"] == []
+            assert domains[component]["note"]
+        assert domains["guest"]["nodes"] == ["guest"]
+        if scene_id == "mmio-vfio-direct":
+            assert domains["hardware"]["nodes"] == ["mmu", "device"]
+            assert "memory" not in layout
+        else:
+            assert domains["hardware"]["nodes"] == ["mmu"]
+            assert layout["memory"]["nodes"] == ["ram"]
+            assert layout["memory"]["title"] == "宿主共享 RAM · BAR2 后备"
+
+
 def test_guest_syscall_groups_both_privilege_levels_inside_guest():
     layout = LAYOUTS["cpu-execution"]["guest-syscall"]
     guest = next(domain for domain in layout["domains"] if domain["id"] == "guest")
@@ -108,11 +122,11 @@ def test_guest_syscall_groups_both_privilege_levels_inside_guest():
 @pytest.mark.parametrize("demo_id,scenario_id", [
     ("memory-access", "mmio-read"),
 ])
-def test_mmio_qemu_nodes_share_a_wider_inline_execution_domain(demo_id, scenario_id):
+def test_mmio_vcpu_and_device_callbacks_belong_to_the_same_qemu_component(demo_id, scenario_id):
     layout = LAYOUTS[demo_id][scenario_id]
     qemu = next(domain for domain in layout["domains"] if domain["id"] == "userspace")
     assert qemu["nodes"] == ["qemu", "device"]
-    assert qemu["span"] == 2 and qemu["inline"] is True
+    assert qemu["component"] == "qemu"
 
 
 def test_cpu_mmio_timeline_separates_kvm_and_qemu_without_fake_data_handoffs():
@@ -173,13 +187,21 @@ def test_ept_faults_separate_kvm_from_host_memory_management():
         assert host["nodes"] == ["host-mm"]
 
 
-def test_interrupt_sender_domains_match_the_fixed_qemu_scenarios():
-    for scene_id, sender in (("irqfd", "backend"), ("if-masked", "source")):
+def test_interrupt_sender_domains_match_the_fixed_backend():
+    for scene_id, sender in (("msix-software", "device"), ("if-masked", "source")):
         domains = LAYOUTS["interrupt-delivery"][scene_id]["domains"]
         qemu = next(domain for domain in domains if domain["component"] == "qemu")
-        assert qemu["nodes"] == [sender]
+        assert sender in qemu["nodes"]
         assert "QEMU" == qemu["title"]
         assert "宿主用户态" in qemu["context"]
+    for scene_id, sender in (("irqfd", "backend"), ("apicv-posted", "device")):
+        domains = LAYOUTS["interrupt-delivery"][scene_id]["domains"]
+        qemu = next(domain for domain in domains if domain["component"] == "qemu")
+        backend = next(domain for domain in domains if domain["component"] == "host-user")
+        host = next(domain for domain in domains if domain["component"] == "host-kernel")
+        assert qemu["nodes"] == [] and "不经 QEMU 转发" in qemu["note"]
+        assert backend["nodes"] == [sender] and backend["title"] == "DPDK"
+        assert host["nodes"] == ["eventfd"]
 
 
 @pytest.mark.parametrize("change,message", [

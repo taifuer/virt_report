@@ -5,7 +5,7 @@ const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
 const slugs = ['virtio-blk-read', 'network-io', 'cpu-execution', 'memory-access',
-  'interrupt-delivery', 'gpu-execution', 'virtio-gpu-rendering'];
+  'interrupt-delivery', 'gpu-execution', 'virtio-gpu-execution'];
 const assets = path.resolve(__dirname, '../virt_report/render/assets');
 
 (async () => {

@@ -9,7 +9,7 @@ const routes = {
   'network-io': 'network-io', 'memory-access': 'memory-access',
   'cpu-execution': 'cpu-execution', 'interrupt-delivery': 'interrupt-delivery',
   'gpu-execution': 'gpu-execution', 'vm-lifecycle': 'libvirt-domain-start',
-  'virtio-gpu-rendering': 'virtio-gpu-rendering',
+  'virtio-gpu-rendering': 'virtio-gpu-execution',
 };
 const ids = process.env.EXECUTION_DEMO_IDS?.split(',') || Object.keys(routes);
 assert(ids.length && ids.every(id => Object.hasOwn(routes, id)), 'known demo IDs are required');
@@ -45,14 +45,26 @@ async function assertSelectorState(page, demo, scenarioId) {
     assert(await control.isVisible());
     assert.equal(await control.getAttribute('aria-pressed'), String(operation.id === group.operation));
   }
-  const groups = category.groups.filter(item => !operations.length || item.operation === group.operation);
+  const groups = category.groups.filter(item => !item.advanced && (!operations.length || item.operation === group.operation));
   const options = groups.flatMap(item => item.scenarios);
   const scenario = button(page, 'scenario');
   assert.equal(await scenario.inputValue(), scenarioId);
-  assert.deepEqual(await scenario.locator('option').evaluateAll(nodes => nodes.map(node => ({id: node.value, label: node.textContent}))), options);
+  assert.deepEqual(await scenario.locator('option:not(:disabled)').evaluateAll(nodes => nodes.map(node => ({id: node.value, label: node.textContent}))), options);
+  const categories = demo.selector.categories || [category];
+  for (const owner of categories) {
+    for (const item of owner.groups.filter(item => item.advanced)) {
+      const details = page.locator('[data-execution-advanced]').filter({has: page.locator(`[data-execution-advanced-scenario="${item.scenarios[0].id}"]`)});
+      assert.equal(await details.isHidden(), owner.id !== category.id);
+      assert.equal(await details.evaluate(node => node.open), item.scenarios.some(option => option.id === scenarioId));
+      for (const option of item.scenarios) {
+        assert.equal(await page.locator(`[data-execution-advanced-scenario="${option.id}"]`).getAttribute('aria-pressed'),
+          String(option.id === scenarioId));
+      }
+    }
+  }
   assert.deepEqual(await scenario.locator('optgroup').evaluateAll(nodes => nodes.map(node => node.label)),
     groups.length > 1 ? groups.map(item => item.label) : []);
-  const hidden = Boolean(demo.selector.categories && options.length === 1);
+  const hidden = Boolean(demo.selector.categories && options.length === 1 && !category.groups.some(item => item.advanced));
   assert.equal(await button(page, 'scenario-choice').isHidden(), hidden,
     `${demo.id}/${scenarioId}: only meaningful condition selectors are visible`);
 }
@@ -67,8 +79,15 @@ async function chooseScenario(page, demo, scenarioId) {
     if (await direction.getAttribute('aria-pressed') !== 'true') await direction.click();
   }
   if (await button(page, 'scenario').inputValue() !== scenarioId) {
-    assert(await button(page, 'scenario').isVisible(), `${scenarioId}: preset must be selectable`);
-    await button(page, 'scenario').selectOption(scenarioId);
+    if (group.advanced) {
+      const option = page.locator(`[data-execution-advanced-scenario="${scenarioId}"]`);
+      const details = option.locator('xpath=ancestor::details');
+      if (!await details.evaluate(node => node.open)) await details.locator('summary').click();
+      await option.click();
+    } else {
+      assert(await button(page, 'scenario').isVisible(), `${scenarioId}: preset must be selectable`);
+      await button(page, 'scenario').selectOption(scenarioId);
+    }
   }
   await assertSelectorState(page, demo, scenarioId);
 }
@@ -76,8 +95,8 @@ async function chooseScenario(page, demo, scenarioId) {
 async function assertSelectorTransitions(page, demo) {
   if (demo.id === 'network-io') {
     for (const operation of ['tx', 'rx']) {
-      const exceptional = operation === 'tx' ? 'qemu-tx-backpressure' : 'qemu-rx-no-buffer';
-      await chooseScenario(page, demo, exceptional);
+      await chooseScenario(page, demo, `qemu-${operation}`);
+      assert(await page.locator('[data-execution-scenario-choice]').isHidden());
       // Every other backend keeps the chosen direction and uses its normal preset.
       for (const category of demo.selector.categories.filter(item => item.id !== 'qemu')) {
         await button(page, 'next').click();
@@ -89,7 +108,7 @@ async function assertSelectorTransitions(page, demo) {
       }
       await button(page, 'category').selectOption('qemu');
       await assertSelectorState(page, demo, `qemu-${operation}`);
-      await chooseScenario(page, demo, exceptional);
+      await chooseScenario(page, demo, `qemu-${operation}`);
       const opposite = operation === 'tx' ? 'rx' : 'tx';
       await page.locator(`[data-execution-operation="${opposite}"]`).click();
       await assertSelectorState(page, demo, `qemu-${opposite}`);
@@ -289,7 +308,8 @@ async function assertFrame(page, frame) {
     }
     await nojs.close();
     const expectedScenarios = ids.reduce((count, id) => count + JSON.parse(fs.readFileSync(
-      path.join(__dirname, `../virt_report/content/flows/${id}.json`), 'utf8')).scenarios.length, 0);
+      path.join(__dirname, `../virt_report/content/flows/${id}.json`), 'utf8')).scenarios.filter(scene =>
+        id !== 'network-io' || !['qemu-tx-backpressure', 'qemu-rx-no-buffer'].includes(scene.id)).length, 0);
     assert.equal(scenarioCount, expectedScenarios, 'all curated scenarios were exercised');
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, []);

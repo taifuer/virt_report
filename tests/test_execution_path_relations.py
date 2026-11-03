@@ -12,7 +12,7 @@ DEMOS = (
 
 
 def _paths(demo_id: str, scenario_id: str) -> dict:
-    demo = get_demo(demo_id)
+    demo = get_demo(demo_id, presentation=False)
     scene = next(scene for scene in demo["scenarios"] if scene["id"] == scenario_id)
     return {path["id"]: path for path in scene["callPaths"]}
 

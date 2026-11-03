@@ -9,7 +9,7 @@ from virt_report.config import Config
 
 
 def test_parallel_phases_never_cross_branch_boundaries():
-    demo = get_demo("network-io")
+    demo = get_demo("network-io", presentation=False)
     validate_demo(demo)
     scenes = [scene for scene in demo["scenarios"] if "parallel" in scene]
     assert {scene["id"] for scene in scenes} == {
@@ -23,7 +23,7 @@ def test_parallel_phases_never_cross_branch_boundaries():
 
 @pytest.mark.parametrize("mutation", ["missing", "duplicate", "prefix", "unordered", "unknown", "phase"])
 def test_parallel_metadata_rejects_invalid_dependencies(mutation):
-    demo = deepcopy(get_demo("network-io"))
+    demo = deepcopy(get_demo("network-io", presentation=False))
     scene = demo["scenarios"][0]
     parallel = scene["parallel"]
     first, second = parallel["branches"]
@@ -43,10 +43,10 @@ def test_parallel_metadata_rejects_invalid_dependencies(mutation):
         validate_demo(demo)
 
 
-def test_no_script_fallback_also_separates_parallel_paths():
+def test_no_script_fallback_uses_one_success_path_per_backend_and_direction():
     page = render_mechanisms_html(Config(), "network-io")
-    assert "并行分支分别列出，不规定分支之间的先后" in page
+    assert "TAP 接受后，队列归还与宿主转发分别推进" not in page
+    assert "qemu-rx-no-buffer" not in page
+    assert "qemu-tx-backpressure" not in page
     for scene in get_demo("network-io")["scenarios"]:
-        if "parallel" in scene:
-            for branch in scene["parallel"]["branches"]:
-                assert f'<h3>{branch["title"]}</h3>' in page
+        assert "parallel" not in scene
