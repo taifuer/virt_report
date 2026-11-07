@@ -168,12 +168,12 @@ def _nav(conn, period: str, key: str) -> dict:
 
 def _readiness(conn, config: Config) -> dict:
     """汇总数据库、数据源新鲜度与最新报告，供监控系统消费。"""
-    expected = ([('ml', source.name) for source in config.sources.mailing_lists] +
-                [('gitlab', source.name) for source in config.sources.gitlab])
+    expected = ([('ml', source.name, source.required) for source in config.sources.mailing_lists] +
+                [('gitlab', source.name, True) for source in config.sources.gitlab])
     now = datetime.now(timezone.utc)
     sources = []
     ready = True
-    for source, project in expected:
+    for source, project, required in expected:
         row = conn.execute(
             "SELECT started_at,finished_at,success,complete,new_count,"
             "requested_since,coverage_start,coverage_end,error FROM fetch_runs "
@@ -186,9 +186,11 @@ def _readiness(conn, config: Config) -> dict:
             age_hours = round((now - finished).total_seconds() / 3600, 2)
         fresh = bool(row and row["success"] and row["complete"] and
                      age_hours is not None and age_hours <= READINESS_MAX_AGE_HOURS)
-        ready = ready and fresh
+        # Optional feeds retain their failure/freshness details in metrics,
+        # without making an otherwise healthy deployment unready.
+        ready = ready and (fresh or not required)
         sources.append({
-            "source": source, "project": project, "fresh": fresh,
+            "source": source, "project": project, "fresh": fresh, "required": required,
             "age_hours": age_hours, **(dict(row) if row else {}),
         })
     local_now = now.astimezone(ZoneInfo(config.timezone))

@@ -68,7 +68,7 @@ docker compose logs -f scheduler
 ## 反向代理与健康检查
 
 - `/healthz`：检查 Web 与数据库是否可访问。
-- `/readyz`：公开 `ok/degraded`；来源超过 12 小时未完整采集或应生成的报告未发布时返回 503。
+- `/readyz`：公开 `ok/degraded`；必要邮件来源或 GitLab 来源超过 12 小时未完整采集，或应生成的报告未发布时返回 503。标记为 `required: false` 的补充邮件源保留失败与新鲜度信息，但不单独阻塞就绪状态。
 - `/metrics.html`、`/api/metrics`、`/api/status`：使用 `METRICS_ACCESS_KEY` 保护，展示来源状态、数据规模、调度记录和模型用量。
 
 浏览器验证后的安全 Cookie 默认有效 12 小时。运行指标页不写入静态快照，避免绕过鉴权。反向代理应保留应用的 CSP、防嵌入、MIME 嗅探和 Referrer Policy 等响应头，并配置 HTTPS。

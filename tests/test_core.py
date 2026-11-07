@@ -640,6 +640,39 @@ def test_readiness_reports_missing_and_fresh_sources(tmp_db):
     assert payload["sources"][0]["fresh"] is True
 
 
+@pytest.mark.parametrize("optional_state", ["missing", "failed", "partial", "stale"])
+def test_optional_feeds_keep_failures_visible_without_blocking_readiness(tmp_db, optional_state):
+    config = Config(sources=Sources(mailing_lists=[
+        MailingListSource("qemu-devel", "mbox", "https://example.test"),
+        MailingListSource("virtio-dev", "lore_git", "https://example.test/git/0.git", required=False),
+    ]))
+    db.record_fetch_run(tmp_db, source="ml", project="qemu-devel", started_at=db.now_utc_iso(),
+                        success=True, complete=True, new_count=0, requested_since=None)
+    if optional_state != "missing":
+        db.record_fetch_run(tmp_db, source="ml", project="virtio-dev", started_at=db.now_utc_iso(),
+                            success=optional_state != "failed", complete=optional_state == "stale",
+                            new_count=0, requested_since=None,
+                            error="HTTP 403" if optional_state == "failed" else None)
+        if optional_state == "stale":
+            tmp_db.execute("UPDATE fetch_runs SET finished_at='2000-01-01T00:00:00Z' "
+                           "WHERE project='virtio-dev'")
+            tmp_db.commit()
+    payload = web_server._readiness(tmp_db, config)
+    assert payload["status"] == "degraded"  # Required reports are still missing.
+    for period, state in payload["reports"].items():
+        db.save_report(tmp_db, period, state["expected_key"], {
+            "period": period, "period_key": state["expected_key"], "fallback": False,
+        }, config.timezone, model="test")
+    payload = web_server._readiness(tmp_db, config)
+    assert payload["status"] == "ok"
+    optional = next(source for source in payload["sources"] if source["project"] == "virtio-dev")
+    assert optional["fresh"] is False and optional["required"] is False
+    if optional_state == "failed":
+        assert optional["error"] == "HTTP 403"
+    config.sources.mailing_lists[1].required = True
+    assert web_server._readiness(tmp_db, config)["status"] == "degraded"
+
+
 def test_home_has_daily_weekly_monthly_archive_tabs():
     context = {
         "daily": [], "weekly": [], "monthly": [], "rendered_months": {"2026-07"},
