@@ -11,7 +11,7 @@ from virt_report.render import render
 def test_short_demo_titles_match_directory_article_and_player():
     for slug, title in (
         ("gpu-execution", "GPU 命令执行"),
-        ("virtio-gpu-execution", "virtio-gpu 渲染与编解码过程"),
+        ("virtio-gpu-execution", "virtio-gpu 渲染与编解码"),
         ("interrupt-delivery", "中断传递"),
     ):
         article = mechanisms.get_article(slug)
@@ -76,7 +76,7 @@ def test_directory_has_reading_order_and_real_anchors_only():
 def test_directory_counts_primary_articles_without_extra_related_rows():
     counts = {topic['slug']: len(topic['articles']) for topic in mechanisms.topics()}
     assert counts == {'virtualization-basics': 1, 'cpu-virtualization': 6, 'memory-virtualization': 6,
-                      'device-virtualization': 16, 'interrupt-virtualization': 2,
+                      'device-virtualization': 15, 'interrupt-virtualization': 2,
                       'vm-startup': 2, 'migration': 7, 'hotplug': 4,
                       'live-upgrade': 2, 'qemu-internals': 6, 'libvirt-internals': 2,
                       'kvm-internals': 2, 'block-io-walkthrough': 1,
@@ -106,7 +106,7 @@ def test_merged_io_topic_keeps_legacy_anchor_without_duplicate_articles():
         'device-virtualization',
         'virtio-device-initialization',
         'qemu-network-tx', 'qemu-vhost-net', 'dpdk-vhost-user-net', 'spdk-vhost-user-blk', 'qemu-vfio-dma',
-        'iommu-dma', 'iommufd', 'qemu-viommu', 'virtio-gpu', 'virtio-gpu-rendering',
+        'iommu-dma', 'iommufd', 'qemu-viommu', 'virtio-gpu',
         'qemu-virtio-blk', 'virtio-net-rx', 'packed-virtqueue', 'vhost-vdpa',
     ]
     page = render.render_mechanisms_html(Config())

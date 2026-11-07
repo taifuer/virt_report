@@ -15,11 +15,14 @@ from virt_report.render import render
 
 
 MERGES = {
+    "virtio-gpu-rendering": "virtio-gpu",
     "vm-startup": "libvirt-domain-start",
     "live-upgrade": "qemu-cpr-transfer",
     "kvm-internals": "kvm-vcpu-run",
 }
 OLD_ANCHORS = {
+    "virtio-gpu-rendering": {"preface", "transport", "render", "video-support",
+                             "decode", "encode", "completion", "evolution", "sources"},
     "vm-startup": {"preface", "state", "process", "example", "evolution",
                    "evaluation", "reading", "sources"},
     "live-upgrade": {"preface", "state", "process", "example", "evolution",
@@ -77,7 +80,7 @@ def _request(path, method):
 
 def test_consolidated_catalogue_has_unique_canonical_articles():
     slugs = [article["slug"] for article in mechanisms.articles()]
-    assert len(slugs) == len(set(slugs)) == 63
+    assert len(slugs) == len(set(slugs)) == 62
     assert set(slugs).isdisjoint(MERGES)
     assert {entry["slug"]: entry["target"] for entry in mechanisms.redirects()} == MERGES
     catalogue = LinksAndIds(render.render_mechanisms_html(Config()))
@@ -198,7 +201,8 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync(process.argv[1], 'utf8');
 for (const target of ['libvirt-domain-start.html', 'qemu-cpr-transfer.html',
-                       'kvm-vcpu-run.html', 'https://evil.test/', '../base.html']) {
+                       'kvm-vcpu-run.html', 'virtio-gpu.html',
+                       'https://evil.test/', '../base.html']) {
   const calls = [];
   vm.runInNewContext(source, {
     document: {querySelector: () => ({dataset: {target}})},

@@ -58,7 +58,7 @@
         {"title": "队列与设备初始化", "articles": ["virtio-device-initialization", "packed-virtqueue"]},
         {"title": "网络与后端", "articles": ["qemu-network-tx", "virtio-net-rx", "qemu-vhost-net", "dpdk-vhost-user-net", "vhost-vdpa"]},
         {"title": "存储", "articles": ["qemu-virtio-blk", "spdk-vhost-user-blk"]},
-        {"title": "图形与编解码", "articles": ["virtio-gpu", "virtio-gpu-rendering"]},
+        {"title": "图形与编解码", "articles": ["virtio-gpu"]},
         {"title": "DMA、地址隔离与设备直通", "articles": ["iommu-dma", "iommufd", "qemu-viommu", "qemu-vfio-dma"]}
       ]
     },
@@ -151,12 +151,12 @@
       "overview": "gpu-execution", "summary": "跟踪 VFIO 直通 GPU 的上传、读回，以及限定 GVT-g 实现的 mdev 命令审核、调度和完成。"
     },
     {
-      "slug": "virtio-gpu-walkthrough", "group": "walkthroughs", "title": "virtio-gpu 渲染与编解码过程",
+      "slug": "virtio-gpu-walkthrough", "group": "walkthroughs", "title": "virtio-gpu 渲染与编解码",
       "overview": "virtio-gpu-execution", "summary": "逐步观察 OpenGL 绘制、H.264 解码与编码中的命令传输、资源变化、宿主执行和完成通知。"
     }
   ],
   "specification_baselines": {
-    "1.2": ["device-virtualization", "virtio-device-initialization", "packed-virtqueue", "qemu-network-tx", "virtio-net-rx", "qemu-virtio-blk", "virtio-blk-read", "network-io", "interrupt-delivery"]
+    "1.2": ["device-virtualization", "virtio-device-initialization", "packed-virtqueue", "qemu-network-tx", "virtio-net-rx", "qemu-virtio-blk", "virtio-blk-read", "network-io", "interrupt-delivery", "virtio-gpu"]
   },
   "articles": [
     {
@@ -2239,40 +2239,13 @@
     {
       "slug": "virtio-gpu",
       "topic": "device-virtualization",
-      "title": "virtio-gpu：二维资源与画面更新",
-      "summary": "以一幅画面的局部更新，串起客户机 backing、QEMU 图像、scanout、TRANSFER 与 FLUSH，并比较二维显示与三维加速路径。",
-      "reviewed_on": "2026-10-21",
+      "title": "virtio-gpu：资源、渲染与编解码",
+      "summary": "从资源与队列出发，跟踪二维画面更新、OpenGL 绘制和视频编解码，说明 Guest、QEMU 与宿主 GPU 的分工、接入条件和同步边界。",
+      "reviewed_on": "2026-11-07",
       "source": "virtio-gpu.md",
       "components": ["_virtio_gpu_lab.html"],
       "script": "virtio-gpu-lab.js",
       "stylesheet": "virtio-gpu-lab.css",
-      "baselines": [
-        {
-          "project": "QEMU",
-          "version": "10.2.0",
-          "commit": "698104725efad4b29079d857dfdebbd804e34c99",
-          "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"
-        }
-      ],
-      "sections": [
-        {"id": "preface", "title": "从客户机像素到显示输出"},
-        {"id": "resources", "title": "图像资源、后备内存与显示输出"},
-        {"id": "update-flow", "title": "一幅画面的建立与局部更新"},
-        {"id": "interactive", "title": "资源更新的交互演示"},
-        {"id": "commands", "title": "控制命令与 QEMU 处理路径"},
-        {"id": "completion", "title": "完成语义与资源回收"},
-        {"id": "evolution", "title": "从二维像素传输到三维加速"},
-        {"id": "summary", "title": "总结与进一步阅读"},
-        {"id": "references", "title": "参考资料"}
-      ]
-    },
-    {
-      "slug": "virtio-gpu-rendering",
-      "topic": "device-virtualization",
-      "title": "virtio-gpu 渲染与编解码",
-      "summary": "分析 VirGL 图形与视频命令的传输、资源关联、宿主执行和完成边界，区分现有渲染路径与需要额外接入的视频扩展。",
-      "reviewed_on": "2026-11-02",
-      "source": "virtio-gpu-rendering.md",
       "baselines": [
         {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
         {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"},
@@ -2280,21 +2253,22 @@
         {"project": "virglrenderer", "version": "1.2.0", "commit": "500b41d5c8638f9b80dd558f4044f3301c7457a4", "url": "https://gitlab.freedesktop.org/virgl/virglrenderer/-/tree/500b41d5c8638f9b80dd558f4044f3301c7457a4"}
       ],
       "sections": [
-        {"id": "preface", "title": "图形与视频命令的执行路径"},
-        {"id": "transport", "title": "两层命令与资源关联"},
-        {"id": "render", "title": "一次 OpenGL 绘制的完整路径"},
+        {"id": "preface", "title": "从应用到虚拟设备与宿主 GPU"},
+        {"id": "resources", "title": "共享基础：资源、队列与命令交接"},
+        {"id": "update-flow", "title": "二维显示：建立画面与更新矩形"},
+        {"id": "render", "title": "三维渲染：从 OpenGL 调用到宿主执行"},
         {"id": "video-support", "title": "视频能力的协商与宿主接入"},
         {"id": "decode", "title": "一帧 H.264 的解码与显示"},
         {"id": "encode", "title": "一帧 NV12 图像的编码与取回"},
-        {"id": "completion", "title": "完成信号、缓冲区复用与等待"},
-        {"id": "evolution", "title": "VirGL、Venus 与资源共享的演进"},
-        {"id": "sources", "title": "源码与进一步阅读"}
+        {"id": "completion", "title": "同步与回收：按完成边界管理资源"},
+        {"id": "evolution", "title": "技术演进与方案取舍"},
+        {"id": "sources", "title": "源码、规范与进一步阅读"}
       ]
     },
     {
       "slug": "virtio-gpu-execution",
       "topic": "virtio-gpu-walkthrough",
-      "title": "virtio-gpu 渲染与编解码过程",
+      "title": "virtio-gpu 渲染与编解码",
       "summary": "切换绘制、解码与编码场景，逐步观察 Guest、controlq、QEMU、virglrenderer 和宿主 GPU 之间的命令、资源及完成信号。",
       "reviewed_on": "2026-11-03",
       "source": "virtio-gpu-execution.md",
@@ -3401,6 +3375,15 @@
     }
   ],
   "redirects": {
+    "virtio-gpu-rendering": {
+      "target": "virtio-gpu",
+      "anchors": {
+        "transport": "render",
+        "commands": "resources",
+        "summary": "evolution",
+        "references": "sources"
+      }
+    },
     "vm-startup": {
       "target": "libvirt-domain-start",
       "anchors": {

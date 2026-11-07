@@ -86,4 +86,4 @@ def test_gpu_source_links_pin_qemu_and_do_not_claim_fence_is_presentation():
     assert "不能证明远程客户端已经收到图像" in source
     assert "393728 B" in source
     assert "180 MiB/s" in source
-    assert "## 从客户机像素到显示输出 {#preface}" in source
+    assert "## 从应用到虚拟设备与宿主 GPU {#preface}" in source

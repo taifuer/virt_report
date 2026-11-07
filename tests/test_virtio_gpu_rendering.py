@@ -9,9 +9,10 @@ from virt_report.config import Config
 from virt_report.render import render
 
 
-SLUG = "virtio-gpu-rendering"
+SLUG = "virtio-gpu"
 SOURCE = Path(__file__).parents[1] / "virt_report/content/articles" / f"{SLUG}.md"
 DIAGRAMS = (
+    "virtio-gpu-resources", "virtio-gpu-update-sequence",
     "virtio-gpu-render-stack", "virtio-gpu-render-submit",
     "virtio-gpu-video-decode", "virtio-gpu-video-encode",
 )
@@ -25,7 +26,7 @@ def test_rendering_article_is_separate_from_interactive_walkthrough():
     assert article.get("presentation") != "walkthrough"
     walkthrough = mechanisms.get_article("virtio-gpu-execution")
     assert walkthrough["topic"] == "virtio-gpu-walkthrough"
-    assert walkthrough["execution_demo"] == SLUG
+    assert walkthrough["execution_demo"] == "virtio-gpu-rendering"
     assert walkthrough["presentation"] == "walkthrough"
     assert {item["project"] for item in article["baselines"]} == {
         "QEMU", "Linux", "Mesa", "virglrenderer",
@@ -33,11 +34,16 @@ def test_rendering_article_is_separate_from_interactive_walkthrough():
     assert all(re.fullmatch(r"[0-9a-f]{40}", item["commit"])
                for item in article["baselines"])
     page = render.render_mechanisms_html(Config(), SLUG)
-    assert 'virtio-gpu 渲染与编解码 - virt-report' in page
+    assert 'virtio-gpu：资源、渲染与编解码 - virt-report' in page
     assert 'data-execution-lab' not in page
+    assert 'data-virtio-gpu-lab' in page
+    assert 'assets/virtio-gpu-lab.js?v=' in page
+    assert 'VIRTIO 1.2 CS01' in page
     assert 'href="virtio-gpu-execution.html"' in page
     demo_page = render.render_mechanisms_html(Config(), "virtio-gpu-execution")
-    assert 'href="virtio-gpu-rendering.html"' in demo_page
+    assert 'href="virtio-gpu.html"' in demo_page
+    assert 'href="virtio-gpu.html#video-support"' in demo_page
+    assert 'virtio-gpu 渲染与编解码过程' not in demo_page
     assert 'data-execution-lab="virtio-gpu-rendering"' in demo_page
     assert 'id="render"' not in demo_page
     for section in article["sections"]:
@@ -46,11 +52,13 @@ def test_rendering_article_is_separate_from_interactive_walkthrough():
     catalogue = render.render_mechanisms_html(Config())
     assert catalogue.count(f'href="mechanisms/{SLUG}.html"') == 1
     assert catalogue.count('href="mechanisms/virtio-gpu-execution.html"') == 1
+    assert 'href="mechanisms/virtio-gpu-rendering.html"' not in catalogue
+    assert not SOURCE.with_name("virtio-gpu-rendering.md").exists()
 
 
 def test_gpu_rendering_and_video_diagrams_are_offline_and_zoomable():
     page = render.render_mechanisms_html(Config(), SLUG)
-    assert page.count('data-mechanism-view="diagram"') == 4
+    assert page.count('data-mechanism-view="diagram"') == len(DIAGRAMS)
     for name in DIAGRAMS:
         assert name in render.MECHANISM_DIAGRAM_NAMES
         assert f'data-diagram="{name}"' in page
@@ -62,7 +70,7 @@ def test_gpu_rendering_and_video_diagrams_are_offline_and_zoomable():
 
 def test_optional_video_requirements_precede_codec_walkthroughs():
     article = SOURCE.read_text()
-    preface = article.split('## 两层命令')[0]
+    preface = article.split('## 共享基础')[0]
     assert "初始化没有启用该视频功能" in preface
     support = article.split('{#video-support}', 1)[1].split('## 一帧 H.264', 1)[0]
     for requirement in ("-Dvideo=true", "VIRGL_RENDERER_USE_VIDEO",
@@ -105,10 +113,27 @@ def test_rendering_article_separates_resource_dependencies_from_frame_pipelining
     assert "只能解除 F1 所覆盖的渲染依赖" in article
 
 
-def test_links_keep_2d_display_and_passthrough_articles_connected():
+def test_links_connect_principle_walkthrough_and_passthrough_articles():
     page = render.render_mechanisms_html(Config(), SLUG)
-    for related in ("virtio-gpu", "gpu-execution"):
+    for related in ("virtio-gpu-execution", "gpu-execution"):
         assert f'href="{related}.html"' in page
         assert f'href="{SLUG}.html"' in render.render_mechanisms_html(Config(), related)
     assert "远程桌面的编码" in page
     assert "Vulkan VkQueue" in page
+
+
+def test_merged_article_keeps_2d_and_3d_bookmarks_and_a_single_reading_path():
+    article = mechanisms.get_article(SLUG)
+    assert [section["id"] for section in article["sections"]] == [
+        "preface", "resources", "update-flow", "render", "video-support",
+        "decode", "encode", "completion", "evolution", "sources",
+    ]
+    page = render.render_mechanisms_html(Config(), SLUG)
+    for anchor in ("preface", "resources", "update-flow", "interactive", "commands",
+                   "completion", "evolution", "summary", "references",
+                   "commands-part-1", "commands-part-2", "update-flow-part-1",
+                   "update-flow-part-2", "transport-part-1", "transport-part-2",
+                   "render-part-1", "render-part-2", "render-part-3", "render-part-4"):
+        assert page.count(f'id="{anchor}"') == 1
+    assert SOURCE.read_text().count("```baselines") == 1
+    assert page.index('id="interactive"') < page.index('id="render"')

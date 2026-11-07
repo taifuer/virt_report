@@ -50,7 +50,7 @@
           <li><a href="#virtualization-basics"><span>虚拟化基础</span><span class="mechanism-directory-count">1<span class="sr-only"> 篇文章</span></span></a></li>
           <li><a href="#cpu-virtualization"><span>CPU 虚拟化</span><span class="mechanism-directory-count">6<span class="sr-only"> 篇文章</span></span></a></li>
           <li><a href="#memory-virtualization"><span>内存虚拟化</span><span class="mechanism-directory-count">6<span class="sr-only"> 篇文章</span></span></a></li>
-          <li><a href="#device-virtualization"><span>设备与 I/O 虚拟化</span><span class="mechanism-directory-count">16<span class="sr-only"> 篇文章</span></span></a></li>
+          <li><a href="#device-virtualization"><span>设备与 I/O 虚拟化</span><span class="mechanism-directory-count">15<span class="sr-only"> 篇文章</span></span></a></li>
           <li><a href="#interrupt-virtualization"><span>中断虚拟化</span><span class="mechanism-directory-count">2<span class="sr-only"> 篇文章</span></span></a></li>
         </ul>
       </div>
@@ -80,7 +80,7 @@
           <li><a href="#memory-access-walkthrough"><span>内存访问过程</span><span class="mechanism-directory-count">1<span class="sr-only"> 个演示</span></span></a></li>
           <li><a href="#interrupt-delivery-walkthrough"><span>中断传递</span><span class="mechanism-directory-count">1<span class="sr-only"> 个演示</span></span></a></li>
           <li><a href="#gpu-execution-walkthrough"><span>GPU 命令执行</span><span class="mechanism-directory-count">1<span class="sr-only"> 个演示</span></span></a></li>
-          <li><a href="#virtio-gpu-walkthrough"><span>virtio-gpu 渲染与编解码过程</span><span class="mechanism-directory-count">1<span class="sr-only"> 个演示</span></span></a></li>
+          <li><a href="#virtio-gpu-walkthrough"><span>virtio-gpu 渲染与编解码</span><span class="mechanism-directory-count">1<span class="sr-only"> 个演示</span></span></a></li>
         </ul>
       </div>
     </nav>
@@ -151,7 +151,7 @@
 <span id="io-virtualization" class="mechanism-topic-alias" aria-hidden="true"></span>    <header class="mechanism-topic-header">
       <div class="mechanism-topic-heading">
         <h3 id="mechanism-topic-device-virtualization"><a href="mechanisms/device-virtualization.html">设备与 I/O 虚拟化</a></h3>
-<button type="button" class="mechanism-topic-toggle" data-mechanism-toggle data-topic-title="设备与 I/O 虚拟化" data-article-count="15" aria-expanded="true" aria-controls="mechanism-list-device-virtualization" aria-label="收起设备与 I/O 虚拟化的细分文章" hidden><svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="m5 8 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>      </div>
+<button type="button" class="mechanism-topic-toggle" data-mechanism-toggle data-topic-title="设备与 I/O 虚拟化" data-article-count="14" aria-expanded="true" aria-controls="mechanism-list-device-virtualization" aria-label="收起设备与 I/O 虚拟化的细分文章" hidden><svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="m5 8 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>      </div>
       <p>从 virtqueue 与网络、存储、图形设备，到 vhost 后端、IOMMU 地址转换及直通设备管理。</p>
     </header>
     <div class="mechanism-list" id="mechanism-list-device-virtualization">
@@ -159,7 +159,7 @@
 <article class="mechanism-list-item"><h5><a href="mechanisms/virtio-device-initialization.html">virtio 设备初始化与特性协商</a></h5><p>从 PCI 能力、状态握手到队列地址配置，跟踪一个 4 描述符队列如何开始工作，并区分失败、设备复位与队列复位。</p></article><article class="mechanism-list-item"><h5><a href="mechanisms/packed-virtqueue.html">Packed virtqueue：描述符发布、完成与回绕</a></h5><p>用四槽共享环解释 AVAIL、USED、wrap 与 Buffer ID，分析描述符链、事件抑制和紧凑布局的取舍。</p></article>      </div><div class="mechanism-cluster" role="group" aria-label="网络与后端"><h4>网络与后端</h4>
 <article class="mechanism-list-item"><h5><a href="mechanisms/qemu-network-tx.html">QEMU 网卡模拟与 virtio-net 的发包路径</a></h5><p>以相同的 TAP 后端对比 e1000 与 virtio-net，追踪描述符提交、队列通知、数据发送和完成处理。</p></article><article class="mechanism-list-item"><h5><a href="mechanisms/virtio-net-rx.html">virtio-net 收包与 NAPI：缓冲区、通知和批处理</a></h5><p>从 RX 缓冲区准备到报文交付协议栈，分析 QEMU 收包、used 完成、NAPI 预算与通知恢复竞态。</p></article><article class="mechanism-list-item"><h5><a href="mechanisms/qemu-vhost-net.html">virtio-net 的后端处理：vhost-net 与 vhost-user</a></h5><p>对比 QEMU、内核 vhost-net 和独立用户态后端，分析队列初始化、kick/call 通知与报文处理路径。</p></article><article class="mechanism-list-item"><h5><a href="mechanisms/dpdk-vhost-user-net.html">DPDK vhost-user 的报文转发与缓冲区管理</a></h5><p>从客户机 TX virtqueue 到 mbuf 和物理网卡，分析队列消费、复制边界、完成顺序与轮询成本。</p></article><article class="mechanism-list-item"><h5><a href="mechanisms/vhost-vdpa.html">vhost-vDPA：队列配置、硬件数据路径与迁移</a></h5><p>分析 vDPA 如何连接 virtio 队列和设备数据面，以及 DMA 映射、Shadow Virtqueue 与迁移能力的约束。</p></article>      </div><div class="mechanism-cluster" role="group" aria-label="存储"><h4>存储</h4>
 <article class="mechanism-list-item"><h5><a href="mechanisms/qemu-virtio-blk.html">virtio-blk 的请求处理与写入完成</a></h5><p>从一次 4 KiB 写入跟踪描述符链、块后端和完成回调，说明请求合并、缓存刷新与持久化之间的关系。</p></article><article class="mechanism-list-item"><h5><a href="mechanisms/spdk-vhost-user-blk.html">SPDK vhost-user-blk 的请求处理路径</a></h5><p>沿一次 4 KiB 写入，分析共享队列、控制器线程、bdev 和 NVMe 的请求交接，以及完成通知与资源释放。</p></article>      </div><div class="mechanism-cluster" role="group" aria-label="图形与编解码"><h4>图形与编解码</h4>
-<article class="mechanism-list-item"><h5><a href="mechanisms/virtio-gpu.html">virtio-gpu：二维资源与画面更新</a></h5><p>以一幅画面的局部更新，串起客户机 backing、QEMU 图像、scanout、TRANSFER 与 FLUSH，并比较二维显示与三维加速路径。</p></article><article class="mechanism-list-item"><h5><a href="mechanisms/virtio-gpu-rendering.html">virtio-gpu 渲染与编解码</a></h5><p>分析 VirGL 图形与视频命令的传输、资源关联、宿主执行和完成边界，区分现有渲染路径与需要额外接入的视频扩展。</p></article>      </div><div class="mechanism-cluster" role="group" aria-label="DMA、地址隔离与设备直通"><h4>DMA、地址隔离与设备直通</h4>
+<article class="mechanism-list-item"><h5><a href="mechanisms/virtio-gpu.html">virtio-gpu：资源、渲染与编解码</a></h5><p>从资源与队列出发，跟踪二维画面更新、OpenGL 绘制和视频编解码，说明 Guest、QEMU 与宿主 GPU 的分工、接入条件和同步边界。</p></article>      </div><div class="mechanism-cluster" role="group" aria-label="DMA、地址隔离与设备直通"><h4>DMA、地址隔离与设备直通</h4>
 <article class="mechanism-list-item"><h5><a href="mechanisms/iommu-dma.html">IOMMU：DMA 地址转换、缓存与失效</a></h5><p>沿一块网卡的接收缓冲区，解释设备上下文、I/O 页表、IOTLB、权限检查与安全回收，区分数据访问和映射管理的成本。</p></article><article class="mechanism-list-item"><h5><a href="mechanisms/iommufd.html">IOMMUFD：设备绑定与 I/O 地址空间管理</a></h5><p>沿一块 VF 的接入与回收，解释设备 fd、DEVICE、IOAS 和 HWPT 的关系，以及附着、映射、共享和失败回滚。</p></article><article class="mechanism-list-item"><h5><a href="mechanisms/qemu-viommu.html">vIOMMU：客户机 DMA 映射与失效同步</a></h5><p>沿同一 IOVA 从缓冲区 A 切换到 B，分析客户机页表、QEMU 合成映射、宿主 IOTLB 的同步，以及硬件嵌套转换的演进。</p></article><article class="mechanism-list-item"><h5><a href="mechanisms/qemu-vfio-dma.html">VFIO 设备直通的 DMA 地址转换与隔离</a></h5><p>从客户机缓冲区到宿主物理页，分析 DMA 映射、IOMMU 权限检查，以及 VFIO Container 与 IOMMUFD 的分工。</p></article>      </div>    </div>
   </section>
   <section class="mechanism-topic" id="interrupt-virtualization" aria-labelledby="mechanism-topic-interrupt-virtualization">
@@ -374,7 +374,7 @@
   <section class="mechanism-topic" id="virtio-gpu-walkthrough" aria-labelledby="mechanism-topic-virtio-gpu-walkthrough">
     <header class="mechanism-topic-header">
       <div class="mechanism-topic-heading">
-        <h3 id="mechanism-topic-virtio-gpu-walkthrough"><a href="mechanisms/virtio-gpu-execution.html">virtio-gpu 渲染与编解码过程</a></h3>
+        <h3 id="mechanism-topic-virtio-gpu-walkthrough"><a href="mechanisms/virtio-gpu-execution.html">virtio-gpu 渲染与编解码</a></h3>
       </div>
       <p>逐步观察 OpenGL 绘制、H.264 解码与编码中的命令传输、资源变化、宿主执行和完成通知。</p>
     </header>
