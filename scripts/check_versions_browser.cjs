@@ -100,13 +100,61 @@ const base = process.argv[2] || 'http://127.0.0.1:8091/versions.html';
     await latestKVM.click();
     assert(await page.locator(`[id="${latestKVMId}"]`).isVisible());
 
+    // Protocol specifications share the browser while retaining document stages.
+    await go('?project=virtio');
+    assert.equal(await page.locator('[data-version-project]').inputValue(), 'virtio');
+    const specCount = await page.locator('[data-version-item][data-kind="specification"]').count();
+    assert(specCount >= 5);
+    assert.equal(await visible().count(), specCount);
+    assert.equal(await page.locator('[data-version-count]').textContent(), `${specCount} 份规范文档`);
+    assert(await page.locator('[data-version-spec-note]').isVisible());
+    assert(await page.locator('[data-version-software-sources]').isHidden());
+    assert(await page.locator('label[for="version-topic"]').isHidden());
+    assert.equal(await visible().locator('.version-notes:visible').count(), 0);
+    assert.equal(await visible().locator('.version-actions a[href$=".pdf"]:visible').count(), specCount);
+    assert.match(await page.locator('[id="release-virtio-1.3-csd01"]').textContent(), /委员会规范草案/);
+    await page.locator('[data-version-year]').selectOption('2023');
+    assert.equal(await visible().count(), 1);
+    await page.reload();
+    assert.equal(await visible().count(), 1);
+    await go('?project=virtio&topic=vfio&view=detailed');
+    assert.equal(await page.locator('[data-version-topic]').inputValue(), '');
+    assert.equal(await visible().count(), specCount);
+    assert.equal(await visible().locator('a[href$=".pdf"]:visible').count(), specCount);
+    assert.equal(await visible().locator('.version-notes:visible').count(), specCount);
+    const noteCounts = await visible().evaluateAll(items => items.map(item => item.querySelectorAll('.version-notes li').length));
+    assert(noteCounts.every(count => count >= 2 && count <= 3));
+    assert.match(await page.locator('[id="release-virtio-1.4-cs01"] .version-detail').textContent(), /device parts/);
+    await go('#virtio-specifications');
+    assert.equal(await page.locator('[data-version-project]').inputValue(), 'virtio');
+    assert.equal(await visible().count(), specCount);
+    await page.locator('[data-version-jump][href^="#release-qemu-"]').click();
+    assert.equal(await page.locator('[data-version-project]').inputValue(), 'qemu');
+    await page.locator('[data-version-jump][href^="#release-virtio-"]').click();
+    assert.equal(await page.locator('[data-version-project]').inputValue(), 'virtio');
+    await go('');
+    await page.locator('[data-version-project-link="virtio"]').click();
+    assert.equal(await page.locator('[data-version-project]').inputValue(), 'virtio');
+    await page.locator('[data-version-project]').selectOption('');
+    assert.match(await page.locator('[data-version-count]').textContent(), /个功能版本 · \d+ 份规范文档/);
+
     for (const width of [320, 375, 390, 768, 1366]) {
       await page.setViewportSize({width, height: 900});
-      for (const topic of ['migration', 'vfio']) {
-        await go(`?project=all&topic=${topic}&view=detailed`);
+      for (const topic of ['migration', 'vfio', 'protocol']) {
+        await go(topic === 'protocol' ? '?project=virtio&view=detailed' : `?project=all&topic=${topic}&view=detailed`);
         const dimensions = await page.evaluate(() => [innerWidth, document.documentElement.scrollWidth]);
         assert.equal(dimensions[0], dimensions[1], `horizontal overflow in ${topic} at ${width}px`);
-        await assertVisible(topic);
+        if (topic === 'protocol') {
+          assert.equal(await visible().count(), specCount);
+          const linksAligned = await visible().evaluateAll(items => items.every(item => {
+            const [official, pdf] = [...item.querySelectorAll('.version-actions a')].map(link => link.getBoundingClientRect());
+            const body = item.querySelector('.version-body').getBoundingClientRect();
+            return Math.abs(official.top - pdf.top) < 1 && pdf.left > official.right
+              && Math.abs(pdf.right - body.right) < 1;
+          }));
+          assert(linksAligned, `specification and PDF links should share a right-aligned row at ${width}px`);
+          await page.screenshot({path: `/tmp/virtio-versions-${width}.png`});
+        } else await assertVisible(topic);
       }
     }
     assert.deepEqual(errors, []);

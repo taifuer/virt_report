@@ -76,6 +76,7 @@ MECHANISM_DIAGRAM_NAMES = (
     "viommu-shadow-path", "viommu-map-lifecycle",
     "vfio-migration-consistency", "vfio-migration-handoff",
     "nested-vmx-controls", "nested-vmx-exit-path",
+    "balloon-page-handoff",
 )
 MECHANISM_LAYOUT_NAMES = ("migration-wire-layout",)
 MECHANISM_ASSET_NAMES = ("mechanisms.css", "mechanisms.js", "precopy-lab.css",
@@ -89,6 +90,7 @@ MECHANISM_ASSET_NAMES = ("mechanisms.css", "mechanisms.js", "precopy-lab.css",
                          "walkthrough.css", "walkthrough-fullscreen.js",
                          "walkthrough-routing.js",
                          "walkthrough-components.js",
+                         "walkthrough-events.js",
                          "disk-completion-model.js",
                          "packed-virtqueue.css", "packed-virtqueue.js",
                          "vhost-path.css", "vhost-path.js", "dirty-ring.css", "dirty-ring.js",
@@ -333,11 +335,20 @@ def render_search(config: Config, result: dict, filename: str = "search.html") -
 
 
 def render_versions_html(config: Config, content: dict) -> str:
-    """Display feature releases only, without mutating the stored snapshot."""
+    """Present software releases and protocol documents in one project browser."""
     prepared = dict(content)
     prepared["checked_date"] = _local_date(content.get("checked_at"), config.timezone)
     prepared.setdefault("topics", {})
-    releases = [row for row in content["releases"] if row["kind"] == "feature"]
+    software = [dict(row, anchor=f'release-{row["project"]}-{row["version"]}')
+                for row in content["releases"] if row["kind"] == "feature"]
+    specifications = [dict(row, project="virtio", project_label="Virtio",
+                           year=row["released_on"][:4], kind="specification", topics=["virtio"],
+                           anchor=f'release-virtio-{row["version"]}-{row["stage"].lower()}')
+                      for row in content.get("specifications", [])]
+    prepared["projects"] = dict(content["projects"])
+    if specifications:
+        prepared["projects"]["virtio"] = "Virtio"
+    releases = software + specifications
     releases.sort(key=lambda row: (row["released_on"], row["project"]), reverse=True)
     prepared["releases"] = releases
     prepared["default_project"] = "qemu"
@@ -351,7 +362,7 @@ def render_versions_html(config: Config, content: dict) -> str:
     prepared["initial_count"] = sum(row["project"] == prepared["default_project"] for row in releases)
     prepared["initial_pages"] = max(1, (prepared["initial_count"] + 9) // 10)
     prepared["coverage"] = [
-        {"name": name, "year": min((row["year"] for row in releases
+        {"name": name, "year": min((row["year"] for row in software
                                    if row["project"] == project), default="—")}
         for project, name in content["projects"].items()
     ]
@@ -359,6 +370,9 @@ def render_versions_html(config: Config, content: dict) -> str:
                                  if row["project"] == project
                                  and row["kind"] == "feature"), None)
                           for project in content["projects"]]
+    prepared["latest_specification"] = next((row for row in releases
+                                              if row["kind"] == "specification"
+                                              and not row["stage"].startswith("CSD")), None)
     return _env().get_template("versions.html").render(
         content=prepared, root="", site_name=config.name,
     )

@@ -36,6 +36,7 @@
         {% if it.summary %}<p class="d-sum">{{ it.summary }}</p>{% endif %}{% if it.impact %}<p class="d-sum" style="margin-top:5px"><strong style="color:var(--brand-2)">影响：</strong>{{ it.impact }}</p>{% endif %}
         {% if it.series_note or it.evidence_note %}<p class="item-evidence-note">{{ it.series_note }}{% if it.series_note and it.latest_version_url and it.latest_known_version %} <a href="{{ it.latest_version_url }}" target="_blank" rel="noopener noreferrer">最新系列 v{{ it.latest_known_version }}</a>{% endif %}{% if it.series_note and it.evidence_note %} {% endif %}{{ it.evidence_note }}</p>{% endif %}
         {% if it.original_title and it.original_title != it.title %}<details style="margin-top:7px;color:var(--muted);font-size:11px"><summary style="cursor:pointer">查看原始标题</summary><span>{{ it.original_title }}</span></details>{% endif %}
+        {% if it.crossposts|default([])|length > 1 %}<details class="item-evidence-note"><summary>同文跨列表归档</summary>{% for archive in it.crossposts %}<a href="{{ archive.url }}" target="_blank" rel="noopener noreferrer">{{ archive.project }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</details>{% endif %}
         {% if it.anchor %}<div class="item-permalink-row"><a class="item-permalink" href="#{{ it.anchor }}" data-copy-report-link aria-label="分享条目：{{ it.title }}">分享</a><span class="sr-only" role="status" data-copy-status></span></div>{% endif %}
       </article>{% endfor %}
     </div></section>{% endif %}{% endfor %}

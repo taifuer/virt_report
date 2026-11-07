@@ -1,0 +1,53 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+<section id="preface" class="mechanism-section">
+  <h2>Guest 页面与宿主后备内存</h2>
+  <p>virtio-balloon 让客户机主动交出暂时不用的页面，供宿主回收对应的后备内存。虚拟机仍保持原来的 RAM 地址布局，客户机内的气球驱动负责占住这些页，避免应用继续使用。负载增长后，管理端可以缩小气球，驱动再把页交还客户机分配器。</p>
+  <p>以配置了 8 GiB RAM 的虚拟机为例：管理端希望客户机暂时只使用其中的 6 GiB，于是要求气球占用 2 GiB。这个操作要经过“设置目标 → Guest 收集页 → 队列提交 → 宿主处理 → Guest 报告结果”。管理端不能仅根据宿主看到的地址范围，随意丢弃客户机还在使用的数据。</p>
+  <p>这里有三个需要分别观察的量：虚拟机配置的 RAM、气球驱动持有的页，以及 QEMU 后备内存的实际驻留量。前两个量决定客户机可管理的范围；后一个量还受宿主内存分配、共享页、大页和内存后端影响。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+<section id="structures" class="mechanism-section">
+  <h2>目标、页列表与共享队列</h2>
+  <p>在本例中，QMP <code>balloon</code> 的 <code>value</code> 是希望留下的字节数：6 GiB，即 6442450944。设备配置中的 <code>num_pages</code> 表示希望气球占用的 4 KiB 页数，因此应为 <code>(8 − 6) × 2³⁰ / 4096 = 524288</code>。驱动完成调整后写回 <code>actual</code>，报告已经占用的页数。QMP <code>query-balloon</code> 也有一个名为 <code>actual</code> 的字段，但它报告扣除气球后的字节数，不能和设备配置里的同名字段混用。</p>
+  <table><thead><tr><th>结构</th><th>保存内容</th><th>更新者与用途</th></tr></thead><tbody>
+    <tr><td>config.num_pages / actual</td><td>目标与实际气球页数，单位均为 4 KiB</td><td>QEMU 设置目标；Guest 驱动回报进度</td></tr>
+    <tr><td>inflateq / deflateq</td><td>描述符指向 32 位 PFN 数组</td><td>驱动提交将交出或归还的页；设备处理后发布 used</td></tr>
+    <tr><td>Guest 气球页链表</td><td>由驱动持有的 struct page</td><td>让普通分配器无法再次分配这些页，并支持后续归还</td></tr>
+    <tr><td>RAMBlock 与后备页</td><td>对应 GPA 的宿主映射</td><td>QEMU 定位区域后请求宿主处理后备内存</td></tr>
+  </tbody></table>
+  <p>PFN 是按 4 KiB 单位编码的页号，例如 <code>0x200</code> 对应 GPA <code>0x200000</code>。队列描述符指向的是 PFN 数组，数组再指向目标页。提交 256 个 PFN 需要 1024 B 的数组，所描述的页面共 1 MiB；页面数据本身无须通过这条队列拷贝。Linux 驱动分批提交并等待完成，不会用一个巨大请求交接全部 2 GiB。</p>
+  {{ diagram('balloon-page-handoff', '气球目标与页面交接', '队列描述符指向 PFN 数组；PFN 标识交出的页面，QEMU 再处理对应的宿主后备内存。') }}
+</section>
+<section id="walkthrough" class="mechanism-section">
+  <h2>回收、归还与页报告演示</h2>
+  <p>先观察一批页面，再查看其余批次完成后的容量变化。页面色块表示暂停分配的容量比例，PFN、队列和后备页处理状态可在“关键结构”中逐项查看。“宿主未 discard”场景用于对照：Guest 达到气球目标，并不保证宿主已经释放同样多的物理内存。</p>
+  {% include '_execution_lab.html' %}
+</section>
+<section id="boundaries" class="mechanism-section">
+  <h2>内存压力与回收边界</h2>
+  <p>inflate 时，驱动从 Guest 分配器取得页面并持有，提交 PFN 后等待设备处理。QEMU 找到对应 RAMBlock，尝试丢弃后备页；Guest 仍保留这些地址，但业务不能使用被气球持有的页。deflate 时，Linux 驱动先通过 deflateq 告知设备，再把本批页释放给分配器。QEMU 对后备地址发出 <code>MADV_WILLNEED</code> 提示，实际物理页何时重新驻留仍由宿主管理。</p>
+  <p>回收目标过大时，Guest 可能需要回收缓存、换出页面，甚至无法分配足够的气球页。管理端应观察 actual 的推进、可用内存、换页和业务延迟，逐步调整目标。协商 <code>DEFLATE_ON_OOM</code> 后，Linux 可在 OOM 路径主动缩小气球；这是缓解机制，不能代替容量规划，也不保证业务一定避免 OOM。</p>
+  <p>宿主侧还有另一组限制：部分迁移阶段会禁止并发 discard；后备页大于 4 KiB 时，交出的子页可能不足以组成可丢弃的完整宿主页；discard 也可能失败。QEMU 仍可完成相应队列交接。判断收益时，应同时观察 Guest 的实际气球大小、QEMU RSS/PSS 与内存后端指标，不能只看目标已到达。</p>
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2>统计、空闲页优化与内存热插拔</h2>
+  <p>基础气球协议解决了运行中回收和归还页面的问题，后续扩展改善了管理端的信息和空闲页处理。它们可以组合使用，控制的对象与完成条件各不相同。</p>
+  <table><thead><tr><th>机制</th><th>用途</th><th>完成后页面的状态</th></tr></thead><tbody>
+    <tr><td>statsq</td><td>Guest 提供可用内存、换页和缺页等统计，帮助管理端决定目标</td><td>不直接回收页。QEMU 轮询间隔为 0 时不继续请求；应同时检查 last-update，旧值可能仍能读取</td></tr>
+    <tr><td>FREE_PAGE_HINT</td><td>QEMU 预拷贝迁移中，通过命令 ID 标识一轮空闲页提示，减少无用页面传输</td><td>按该协议的持有和结束规则处理；QEMU 会停止、结束相应轮次。不能把它当成持续降低 RSS 的接口</td></tr>
+    <tr><td>PAGE_REPORTING</td><td>Guest 暂时隔离空闲页，经 reporting_vq 让宿主尝试丢弃后备页</td><td>队列完成后重新允许 Guest 分配；num_pages / actual 不因报告而增大</td></tr>
+    <tr><td>virtio-mem</td><td>按设备内存块执行 plug / unplug，并配合 Guest 内存上线、下线</td><td>调整可用设备内存块，回收仍可能受页面迁移和不可移除页限制</td></tr>
+    <tr><td>DIMM 热插拔</td><td>以 DIMM 设备及其地址范围为管理单位</td><td>涉及设备增删、固件通知和 Guest 内存热插拔流程</td></tr>
+  </tbody></table>
+  <p>PAGE_REPORTING 的描述符直接指向可丢弃区域，和 inflateq 的 PFN 数组格式不同。QEMU 的属性名为 <code>free-page-reporting</code>，源码特性常量使用 <code>VIRTIO_BALLOON_F_REPORTING</code>。使用前要确认两端协商成功，不能仅根据设备名称假定这些扩展都已启用。</p>
+  <p>气球适合在已配置 RAM 内灵活回收空闲容量，部署相对直接；它依赖 Guest 配合，并可能挤压缓存与业务工作集。需要调整设备内存容量时，可结合 <a href="qemu-virtio-mem.html">virtio-mem 的内存添加与回收</a>比较。两者的统计口径、页面所有权与失败处理都应分开理解。</p>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2>源码与相关内容</h2>
+  <ul class="mechanism-sources">
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_balloon.c">Linux virtio_balloon.c</a>：fill_balloon、leak_balloon、tell_host，以及统计与页报告工作队列。</li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-balloon.c">QEMU virtio-balloon.c</a>：目标换算、队列处理、discard 限制和迁移提示。</li>
+    <li><a href="https://www.qemu.org/docs/master/interop/virtio-balloon-stats.html">QEMU 内存统计接口</a>：轮询设置、统计值与更新时间。</li>
+  </ul>
+  <p>地址布局见 <a href="qemu-memory-region.html">QEMU 内存初始化与 MemoryRegion</a>；驱动和设备共享队列的通用约定见 <a href="virtio-device-initialization.html">virtio 初始化</a>与 <a href="qemu-network-tx.html#virtqueue">split virtqueue 结构</a>。本篇沿用这些约定，重点放在页的交接及其内存效果。</p>
+</section>

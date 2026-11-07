@@ -60,6 +60,7 @@ _SECURITY_ENHANCEMENT_RE = re.compile(
 _PROJECT_LABELS = {
     "qemu-devel": "QEMU", "qemu": "QEMU", "kvm": "KVM",
     "libvir-list": "Libvirt", "libvirt": "Libvirt",
+    "virtio-dev": "Virtio", "virtio-comment": "Virtio", "vhost-user": "QEMU",
 }
 _SECURITY_LABELS = {
     "cve": "明确 CVE", "defect": "安全缺陷", "enhancement": "安全增强",

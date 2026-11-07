@@ -19,9 +19,10 @@
   const one = selector => lab.querySelector(selector);
   const all = selector => [...lab.querySelectorAll(selector)];
   const setText = (selector, value) => { one(selector).textContent = value; };
-  const views = ['overview', 'mechanism', 'source'];
+  const views = ['overview', 'sequence', 'mechanism', 'source'];
   const viewHelp = {
     overview: '点击阶段从第 1 步开始；播放与下一步按同一顺序推进，填色表示阶段内进度。',
+    sequence: '按执行位置观察请求、通知和完成回调；点击事件查看同一步的状态，行距不表示耗时。',
     mechanism: '用 8 步观察描述符准备、请求发布、设备处理与驱动回收；切换视图时对齐相应的队列阶段。',
     source: '源码路径：按执行上下文展开关键函数，高亮本步涉及的函数。辅助调用已省略；事件通知、线程切换和完成回调分别标明，不是一条同步调用栈。',
   };
@@ -338,6 +339,7 @@
     one('[data-vbr-structure]').hidden = view !== 'mechanism';
     board.hidden = view !== 'overview';
     one('[data-vbr-callpaths]').hidden = view !== 'source';
+    one('[data-vbr-sequence]').hidden = view !== 'sequence';
     one('[data-vbr-legend]').hidden = view !== 'overview';
     // Show the stages alongside KVM when this request reaches notification.
     one('[data-vbr-interrupt-path]').hidden = view !== 'overview'
@@ -449,9 +451,41 @@
       description, detail: queueFrame?.queueDetail || frame.detail,
       state: /[。！？.!?]$/.test(ownership) ? ownership : `${ownership}。`,
     });
+    const events = eventSnapshots();
+    if (view === 'sequence') window.WalkthroughEvents.sequence(one('[data-vbr-sequence]'),
+      events.scene, events.trace, index, target => move(target));
+    window.WalkthroughEvents.inspection(one('[data-vbr-inspection]'), events.scene,
+      events.trace[index], events.trace[Math.max(0, index - 1)]);
     if (speak) announce(`${title}。${description}`);
     if (updateURL) writeLocation();
     scheduleDrawing(animate);
+  }
+
+  function eventSnapshots() {
+    // Adapt the existing disk snapshots; do not create a second playback model.
+    const labels = {availIndex:'avail.idx', backendIndex:'设备消费位置', usedIndex:'used.idx',
+      driverIndex:'驱动回收位置', freeDescriptors:'空闲描述符', statusByte:'请求状态字节',
+      usedId:'used.id', usedLength:'used.len', published:'请求已发布', notified:'后端已获通知',
+      consumed:'后端已取出请求', dataReady:'数据 I/O 已完成', usedPublished:'完成已发布',
+      irqPending:'中断待注入', irqInjected:'中断已注入', reclaimed:'描述符已回收',
+      userReturned:'系统调用已返回', followup:'后续刷新请求', durability:'持久化状态'};
+    const trace = frames.map((item, n) => ({...item, index:n,
+      actor:scene.lanes.find(lane => lane.id === item.actor)?.title || item.actor,
+      links:item.edge ? [item.id] : [], nodes:{},
+      values:{...item.state, ...(item.followup ? {followup:item.followup} : {}),
+        ...(item.durability ? {durability:item.durability} : {}),
+        ...(item.queueState ? {availIndex:item.queueState.avail.index,
+          usedIndex:item.queueState.used.index, freeDescriptors:item.queueState.freeDescriptors} : {})}}));
+    const domains = [
+      {id:'guest',title:'Guest',nodes:['application','driver','reclaim']},
+      {id:'kvm',title:'KVM',nodes:['notify','interrupt']},
+      {id:'device',title:scene.presentation?.deviceDomain || 'QEMU',nodes:['device']},
+      {id:'backend',title:scene.presentation?.storageTitle || '本地文件',nodes:['storage']},
+    ];
+    return {trace, scene:{layout:{domains,memory:{title:'Guest RAM',nodes:['queue','buffer','completion']}},
+      nodes:Object.entries(nodes).map(([id,node]) => ({id,label:node.querySelector('strong,h5')?.textContent || id})),
+      links:frames.filter(item => item.edge).map(item => ({id:item.id,...item.edge})),
+      structures:[{fields:Object.entries(labels).map(([key,label]) => ({key,label}))}]}};
   }
 
   function move(target, manual = true) {

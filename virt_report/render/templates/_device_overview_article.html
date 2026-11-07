@@ -33,6 +33,7 @@
   </tbody></table>
   <p>两个环循环使用数组槽位，报文本身保存在描述符指向的缓冲区。写好内容后才能发布进度，看到完成后才能复用缓冲区，这两条规则决定了队列的正确性。发送链让设备读取数据；接收链则预先提供可写空间。kick 与中断用于提示另一方检查队列，多项请求可以共享一次通知。</p>
   <span id="queue-part-1" class="mechanism-topic-alias" aria-hidden="true"></span>
+  <p>队列通用规则由初始化与队列文章集中展开。下面沿处理位置比较后端；网络和磁盘演示则从应用调用跟踪到完成交付，可用于对照这些组件在一次实际请求中的分工。</p>
   <p>双方必须先确认共同支持的特性和队列格式，再配置共享区域并开始处理。字段、索引回绕与链 <code>0 → 2</code> 的变化见<a href="qemu-network-tx.html#virtqueue">发送队列交互图</a>，协商和启用顺序见<a href="virtio-device-initialization.html">virtio 设备初始化</a>。客户机接口确定后，可以单独改变处理 P1 的后端。</p>
 </section>
 <section id="backends" class="mechanism-section">

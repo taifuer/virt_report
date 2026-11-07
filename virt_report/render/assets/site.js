@@ -264,24 +264,36 @@ document.querySelectorAll('[data-version-browser]').forEach(root=>{
   const matchesTopic=item=>!topic.value||(item.dataset.topics||'').split(',').includes(topic.value);
   const matchingItems=()=>items.filter(item=>(!project.value||item.dataset.project===project.value)&&(!year.value||item.dataset.year===year.value)&&matchesTopic(item));
   const draw=(hash)=>{
+    const protocolOnly=project.value==='virtio';
+    if(protocolOnly)topic.value='';
+    topic.closest('label').hidden=protocolOnly;
     const matching=matchingItems(),pages=Math.max(1,Math.ceil(matching.length/size));
+    const specificationCount=matching.filter(item=>item.dataset.kind==='specification').length;
     page=view==='compact'?0:Math.max(0,Math.min(page,pages-1));
     const visible=new Set(view==='compact'?matching:matching.slice(page*size,(page+1)*size));
     items.forEach(item=>item.hidden=!visible.has(item));
     groups.forEach(group=>{
       const children=[...group.querySelectorAll('[data-version-item]')];
       group.hidden=!children.some(item=>visible.has(item));
-      group.querySelector('[data-version-year-count]').textContent=`${children.filter(item=>matching.includes(item)).length} 个版本`;
+      group.querySelector('[data-version-year-count]').textContent=`${children.filter(item=>matching.includes(item)).length} ${protocolOnly?'份规范文档':'个版本'}`;
       const disclosure=group.querySelector('[data-version-disclosure]'),summary=disclosure.querySelector('summary');
       if(view==='detailed'){disclosure.open=true;summary.tabIndex=-1;summary.setAttribute('aria-disabled','true')}
       else{summary.removeAttribute('tabindex');summary.removeAttribute('aria-disabled')}
     });
     root.dataset.view=view;viewButtons.forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.versionView===view)));
     controls.hidden=view==='compact'||!matching.length;
-    root.querySelector('[data-version-count]').textContent=`${matching.length} 个功能版本`;
+    root.querySelector('[data-version-count]').textContent=protocolOnly?`${matching.length} 份规范文档`:
+      specificationCount?`${matching.length-specificationCount} 个功能版本 · ${specificationCount} 份规范文档`:`${matching.length} 个功能版本`;
     root.querySelector('[data-version-empty]').hidden=matching.length>0;
     root.querySelectorAll('[data-version-topic-description]').forEach(note=>note.hidden=note.dataset.versionTopicDescription!==topic.value);
-    root.querySelector('[data-version-help]').textContent=view==='compact'?'精简显示所选范围内全部功能版本；切换详细视图可查看发布要点与相关统计。':'详细显示发布要点与相关统计，每页按功能版本计数。';
+    const specNote=root.querySelector('[data-version-spec-note]');
+    if(specNote)specNote.hidden=!protocolOnly&&!specificationCount;
+    const softwareSources=document.querySelector('[data-version-software-sources]');
+    if(softwareSources)softwareSources.hidden=protocolOnly;
+    root.querySelector('[data-version-help]').textContent=protocolOnly
+      ?'按文档日期列出规范阶段；草案单独标注。详细视图展示各版核心要点。'
+      :specificationCount?'软件版本与协议规范按日期排列，规范阶段单独标注。'
+      :view==='compact'?'精简显示所选范围内全部功能版本；切换详细视图可查看发布要点与相关统计。':'详细显示发布要点与相关统计，每页按功能版本计数。';
     status.textContent=`${page+1} / ${pages}`;prev.disabled=page===0;next.disabled=page===pages-1;
     writeListState({project:project.value===defaultProject?'':(project.value||'all'),year:year.value,topic:topic.value,view,page:page+1,per_page:size},hash);
   };
@@ -293,17 +305,32 @@ document.querySelectorAll('[data-version-browser]').forEach(root=>{
   const revealHash=()=>{
     let id;try{id=decodeURIComponent(location.hash.slice(1))}catch{return}
     const target=document.getElementById(id);if(!target||!root.contains(target))return;
+    if(id==='virtio-specifications'){
+      project.value='virtio';year.value='';topic.value='';page=0;expandYears();draw();
+      requestAnimationFrame(()=>scrollList(root.querySelector('.version-controls')));return;
+    }
     let entry=target.closest('[data-version-item]');
     if(!entry&&target.matches('[data-version-group]'))entry=[...target.querySelectorAll('[data-version-item]')].find(item=>(!project.value||item.dataset.project===project.value)&&matchesTopic(item))||target.querySelector('[data-version-item]');
     if(!entry)return;
-    if(project.value&&project.value!==entry.dataset.project)project.value='';
+    if(entry.dataset.project==='virtio')project.value='virtio';
+    else if(project.value&&project.value!==entry.dataset.project)project.value='';
     if(year.value&&year.value!==entry.dataset.year)year.value='';
     if(!matchesTopic(entry))topic.value='';
     entry.closest('[data-version-disclosure]').open=true;
     page=Math.floor(matchingItems().indexOf(entry)/size);draw();
     requestAnimationFrame(()=>scrollList(target));
   };
-  document.querySelectorAll('[data-version-jump]').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();writeListState({},link.hash);revealHash()}));
+  document.querySelectorAll('[data-version-jump]').forEach(link=>link.addEventListener('click',event=>{
+    event.preventDefault();const entry=document.getElementById(link.hash.slice(1));
+    if(entry?.dataset.project)project.value=entry.dataset.project;
+    writeListState({},link.hash);revealHash();
+  }));
+  document.querySelectorAll('[data-version-project-link]').forEach(link=>link.addEventListener('click',event=>{
+    const value=link.dataset.versionProjectLink;
+    if(![...project.options].some(option=>option.value===value))return;
+    event.preventDefault();project.value=value;year.value='';topic.value='';page=0;expandYears();draw('version-list');
+    scrollList(root.querySelector('.version-controls'));
+  }));
   window.addEventListener('hashchange',revealHash);draw();if(location.hash)revealHash();
 });
 const topicDrawers=new Map();

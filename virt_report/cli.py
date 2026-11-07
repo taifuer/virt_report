@@ -53,6 +53,10 @@ def _fetch_all_locked(conn, config: Config, since: datetime,
         skip, requested_since, page_limit = coverage.source_retry(
             conn, batch_key, source_kind, project, since_iso, max_pages,
         )
+        if getattr(source, "active_from", None):
+            requested_since = max(requested_since, coverage.utc_iso(source.active_from))
+            if requested_since >= batch["requested_end"]:
+                return
         if skip:
             outcomes.append({"source": source_kind, "project": project,
                              "status": "complete", "skipped": True})

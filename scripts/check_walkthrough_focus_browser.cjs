@@ -35,7 +35,7 @@ const assets = path.resolve(__dirname, '../virt_report/render/assets');
         const views = lab.locator('.walkthrough-tabs button');
         await expand.click();
         await page.waitForFunction(() => document.querySelector('[data-walkthrough-lab]').classList.contains('walkthrough-expanded'));
-        for (let view = 0; view < 3; view++) {
+        for (let view = 0; view < await views.count(); view++) {
           await views.nth(view).click();
           await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
           const result = await lab.evaluate(node => {

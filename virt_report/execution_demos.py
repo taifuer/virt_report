@@ -18,6 +18,7 @@ DEMO_PAGES = {
     "vm-lifecycle": "libvirt-domain-start",
     "gpu-execution": "gpu-execution",
     "virtio-gpu-rendering": "virtio-gpu-execution",
+    "virtio-balloon": "virtio-balloon",
 }
 DEMO_IDS = tuple(DEMO_PAGES)
 CONTENT_DIR = Path(__file__).parent / "content" / "flows"
@@ -212,20 +213,32 @@ def validate_selector(selector: dict, scenario_ids: set[str]) -> None:
     require(set(represented) == scenario_ids, "scenario coverage")
 
 
+def load_demo(demo_id: str) -> dict:
+    """Load fresh editorial input before enrichment and presentation filtering."""
+    if demo_id not in DEMO_IDS:
+        raise ValueError("Unregistered demo")
+    if demo_id == "virtio-balloon":
+        from virt_report.balloon_demo import build_demo
+        return build_demo()
+    return json.loads((CONTENT_DIR / f"{demo_id}.json").read_text(encoding="utf-8"))
+
+
 @lru_cache(maxsize=2 * len(DEMO_IDS))
 def get_demo(demo_id: str, *, presentation: bool = True) -> dict | None:
     """Load offline traces; reference mode retains alternatives for validation."""
     if demo_id not in DEMO_IDS:
         return None
-    demo = json.loads((CONTENT_DIR / f"{demo_id}.json").read_text(encoding="utf-8"))
+    demo = load_demo(demo_id)
     if demo_id == "network-io":
         from virt_report.network_queue import enrich_network_demo
         enrich_network_demo(demo)
     phases = json.loads((CONTENT_DIR / "execution-phases.json").read_text(encoding="utf-8"))
-    if set(phases[demo_id]) != {scene["id"] for scene in demo["scenarios"]}:
+    scene_phases = phases.get(demo_id, {scene["id"]: scene.get("phases", [])
+                                       for scene in demo["scenarios"]})
+    if set(scene_phases) != {scene["id"] for scene in demo["scenarios"]}:
         raise ValueError("Execution phases must cover each scenario exactly once")
     for scene in demo["scenarios"]:
-        scene["phases"] = phases[demo_id][scene["id"]]
+        scene["phases"] = scene_phases[scene["id"]]
     validate_demo(demo)
     selectors = json.loads((CONTENT_DIR / "execution-selectors.json").read_text(encoding="utf-8"))
     selector = demo.get("selector", selectors.get(demo_id))

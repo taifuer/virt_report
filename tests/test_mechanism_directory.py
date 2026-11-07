@@ -75,7 +75,7 @@ def test_directory_has_reading_order_and_real_anchors_only():
 
 def test_directory_counts_primary_articles_without_extra_related_rows():
     counts = {topic['slug']: len(topic['articles']) for topic in mechanisms.topics()}
-    assert counts == {'virtualization-basics': 1, 'cpu-virtualization': 6, 'memory-virtualization': 5,
+    assert counts == {'virtualization-basics': 1, 'cpu-virtualization': 6, 'memory-virtualization': 6,
                       'device-virtualization': 16, 'interrupt-virtualization': 2,
                       'vm-startup': 2, 'migration': 7, 'hotplug': 4,
                       'live-upgrade': 2, 'qemu-internals': 6, 'libvirt-internals': 2,
@@ -86,7 +86,7 @@ def test_directory_counts_primary_articles_without_extra_related_rows():
     assert [article['slug'] for article in
             mechanisms.get_topic('memory-virtualization')['articles']] == [
                 'memory-virtualization', 'kvm-ept-fault', 'kvm-hugepages', 'kvm-dirty-ring',
-                'vcpu-numa-placement',
+                'vcpu-numa-placement', 'virtio-balloon',
             ]
     page = render.render_mechanisms_html(Config())
     migration = re.search(r'<section class="mechanism-topic" id="migration".*?</section>',

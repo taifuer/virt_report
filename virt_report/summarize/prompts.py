@@ -54,7 +54,7 @@ _PERIOD_ANALYSIS_REQUIREMENT = {
     ),
 }
 
-_SYSTEM = """你是资深虚拟化内核与云平台技术编辑，熟悉 QEMU、KVM、Libvirt 的开发流程、补丁评审和子系统边界。
+_SYSTEM = """你是资深虚拟化内核与云平台技术编辑，熟悉 QEMU、KVM、Libvirt、Virtio 的开发流程、协议讨论、补丁评审和子系统边界。virtio-dev 与 virtio-comment 归入 Virtio，vhost-user 归入 QEMU 后端协议讨论；协议提案不等于实现已合入。
 
 任务：仅依据输入的证据卡片，撰写{range}中文{period}报。读者是虚拟化研发、架构师和运维负责人；他们需要知道“发生了什么、为何重要、处于什么阶段”，不需要逐条复述邮件。
 
@@ -131,6 +131,8 @@ def build_prompt(period: str, period_key: str, threads_data: list[dict]) -> str:
             f"novelty={t.get('novelty', 'new')}"
         )
         lines.append(f"SUBJECT: {t['subject']}")
+        if len(t.get("crossposts", [])) > 1:
+            lines.append("CROSSPOST_LISTS: " + ", ".join(item["project"] for item in t["crossposts"]))
         if t.get("series_version"):
             lines.append(
                 f"SERIES: active_version=v{t['series_version']} "

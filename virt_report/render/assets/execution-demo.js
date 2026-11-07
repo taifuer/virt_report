@@ -17,10 +17,11 @@
   const setText = (selector, value) => { one(selector).textContent = value; };
   let demo;
   try { demo = JSON.parse(data.textContent); } catch (error) { return; }
-  const views = ['overview', 'structure', 'source'];
+  const views = ['overview', 'sequence', 'structure', 'source'];
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   let scene, trace, index = 0, view = 'overview', timer = null, layout = null, firstBranch = null;
   let animateNext = false;
+  let selectedNode = null;
   const controls = one('[data-execution-controls]');
   // Embedded persistence and the main disk walkthrough keep independent links.
   const urlKey = name => (lab.dataset.executionUrlPrefix || '') + name;
@@ -75,7 +76,7 @@
   }
 
   function selectScenario(id) {
-    pause(); firstBranch = null; buildScene(id); index = 0; render(true);
+    pause(); firstBranch = null; selectedNode = null; buildScene(id); index = 0; render(true);
   }
 
   function sourceLink(id) {
@@ -103,7 +104,12 @@
       ...scene.parallel.branches.map(branch => el('li', `${branch.title}：${branch.summary}`)));
     const makeNode = id => {
       const node = scene.nodes.find(item => item.id === id);
-      const card = el('div', undefined, 'execution-node'); card.dataset.executionNode = node.id;
+      const card = el('button', undefined, 'execution-node'); card.type = 'button'; card.dataset.executionNode = node.id;
+      card.title = `查看${node.label}的状态`;
+      card.addEventListener('click', () => {
+        pause(); selectedNode = node.id; one('[data-execution-inspector]').open = true;
+        window.WalkthroughEvents.inspection(one('[data-execution-inspection]'), scene, trace[index], trace[Math.max(0, index - 1)], selectedNode);
+      });
       const heading = el('div', undefined, 'execution-node-heading');
       heading.append(el('strong', node.label));
       if (node.badge) heading.append(el('span', node.badge, 'walkthrough-node-badge'));
@@ -119,6 +125,15 @@
       return nodes;
     });
     nodesBoard.replaceChildren(domains);
+    if (demo.id === 'virtio-balloon') {
+      const memory = el('section', undefined, 'balloon-memory-map');
+      memory.append(el('h4', 'Guest 页的分配状态 · 配置 RAM 始终为 8 GiB'));
+      const bar = el('div', undefined, 'balloon-page-map'); bar.dataset.balloonMap = '';
+      for (let n = 0; n < 64; n++) bar.append(el('span'));
+      const caption = el('p'); caption.dataset.balloonCaption = '';
+      memory.append(bar, caption, el('p', '每格代表 128 MiB 的容量。色块仅表示 Guest 暂停分配的比例，不表示连续 GPA 或宿主已释放的物理页。', 'walkthrough-help'));
+      nodesBoard.append(memory);
+    }
     if (scene.layout.memory) {
       const group = scene.layout.memory, memory = el('section', undefined, 'walkthrough-memory');
       const heading = el('h4', group.title); heading.append(el('span', group.description));
@@ -202,7 +217,12 @@
     const makeLane = id => {
       const lane = scene.timeline.lanes.find(item => item.id === byNode[id]);
       const current = frame.execution?.lane === lane.id;
-      const node = el('div', undefined, 'execution-node'); node.dataset.current = String(current);
+      const node = el('button', undefined, 'execution-node'); node.type = 'button'; node.dataset.current = String(current);
+      node.title = `查看${lane.label}的状态`;
+      node.addEventListener('click', () => {
+        pause(); selectedNode = id; one('[data-execution-inspector]').open = true;
+        window.WalkthroughEvents.inspection(one('[data-execution-inspection]'), scene, frame, previous, id);
+      });
       node.dataset.active = String(current);
       node.dataset.cpuLane = lane.id;
       node.dataset.component = lane.id.startsWith('guest-') ? 'guest' : lane.id;
@@ -363,9 +383,17 @@
 
   function render(speak = false, updateURL = true) {
     const frame = trace[index];
+    if (demo.id === 'virtio-balloon') {
+      const held = Number(frame.values.held);
+      all('[data-balloon-map] span').forEach((cell, n) => {
+        const fraction = Math.max(0, Math.min(1, held / 32768 - n));
+        cell.style.setProperty('--balloon-filled', `${fraction * 100}%`);
+      });
+      setText('[data-balloon-caption]', `Guest 暂停分配：${held} 页（${held / 256} MiB）。config.actual = ${frame.values.actual}；${frame.values.discard}。`);
+    }
     renderTimeline(frame);
     one('.execution-key').textContent = scene.presentation === 'cpu-timeline'
-      ? '高亮泳道表示当前执行位置，字段高亮表示本步变化。普通指令由物理 CPU 执行；不是在 Guest、KVM 与 QEMU 之间逐条搬运。'
+      ? '高亮泳道表示当前执行位置，字段高亮表示本步变化。普通指令由物理 CPU 直接执行；仅在需要处理退出事件时进入 KVM 或 QEMU。'
       : '实线：数据 · 虚线：通知 · 点线：控制切换 · 蓝色映射：地址转换。高亮表示本步操作后的状态，动画不表示真实耗时。';
     one('.execution-key').hidden = view !== 'overview';
     lab.dataset.scenario = scene.id; lab.dataset.view = view; lab.dataset.step = frame.id;
@@ -376,8 +404,12 @@
     one('[data-execution-overview]').hidden = view !== 'overview';
     one('[data-execution-structures]').hidden = view !== 'structure';
     one('[data-execution-sources]').hidden = view !== 'source';
+    one('[data-execution-sequence]').hidden = view !== 'sequence';
+    if (view === 'sequence') window.WalkthroughEvents.sequence(one('[data-execution-sequence]'), scene, trace, index, position => move(position));
+    window.WalkthroughEvents.inspection(one('[data-execution-inspection]'), scene, frame, trace[Math.max(0, index - 1)], selectedNode);
     setText('[data-execution-help]', {
       overview: '点击阶段从第 1 步开始；播放与下一步按同一顺序推进，填色表示阶段内进度。',
+      sequence: '按事件查看执行位置与交接方向；与流程总览共享播放进度，点击事件可回看当时的状态。',
       structure: '只保留与关键结构相关的步骤。高亮本步更新的字段，索引、地址和状态可逐步对照。',
       source: '按阶段定位实现；单步查看具体操作，点击函数或规范链接查看固定版本原文。',
     }[view]);

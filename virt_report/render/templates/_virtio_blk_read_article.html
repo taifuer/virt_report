@@ -20,7 +20,7 @@
     <p class="vbr-scenario-note walkthrough-summary" data-vbr-scenario-summary hidden></p>
     <div class="vbr-toolbar walkthrough-toolbar" data-vbr-controls hidden>
       <div class="vbr-views walkthrough-tabs" role="group" aria-label="演示视图">
-        <button type="button" data-vbr-view="overview" aria-pressed="true">流程总览</button><button type="button" data-vbr-view="mechanism" aria-pressed="false">关键结构</button><button type="button" data-vbr-view="source" aria-pressed="false">源码路径</button>
+        <button type="button" data-vbr-view="overview" aria-pressed="true">流程总览</button><button type="button" data-vbr-view="sequence" aria-pressed="false">事件时序</button><button type="button" data-vbr-view="mechanism" aria-pressed="false">关键结构</button><button type="button" data-vbr-view="source" aria-pressed="false">源码路径</button>
       </div>
       <div class="vbr-controls walkthrough-controls" role="group" aria-label="演示播放控制">
         <button type="button" data-vbr-prev aria-label="上一步">上一步</button><button type="button" data-vbr-play data-walkthrough-play aria-pressed="false">播放</button><button type="button" data-vbr-next aria-label="下一步">下一步</button><button type="button" data-vbr-reset>重置</button>
@@ -42,6 +42,7 @@
         <div class="walkthrough-step-body">
           <p class="walkthrough-step-explanation" data-step-explanation><span data-step-part="description" data-vbr-description>{{ flow.steps[0].description }}</span> <span data-step-part="detail" data-vbr-detail></span> <span data-step-part="state" data-vbr-ownership></span></p>
         </div>
+        <details class="walkthrough-inspection"><summary>本步状态变化</summary><div data-vbr-inspection></div></details>
       </aside>
       <div class="vbr-visual">
         <p class="sr-only" data-vbr-event hidden></p>
@@ -75,6 +76,7 @@
           </section>
         </div>
         {% include '_virtio_blk_queue.html' %}
+        <div data-vbr-sequence hidden></div>
         <section class="walkthrough-durability" data-vbr-durability hidden aria-label="同一请求的完成保证"><h4>写入完成与持久化</h4><dl><div><dt>宿主文件后端</dt><dd data-vbr-durable-host></dd></div><div><dt>设备易失缓存</dt><dd data-vbr-durable-device></dd></div><div><dt>稳定存储</dt><dd data-vbr-durable-stable></dd></div></dl></section>
         <div class="vbr-callpaths" data-vbr-callpaths hidden aria-label="按执行上下文分段的关键源码路径">
           {% for path in flow.callPaths %}<section class="vbr-callpath" data-vbr-callpath="{{ path.id }}"><h4>{{ loop.index }}. {{ path.title }}</h4><p class="vbr-callpath-context">{{ path.context }}</p><ol>{% for id in path.sourceIds %}{% set source = flow.sources[id] %}<li data-vbr-source="{{ id }}"><a href="{{ source.url }}" title="{{ source.path }}:{{ source.line }}" target="_blank" rel="noopener noreferrer"><strong>{{ source.symbol }}</strong><span>{{ source.path }}:{{ source.line }}</span></a></li>{% endfor %}</ol><p class="vbr-callpath-boundary">{{ path.boundary }}</p></section>{% endfor %}

@@ -20,6 +20,8 @@ class MailingListSource:
     name: str
     type: str  # mbox | lore | lore_git | hyperkitty | mailarchive
     url: str
+    required: bool = True  # Optional feeds expose gaps without blocking reports.
+    active_from: str | None = None  # UTC day from which coverage is expected.
 
 
 @dataclass
@@ -155,7 +157,8 @@ def load_config(path: str | Path | None = None) -> Config:
 
     src = raw.get("sources", {})
     mls = [
-        MailingListSource(name=s["name"], type=s["type"], url=s["url"])
+        MailingListSource(name=s["name"], type=s["type"], url=s["url"],
+                          required=s.get("required", True), active_from=s.get("active_from"))
         for s in src.get("mailing_lists", [])
     ]
     gls = [

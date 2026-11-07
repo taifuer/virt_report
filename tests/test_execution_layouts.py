@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from virt_report.execution_demos import DEMO_IDS, get_demo, validate_execution_layout
+from virt_report.execution_demos import DEMO_IDS, get_demo, load_demo, validate_execution_layout
 
 
 CONTENT = Path(__file__).resolve().parents[1] / "virt_report" / "content" / "flows"
 LAYOUTS = json.loads((CONTENT / "execution-layouts.json").read_text(encoding="utf-8"))
 DEMOS = {
-    name: json.loads((CONTENT / f"{name}.json").read_text(encoding="utf-8"))
+    name: load_demo(name)
     for name in DEMO_IDS
 }
 SCENARIOS = [(name, scene) for name, demo in DEMOS.items() for scene in demo["scenarios"]]

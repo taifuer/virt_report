@@ -263,6 +263,8 @@ def _thread_context(conn: sqlite3.Connection, row,
         state = "applied"
     return {
         "excerpt": excerpts[0],
+        "message_ids": sorted({item["message_id"].strip().strip("<>")
+                               for item in items if item["source"] == "ml" and item.get("message_id")}),
         "latest_excerpt": excerpts[-1] if len(excerpts) > 1 else "",
         "review_excerpt": (review_item["body_excerpt"] or "") if review_item else "",
         "opening_at": items[0].get("activity_at") or items[0]["created_at"],
@@ -366,9 +368,37 @@ def _build_threads_data(conn: sqlite3.Connection, rows, excerpt_len: int = 300,
             "time": (r["last_seen"] or "")[:10],
             "novelty": "updated" if previous else "new",
             "previous_report": previous or {},
+            "message_ids": context.get("message_ids", []),
         })
+    data = _deduplicate_crossposts(data)
     evidence_rules.enrich_series(conn, data, end_iso or db.now_utc_iso())
     return data
+
+
+def _deduplicate_crossposts(cards: list[dict]) -> list[dict]:
+    """Collapse identical archived message sets, preserving every source URL.
+
+    Different revisions or lists with additional replies remain independent
+    evidence. Raw archive records and per-source collection statistics stay intact.
+    """
+    result, seen = [], {}
+    for original in cards:
+        card = dict(original)
+        mids = tuple(sorted(set(card.pop("message_ids", []))))
+        key = mids if card.get("source") == "ml" and mids else None
+        provenance = {"project": card["project"], "url": card["url"]}
+        if key and key in seen:
+            target = seen[key]
+            if provenance not in target["crossposts"]:
+                target["crossposts"].append(provenance)
+            continue
+        card["crossposts"] = [provenance]
+        if key:
+            seen[key] = card
+        result.append(card)
+    for n, card in enumerate(result, 1):
+        card["ref"], card["rank"] = f"T{n:03d}", n
+    return result
 
 
 def _stats(conn: sqlite3.Connection, start_iso: str, end_iso: str) -> dict:
@@ -422,9 +452,10 @@ def _source_label(t: dict) -> str:
 
 
 _PROJECT_GROUPS = [
-    ("qemu", "QEMU", ("qemu-devel", "qemu")),
+    ("qemu", "QEMU", ("qemu-devel", "qemu", "vhost-user")),
     ("kvm", "KVM", ("kvm",)),
     ("libvirt", "Libvirt", ("libvir-list", "libvirt")),
+    ("virtio", "Virtio", ("virtio-dev", "virtio-comment")),
 ]
 
 
@@ -489,6 +520,7 @@ def _fallback(threads_data: list[dict], period: str, period_key: str,
                 "architectures": t.get("architectures", []),
                 "category": t.get("category", "other"),
                 "category_label": category_label(t.get("category")),
+                "crossposts": t.get("crossposts", []),
             })
         sections.append({"key": key, "name": name, "items": items})
     if not overview:
@@ -510,6 +542,9 @@ def _sanitize(overview: list, sections: list,
     ov: list[dict] = []
     for _key, name, _members in _PROJECT_GROUPS:
         found = ov_map.get(name.lower())
+        if (_key == "virtio" and not any(_project_of(t)[0] == "virtio" for t in (threads_data or []))
+                and not (threads_data is None and found)):
+            continue
         ov.append(found or {"project": name, "summary": "本期未观察到显著动态。"})
 
     evidence = {t["ref"]: t for t in (threads_data or [])}
@@ -562,6 +597,7 @@ def _sanitize(overview: list, sections: list,
                     "series_note": source.get("series_note", ""),
                     "evidence_note": source.get("evidence_note", ""),
                     "application_evidence": source.get("application_evidence", {}),
+                    "crossposts": source.get("crossposts", []),
                 })
         for items in buckets.values():
             items.sort(key=lambda item: (
@@ -571,6 +607,7 @@ def _sanitize(overview: list, sections: list,
         return ov, [
             {"key": key, "name": name, "items": buckets[key]}
             for key, name, _members in _PROJECT_GROUPS
+            if key != "virtio" or buckets[key]
         ]
 
     secs: list[dict] = []
@@ -599,6 +636,8 @@ def _sanitize(overview: list, sections: list,
                 "category": it.get("category", "other")
                 if it.get("category") in {"feature", "bug", "other"} else "other",
                 "category_label": category_label(it.get("category")),
+                "crossposts": it.get("crossposts", [])
+                if isinstance(it.get("crossposts", []), list) else [],
             })
         secs.append({"key": s.get("key", "") or "", "name": s.get("name", "") or "",
                      "items": items})
@@ -915,7 +954,14 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
         "libvirt": (top_n + 3) // 4,
         "kvm": top_n - ((top_n + 1) // 2) - ((top_n + 3) // 4),
     }
-    rows = []
+    quotas["virtio"] = 0
+    protocol_rows = []
+    if any(source.name in {"virtio-dev", "virtio-comment"} for source in config.sources.mailing_lists):
+        protocol_rows = db.get_top_threads_for_projects(
+            conn, start_iso, end_iso, ("virtio-dev", "virtio-comment"), min(5, quotas["qemu"] // 4),
+        )
+        quotas["qemu"] -= len(protocol_rows)
+    rows = list(protocol_rows)
     for key, _name, members in _PROJECT_GROUPS:
         rows.extend(db.get_top_threads_for_projects(
             conn, start_iso, end_iso, members, quotas[key]
@@ -1009,7 +1055,8 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
         raw_period_analysis = parsed.get("period_analysis", [])
     if no_activity:
         overview = [{"project": name, "summary": "本期未采集到新的社区活动。"}
-                    for _key, name, _members in _PROJECT_GROUPS]
+                    for _key, name, _members in _PROJECT_GROUPS
+                    if _key != "virtio" or any(source.name in _members for source in config.sources.mailing_lists)]
         sections = []
         headline = "本期无新增社区动态"
     elif not parsed or (not overview and not sections):

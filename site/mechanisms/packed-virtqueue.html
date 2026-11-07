@@ -7,16 +7,16 @@
   <title>Packed virtqueue：描述符发布、完成与回绕 - virt-report</title>
   <meta name="description" content="用四槽共享环解释 AVAIL、USED、wrap 与 Buffer ID，分析描述符链、事件抑制和紧凑布局的取舍。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=49f2a464e9bd">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=49f2a464e9bd">
-  <link rel="stylesheet" href="../assets/site.css?v=49f2a464e9bd">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=a5df719fb3d6">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=a5df719fb3d6">
-<link rel="stylesheet" href="../assets/packed-virtqueue.css?v=a5df719fb3d6"></head>
+  <link rel="shortcut icon" href="../favicon.ico?v=0a7fa7bd1d24">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0a7fa7bd1d24">
+  <link rel="stylesheet" href="../assets/site.css?v=0a7fa7bd1d24">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=6d7b04ec6e68">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=6d7b04ec6e68">
+<link rel="stylesheet" href="../assets/packed-virtqueue.css?v=6d7b04ec6e68"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=49f2a464e9bd" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=0a7fa7bd1d24" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -53,7 +53,7 @@
   <h2><span class="mechanism-heading-number">一、</span>Packed virtqueue 的共享描述符环</h2>
   <p>split virtqueue 把缓冲区描述、可用链头和完成记录放在三个区域。设备处理一个请求，需要读取 available、找到描述符，再把结果写到 used。高请求率场景中，这些元数据访问也会占用缓存和内存带宽。packed virtqueue 将发布与完成状态放到同一个描述符环，减少分散访问，并通过状态位和 wrap 计数区分槽位在不同轮次中的使用状态。</p>
   <p>本文先用 4 个槽位、每项请求只占一个描述符的例子说明发布、完成和回收，再扩展到描述符链与通知。队列格式依据 VIRTIO 1.2；初始化时必须协商 <code>VIRTIO_F_RING_PACKED</code>，没有协商就继续使用 split。演示让设备按提交顺序完成，便于观察位变化；它没有启用 IN_ORDER 的合并完成功能。</p>
-<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p><p class="mechanism-baselines">规范依据：<a href="https://docs.oasis-open.org/virtio/virtio/v1.2/cs01/virtio-v1.2-cs01.html" target="_blank" rel="noopener noreferrer">VIRTIO 1.2 CS01</a>。<a href="../versions.html#virtio-specifications">规范版本记录</a></p></section>
 <section id="layout" class="mechanism-section">
   <h2><span class="mechanism-heading-number">二、</span>一个描述符环，加两个事件抑制结构</h2>
   <table><thead><tr><th scope="col">区域</th><th scope="col">组成</th><th scope="col">职责</th></tr></thead><tbody>
@@ -69,9 +69,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看同一环中的提交、完成与事件抑制" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="同一环中的提交、完成与事件抑制">
-    <img src="../assets/packed-virtqueue-layout.svg?v=a5df719fb3d6" alt="驱动和设备在描述符环上交换记录，数据缓冲区位于环外。两个事件抑制结构决定通知时机；它们不保存额外的可用项或完成项。" loading="lazy">
+    <img src="../assets/packed-virtqueue-layout.svg?v=6d7b04ec6e68" alt="驱动和设备在描述符环上交换记录，数据缓冲区位于环外。两个事件抑制结构决定通知时机；它们不保存额外的可用项或完成项。" loading="lazy">
   </div>
-  <figcaption>驱动和设备在描述符环上交换记录，数据缓冲区位于环外。两个事件抑制结构决定通知时机；它们不保存额外的可用项或完成项。 <a href="../assets/packed-virtqueue-layout.svg?v=a5df719fb3d6" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>驱动和设备在描述符环上交换记录，数据缓冲区位于环外。两个事件抑制结构决定通知时机；它们不保存额外的可用项或完成项。 <a href="../assets/packed-virtqueue-layout.svg?v=6d7b04ec6e68" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: Packed virtqueue 的共享布局与访问方向
     accDescr: 驱动和设备共同访问一个描述符环，驱动事件区控制完成通知，设备事件区控制新请求通知。环外缓冲区存放数据，Buffer ID 关联驱动上下文。
@@ -160,7 +160,7 @@
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=49f2a464e9bd"></script>
-<script src="../assets/mechanism-viewer.js?v=a5df719fb3d6" defer></script>
-<script src="../assets/packed-virtqueue.js?v=a5df719fb3d6" defer></script></body>
+  <script src="../assets/site.js?v=0a7fa7bd1d24"></script>
+<script src="../assets/mechanism-viewer.js?v=6d7b04ec6e68" defer></script>
+<script src="../assets/packed-virtqueue.js?v=6d7b04ec6e68" defer></script></body>
 </html>

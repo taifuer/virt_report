@@ -7,16 +7,16 @@
   <title>中断传递 - virt-report</title>
   <meta name="description" content="对照 QEMU 直接 MSI、DPDK irqfd，以及直通设备同为 MSI-X 的宿主转发和 VT-d posted，说明路径条件与 vCPU 调度边界。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=49f2a464e9bd">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=49f2a464e9bd">
-  <link rel="stylesheet" href="../assets/site.css?v=49f2a464e9bd">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=0271a1165abe">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=0271a1165abe">
-<link rel="stylesheet" href="../assets/execution-demo.css?v=0271a1165abe"><link rel="stylesheet" href="../assets/walkthrough.css?v=0271a1165abe"></head>
+  <link rel="shortcut icon" href="../favicon.ico?v=0a7fa7bd1d24">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0a7fa7bd1d24">
+  <link rel="stylesheet" href="../assets/site.css?v=0a7fa7bd1d24">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=34498bb8a1f1">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=34498bb8a1f1">
+<link rel="stylesheet" href="../assets/execution-demo.css?v=34498bb8a1f1"><link rel="stylesheet" href="../assets/walkthrough.css?v=34498bb8a1f1"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=49f2a464e9bd" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=0a7fa7bd1d24" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -55,7 +55,7 @@
   <p>virtio 设备完成请求后，先把结果发布到共享队列，再按通知条件提醒客户机。以接收队列的一次完成为例，MSI-X 表项选择 APIC ID 1 和向量 0x51，KVM 将消息送入目标 vCPU 的中断状态，处理器在允许的时机进入客户机处理程序。驱动随后读取队列并取得结果。</p>
   <p>MSI-X、irqfd 与 posted interrupt 处在不同层：MSI-X 是设备发送中断消息的机制，irqfd 是 eventfd 进入 KVM 的通知接口。APICv 是一组 APIC 虚拟化特性，其中 posted-interrupt processing 配合虚拟中断交付，优化 CPU 接受与交付向量的过程。直通设备的两条演示都使用 MSI-X，区别是消息随后经宿主转发，还是由 VT-d 直接写入 vCPU 的 PID；并非“MSI-X 与硬件投递二选一”。</p>
   <p>示例采用 x86-64、Intel VMX、QEMU 10.2.0、Linux 6.18 与 DPDK 24.11。主菜单只比较五条正常路径：QEMU 直接 MSI、DPDK irqfd 软件注入、同一 DPDK 后端配合 posted interrupt，以及直通设备的宿主转发与 VT-d posted。屏蔽、通知抑制和 IF 等待保留在默认收起的进阶入口，不与后端路径混为一类。</p>
-<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>、<a href="https://github.com/DPDK/dpdk/tree/1b3bf1128d9bda5595861814792f74b8f57160c8" target="_blank" rel="noopener noreferrer" title="commit 1b3bf1128d9bda5595861814792f74b8f57160c8">DPDK 24.11</a>。</p></section>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>、<a href="https://github.com/DPDK/dpdk/tree/1b3bf1128d9bda5595861814792f74b8f57160c8" target="_blank" rel="noopener noreferrer" title="commit 1b3bf1128d9bda5595861814792f74b8f57160c8">DPDK 24.11</a>。</p><p class="mechanism-baselines">规范依据：<a href="https://docs.oasis-open.org/virtio/virtio/v1.2/cs01/virtio-v1.2-cs01.html" target="_blank" rel="noopener noreferrer">VIRTIO 1.2 CS01</a>。<a href="../versions.html#virtio-specifications">规范版本记录</a></p></section>
 
 <section id="walkthrough" class="mechanism-section">
   <h2><span class="mechanism-heading-number">二、</span>逐步演示</h2>
@@ -77,6 +77,7 @@
     <div class="walkthrough-toolbar">
       <div class="walkthrough-tabs" role="group" aria-label="演示视图">
         <button type="button" data-execution-view="overview" aria-pressed="true">流程总览</button>
+        <button type="button" data-execution-view="sequence" aria-pressed="false">事件时序</button>
         <button type="button" data-execution-view="structure" aria-pressed="false">关键结构</button>
         <button type="button" data-execution-view="source" aria-pressed="false">源码路径</button>
       </div>
@@ -100,6 +101,7 @@
         <div class="walkthrough-step-body">
           <p class="walkthrough-step-explanation" data-step-explanation><span data-step-part="description" data-execution-description></span> <span data-step-part="detail" data-execution-detail></span></p>
         </div>
+        <details class="walkthrough-inspection" data-execution-inspector><summary>状态变化与对象查看</summary><div data-execution-inspection></div></details>
       </aside>
       <div class="execution-canvas" tabindex="0" aria-label="演示区域，可用左右方向键切换步骤">
         <div data-execution-overview>
@@ -109,11 +111,12 @@
           <div class="execution-nodes" data-execution-nodes></div>
         </div>
         <div data-execution-structures class="execution-structures" hidden></div>
+        <div data-execution-sequence hidden></div>
         <div data-execution-sources class="execution-source-path" hidden></div>
         <p class="execution-key">实线：数据 · 虚线：通知 · 点线：控制切换 · 双色映射：地址转换。高亮表示本步操作后的状态，动画不表示真实耗时。</p>
       </div>
     </div>
-    <details class="walkthrough-configuration"><summary>当前场景配置与源码版本</summary><ul data-execution-assumptions></ul><p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>、<a href="https://github.com/DPDK/dpdk/tree/1b3bf1128d9bda5595861814792f74b8f57160c8" target="_blank" rel="noopener noreferrer" title="commit 1b3bf1128d9bda5595861814792f74b8f57160c8">DPDK 24.11</a>。</p></details>
+    <details class="walkthrough-configuration"><summary>当前场景配置与源码版本</summary><ul data-execution-assumptions></ul><p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>、<a href="https://github.com/DPDK/dpdk/tree/1b3bf1128d9bda5595861814792f74b8f57160c8" target="_blank" rel="noopener noreferrer" title="commit 1b3bf1128d9bda5595861814792f74b8f57160c8">DPDK 24.11</a>。</p><p class="mechanism-baselines">规范依据：<a href="https://docs.oasis-open.org/virtio/virtio/v1.2/cs01/virtio-v1.2-cs01.html" target="_blank" rel="noopener noreferrer">VIRTIO 1.2 CS01</a>。<a href="../versions.html#virtio-specifications">规范版本记录</a></p></details>
     <p class="sr-only" role="status" aria-live="polite" data-execution-status></p>
   </div>
   <div class="execution-fallback" data-execution-fallback>
@@ -337,7 +340,7 @@
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=49f2a464e9bd"></script>
-<script src="../assets/mechanism-viewer.js?v=0271a1165abe" defer></script>
-<script src="../assets/walkthrough-fullscreen.js?v=0271a1165abe" defer></script><script src="../assets/walkthrough-routing.js?v=0271a1165abe" defer></script><script src="../assets/walkthrough-components.js?v=0271a1165abe" defer></script><script src="../assets/execution-model.js?v=0271a1165abe" defer></script><script src="../assets/execution-demo.js?v=0271a1165abe" defer></script></body>
+  <script src="../assets/site.js?v=0a7fa7bd1d24"></script>
+<script src="../assets/mechanism-viewer.js?v=34498bb8a1f1" defer></script>
+<script src="../assets/walkthrough-fullscreen.js?v=34498bb8a1f1" defer></script><script src="../assets/walkthrough-routing.js?v=34498bb8a1f1" defer></script><script src="../assets/walkthrough-components.js?v=34498bb8a1f1" defer></script><script src="../assets/walkthrough-events.js?v=34498bb8a1f1" defer></script><script src="../assets/execution-model.js?v=34498bb8a1f1" defer></script><script src="../assets/execution-demo.js?v=34498bb8a1f1" defer></script></body>
 </html>

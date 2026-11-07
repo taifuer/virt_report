@@ -1,5 +1,5 @@
 # virt-report 配置
-# 数据源均已验证可用 (2026-07)
+# 基础数据源已核验；新增补充源的连通状态见下方注释及运行状态页。
 
 project:
   name: virt-report
@@ -21,6 +21,23 @@ sources:
     - name: libvir-list
       type: hyperkitty
       url: https://lists.libvirt.org/archives/list/devel@lists.libvirt.org/
+    # 补充协议/后端讨论。归档当前可能返回 403；独立记失败，不阻塞原有源的报告。
+    # 首次接入只从该日期增量收集，不追溯下载整份历史。
+    - name: virtio-dev
+      type: lore_git
+      url: https://lore.kernel.org/virtio-dev/git/0.git
+      required: false
+      active_from: "2026-11-05"
+    - name: virtio-comment
+      type: lore_git
+      url: https://lore.kernel.org/virtio-comment/git/0.git
+      required: false
+      active_from: "2026-11-05"
+    - name: vhost-user
+      type: lore_git
+      url: https://lore.kernel.org/vhost-user/git/0.git
+      required: false
+      active_from: "2026-11-05"
   gitlab:
     - name: libvirt
       project: libvirt/libvirt

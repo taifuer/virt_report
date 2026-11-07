@@ -5,13 +5,13 @@ import json
 import pytest
 
 from virt_report.config import Config
-from virt_report.execution_demos import CONTENT_DIR, DEMO_IDS, DEMO_PAGES, get_demo, validate_selector
+from virt_report.execution_demos import CONTENT_DIR, DEMO_IDS, DEMO_PAGES, get_demo, load_demo, validate_selector
 from virt_report.render.render import render_mechanisms_html
 
 
 SELECTORS = json.loads((CONTENT_DIR / "execution-selectors.json").read_text(encoding="utf-8"))
 for demo_id in DEMO_IDS:
-    original = json.loads((CONTENT_DIR / f"{demo_id}.json").read_text(encoding="utf-8"))
+    original = load_demo(demo_id)
     if "selector" in original:
         SELECTORS[demo_id] = original["selector"]
 
@@ -28,7 +28,7 @@ def test_selector_catalogue_matches_published_demos():
 
 @pytest.mark.parametrize("demo_id", DEMO_IDS)
 def test_selector_represents_each_original_scenario_exactly_once(demo_id):
-    original = json.loads((CONTENT_DIR / f"{demo_id}.json").read_text(encoding="utf-8"))
+    original = load_demo(demo_id)
     expected = {scene["id"] for scene in original["scenarios"]}
     selector = SELECTORS[demo_id]
     validate_selector(selector, expected)

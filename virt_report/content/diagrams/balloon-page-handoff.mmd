@@ -1,0 +1,11 @@
+flowchart LR
+  accTitle: 气球目标与页面交接
+  accDescr: QMP 目标转换为气球页数，Guest 收集页面并通过 PFN 数组告知 QEMU，宿主处理后备页后发布完成。
+  C[QMP 剩余内存目标] --> N[config.num_pages]
+  N --> G[Guest 驱动收集页面]
+  G --> D[队列描述符]
+  D --> P[PFN 数组]
+  P --> R[GPA 对应 RAMBlock]
+  R --> H[宿主处理后备页]
+  H --> U[used 完成]
+  U --> A[驱动报告 actual]

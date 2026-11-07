@@ -301,6 +301,8 @@ def test_catalogue_has_one_title_link_per_article_without_redundant_cta():
     for article in mechanisms.articles():
         topic = mechanisms.get_topic(article["topic"])
         prefix = f'<h3 id="mechanism-topic-{topic["slug"]}">' if topic.get("overview") == article["slug"] else '<h4>'
+        if topic.get("article_clusters") and topic.get("overview") != article["slug"]:
+            prefix = '<h5>'
         assert page.count(f'{prefix}<a href="mechanisms/{article["slug"]}.html">') == 1
     assert 'id="migration" aria-labelledby="mechanism-topic-migration"' in page
     assert ('<h3 id="mechanism-topic-migration"><a href="mechanisms/'

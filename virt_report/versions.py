@@ -611,7 +611,18 @@ def load_content(config: Config, *, today: date | None = None) -> dict:
         releases.append(entry)
     releases.sort(key=lambda row: (row["released_on"], row["project"],
                                    tuple(map(int, row["version"].split(".")))), reverse=True)
+    specifications = {}
+    for row in [*_read_json(CONTENT_DIR / "virtio_specifications.json", {}).get("releases", []),
+                *bundled.get("specifications", []), *local.get("specifications", [])]:
+        if _valid_specification(row, today):
+            specifications[(row["version"], row["stage"])] = row
+    spec_notes = _read_json(CONTENT_DIR / "virtio_specification_notes.json", {})
+    # Reviewed notes belong to one exact document stage, independently of
+    # refreshed source metadata. A later stage must not inherit draft notes.
+    specification_entries = [dict(row, notes=spec_notes.get(f"{version}:{stage}", []))
+                             for (version, stage), row in specifications.items()]
     return {"releases": releases, "projects": PROJECTS, "topics": topics,
+            "specifications": sorted(specification_entries, key=lambda row: row["released_on"], reverse=True),
             "years": sorted({row["year"] for row in releases}, reverse=True),
             "default_year": str(today.year),
             "checked_at": local.get("checked_at") or bundled.get("checked_at", ""),
@@ -626,9 +637,11 @@ def export_public_snapshot(config: Config, *, today: date | None = None) -> Path
               "commits", "commits_approximate", "contributors"}
     releases = [{key: value for key, value in row.items() if key in fields}
                 for row in content["releases"]]
+    specifications = [{key: value for key, value in row.items() if key != "notes"}
+                      for row in content["specifications"]]
     path = CONTENT_DIR / "versions.json"
     _write_json(path, {"schema_version": 1, "checked_at": content["checked_at"],
-                       "releases": releases})
+                       "releases": releases, "specifications": specifications})
     return path
 
 
@@ -676,8 +689,67 @@ def refresh(config: Config, *, from_year: int = 2003,
                     status[project] = {**status.get(project, {}), "ok": False,
                                        "checked_at": checked_at, "error": str(exc)[:300]}
                     log.warning("%s 版本更新失败，保留已有记录: %s", PROJECTS[project], exc)
+        specifications = {(row["version"], row["stage"]):
+                          {key: value for key, value in row.items() if key != "notes"}
+                          for row in previous["specifications"]}
+        spec_errors = []
+        # Recheck each known version's official latest-stage pointer. A draft is
+        # not promoted by version number; its cover must name the approval stage.
+        for version in sorted({version for version, _ in specifications}):
+            try:
+                url = f"https://docs.oasis-open.org/virtio/virtio/v{version}/virtio-v{version}.html"
+                row = parse_virtio_specification(cache.get(url), version)
+                if not _valid_specification(row, today):
+                    raise ValueError("invalid specification date or stage")
+                specifications[(version, row["stage"])] = row
+            except Exception:
+                spec_errors.append(version)
+                log.warning("VIRTIO %s 核验失败，保留原记录", version)
+        status["virtio"] = {"ok": not spec_errors, "checked_at": checked_at,
+                           "failed_versions": spec_errors}
         snapshot = {"schema": 1, "checked_at": checked_at, "sources": status,
+                    "specifications": sorted(specifications.values(), key=lambda row: row["released_on"], reverse=True),
                     "releases": sorted(rows.values(), key=lambda row: (
                         row["released_on"], row["project"], row["version"]), reverse=True)}
         _write_json(directory / "versions.json", snapshot)
         return snapshot
+
+
+def _valid_specification(row: dict, today: date) -> bool:
+    try:
+        return (bool(re.fullmatch(r"1\.\d+", row["version"]))
+                and bool(re.fullmatch(r"CS(?:D)?\d{2}", row["stage"]))
+                and row["status"] == ("委员会规范草案" if row["stage"].startswith("CSD") else "委员会规范")
+                and date.fromisoformat(row["released_on"]) <= today
+                and row["source_url"] == (
+                    f'https://docs.oasis-open.org/virtio/virtio/v{row["version"]}/'
+                    f'{row["stage"].lower()}/virtio-v{row["version"]}-{row["stage"].lower()}.html'))
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def parse_virtio_specification(html: str, version: str) -> dict:
+    """Read approval stage and date from the cover, never from body references."""
+    # TeX-generated OASIS HTML can contain deeply nested, unmatched elements.
+    # Reading text in document order avoids recursion through that markup.
+    class CoverText(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.parts: list[str] = []
+
+        def handle_data(self, data: str) -> None:
+            self.parts.append(data)
+
+    document = CoverText()
+    document.feed(html)
+    text = " ".join(" ".join(document.parts).split())
+    cover = re.search(r"Virtual I/O Device \(VIRTIO\) Version (1\.\d+)\s+"
+                      r"Committee Specification\s+(Draft\s+)?(\d{2})\s+"
+                      r"(\d{1,2}\s+[A-Za-z]+\s+\d{4})", text)
+    if not cover or cover[1] != version:
+        raise ValueError("Missing VIRTIO specification cover")
+    stage = ("CSD" if cover[2] else "CS") + cover[3]
+    return {"version": version, "stage": stage,
+            "status": "委员会规范草案" if cover[2] else "委员会规范",
+            "released_on": datetime.strptime(cover[4], "%d %B %Y").date().isoformat(),
+            "source_url": f"https://docs.oasis-open.org/virtio/virtio/v{version}/{stage.lower()}/virtio-v{version}-{stage.lower()}.html"}

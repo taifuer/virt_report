@@ -10,7 +10,8 @@ from urllib.parse import urlsplit, urlunsplit
 def canonical_project(value: object) -> str:
     """Normalize collector IDs and display names without fuzzy matching."""
     key = str(value or "").strip().casefold()
-    return {"qemu-devel": "qemu", "libvir-list": "libvirt"}.get(key, key)
+    return {"qemu-devel": "qemu", "libvir-list": "libvirt", "vhost-user": "qemu",
+            "virtio-dev": "virtio", "virtio-comment": "virtio"}.get(key, key)
 
 
 def source_url(value: object) -> str:

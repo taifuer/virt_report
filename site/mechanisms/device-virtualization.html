@@ -7,16 +7,16 @@
   <title>设备与 I/O 虚拟化：从网卡模拟到共享队列与卸载 - virt-report</title>
   <meta name="description" content="沿一个报文解释设备模拟、virtqueue 与缓冲区归还，再比较 vhost、vhost-user、VFIO、SR-IOV 和 vDPA 解决的问题及代价。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=49f2a464e9bd">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=49f2a464e9bd">
-  <link rel="stylesheet" href="../assets/site.css?v=49f2a464e9bd">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=a5df719fb3d6">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=a5df719fb3d6">
+  <link rel="shortcut icon" href="../favicon.ico?v=0a7fa7bd1d24">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0a7fa7bd1d24">
+  <link rel="stylesheet" href="../assets/site.css?v=0a7fa7bd1d24">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=6d7b04ec6e68">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=6d7b04ec6e68">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=49f2a464e9bd" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=0a7fa7bd1d24" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -53,7 +53,7 @@
   <h2><span class="mechanism-heading-number">一、</span>设备接口与 I/O 处理路径</h2>
   <p>设备虚拟化向客户机提供磁盘、网卡等设备接口，并将客户机请求连接到宿主资源。以网络为例，一台物理服务器可能运行几十台虚拟机，却只有几块网卡；每台客户机仍需独立初始化设备、提交报文并接收完成通知。虚拟化层在连接真实网络的同时，需要隔离不同客户机的内存和请求。</p>
   <p>这些名称涉及三个层次：e1000 与 virtio 规定客户机使用的设备接口；QEMU、vhost-net、vhost-user 安排请求的处理位置；VFIO 与 IOMMU 管理设备分配及内存访问隔离。例如客户机使用 virtio-net 驱动时，宿主可以选择 QEMU 或 vhost 后端，驱动提交请求的接口保持不变。</p>
-<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p><p class="mechanism-baselines">规范依据：<a href="https://docs.oasis-open.org/virtio/virtio/v1.2/cs01/virtio-v1.2-cs01.html" target="_blank" rel="noopener noreferrer">VIRTIO 1.2 CS01</a>。<a href="../versions.html#virtio-specifications">规范版本记录</a></p></section>
 <section id="example" class="mechanism-section">
   <h2><span class="mechanism-heading-number">二、</span>一个报文的四步交接</h2>
   <p>设客户机要发送一个以太网帧 P1。各种后端都要完成以下交接，区别在于接口、执行者和每次交接的成本：</p>
@@ -80,6 +80,7 @@
   </tbody></table>
   <p>两个环循环使用数组槽位，报文本身保存在描述符指向的缓冲区。写好内容后才能发布进度，看到完成后才能复用缓冲区，这两条规则决定了队列的正确性。发送链让设备读取数据；接收链则预先提供可写空间。kick 与中断用于提示另一方检查队列，多项请求可以共享一次通知。</p>
   <span id="queue-part-1" class="mechanism-topic-alias" aria-hidden="true"></span>
+  <p>队列通用规则由初始化与队列文章集中展开。下面沿处理位置比较后端；网络和磁盘演示则从应用调用跟踪到完成交付，可用于对照这些组件在一次实际请求中的分工。</p>
   <p>双方必须先确认共同支持的特性和队列格式，再配置共享区域并开始处理。字段、索引回绕与链 <code>0 → 2</code> 的变化见<a href="qemu-network-tx.html#virtqueue">发送队列交互图</a>，协商和启用顺序见<a href="virtio-device-initialization.html">virtio 设备初始化</a>。客户机接口确定后，可以单独改变处理 P1 的后端。</p>
 </section>
 <section id="backends" class="mechanism-section">
@@ -103,9 +104,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看接口选择与处理位置的分支" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="接口选择与处理位置的分支">
-    <img src="../assets/device-backend-overview.svg?v=a5df719fb3d6" alt="传统设备模拟、virtio 和分配的硬件功能可以长期并存。SR-IOV 主要划分设备功能，VFIO 管理访问与隔离，vDPA 连接 virtio 数据接口与后端；它们各自解决不同问题。" loading="lazy">
+    <img src="../assets/device-backend-overview.svg?v=6d7b04ec6e68" alt="传统设备模拟、virtio 和分配的硬件功能可以长期并存。SR-IOV 主要划分设备功能，VFIO 管理访问与隔离，vDPA 连接 virtio 数据接口与后端；它们各自解决不同问题。" loading="lazy">
   </div>
-  <figcaption>传统设备模拟、virtio 和分配的硬件功能可以长期并存。SR-IOV 主要划分设备功能，VFIO 管理访问与隔离，vDPA 连接 virtio 数据接口与后端；它们各自解决不同问题。 <a href="../assets/device-backend-overview.svg?v=a5df719fb3d6" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>传统设备模拟、virtio 和分配的硬件功能可以长期并存。SR-IOV 主要划分设备功能，VFIO 管理访问与隔离，vDPA 连接 virtio 数据接口与后端；它们各自解决不同问题。 <a href="../assets/device-backend-overview.svg?v=6d7b04ec6e68" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 设备接口与数据后端的选择
     accDescr: 客户机设备可以使用模拟硬件接口、virtio 共享队列或分配的设备功能。virtio 队列有 QEMU、内核 vhost、用户态 vhost-user 和 vDPA 等不同后端，VFIO 直通则使用所分配设备的接口。
@@ -165,7 +166,7 @@
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=49f2a464e9bd"></script>
-<script src="../assets/mechanism-viewer.js?v=a5df719fb3d6" defer></script>
+  <script src="../assets/site.js?v=0a7fa7bd1d24"></script>
+<script src="../assets/mechanism-viewer.js?v=6d7b04ec6e68" defer></script>
 </body>
 </html>

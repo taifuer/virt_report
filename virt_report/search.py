@@ -19,6 +19,7 @@ PROJECTS = (
     ("qemu", "QEMU"),
     ("kvm", "KVM"),
     ("libvirt", "Libvirt"),
+    ("virtio", "Virtio"),
 )
 CATEGORIES = (
     ("feature", "功能"),
@@ -44,6 +45,10 @@ _PROJECT_FIELDS = {
     "kvm": ("kvm", "KVM"),
     "libvir-list": ("libvirt", "Libvirt"),
     "libvirt": ("libvirt", "Libvirt"),
+    "virtio": ("virtio", "Virtio"),
+    "virtio-dev": ("virtio", "Virtio"),
+    "virtio-comment": ("virtio", "Virtio"),
+    "vhost-user": ("qemu", "QEMU"),
 }
 _KIND_LABELS = {
     "patch": "Patch",

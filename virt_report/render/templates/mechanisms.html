@@ -36,10 +36,16 @@
       <p>{{ topic.summary }}</p>
     </header>
     <div class="mechanism-list" id="mechanism-list-{{ topic.slug }}">
+      {% if topic.article_clusters %}
+      {% for cluster in topic.article_clusters %}<div class="mechanism-cluster" role="group" aria-label="{{ cluster.title }}"><h4>{{ cluster.title }}</h4>
+        {% for article in cluster.articles %}<article class="mechanism-list-item"><h5><a href="mechanisms/{{ article.slug }}.html">{{ article.title }}</a></h5><p>{{ article.summary }}</p></article>{% endfor %}
+      </div>{% endfor %}
+      {% else %}
       {% for article in topic.detail_articles %}<article class="mechanism-list-item">
         <h4><a href="mechanisms/{{ article.slug }}.html">{{ article.title }}</a></h4>
         <p>{{ article.summary }}</p>
       </article>{% endfor %}
+      {% endif %}
     </div>
   </section>
     {% endfor %}

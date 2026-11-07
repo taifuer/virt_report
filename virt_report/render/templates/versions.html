@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_pagination.html" import pagination %}
 {% block title %}版本 - virt-report{% endblock %}
-{% block description %}QEMU、KVM 与 Libvirt 的历史版本时间线、发布要点与官方记录。{% endblock %}
+{% block description %}QEMU、KVM 与 Libvirt 的历史版本时间线、发布要点，以及 Virtio 协议规范的版本与批准阶段。{% endblock %}
 {% block nav_home %}{% endblock %}
 {% block nav_versions %}on{% endblock %}
 {% block content %}
@@ -9,11 +9,12 @@
   <header class="versions-header">
     <div class="kicker">Release Timeline</div>
     <h1>版本</h1>
-    <p>QEMU、KVM 与 Libvirt 的历史发布记录。KVM 随 Linux 内核发布，以对应内核版本标注。</p>
+    <p>QEMU、KVM、Libvirt 的软件版本与 <a href="?project=virtio#version-list" data-version-project-link="virtio">Virtio 协议规范</a>。按项目查看历史记录、发布要点和官方文档。</p>
   </header>
-  <div class="version-latest" aria-label="最新功能版本">
-    <span class="version-latest-label">最新功能版本</span>
-    {% for item in content.latest if item %}<a href="#release-{{ item.project }}-{{ item.version }}" data-version-jump><strong>{{ item.project_label }}</strong><span>{{ 'Linux ' if item.project == 'kvm' else '' }}{{ item.version }}</span><time datetime="{{ item.released_on }}">{{ item.released_on }}</time></a>{% endfor %}
+  <div class="version-latest" aria-label="最新软件版本与协议规范">
+    <span class="version-latest-label">最新版本 / 规范</span>
+    {% for item in content.latest if item %}<a href="#{{ item.anchor }}" data-version-jump><strong>{{ item.project_label }}</strong><span>{{ 'Linux ' if item.project == 'kvm' else '' }}{{ item.version }}</span><time datetime="{{ item.released_on }}">{{ item.released_on }}</time></a>{% endfor %}
+    {% if content.latest_specification %}{% set spec = content.latest_specification %}<a href="#{{ spec.anchor }}" data-version-jump><strong>Virtio</strong><span>{{ spec.version }} <small>{{ spec.stage }} · 协议规范</small></span><time datetime="{{ spec.released_on }}">{{ spec.released_on }}</time></a>{% endif %}
   </div>
   <div data-version-browser data-view="compact" data-default-project="{{ content.default_project }}">
     <div class="version-controls" id="version-list">
@@ -24,6 +25,7 @@
       <span class="version-result-count" data-version-count role="status">{{ content.initial_count }} 个功能版本</span>
     </div>
     <p class="version-view-note" data-version-help>精简显示所选范围内全部功能版本；切换详细视图可查看发布要点与相关统计。</p>
+    {% if content.specifications %}<p id="virtio-specifications" class="version-topic-note" data-version-spec-note hidden>Virtio 规范定义驱动与设备的共同约定。CS 为委员会规范，CSD 为委员会规范草案；日期取自官方文档封面。功能支持还取决于具体实现与特性协商，原理文章会分别注明规范依据和源码版本。</p>{% endif %}
     {% for key, topic in content.topics.items() %}<p class="version-topic-note" data-version-topic-description="{{ key }}" hidden>{{ topic.description }} <a href="{{ topic.source_url }}" target="_blank" rel="noopener noreferrer">官方说明</a></p>{% endfor %}
     <div class="version-timeline">
       {% for group in content.year_groups %}
@@ -32,10 +34,20 @@
         <summary><h2 id="year-title-{{ group.year }}">{{ group.year }}<svg class="version-year-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 8 5 5 5-5"/></svg><span data-version-year-count>{{ group.initial_count }} 个版本</span></h2></summary>
         <ol>
           {% for item in group.releases %}
-          <li class="version-entry" id="release-{{ item.project }}-{{ item.version }}" data-version-item data-project="{{ item.project }}" data-year="{{ item.year }}" data-topics="{{ (item.topics|default([]))|join(',') }}"{% if item.project != content.default_project %} hidden{% endif %}>
+          <li class="version-entry" id="{{ item.anchor }}" data-version-item data-project="{{ item.project }}" data-kind="{{ item.kind }}" data-year="{{ item.year }}" data-topics="{{ (item.topics|default([]))|join(',') }}"{% if item.project != content.default_project %} hidden{% endif %}>
             <time class="version-date" datetime="{{ item.released_on }}">{{ item.released_on }}</time>
             <div class="version-body">
-              <div class="version-heading"><h3><span class="version-project">{{ item.project_label }}</span><span>{{ 'Linux ' if item.project == 'kvm' else '' }}{{ item.version }}</span></h3><a class="version-source" href="{{ item.source_url }}" target="_blank" rel="noopener noreferrer">{{ '发布标签' if item.date_source == 'release_tag' else '发布公告' }}</a></div>
+              <div class="version-heading">
+                <h3><span class="version-project">{{ item.project_label }}</span><span>{{ 'Linux ' if item.project == 'kvm' else '' }}{{ item.version }}</span></h3>
+                <div class="version-actions">
+                  <a class="version-source" href="{{ item.source_url }}" target="_blank" rel="noopener noreferrer">{{ '官方规范' if item.kind == 'specification' else '发布标签' if item.date_source == 'release_tag' else '发布公告' }}</a>
+                  {% if item.kind == 'specification' %}<a class="version-source" href="{{ item.source_url|replace('.html', '.pdf') }}" target="_blank" rel="noopener noreferrer">下载 PDF</a>{% endif %}
+                </div>
+              </div>
+              {% if item.kind == 'specification' %}
+              <p class="version-spec-stage" data-draft="{{ 'true' if item.stage.startswith('CSD') else 'false' }}"><strong>{{ item.stage }}</strong> · {{ item.status }}</p>
+              {% if item.notes %}<div class="version-detail"><ul class="version-notes" aria-label="规范核心要点">{% for note in item.notes %}<li>{{ note }}</li>{% endfor %}</ul></div>{% endif %}
+              {% else %}
               <div class="version-detail">
                 {% if item.topics %}<div class="version-topic-tags" aria-label="相关主题">{% for key in item.topics %}<span>{{ content.topics[key].label }}</span>{% endfor %}</div>{% endif %}
                 {% if item.notes %}<ul class="version-notes">{% for note in item.notes %}<li>{{ note }}</li>{% endfor %}</ul>{% elif item.highlights %}<ul class="version-notes version-original" lang="en" aria-label="官方要点原文">{% for note in item.highlights %}<li>{{ note }}</li>{% endfor %}</ul>{% else %}<p class="version-note-empty">暂缺经核验的更新要点。</p>{% endif %}
@@ -44,6 +56,7 @@
                   {% if item.project != 'kvm' and item.note_source_url != item.source_url %}<a href="{{ item.note_source_url }}" target="_blank" rel="noopener noreferrer">发布要点来源</a>{% endif %}
                 </div>{% endif %}
               </div>
+              {% endif %}
             </div>
           </li>
           {% endfor %}
@@ -55,7 +68,7 @@
     <p class="empty" data-version-empty{% if content.initial_count %} hidden{% endif %}>当前筛选下没有版本记录，可选择其他年份或项目。</p>
     {{ pagination(namespace='version', pages=content.initial_pages, label='版本分页', hidden=true) }}
   </div>
-  <div class="version-sources">
+  <div class="version-sources" data-version-software-sources>
     <p>两种视图均展示正式功能版本，不仅限于整数大版本；不列出维护补丁及 RC。{% if content.checked_date %}最近检查：{{ content.checked_date }}。{% endif %}</p>
     <p>{% for item in content.coverage %}{{ item.name }} 自 {{ item.year }} 年起{{ '；' if not loop.last else '。' }}{% endfor %}日期来自官方公告或带日期的发布标签；早期缺乏可核验日期的版本暂不列出。</p>
     <p>提交与贡献者数量仅在官方提供时显示，不等同于代码行数；KVM 随内核发布，不代表每个版本均有 KVM 功能变更。</p>

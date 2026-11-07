@@ -117,7 +117,17 @@ def _content() -> dict:
 
 def articles() -> tuple[dict, ...]:
     """Return source-reviewed articles in editorial order."""
-    return tuple(_content()["articles"])
+    baselines = {slug: version for version, slugs in _content().get("specification_baselines", {}).items()
+                 for slug in slugs}
+    result = []
+    for item in _content()["articles"]:
+        article = dict(item)
+        if item["slug"] in baselines:
+            version = baselines[item["slug"]]
+            article.setdefault("specifications", [{"label": f"VIRTIO {version} CS01",
+                "url": f"https://docs.oasis-open.org/virtio/virtio/v{version}/cs01/virtio-v{version}-cs01.html"}])
+        result.append(article)
+    return tuple(result)
 
 
 def redirects() -> tuple[dict, ...]:
@@ -141,8 +151,17 @@ def topics() -> tuple[dict, ...]:
                         if article["topic"] == topic["slug"])
         if members:
             overview = next((item for item in members if item["slug"] == topic.get("overview")), None)
+            details = tuple(item for item in members if item is not overview)
+            clusters = []
+            if topic.get("clusters"):
+                by_slug = {item["slug"]: item for item in details}
+                listed = [slug for cluster in topic["clusters"] for slug in cluster["articles"]]
+                if len(set(listed)) != len(listed) or set(listed) != set(by_slug):
+                    raise ValueError("Topic clusters must cover detail articles exactly once")
+                clusters = [{"title": cluster["title"], "articles": tuple(by_slug[slug] for slug in cluster["articles"])}
+                            for cluster in topic["clusters"]]
             groups.append({**topic, "articles": members, "overview_article": overview,
-                           "detail_articles": tuple(item for item in members if item is not overview)})
+                           "detail_articles": details, "article_clusters": clusters})
     return tuple(groups)
 
 

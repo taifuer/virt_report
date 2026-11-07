@@ -472,7 +472,9 @@ def test_migration_theme_keeps_upgrade_and_generic_storage_changes_out():
     assert {"qemu:10.2.0", "qemu:9.0.0", "qemu:2.0.0", "qemu:1.3.0"}.isdisjoint(members)
     page = render.render_versions_html(Config(), content)
     assert '<option value="migration">热迁移</option>' in page
-    assert page.index('value="vfio"') < page.index('value="virtio"') < page.index('value="migration"')
+    topic_options = next(node for node in versions.Document(page).root.find('select')
+                         if node.attrs.get('id') == 'version-topic').find('option')
+    assert [node.attrs['value'] for node in topic_options] == ['', 'vfio', 'virtio', 'migration']
     assert 'for="version-topic">主题' in page
     assert "技术主题" not in page
     assert 'value="live-upgrade"' not in page

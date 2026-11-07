@@ -130,15 +130,19 @@ def report_coverage(conn, config, start: datetime | str, end: datetime | str) ->
     ).fetchone()
     start, end = utc_iso(start), utc_iso(end)
     sources = []
-    expected = [("ml", item.name, f"{item.name} 邮件列表", True) for item in config.sources.mailing_lists]
-    expected += [("gitlab", item.name, f"{item.name} GitLab", False) for item in config.sources.gitlab]
-    for source, project, label, required in expected:
+    expected = [("ml", item.name, f"{item.name} 邮件列表", item.required, item.active_from)
+                for item in config.sources.mailing_lists]
+    expected += [("gitlab", item.name, f"{item.name} GitLab", False, None) for item in config.sources.gitlab]
+    for source, project, label, required, active_from in expected:
+        source_start = max(start, utc_iso(active_from)) if active_from else start
+        if source_start >= end:
+            continue
         rows = conn.execute(
             "SELECT requested_start,requested_end,status FROM collection_scans "
             "WHERE source=? AND project=? AND requested_start<? AND requested_end>?",
-            (source, project, end, start),
+            (source, project, end, source_start),
         ).fetchall() if exists else []
-        gaps = _gaps(start, end, [(row["requested_start"], row["requested_end"])
+        gaps = _gaps(source_start, end, [(row["requested_start"], row["requested_end"])
                                 for row in rows if row["status"] == "complete"])
         status = "complete" if not gaps else "partial" if rows else "unknown"
         sources.append({"source": source, "project": project, "label": label,

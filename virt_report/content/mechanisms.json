@@ -53,7 +53,14 @@
       ],
       "group": "foundations",
       "title": "设备与 I/O 虚拟化",
-      "summary": "从 virtqueue 与网络、存储、图形设备，到 vhost 后端、IOMMU 地址转换及直通设备管理。"
+      "summary": "从 virtqueue 与网络、存储、图形设备，到 vhost 后端、IOMMU 地址转换及直通设备管理。",
+      "clusters": [
+        {"title": "队列与设备初始化", "articles": ["virtio-device-initialization", "packed-virtqueue"]},
+        {"title": "网络与后端", "articles": ["qemu-network-tx", "virtio-net-rx", "qemu-vhost-net", "dpdk-vhost-user-net", "vhost-vdpa"]},
+        {"title": "存储", "articles": ["qemu-virtio-blk", "spdk-vhost-user-blk"]},
+        {"title": "图形与编解码", "articles": ["virtio-gpu", "virtio-gpu-rendering"]},
+        {"title": "DMA、地址隔离与设备直通", "articles": ["iommu-dma", "iommufd", "qemu-viommu", "qemu-vfio-dma"]}
+      ]
     },
     {
       "slug": "interrupt-virtualization",
@@ -148,6 +155,9 @@
       "overview": "virtio-gpu-execution", "summary": "逐步观察 OpenGL 绘制、H.264 解码与编码中的命令传输、资源变化、宿主执行和完成通知。"
     }
   ],
+  "specification_baselines": {
+    "1.2": ["device-virtualization", "virtio-device-initialization", "packed-virtqueue", "qemu-network-tx", "virtio-net-rx", "qemu-virtio-blk", "virtio-blk-read", "network-io", "interrupt-delivery"]
+  },
   "articles": [
     {
       "slug": "virtualization-basics",
@@ -2816,6 +2826,28 @@
           "id": "sources",
           "title": "参考资料"
         }
+      ]
+    },
+    {
+      "slug": "virtio-balloon",
+      "topic": "memory-virtualization",
+      "title": "virtio-balloon：内存回收、归还与空闲页报告",
+      "summary": "以 8 GiB 虚拟机交出并收回 2 GiB 为例，结合交互演示说明 PFN 列表、inflate/deflate 队列、空闲页报告和宿主后备页的关系。",
+      "reviewed_on": "2026-11-05",
+      "template": "_virtio_balloon_article.html",
+      "execution_demo": "virtio-balloon",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}
+      ],
+      "specifications": [{"label": "VIRTIO 1.2 CS01 · Memory Balloon Device", "url": "https://docs.oasis-open.org/virtio/virtio/v1.2/cs01/virtio-v1.2-cs01.html#x1-3140005"}],
+      "sections": [
+        {"id": "preface", "title": "Guest 页面与宿主后备内存"},
+        {"id": "structures", "title": "目标、页列表与共享队列"},
+        {"id": "walkthrough", "title": "回收、归还与页报告演示"},
+        {"id": "boundaries", "title": "内存压力与回收边界"},
+        {"id": "evolution", "title": "统计、空闲页优化与内存热插拔"},
+        {"id": "sources", "title": "源码与相关内容"}
       ]
     },
     {

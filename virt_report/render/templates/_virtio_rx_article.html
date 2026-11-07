@@ -3,6 +3,7 @@
 {% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 <section id="preface" class="mechanism-section">
   <h2>virtio-net 接收缓冲区的发布与回收</h2>
+  <p>本文沿接收缓冲区的所有权变化介绍 RX 与 NAPI；split 队列的通用字段见<a href="qemu-network-tx.html#virtqueue">virtqueue 结构</a>。需要把应用 recvfrom、Guest 协议栈、后端处理和中断连起来观察时，可选择<a href="network-io.html?scenario=qemu-rx#walkthrough">网络 I/O 演示的接收场景</a>。</p>
   <p>一台虚拟机正在等待 HTTP 响应，宿主网络收到了一帧发给它的报文。QEMU 从 TAP 取得报文，写入客户机预先提供的接收缓冲区；客户机驱动读取完成记录，再把数据交给自己的网络协议栈。缓冲区随这些步骤交接：先供设备写入，再供驱动和协议栈读取，旧引用释放后才能重新用于收包。</p>
   <p>本文跟踪 QEMU virtio-net + TAP、现代 virtio-pci、split 队列的一次收包，再解释 Linux 的 NAPI 怎样批量消费完成记录。示例采用单个 RX 队列、普通报文，不开启 XDP 或合并接收缓冲区；后面单独说明这些扩展改变哪些步骤。发送方向可对照<a href="qemu-network-tx.html">virtio-net 发包路径</a>。</p>
   {% include '_mechanism_baselines.html' %}
