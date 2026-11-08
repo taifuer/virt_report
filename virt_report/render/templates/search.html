@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% from "_pagination.html" import pagination %}
 {% block title %}搜索 - virt-report{% endblock %}
-{% block description %}搜索 QEMU、KVM、Libvirt 与 Virtio 社区议题的中文点评与原始标题。{% endblock %}
+{% block description %}搜索虚拟化原理讲解、交互演示，以及 QEMU、KVM、Libvirt 与 Virtio 社区议题。{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="{{ root }}assets/search.css?v={{ search_asset_version }}">{% endblock %}
 {% block nav_home %}{% endblock %}
 {% block nav_search %}on{% endblock %}
 {% block nav_search_mobile %}on{% endblock %}
@@ -9,14 +10,13 @@
 {% block content %}
 <article class="search-page">
   <header class="search-header">
-    <div class="kicker">Community Search</div>
-    <h1>搜索社区议题</h1>
-    <p>检索已进入日报、周报、月报或专题的中文点评与原始英文标题。</p>
+    <div class="kicker">Search</div>
+    <h1>搜索</h1>
+    <p>按技术关键词查找原理讲解、交互演示，以及社区报告中的中文点评与原始英文标题。</p>
   </header>
 
-  {% if static_mode %}<p class="search-message" role="note">此页面是静态导出，搜索需要运行 virt-report Web 服务。可先浏览<a href="{{ root }}daily/index.html">日报</a>、<a href="{{ root }}weekly/index.html">周报</a>、<a href="{{ root }}monthly/index.html">月报</a>和<a href="{{ root }}topics.html">专题</a>。</p>{% endif %}
-  <form class="search-form" action="{{ root }}search.html" method="get" role="search"{% if not static_mode %} data-search-form{% endif %}>
-    <fieldset class="search-fieldset"{% if static_mode %} disabled aria-label="静态页面不提供搜索"{% endif %}>
+  {% if static_mode %}<p class="search-message" role="note">静态预览支持原理讲解与交互演示搜索；社区议题搜索需要运行 virt-report Web 服务，也可浏览<a href="{{ root }}daily/index.html">日报</a>、<a href="{{ root }}weekly/index.html">周报</a>、<a href="{{ root }}monthly/index.html">月报</a>和<a href="{{ root }}topics.html">专题</a>。</p><noscript><p>静态搜索需要启用 JavaScript；也可直接浏览<a href="mechanisms.html">原理与演示目录</a>。</p></noscript>{% endif %}
+  <form class="search-form" action="{{ root }}search.html" method="get" role="search" data-search-form>
     <input type="hidden" name="per_page" value="{{ result.per_page }}">
     <div class="search-query-row">
       <label class="sr-only" for="search-query">搜索关键词</label>
@@ -26,9 +26,11 @@
       </div>
       <button type="submit">搜索</button>
     </div>
-    {% if not result.query and not static_mode %}
+    {% if not result.query %}
     <div class="search-examples" role="group" aria-label="搜索建议"><a href="search.html?q=热迁移">热迁移</a><a href="search.html?q=VFIO">VFIO</a><a href="search.html?q=virtio">virtio</a></div>
     {% endif %}
+    <p class="search-filter-label" id="community-filter-label"{% if static_mode %} hidden{% endif %}>社区议题筛选（不影响原理讲解与交互演示）</p>
+    <fieldset class="search-fieldset" aria-labelledby="community-filter-label"{% if static_mode %} disabled hidden{% endif %}>
     <div class="search-filters">
       <label><span>项目</span><select name="project"><option value="">全部</option>{% for key,label in result.projects %}<option value="{{ key }}"{% if result.project == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
       <label><span>类型</span><select name="category"><option value="">全部</option>{% for key,label in result.categories %}<option value="{{ key }}"{% if result.category == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
@@ -39,8 +41,27 @@
     </fieldset>
   </form>
 
+  <p class="search-message error" data-editorial-error role="alert"{% if not editorial.error %} hidden{% endif %}>{{ editorial.error }}</p>
+  <div class="sr-only" data-editorial-status role="status" aria-live="polite"></div>
+  <div class="editorial-results" data-editorial-results data-static="{{ 'true' if static_mode else 'false' }}"{% if not editorial.query or editorial.error %} hidden{% endif %}>
+    {% for kind,label in [('articles','原理讲解'),('demos','交互演示')] %}
+    <section data-editorial-kind="{{ kind }}" aria-labelledby="editorial-{{ kind }}">
+      <h2 id="editorial-{{ kind }}">{{ label }} <span data-editorial-count>{{ editorial[kind]|length }}</span></h2>
+      <p data-editorial-empty{% if editorial[kind] %} hidden{% endif %}>没有匹配的{{ label }}。</p>
+      <div data-editorial-list>{% for item in editorial[kind] %}
+        <article class="search-result">
+          <h3 class="search-result-title"><a href="{{ item.href }}">{{ item.title }}</a></h3>
+          <p class="search-summary">{{ item.summary }}</p>
+          {% if item.matched_headings %}<p class="editorial-match">相关章节 / 场景：{{ item.matched_headings|join(' · ') }}</p>{% endif %}
+        </article>
+      {% endfor %}</div>
+    </section>
+    {% endfor %}
+  </div>
+
+  {% if not static_mode %}<h2 class="search-community-title">社区议题</h2>{% endif %}
   {% if static_mode %}
-  {% elif result.error %}<div class="search-message error" role="alert">{{ result.error }}</div>
+  {% elif result.error %}{% if not editorial.error %}<div class="search-message error" role="alert">{{ result.error }}</div>{% endif %}
   {% elif result.query %}
     <div class="search-result-head paginated-list" id="search-results">
       <div><strong>{{ result.total }}</strong> 个相关议题</div>
@@ -71,7 +92,7 @@
   {% endif %}
 </article>
 {% endblock %}
-{% block scripts %}<script>
+{% block scripts %}{% if static_mode %}<script id="editorial-search-data" type="application/json">{{ editorial_catalogue|tojson }}</script><script src="{{ root }}assets/editorial-search.js?v={{ search_asset_version }}" defer></script>{% else %}<script>
 const searchForm=document.querySelector('[data-search-form]'),searchQuery=document.querySelector('#search-query'),searchClear=document.querySelector('[data-search-clear]');
 if(searchForm&&searchQuery&&searchClear){
   const hadQuery=searchQuery.value.trim().length>0;
@@ -79,4 +100,4 @@ if(searchForm&&searchQuery&&searchClear){
   searchQuery.addEventListener('input',()=>{searchClear.hidden=!searchQuery.value;if(hadQuery&&!searchQuery.value)window.location.assign(searchForm.action)});
   searchClear.addEventListener('click',()=>{searchQuery.value='';searchClear.hidden=true;if(hadQuery)window.location.assign(searchForm.action);else searchQuery.focus()});
 }
-</script>{% endblock %}
+</script>{% endif %}{% endblock %}

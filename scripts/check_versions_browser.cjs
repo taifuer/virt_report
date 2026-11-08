@@ -1,8 +1,12 @@
 // Optional UI regression check. Requires Playwright and its Chromium browser.
 // PLAYWRIGHT_MODULE may point to an existing installation outside this repository.
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.argv[2] || 'http://127.0.0.1:8091/versions.html';
+const shots = process.env.VERSIONS_SCREENSHOT_DIR || '/tmp';
+fs.mkdirSync(shots, {recursive: true});
 
 (async () => {
   const browser = await chromium.launch({headless: true, args: ['--no-sandbox']});
@@ -104,7 +108,7 @@ const base = process.argv[2] || 'http://127.0.0.1:8091/versions.html';
     await go('?project=virtio');
     assert.equal(await page.locator('[data-version-project]').inputValue(), 'virtio');
     const specCount = await page.locator('[data-version-item][data-kind="specification"]').count();
-    assert(specCount >= 5);
+    assert(specCount >= 6);
     assert.equal(await visible().count(), specCount);
     assert.equal(await page.locator('[data-version-count]').textContent(), `${specCount} 份规范文档`);
     assert(await page.locator('[data-version-spec-note]').isVisible());
@@ -113,6 +117,19 @@ const base = process.argv[2] || 'http://127.0.0.1:8091/versions.html';
     assert.equal(await visible().locator('.version-notes:visible').count(), 0);
     assert.equal(await visible().locator('.version-actions a[href$=".pdf"]:visible').count(), specCount);
     assert.match(await page.locator('[id="release-virtio-1.3-csd01"]').textContent(), /委员会规范草案/);
+    const legacy = page.locator('[id="release-virtio-0.9.5-legacy"]');
+    assert.match(await legacy.textContent(), /2012-05-07[\s\S]*Legacy[\s\S]*早期规范草案/);
+    assert.equal(await legacy.locator('.version-actions a[href$=".pdf"]').getAttribute('href'),
+      'https://ozlabs.org/~rusty/virtio-spec/virtio-0.9.5.pdf');
+    assert.match(await page.locator('[data-version-jump][href^="#release-virtio-"]').textContent(), /1\.4/);
+    await page.locator('[data-version-spec-note] summary').click();
+    assert.match(await page.locator('[data-version-spec-note] details').textContent(), /VIRTIO_F_VERSION_1/);
+    assert.match(await page.locator('[data-version-spec-note] details').textContent(), /virtio-win 0\.1\.xxx/);
+    await page.locator('[data-version-year]').selectOption('2012');
+    assert.equal(await visible().count(), 1);
+    assert(await legacy.isVisible());
+    await page.reload();
+    assert(await legacy.isVisible());
     await page.locator('[data-version-year]').selectOption('2023');
     assert.equal(await visible().count(), 1);
     await page.reload();
@@ -145,6 +162,9 @@ const base = process.argv[2] || 'http://127.0.0.1:8091/versions.html';
         const dimensions = await page.evaluate(() => [innerWidth, document.documentElement.scrollWidth]);
         assert.equal(dimensions[0], dimensions[1], `horizontal overflow in ${topic} at ${width}px`);
         if (topic === 'protocol') {
+          await page.locator('[data-version-spec-note] summary').click();
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width,
+            `expanded protocol explanation should fit at ${width}px`);
           assert.equal(await visible().count(), specCount);
           const linksAligned = await visible().evaluateAll(items => items.every(item => {
             const [official, pdf] = [...item.querySelectorAll('.version-actions a')].map(link => link.getBoundingClientRect());
@@ -153,7 +173,7 @@ const base = process.argv[2] || 'http://127.0.0.1:8091/versions.html';
               && Math.abs(pdf.right - body.right) < 1;
           }));
           assert(linksAligned, `specification and PDF links should share a right-aligned row at ${width}px`);
-          await page.screenshot({path: `/tmp/virtio-versions-${width}.png`});
+          await page.screenshot({path: path.join(shots, `virtio-versions-${width}.png`)});
         } else await assertVisible(topic);
       }
     }

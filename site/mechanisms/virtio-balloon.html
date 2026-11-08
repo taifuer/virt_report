@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0a7fa7bd1d24">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0a7fa7bd1d24">
   <link rel="stylesheet" href="../assets/site.css?v=0a7fa7bd1d24">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=23b6203c6312">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=23b6203c6312">
-<link rel="stylesheet" href="../assets/execution-demo.css?v=23b6203c6312"><link rel="stylesheet" href="../assets/walkthrough.css?v=23b6203c6312"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=88de320a693a">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=88de320a693a">
+<link rel="stylesheet" href="../assets/execution-demo.css?v=88de320a693a"><link rel="stylesheet" href="../assets/walkthrough.css?v=88de320a693a"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -48,7 +48,7 @@
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、Guest 页面与宿主后备内存</a></li><li><a href="#structures">二、目标、页列表与共享队列</a></li><li><a href="#walkthrough">三、回收、归还与页报告演示</a></li><li><a href="#boundaries">四、内存压力与回收边界</a></li><li><a href="#evolution">五、统计、空闲页优化与内存热插拔</a></li><li><a href="#sources">六、源码与相关内容</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、Guest 页面与宿主后备内存</a></li><li><a href="#structures">二、目标、页列表与共享队列</a></li><li><a href="#walkthrough">三、回收、归还与页报告演示</a></li><li><a href="#boundaries">四、内存压力与回收边界</a></li><li><a href="#evolution">五、统计、空闲页优化与内存热插拔</a></li><li><a href="#experiment">六、小实验：同时观察目标、actual 与 RSS</a></li><li><a href="#sources">七、源码与相关内容</a></li></ol></nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>Guest 页面与宿主后备内存</h2>
   <p>virtio-balloon 让客户机主动交出暂时不用的页面，供宿主回收对应的后备内存。虚拟机仍保持原来的 RAM 地址布局，客户机内的气球驱动负责占住这些页，避免应用继续使用。负载增长后，管理端可以缩小气球，驱动再把页交还客户机分配器。</p>
@@ -71,9 +71,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看气球目标与页面交接" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="气球目标与页面交接">
-    <img src="../assets/balloon-page-handoff.svg?v=23b6203c6312" alt="队列描述符指向 PFN 数组；PFN 标识交出的页面，QEMU 再处理对应的宿主后备内存。" loading="lazy">
+    <img src="../assets/balloon-page-handoff.svg?v=88de320a693a" alt="队列描述符指向 PFN 数组；PFN 标识交出的页面，QEMU 再处理对应的宿主后备内存。" loading="lazy">
   </div>
-  <figcaption>队列描述符指向 PFN 数组；PFN 标识交出的页面，QEMU 再处理对应的宿主后备内存。 <a href="../assets/balloon-page-handoff.svg?v=23b6203c6312" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>队列描述符指向 PFN 数组；PFN 标识交出的页面，QEMU 再处理对应的宿主后备内存。 <a href="../assets/balloon-page-handoff.svg?v=88de320a693a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart LR
   accTitle: 气球目标与页面交接
   accDescr: QMP 目标转换为气球页数，Guest 收集页面并通过 PFN 数组告知 QEMU，宿主处理后备页后发布完成。
@@ -220,8 +220,31 @@
   <p>PAGE_REPORTING 的描述符直接指向可丢弃区域，和 inflateq 的 PFN 数组格式不同。QEMU 的属性名为 <code>free-page-reporting</code>，源码特性常量使用 <code>VIRTIO_BALLOON_F_REPORTING</code>。使用前要确认两端协商成功，不能仅根据设备名称假定这些扩展都已启用。</p>
   <p>气球适合在已配置 RAM 内灵活回收空闲容量，部署相对直接；它依赖 Guest 配合，并可能挤压缓存与业务工作集。需要调整设备内存容量时，可结合 <a href="qemu-virtio-mem.html">virtio-mem 的内存添加与回收</a>比较。两者的统计口径、页面所有权与失败处理都应分开理解。</p>
 </section>
+<section id="experiment" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>小实验：同时观察目标、actual 与 RSS</h2>
+  <p>使用一台可丢弃的 Linux 测试虚拟机：QEMU 直接启动、配置 8 GiB 普通匿名 RAM，已加载 <code>virtio_balloon</code> 驱动，不运行重要业务，不开启自动气球调节。确认 Guest 有足够余量交出 2 GiB；可用内存不足或出现换页、业务延迟升高时，停止收缩并恢复原目标。不要在生产虚拟机或 libvirt 管理的实例上绕过管理器发送这些调节命令。</p>
+  <p>在宿主用 <code>LAB_DIR=$(mktemp -d)</code> 建立私有目录，给现有测试机启动命令增加以下选项（已有 balloon 设备时不要重复添加），并记录该 QEMU 的 PID。QMP 使用私有 Unix socket，不开放 TCP 管理端口。</p>
+  <pre><code>-device virtio-balloon-pci
+-qmp unix:${LAB_DIR}/qmp.sock,server=on,wait=off</code></pre>
+  <p>在宿主的监控终端中，将 <code>LAB_DIR</code> 设置为刚才创建的目录，将 <code>QEMU_PID</code> 设置为这台测试机的 QEMU 进程号。执行 <code>socat STDIO UNIX-CONNECT:"${LAB_DIR}/qmp.sock"</code>，看到 QMP greeting 后先发送下面两行。保存 <code>query-balloon</code> 返回的初始 <code>actual</code>；本例应为 8589934592 字节，即未充气的 8 GiB。若值不同，先查清初始配置，不套用后面的恢复值。</p>
+  <pre><code data-balloon-qmp>{"execute":"qmp_capabilities"}
+{"execute":"query-balloon"}</code></pre>
+  <p>满足上述前提后，请求留下 6 GiB，再隔一段时间查询。<code>balloon</code> 返回成功只代表已发出请求；驱动处理、<code>BALLOON_CHANGE</code> 事件与查询响应可以异步出现。实际值未推进时应检查驱动和 Guest 内存压力，不连续加大收缩幅度。</p>
+  <pre><code data-balloon-qmp>{"execute":"balloon","arguments":{"value":6442450944}}
+{"execute":"query-balloon"}</code></pre>
+  <table><thead><tr><th>观察位置</th><th>检查方式</th><th>能够说明的事实</th></tr></thead><tbody>
+    <tr><td>QMP</td><td>重复 query-balloon</td><td>actual 是否向 6 GiB 推进；单位是剩余的逻辑字节数</td></tr>
+    <tr><td>Guest</td><td>free -m、vmstat 1</td><td>可用内存及换页压力；不能把 MemTotal 直接当成 QMP actual</td></tr>
+    <tr><td>宿主</td><td>ps -o pid,rss,comm -p "$QEMU_PID"</td><td>该 QEMU 进程的 RSS，通常以 KiB 计；包含其他映射，且不等于配置 RAM</td></tr>
+  </tbody></table>
+  <p>在请求前、actual 稳定后、恢复后各记录一次。这三组量能区分“驱动已交出页”和“宿主实际减少驻留内存”。若页面原本尚未驻留，或后备大页无法完整丢弃，actual 已变化也未必观察到 RSS 等量下降。</p>
+  <p>本例结束时恢复初始的 8 GiB 目标，继续查询实际值，再退出 QMP 连接。恢复后 RSS 不必立刻上升：后备页可以等待后续访问再驻留。最后正常关闭测试虚拟机，再移除它的 QMP socket 与私有目录。</p>
+  <pre><code data-balloon-qmp>{"execute":"balloon","arguments":{"value":8589934592}}
+{"execute":"query-balloon"}</code></pre>
+  <p>接口与单位已对照 <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qapi/machine.json#L1085-L1175">本文 QEMU 基线的 QAPI 定义</a>核验；这里提供复现步骤，没有把命令示例当成实机测量结果。应记录自己的 QEMU、Guest 内核、后备内存配置和采样值后再作比较。</p>
+</section>
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">六、</span>源码与相关内容</h2>
+  <h2><span class="mechanism-heading-number">七、</span>源码与相关内容</h2>
   <ul class="mechanism-sources">
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_balloon.c">Linux virtio_balloon.c</a>：fill_balloon、leak_balloon、tell_host，以及统计与页报告工作队列。</li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-balloon.c">QEMU virtio-balloon.c</a>：目标换算、队列处理、discard 限制和迁移提示。</li>
@@ -231,11 +254,11 @@
 </section></div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#memory-virtualization">内存虚拟化原理</a><a href="../mechanisms.html#migration">热迁移原理</a></nav>
-</article>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-05">2026-11-05</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0a7fa7bd1d24"></script>
-<script src="../assets/mechanism-viewer.js?v=23b6203c6312" defer></script>
-<script src="../assets/walkthrough-fullscreen.js?v=23b6203c6312" defer></script><script src="../assets/walkthrough-routing.js?v=23b6203c6312" defer></script><script src="../assets/walkthrough-components.js?v=23b6203c6312" defer></script><script src="../assets/walkthrough-events.js?v=23b6203c6312" defer></script><script src="../assets/execution-model.js?v=23b6203c6312" defer></script><script src="../assets/execution-demo.js?v=23b6203c6312" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=88de320a693a" defer></script>
+<script src="../assets/walkthrough-fullscreen.js?v=88de320a693a" defer></script><script src="../assets/walkthrough-routing.js?v=88de320a693a" defer></script><script src="../assets/walkthrough-components.js?v=88de320a693a" defer></script><script src="../assets/walkthrough-events.js?v=88de320a693a" defer></script><script src="../assets/execution-model.js?v=88de320a693a" defer></script><script src="../assets/execution-demo.js?v=88de320a693a" defer></script></body>
 </html>

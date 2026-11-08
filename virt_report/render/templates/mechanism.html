@@ -25,6 +25,7 @@
     <div class="mechanism-prose">{{ article_body }}</div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="{{ root }}mechanisms.html#{{ topic.slug }}">{% if article.presentation == 'walkthrough' %}交互演示目录{% else %}{{ topic.title }}原理{% endif %}</a>{% for link in topic.related|default([]) %}<a href="{{ root }}{{ link.path }}">{{ link.label }}</a>{% endfor %}</nav>
+  {% if article.reviewed_on %}<p class="mechanism-review">技术复核：<time datetime="{{ article.reviewed_on }}">{{ article.reviewed_on }}</time> · {% if article.publications %}对应文中列明的论文与分享资料。{% else %}针对文中标注的源码与规范基线；不代表后续版本已验证。{% endif %}</p>{% endif %}
 </article>
 {% endblock %}
 {% block scripts %}<script src="{{ root }}assets/mechanism-viewer.js?v={{ mechanism_asset_version }}" defer></script>

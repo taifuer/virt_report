@@ -25,7 +25,17 @@
       <span class="version-result-count" data-version-count role="status">{{ content.initial_count }} 个功能版本</span>
     </div>
     <p class="version-view-note" data-version-help>精简显示所选范围内全部功能版本；切换详细视图可查看发布要点与相关统计。</p>
-    {% if content.specifications %}<p id="virtio-specifications" class="version-topic-note" data-version-spec-note hidden>Virtio 规范定义驱动与设备的共同约定。CS 为委员会规范，CSD 为委员会规范草案；日期取自官方文档封面。功能支持还取决于具体实现与特性协商，原理文章会分别注明规范依据和源码版本。</p>{% endif %}
+    {% if content.specifications %}
+    <div id="virtio-specifications" class="version-topic-note" data-version-spec-note hidden>
+      <p>这里收录 Legacy 经典规范 0.9.5 与 OASIS 1.x 规范。CS 为委员会规范，CSD 为委员会规范草案；0.9.5 是加入 OASIS 前的早期草案。日期均取自文档封面。</p>
+      <details>
+        <summary>实际部署：Legacy、Modern 与驱动包版本</summary>
+        <p>面向现代客户机，选型通常以 1.0 起的 Modern 接口为基础；兼容旧驱动时可使用同时提供 Legacy 与 Modern 接口的 transitional PCI 设备。Libvirt 默认建议使用通用的 <code>virtio</code> 模型；显式选择 PCI 变体时，无旧客户机兼容要求可选 <code>virtio-non-transitional</code>。这是接口选型建议，不能据此推断各版本的部署占比。<a href="https://www.libvirt.org/formatdomain.html#virtio-device-models" target="_blank" rel="noopener noreferrer">Libvirt 设备模型说明</a></p>
+        <p>运行时由驱动与设备协商特性位。<code>VIRTIO_F_VERSION_1</code> 标识 Modern 接口，packed ring 等能力还需分别协商；使用 split 队列也不能据此判定为 0.9.5。1.1、1.2、1.4 是规范修订号，目前缺乏可核验的部署统计来判断哪个小版本使用最多。原理文章会分别标明规范依据与源码版本。<a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html#x1-140002" target="_blank" rel="noopener noreferrer">特性协商规则</a></p>
+        <p><code>virtio-win 0.1.xxx</code> 则是 Windows 驱动包的版本号，与上面的协议版本分开编号。<a href="https://github.com/virtio-win/kvm-guest-drivers-windows/wiki/Builds-and-tags-mapping" target="_blank" rel="noopener noreferrer">驱动构建与版本对应</a></p>
+      </details>
+    </div>
+    {% endif %}
     {% for key, topic in content.topics.items() %}<p class="version-topic-note" data-version-topic-description="{{ key }}" hidden>{{ topic.description }} <a href="{{ topic.source_url }}" target="_blank" rel="noopener noreferrer">官方说明</a></p>{% endfor %}
     <div class="version-timeline">
       {% for group in content.year_groups %}
@@ -40,12 +50,12 @@
               <div class="version-heading">
                 <h3><span class="version-project">{{ item.project_label }}</span><span>{{ 'Linux ' if item.project == 'kvm' else '' }}{{ item.version }}</span></h3>
                 <div class="version-actions">
-                  <a class="version-source" href="{{ item.source_url }}" target="_blank" rel="noopener noreferrer">{{ '官方规范' if item.kind == 'specification' else '发布标签' if item.date_source == 'release_tag' else '发布公告' }}</a>
+                  <a class="version-source" href="{{ 'https://github.com/oasis-tcs/virtio-admin/blob/master/charter.html' if item.kind == 'specification' and item.stage == 'Legacy' else item.source_url }}" target="_blank" rel="noopener noreferrer">{{ '规范沿革' if item.kind == 'specification' and item.stage == 'Legacy' else '官方规范' if item.kind == 'specification' else '发布标签' if item.date_source == 'release_tag' else '发布公告' }}</a>
                   {% if item.kind == 'specification' %}<a class="version-source" href="{{ item.source_url|replace('.html', '.pdf') }}" target="_blank" rel="noopener noreferrer">下载 PDF</a>{% endif %}
                 </div>
               </div>
               {% if item.kind == 'specification' %}
-              <p class="version-spec-stage" data-draft="{{ 'true' if item.stage.startswith('CSD') else 'false' }}"><strong>{{ item.stage }}</strong> · {{ item.status }}</p>
+              <p class="version-spec-stage" data-draft="{{ 'true' if item.stage.startswith('CSD') or item.stage == 'Legacy' else 'false' }}"><strong>{{ item.stage }}</strong> · {{ item.status }}</p>
               {% if item.notes %}<div class="version-detail"><ul class="version-notes" aria-label="规范核心要点">{% for note in item.notes %}<li>{{ note }}</li>{% endfor %}</ul></div>{% endif %}
               {% else %}
               <div class="version-detail">

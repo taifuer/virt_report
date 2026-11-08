@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0a7fa7bd1d24">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0a7fa7bd1d24">
   <link rel="stylesheet" href="../assets/site.css?v=0a7fa7bd1d24">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=6d7b04ec6e68">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=6d7b04ec6e68">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=44314c84d659">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=44314c84d659">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -85,9 +85,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看同一宿主上的新旧 KVM 与 QEMU" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="同一宿主上的新旧 KVM 与 QEMU">
-    <img src="../assets/orthus-dual-kvm.svg?v=6d7b04ec6e68" alt="左侧服务交接前的虚拟机，右侧服务接管后的虚拟机。两端使用同一批 Guest RAM；薄 kvm.ko 和宿主内核不在本次替换范围内。" loading="lazy">
+    <img src="../assets/orthus-dual-kvm.svg?v=44314c84d659" alt="左侧服务交接前的虚拟机，右侧服务接管后的虚拟机。两端使用同一批 Guest RAM；薄 kvm.ko 和宿主内核不在本次替换范围内。" loading="lazy">
   </div>
-  <figcaption>左侧服务交接前的虚拟机，右侧服务接管后的虚拟机。两端使用同一批 Guest RAM；薄 kvm.ko 和宿主内核不在本次替换范围内。 <a href="../assets/orthus-dual-kvm.svg?v=6d7b04ec6e68" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>左侧服务交接前的虚拟机，右侧服务接管后的虚拟机。两端使用同一批 Guest RAM；薄 kvm.ko 和宿主内核不在本次替换范围内。 <a href="../assets/orthus-dual-kvm.svg?v=44314c84d659" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: Orthus 的新旧 KVM 共存与逐台接管
   accDescr: Orthus 将主要 KVM 实现放入经过改造的可替换模块，薄 kvm.ko 和宿主内核保持运行。旧、新 QEMU 分别经 /dev/kvm0 和 /dev/kvm1 使用对应实现。每台虚拟机暂停并完成状态交接后才在新版恢复；交接双方引用同一批 Guest RAM 物理页，不同时执行同一虚拟机。全部虚拟机交接后才卸载旧实现。
@@ -138,9 +138,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看数据库虚机从旧实现转入新实现" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="数据库虚机从旧实现转入新实现">
-    <img src="../assets/orthus-vm-grafting.svg?v=6d7b04ec6e68" alt="8 GiB Guest RAM 留在原处。4 个 vCPU 在旧端暂停，待新端恢复状态并完成设备交接后继续执行；接管前的失败分支回到旧端。" loading="lazy">
+    <img src="../assets/orthus-vm-grafting.svg?v=44314c84d659" alt="8 GiB Guest RAM 留在原处。4 个 vCPU 在旧端暂停，待新端恢复状态并完成设备交接后继续执行；接管前的失败分支回到旧端。" loading="lazy">
   </div>
-  <figcaption>8 GiB Guest RAM 留在原处。4 个 vCPU 在旧端暂停，待新端恢复状态并完成设备交接后继续执行；接管前的失败分支回到旧端。 <a href="../assets/orthus-vm-grafting.svg?v=6d7b04ec6e68" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>8 GiB Guest RAM 留在原处。4 个 vCPU 在旧端暂停，待新端恢复状态并完成设备交接后继续执行；接管前的失败分支回到旧端。 <a href="../assets/orthus-vm-grafting.svg?v=44314c84d659" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>---
 config:
   sequence:
@@ -194,9 +194,9 @@ sequenceDiagram
     <button type="button" data-mechanism-expand aria-label="放大查看暂停窗口中的报文与完成通知" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="暂停窗口中的报文与完成通知">
-    <img src="../assets/orthus-device-handover.svg?v=6d7b04ec6e68" alt="数据沿保留的 IOMMU 映射写入原接收缓冲区；设备连接和通知关联交给新端。恢复后的 Guest 驱动检查完成状态，继续处理报文。" loading="lazy">
+    <img src="../assets/orthus-device-handover.svg?v=44314c84d659" alt="数据沿保留的 IOMMU 映射写入原接收缓冲区；设备连接和通知关联交给新端。恢复后的 Guest 驱动检查完成状态，继续处理报文。" loading="lazy">
   </div>
-  <figcaption>数据沿保留的 IOMMU 映射写入原接收缓冲区；设备连接和通知关联交给新端。恢复后的 Guest 驱动检查完成状态，继续处理报文。 <a href="../assets/orthus-device-handover.svg?v=6d7b04ec6e68" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>数据沿保留的 IOMMU 映射写入原接收缓冲区；设备连接和通知关联交给新端。恢复后的 Guest 驱动检查完成状态，继续处理报文。 <a href="../assets/orthus-device-handover.svg?v=44314c84d659" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: Orthus 交接期间的网卡 DMA 与完成通知
   accDescr: 在客户机 vCPU 暂停时，直通网卡仍可沿保留的 IOMMU 映射把报文 P 写入原接收缓冲区 B。VFIO 连接及事件关联由 connector 保留并交给新端，完成通知转入新 VM 的中断处理。论文还在交接后补充虚拟 IRQ 作为遗漏中断的补救。vCPU 恢复且客户机能接受中断后，驱动检查完成状态并处理缓冲区中的报文。
@@ -260,9 +260,9 @@ sequenceDiagram
     <button type="button" data-mechanism-expand aria-label="放大查看QEMU 与 KVM 切换，vhost-user 后端持续运行" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="QEMU 与 KVM 切换，vhost-user 后端持续运行">
-    <img src="../assets/kvm-upgrade-vhost-handover.svg?v=6d7b04ec6e68" alt="以正常接管路径说明工作安排。Guest 暂停期间后端仍可能写入完成项和产生通知；新端需处理通知与地址关联，确认接管后才恢复 vCPU。" loading="lazy">
+    <img src="../assets/kvm-upgrade-vhost-handover.svg?v=44314c84d659" alt="以正常接管路径说明工作安排。Guest 暂停期间后端仍可能写入完成项和产生通知；新端需处理通知与地址关联，确认接管后才恢复 vCPU。" loading="lazy">
   </div>
-  <figcaption>以正常接管路径说明工作安排。Guest 暂停期间后端仍可能写入完成项和产生通知；新端需处理通知与地址关联，确认接管后才恢复 vCPU。 <a href="../assets/kvm-upgrade-vhost-handover.svg?v=6d7b04ec6e68" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>以正常接管路径说明工作安排。Guest 暂停期间后端仍可能写入完成项和产生通知；新端需处理通知与地址关联，确认接管后才恢复 vCPU。 <a href="../assets/kvm-upgrade-vhost-handover.svg?v=44314c84d659" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>---
 config:
   sequence:
@@ -302,9 +302,9 @@ sequenceDiagram
     <button type="button" data-mechanism-expand aria-label="放大查看HyperFresh 的三层结构与同机交接" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="HyperFresh 的三层结构与同机交接">
-    <img src="../assets/hyperfresh-handoff.svg?v=6d7b04ec6e68" alt="旧、新 L1 上的两个 Guest 框表示同一台虚机交接前后的运行位置。L0 hyperplexor 持续存在，两端使用同一批 Guest 内存页；同一虚机只在一端执行。" loading="lazy">
+    <img src="../assets/hyperfresh-handoff.svg?v=44314c84d659" alt="旧、新 L1 上的两个 Guest 框表示同一台虚机交接前后的运行位置。L0 hyperplexor 持续存在，两端使用同一批 Guest 内存页；同一虚机只在一端执行。" loading="lazy">
   </div>
-  <figcaption>旧、新 L1 上的两个 Guest 框表示同一台虚机交接前后的运行位置。L0 hyperplexor 持续存在，两端使用同一批 Guest 内存页；同一虚机只在一端执行。 <a href="../assets/hyperfresh-handoff.svg?v=6d7b04ec6e68" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>旧、新 L1 上的两个 Guest 框表示同一台虚机交接前后的运行位置。L0 hyperplexor 持续存在，两端使用同一批 Guest 内存页；同一虚机只在一端执行。 <a href="../assets/hyperfresh-handoff.svg?v=44314c84d659" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: HyperFresh 的 L0、L1、L2 与内存交接
   accDescr: 同一物理宿主上，L0 hyperplexor 始终保留。旧、新 L1 分别运行 Linux、KVM 和 QEMU，承载 L2 业务虚机。新端提前映射同一批 Guest 内存页，再在暂停窗口接收 vCPU 与 I/O 状态。两个 L2 框表示同一虚机交接前后的位置，不会同时执行；被替换的是 L1，L0 不在更新范围内。
@@ -360,11 +360,11 @@ sequenceDiagram
 </section></div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#live-upgrade">热升级原理</a></nav>
-</article>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-03">2026-11-03</time> · 对应文中列明的论文与分享资料。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0a7fa7bd1d24"></script>
-<script src="../assets/mechanism-viewer.js?v=6d7b04ec6e68" defer></script>
+<script src="../assets/mechanism-viewer.js?v=44314c84d659" defer></script>
 </body>
 </html>

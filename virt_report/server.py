@@ -358,14 +358,14 @@ def make_handler(config: Config, *, _database_initialized: bool = False):
                     ".css": "text/css; charset=utf-8",
                     ".js": "text/javascript; charset=utf-8",
                     ".svg": "image/svg+xml",
-                }[Path(name).suffix]) for name in render.MECHANISM_ASSET_NAMES},
+                }[Path(name).suffix]) for name in render.MECHANISM_ASSET_NAMES + render.SEARCH_ASSET_NAMES},
             }
             if path in brand_assets:
                 filename, content_type = brand_assets[path]
                 body = (render.ASSETS_DIR / filename).read_bytes()
                 cache_control = (
                     "public, max-age=31536000, immutable"
-                    if filename in {"site.css", "site.js", *render.MECHANISM_ASSET_NAMES}
+                    if filename in {"site.css", "site.js", *render.MECHANISM_ASSET_NAMES, *render.SEARCH_ASSET_NAMES}
                     else "public, max-age=3600"
                 )
                 self._send(

@@ -25,6 +25,7 @@ ASSETS_DIR = Path(__file__).parent / "assets"
 ARTICLES_DIR = ASSETS_DIR.parents[1] / "content" / "articles"
 HOME_REPORT_LIMITS = {"daily": 15, "weekly": 9, "monthly": 6}
 STATIC_ASSET_NAMES = ("brand-mark.png", "site.css", "site.js")
+SEARCH_ASSET_NAMES = ("search.css", "editorial-search.js")
 FAVICON_ASSET_NAMES = ("favicon-32.png", "favicon.ico")
 MECHANISM_DIAGRAM_NAMES = (
     "migration-architecture", "migration-precopy-sequence", "migration-load-dispatch",
@@ -118,13 +119,16 @@ def _asset_version() -> str:
 
 
 ASSET_VERSION = _asset_version()
+SEARCH_ASSET_VERSION = hashlib.sha256(b"".join(
+    (ASSETS_DIR / name).read_bytes() for name in SEARCH_ASSET_NAMES
+)).hexdigest()[:12]
 
 
 def export_brand_assets(output_dir: Path) -> None:
     """Copy canonical shared assets into a static site export."""
     assets_out = output_dir / "assets"
     assets_out.mkdir(parents=True, exist_ok=True)
-    for filename in STATIC_ASSET_NAMES:
+    for filename in STATIC_ASSET_NAMES + SEARCH_ASSET_NAMES:
         shutil.copyfile(ASSETS_DIR / filename, assets_out / filename)
     output_dir.mkdir(parents=True, exist_ok=True)
     for filename in FAVICON_ASSET_NAMES:
@@ -372,7 +376,7 @@ def render_versions_html(config: Config, content: dict) -> str:
                           for project in content["projects"]]
     prepared["latest_specification"] = next((row for row in releases
                                               if row["kind"] == "specification"
-                                              and not row["stage"].startswith("CSD")), None)
+                                              and re.fullmatch(r"CS\d{2}", row["stage"])), None)
     return _env().get_template("versions.html").render(
         content=prepared, root="", site_name=config.name,
     )
@@ -488,8 +492,9 @@ def render_versions(config: Config, content: dict) -> Path:
 
 
 def render_search_html(config: Config, result: dict, *, static_mode: bool = False) -> str:
-    """渲染社区议题搜索页。"""
+    """Render grouped editorial and community search without network or LLM calls."""
     from urllib.parse import urlencode
+    from virt_report import editorial_search
 
     env = _env()
     tpl = env.get_template("search.html")
@@ -517,7 +522,12 @@ def render_search_html(config: Config, result: dict, *, static_mode: bool = Fals
         page_url(prepared["page"] + 1)
         if prepared.get("page", 1) < prepared.get("pages", 0) else ""
     )
-    return tpl.render(result=prepared, static_mode=static_mode, root="", site_name=config.name)
+    return tpl.render(
+        result=prepared, static_mode=static_mode, root="", site_name=config.name,
+        editorial=editorial_search.find(prepared.get("query", "")),
+        editorial_catalogue=editorial_search.catalogue() if static_mode else None,
+        search_asset_version=SEARCH_ASSET_VERSION,
+    )
 
 
 def render_archive(config: Config, period: str, reports: list[dict]) -> Path:

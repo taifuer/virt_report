@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0a7fa7bd1d24">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0a7fa7bd1d24">
   <link rel="stylesheet" href="../assets/site.css?v=0a7fa7bd1d24">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=6d7b04ec6e68">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=6d7b04ec6e68">
-<link rel="stylesheet" href="../assets/migration-stream.css?v=6d7b04ec6e68"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=44314c84d659">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=44314c84d659">
+<link rel="stylesheet" href="../assets/migration-stream.css?v=44314c84d659"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -75,9 +75,9 @@
       <button type="button" data-mechanism-expand aria-label="放大查看 QEMU 迁移流与字段布局" hidden>放大查看</button>
     </div>
     <div class="mechanism-wire-scroll" role="region" aria-label="迁移流与字段布局全景图">
-      <img src="../assets/migration-wire-layout.svg?v=6d7b04ec6e68" alt="QEMU 迁移流全景：左侧从流头到 EOF 的连续记录，连线指向右侧配置、RAM、CPU 与设备状态的字段布局；RAM EOS 和 section footer 分层标注。" loading="lazy">
+      <img src="../assets/migration-wire-layout.svg?v=44314c84d659" alt="QEMU 迁移流全景：左侧从流头到 EOF 的连续记录，连线指向右侧配置、RAM、CPU 与设备状态的字段布局；RAM EOS 和 section footer 分层标注。" loading="lazy">
     </div>
-    <figcaption>点击放大查看字段细节。字段宽度不按字节数等比绘制。<a href="../assets/migration-wire-layout.svg?v=6d7b04ec6e68" target="_blank" rel="noopener">打开原图</a></figcaption>
+    <figcaption>点击放大查看字段细节。字段宽度不按字节数等比绘制。<a href="../assets/migration-wire-layout.svg?v=44314c84d659" target="_blank" rel="noopener">打开原图</a></figcaption>
   </figure>
   <p>下面把 <code>pc.ram</code> 的四页例子逐条展开。先跟随左侧记录识别当前阶段，再看字段条如何编码。A2 重传时，目的端通过块名和偏移覆盖原位置；流中的 section ID 则用于找到处理这些页的 RAM 处理器。</p>
 <section class="stream-lab" data-stream-lab data-mechanism-view="lab" aria-labelledby="stream-lab-title">
@@ -323,9 +323,9 @@ VMSTATE_UINTTL(env.eflags, X86CPU),</code></pre>
     <button type="button" data-mechanism-expand aria-label="放大查看接收端的处理器分发与恢复边界" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="接收端的处理器分发与恢复边界">
-    <img src="../assets/migration-load-dispatch.svg?v=6d7b04ec6e68" alt="普通预拷贝主路径：处理器按自己的格式消费载荷，返回后检查外层 footer；错误会中断装载。EOF 结束记录循环，后续仍需完成状态同步与运行条件检查。" loading="lazy">
+    <img src="../assets/migration-load-dispatch.svg?v=44314c84d659" alt="普通预拷贝主路径：处理器按自己的格式消费载荷，返回后检查外层 footer；错误会中断装载。EOF 结束记录循环，后续仍需完成状态同步与运行条件检查。" loading="lazy">
   </div>
-  <figcaption>普通预拷贝主路径：处理器按自己的格式消费载荷，返回后检查外层 footer；错误会中断装载。EOF 结束记录循环，后续仍需完成状态同步与运行条件检查。 <a href="../assets/migration-load-dispatch.svg?v=6d7b04ec6e68" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>普通预拷贝主路径：处理器按自己的格式消费载荷，返回后检查外层 footer；错误会中断装载。EOF 结束记录循环，后续仍需完成状态同步与运行条件检查。 <a href="../assets/migration-load-dispatch.svg?v=44314c84d659" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TD
     accTitle: 迁移流的处理器分发与恢复边界
     accDescr: 接收端按外层记录匹配处理器，由处理器消费载荷，再校验 section footer。EOF 结束主记录循环，装载收尾与运行条件检查之后才允许客户机执行。
@@ -366,11 +366,11 @@ VMSTATE_UINTTL(env.eflags, X86CPU),</code></pre>
 </section></div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#migration">热迁移原理</a><a href="../topics/migration/index.html">热迁移动态</a></nav>
-</article>
+<p class="mechanism-review">技术复核：<time datetime="2026-10-19">2026-10-19</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0a7fa7bd1d24"></script>
-<script src="../assets/mechanism-viewer.js?v=6d7b04ec6e68" defer></script>
-<script src="../assets/migration-stream.js?v=6d7b04ec6e68" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=44314c84d659" defer></script>
+<script src="../assets/migration-stream.js?v=44314c84d659" defer></script></body>
 </html>

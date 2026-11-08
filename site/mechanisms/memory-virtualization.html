@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0a7fa7bd1d24">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0a7fa7bd1d24">
   <link rel="stylesheet" href="../assets/site.css?v=0a7fa7bd1d24">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=6d7b04ec6e68">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=6d7b04ec6e68">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=44314c84d659">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=44314c84d659">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -48,7 +48,7 @@
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、客户机地址空间与宿主内存</a></li><li><a href="#addresses">二、GVA、GPA、HVA 与 HPA 的对应关系</a></li><li><a href="#evolution">三、从软件合成映射到硬件两级转换</a><ol><li><a href="#evolution-part-1">1. 影子页表把两次转换合成一次</a></li><li><a href="#evolution-part-2">2. EPT/NPT 分开客户机页表与宿主映射</a></li></ol></li><li><a href="#access">四、一次读取中的建图、访问与映射失效</a><ol><li><a href="#access-part-1">1. 缺少 EPT 项时的映射建立</a></li><li><a href="#access-part-2">2. 宿主页变化与旧映射失效</a></li><li><a href="#access-part-3">3. MMIO 访问与脏页跟踪</a></li></ol></li><li><a href="#evaluation">五、转换、后备与跟踪应分别评价</a></li><li><a href="#reading">六、进一步阅读</a></li><li><a href="#sources">七、参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、客户机地址空间与宿主内存</a></li><li><a href="#addresses">二、GVA、GPA、HVA 与 HPA 的对应关系</a></li><li><a href="#evolution">三、从软件合成映射到硬件两级转换</a><ol><li><a href="#evolution-part-1">1. 影子页表把两次转换合成一次</a></li><li><a href="#evolution-part-2">2. EPT/NPT 分开客户机页表与宿主映射</a></li></ol></li><li><a href="#access">四、一次读取中的建图、访问与映射失效</a><ol><li><a href="#access-part-1">1. 缺少 EPT 项时的映射建立</a></li><li><a href="#access-part-2">2. 宿主页变化与旧映射失效</a></li><li><a href="#access-part-3">3. MMIO 访问与脏页跟踪</a></li></ol></li><li><a href="#evaluation">五、转换、后备与跟踪应分别评价</a></li><li><a href="#experiment">六、小实验：对照首次触碰与重复访问</a></li><li><a href="#reading">七、进一步阅读</a></li><li><a href="#sources">八、参考资料</a></li></ol></nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>客户机地址空间与宿主内存</h2>
   <p>内存虚拟化为每台客户机提供独立的物理地址空间，并将它映射到宿主的后备内存。两台虚拟机都可以从物理地址零开始使用内存，而不读写彼此的数据。客户机应用还有自己的虚拟地址，客户机内核通过页表把它们映射到自己认识的物理页；宿主再决定每个客户机物理页实际由哪块宿主内存承载。</p>
@@ -64,9 +64,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看客户机访问与宿主映射管理" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="客户机访问与宿主映射管理">
-    <img src="../assets/memory-address-overview.svg?v=6d7b04ec6e68" alt="硬件访存从 GVA 经 GPA 到 HPA。KVM 建立映射时使用 QEMU 的 HVA 定位宿主页；HVA 不构成客户机的第三次硬件页表转换。" loading="lazy">
+    <img src="../assets/memory-address-overview.svg?v=44314c84d659" alt="硬件访存从 GVA 经 GPA 到 HPA。KVM 建立映射时使用 QEMU 的 HVA 定位宿主页；HVA 不构成客户机的第三次硬件页表转换。" loading="lazy">
   </div>
-  <figcaption>硬件访存从 GVA 经 GPA 到 HPA。KVM 建立映射时使用 QEMU 的 HVA 定位宿主页；HVA 不构成客户机的第三次硬件页表转换。 <a href="../assets/memory-address-overview.svg?v=6d7b04ec6e68" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>硬件访存从 GVA 经 GPA 到 HPA。KVM 建立映射时使用 QEMU 的 HVA 定位宿主页；HVA 不构成客户机的第三次硬件页表转换。 <a href="../assets/memory-address-overview.svg?v=44314c84d659" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 客户机地址转换与宿主映射管理
     accDescr: 硬件访问从 GVA 经客户机页表到 GPA，再经 EPT/NPT 到 HPA。管理映射时 KVM 由内存槽定位 HVA，解析宿主页以建立二级页表，HVA 不在硬件的两级访问链上。
@@ -98,9 +98,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看影子页表与两级页表的分工" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="影子页表与两级页表的分工">
-    <img src="../assets/memory-foundation-paging.svg?v=6d7b04ec6e68" alt="影子模式由软件合成 GVA 到 HPA；EPT/NPT 让硬件组合客户机页表与宿主第二级页表。两种方式都必须在宿主页面变更时撤销过期映射。" loading="lazy">
+    <img src="../assets/memory-foundation-paging.svg?v=44314c84d659" alt="影子模式由软件合成 GVA 到 HPA；EPT/NPT 让硬件组合客户机页表与宿主第二级页表。两种方式都必须在宿主页面变更时撤销过期映射。" loading="lazy">
   </div>
-  <figcaption>影子模式由软件合成 GVA 到 HPA；EPT/NPT 让硬件组合客户机页表与宿主第二级页表。两种方式都必须在宿主页面变更时撤销过期映射。 <a href="../assets/memory-foundation-paging.svg?v=6d7b04ec6e68" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>影子模式由软件合成 GVA 到 HPA；EPT/NPT 让硬件组合客户机页表与宿主第二级页表。两种方式都必须在宿主页面变更时撤销过期映射。 <a href="../assets/memory-foundation-paging.svg?v=44314c84d659" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: 影子页表与两级页表的分工
   accDescr: 影子页表由软件合成客户机页表和宿主映射，供硬件从 GVA 转换到 HPA。EPT/NPT 则让硬件依次使用客户机页表和宿主二级页表，客户机页表页的读取也要经过第二级转换。
@@ -146,8 +146,53 @@
   </tbody></table>
   <p>影子页表用软件维护合成关系，EPT/NPT 用额外硬件转换换取更清晰的分工；两者最终都依赖宿主后备页的生命周期。评价时把转换未命中、缺页建图、真实内存访问和脏页跟踪分开，再观察吞吐、尾延迟与内存占用，才能判断优化发生在哪一层。</p>
 </section>
+<section id="experiment" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>小实验：对照首次触碰与重复访问</h2>
+  <p>在 Linux 客户机里运行下面的单线程程序。它申请 32 MiB 匿名内存，按基础页大小写两遍，并分别统计本进程的 minor fault。第一次写入需要客户机建立匿名页映射；第二遍通常可以复用。程序只调整自己的映射，不需要 root，也不修改系统的大页配置。</p>
+  <p>将代码保存为 <code>first-touch.c</code>。<code>MADV_NOHUGEPAGE</code> 用于排除本段映射的透明大页合并；系统不支持该建议时，程序报错退出，不把不同粒度的结果混在一起。</p>
+  <pre><code id="first-touch-example">#define _GNU_SOURCE
+#include &lt;stdio.h&gt;
+#include &lt;sys/mman.h&gt;
+#include &lt;sys/resource.h&gt;
+#include &lt;unistd.h&gt;
+
+int main(void)
+{
+    const size_t bytes = 32UL * 1024 * 1024;
+    long page = sysconf(_SC_PAGESIZE);
+    struct rusage before = {0}, after = {0};
+    long faults[2] = {0};
+    if (page &lt;= 0) return 1;
+    void *mapping = mmap(NULL, bytes, PROT_READ | PROT_WRITE,
+                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (mapping == MAP_FAILED) { perror("mmap"); return 1; }
+    if (madvise(mapping, bytes, MADV_NOHUGEPAGE) != 0) {
+        perror("madvise"); munmap(mapping, bytes); return 1;
+    }
+    volatile unsigned char *p = mapping;
+    for (int pass = 0; pass &lt; 2; pass++) {
+        if (getrusage(RUSAGE_SELF, &amp;before) != 0) {
+            perror("getrusage"); munmap(mapping, bytes); return 1;
+        }
+        for (size_t offset = 0; offset &lt; bytes; offset += (size_t)page)
+            p[offset] = (unsigned char)(pass + 1);
+        if (getrusage(RUSAGE_SELF, &amp;after) != 0) {
+            perror("getrusage"); munmap(mapping, bytes); return 1;
+        }
+        faults[pass] = after.ru_minflt - before.ru_minflt;
+    }
+    printf("page_bytes=%ld first_minor=%ld second_minor=%ld\n",
+           page, faults[0], faults[1]);
+    return munmap(mapping, bytes) == 0 ? 0 : 1;
+}</code></pre>
+  <pre><code>cc -std=c11 -O2 -Wall -Wextra -Werror first-touch.c -o first-touch
+./first-touch</code></pre>
+  <p>在 4 KiB 基础页、无明显内存压力的条件下，32 MiB 包含 8192 页，首次写入的 minor fault 应接近这一数量；第二遍通常明显减少。统计覆盖整个进程，少量额外缺页可能来自程序或运行库，不要求恰好得到 8192 和 0。<a href="https://man7.org/linux/man-pages/man2/getrusage.2.html">getrusage 的统计口径</a>、<a href="https://www.kernel.org/doc/html/latest/admin-guide/mm/transhuge.html">透明大页与 madvise</a>。</p>
+  <p>这两个数只说明客户机进程的缺页情况。一次 Guest #PF 的处理可能伴随多个 GPA 的访问，宿主是否需要补建 EPT 又取决于既有映射。因此不能从 <code>first_minor</code> 推算 VM-Exit 次数，更不能把第二遍缺页少解释成 TLB 全部命中。需要分析后两者时，要在宿主另采 KVM 事件或硬件计数，并对齐同一运行窗口。</p>
+  <p>验证范围：自动检查会编译并运行这段普通 Linux 用户态代码；本文不附 KVM 客户机的实测计数，也不据此宣称 EPT 性能收益。</p>
+</section>
 <section id="reading" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">六、</span>进一步阅读</h2>
+  <h2><span class="mechanism-heading-number">七、</span>进一步阅读</h2>
   <p><a href="virtio-balloon.html">virtio-balloon：内存回收、归还与空闲页报告</a>沿 Guest 页与宿主后备页的交接，补充容量调整、回收限制以及与 virtio-mem 的区别。</p>
   <ul>
     <li><a href="kvm-ept-fault.html">KVM 二级地址转换与缺页处理</a>：完整跟踪一页 RAM 的映射与失效。</li>
@@ -159,7 +204,7 @@
   </ul>
 </section>
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">七、</span>参考资料</h2>
+  <h2><span class="mechanism-heading-number">八、</span>参考资料</h2>
   <ul>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/x86/mmu.rst">Linux：MMU 目标、影子模式与两级映射</a></li>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst">Linux：内存槽与 dirty ring API</a></li>
@@ -169,11 +214,11 @@
 </section></div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#memory-virtualization">内存虚拟化原理</a><a href="../mechanisms.html#migration">热迁移原理</a></nav>
-</article>
+<p class="mechanism-review">技术复核：<time datetime="2026-10-19">2026-10-19</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0a7fa7bd1d24"></script>
-<script src="../assets/mechanism-viewer.js?v=6d7b04ec6e68" defer></script>
+<script src="../assets/mechanism-viewer.js?v=44314c84d659" defer></script>
 </body>
 </html>

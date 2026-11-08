@@ -693,9 +693,10 @@ def refresh(config: Config, *, from_year: int = 2003,
                           {key: value for key, value in row.items() if key != "notes"}
                           for row in previous["specifications"]}
         spec_errors = []
-        # Recheck each known version's official latest-stage pointer. A draft is
-        # not promoted by version number; its cover must name the approval stage.
-        for version in sorted({version for version, _ in specifications}):
+        # Recheck OASIS latest-stage pointers only. The pre-OASIS Legacy document
+        # is a curated historical record with no corresponding OASIS URL.
+        # A draft is not promoted by version number; check its cover stage.
+        for version in sorted({version for version, stage in specifications if stage != "Legacy"}):
             try:
                 url = f"https://docs.oasis-open.org/virtio/virtio/v{version}/virtio-v{version}.html"
                 row = parse_virtio_specification(cache.get(url), version)
@@ -717,6 +718,13 @@ def refresh(config: Config, *, from_year: int = 2003,
 
 def _valid_specification(row: dict, today: date) -> bool:
     try:
+        if row["stage"] == "Legacy":
+            # Cover date and DRAFT status verified against the author's PDF.
+            return (row["version"] == "0.9.5"
+                    and row["status"] == "早期规范草案"
+                    and row["released_on"] == "2012-05-07"
+                    and date.fromisoformat(row["released_on"]) <= today
+                    and row["source_url"] == "https://ozlabs.org/~rusty/virtio-spec/virtio-0.9.5.pdf")
         return (bool(re.fullmatch(r"1\.\d+", row["version"]))
                 and bool(re.fullmatch(r"CS(?:D)?\d{2}", row["stage"]))
                 and row["status"] == ("委员会规范草案" if row["stage"].startswith("CSD") else "委员会规范")

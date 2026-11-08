@@ -76,7 +76,9 @@ cp .env.example .env
 
 动态服务直接读取 SQLite，不要求每次报告生成后全量导出。只有执行 `index`，或设置 `schedule.auto_export: true`，才会刷新完整 `site/` 快照。
 
-纯静态预览不支持内容搜索，搜索页会明确提示。升级专题分类或条目链接规则后，执行一次 `topics-refresh` 和 `search-refresh` 更新派生索引；不需要重新调用 AI。导出前确认数据库含有要保留的全部报告，不要用较旧的本地数据库覆盖较新的静态快照。
+搜索按“原理讲解、交互演示、社区议题”分组。前两组检索已发布元数据中的标题、简介、章节与演示场景，不重复收录旧链接跳转页；嵌入演示仍归属所在原理文章。纯静态预览通过浏览器本地索引支持前两组搜索，关闭 JavaScript 时保留目录入口。动态服务另外检索社区报告索引，即使社区索引尚未生成，原理与演示搜索仍可用。项目、类型、架构与排序只作用于社区议题。
+
+升级专题分类或条目链接规则后，执行一次 `topics-refresh` 和 `search-refresh` 更新社区派生索引；原理元数据随代码加载，修改后需重启动态服务，静态页则重新导出。不需要重新调用 AI。导出前确认数据库含有要保留的全部报告，不要用较旧的本地数据库覆盖较新的静态快照。
 
 预览脚本默认监听 `127.0.0.1:8091`，禁用浏览器缓存，避免修改公共导航后仍显示旧 HTML；可用 `--port` 指定其他端口。它不启动采集或调用 AI。
 
@@ -121,7 +123,9 @@ cp .env.example .env
 
 TCG 交互跟踪翻译块的生成、命中、跳转链接与代码改写后的失效；与 KVM 文章对照 CPU 执行路径。公共 Mermaid 图默认不超过原始尺寸，长图等比缩小；细节可在全屏查看器中缩放。
 
-目前 19 个专题入口包含 53 篇原理文章与 7 个交互演示，另保留 3 个旧链接跳转页。内容覆盖 CPU 模型与迁移兼容性、嵌套 VMX、vCPU 热插拔、NUMA 放置、Libvirt 迁移协调、VFIO 设备迁移、virtio-net 接收与 NAPI、Packed virtqueue、vhost-vDPA、IOMMU 与 IOMMUFD、vIOMMU、virtio-gpu，以及外部快照与在线块操作；GPU 演示另区分 VFIO PCI 直通与限定历史实现的 mdev。
+专题与篇数以 `virt_report/content/mechanisms.json` 的已发布目录为准，旧链接跳转页不计入。内容覆盖 CPU 模型与迁移兼容性、嵌套 VMX、vCPU 热插拔、NUMA 放置、Libvirt 迁移协调、VFIO 设备迁移、virtio-net 接收与 NAPI、Packed virtqueue、vhost-vDPA、IOMMU 与 IOMMUFD、vIOMMU、virtio-gpu、virtio-balloon，以及外部快照与在线块操作；GPU 演示另区分 VFIO PCI 直通与限定历史实现的 mdev。
+
+文章页脚显示元数据的 `reviewed_on`，表示针对文中源码、规范或论文依据的技术复核日期。仅调整排版、措辞、搜索索引或导出快照时，不自动刷新该日期；首次发布与产品更新记录应从实际 Git 历史核验，不能用技术复核日期替代。新增实验须说明执行位置、前提、观察口径和恢复方法，区分“代码可运行”“接口已核验”与“虚拟机上已测量”。内存虚拟化文章中的首次触碰程序由测试编译运行；balloon 实验只自动检查命令与单位，不在测试中操作真实 VM。
 
 `virtio-gpu-execution.html` 独立归入交互演示，提供 OpenGL 绘制、H.264 解码和 NV12 编码三个离线场景，可播放、单步、回退、重置与全屏演示。命令包和图像资源随步骤变化，流程总览、关键结构、源码路径共用状态；详细原理与四张流程图保留在 `virtio-gpu-rendering.html`，两篇文章互相链接。固定 QEMU 10.2、Linux 6.18、Mesa 25.0、virglrenderer 1.2，明确区分已接通的渲染主线与需要额外初始化的 VirGL video 扩展；不把普通 QEMU GL 配置当成视频加速支持，也不把 DMA-BUF、fence 与最终显示混为一谈。
 
@@ -389,3 +393,18 @@ KVM Forum 的会前预览独立保存在 `virt_report/content/kvm_forum_preview.
 .venv/bin/python -m pytest tests/ -q
 .venv/bin/python -m pyflakes virt_report tests
 ```
+
+浏览器回归使用锁定的 Playwright 版本；首次安装需要下载 npm 包和 Chromium。运行检查只访问本机静态站点，不采集社区数据，不调用模型，也不读取真实数据库或 `.env`。
+
+```bash
+npm ci
+npx playwright install --with-deps chromium
+npm run test:models
+npm run test:browser
+# 额外运行所有场景、视图与宽度的全局布局检查
+npm run test:browser:full
+```
+
+入口脚本自动选择本机端口、启动静态预览并在结束时关闭自己的服务。默认覆盖搜索、目录与更新记录、Virtio 版本筛选、磁盘/网络交互，以及 CPU、内存、中断、GPU 和启动演示；检查分页、URL 恢复、键盘操作、布局溢出与场景状态。`BROWSER_ARTIFACT_DIR` 可指定日志和截图目录（默认 `/tmp/virt-report-browser`）；搜索检查失败还保存 Playwright trace。已有 Python 环境可用 `VIRT_REPORT_PYTHON` 指定，Playwright 安装位置可用 `PLAYWRIGHT_MODULE` 指定。
+
+GitHub Actions 在 push 和 pull request 时运行相同的模型与浏览器检查，截图、失败日志保留 7 天。这里的浏览器结果验证演示实现，不能替代 QEMU/KVM 实机测试。

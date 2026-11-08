@@ -11,8 +11,13 @@ virt-report 只聚合公开可访问的社区数据。所有时间在写入数�
 | [libvirt-devel](https://lists.libvirt.org/archives/list/devel@lists.libvirt.org/) | 官方 HyperKitty 归档与 REST API | libvirt 补丁和社区讨论 |
 | [QEMU GitLab](https://gitlab.com/qemu-project/qemu) | GitLab API v4 | Issue；项目不接受 GitLab MR |
 | [libvirt GitLab](https://gitlab.com/libvirt/libvirt) | GitLab API v4 | Issue 与 Merge Request |
+| [virtio-dev](https://lore.kernel.org/virtio-dev/) | lore/public-inbox Git | Virtio 协议与实现讨论；补充源 |
+| [virtio-comment](https://lore.kernel.org/virtio-comment/) | lore/public-inbox Git | Virtio 规范意见与评审；补充源 |
+| [vhost-user](https://lore.kernel.org/vhost-user/) | lore/public-inbox Git | vhost-user 协议及后端协作；补充源 |
 
 具体地址和启用状态由 `config.yaml` 管理。公开 GitLab 项目无需令牌；设置 `GITLAB_TOKEN` 可提高 API 限额。
+
+三个补充源从 `active_from: 2026-11-05` 起增量采集，配置为 `required: false`，不追溯下载全部历史。已配置不等于已成功取得数据：归档返回 403、连接失败或扫描未完整时，保留相应失败和覆盖状态，不记为“没有新动态”。补充源的失败不阻塞原有必需来源的报告与就绪检查；可通过 `virt-report status` 和运行状态页单独核对。持续观察可达性和有效议题量后再调整来源，不为了扩大列表重复抓取相同邮件。
 
 ## 增量策略
 
@@ -54,6 +59,11 @@ GitLab 活动使用 `updated_after` 一类的精确时间窗口，并保留创�
   只读取缺失功能版本的标签日期；不克隆内核仓库，不使用提交时间代替发布日期。
 - KVM 要点引用维护者的合并标签或主线合并提交说明；缺少可用说明时只提供
   已核验的发布日期与原始链接。合并说明不代表后续修复的完整清单。
+- Virtio：与软件版本并列显示，但按 OASIS 原文标注协议版本、文档日期和 CS/CSD 阶段；
+  草案不计为正式软件发布，也不据此判断 QEMU 或 Linux 已实现全部特性。
+  自动检查已登记主次版本的最新文档阶段；新增主次版本需核验后登记。
+  经典 0.9.5 Legacy DRAFT 使用原作者归档 PDF 与封面日期，属于固定的历史记录，
+  不走 OASIS 的阶段探测。规范正文和 PDF 链接保留原始来源。
 
 历史基线已追溯到 QEMU 2003 年、Libvirt 2005 年和 KVM 2007 年。
 维护版本数据保留用于核验，不在精简或详细视图中逐条展示；完整记录链接到官方来源。
@@ -63,6 +73,8 @@ GitLab 活动使用 `updated_after` 一类的精确时间窗口，并保留创�
 来源页面增量校验并缓存，版本以 `(project, version)` 去重；访问页面不联网。
 同一历史归档并发读取只下载一次；确认无公告的历史查询缓存 30 天，网络失败不记作无数据。
 代码行数暂不统计，避免混淆整个 Linux 内核与 KVM 子系统的规模。
+
+原理文章单独固定所用源码和规范依据。版本时间线更新不会自动改写旧文章的技术前提；文章的技术复核日期也不会随抓取刷新。
 
 ## 一致性与可观测性
 

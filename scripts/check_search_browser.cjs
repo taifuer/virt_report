@@ -1,0 +1,61 @@
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
+assert(['127.0.0.1', 'localhost'].includes(new URL(base).hostname));
+const shots = process.env.SEARCH_SCREENSHOT_DIR || '/tmp/virt-report-search';
+fs.mkdirSync(shots, {recursive: true});
+(async () => {
+  const browser = await chromium.launch({args: ['--no-sandbox']});
+  const context = await browser.newContext();
+  await context.route('**/*', route => new URL(route.request().url()).origin === base ? route.continue() : route.abort());
+  await context.tracing.start({screenshots: true, snapshots: true});
+  const page = await context.newPage(), errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  try {
+    for (const width of [1440, 768, 390, 320]) {
+      await page.setViewportSize({width, height: 900});
+      await page.goto(`${base}/search.html?q=irqfd`);
+      const articles = page.locator('[data-editorial-kind="articles"]');
+      const demos = page.locator('[data-editorial-kind="demos"]');
+      await articles.locator('a[href="mechanisms/kvm-vcpu-run.html"]').waitFor();
+      assert(await demos.locator('a[href="mechanisms/interrupt-delivery.html"]').isVisible());
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+      await page.screenshot({path: path.join(shots, `irqfd-${width}.png`), fullPage: true});
+      await page.locator('#search-query').fill('balloon');
+      await page.locator('#search-query').press('Enter');
+      await articles.locator('a[href="mechanisms/virtio-balloon.html"]').waitFor();
+      assert.equal(await demos.locator('.search-result').count(), 0);
+      await page.goBack();
+      await articles.locator('a[href="mechanisms/kvm-vcpu-run.html"]').waitFor();
+      assert.equal(await page.locator('#search-query').inputValue(), 'irqfd');
+      await page.locator('[data-search-clear]').click();
+      await page.waitForFunction(() => document.querySelector('[data-editorial-results]').hidden);
+      await page.locator('#search-query').fill('K');
+      await page.locator('#search-query').press('Enter');
+      await page.locator('[data-editorial-error]:visible').waitFor();
+      const attack = '</script><img src=x onerror=alert(1)>';
+      await page.goto(`${base}/search.html?q=${encodeURIComponent(attack)}`);
+      assert.equal(await page.locator('img[src="x"]').count(), 0);
+      assert.equal(await articles.locator('.search-result').count(), 0);
+      await page.goto(`${base}/search.html?q=${'x'.repeat(101)}`);
+      await page.locator('[data-editorial-error]:visible').waitFor();
+    }
+    const reader = await browser.newContext({javaScriptEnabled: false});
+    const plain = await reader.newPage();
+    await plain.goto(`${base}/search.html?q=irqfd`);
+    const isStatic = await plain.locator('[data-editorial-results]').getAttribute('data-static') === 'true';
+    if (isStatic) assert(await plain.locator('noscript a[href="mechanisms.html"]').isVisible());
+    else assert(await plain.locator('a[href="mechanisms/kvm-vcpu-run.html"]').isVisible());
+    await reader.close();
+    assert.deepEqual(errors, []);
+    console.log('PASS grouped search, URL/back/clear, validation, escaping, no-JS and four viewport widths');
+  } catch (error) {
+    await page.screenshot({path: path.join(shots, 'failure.png'), fullPage: true}).catch(() => {});
+    await context.tracing.stop({path: path.join(shots, 'failure-trace.zip')});
+    throw error;
+  } finally { await browser.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

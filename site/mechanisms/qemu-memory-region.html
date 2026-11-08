@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0a7fa7bd1d24">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0a7fa7bd1d24">
   <link rel="stylesheet" href="../assets/site.css?v=0a7fa7bd1d24">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=6d7b04ec6e68">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=6d7b04ec6e68">
-<link rel="stylesheet" href="../assets/memory-map.css?v=6d7b04ec6e68"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=44314c84d659">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=44314c84d659">
+<link rel="stylesheet" href="../assets/memory-map.css?v=44314c84d659"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -71,9 +71,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看RAM 从配置、分配到 KVM 注册的初始化顺序" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="RAM 从配置、分配到 KVM 注册的初始化顺序">
-    <img src="../assets/qemu-memory-initialization.svg?v=6d7b04ec6e68" alt="先建立系统地址空间并注册 KVM 监听器，再创建 RAM 后端和机器布局。区域变化生成 FlatView，经监听器同步到 KVM 内存槽；实际宿主页与二级页表映射通常随访问建立。" loading="lazy">
+    <img src="../assets/qemu-memory-initialization.svg?v=44314c84d659" alt="先建立系统地址空间并注册 KVM 监听器，再创建 RAM 后端和机器布局。区域变化生成 FlatView，经监听器同步到 KVM 内存槽；实际宿主页与二级页表映射通常随访问建立。" loading="lazy">
   </div>
-  <figcaption>先建立系统地址空间并注册 KVM 监听器，再创建 RAM 后端和机器布局。区域变化生成 FlatView，经监听器同步到 KVM 内存槽；实际宿主页与二级页表映射通常随访问建立。 <a href="../assets/qemu-memory-initialization.svg?v=6d7b04ec6e68" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>先建立系统地址空间并注册 KVM 监听器，再创建 RAM 后端和机器布局。区域变化生成 FlatView，经监听器同步到 KVM 内存槽；实际宿主页与二级页表映射通常随访问建立。 <a href="../assets/qemu-memory-initialization.svg?v=44314c84d659" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
   accTitle: QEMU Q35 内存初始化与 KVM 内存槽登记
   accDescr: QEMU 10.2 先建立名为 system 的根区域及名为 memory 的 AddressSpace，再初始化 KVM 并注册内存监听器。RAM backend 创建 RAM MemoryRegion 与 RAMBlock，host 字段保存宿主虚拟地址，随后 machine.ram 引用该区域。Q35 依次把低端和高端 RAM 别名加入地址空间。拓扑事务生成新的 FlatView，监听器收集区间变化，在 commit 阶段登记 KVM memslots。内存槽数量取决于可见 RAM 区间；内存槽保存客户机地址与宿主后备的关系，二阶段页表由后续的 KVM MMU 路径建立。
@@ -130,9 +130,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看8 GiB RAM 的客户机地址与后备偏移" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="8 GiB RAM 的客户机地址与后备偏移">
-    <img src="../assets/q35-memory-layout.svg?v=6d7b04ec6e68" alt="低端 RAM 别名覆盖 GPA 0 至 2 GiB，高端别名覆盖 GPA 4 至 10 GiB，分别引用同一后备内存的前 2 GiB 与后 6 GiB。2 至 4 GiB 留给设备及固件等窗口；低端内部还会叠加传统设备映射。区间上界均不包含。" loading="lazy">
+    <img src="../assets/q35-memory-layout.svg?v=44314c84d659" alt="低端 RAM 别名覆盖 GPA 0 至 2 GiB，高端别名覆盖 GPA 4 至 10 GiB，分别引用同一后备内存的前 2 GiB 与后 6 GiB。2 至 4 GiB 留给设备及固件等窗口；低端内部还会叠加传统设备映射。区间上界均不包含。" loading="lazy">
   </div>
-  <figcaption>低端 RAM 别名覆盖 GPA 0 至 2 GiB，高端别名覆盖 GPA 4 至 10 GiB，分别引用同一后备内存的前 2 GiB 与后 6 GiB。2 至 4 GiB 留给设备及固件等窗口；低端内部还会叠加传统设备映射。区间上界均不包含。 <a href="../assets/q35-memory-layout.svg?v=6d7b04ec6e68" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>低端 RAM 别名覆盖 GPA 0 至 2 GiB，高端别名覆盖 GPA 4 至 10 GiB，分别引用同一后备内存的前 2 GiB 与后 6 GiB。2 至 4 GiB 留给设备及固件等窗口；低端内部还会叠加传统设备映射。区间上界均不包含。 <a href="../assets/q35-memory-layout.svg?v=44314c84d659" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: Q35 的 8 GiB RAM 基础别名布局
   accDescr: 此图不按比例绘制。QEMU 10.2 Q35 在默认低端 RAM 上限下，把八 GiB 后备划为两个无复制别名。客户机物理地址零至二 GiB 对应后备零至二 GiB，四至十 GiB 对应后备二至八 GiB。二至四 GiB 为 PCI 和固件等窗口，其中可以存在未映射区。低端基础 RAM 布局内部还会叠加 VGA、ROM 等区域。十 GiB 仅为本例高端 RAM 的末端，不代表整个客户机物理地址空间的上限。
@@ -315,9 +315,9 @@ bus：独立容器，大小 0x8000
     <button type="button" data-mechanism-expand aria-label="放大查看区域修改、视图发布与 KVM 更新" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="区域修改、视图发布与 KVM 更新">
-    <img src="../assets/memory-region-publication.svg?v=6d7b04ec6e68" alt="外层事务提交时生成新视图，比较区间并通知监听器。KVM 在监听器提交阶段处理内存槽增删；旧视图通过引用计数与 RCU 延迟回收。" loading="lazy">
+    <img src="../assets/memory-region-publication.svg?v=44314c84d659" alt="外层事务提交时生成新视图，比较区间并通知监听器。KVM 在监听器提交阶段处理内存槽增删；旧视图通过引用计数与 RCU 延迟回收。" loading="lazy">
   </div>
-  <figcaption>外层事务提交时生成新视图，比较区间并通知监听器。KVM 在监听器提交阶段处理内存槽增删；旧视图通过引用计数与 RCU 延迟回收。 <a href="../assets/memory-region-publication.svg?v=6d7b04ec6e68" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>外层事务提交时生成新视图，比较区间并通知监听器。KVM 在监听器提交阶段处理内存槽增删；旧视图通过引用计数与 RCU 延迟回收。 <a href="../assets/memory-region-publication.svg?v=44314c84d659" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: 区域修改、视图发布与 KVM 更新
   accDescr: 持有 BQL 时在内存事务中修改区域，最外层提交生成 FlatView 和 dispatch。框架比较新旧区间，通知监听器并发布 current_map，随后监听器 commit 更新 KVM 内存槽。读者通过 RCU 使用视图，旧视图在不再使用后回收。
@@ -381,11 +381,11 @@ info mtree -f</code></pre>
 </section></div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#qemu-internals">QEMU 内部机制原理</a></nav>
-</article>
+<p class="mechanism-review">技术复核：<time datetime="2026-10-19">2026-10-19</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0a7fa7bd1d24"></script>
-<script src="../assets/mechanism-viewer.js?v=6d7b04ec6e68" defer></script>
-<script src="../assets/memory-map.js?v=6d7b04ec6e68" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=44314c84d659" defer></script>
+<script src="../assets/memory-map.js?v=44314c84d659" defer></script></body>
 </html>

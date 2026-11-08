@@ -64,6 +64,8 @@ def test_offline_specification_records_and_article_baselines(tmp_path):
     rows = {row["version"]: row for row in content["specifications"]}
     assert rows["1.4"]["stage"] == "CS01"
     assert rows["1.3"]["stage"] == "CSD01"
+    assert rows["0.9.5"]["stage"] == "Legacy"
+    assert rows["0.9.5"]["released_on"] == "2012-05-07"
     article = mechanisms.get_article("virtio-device-initialization")
     assert article["specifications"][0]["label"] == "VIRTIO 1.2 CS01"
     assert article["baselines"][0]["version"] == "10.2.0"
@@ -109,7 +111,9 @@ def test_specification_details_have_reviewed_notes_and_inline_document_links(tmp
         actions = next(node for node in record.find("div")
                        if node.attrs.get("class") == "version-actions")
         assert [node.attrs["href"] for node in actions.find("a")] == [
-            spec["source_url"], spec["source_url"].replace(".html", ".pdf")]
+            "https://github.com/oasis-tcs/virtio-admin/blob/master/charter.html"
+            if spec["stage"] == "Legacy" else spec["source_url"],
+            spec["source_url"].replace(".html", ".pdf")]
         detail = next(node for node in record.find("div")
                       if node.attrs.get("class") == "version-detail")
         assert len(detail.find("li")) == len(spec["notes"])
@@ -135,3 +139,53 @@ def test_specification_notes_survive_metadata_refresh_but_do_not_cross_stages(tm
     exported = versions._read_json(versions.export_public_snapshot(config, today=today), {})
     assert all("notes" not in row for row in exported["specifications"])
     assert versions.load_content(config, today=today)["specifications"][1]["notes"] == original["notes"]
+
+
+def test_classic_specification_keeps_verified_origin_date_and_draft_status(tmp_path):
+    today = date(2026, 11, 8)
+    config = Config(storage=Storage(db_path=tmp_path / "db"))
+    content = versions.load_content(config, today=today)
+    legacy = next(row for row in content["specifications"] if row["stage"] == "Legacy")
+    assert versions._valid_specification(legacy, today)
+    assert not versions._valid_specification(legacy, date(2012, 5, 6))
+    for changes in ({"version": "0.9.4"}, {"stage": "CS01"}, {"status": "委员会规范"},
+                    {"released_on": "2013-01-01"}, {"source_url": "https://example.com/spec.pdf"}):
+        assert not versions._valid_specification({**legacy, **changes}, today)
+    page = render.render_versions_html(config, {**content, "specifications": [legacy]})
+    document = versions.Document(page).root
+    entry = next(node for node in document.find("li")
+                 if node.attrs.get("id") == "release-virtio-0.9.5-legacy")
+    assert "早期规范草案" in entry.text()
+    assert any(node.attrs.get("data-draft") == "true" for node in entry.find("p"))
+    assert not any(node.attrs.get("href") == "#release-virtio-0.9.5-legacy"
+                   and "data-version-jump" in node.attrs for node in document.find("a"))
+    assert "VIRTIO_F_VERSION_1" in page and "virtio-win 0.1.xxx" in page
+
+
+def test_refresh_retains_legacy_without_requesting_nonexistent_oasis_version(tmp_path, monkeypatch):
+    config = Config(storage=Storage(db_path=tmp_path / "data" / "db"))
+    today = date(2026, 11, 8)
+    content = versions.load_content(config, today=today)
+    specs = [row for row in content["specifications"] if row["version"] in {"0.9.5", "1.2"}]
+    content_dir = tmp_path / "content"
+    versions._write_json(content_dir / "virtio_specifications.json", {"releases": specs})
+    monkeypatch.setattr(versions, "CONTENT_DIR", content_dir)
+    monkeypatch.setattr(versions, "fetch_project", lambda project, *_args: [
+        next(row for row in content["releases"] if row["project"] == project)])
+    requested = []
+
+    def get(_cache, url):
+        requested.append(url)
+        assert url == "https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html"
+        return ("<h1>Virtual I/O Device (VIRTIO) Version 1.2</h1>"
+                "<h2>Committee Specification 01</h2><p>01 July 2022</p>")
+
+    monkeypatch.setattr(versions.SourceCache, "get", get)
+    result = versions.refresh(config, today=today)
+    assert len(requested) == 1
+    assert result["sources"]["virtio"]["ok"] is True
+    assert result["sources"]["virtio"]["failed_versions"] == []
+    assert {row["version"] for row in result["specifications"]} == {"0.9.5", "1.2"}
+    assert all("notes" not in row for row in result["specifications"])
+    reloaded = versions.load_content(config, today=today)
+    assert next(row for row in reloaded["specifications"] if row["stage"] == "Legacy")["released_on"] == "2012-05-07"

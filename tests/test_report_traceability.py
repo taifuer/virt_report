@@ -138,18 +138,19 @@ def test_historical_entries_hidden_by_current_limits_do_not_get_dead_fragments(t
     conn.close()
 
 
-def test_static_search_disables_query_but_dynamic_search_remains_available(tmp_path):
+def test_static_search_allows_editorial_queries_but_disables_community_filters(tmp_path):
     conn = db.connect(tmp_path / "search.db")
     result = search.search(conn, "")
     config = Config()
     config.render.output_dir = tmp_path / "site"
     static_page = render.render_search(config, result).read_text()
     dynamic_page = render.render_search_html(config, result)
-    assert 'fieldset class="search-fieldset" disabled' in static_page
+    assert 'aria-labelledby="community-filter-label" disabled' in static_page
     assert "搜索需要运行 virt-report Web 服务" in static_page
-    assert "search.html?q=" not in static_page
-    assert 'data-search-form' not in static_page.split("{% block scripts", 1)[0].split("<script>", 1)[0]
-    assert 'fieldset class="search-fieldset" disabled' not in dynamic_page
+    assert "search.html?q=热迁移" in static_page
+    assert 'data-search-form' in static_page
+    assert 'editorial-search-data' in static_page
+    assert 'aria-labelledby="community-filter-label" disabled' not in dynamic_page
     assert "search.html?q=热迁移" in dynamic_page
     assert "method=\"get\" role=\"search\" data-search-form" in dynamic_page
     conn.close()

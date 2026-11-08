@@ -57,7 +57,16 @@
       <span class="version-result-count" data-version-count role="status">57 个功能版本</span>
     </div>
     <p class="version-view-note" data-version-help>精简显示所选范围内全部功能版本；切换详细视图可查看发布要点与相关统计。</p>
-<p id="virtio-specifications" class="version-topic-note" data-version-spec-note hidden>Virtio 规范定义驱动与设备的共同约定。CS 为委员会规范，CSD 为委员会规范草案；日期取自官方文档封面。功能支持还取决于具体实现与特性协商，原理文章会分别注明规范依据和源码版本。</p><p class="version-topic-note" data-version-topic-description="vfio" hidden>设备直通、VFIO 与相关 IOMMU 支持的实现变化。选择全部项目可跨项目查看；版本号仍属于原项目。 <a href="https://docs.kernel.org/driver-api/vfio.html" target="_blank" rel="noopener noreferrer">官方说明</a></p><p class="version-topic-note" data-version-topic-description="virtio" hidden>virtio 设备及相关 vhost、vDPA 实现变化。规范版本与软件实现版本不同，此处按所属项目的发布版本展示。 <a href="https://docs.kernel.org/driver-api/virtio/virtio.html" target="_blank" rel="noopener noreferrer">官方说明</a></p><p class="version-topic-note" data-version-topic-description="migration" hidden>热迁移的数据传输、收敛、设备状态与兼容性改进。选择全部项目可跨项目查看；前置工作和适用限制以各版本要点为准。 <a href="https://www.qemu.org/docs/master/devel/migration/main.html" target="_blank" rel="noopener noreferrer">官方说明</a></p>    <div class="version-timeline">
+    <div id="virtio-specifications" class="version-topic-note" data-version-spec-note hidden>
+      <p>这里收录 Legacy 经典规范 0.9.5 与 OASIS 1.x 规范。CS 为委员会规范，CSD 为委员会规范草案；0.9.5 是加入 OASIS 前的早期草案。日期均取自文档封面。</p>
+      <details>
+        <summary>实际部署：Legacy、Modern 与驱动包版本</summary>
+        <p>面向现代客户机，选型通常以 1.0 起的 Modern 接口为基础；兼容旧驱动时可使用同时提供 Legacy 与 Modern 接口的 transitional PCI 设备。Libvirt 默认建议使用通用的 <code>virtio</code> 模型；显式选择 PCI 变体时，无旧客户机兼容要求可选 <code>virtio-non-transitional</code>。这是接口选型建议，不能据此推断各版本的部署占比。<a href="https://www.libvirt.org/formatdomain.html#virtio-device-models" target="_blank" rel="noopener noreferrer">Libvirt 设备模型说明</a></p>
+        <p>运行时由驱动与设备协商特性位。<code>VIRTIO_F_VERSION_1</code> 标识 Modern 接口，packed ring 等能力还需分别协商；使用 split 队列也不能据此判定为 0.9.5。1.1、1.2、1.4 是规范修订号，目前缺乏可核验的部署统计来判断哪个小版本使用最多。原理文章会分别标明规范依据与源码版本。<a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html#x1-140002" target="_blank" rel="noopener noreferrer">特性协商规则</a></p>
+        <p><code>virtio-win 0.1.xxx</code> 则是 Windows 驱动包的版本号，与上面的协议版本分开编号。<a href="https://github.com/virtio-win/kvm-guest-drivers-windows/wiki/Builds-and-tags-mapping" target="_blank" rel="noopener noreferrer">驱动构建与版本对应</a></p>
+      </details>
+    </div>
+<p class="version-topic-note" data-version-topic-description="vfio" hidden>设备直通、VFIO 与相关 IOMMU 支持的实现变化。选择全部项目可跨项目查看；版本号仍属于原项目。 <a href="https://docs.kernel.org/driver-api/vfio.html" target="_blank" rel="noopener noreferrer">官方说明</a></p><p class="version-topic-note" data-version-topic-description="virtio" hidden>virtio 设备及相关 vhost、vDPA 实现变化。规范版本与软件实现版本不同，此处按所属项目的发布版本展示。 <a href="https://docs.kernel.org/driver-api/virtio/virtio.html" target="_blank" rel="noopener noreferrer">官方说明</a></p><p class="version-topic-note" data-version-topic-description="migration" hidden>热迁移的数据传输、收敛、设备状态与兼容性改进。选择全部项目可跨项目查看；前置工作和适用限制以各版本要点为准。 <a href="https://www.qemu.org/docs/master/devel/migration/main.html" target="_blank" rel="noopener noreferrer">官方说明</a></p>    <div class="version-timeline">
       <section class="version-year" data-version-group id="year-2026" aria-labelledby="year-title-2026">
         <details class="version-year-disclosure" data-version-disclosure open>
         <summary><h2 id="year-title-2026">2026<svg class="version-year-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 8 5 5 5-5"/></svg><span data-version-year-count>2 个版本</span></h2></summary>
@@ -3981,6 +3990,18 @@
               <div class="version-detail">
 <p class="version-note-empty">暂缺经核验的更新要点。</p>              </div>
             </div>
+          </li>
+          <li class="version-entry" id="release-virtio-0.9.5-legacy" data-version-item data-project="virtio" data-kind="specification" data-year="2012" data-topics="virtio" hidden>
+            <time class="version-date" datetime="2012-05-07">2012-05-07</time>
+            <div class="version-body">
+              <div class="version-heading">
+                <h3><span class="version-project">Virtio</span><span>0.9.5</span></h3>
+                <div class="version-actions">
+                  <a class="version-source" href="https://github.com/oasis-tcs/virtio-admin/blob/master/charter.html" target="_blank" rel="noopener noreferrer">规范沿革</a>
+<a class="version-source" href="https://ozlabs.org/~rusty/virtio-spec/virtio-0.9.5.pdf" target="_blank" rel="noopener noreferrer">下载 PDF</a>                </div>
+              </div>
+              <p class="version-spec-stage" data-draft="true"><strong>Legacy</strong> · 早期规范草案</p>
+<div class="version-detail"><ul class="version-notes" aria-label="规范核心要点"><li>经典队列模型：以描述符表、available 环和 used 环交接缓冲区，驱动发布请求、设备记录完成；这套结构延续为 1.x 中的 split virtqueue。</li><li>早期 PCI 接口：通过 I/O 寄存器进行特性协商、队列配置与通知，支持传统中断及 MSI-X；包含网络、块存储、控制台、随机数和内存气球等设备约定。</li><li>历史定位：Rusty Russell 编辑的原始文档，封面为 2012 年 5 月 7 日、v0.9.5 DRAFT。OASIS 制定 1.0 时以它为 Legacy 起点；Modern 接口从 1.0 建立，transitional PCI 设备可兼容两类驱动。</li></ul></div>            </div>
           </li>
           <li class="version-entry" id="release-libvirt-0.9.11" data-version-item data-project="libvirt" data-kind="feature" data-year="2012" data-topics="" hidden>
             <time class="version-date" datetime="2012-04-03">2012-04-03</time>
