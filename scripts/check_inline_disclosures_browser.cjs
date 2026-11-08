@@ -74,6 +74,12 @@ async function about(page,width) {
   await page.keyboard.press('Space'); await settle(page); assert(!(await details.evaluate(node=>node.open)));
   await noOverflow(page,`about/${width}`); await shot(page,summary,'about-collapsed',width);
   await summary.click(); await settle(page); assert(await details.evaluate(node=>node.open));
+  const latest=details.locator('.update-item').first();
+  assert.match(await latest.locator('h3').innerText(),/原理讲解与交互演示/);
+  assert.equal(await latest.locator('time').getAttribute('datetime'),'2026-10-13');
+  assert.equal(await latest.locator('a').count(),0,'update retains only its title and introduction');
+  await noOverflow(page,`about expanded/${width}`);
+  await shot(page,summary,'about-expanded',width);
 }
 
 async function versions(page,width) {

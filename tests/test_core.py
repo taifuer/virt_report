@@ -437,13 +437,23 @@ def test_about_page_and_architecture_badge_render():
     assert '<details class="about-updates">' in about
     assert '<summary><h2>更新记录</h2></summary>' in about
     updates = about.split('<details class="about-updates">', 1)[1].split("</details>", 1)[0]
-    assert updates.count('<li class="update-item">') == 5
+    assert updates.count('<li class="update-item">') == 6
     assert "RSS 订阅" not in updates and "数据来源" not in updates
-    latest_update = about.split('<li class="update-item">', 1)[1].split("</li>", 1)[0]
-    assert "<span>AI 模型更新</span>" in latest_update
-    assert 'datetime="2026-09-10"' in latest_update
-    assert "DeepSeek-V4.1-Flash" in latest_update and "deepseek-flash" in latest_update
-    assert "历史报告保留原有内容和模型记录" in latest_update
+    update_items = [item.split("</li>", 1)[0] for item in updates.split('<li class="update-item">')[1:]]
+    latest_update = update_items[0]
+    assert "<span>原理讲解与交互演示</span>" in latest_update
+    # Commit 9d0a957 introduced the first articles and migration demonstrations.
+    assert 'datetime="2026-10-13"' in latest_update
+    assert "从热迁移的源码讲解与交互图解起步" in latest_update
+    assert "演示逐步扩展" in latest_update
+    assert "场景切换、单步播放和关键状态查看" in latest_update
+    assert "查看原理讲解" not in latest_update
+    assert "查看交互演示" not in latest_update
+    assert "<a " not in latest_update
+    model_update = next(item for item in update_items if 'datetime="2026-09-10"' in item)
+    assert "<span>AI 模型更新</span>" in model_update
+    assert "DeepSeek-V4.1-Flash" in model_update and "deepseek-flash" in model_update
+    assert "历史报告保留原有内容和模型记录" in model_update
     assert "<span>版本时间线</span>" in about
     assert "历史功能版本、发布时间与发布要点" in about
     assert "收录会议" in about and "USENIX Security" in about
