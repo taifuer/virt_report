@@ -147,8 +147,8 @@
       "overview": "interrupt-delivery", "summary": "区分 QEMU / DPDK 通知入口、CPU 交付，以及直通设备同为 MSI-X 的宿主转发与 VT-d posted 路径。"
     },
     {
-      "slug": "gpu-execution-walkthrough", "group": "walkthroughs", "title": "GPU 命令执行",
-      "overview": "gpu-execution", "summary": "跟踪 VFIO 直通 GPU 的上传、读回，以及限定 GVT-g 实现的 mdev 命令审核、调度和完成。"
+      "slug": "gpu-execution-walkthrough", "group": "walkthroughs", "title": "GPU 命令执行：直通与共享虚拟化",
+      "overview": "gpu-execution", "summary": "对照整卡直通、GVT-g、SR-IOV VF 与 SR-IOV + mdev，观察命令提交、地址映射和完成通知，并给出 libvirt XML。"
     },
     {
       "slug": "virtio-gpu-walkthrough", "group": "walkthroughs", "title": "virtio-gpu 渲染与编解码",
@@ -2413,9 +2413,10 @@
     {
       "slug": "gpu-execution",
       "topic": "gpu-execution-walkthrough",
-      "title": "GPU 命令执行",
-      "summary": "以 4 KiB 缓冲区复制区分 VFIO PCI 直通与 mdev GVT-g，跟踪 GPU 命令、地址映射、数据传输、fence 和 Guest 完成。",
-      "reviewed_on": "2026-11-02",
+      "title": "GPU 命令执行：直通与共享虚拟化",
+      "summary": "对照整卡直通、mdev、SR-IOV 及组合方案，区分门铃直映与 MMIO 捕获、GPU 数据访问和完成通知，配合实例关系与 libvirt XML 理解设备分配。",
+      "search_terms": ["VFIO", "mdev", "SR-IOV", "GVT-g", "GIM", "NVIDIA vGPU", "doorbell", "ELSP", "MMIO", "libvirt XML"],
+      "reviewed_on": "2026-11-08",
       "template": "_gpu_execution_article.html", "presentation": "walkthrough",
       "execution_demo": "gpu-execution", "stylesheet": "execution-demo.css",
       "model_script": "execution-model.js", "script": "execution-demo.js",
@@ -2423,7 +2424,7 @@
         {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
         {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}
       ],
-      "sections": [{"id": "preface", "title": "场景与边界"}, {"id": "walkthrough", "title": "逐步演示"}, {"id": "comparison", "title": "提交、数据与完成的边界"}, {"id": "mapping", "title": "地址转换与宿主参与"}, {"id": "sources", "title": "源码与相关内容"}]
+      "sections": [{"id": "preface", "title": "场景与边界"}, {"id": "walkthrough", "title": "逐步演示"}, {"id": "comparison", "title": "提交、数据与完成的边界"}, {"id": "mapping", "title": "地址转换与宿主参与"}, {"id": "sharing", "title": "PF、VF 与 mdev 的组合关系"}, {"id": "configuration", "title": "libvirt XML 与部署前提"}, {"id": "sources", "title": "源码与相关内容"}]
     },
     {
       "slug": "qemu-virtio-blk",

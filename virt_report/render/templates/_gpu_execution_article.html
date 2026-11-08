@@ -1,7 +1,16 @@
 <section id="preface" class="mechanism-section">
   <h2>场景与边界</h2>
-  <p>GPU 作业从 Guest 用户态提交，经过驱动组织命令、硬件搬运数据和完成通知，最后由应用取得结果。下面以作业 G1 为例，分别展示整卡直通的上传与读回，以及受宿主管理的 mdev 提交。上传与读回指缓冲区之间的数据复制。</p>
-  <p>VFIO PCI 路径采用 AMD Vega10 / SDMA 4.0 与公开 AMDGPU 驱动，观察 Guest RAM 和 VRAM 之间的 4 KiB 复制。mdev 路径采用 Skylake 的 Intel GVT-g / i915 execlists，观察共享系统内存中的 BLT 复制；该历史实现仅适用于相应的 Intel 平台，不代表 NVIDIA vGPU 或其他 Intel GPU 的实现。两组场景均从设备初始化、BO 分配和基础映射完成后开始。</p>
+  <p>GPU 作业从 Guest 用户态提交，经过驱动组织命令、硬件执行和完成通知，最后由应用取得结果。整卡直通把相应 PCI 功能交给一个 Guest；共享虚拟化则需要划分可见资源，并协调多个使用者。下面沿同一条提交主线，对照设备归属、门铃访问和完成交接。</p>
+  <table aria-label="GPU 虚拟化方案对比">
+    <thead><tr><th scope="col">演示方案</th><th scope="col">Guest 获得的设备</th><th scope="col">宿主职责</th><th scope="col">提交入口与适用范围</th></tr></thead>
+    <tbody>
+      <tr><td>整卡直通 · AMD Vega10</td><td>独占相应物理 PCI 功能</td><td>vfio-pci 管理访问、DMA 隔离与中断</td><td>已直映的 doorbell 通知 SDMA 4.0；展示上传和读回</td></tr>
+      <tr><td>mdev · Intel GVT-g</td><td>由宿主 i915 创建的虚拟 GPU</td><td>审核命令、维护影子状态、调度物理引擎</td><td>Skylake ELSP 捕获；BAR2 部分窗口直映，属于历史实现</td></tr>
+      <tr><td>SR-IOV · AMD VF 直通</td><td>具有独立 PCI 身份的 VF</td><td>GIM 管理 PF；vfio-pci 接管被分配的 VF</td><td>MI300X / SDMA 4.4.2 的已直映 VF 门铃；其他管理访问另行处理</td></tr>
+      <tr><td>组合 · NVIDIA SR-IOV + mdev</td><td>创建在 VF 上的 mdev 实例</td><td>厂商管理资源与实例生命周期</td><td>展示 PF → VF → mdev → VM 的配置及作业完成边界；内部寄存器路径不展开</td></tr>
+    </tbody>
+  </table>
+  <p>前三组以 4 KiB 复制为例，设备初始化、BO 分配和基础映射已完成。GVT-g 的 A、B 和 batch 使用系统内存，限于受支持的旧代 Intel 平台。组合方案从实例建立开始，运行阶段只展示公开接口能够确认的交接，不把 GVT-g 的 ELSP 机制套用到 NVIDIA vGPU。各场景均为源码与文档讲解，未在对应 GPU 上实测；驱动、固件和宿主发行版需另按厂商支持矩阵匹配。</p>
   <p>图中按职责分为 Guest、KVM、QEMU、Host kernel 和物理 GPU。KVM 运行在宿主内核，负责 vCPU 与中断虚拟化；同属宿主内核的 VFIO、i915/GVT-g 负责设备管理。提交、数据访问和完成通知各有自己的路径，后文分别展开。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
@@ -30,10 +39,73 @@
 <section id="mapping" class="mechanism-section">
   <h2>地址转换与宿主参与</h2>
   <p>整卡直通时，宿主这块 PCI 设备绑定 <code>vfio-pci</code>；Guest 内的 AMDGPU 驱动接收应用 CS ioctl，组织 GPU 作业。宿主 VFIO 管理设备资源、DMA 隔离和中断接口，QEMU 预先配置虚拟设备、BAR 与中断路由，KVM 维护 vCPU 的二级地址转换并递送虚拟中断。它们不代替 Guest 驱动逐条解释或转发 GPU 命令。参见 <a href="https://docs.kernel.org/driver-api/vfio.html" target="_blank" rel="noopener noreferrer">Linux VFIO 文档</a>。</p>
-  <p>本例先在 Guest RAM / GTT 写好 IB 与 SDMA ring，再由 Guest CPU 向可 mmap 的 doorbell BAR 写入新写指针。这个 CPU 访问沿 Guest VA → GPA → 已建立的 EPT → 物理 BAR，直接让 GPU 看见门铃；门铃不是 4 KiB 数据载荷，也不需要每次调用宿主 VFIO 或返回 QEMU。GPU 随后自己读取 ring 和 IB：访问系统内存经过 GPU 地址转换与宿主 IOMMU 的预建映射，访问本地 VRAM 则不等于一次系统内存 DMA。SDMA ring 在该驱动中分配于 GTT，本例用户 IB1 也选择 GTT；不是所有 GPU 命令缓冲区都必须放在系统内存。</p>
+  <h3>直接映射的门铃与设备 DMA</h3>
+  <p>本例先在 Guest RAM / GTT 写好 IB 与 SDMA ring，再由 Guest CPU 向可 mmap 的 doorbell BAR 写入新写指针。这个 CPU 访问沿 Guest VA → GPA → 已建立的 EPT/NPT → 宿主物理 MMIO 地址 → GPU BAR。QEMU 的用户态映射用于建立这套关系，每次写入无需经过 QEMU 进程或调用宿主 VFIO 驱动。门铃只提供新命令的位置或进度，4 KiB 数据仍在缓冲区中。设备提交单元如何与固件协作取决于具体 GPU。</p>
+  <p>GPU 随后读取 ring 和 IB：访问系统内存经过 GPU 地址转换与宿主 IOMMU 的预建映射；本地显存访问在 GPU 的地址空间内完成。CPU 的 EPT/NPT 转换和设备的 IOMMU 转换分属两条路径。本例 SDMA ring 与用户 IB1 放在 GTT，其他实现也可选择显存中的命令缓冲区。参见 <a href="{{ demo.sources['bar-map'].url }}">QEMU BAR 映射</a>与<a href="{{ demo.sources['dma-map'].url }}">设备 DMA 映射</a>。</p>
   <p>数据复制及 fence 写回完成后，物理 MSI 由宿主 VFIO 触发 eventfd，KVM irqfd 把向量路由到目标 vLAPIC；目标 vCPU 在允许时注入，Guest AMDGPU 才处理完成并唤醒应用。演示把 pending 与实际注入分开。未直接映射、需要捕获或特殊处理的 BAR 区域仍可能进入 KVM / QEMU 的 VFIO region 回调，不能用“直通”推导全部寄存器访问都不退出。</p>
-  <p>GVT-g 由宿主 i915/GVT-g 管理物理 GPU。本例 ELSP 写先由 KVM 捕获，经 QEMU 的 VFIO region 进入宿主 GVT-g，再审核 workload、建立影子上下文并调度真实引擎；完成后由 GVT-g 发布虚拟事件，KVM 负责递送。部分图形内存可直接访问，数据传输无需逐字节经过 QEMU 模拟。本例集成 GPU 的 A、B 和 batch 均使用系统内存后备页。参见 <a href="https://docs.kernel.org/gpu/i915.html#intel-gvt-g-guest-support-vgpu" target="_blank" rel="noopener noreferrer">GVT-g 的访问与地址空间说明</a>。</p>
-  <p>VFIO 是设备访问、DMA 和中断的框架；mdev 是 mediated 实例及厂商设备实现，SR-IOV VF 是硬件提供的虚拟功能，virtio-gpu 则是另一种前后端协议。它们不能直接互换。闭源厂商调度与固件内部不在这两个可核验实现的范围内。</p>
+  <h3>GVT-g 的 BAR0 捕获与 BAR2 直映</h3>
+  <p>GVT-g 由宿主 i915/GVT-g 管理物理 GPU。其 BAR0 提供读写接口，没有开放 MMAP；ELSP 写先触发硬件 VM-exit，KVM 处理被捕获的 MMIO，再让 <code>KVM_RUN</code> 返回用户态，<code>kvm_run.exit_reason = KVM_EXIT_MMIO</code>。QEMU 按地址分派到 VFIO region，写设备 fd，宿主 GVT-g 才解释 ELSP、建立 workload 并调度真实引擎。KVM 不解释 ELSP 的 GPU 提交语义。</p>
+  <table aria-label="GVT-g 区域与退出路径">
+    <thead><tr><th scope="col">访问对象</th><th scope="col">直接映射条件</th><th scope="col">本例处理路径</th></tr></thead>
+    <tbody>
+      <tr><td>BAR0：ELSP、控制寄存器、GGTT 页表窗口</td><td>未开放 MMAP</td><td>VM-exit → KVM → QEMU → VFIO region → GVT-g</td></tr>
+      <tr><td>BAR2：分配给该 vGPU 的 aperture</td><td>仅开放稀疏映射声明的窗口</td><td>映射有效时，Guest CPU 直接访问图形内存窗口</td></tr>
+      <tr><td>普通 Guest RAM：batch 与数据缓冲区</td><td>正常 RAM 映射</td><td>一般访问不逐次退出；额外写保护或页跟踪需另行处理</td></tr>
+    </tbody>
+  </table>
+  <p><code>intel_vgpu_mmap()</code> 只接受 BAR2 中已分配的窗口。因此，同一个 mdev 可以同时具有直映区域和捕获区域；本例 ELSP 的路径则已经由 BAR0 的实现确定。参见<a href="{{ demo.sources['gvt-region'].url }}">区域能力声明</a>、<a href="{{ demo.sources['gvt-mmap'].url }}">aperture 映射</a>与<a href="{{ demo.sources['gvt-elsp'].url }}">ELSP 处理</a>。</p>
+  <h3>硬件退出与返回 QEMU</h3>
+  <p>硬件 VM-exit 把控制权交给宿主 KVM；只有需要用户态处理的情形才让 <code>KVM_RUN</code> 返回 QEMU。首次补建二级映射等退出可由 KVM 处理后直接恢复 Guest。即使设备属于直通路径，也要检查访问地址、区域权限和映射状态；MSI-X 表等模拟覆盖区不能按普通 doorbell 推断。<a href="https://docs.kernel.org/virt/kvm/api.html">KVM API 文档</a>说明了 <code>KVM_EXIT_MMIO</code> 的含义。</p>
+</section>
+
+<section id="sharing" class="mechanism-section">
+  <h2>PF、VF 与 mdev 的组合关系</h2>
+  <h3>SR-IOV：保留 PF 管理，分配 VF</h3>
+  <p>PF 是物理功能，负责建立和管理 VF；每个 VF 有自己的 PCI 身份和寄存器空间。AMD 示例保留宿主 GIM 对 PF 的管理，将一个 VF 绑定 vfio-pci 并分配给 Guest。Guest AMDGPU 提交自己的作业，硬件按该 VF 获得的资源执行。允许直映的门铃无需逐笔交给 PF 驱动；资源分配、复位和管理通信仍有宿主参与。硬件内部怎样共享引擎与显存取决于具体产品，VF 数量也不能直接当成独立 GPU 数量。<a href="{{ demo.sources['sriov-doc'].url }}">PCI SR-IOV 文档</a>、<a href="{{ demo.sources['amd-vf-doc'].url }}">AMD PF/VF 部署说明</a>。</p>
+  <h3>SR-IOV + mdev：VF 之上再建立实例</h3>
+  <p>NVIDIA 的一类部署先启用 VF，再在 VF 的 <code>mdev_supported_types</code> 下创建实例，最后把实例 UUID 交给虚拟机。关系是 PF → VF → mdev UUID → VM；所引文档限定每个 VF 创建一个 mdev。VFIO 提供设备访问接口，SR-IOV 提供硬件功能，mdev 提供实例管理，三者可以组合。这里沿公开配置与完成接口展示，厂商内部命令格式、寄存器捕获范围和调度细节保留为未展开区域。<a href="{{ demo.sources['nvidia-vgpu-doc'].url }}">NVIDIA 配置文档</a>。</p>
+  <p>同一文档还区分了厂商 VFIO 路径：某些宿主版本直接通过 VF 的 PCI 地址接入已配置的 vGPU，不再创建 mdev。两种部署不能混用 XML，也不能把承载实例的同一个 VF 再当作独立设备重复直通。另一类“混合使用”是多块 GPU 分别采用不同方案，或一个 VM 分配多个互不冲突的设备；是否支持仍需核对 IOMMU 分组、复位范围与厂商矩阵。</p>
+  <p>virtio-gpu 使用另一套前后端协议，继续在<a href="virtio-gpu-execution.html">渲染与编解码演示</a>中说明。以上对比集中于 Guest 使用厂商 GPU 驱动的路径。</p>
+</section>
+
+<section id="configuration" class="mechanism-section">
+  <h2>libvirt XML 与部署前提</h2>
+  <p>以下是 <code>&lt;domain&gt;&lt;devices&gt;</code> 内的独立片段，BDF 和 UUID 均为示例值。XML 只声明分配对象，不会自动启用 SR-IOV、创建 mdev、选择 vGPU profile 或解决驱动兼容。使用前需确认设备归属、IOMMU 隔离、复位能力及宿主/Guest 驱动支持；不要接管正在承载宿主显示的 GPU。<a href="https://libvirt.org/formatdomain.html#host-device-assignment">libvirt hostdev 文档</a>。</p>
+  <h3>整卡直通：引用物理 PCI 功能</h3>
+  <p>例中 GPU 功能为 <code>0000:65:00.0</code>。<code>managed='yes'</code> 允许 libvirt 在分配前处理驱动解绑，并在释放后恢复绑定。板卡的音频等伴随功能以及同组设备需单独评估；一个 hostdev 条目不自动代表整块板卡的所有功能。</p>
+  <pre class="gpu-config"><code class="language-xml" data-gpu-config="whole-pci">&lt;hostdev mode='subsystem' type='pci' managed='yes'&gt;
+  &lt;source&gt;
+    &lt;address domain='0x0000' bus='0x65' slot='0x00' function='0x0'/&gt;
+  &lt;/source&gt;
+&lt;/hostdev&gt;</code></pre>
+  <h3>GVT-g：引用已创建的 mdev UUID</h3>
+  <p>宿主物理 GPU 继续由 i915 管理，先按该平台实际提供的 mdev 类型创建实例，再引用 UUID。这里仅声明设备分配，显示输出及远程桌面配置需另行添加；历史 GVT-g 不能直接套用于新代 Intel GPU。</p>
+  <pre class="gpu-config"><code class="language-xml" data-gpu-config="gvt-mdev">&lt;hostdev mode='subsystem' type='mdev' model='vfio-pci'&gt;
+  &lt;source&gt;
+    &lt;address uuid='11111111-2222-4333-8444-555555555555'/&gt;
+  &lt;/source&gt;
+&lt;/hostdev&gt;</code></pre>
+  <h3>AMD SR-IOV：引用 VF 的 PCI 地址</h3>
+  <p>例中 <code>0000:85:00.0</code> 是 PF，仍由 GIM 管理；分配的是 VF <code>0000:85:02.0</code>。本例假定管理员已将该 VF 绑定 vfio-pci，故采用 <code>managed='no'</code>，生命周期由外部部署流程负责。可通过 VF 的 <code>physfn</code> 关系核对父 PF；XML 中不填写 PF 地址。</p>
+  <pre class="gpu-config"><code class="language-xml" data-gpu-config="sriov-vf">&lt;hostdev mode='subsystem' type='pci' managed='no'&gt;
+  &lt;source&gt;
+    &lt;address domain='0x0000' bus='0x85' slot='0x02' function='0x0'/&gt;
+  &lt;/source&gt;
+&lt;/hostdev&gt;</code></pre>
+  <h3>NVIDIA 组合：按实例接口选择一种 XML</h3>
+  <p>采用 SR-IOV + mdev 时，在 VF 上创建实例后填写其 UUID。hostdev 与 GVT-g 的形状相同，但父设备和厂商实现不同，须从宿主实例关系确认。</p>
+  <pre class="gpu-config"><code class="language-xml" data-gpu-config="sriov-mdev">&lt;hostdev mode='subsystem' type='mdev' model='vfio-pci'&gt;
+  &lt;source&gt;
+    &lt;address uuid='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'/&gt;
+  &lt;/source&gt;
+&lt;/hostdev&gt;</code></pre>
+  <p>采用厂商 VFIO 接口时，引用配置好 vGPU 的 VF BDF，保留厂商驱动绑定。所引 NVIDIA 文档要求 unmanaged 模式；不要为了套用普通直通教程而强制改绑通用 vfio-pci。此片段与上面的 mdev 片段二选一。</p>
+  <pre class="gpu-config"><code class="language-xml" data-gpu-config="vendor-vfio">&lt;hostdev mode='subsystem' type='pci' managed='no'&gt;
+  &lt;source&gt;
+    &lt;address domain='0x0000' bus='0x3d' slot='0x00' function='0x4'/&gt;
+  &lt;/source&gt;
+&lt;/hostdev&gt;</code></pre>
+  <p>这里没有在本机执行解绑、创建 VF 或创建 mdev 操作。示例已按 XML 结构与官方接口校核，部署可用性仍需要对应硬件验证。</p>
 </section>
 
 <section id="sources" class="mechanism-section">
@@ -44,6 +116,8 @@
     <li><a href="{{ demo.sources['ring-init'].url }}">GTT 中的 SDMA ring</a>、<a href="{{ demo.sources['bar-map'].url }}">QEMU VFIO BAR 映射</a>与<a href="{{ demo.sources['bar-write'].url }}">被捕获的 region 写</a>。</li>
     <li><a href="{{ demo.sources['vfio-irq'].url }}">VFIO MSI eventfd</a>、<a href="{{ demo.sources['irqfd'].url }}">KVM irqfd 路由</a>与<a href="{{ demo.sources['vmx-inject'].url }}">VM-entry 注入</a>。</li>
     <li><a href="{{ demo.sources['gvt-elsp'].url }}">GVT-g ELSP 提交</a>、<a href="{{ demo.sources['gvt-dispatch'].url }}">命令审核与调度</a>、<a href="{{ demo.sources['gvt-complete'].url }}">完成交接</a>与<a href="{{ demo.sources['gvt-event'].url }}">虚拟事件</a>。</li>
+    <li><a href="{{ demo.sources['vf-doorbell'].url }}">SDMA 4.4.2 的 VF 门铃路径</a>、<a href="{{ demo.sources['vf-copy-packet'].url }}">复制包格式</a>及<a href="{{ demo.sources['amd-vf-doc'].url }}">AMD VF 部署</a>。源码版本用于核对执行机制，不替代厂商部署支持矩阵。</li>
+    <li><a href="{{ demo.sources['nvidia-vgpu-doc'].url }}">NVIDIA SR-IOV、mdev 与厂商 VFIO 接入</a>及<a href="{{ demo.sources['cuda-events'].url }}">CUDA event 完成接口</a>。厂商在线文档核对日期：2026-11-08；图中的内部未展开区域不提供虚构的函数调用链。</li>
     <li><a href="qemu-vfio-dma.html">VFIO 直通与 DMA 映射</a>、<a href="memory-access.html">内存访问与 MMIO</a>、<a href="interrupt-delivery.html">中断传递</a>及<a href="virtio-gpu.html">virtio-gpu 的二维资源路径</a>。</li>
     <li><a href="virtio-gpu-execution.html">virtio-gpu 渲染与编解码</a>：另一组独立交互演示；资源、协议与同步分析见<a href="virtio-gpu.html">原理文章</a>。</li>
   </ul>

@@ -32,6 +32,14 @@ def test_editorial_matches_titles_sections_scenarios_and_multiple_terms():
     assert editorial_search.find("<script>alert(1)</script>")["articles"] == []
 
 
+@pytest.mark.parametrize("query", ["SR-IOV", "mdev", "doorbell", "ELSP", "libvirt XML"])
+def test_gpu_sharing_demo_is_discoverable_by_assignment_and_access_terms(query):
+    result = editorial_search.find(query)
+    gpu = next(item for item in result["demos"] if item["slug"] == "gpu-execution")
+    assert gpu["title"] == "GPU 命令执行：直通与共享虚拟化"
+    assert "SR-IOV + mdev · 实例与作业边界" in gpu["headings"]
+
+
 @pytest.mark.parametrize("query", ["", "K", "a" * 101, "irqfd", "balloon", "内存", "热迁移",
                                    "QEMU MMIO", "  virtio  GPU ", "<script>bad</script>",
                                    "__proto__", "constructor", "Straße", "ΟΣ"])

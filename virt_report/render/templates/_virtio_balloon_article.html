@@ -44,26 +44,42 @@
 </section>
 <section id="experiment" class="mechanism-section">
   <h2>小实验：同时观察目标、actual 与 RSS</h2>
-  <p>使用一台可丢弃的 Linux 测试虚拟机：QEMU 直接启动、配置 8 GiB 普通匿名 RAM，已加载 <code>virtio_balloon</code> 驱动，不运行重要业务，不开启自动气球调节。确认 Guest 有足够余量交出 2 GiB；可用内存不足或出现换页、业务延迟升高时，停止收缩并恢复原目标。不要在生产虚拟机或 libvirt 管理的实例上绕过管理器发送这些调节命令。</p>
-  <p>在宿主用 <code>LAB_DIR=$(mktemp -d)</code> 建立私有目录，给现有测试机启动命令增加以下选项（已有 balloon 设备时不要重复添加），并记录该 QEMU 的 PID。QMP 使用私有 Unix socket，不开放 TCP 管理端口。</p>
-  <pre><code>-device virtio-balloon-pci
+  <p>为降低实验的资源占用，本节把前面演示的 8 GiB → 6 GiB 按比例缩小为 <code>1 GiB → 768 MiB → 1 GiB</code>：先回收 256 MiB，再恢复初始容量。使用一台可丢弃的 Linux 测试虚拟机，由 QEMU 直接启动，已加载 <code>virtio_balloon</code> 驱动，不运行重要业务，也不开启自动气球调节。确认 Guest 有足够余量交出 256 MiB；可用内存不足或出现换页、业务延迟升高时，停止收缩并恢复原目标。不要在生产虚拟机或 libvirt 管理的实例上绕过管理器发送这些调节命令。</p>
+  <p>在宿主用 <code>LAB_DIR=$(mktemp -d)</code> 建立私有目录。测试机采用以下相关启动选项，内核或磁盘的启动参数沿用自己的测试镜像；已有 machine、内存后端或 balloon 配置时替换对应项，不重复添加。记录该 QEMU 的 PID。QMP 使用私有 Unix socket，不开放 TCP 管理端口。</p>
+  <pre><code data-balloon-launch>-machine q35,accel=kvm,memory-backend=ram
+-cpu host -smp 2 -m 1024
+-object memory-backend-ram,id=ram,size=1G,prealloc=on
+-device virtio-balloon-pci,free-page-reporting=off
 -qmp unix:${LAB_DIR}/qmp.sock,server=on,wait=off</code></pre>
-  <p>在宿主的监控终端中，将 <code>LAB_DIR</code> 设置为刚才创建的目录，将 <code>QEMU_PID</code> 设置为这台测试机的 QEMU 进程号。执行 <code>socat STDIO UNIX-CONNECT:"${LAB_DIR}/qmp.sock"</code>，看到 QMP greeting 后先发送下面两行。保存 <code>query-balloon</code> 返回的初始 <code>actual</code>；本例应为 8589934592 字节，即未充气的 8 GiB。若值不同，先查清初始配置，不套用后面的恢复值。</p>
+  <p><code>prealloc=on</code> 让宿主在启动时先准备 1 GiB 后备页，便于观察后续回收的变化；宿主也要有足够余量。关闭 <code>free-page-reporting</code> 可避免空闲页报告引入另一条回收路径。若省略预分配，部分后备页可能尚未驻留，同样的 balloon 调整未必带来相同的 RSS 降幅。</p>
+  <p>在宿主的监控终端中，将 <code>LAB_DIR</code> 设置为刚才创建的目录，将 <code>QEMU_PID</code> 设置为这台测试机的 QEMU 进程号。执行 <code>socat STDIO UNIX-CONNECT:"${LAB_DIR}/qmp.sock"</code>，看到 QMP greeting 后先发送下面两行。保存 <code>query-balloon</code> 返回的初始 <code>actual</code>；本例应为 1073741824 字节，即未充气的 1 GiB。若值不同，先查清初始配置，不套用后面的恢复值。</p>
   <pre><code data-balloon-qmp>{"execute":"qmp_capabilities"}
 {"execute":"query-balloon"}</code></pre>
-  <p>满足上述前提后，请求留下 6 GiB，再隔一段时间查询。<code>balloon</code> 返回成功只代表已发出请求；驱动处理、<code>BALLOON_CHANGE</code> 事件与查询响应可以异步出现。实际值未推进时应检查驱动和 Guest 内存压力，不连续加大收缩幅度。</p>
-  <pre><code data-balloon-qmp>{"execute":"balloon","arguments":{"value":6442450944}}
+  <p>满足上述前提后，请求留下 768 MiB，即 805306368 字节，再隔一段时间查询。<code>balloon</code> 返回成功只代表已发出请求；驱动处理、<code>BALLOON_CHANGE</code> 事件与查询响应可以异步出现。实际值未推进时应检查驱动和 Guest 内存压力，不连续加大收缩幅度。</p>
+  <pre><code data-balloon-qmp>{"execute":"balloon","arguments":{"value":805306368}}
 {"execute":"query-balloon"}</code></pre>
   <table><thead><tr><th>观察位置</th><th>检查方式</th><th>能够说明的事实</th></tr></thead><tbody>
-    <tr><td>QMP</td><td>重复 query-balloon</td><td>actual 是否向 6 GiB 推进；单位是剩余的逻辑字节数</td></tr>
+    <tr><td>QMP</td><td>重复 query-balloon</td><td>actual 是否向 768 MiB 推进；单位是剩余的逻辑字节数</td></tr>
     <tr><td>Guest</td><td>free -m、vmstat 1</td><td>可用内存及换页压力；不能把 MemTotal 直接当成 QMP actual</td></tr>
     <tr><td>宿主</td><td>ps -o pid,rss,comm -p "$QEMU_PID"</td><td>该 QEMU 进程的 RSS，通常以 KiB 计；包含其他映射，且不等于配置 RAM</td></tr>
   </tbody></table>
   <p>在请求前、actual 稳定后、恢复后各记录一次。这三组量能区分“驱动已交出页”和“宿主实际减少驻留内存”。若页面原本尚未驻留，或后备大页无法完整丢弃，actual 已变化也未必观察到 RSS 等量下降。</p>
-  <p>本例结束时恢复初始的 8 GiB 目标，继续查询实际值，再退出 QMP 连接。恢复后 RSS 不必立刻上升：后备页可以等待后续访问再驻留。最后正常关闭测试虚拟机，再移除它的 QMP socket 与私有目录。</p>
-  <pre><code data-balloon-qmp>{"execute":"balloon","arguments":{"value":8589934592}}
+  <p>本例结束时恢复初始的 1 GiB 目标，继续查询实际值。恢复后 RSS 不必立刻上升：后备页可以等待后续访问再驻留。如需观察下一次访问，应先确认 Guest 可用内存，再分配一段有余量的测试映射逐页写入，释放这段映射后记录 RSS。最后退出 QMP 连接、正常关闭测试虚拟机，再移除它的 QMP socket 与私有目录。</p>
+  <pre><code data-balloon-qmp>{"execute":"balloon","arguments":{"value":1073741824}}
 {"execute":"query-balloon"}</code></pre>
-  <p>接口与单位已对照 <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qapi/machine.json#L1085-L1175">本文 QEMU 基线的 QAPI 定义</a>核验；这里提供复现步骤，没有把命令示例当成实机测量结果。应记录自己的 QEMU、Guest 内核、后备内存配置和采样值后再作比较。</p>
+  <p>接口与单位可对照 <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qapi/machine.json#L1085-L1175">本文 QEMU 基线的 QAPI 定义</a>。下面记录一次按上述容量和内存后端配置完成的实机测量结果。</p>
+  <h3 id="balloon-measured">实测：容量恢复与页面重新驻留</h3>
+  {% include '_kvm_memory_experiment_environment.html' %}
+  <p>初始值、收缩完成、恢复完成分别采样；后两次先等待 <code>query-balloon</code> 达到目标，再等 1 秒。第四次采样前，Guest 申请 512 MiB 匿名内存，使用 <code>MADV_NOHUGEPAGE</code> 并每隔 4096 B 写入一次，释放这段映射后再读取统计。表中 Guest 总量取自 <code>/proc/meminfo</code> 的 <code>MemTotal</code>，QEMU RSS 取自宿主 <code>/proc/&lt;QEMU_PID&gt;/status</code> 的 <code>VmRSS</code>；各列在同一采样阶段依次读取。</p>
+  <table id="balloon-measurements"><thead><tr><th>采样阶段</th><th>QMP actual（MiB）</th><th>Guest 总量（KiB）</th><th>QEMU RSS（KiB）</th></tr></thead><tbody>
+    <tr><td>初始</td><td>1024</td><td>994728</td><td>1091428</td></tr>
+    <tr><td>回收 256 MiB 后</td><td>768</td><td>732584</td><td>829328</td></tr>
+    <tr><td>恢复 1 GiB 后</td><td>1024</td><td>994728</td><td>829328</td></tr>
+    <tr><td>再次访问后</td><td>1024</td><td>994728</td><td>1091472</td></tr>
+  </tbody></table>
+  <p>收缩后，Guest 的 MemTotal 减少 262144 KiB，QEMU RSS 也下降约 256 MiB；恢复后，QMP actual 和 Guest MemTotal 已回到初始值，RSS 仍保持低位。直到后续逐页写入，RSS 才回到约 1066 MiB。Guest 的 <code>munmap</code> 将页面交还自己的分配器；本例关闭了空闲页报告，释放这段 Guest 映射后，宿主仍可保留已驻留的后备页。</p>
+  <p>QMP actual 表示扣除气球后的逻辑字节数；Guest MemTotal 还受客户机保留内存等因素影响；QEMU RSS 则包含 RAM 后备和进程的其他映射，因此三列不能直接等同。后续访问的页面由 Guest 分配器选择，其他环境下 RSS 的回升幅度也可能不同。</p>
+  <p>收缩完成时，Guest 的 <code>MemAvailable</code> 仍有 627608 KiB。四次采样的 <code>oom_kill</code> 均为 0；该客户机未配置 swap，<code>pswpin</code>、<code>pswpout</code> 也为 0。实验结束前已恢复初始目标并正常关闭测试机。这组数据验证了气球交页、宿主回收和再次驻留的关系；没有对内存压力、共享后备、大页后备或迁移并发场景做比较，也不作为性能基准。<a href="memory-virtualization.html#first-touch-measured">首次触碰实验</a>可对照 Guest 进程自身的缺页行为。</p>
 </section>
 <section id="sources" class="mechanism-section">
   <h2>源码与相关内容</h2>

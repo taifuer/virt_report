@@ -284,6 +284,19 @@ async function assertFrame(page, frame) {
       assert.equal(await button(page, 'expand').getAttribute('aria-pressed'), 'false');
       for (const width of [1440, 1024, 768, 390, 320]) {
         await page.setViewportSize({width, height: 1000});
+        if (id === 'gpu-execution') {
+          const examples = await page.locator('pre.gpu-config').evaluateAll(nodes => nodes.map(node => {
+            const rect = node.getBoundingClientRect();
+            return {left: rect.left, right: rect.right, width: node.clientWidth,
+              contentWidth: node.scrollWidth, xml: node.textContent};
+          }));
+          assert.equal(examples.length, 5, 'all GPU hostdev XML examples are rendered');
+          assert(examples.every(item => item.left >= 0 && item.right <= width + 1
+            && item.contentWidth <= item.width + 1),
+          `GPU XML examples wrap without horizontal scrolling at ${width}px`);
+          assert(examples.every(item => item.xml.startsWith('<hostdev') && item.xml.endsWith('</hostdev>')),
+            'GPU XML remains plain copyable text after responsive wrapping');
+        }
         for (const view of ['overview', 'structure', 'source']) {
           await page.locator(`[data-execution-view="${view}"]`).click();
           const size = await page.evaluate(() => ({width: innerWidth, actual: document.documentElement.scrollWidth}));

@@ -23,5 +23,5 @@
 源码视图按执行上下文列出 Guest Mesa / DRM、QEMU、virglrenderer 和完成回调的关键入口；每个链接固定到所核验的版本。硬件执行和异步通知不当作跨组件的同步函数调用。
 
 - [virtio-gpu：资源、渲染与编解码](virtio-gpu.html)：从二维更新到三维与视频的完整原理；[二维小演示](virtio-gpu.html#interactive)可单独观察 CREATE、TRANSFER、FLUSH 和 scanout。
-- [GPU 命令执行](gpu-execution.html)：VFIO 直通与 GVT-g 的另一组设备路径。
+- [GPU 命令执行：直通与共享虚拟化](gpu-execution.html)：整卡直通、mdev、SR-IOV 及组合方案的另一组设备路径。
 - [中断传递](interrupt-delivery.html)：设备通知、KVM 路由与 Guest 处理。

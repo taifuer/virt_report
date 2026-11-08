@@ -1,7 +1,10 @@
 """Causal and source-boundary regressions for GPU / mediated GPU walkthroughs."""
 import copy
+import html
 import json
+import re
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -45,9 +48,11 @@ def node_snapshot(scene_id, step_id):
 def test_gpu_demo_is_registered_and_has_only_verified_device_combinations():
     validate_demo(DEMO)
     validate_selector(DEMO["selector"], set(SCENES))
-    assert set(SCENES) == {"vfio-upload", "vfio-readback", "mdev-copy"}
+    assert set(SCENES) == {
+        "vfio-upload", "vfio-readback", "mdev-copy", "sriov-vf-upload", "sriov-mdev",
+    }
     assert get_demo("gpu-execution")["defaultScenario"] == "vfio-upload"
-    assert len(DEMO["selector"]["categories"]) == 2
+    assert len(DEMO["selector"]["categories"]) == 4
 
 
 @pytest.mark.parametrize("scene_id", SCENES)
@@ -62,6 +67,11 @@ def test_gpu_sources_and_callpaths_are_fixed_and_explicit(scene_id):
         assert path["context"] and path["boundary"] and path["sourceIds"]
         for source_id in path["sourceIds"]:
             source = DEMO["sources"][source_id]
+            if source["kind"] == "reference":
+                assert source["reviewed_on"] == "2026-11-08"
+                assert source["url"].startswith("https://")
+                assert "symbol" not in source  # Documentation is not a fabricated call.
+                continue
             assert source["symbol"] and source["path"] and source["line"] > 0
             assert len(source["revision"]) == 40
             assert source["revision"] in source["url"]
@@ -192,10 +202,11 @@ def test_gpu_loading_does_not_mutate_checked_in_scene_defaults():
 def test_gpu_execution_domains_distinguish_kvm_from_host_device_drivers(scene_id):
     scene = SCENES[scene_id]
     domains = scene["layout"]["domains"]
-    assert [domain["component"] for domain in domains] == [
+    base_domains = [domain for domain in domains if domain["component"] != "backend"]
+    assert [domain["component"] for domain in base_domains] == [
         "guest", "kvm", "qemu", "host-kernel", "hardware",
     ]
-    assert [domain["title"] for domain in domains] == [
+    assert [domain["title"] for domain in base_domains] == [
         "Guest", "KVM", "QEMU", "Host kernel", "物理 GPU",
     ]
     assert domains[1]["nodes"] == ["kvm"]
@@ -270,3 +281,103 @@ def test_gpu_article_explains_driver_ownership_and_nonserial_domains():
     assert "提交、数据访问和完成通知各有自己的路径" in page
     assert "GVT-g 由宿主 i915/GVT-g 管理物理 GPU" in page
     assert 'href="https://docs.kernel.org/driver-api/vfio.html"' in page
+
+
+def test_gvt_bar0_elsp_and_sparse_bar2_mappings_have_explicit_boundaries():
+    scene = SCENES["mdev-copy"]
+    step = next(step for step in scene["steps"] if step["id"] == "elsp-write")
+    assert "BAR0" in step["description"] and "未开放直接映射" in step["description"]
+    assert "exit_reason = KVM_EXIT_MMIO" in step["detail"]
+    assert "无法在内核完成时" not in json.dumps(scene, ensure_ascii=False)
+    state = snapshot("mdev-copy", "initial")
+    assert "BAR2" in state["directAccess"] and "BAR0 / ELSP 无 MMAP" in state["directAccess"]
+    assert {"gvt-mmap", "gvt-region"} <= {
+        source for path in scene["callPaths"] for source in path["sourceIds"]
+    }
+
+
+def test_sriov_keeps_pf_management_out_of_per_job_doorbell_and_dma_paths():
+    scene_id = "sriov-vf-upload"
+    scene = SCENES[scene_id]
+    state = snapshot(scene_id, "initial")
+    assert "GIM" in state["hostDriver"] and "vfio-pci" in state["hostDriver"]
+    assert "85:00.0" in state["physicalFunction"]
+    assert "85:02.0" in state["assignedFunction"]
+    text = json.dumps(scene, ensure_ascii=False)
+    assert "MI300X" in text and "SDMA 4.4.2" in text
+    assert "Vega10" not in text and "SDMA 4.0" not in text
+    step = next(step for step in scene["steps"] if step["id"] == "doorbell")
+    assert "vf-doorbell" in step["sourceIds"]
+    assert not {"pf-manager", "qemu", "kvm", "vfio"} & set(step["active"])
+    assert "use_doorbell" in step["detail"] and "可直映" in step["detail"]
+    for step in scene["steps"]:
+        assert "pf-manager" not in step["active"]
+        assert not {"doorbell", "emit-ib", "emit-fence", "sdma-irq", "copy-packet", "fence-packet"} & set(step["sourceIds"])
+    order = ["submit", "doorbell", "fetch", "payload-ready", "fence-write",
+             "physical-irq", "route-irq", "guest-irq", "signal-fence", "return"]
+    assert [position(scene_id, step) for step in order] == sorted(position(scene_id, step) for step in order)
+    assert snapshot(scene_id, "payload-ready")["fenceMemory"] == "41"
+    assert "尚未" in snapshot(scene_id, "fence-write")["applicationResult"]
+    assert "等待 vCPU 注入" in snapshot(scene_id, "route-irq")["irqState"]
+
+
+def test_hybrid_separates_instance_creation_unknown_internals_and_completion():
+    scene_id = "sriov-mdev"
+    scene = SCENES[scene_id]
+    assert position(scene_id, "enable-vf") < position(scene_id, "create-mdev")
+    assert position(scene_id, "create-mdev") < position(scene_id, "attach")
+    assert position(scene_id, "attach") < position(scene_id, "submit")
+    assert "source/address" in snapshot(scene_id, "attach")["assignedDevice"]
+    assert "UUID" in snapshot(scene_id, "attach")["assignedDevice"]
+    assert "尚未完成" in snapshot(scene_id, "data-ready")["eventState"]
+    assert "尚不可使用" in snapshot(scene_id, "data-ready")["result"]
+    assert position(scene_id, "data-ready") < position(scene_id, "notify")
+    assert "pending" in snapshot(scene_id, "notify")["irqState"]
+    assert position(scene_id, "guest-complete") < position(scene_id, "return")
+    assumptions = " ".join(scene["assumptions"])
+    assert "可选" in assumptions and "轮询" in assumptions and "未做对应硬件实测" in assumptions
+    boundary = next(path for path in scene["callPaths"] if path["id"] == "vendor-boundary")
+    assert "内部未展开" in boundary["context"]
+    domain = next(domain for domain in scene["layout"]["domains"] if "vendor-path" in domain["nodes"])
+    assert domain["component"] == "backend"
+    assert "不归属 QEMU" in domain["note"]
+    assert all(DEMO["sources"][key]["kind"] == "reference" for key in boundary["sourceIds"])
+    assert all(not key.startswith("gvt-") for step in scene["steps"] for key in step["sourceIds"])
+
+
+def test_gpu_xml_examples_select_the_correct_assignment_object_and_driver_lifecycle():
+    page = render_mechanisms_html(Config(), "gpu-execution")
+    snippets = {
+        name: ET.fromstring(html.unescape(xml))
+        for name, xml in re.findall(r'data-gpu-config="([^"]+)">(.*?)</code>', page, re.S)
+    }
+    assert set(snippets) == {"whole-pci", "gvt-mdev", "sriov-vf", "sriov-mdev", "vendor-vfio"}
+    for name in ("gvt-mdev", "sriov-mdev"):
+        root = snippets[name]
+        assert root.tag == "hostdev"
+        assert root.attrib == {"mode": "subsystem", "type": "mdev", "model": "vfio-pci"}
+        assert set(root.find("source/address").attrib) == {"uuid"}
+    assert snippets["gvt-mdev"].find("source/address").get("uuid") != snippets["sriov-mdev"].find("source/address").get("uuid")
+    for name in ("whole-pci", "sriov-vf", "vendor-vfio"):
+        root = snippets[name]
+        assert root.attrib["type"] == "pci"
+        assert set(root.find("source/address").attrib) == {"domain", "bus", "slot", "function"}
+    assert snippets["whole-pci"].get("managed") == "yes"
+    assert snippets["sriov-vf"].get("managed") == "no"
+    assert snippets["sriov-vf"].find("source/address").get("slot") == "0x02"
+    assert snippets["vendor-vfio"].get("managed") == "no"
+    assert snippets["vendor-vfio"].find("driver") is None
+    assert "不会自动启用 SR-IOV、创建 mdev" in page
+    assert "二选一" in page and "同一个 VF" in page
+    assert 'aria-label="GPU 虚拟化方案对比"' in page
+    assert 'aria-label="GVT-g 区域与退出路径"' in page
+    assert "未在对应 GPU 上实测" in page
+    assert page.count('<pre class="gpu-config">') == 5
+    css = (CONTENT.parents[2] / "render/assets/execution-demo.css").read_text()
+    assert ".mechanism-prose pre.gpu-config { white-space: pre-wrap; overflow-wrap: anywhere; }" in css
+
+
+@pytest.mark.parametrize("scene_id", ["vfio-upload", "vfio-readback", "sriov-vf-upload"])
+def test_completed_gpu_job_does_not_keep_in_progress_kvm_label(scene_id):
+    assert "已确认作业完成" in node_snapshot(scene_id, "return")["kvm"]
+    assert "等待 Guest 确认" not in snapshot("sriov-mdev", "return")["jobState"]

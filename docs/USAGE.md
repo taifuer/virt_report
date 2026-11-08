@@ -93,7 +93,7 @@ cp .env.example .env
 | 基础机制 | 虚拟化基础 → CPU 虚拟化 → 内存虚拟化 → 设备与 I/O 虚拟化 → 中断虚拟化 |
 | 关键操作 | 虚拟机启动 → 热迁移 → 热插拔 → 热升级 |
 | 内部机制 | QEMU 内部机制 → KVM 内部机制 → Libvirt 内部机制 |
-| 交互演示 | 磁盘 I/O 读写过程 → 网络 I/O 收发过程 → CPU 指令执行 → 内存访问过程 → 中断传递 → GPU 命令执行 → virtio-gpu 渲染与编解码 |
+| 交互演示 | 磁盘 I/O 读写过程 → 网络 I/O 收发过程 → CPU 指令执行 → 内存访问过程 → 中断传递 → GPU 命令执行：直通与共享虚拟化 → virtio-gpu 渲染与编解码 |
 
 目录只显示已有正文的专题及其主归属篇数，未发布的专题和分组不对读者展示。普通主题保留标题、简介和导读入口，细分文章默认收起，通过紧邻标题的独立箭头按钮展开；按钮不重复显示篇数，无障碍说明保留动作与主题名称。只有一篇的主题及交互演示不增加折叠。顶部目录、直接访问锚点和前进后退会展开对应主题，旧锚点继续可用。关闭 JavaScript 时仍显示完整文章列表。各文章 URL 保持稳定，交叉阅读放在导读正文，不在目录增加附加行或重复计数。
 
@@ -123,11 +123,11 @@ cp .env.example .env
 
 TCG 交互跟踪翻译块的生成、命中、跳转链接与代码改写后的失效；与 KVM 文章对照 CPU 执行路径。公共 Mermaid 图默认不超过原始尺寸，长图等比缩小；细节可在全屏查看器中缩放。
 
-专题与篇数以 `virt_report/content/mechanisms.json` 的已发布目录为准，旧链接跳转页不计入。内容覆盖 CPU 模型与迁移兼容性、嵌套 VMX、vCPU 热插拔、NUMA 放置、Libvirt 迁移协调、VFIO 设备迁移、virtio-net 接收与 NAPI、Packed virtqueue、vhost-vDPA、IOMMU 与 IOMMUFD、vIOMMU、virtio-gpu、virtio-balloon，以及外部快照与在线块操作；GPU 演示另区分 VFIO PCI 直通与限定历史实现的 mdev。
+专题与篇数以 `virt_report/content/mechanisms.json` 的已发布目录为准，旧链接跳转页不计入。内容覆盖 CPU 模型与迁移兼容性、嵌套 VMX、vCPU 热插拔、NUMA 放置、Libvirt 迁移协调、VFIO 设备迁移、virtio-net 接收与 NAPI、Packed virtqueue、vhost-vDPA、IOMMU 与 IOMMUFD、vIOMMU、virtio-gpu、virtio-balloon，以及外部快照与在线块操作；GPU 演示对照整卡直通、历史 GVT-g mdev、SR-IOV VF 直通及 SR-IOV + mdev 组合。
 
 文章页脚显示元数据的 `reviewed_on`，表示针对文中源码、规范或论文依据的技术复核日期。仅调整排版、措辞、搜索索引或导出快照时，不自动刷新该日期；首次发布与产品更新记录应从实际 Git 历史核验，不能用技术复核日期替代。新增实验须说明执行位置、前提、观察口径和恢复方法，区分“代码可运行”“接口已核验”与“虚拟机上已测量”。内存虚拟化文章中的首次触碰程序由测试编译运行；balloon 实验只自动检查命令与单位，不在测试中操作真实 VM。
 
-`virtio-gpu-execution.html` 独立归入交互演示，提供 OpenGL 绘制、H.264 解码和 NV12 编码三个离线场景，可播放、单步、回退、重置与全屏演示。命令包和图像资源随步骤变化，流程总览、关键结构、源码路径共用状态；详细原理与四张流程图保留在 `virtio-gpu-rendering.html`，两篇文章互相链接。固定 QEMU 10.2、Linux 6.18、Mesa 25.0、virglrenderer 1.2，明确区分已接通的渲染主线与需要额外初始化的 VirGL video 扩展；不把普通 QEMU GL 配置当成视频加速支持，也不把 DMA-BUF、fence 与最终显示混为一谈。
+`virtio-gpu-execution.html` 独立归入交互演示，提供 OpenGL 绘制、H.264 解码和 NV12 编码三个离线场景，可播放、单步、回退、重置与全屏演示。命令包和图像资源随步骤变化，流程总览、关键结构、源码路径共用状态；详细原理与四张流程图保留在 `virtio-gpu.html`，两篇文章互相链接。固定 QEMU 10.2、Linux 6.18、Mesa 25.0、virglrenderer 1.2，明确区分已接通的渲染主线与需要额外初始化的 VirGL video 扩展；不把普通 QEMU GL 配置当成视频加速支持，也不把 DMA-BUF、fence 与最终显示混为一谈。
 
 `mechanisms/virtio-blk-read.html` 保留原 URL，页面名为“磁盘 I/O 读写过程”，独立归入交互演示，不再计入设备基础文章。读取与写入分别从 Guest 的 `pread()` / `pwrite()` 出发，固定一次 4 KiB 直接 I/O。流程总览显示系统调用、共享队列、后端处理、中断递送与应用返回；源码路径展示关键函数及异步边界。队列机制单独保留 8 个步骤：准备描述符、发布请求、设备取链、读写缓冲区、写回响应、填写完成项、发布完成、回收描述符。该视图以描述符回收为终点，不再逐步展开系统调用与中断注入；阶段导航和计数采用队列自己的进度。三种视图共用完整状态轨迹，队列视图按里程碑取快照，不修改底层因果顺序。支持单步、播放和回退，URL 保留步骤、视图和 `operation=write`。
 
@@ -173,8 +173,8 @@ node scripts/check_back_top_and_badge_browser.cjs http://127.0.0.1:8090
 - `memory-access.html`：RAM 主菜单保留缓存命中、页表遍历、Guest #PF 和首次补建 EPT；后备页换入、已有映射的脏页写保护归入仅在 RAM 分类显示的折叠进阶入口。设备分类对照 QEMU 回调、KVM 内核处理、VFIO 物理 BAR 和 ivshmem 共享 BAR2。两个直接访问场景共用 GPA / HPA / offset / 落点摘要，明确 HPA 既可以指向设备窗口也可以指向 RAM；没有逐次 QEMU 回调不等于物理设备直通。正文区分 Guest 资源发现、QEMU MemoryRegion 配置与 KVM 退出分派，并将后拷贝 userfaultfd 补页留在独立文章；不虚构“QEMU 建 EPT”。CPU BAR 访问不能与设备 DMA 的 IOMMU 路径混为一谈。
 - `cpu-execution.html`：普通 ADD、Guest 系统调用、内核处理 CPUID 和返回 QEMU 的 MMIO 使用同一 vCPU 执行时间线，持续显示指令、寄存器、CPL、VMX 状态与 `KVM_RUN` 交接。普通指令不画成“物理 CPU 把请求交给 Guest”。“等待与唤醒”组并列 HLT 截获后阻塞与 Idle Passthrough 两个固定预设：后者关闭 HLT exiting，硬件等待不改变 KVM 的 RUNNABLE / 宿主 TASK_RUNNING；另固定跨 CPU 的 APICv posted 唤醒，不宣称任何事件都免退出，也不混入 MONITOR/MWAIT。两者共用执行状态、VM-exit 次数、宿主线程与 KVM_RUN 摘要。源码视图区分事先配置、另一 CPU 的中断提交和目标 CPU 的硬件执行；两个定时休眠场景继续区分 Guest 任务、vCPU 和宿主调度状态。`kvm-vcpu-halt.html` 同步解释区别，原轮询实验仍限定在 HLT 被截获的路径。
 - `interrupt-delivery.html`：主菜单分软件后端与直通设备。QEMU 直接提交 MSI；DPDK vhost-user 直接写 callfd，经 KVM irqfd 分别走软件注入和 APICv posted 交付。直通设备的“MSI-X · 宿主转发”与“MSI-X · VT-d posted”都使用 MSI-X，由平台能力、配置和路由决定后续递送，不按设备类型或逐次 I/O 选择。普通宿主转发进入 KVM 后仍可使用 CPU 侧 posted；vCPU 暂时未运行时维护 PID、pending 与唤醒，不等于自动切回普通 IRTE。明确谁写 PID.PIR，QEMU 配置面不进入 DPDK 逐次通知链。通知抑制、IF 等待、MSI-X PBA 保留在默认收起的进阶入口，旧场景 URL 自动展开对应入口。通知、pending、注入准备、Guest 接受与队列消费分别推进，不表示多次独立完成通知。
-- `gpu-execution.html`：三个已限定实现的场景——VFIO PCI 直通 AMD Vega10 / SDMA 4.0 的 Guest RAM→VRAM 上传与 VRAM→Guest RAM 读回，以及旧代 Skylake GVT-g mdev 的 BLT 系统内存缓冲区复制。跟踪 command buffer、ring、GPU 映射、数据、fence 与应用等待；mdev 额外展示 ELSP 捕获、审核、影子上下文、宿主调度和虚拟事件。QEMU 控制面与稳态直接映射访问分开，闭源厂商内部不作推断，GVT-g 不冒充全部 mdev 的共同实现。
-- `virtio-gpu-rendering.html`：通过 controlq 的 SUBMIT_3D 跟踪 VirGL 图形与视频命令，展示输入资源、宿主执行结果、fence 响应和应用消费。视频场景明确以 VMM 已接通 VirGL video 为前提。
+- `gpu-execution.html`（《GPU 命令执行：直通与共享虚拟化》）：五个场景——VFIO PCI 直通 AMD Vega10 / SDMA 4.0 的上传与读回、旧代 Skylake GVT-g mdev 的 BLT 复制、AMD MI300X / SDMA 4.4.2 的 VF 上传，以及 NVIDIA SR-IOV + mdev 的实例创建与作业完成。前三类跟踪命令、映射、数据、fence 与应用等待；GVT-g 额外展示 BAR0 / ELSP 捕获、审核、影子上下文、宿主调度及 BAR2 的部分直映。SR-IOV 将 PF 管理与 VF 快路径分开。NVIDIA 组合只展开公开接口，内部寄存器与调度保留为未展开区域；可选通知明确限定为软件 eventfd / irqfd 分支，不把一次 CUDA event 等同于一次中断。正文附方案对比和五份独立 libvirt XML 示例，区分 PCI BDF、mdev UUID、托管与厂商驱动绑定。演示未经对应 GPU 实测，代码基线与厂商部署支持矩阵分开说明。
+- `virtio-gpu-execution.html`：通过 controlq 的 SUBMIT_3D 跟踪 VirGL 图形与视频命令，展示输入资源、宿主执行结果、fence 响应和应用消费。视频场景明确以 VMM 已接通 VirGL video 为前提。
 
 它们共享 `execution-model.js`、`execution-demo.js` 和 `_execution_lab.html`，数据放在 `content/flows/` 对应 JSON。场景以 QEMU 10.2 / Linux 6.18 为基础，CPU、内存和中断选取 Intel VMX/EPT 主线；网络 DPDK 路径另固定 24.11。流程总览保留完整顺序，关键结构视图按 `focus` 取累计快照。网络的 `network_queue.py` 生成结构化 `queueState`，不再从中文说明中正则推断描述符和环状态；磁盘模型也提供 typed queue 快照，两者复用 `walkthrough-components.js` 的描述符、环与缓冲区组件，保留各自协议字段和布局。URL 的 `scenario`、`view`、`step` 可恢复选择；无 JavaScript 时保留全部场景的文字流程。放大查看优先使用浏览器全屏，不支持时使用页内覆盖层。`EXECUTION_SCREENSHOT_DIR` 可保存浏览器回归截图。
 
@@ -196,7 +196,7 @@ GPU 直通明确分开命令内存、门铃与完成：Guest AMDGPU 写 GTT 中�
 
 共享队列统一使用 `Descriptor table`、`Buffers`、`Available ring`、`Used ring` 四块区域。`Free descriptors` 属于描述符分配状态；准备描述符不会让 Used ring 高亮，响应/status 也属于指向的缓冲区而非 Used ring。浏览器回归检查所有场景逐帧布局、七篇的计算样式、320–1440px 响应式、下拉箭头及两种全屏方式；virtio-gpu 另检查命令与图像状态切换。
 
-`execution-selectors.json` 将场景入口与技术状态分开维护，新 GPU 演示将对应 `selector` 内嵌在自己的场景文件中。网络按后端与发送／接收选择，仅在相应路径下展示背压或缓冲不足；内存先选 RAM / MMIO，再按具体处理路径分组；CPU、中断使用分组预设；GPU 先选 VFIO PCI 或 mdev，再选已实现的操作。每个场景必须恰好被收录一次，界面只提供已核验的组合。网络总览从一次 18 B UDP 载荷的应用收发开始，区分用户缓冲区、Guest 协议栈与队列，以及本地后端；关键结构视图不逐步展开系统调用。应用返回、队列完成和网络交付分别解释，不能用 TX used 表示远端收到，也不能把驱动补充 RX 空间画成等待应用读取之后才进行。
+`execution-selectors.json` 将场景入口与技术状态分开维护，新 GPU 演示将对应 `selector` 内嵌在自己的场景文件中。网络按后端与发送／接收选择，仅在相应路径下展示背压或缓冲不足；内存先选 RAM / MMIO，再按具体处理路径分组；CPU、中断使用分组预设；GPU 先选整卡直通、mdev、SR-IOV VF 或 SR-IOV + mdev 组合，再选择该路径已实现的操作。每个场景必须恰好被收录一次，界面只提供已核验的组合。网络总览从一次 18 B UDP 载荷的应用收发开始，区分用户缓冲区、Guest 协议栈与队列，以及本地后端；关键结构视图不逐步展开系统调用。应用返回、队列完成和网络交付分别解释，不能用 TX used 表示远端收到，也不能把驱动补充 RX 空间画成等待应用读取之后才进行。
 
 单选择器或不带方向控件的分类分组可标记 `advanced: true`，移入折叠入口，不占主菜单的正常路径。分类中的进阶入口只在当前分类显示，切走时关闭并隐藏；旧场景链接会选中正确分类并展开对应入口。每个分类必须保留主路径，仍不支持进阶分组与收发方向控件自由组合。场景 ID、状态机、无 JavaScript 文本与 URL 恢复均保留；新增入口需测试主路径切回、分类切换、旧链接自动展开和三个视图的状态一致性。
 

@@ -321,6 +321,6 @@ Venus 为 Vulkan 定义另一套序列化协议，使用不同的 capset 和上�
 - [Virtio 1.2，第 5.7 节 GPU Device](https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html)：二维资源、输出、队列及控制命令；VirGL 命令格式由其渲染协议另外定义。
 - [QEMU 10.2：virtio-gpu.h](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/hw/virtio/virtio-gpu.h#L45)：设备内部资源与 scanout 结构。
 - [virtio-gpu 渲染与编解码](virtio-gpu-execution.html)：独立交互演示，可切换绘制、解码与编码，对照本文逐步观察命令和资源。
-- [GPU 命令执行](gpu-execution.html)：VFIO 整卡直通与限定 GVT-g 实现，比较 Guest 厂商驱动直接提交的路径；DMA 映射细节见 [VFIO 设备直通与 DMA](qemu-vfio-dma.html)。
+- [GPU 命令执行：直通与共享虚拟化](gpu-execution.html)：对照整卡直通、GVT-g、SR-IOV 与组合方案，附设备归属和 libvirt XML；DMA 映射细节见 [VFIO 设备直通与 DMA](qemu-vfio-dma.html)。
 - [virtio 设备初始化与特性协商](virtio-device-initialization.html)：队列、特性和设备状态。
 - [中断传递](interrupt-delivery.html)：完成通知到客户机处理，以及通知抑制和中断加速。

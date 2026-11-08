@@ -17,6 +17,8 @@ const cases = [
   {slug: 'virtio-gpu-execution', prefix: 'execution', detail: 'structure'},
   {slug: 'gpu-execution', query: '?scenario=vfio-readback', prefix: 'execution', detail: 'structure'},
   {slug: 'gpu-execution', query: '?scenario=mdev-copy', prefix: 'execution', detail: 'structure'},
+  {slug: 'gpu-execution', query: '?scenario=sriov-vf-upload', prefix: 'execution', detail: 'structure'},
+  {slug: 'gpu-execution', query: '?scenario=sriov-mdev', prefix: 'execution', detail: 'structure'},
   {slug: 'virtio-blk-read', query: '?backend=rbd-blk', prefix: 'vbr', detail: 'mechanism'},
   {slug: 'virtio-blk-read', query: '?backend=spdk-blk', prefix: 'vbr', detail: 'mechanism'},
   {slug: 'libvirt-domain-start', prefix: 'execution', detail: 'structure'},

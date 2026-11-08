@@ -94,8 +94,17 @@ int main(void)
   <pre><code>cc -std=c11 -O2 -Wall -Wextra -Werror first-touch.c -o first-touch
 ./first-touch</code></pre>
   <p>在 4 KiB 基础页、无明显内存压力的条件下，32 MiB 包含 8192 页，首次写入的 minor fault 应接近这一数量；第二遍通常明显减少。统计覆盖整个进程，少量额外缺页可能来自程序或运行库，不要求恰好得到 8192 和 0。<a href="https://man7.org/linux/man-pages/man2/getrusage.2.html">getrusage 的统计口径</a>、<a href="https://www.kernel.org/doc/html/latest/admin-guide/mm/transhuge.html">透明大页与 madvise</a>。</p>
-  <p>这两个数只说明客户机进程的缺页情况。一次 Guest #PF 的处理可能伴随多个 GPA 的访问，宿主是否需要补建 EPT 又取决于既有映射。因此不能从 <code>first_minor</code> 推算 VM-Exit 次数，更不能把第二遍缺页少解释成 TLB 全部命中。需要分析后两者时，要在宿主另采 KVM 事件或硬件计数，并对齐同一运行窗口。</p>
-  <p>验证范围：自动检查会编译并运行这段普通 Linux 用户态代码；本文不附 KVM 客户机的实测计数，也不据此宣称 EPT 性能收益。</p>
+  <p>这两个数只说明客户机进程的缺页情况。一次 Guest #PF 的处理可能伴随多个 GPA 的访问，宿主是否需要补建 EPT/NPT 又取决于既有映射。因此不能从 <code>first_minor</code> 推算 VM-Exit 次数，更不能把第二遍缺页少解释成 TLB 全部命中。需要分析后两者时，要在宿主另采 KVM 事件或硬件计数，并对齐同一运行窗口。</p>
+  <h3 id="first-touch-measured">实测：两遍访问的缺页计数</h3>
+  {% include '_kvm_memory_experiment_environment.html' %}
+  <p>将上面的同一份 C 代码以 <code>cc -static -std=c11 -O2 -Wall -Wextra -Werror</code> 编译后放入客户机，连续启动三个独立进程。每次都重新申请 32 MiB，先逐页写一遍，再写第二遍；<code>MADV_NOHUGEPAGE</code> 仅作用于该进程的测试映射。</p>
+  <table id="first-touch-measurements"><thead><tr><th>运行</th><th>基础页大小（B）</th><th>首次写入 minor fault</th><th>第二遍 minor fault</th></tr></thead><tbody>
+    <tr><td>第 1 次</td><td>4096</td><td>8192</td><td>0</td></tr>
+    <tr><td>第 2 次</td><td>4096</td><td>8192</td><td>0</td></tr>
+    <tr><td>第 3 次</td><td>4096</td><td>8192</td><td>0</td></tr>
+  </tbody></table>
+  <p>宿主已经为这台 VM 预分配了 RAM 后备，Guest 中新进程的匿名页映射仍要按需建立：<code>32 MiB / 4 KiB = 8192</code>，第一遍逐页写入触发缺页，第二遍复用这些映射。这组结果把宿主的后备分配与 Guest 应用的缺页区分开；也说明 <code>mmap</code> 成功后，页面未必已经全部准备好。</p>
+  <p>本次记录没有采集 NPT 缺页、VM-Exit 或 TLB 计数，也没有做吞吐或延迟比较，结论限于上述 Guest 缺页行为。自动测试仍只编译和运行普通 Linux 用户态示例，不会启动虚拟机；表中数字来自这次独立的 KVM 实验。<a href="virtio-balloon.html#balloon-measured">balloon 实测</a>进一步观察后备页被回收、重新访问时的 RSS 变化。</p>
 </section>
 <section id="reading" class="mechanism-section">
   <h2>进一步阅读</h2>

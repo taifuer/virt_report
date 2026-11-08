@@ -10,7 +10,7 @@ from virt_report.render import render
 
 def test_short_demo_titles_match_directory_article_and_player():
     for slug, title in (
-        ("gpu-execution", "GPU 命令执行"),
+        ("gpu-execution", "GPU 命令执行：直通与共享虚拟化"),
         ("virtio-gpu-execution", "virtio-gpu 渲染与编解码"),
         ("interrupt-delivery", "中断传递"),
     ):
