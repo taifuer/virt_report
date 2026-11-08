@@ -397,11 +397,24 @@ def cmd_status(args, config: Config) -> None:
     del args
     conn = db.connect(config.db_path)
     try:
+        configured = [("ml", source.name) for source in config.sources.mailing_lists]
+        configured.extend(("gitlab", source.name) for source in config.sources.gitlab)
+        configured_sql = ("VALUES " + ",".join("(?, ?)" for _ in configured)
+                          if configured else "SELECT NULL, NULL WHERE 0")
         rows = conn.execute(
-            """
-            SELECT i.source, i.project, COUNT(*) AS items,
-                   MIN(i.activity_at) AS coverage_start,
-                   MAX(i.activity_at) AS coverage_end,
+            f"""
+            WITH configured(source, project) AS ({configured_sql}),
+            known AS (
+                SELECT source, project FROM configured
+                UNION SELECT source, project FROM items
+                UNION SELECT source, project FROM fetch_runs
+            ), totals AS (
+                SELECT source, project, COUNT(*) AS items,
+                       MIN(activity_at) AS coverage_start, MAX(activity_at) AS coverage_end
+                FROM items GROUP BY source, project
+            )
+            SELECT i.source, i.project, COALESCE(t.items, 0) AS items,
+                   t.coverage_start, t.coverage_end,
                    (SELECT success FROM fetch_runs f
                     WHERE f.source=i.source AND f.project=i.project
                     ORDER BY f.id DESC LIMIT 1) AS last_success,
@@ -411,9 +424,9 @@ def cmd_status(args, config: Config) -> None:
                    (SELECT error FROM fetch_runs f
                     WHERE f.source=i.source AND f.project=i.project
                     ORDER BY f.id DESC LIMIT 1) AS last_error
-            FROM items i GROUP BY i.source, i.project
+            FROM known i LEFT JOIN totals t ON t.source=i.source AND t.project=i.project
             ORDER BY i.source, i.project
-            """
+            """, [value for pair in configured for value in pair],
         ).fetchall()
         for row in rows:
             state = "OK" if row["last_success"] == 1 and row["last_complete"] == 1 else "WARN"

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import tempfile
 from datetime import datetime, timedelta, timezone
 from email import policy
 from email.header import decode_header, make_header
@@ -80,19 +81,41 @@ def _body_text(message) -> str:
     return ""
 
 
-def _ensure_repo(url: str, project: str, since: datetime) -> Path:
+def _confirm_empty_window(url: str, cutoff: datetime) -> bool:
+    """Probe one remote commit without replacing or truncating the archive cache."""
+    with tempfile.TemporaryDirectory(prefix="tip-probe-", dir=CACHE_DIR) as directory:
+        probe = Path(directory) / "tip.git"
+        _run_git(["clone", "--bare", "--depth=1", url, str(probe)])
+        timestamp = int(_run_git(["log", "-1", "--format=%ct", "HEAD"], git_dir=probe))
+        return datetime.fromtimestamp(timestamp, timezone.utc) < cutoff
+
+
+def _ensure_repo(url: str, project: str, since: datetime) -> Path | None:
+    """Synchronize the date window, or return None after a verified empty probe."""
     epoch = Path(urlsplit(url).path).stem if "/git/" in url else "current"
     cache = CACHE_DIR / f"{project}-{epoch}.git"
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     # 留一天边界，避免上游提交时间/邮件 Date 时区差造成浅克隆截断。
-    shallow_since = base.to_utc_iso(since - timedelta(days=1))
-    if not cache.exists():
-        _run_git(["clone", "--bare", f"--shallow-since={shallow_since}", url,
-                  str(cache)])
-    else:
-        _run_git(["fetch", f"--shallow-since={shallow_since}", "origin", "HEAD"],
-                 git_dir=cache)
-        _run_git(["update-ref", "HEAD", "FETCH_HEAD"], git_dir=cache)
+    cutoff = since - timedelta(days=1)
+    shallow_since = base.to_utc_iso(cutoff)
+    try:
+        if not cache.exists():
+            _run_git(["clone", "--bare", f"--shallow-since={shallow_since}", url,
+                      str(cache)])
+        else:
+            _run_git(["fetch", f"--shallow-since={shallow_since}", "origin", "HEAD"],
+                     git_dir=cache)
+            _run_git(["update-ref", "HEAD", "FETCH_HEAD"], git_dir=cache)
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or b"").decode("utf-8", errors="replace")
+        shallow_error = any(text in stderr for text in (
+            "no commits selected for shallow requests", "error processing shallow info",
+        ))
+        if not shallow_error or not _confirm_empty_window(url, cutoff):
+            raise
+        log.info("lore-git %s: remote tip predates %s; verified empty window",
+                 project, shallow_since)
+        return None
     return cache
 
 
@@ -120,7 +143,8 @@ def fetch(conn, source, *, since: datetime | None = None, max_pages: int = 8) ->
     new_count = 0
     oldest: str | None = None
     newest: str | None = None
-    for commit in _commit_ids(cache, since):
+    commits = _commit_ids(cache, since) if cache is not None else []
+    for commit in commits:
         message = _message_from_commit(cache, commit)
         message_id = _strip_mid(message.get("Message-ID"))
         if not message_id:
