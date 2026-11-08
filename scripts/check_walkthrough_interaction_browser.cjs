@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
 assert(['localhost', '127.0.0.1'].includes(new URL(base).hostname));
-const shots = '/tmp/walkthrough-interaction-review';
+const shots = process.env.WALKTHROUGH_INTERACTION_SCREENSHOT_DIR || '/tmp/walkthrough-interaction-review';
 fs.mkdirSync(shots, {recursive: true});
 
 async function settle(page) {
