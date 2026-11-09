@@ -18,6 +18,17 @@ fs.mkdirSync(shots, {recursive: true});
     const visible = () => page.locator('[data-version-item]:visible');
     const members = topic => page.locator('[data-version-item]').evaluateAll(
       (items, topic) => items.filter(item => item.dataset.topics.split(',').includes(topic)).length, topic);
+    const yearOptions = () => page.locator('[data-version-year] option').evaluateAll(
+      options => options.map(option => option.value));
+    const assertAvailableYears = async () => {
+      const project = await page.locator('[data-version-project]').inputValue();
+      const topic = await page.locator('[data-version-topic]').inputValue();
+      const years = await page.locator('[data-version-item]').evaluateAll((items, {project, topic}) =>
+        [...new Set(items.filter(item => (!project || item.dataset.project === project)
+          && (!topic || item.dataset.topics.split(',').includes(topic))).map(item => item.dataset.year))]
+          .sort().reverse(), {project, topic});
+      assert.deepEqual(await yearOptions(), ['', ...years]);
+    };
     const assertVisible = async (topic, project = '', year = '') => {
       const rows = await visible().evaluateAll(items => items.map(item => ({...item.dataset})));
       assert(rows.length > 0);
@@ -27,6 +38,7 @@ fs.mkdirSync(shots, {recursive: true});
     };
 
     await go('?project=all&topic=migration&view=detailed');
+    await assertAvailableYears();
     assert.equal(await page.locator('label[for="version-topic"]').evaluate(label => label.firstChild.textContent.trim()), '主题');
     assert.deepEqual(await page.locator('[data-version-topic] option').allTextContents(),
       ['全部主题', '设备直通 / VFIO', '虚拟 I/O / virtio', '热迁移']);
@@ -41,12 +53,16 @@ fs.mkdirSync(shots, {recursive: true});
     assert.equal(await visible().count(), Math.min(30, await members('migration') - 30));
     await assertVisible('migration');
     await page.locator('[data-version-project]').selectOption('kvm');
+    await assertAvailableYears();
     await page.locator('[data-version-year]').selectOption('2021');
     await assertVisible('migration', 'kvm', '2021');
     assert.equal(await visible().count(), 2);
-    await page.locator('[data-version-year]').selectOption('2020');
-    assert.equal(await visible().count(), 0);
-    assert(await page.locator('[data-version-empty]').isVisible());
+    assert(!(await yearOptions()).includes('2020')); // No KVM migration entries in 2020.
+    await go('?project=kvm&topic=migration&year=2020&view=detailed');
+    assert.equal(await page.locator('[data-version-year]').inputValue(), '');
+    assert(!new URL(page.url()).searchParams.has('year'));
+    await assertAvailableYears();
+    await assertVisible('migration', 'kvm');
     await go('?topic=migration&view=detailed#release-qemu-10.2.0');
     assert(await page.locator('[id="release-qemu-10.2.0"]').isVisible());
     assert.equal(await page.locator('[data-version-topic]').inputValue(), '');
@@ -73,9 +89,21 @@ fs.mkdirSync(shots, {recursive: true});
     await assertVisible('virtio', 'qemu', '2020');
     assert.equal(await visible().count(), 3);
     await page.locator('[data-version-project]').selectOption('kvm');
+    assert.equal(await page.locator('[data-version-year]').inputValue(), '');
+    assert(!new URL(page.url()).searchParams.has('year'));
+    await assertAvailableYears();
     assert.equal(await visible().count(), 0);
+    assert.deepEqual(await yearOptions(), ['']);
     assert(await page.locator('[data-version-empty]').isVisible());
-    assert(await page.locator('[data-version-controls]').isHidden());
+
+    // Unsupported theme parameters must not filter backend software releases.
+    await go('?project=spdk&topic=migration&view=detailed');
+    assert(await visible().count() > 0);
+    assert.equal(await page.locator('[data-version-topic]').inputValue(), '');
+    assert(!new URL(page.url()).searchParams.has('topic'));
+    assert(await page.locator('label[for="version-topic"]').isHidden());
+    assert(await page.locator('[data-version-empty]').isHidden());
+    await assertAvailableYears();
 
     await go('?project=qemu&topic=vfio&year=2012&view=detailed#release-kvm-5.15');
     assert(await page.locator('#release-kvm-5\\.15').isVisible());
@@ -106,6 +134,8 @@ fs.mkdirSync(shots, {recursive: true});
 
     // Protocol specifications share the browser while retaining document stages.
     await go('?project=virtio');
+    await assertAvailableYears();
+    assert.deepEqual(await yearOptions(), ['', '2026', '2023', '2022', '2019', '2016', '2012', '2010']);
     assert.equal(await page.locator('[data-version-project]').inputValue(), 'virtio');
     const specCount = await page.locator('[data-version-item][data-kind="specification"]').count();
     assert(specCount >= 6);
@@ -130,6 +160,7 @@ fs.mkdirSync(shots, {recursive: true});
     assert(await legacy.isVisible());
     await page.reload();
     assert(await legacy.isVisible());
+    await assertAvailableYears(); // A selected year must not hide other available years.
     await page.locator('[data-version-year]').selectOption('2023');
     assert.equal(await visible().count(), 1);
     await page.reload();
@@ -153,12 +184,85 @@ fs.mkdirSync(shots, {recursive: true});
     await page.locator('[data-version-project-link="virtio"]').click();
     assert.equal(await page.locator('[data-version-project]').inputValue(), 'virtio');
     await page.locator('[data-version-project]').selectOption('');
+    await assertAvailableYears();
     assert.match(await page.locator('[data-version-count]').textContent(), /个功能版本 · \d+ 份规范文档/);
+
+    // Latest links and the project selector share the same six-project order.
+    assert.deepEqual(await page.locator('.version-latest [data-version-jump] strong').allTextContents(),
+      ['QEMU', 'KVM', 'Libvirt', 'Virtio', 'DPDK', 'SPDK']);
+    assert.deepEqual(await page.locator('[data-version-project] option').evaluateAll(
+      options => options.map(option => option.value)), ['', 'qemu', 'kvm', 'libvirt', 'virtio', 'dpdk', 'spdk']);
+    assert.equal(await page.locator('[data-version-protocol]').count(), 0);
+
+    // Themes apply to the three curated projects and the cross-project view.
+    for (const project of ['all', 'qemu', 'kvm', 'libvirt']) {
+      await go(`?project=${project}&topic=migration`);
+      assert(await page.locator('label[for="version-topic"]').isVisible());
+      assert.equal(await page.locator('[data-version-topic]').inputValue(), 'migration');
+      await assertVisible('migration', project === 'all' ? '' : project);
+    }
+    for (const project of ['virtio', 'dpdk', 'spdk']) {
+      for (const viaUrl of [false, true]) {
+        if (viaUrl) await go(`?project=${project}&year=2026&topic=migration`);
+        else {
+          await go('?project=qemu&year=2025&topic=migration');
+          await page.locator('[data-version-project]').selectOption(project);
+        }
+        assert(await page.locator('label[for="version-topic"]').isHidden());
+        assert.equal(await page.locator('[data-version-topic]').inputValue(), '');
+        assert(!new URL(page.url()).searchParams.has('topic'));
+        assert.equal(await page.locator('[data-version-topic-description]:visible').count(), 0);
+        const rows = await visible().evaluateAll(items => items.map(item => ({...item.dataset})));
+        assert(rows.length > 0 && rows.every(row => row.project === project));
+        await assertAvailableYears();
+        await page.reload();
+        assert(await page.locator('label[for="version-topic"]').isHidden());
+        assert(await visible().count() > 0);
+      }
+      await page.locator('[data-version-project]').selectOption('qemu');
+      assert(await page.locator('label[for="version-topic"]').isVisible());
+      assert.equal(await page.locator('[data-version-topic]').inputValue(), '');
+    }
+
+    // Changing project preserves supported years and drops unsupported ones.
+    await go('?project=qemu&year=2025&view=detailed');
+    await page.locator('[data-version-project]').selectOption('virtio');
+    assert.equal(await page.locator('[data-version-year]').inputValue(), '');
+    assert(!new URL(page.url()).searchParams.has('year'));
+    assert.equal(await visible().count(), specCount);
+    await assertAvailableYears();
+    await go('?project=qemu&year=2023');
+    await page.locator('[data-version-project]').selectOption('virtio');
+    assert.equal(await page.locator('[data-version-year]').inputValue(), '2023');
+    assert.equal(await visible().count(), 1);
+    await assertAvailableYears();
+    await go('?project=virtio&year=2025');
+    assert.equal(await page.locator('[data-version-year]').inputValue(), '');
+    assert.equal(await visible().count(), specCount);
+    await assertAvailableYears();
+
+    // Backend frameworks retain their software release timelines.
+    for (const project of ['dpdk', 'spdk']) {
+      await go(`?project=${project}&year=2026&view=detailed`);
+      const rows = await visible().evaluateAll(items => items.map(item => ({...item.dataset})));
+      assert(rows.length >= 2);
+      assert(rows.every(row => row.project === project && row.kind === 'feature'));
+      await assertAvailableYears();
+      assert(await page.locator('label[for="version-year"]').isVisible());
+    }
+    // Old reference links fall back to the normal browser without an empty panel.
+    await go('?project=vhost-user#protocol-vhost-user');
+    assert.equal(await page.locator('[data-version-project]').inputValue(), 'qemu');
+    assert(await visible().count() > 0);
+    await page.locator('[data-version-jump][href^="#release-dpdk-"]').click();
+    assert.equal(await page.locator('[data-version-project]').inputValue(), 'dpdk');
+    assert(await page.locator('.version-view').isVisible());
 
     for (const width of [320, 375, 390, 768, 1366]) {
       await page.setViewportSize({width, height: 900});
       for (const topic of ['migration', 'vfio', 'protocol']) {
         await go(topic === 'protocol' ? '?project=virtio&view=detailed' : `?project=all&topic=${topic}&view=detailed`);
+        await assertAvailableYears();
         const dimensions = await page.evaluate(() => [innerWidth, document.documentElement.scrollWidth]);
         assert.equal(dimensions[0], dimensions[1], `horizontal overflow in ${topic} at ${width}px`);
         if (topic === 'protocol') {
@@ -176,6 +280,11 @@ fs.mkdirSync(shots, {recursive: true});
           await page.screenshot({path: path.join(shots, `virtio-versions-${width}.png`)});
         } else await assertVisible(topic);
       }
+      await go('?project=dpdk&topic=migration&view=detailed');
+      assert(await page.locator('label[for="version-topic"]').isHidden());
+      assert(await visible().count() > 0);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
+      await page.screenshot({path: path.join(shots, `dpdk-versions-${width}.png`)});
     }
     assert.deepEqual(errors, []);
     console.log('Version filters, pagination, deep links, empty states and five viewport widths passed.');

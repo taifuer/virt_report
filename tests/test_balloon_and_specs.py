@@ -85,7 +85,8 @@ def test_protocol_versions_share_project_browser_without_becoming_software_relea
     page = render.render_versions_html(config, content)
     document = versions.Document(page).root
     selector = next(node for node in document.find("select") if node.attrs.get("id") == "version-project")
-    assert [node.attrs["value"] for node in selector.find("option")] == ["", "qemu", "kvm", "libvirt", "virtio"]
+    assert [node.attrs["value"] for node in selector.find("option")] == [
+        "", "qemu", "kvm", "libvirt", "virtio", "dpdk", "spdk"]
     records = [node for node in document.find("li") if node.attrs.get("data-project") == "virtio"]
     assert len(records) == len(content["specifications"])
     assert all(node.attrs["data-kind"] == "specification" for node in records)
@@ -111,7 +112,7 @@ def test_specification_details_have_reviewed_notes_and_inline_document_links(tmp
         actions = next(node for node in record.find("div")
                        if node.attrs.get("class") == "version-actions")
         assert [node.attrs["href"] for node in actions.find("a")] == [
-            "https://github.com/oasis-tcs/virtio-admin/blob/master/charter.html"
+            spec.get("history_url", "https://github.com/oasis-tcs/virtio-admin/blob/master/charter.html")
             if spec["stage"] == "Legacy" else spec["source_url"],
             spec["source_url"].replace(".html", ".pdf")]
         detail = next(node for node in record.find("div")

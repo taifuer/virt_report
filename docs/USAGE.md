@@ -123,7 +123,7 @@ cp .env.example .env
 
 TCG 交互跟踪翻译块的生成、命中、跳转链接与代码改写后的失效；与 KVM 文章对照 CPU 执行路径。公共 Mermaid 图默认不超过原始尺寸，长图等比缩小；细节可在全屏查看器中缩放。
 
-专题与篇数以 `virt_report/content/mechanisms.json` 的已发布目录为准，旧链接跳转页不计入。内容覆盖 CPU 模型与迁移兼容性、嵌套 VMX、vCPU 热插拔、NUMA 放置、Libvirt 迁移协调、VFIO 设备迁移、virtio-net 接收与 NAPI、Packed virtqueue、vhost-vDPA、IOMMU 与 IOMMUFD、vIOMMU、virtio-gpu、virtio-balloon，以及外部快照与在线块操作；GPU 演示对照整卡直通、历史 GVT-g mdev、SR-IOV VF 直通及 SR-IOV + mdev 组合。
+专题与篇数以 `virt_report/content/mechanisms.json` 的已发布目录为准，旧链接跳转页不计入。内容覆盖 CPU 模型与迁移兼容性、嵌套 VMX、vCPU 热插拔、NUMA 放置、Libvirt 迁移协调、VFIO 设备迁移、virtio-net 接收与 NAPI、Split / Packed virtqueue、vhost-vDPA、IOMMU 与 IOMMUFD、vIOMMU、virtio-gpu、virtio-balloon，以及外部快照与在线块操作；GPU 演示对照整卡直通、历史 GVT-g mdev、SR-IOV VF 直通及 SR-IOV + mdev 组合。
 
 文章页脚显示元数据的 `reviewed_on`，表示针对文中源码、规范或论文依据的技术复核日期。仅调整排版、措辞、搜索索引或导出快照时，不自动刷新该日期；首次发布与产品更新记录应从实际 Git 历史核验，不能用技术复核日期替代。新增实验须说明执行位置、前提、观察口径和恢复方法，区分“代码可运行”“接口已核验”与“虚拟机上已测量”。内存虚拟化文章中的首次触碰程序由测试编译运行；balloon 实验只自动检查命令与单位，不在测试中操作真实 VM。
 
@@ -333,9 +333,10 @@ KVM Forum 的会前预览独立保存在 `virt_report/content/kvm_forum_preview.
 .venv/bin/virt-report versions-refresh --no-fetch --update-bundled
 ```
 
-从关于页顶部“查看版本”进入版本时间线，主导航不增加“版本”项。
-默认精简视图按年展示 QEMU 的功能版本，不只保留整数大版本；可切换 KVM、Libvirt 或全部项目，并按年份筛选。
-“主题”依次提供设备直通 / VFIO、虚拟 I/O / virtio、热迁移筛选，可与项目、年份和详细视图分页组合。
+从主导航“版本”或关于页顶部“查看版本”进入版本时间线。
+默认精简视图按年展示 QEMU 的功能版本，不只保留整数大版本；项目顺序为 QEMU、KVM、Libvirt、Virtio、DPDK、SPDK，也可选择全部项目。
+年份仅列出当前项目及主题有记录的年份；切换筛选时，仍有记录的年份保留，无记录的年份自动回到“全部年份”。
+“主题”依次提供设备直通 / VFIO、虚拟 I/O / virtio、热迁移筛选，仅在 QEMU、KVM、Libvirt 和全部项目下显示，可与年份和详细视图分页组合。切换到 Virtio、DPDK 或 SPDK 时清空旧主题条件并隐藏控件及主题说明，旧 URL 中的不适用主题也会被清除。
 选择“全部项目”可跨项目查看技术演变，例如
 `versions.html?project=all&topic=vfio&view=detailed`。切换主题回到第一页；
 版本直达链接会清除阻挡该版本显示的筛选并展开对应年份。
@@ -346,6 +347,9 @@ KVM Forum 的会前预览独立保存在 `virt_report/content/kvm_forum_preview.
 10／20／30 条分页，数量按功能版本计。两种视图均不列出维护补丁及 RC，
 页面底部提供官方完整版本记录入口。KVM 按 Linux 版本标注；旧编号按各项目历史规则识别。
 已采集的维护版本仍保留在离线数据中，不因页面精简而删除。
+
+Virtio 单独按规范文档展示，从可核验的 0.8.7、0.9.5 草案到 OASIS 1.x；草案与委员会规范分别标注，不能将最早收录日期视为协议诞生日期。详细视图提供各版核心要点、原始文档与 PDF，规范版本与实现软件版本分开理解。
+DPDK、SPDK 按各自官方发布记录跟踪软件版本；vhost-user 不作为版本项目，其邮件采集与原理文章保持不变。
 
 报告归档、论文、专题、搜索与版本详细视图使用同一分页组件。
 改变筛选或每页数量回到第一页，翻页滚动到列表开头；URL 保留筛选和分页参数。
@@ -405,6 +409,6 @@ npm run test:browser
 npm run test:browser:full
 ```
 
-入口脚本自动选择本机端口、启动静态预览并在结束时关闭自己的服务。默认覆盖搜索、目录与更新记录、Virtio 版本筛选、磁盘/网络交互，以及 CPU、内存、中断、GPU 和启动演示；检查分页、URL 恢复、键盘操作、布局溢出与场景状态。`BROWSER_ARTIFACT_DIR` 可指定日志和截图目录（默认 `/tmp/virt-report-browser`）；搜索检查失败还保存 Playwright trace。已有 Python 环境可用 `VIRT_REPORT_PYTHON` 指定，Playwright 安装位置可用 `PLAYWRIGHT_MODULE` 指定。
+入口脚本自动选择本机端口、启动静态预览并在结束时关闭自己的服务。默认覆盖搜索、目录与更新记录、版本联动筛选、Split / Packed 队列对照、磁盘/网络交互，以及 CPU、内存、中断、GPU 和启动演示；检查分页、URL 恢复、键盘操作、布局溢出与场景状态。`BROWSER_ARTIFACT_DIR` 可指定日志和截图目录（默认 `/tmp/virt-report-browser`）；搜索检查失败还保存 Playwright trace。已有 Python 环境可用 `VIRT_REPORT_PYTHON` 指定，Playwright 安装位置可用 `PLAYWRIGHT_MODULE` 指定。
 
 GitHub Actions 在 push 和 pull request 时运行相同的模型与浏览器检查，截图、失败日志保留 7 天。这里的浏览器结果验证演示实现，不能替代 QEMU/KVM 实机测试。

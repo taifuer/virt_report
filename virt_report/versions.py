@@ -25,9 +25,16 @@ from virt_report.locking import process_lock
 
 log = logging.getLogger(__name__)
 CONTENT_DIR = Path(__file__).parent / "content"
-PROJECTS = {"qemu": "QEMU", "kvm": "KVM", "libvirt": "Libvirt"}
+PROJECTS = {"qemu": "QEMU", "kvm": "KVM", "libvirt": "Libvirt",
+            "dpdk": "DPDK", "spdk": "SPDK"}
 QEMU_ARCHIVE = "https://www.qemu.org/blog/category/releases/index.html"
 LIBVIRT_NEWS = "https://libvirt.org/news.html"
+DPDK_DOWNLOAD = "https://core.dpdk.org/download/"
+SPDK_BLOG = "https://spdk.io/blog/"
+LEGACY_SPECIFICATIONS = {
+    "0.8.7": ("2010-04-20", "https://ozlabs.org/~rusty/virtio-spec/old/virtio-spec-0.8.7.pdf"),
+    "0.9.5": ("2012-05-07", "https://ozlabs.org/~rusty/virtio-spec/virtio-0.9.5.pdf"),
+}
 KERNEL_MIRROR = "https://kernel.googlesource.com/pub/scm/"
 KERNEL_TAGS = KERNEL_MIRROR + "linux/kernel/git/stable/linux/+refs/tags?format=JSON"
 KERNEL_RELEASES = "https://www.kernel.org/releases.json"
@@ -163,6 +170,14 @@ def release_family(project: str, version: str) -> str | None:
             return "1.0"  # The original tag is v1.0, not v1.0.0.
         if len(parts) == 3:
             return version if parts[:2] < (0, 10) else f"{parts[0]}.{parts[1]}.0"
+    elif project == "dpdk":
+        if len(parts) == 2:
+            return version
+        if len(parts) == 3:
+            return ".".join(version.split(".")[:2]) + ".0"
+    elif project == "spdk":
+        if len(parts) in (2, 3) and parts[0] >= 16 and 1 <= parts[1] <= 12:
+            return ".".join(version.split(".")[:2])
     return None
 
 
@@ -236,6 +251,102 @@ def parse_qemu_archive(text: str) -> list[dict]:
     if not records:
         raise ValueError("QEMU 发布档案结构无法识别")
     return list(records.values())
+
+
+def parse_dpdk_releases(text: str) -> list[dict]:
+    """Read explicit release dates from the official download index."""
+    records = {}
+    for row in Document(text).root.find("tr"):
+        links = row.find("a")
+        if len(links) < 2:
+            continue
+        match = re.fullmatch(r"DPDK (\d+\.\d+(?:\.\d+)?)\s*(?:\(LTS\))?", links[0].text())
+        if not match:
+            continue
+        stamp = links[1].text().replace("Sept ", "Sep ")
+        for fmt in ("%Y %B %d", "%Y %b %d"):
+            try:
+                released_on = datetime.strptime(stamp, fmt).date().isoformat()
+                break
+            except ValueError:
+                continue
+        else:
+            raise ValueError(f"DPDK {match[1]} 发布日期无法识别")
+        url = urljoin(DPDK_DOWNLOAD, links[1].attrs.get("href", ""))
+        if urlsplit(url).hostname != "doc.dpdk.org":
+            raise ValueError("DPDK 版本记录缺少官方发布说明")
+        records[match[1]] = _record("dpdk", match[1], released_on, url,
+                                   date_source="release_index")
+    if not records:
+        raise ValueError("DPDK 发布索引未返回正式版本")
+    return list(records.values())
+
+
+def parse_spdk_releases(text: str) -> list[dict]:
+    """Use dated release posts, excluding roadmaps, RCs and performance reports."""
+    records = {}
+    for section in Document(text).root.find("div"):
+        if "blog-section" not in section.attrs.get("class", "").split():
+            continue
+        links = section.find("a")
+        if not links:
+            continue
+        title = links[0].text()
+        match = re.match(r"SPDK v(\d{2}\.\d{2}(?:\.\d+)?)(?=:|\s|$)", title)
+        url = urljoin(SPDK_BLOG, links[0].attrs.get("href", ""))
+        stamp = re.search(r"/release/(\d{4})/(\d{2})/(\d{2})/", url)
+        if (not match or not stamp or urlsplit(url).hostname != "spdk.io"
+                or re.search(r"\brc\d|candidate|preview", title, re.I)):
+            continue
+        published = "-".join(stamp.groups())
+        authors = [node for node in section.find("div")
+                   if "blog-author" in node.attrs.get("class", "").split()]
+        # A dated path and the visible publication date must agree.
+        if not authors or datetime.strptime(authors[0].text().split("•")[0].strip(),
+                                             "%b %d, %Y").date().isoformat() != published:
+            raise ValueError(f"SPDK {match[1]} 公告日期不一致")
+        subject = title.partition(":")[2].strip()
+        records[match[1]] = _record("spdk", match[1], published, url,
+                                   highlights=[subject] if subject else [])
+    if not records:
+        raise ValueError("SPDK 发布索引未返回正式版本")
+    return list(records.values())
+
+
+def fetch_dpdk_releases(cache: SourceCache, existing: dict[str, dict],
+                        since_year: int) -> list[dict]:
+    """Keep LTS base releases when the index advances to maintenance releases."""
+    records = {row["version"]: row for row in parse_dpdk_releases(cache.get(DPDK_DOWNLOAD))}
+    missing = {release_family("dpdk", version) for version, row in records.items()
+               if row["kind"] == "maintenance" and int(row["released_on"][:4]) >= since_year}
+    batch = ReleaseBatch()
+    for version in sorted(missing - records.keys() - existing.keys()):
+        tag_name = "v" + version.removesuffix(".0")
+        url = f"https://github.com/DPDK/dpdk/releases/tag/{tag_name}"
+        try:
+            records[version] = parse_dpdk_tag(cache.get(url, immutable=True), version)
+        except Exception as exc:
+            batch.failed_versions.append(version)
+            log.warning("DPDK %s 功能版本日期暂未核实，保留已有记录: %s", version, exc)
+    batch.extend(records.values())
+    return batch
+
+
+def parse_dpdk_tag(html: str, version: str) -> dict:
+    """Use the official mirror's annotated-tag timestamp, not a commit date."""
+    tag = version.removesuffix(".0")
+    root = Document(html).root
+    times = root.find("relative-time")
+    if (not any(node.text() == f"v{tag}" for node in root.find("h1"))
+            or not any(node.text() == f"dpdk-{tag}" for node in root.find("pre"))
+            or "tagged this" not in root.text() or len(times) != 1):
+        raise ValueError("DPDK 发布标签与版本不一致或日期不明确")
+    stamp = datetime.fromisoformat(times[0].attrs["datetime"].replace("Z", "+00:00"))
+    if stamp.tzinfo is None:
+        raise ValueError("DPDK 发布标签日期缺少时区")
+    return _record("dpdk", version, stamp.date().isoformat(),
+                   f"https://github.com/DPDK/dpdk/releases/tag/v{tag}",
+                   date_source="release_tag", released_at=stamp.astimezone(timezone.utc).isoformat())
 
 
 def parse_qemu_notes(text: str) -> dict:
@@ -492,6 +603,12 @@ def fetch_kernel_fallback(cache: SourceCache, existing: dict[str, dict], today: 
 
 def fetch_project(project: str, cache: SourceCache, since_year: int,
                   today: date, existing: dict[str, dict]) -> list[dict]:
+    if project == "dpdk":
+        return fetch_dpdk_releases(cache, existing, since_year)
+    if project == "spdk":
+        return parse_spdk_releases(cache.get(SPDK_BLOG))
+    if project not in PROJECTS:
+        raise ValueError(f"不支持的版本来源：{project}")
     if project in GITLAB_REPOS:
         tags = fetch_gitlab_tags(project, cache)
         records = {row["version"]: row for tag in tags
@@ -626,7 +743,9 @@ def load_content(config: Config, *, today: date | None = None) -> dict:
             "years": sorted({row["year"] for row in releases}, reverse=True),
             "default_year": str(today.year),
             "checked_at": local.get("checked_at") or bundled.get("checked_at", ""),
-            "sources": {**bundled.get("sources", {}), **local.get("sources", {})}}
+            "sources": {key: value for key, value in {
+                **bundled.get("sources", {}), **local.get("sources", {}),
+            }.items() if key != "vhost-user"}}
 
 
 def export_public_snapshot(config: Config, *, today: date | None = None) -> Path:
@@ -720,11 +839,12 @@ def _valid_specification(row: dict, today: date) -> bool:
     try:
         if row["stage"] == "Legacy":
             # Cover date and DRAFT status verified against the author's PDF.
-            return (row["version"] == "0.9.5"
+            origin = LEGACY_SPECIFICATIONS.get(row["version"])
+            return (origin is not None
                     and row["status"] == "早期规范草案"
-                    and row["released_on"] == "2012-05-07"
+                    and row["released_on"] == origin[0]
                     and date.fromisoformat(row["released_on"]) <= today
-                    and row["source_url"] == "https://ozlabs.org/~rusty/virtio-spec/virtio-0.9.5.pdf")
+                    and row["source_url"] == origin[1])
         return (bool(re.fullmatch(r"1\.\d+", row["version"]))
                 and bool(re.fullmatch(r"CS(?:D)?\d{2}", row["stage"]))
                 and row["status"] == ("委员会规范草案" if row["stage"].startswith("CSD") else "委员会规范")

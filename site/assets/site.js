@@ -262,11 +262,24 @@ document.querySelectorAll('[data-version-browser]').forEach(root=>{
   const expandYears=()=>groups.forEach(group=>group.querySelector('[data-version-disclosure]').open=true);
   groups.forEach(group=>group.querySelector('summary').addEventListener('click',event=>{if(view==='detailed')event.preventDefault()}));
   const matchesTopic=item=>!topic.value||(item.dataset.topics||'').split(',').includes(topic.value);
-  const matchingItems=()=>items.filter(item=>(!project.value||item.dataset.project===project.value)&&(!year.value||item.dataset.year===year.value)&&matchesTopic(item));
+  const matchesScope=item=>(!project.value||item.dataset.project===project.value)&&matchesTopic(item);
+  // Derive years from all matching records, independently of pagination and
+  // the selected year. Remove unavailable options instead of only hiding them.
+  const syncYears=()=>{
+    const selected=year.value;
+    const values=['',...[...new Set(items.filter(matchesScope).map(item=>item.dataset.year))].sort().reverse()];
+    if(values.length!==year.options.length||values.some((value,index)=>year.options[index].value!==value)){
+      year.replaceChildren(...values.map(value=>new Option(value||'全部年份',value)));
+    }
+    year.value=values.includes(selected)?selected:'';
+  };
+  const matchingItems=()=>items.filter(item=>matchesScope(item)&&(!year.value||item.dataset.year===year.value));
   const draw=(hash)=>{
     const protocolOnly=project.value==='virtio';
-    if(protocolOnly)topic.value='';
-    topic.closest('label').hidden=protocolOnly;
+    const topicEnabled=!project.value||['qemu','kvm','libvirt'].includes(project.value);
+    if(!topicEnabled)topic.value='';
+    topic.closest('label').hidden=!topicEnabled;
+    syncYears();
     const matching=matchingItems(),pages=Math.max(1,Math.ceil(matching.length/size));
     const specificationCount=matching.filter(item=>item.dataset.kind==='specification').length;
     page=view==='compact'?0:Math.max(0,Math.min(page,pages-1));

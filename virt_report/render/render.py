@@ -15,6 +15,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from virt_report.config import Config
 from virt_report.report_links import prepare_report_links
+from virt_report.report_projects import reconcile_overview
 from virt_report.render.calendar import build_archive_index, build_archive_views
 from virt_report.render.article_outline import prepare_outline
 from virt_report.render.article_markdown import render_article_markdown
@@ -243,7 +244,9 @@ def render_report_html(config: Config, content: dict, nav: dict | None = None) -
     """将报告渲染为 HTML 字符串，供静态导出和后端路由共用。"""
     env = _env()
     tpl = env.get_template("report.html")
-    prepared = prepare_report_links(content)
+    prepared = prepare_report_links({**content, "overview": reconcile_overview(
+        content.get("overview", []), content.get("sections", []), content.get("top_threads"),
+    )})
     stats = dict(content.get("stats") or {})
     source_rows = report_builder.project_source_rows(stats)
     stats["by_project_source"] = source_rows
@@ -352,6 +355,12 @@ def render_versions_html(config: Config, content: dict) -> str:
     prepared["projects"] = dict(content["projects"])
     if specifications:
         prepared["projects"]["virtio"] = "Virtio"
+    project_order = {key: index for index, key in enumerate(
+        ("qemu", "kvm", "libvirt", "virtio", "dpdk", "spdk"))}
+    prepared["projects"] = dict(sorted(
+        prepared["projects"].items(),
+        key=lambda pair: project_order.get(pair[0], len(project_order)),
+    ))
     releases = software + specifications
     releases.sort(key=lambda row: (row["released_on"], row["project"]), reverse=True)
     prepared["releases"] = releases
@@ -372,11 +381,10 @@ def render_versions_html(config: Config, content: dict) -> str:
     ]
     prepared["latest"] = [next((row for row in releases
                                  if row["project"] == project
-                                 and row["kind"] == "feature"), None)
-                          for project in content["projects"]]
-    prepared["latest_specification"] = next((row for row in releases
-                                              if row["kind"] == "specification"
-                                              and re.fullmatch(r"CS\d{2}", row["stage"])), None)
+                                 and (row["kind"] == "feature" or (
+                                     row["kind"] == "specification"
+                                     and re.fullmatch(r"CS\d{2}", row["stage"])))), None)
+                          for project in prepared["projects"]]
     return _env().get_template("versions.html").render(
         content=prepared, root="", site_name=config.name,
     )

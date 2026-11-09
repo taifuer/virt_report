@@ -4,19 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>virtio 设备初始化与特性协商 - virt-report</title>
-  <meta name="description" content="从 PCI 能力、状态握手到队列地址配置，跟踪一个 4 描述符队列如何开始工作，并区分失败、设备复位与队列复位。">
+  <title>Virtio：协议演进、特性协商与设备初始化 - virt-report</title>
+  <meta name="description" content="从早期 Legacy 到 Modern 接口，解释经典规范的演进，并沿 PCI 能力、状态握手与队列配置跟踪设备开始工作的完整路径。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=0a7fa7bd1d24">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0a7fa7bd1d24">
-  <link rel="stylesheet" href="../assets/site.css?v=0a7fa7bd1d24">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=051a836f5945">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=051a836f5945">
+  <link rel="shortcut icon" href="../favicon.ico?v=f7cd8e469920">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=f7cd8e469920">
+  <link rel="stylesheet" href="../assets/site.css?v=f7cd8e469920">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=2ac35b001a62">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=2ac35b001a62">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=0a7fa7bd1d24" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=f7cd8e469920" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -44,25 +44,26 @@
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
     <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="device-virtualization.html">设备与 I/O 虚拟化</a></div>
-    <h1>virtio 设备初始化与特性协商</h1>
+    <h1>Virtio：协议演进、特性协商与设备初始化</h1>
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、virtio 设备初始化的阶段与约束</a></li><li><a href="#transport">二、通过 PCI 能力找到控制与通知区域</a></li><li><a href="#negotiation">三、先选择特性，再让设备确认</a><ol><li><a href="#negotiation-part-1">1. 特性选择包含依赖，不能只取交集</a></li><li><a href="#negotiation-part-2">2. 状态位表示已经完成的步骤</a></li></ol></li><li><a href="#queue-layout">四、把 4 个描述符的队列放入客户机内存</a></li><li><a href="#first-request">五、启用队列，再发出第一个读取请求</a></li><li><a href="#failure-reset">六、协商失败处理与设备复位</a><ol><li><a href="#failure-reset-part-1">1. 设备复位重新开始整轮协商</a></li><li><a href="#failure-reset-part-2">2. 队列复位是独立的可选功能</a></li></ol></li><li><a href="#implementation">七、初始化路径的源码调用链</a></li><li><a href="#evolution">八、从固定布局到明确协商与局部恢复</a></li><li><a href="#sources">九、参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、virtio 设备初始化的阶段与约束</a></li><li><a href="#transport">二、通过 PCI 能力找到控制与通知区域</a></li><li><a href="#negotiation">三、先选择特性，再让设备确认</a><ol><li><a href="#negotiation-part-1">1. 特性选择包含依赖，不能只取交集</a></li><li><a href="#negotiation-part-2">2. 状态位表示已经完成的步骤</a></li></ol></li><li><a href="#queue-layout">四、把 4 个描述符的队列放入客户机内存</a></li><li><a href="#first-request">五、启用队列，再发出第一个读取请求</a></li><li><a href="#failure-reset">六、协商失败处理与设备复位</a><ol><li><a href="#failure-reset-part-1">1. 设备复位重新开始整轮协商</a></li><li><a href="#failure-reset-part-2">2. 队列复位是独立的可选功能</a></li></ol></li><li><a href="#implementation">七、初始化路径的源码调用链</a></li><li><a href="#evolution">八、从早期草案到 1.4：接口与队列逐步演进</a></li><li><a href="#sources">九、参考资料</a></li></ol></nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>virtio 设备初始化的阶段与约束</h2>
   <p>客户机驱动与 virtio 设备通过共享内存交接请求。第一次 I/O 前，驱动先找到设备的控制区域，与设备选定共同支持的功能，再分配队列并公布地址。设备确认这些约定后，才能按相同格式读取描述符、访问缓冲区并归还结果。</p>
   <p>本文跟踪现代 virtio-pci 接口上的一个 virtio-blk 队列。例子采用 4 个描述符、split 格式，普通 RAM，无客户机 IOMMU 地址转换；队列地址以 GPA 表示。开启平台访问约束时，需要使用相应 DMA 映射，不能沿用这里“地址就是 GPA”的假设。协议依据 VIRTIO 1.2，实例由 QEMU 与 Linux 驱动实现。</p>
   <p>这次初始化依次经过：发现设备 → 复位并选择特性 → 确认共同格式 → 配置队列内存 → 允许处理 → 发布读取请求。特性确认决定队列的解释方式；队列地址和设备状态决定何时可以开始访问。阅读数据路径时，可先在这里确认队列何时可用，再进入<a href="virtio-blk-read.html">磁盘 I/O 演示</a>或<a href="network-io.html">网络 I/O 演示</a>观察请求的交接。</p>
+  <p>Virtio 从早期虚拟设备接口逐步发展为可扩展的设备规范。下文先沿现代设备的初始化建立一个完整例子，再在<a href="#evolution">协议演进</a>中对照 0.8.7、0.9.5 与 1.0–1.4 的变化。队列运行期间的通用规则集中在<a href="packed-virtqueue.html">Split 与 Packed 的请求与完成</a>，这里侧重双方如何开始使用同一套规则。</p>
 <p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p><p class="mechanism-baselines">规范依据：<a href="https://docs.oasis-open.org/virtio/virtio/v1.2/cs01/virtio-v1.2-cs01.html" target="_blank" rel="noopener noreferrer">VIRTIO 1.2 CS01</a>。<a href="../versions.html#virtio-specifications">规范版本记录</a></p>  <figure class="mechanism-diagram" data-diagram="virtio-init-handshake" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
     <span data-mechanism-title>从复位到可以处理请求</span>
     <button type="button" data-mechanism-expand aria-label="放大查看从复位到可以处理请求" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="从复位到可以处理请求">
-    <img src="../assets/virtio-init-handshake.svg?v=051a836f5945" alt="FEATURES_OK 是双方确认特性的边界；queue_enable 配置单队列，DRIVER_OK 放行整个设备。本例只在 DRIVER_OK 之后发布首次通知。" loading="lazy">
+    <img src="../assets/virtio-init-handshake.svg?v=2ac35b001a62" alt="FEATURES_OK 是双方确认特性的边界；queue_enable 配置单队列，DRIVER_OK 放行整个设备。本例只在 DRIVER_OK 之后发布首次通知。" loading="lazy">
   </div>
-  <figcaption>FEATURES_OK 是双方确认特性的边界；queue_enable 配置单队列，DRIVER_OK 放行整个设备。本例只在 DRIVER_OK 之后发布首次通知。 <a href="../assets/virtio-init-handshake.svg?v=051a836f5945" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>FEATURES_OK 是双方确认特性的边界；queue_enable 配置单队列，DRIVER_OK 放行整个设备。本例只在 DRIVER_OK 之后发布首次通知。 <a href="../assets/virtio-init-handshake.svg?v=2ac35b001a62" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 现代 virtio 设备初始化握手
     accDescr: 驱动复位设备，依次设置 ACKNOWLEDGE 和 DRIVER，选择特性后设置 FEATURES_OK 并读回确认。接受后配置并启用队列，最后设置 DRIVER_OK 才可通知设备处理请求；拒绝特性时停止初始化。
@@ -131,9 +132,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看控制寄存器指向三个独立的 RAM 区域" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="控制寄存器指向三个独立的 RAM 区域">
-    <img src="../assets/virtio-init-queue-layout.svg?v=051a836f5945" alt="描述符表保存缓冲区地址、长度和链关系；available 发布链头，used 归还完成。它们位于客户机 RAM，门铃则位于 PCI 通知区域。" loading="lazy">
+    <img src="../assets/virtio-init-queue-layout.svg?v=2ac35b001a62" alt="描述符表保存缓冲区地址、长度和链关系；available 发布链头，used 归还完成。它们位于客户机 RAM，门铃则位于 PCI 通知区域。" loading="lazy">
   </div>
-  <figcaption>描述符表保存缓冲区地址、长度和链关系；available 发布链头，used 归还完成。它们位于客户机 RAM，门铃则位于 PCI 通知区域。 <a href="../assets/virtio-init-queue-layout.svg?v=051a836f5945" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>描述符表保存缓冲区地址、长度和链关系；available 发布链头，used 归还完成。它们位于客户机 RAM，门铃则位于 PCI 通知区域。 <a href="../assets/virtio-init-queue-layout.svg?v=2ac35b001a62" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: N 等于 4 的 split 队列地址与结构
     accDescr: 公共配置的三个地址指向客户机 RAM 中的描述符表、available 和 used。描述符零到二组成读取请求，第四项空闲；available 发布链头零，used 归还 id 零及写入长度。门铃位于 PCI BAR，和这些 RAM 区域分开。
@@ -167,7 +168,7 @@ avail.ring[0] = 0
 按发布顺序完成内存写入，再令 avail.idx: 0 → 1
 成功完成后：used.ring[0] = {id: 0, len: 4097}, used.idx: 0 → 1</code></pre>
   <p>通知地址由 <code>BAR 基址 + notify capability.offset + queue_notify_off × notify_off_multiplier</code> 得到，queue_notify_off 不是字节偏移。本例未启用通知扩展，驱动向该地址写 16 位队列号 0；数据仍留在描述符指向的 RAM。发布所需的内存屏障不能被门铃写入替代，是否需要通知还应遵守队列抑制规则。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_pci_modern_dev.c#L699-L744">通知区域计算</a></p>
-  <p>设备检查 available，读取请求并完成块操作，再写数据、状态和 used。初始化至此才接入日常数据路径。具体处理见<a href="qemu-virtio-blk.html">virtio-blk 请求与完成</a>，环槽回绕可在<a href="qemu-network-tx.html#virtqueue">virtqueue 交互图</a>中逐步观察。</p>
+  <p>设备检查 available，读取请求并完成块操作，再写数据、状态和 used。初始化至此才接入日常数据路径。具体处理见<a href="qemu-virtio-blk.html">virtio-blk 请求与完成</a>，两种布局的环槽复用可在<a href="packed-virtqueue.html#interactive">Split / Packed 对照演示</a>中逐步观察。</p>
 </section>
 <section id="failure-reset" class="mechanism-section">
   <h2><span class="mechanism-heading-number">六、</span>协商失败处理与设备复位</h2>
@@ -190,9 +191,20 @@ avail.ring[0] = 0
   <p>Linux 中设备驱动的 probe 可以自行调用 virtio_device_ready，核心层也会在未设置时补上 DRIVER_OK。阅读时应按状态顺序追踪，不能假定所有设备都在同一个函数内完成初始化。</p>
 </section>
 <section id="evolution" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">八、</span>从固定布局到明确协商与局部恢复</h2>
-  <p>早期 legacy 接口缺少 FEATURES_OK 的确认边界，特性选择与首次使用常交织在一起；现代接口用能力区域描述位置，用状态握手确认布局，再放行数据处理。代价是驱动要增加校验与失败清理，但双方可以安全拒绝不兼容的组合。</p>
-  <p>split 队列将描述符、可用项和完成项分开，生产者与消费者的角色清楚；packed 将可用和完成状态放回描述符环，减少部分元数据访问，需额外处理 wrap 状态和事件结构。RING_RESET 又把恢复范围缩小到单队列，但要求双方同步停止旧访问。新增能力带来选择空间，也增加配置组合和状态机的验证成本。</p>
+  <h2><span class="mechanism-heading-number">八、</span>从早期草案到 1.4：接口与队列逐步演进</h2>
+  <p>2007 年，Rusty Russell 已在公开邮件中讨论统一的 virtio 驱动接口。不同虚拟化实现如果各自定义网络、磁盘前后端协议，客户机就要维护多套驱动；共享队列与统一设备约定让驱动和后端可以分别演进。<a href="https://lwn.net/Articles/237693/">2007 年 Virtio draft II 原始邮件</a>记录了这段早期设计，早于这里收录的编号规范。</p>
+  <table><thead><tr><th scope="col">经典文档</th><th scope="col">背景与变化</th><th scope="col">对理解现有设备的意义</th></tr></thead><tbody>
+    <tr><td><a href="https://ozlabs.org/~rusty/virtio-spec/old/virtio-spec-0.8.7.pdf">0.8.7 草案，2010</a></td><td>将早期 virtio PCI 接口、共享环和设备约定整理成文档</td><td>可用于追溯 Legacy 设计。封面有可核验日期，但不能据此称它为第一版</td></tr>
+    <tr><td><a href="https://ozlabs.org/~rusty/virtio-spec/virtio-0.9.5.pdf">0.9.5 草案，2012</a></td><td>OASIS 标准化前的经典接口基线；后续规范保留其 Legacy 兼容说明</td><td>旧 PCI 寄存器布局、32 位特性空间及环地址约定，与 Modern 初始化要分开理解</td></tr>
+    <tr><td><a href="https://docs.oasis-open.org/virtio/virtio/v1.0/cs04/virtio-v1.0-cs04.html">1.0，Modern 接口</a></td><td>明确字节序、扩展特性空间，引入 VERSION_1、FEATURES_OK 与现代 PCI 能力区域</td><td>本文的“协商后确认，再放行运行”建立在这套接口上；transitional 设备兼容两种接口</td></tr>
+    <tr><td><a href="https://docs.oasis-open.org/virtio/virtio/v1.1/virtio-v1.1.html">1.1，2019</a></td><td>引入可选 Packed virtqueue，在元数据布局和缓存访问之间作新取舍</td><td>需协商 RING_PACKED。Modern 设备继续使用 Split 完全符合规范</td></tr>
+    <tr><td><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">1.2，2022</a></td><td>加入可选单队列复位等机制，缩小队列恢复时影响的范围</td><td>RING_RESET 需两端支持；停止旧访问、回收和重新启用仍有严格顺序</td></tr>
+    <tr><td><a href="https://docs.oasis-open.org/virtio/virtio/v1.3/csd01/virtio-v1.3-csd01.html">1.3 CSD01，2023</a></td><td>委员会规范草案中加入 administration virtqueue 等管理机制</td><td>管理命令与常规 I/O 队列的职责分开；草案阶段按原始文档标注</td></tr>
+    <tr><td><a href="https://docs.oasis-open.org/virtio/virtio/v1.4/cs01/virtio-v1.4-cs01.html">1.4 CS01，2026</a></td><td>扩展设备状态管理与 device parts，加入 SUSPEND 等约定，并扩充设备类型</td><td>状态交接逐步拥有协议级表达；能否使用仍取决于驱动、前端和后端共同实现</td></tr>
+  </tbody></table>
+  <p>这些修订解决的是不同阶段的需求：先统一设备接口，再明确兼容边界，随后改善队列效率、恢复与管理能力。版本号标识一份规范文档，运行时启用的是协商后的特性集合。看到“QEMU 支持 Virtio”或 <code>VIRTIO_F_VERSION_1</code>，都还不足以判断某项 1.4 新能力是否可用；应继续检查设备类型、驱动和实际后端的特性实现。</p>
+  <p>Legacy、Modern 和 Split、Packed 是两个维度。Modern 可以使用 Split；Packed 需要额外协商。<code>virtio-win 0.1.xxx</code> 又属于 Windows 驱动包编号，不对应 0.9.5 或 1.x 规范号。目前缺乏可核验的全行业部署比例，不能认定某个小版本“用得最多”。选型时更实用的记录是接口模式、队列格式、已协商特性以及 QEMU/Linux/后端版本。</p>
+  <p>完整文档日期、批准阶段与 PDF 见<a href="../versions.html?project=virtio">Virtio 版本记录</a>。本文源码仍固定在所列 QEMU/Linux 基线；新增规范发布后，不会自动改变前面初始化例子的技术前提。</p>
   <p>排查“设备可见却没有 I/O”，可依次核对特性选择及依赖、FEATURES_OK 读回、三个队列地址与大小、queue_enable、DRIVER_OK，最后检查 available 与门铃。初始化成功只表明接口约定成立，吞吐和延迟仍取决于队列深度、通知策略与实际后端。</p>
 </section>
 <section id="sources" class="mechanism-section">
@@ -206,11 +218,11 @@ avail.ring[0] = 0
 </section></div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#device-virtualization">设备与 I/O 虚拟化原理</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-10-19">2026-10-19</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-09">2026-11-09</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=0a7fa7bd1d24"></script>
-<script src="../assets/mechanism-viewer.js?v=051a836f5945" defer></script>
+  <script src="../assets/site.js?v=f7cd8e469920"></script>
+<script src="../assets/mechanism-viewer.js?v=2ac35b001a62" defer></script>
 </body>
 </html>

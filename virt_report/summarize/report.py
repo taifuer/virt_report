@@ -20,6 +20,7 @@ from virt_report.processing.architecture import (
 )
 from virt_report.processing.category import category_label, classify_change
 from virt_report.processing.topics import topic_links_for_item
+from virt_report.report_projects import REPORT_PROJECTS, project_of, reconcile_overview
 from . import billing, evidence as evidence_rules, llm_provider, periods, prompts
 
 log = logging.getLogger(__name__)
@@ -451,12 +452,7 @@ def _source_label(t: dict) -> str:
             "kvm": "KVM 邮件列表"}.get(proj, f"邮件列表 {proj}")
 
 
-_PROJECT_GROUPS = [
-    ("qemu", "QEMU", ("qemu-devel", "qemu", "vhost-user")),
-    ("kvm", "KVM", ("kvm",)),
-    ("libvirt", "Libvirt", ("libvir-list", "libvirt")),
-    ("virtio", "Virtio", ("virtio-dev", "virtio-comment")),
-]
+_PROJECT_GROUPS = REPORT_PROJECTS
 
 
 def _order_report_projects(content: dict) -> dict:
@@ -484,16 +480,12 @@ def _order_report_projects(content: dict) -> dict:
 
 def _project_of(t: dict) -> tuple[str, str]:
     """线程 -> (key, display_name)。"""
-    proj = t.get("project", "")
-    for key, name, members in _PROJECT_GROUPS:
-        if proj in members:
-            return key, name
-    return "qemu", "QEMU"
+    return project_of(t.get("project", ""))
 
 
 def _fallback(threads_data: list[dict], period: str, period_key: str,
               key_env: str | None) -> tuple[list[dict], list[dict]]:
-    """降级：按 QEMU/Libvirt/KVM 分组。返回 (overview, sections)。"""
+    """降级：按已配置的项目组汇总。返回 (overview, sections)。"""
     range_word = {"daily": "当日", "weekly": "本周", "monthly": "本月"}[period]
     env_hint = f"（未配置 {key_env}，降级模式）" if key_env else "(降级模式)"
     buckets: dict[str, list[dict]] = {key: [] for key, _, _ in _PROJECT_GROUPS}
@@ -539,13 +531,15 @@ def _sanitize(overview: list, sections: list,
             project = o.get("project", "") or ""
             ov_map[project.lower()] = {"project": project,
                                        "summary": o.get("summary", "") or ""}
+            if o.get("summary_source") == "items":
+                ov_map[project.lower()]["summary_source"] = "items"
     ov: list[dict] = []
     for _key, name, _members in _PROJECT_GROUPS:
         found = ov_map.get(name.lower())
         if (_key == "virtio" and not any(_project_of(t)[0] == "virtio" for t in (threads_data or []))
                 and not (threads_data is None and found)):
             continue
-        ov.append(found or {"project": name, "summary": "本期未观察到显著动态。"})
+        ov.append(found or {"project": name, "summary": ""})
 
     evidence = {t["ref"]: t for t in (threads_data or [])}
     if evidence:
@@ -604,11 +598,12 @@ def _sanitize(overview: list, sections: list,
                 focus_priority(item.get("architectures", [])),
                 int((item.get("ref") or "T999")[1:] or 999),
             ))
-        return ov, [
+        secs = [
             {"key": key, "name": name, "items": buckets[key]}
             for key, name, _members in _PROJECT_GROUPS
             if key != "virtio" or buckets[key]
         ]
+        return reconcile_overview(ov, secs, threads_data), secs
 
     secs: list[dict] = []
     for s in sections if isinstance(sections, list) else []:
@@ -641,7 +636,7 @@ def _sanitize(overview: list, sections: list,
             })
         secs.append({"key": s.get("key", "") or "", "name": s.get("name", "") or "",
                      "items": items})
-    return ov, secs
+    return reconcile_overview(ov, secs, threads_data), secs
 
 
 def _validation_diagnostic(item: dict, source: dict, error: str) -> dict:
@@ -1002,7 +997,7 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
                             "和条目数量限制，确保在输出上限内闭合整个 JSON 对象。"
                         )
                 text = provider.complete(
-                    attempt_user, system=prompts.system_prompt(period, period_key), model=model,
+                    attempt_user, system=prompts.system_prompt(period, period_key, threads_data), model=model,
                     max_tokens=max_tokens, json_mode=True,
                     thinking="enabled", reasoning_effort=REASONING_EFFORT[period],
                 )
@@ -1065,6 +1060,7 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
         headline = f"{period_key} 虚拟化社区活跃动态（模板摘要）"
     overview, sections = _sanitize(overview, sections, threads_data if parsed else None)
     sections = _limit_sections(sections, ITEM_LIMIT[period])
+    overview = reconcile_overview(overview, sections, threads_data)
     watchlist = _complete_watchlist(watchlist, sections)
     period_analysis = _sanitize_period_analysis(
         raw_period_analysis if not fallback else [], threads_data, period

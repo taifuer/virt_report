@@ -1,6 +1,10 @@
 """以证据引用为核心的周期报告提示词。"""
 from __future__ import annotations
 
+import json
+
+from virt_report.report_projects import REPORT_PROJECTS, project_of
+
 _RANGE = {"daily": "当天", "weekly": "本周", "monthly": "本月"}
 _PERIOD = {"daily": "日", "weekly": "周", "monthly": "月"}
 _ITEM_COUNT = {"daily": "20-30", "weekly": "18-27", "monthly": "24-36"}
@@ -64,7 +68,7 @@ _SYSTEM = """你是资深虚拟化内核与云平台技术编辑，熟悉 QEMU�
 3. patch series 视为一个事件；同一主题的版本迭代只保留最新或最有信息量的一项，避免补丁清单式罗列。
 4. 标题可做准确、克制的中文编辑，但不得扩大原意；技术名词、函数、设备和架构名保留英文。
 5. 优先级首先依据安全与数据损坏风险、技术影响、讨论质量和成熟度；影响相近时优先 x86/Arm 架构议题，不得只因架构标签压过更重要的变化。
-6. overview 要做跨条目归纳，不能只是标题拼接。无足够证据时明确写“本期未观察到显著动态”。
+6. overview 要做跨条目归纳，说明议题与当前阶段。每个有正文条目的项目必须有概览；有条目时不得写“未观察到显著动态”。未选入条目时只能说明未收录，不得推断上游没有活动；采集覆盖情况由系统另行呈现。
 7. 周期措辞必须与报告一致：日报只能写“当日/当天”，周报写“本周”，月报写“本月”，不得混用。
 8. 对 closed/已关闭事项，不得再写“待修复/需尽快修复”；只能说明其历史影响，并提示以原始 issue 的关闭结论为准。关闭不自动等于已修复。
 9. evidence 中 novelty=updated 表示该线程曾进入近期日报。必须结合 PREVIOUS_SUMMARY 与 LATEST 说明“这次新增了什么”，不得原样重复旧结论；novelty=new 才是首次出现。
@@ -76,23 +80,13 @@ _SYSTEM = """你是资深虚拟化内核与云平台技术编辑，熟悉 QEMU�
 只输出一个合法 JSON 对象，不要 Markdown 围栏或解释。JSON 结构示例：
 {
   "headline": "本期最值得关注的一句话判断",
-  "overview": [
-    {"project":"QEMU","summary":"1-2句趋势判断"},
-    {"project":"KVM","summary":"1-2句趋势判断"},
-    {"project":"Libvirt","summary":"1-2句趋势判断"}
-  ],
-{watchlist_schema}{period_analysis_schema}  "sections": [
-    {"key":"qemu","name":"QEMU","items":[
-      {"ref":"T001","title":"准确简洁的标题","summary":"改了什么及背景","impact":"对研发/用户的具体意义","tag":"子系统或架构","status":"讨论中/评审中/已应用/已合并/已关闭/新提交"}
-    ]},
-    {"key":"libvirt","name":"Libvirt","items":[]},
-    {"key":"kvm","name":"KVM","items":[]}
-  ]
+  "overview": {overview_schema},
+{watchlist_schema}{period_analysis_schema}  "sections": {sections_schema}
 }
 
 输出要求：
-- overview 固定包含 QEMU、KVM、Libvirt，顺序固定。
-- items 总数约 {item_count}；质量优先，证据不足可以更少。三个项目有有效输入时都要覆盖。
+- 本次输入的项目为：{project_names}。overview 与 sections 按此顺序呈现；其他项目不凭空补写。JSON 示例中的 ref 仅说明格式，实际必须引用输入证据。
+- items 总数约 {item_count}；质量优先，证据不足可以更少。有有效输入的项目都要覆盖，包括 Virtio 规范讨论。
 - summary 说明事实，impact 解释意义；二者不要重复，均控制在 80 个汉字以内。
 - 使用平实的技术表述，直接说明改动、原因和影响；避免“不是……而是……”式铺垫、反复设问及“赋能、颠覆、真正”等空泛强调。技术限制、适用条件和未验证结论仍须保留，不为简化措辞扩大结论。
 {period_analysis_requirement}
@@ -101,13 +95,25 @@ _SYSTEM = """你是资深虚拟化内核与云平台技术编辑，熟悉 QEMU�
 """
 
 
-def system_prompt(period: str, period_key: str) -> str:
+def system_prompt(period: str, period_key: str,
+                  threads_data: list[dict] | None = None) -> str:
     del period_key
+    present = ({project_of(card.get("project", ""))[0] for card in threads_data}
+               if threads_data is not None else {key for key, _name, _members in REPORT_PROJECTS})
+    groups = [(key, name) for key, name, _members in REPORT_PROJECTS if key in present]
+    overview = [{"project": name, "summary": "1-2句归纳议题与当前阶段"} for _key, name in groups]
+    sections = [{"key": key, "name": name, "items": [{
+        "ref": "输入中的ref", "title": "准确简洁的标题", "summary": "改了什么及背景",
+        "impact": "对研发/用户的具体意义", "tag": "子系统或架构", "status": "依据证据判断",
+    }]} for key, name in groups]
     return (_SYSTEM.replace("{range}", _RANGE[period])
             .replace("{period}", _PERIOD[period])
             .replace("{item_count}", _ITEM_COUNT[period])
             .replace("{watchlist_schema}", _WATCHLIST_SCHEMA[period])
             .replace("{period_analysis_schema}", _PERIOD_ANALYSIS_SCHEMA[period])
+            .replace("{overview_schema}", json.dumps(overview, ensure_ascii=False))
+            .replace("{sections_schema}", json.dumps(sections, ensure_ascii=False))
+            .replace("{project_names}", "、".join(name for _key, name in groups) or "无")
             .replace("{period_analysis_requirement}",
                      _PERIOD_ANALYSIS_REQUIREMENT[period]))
 

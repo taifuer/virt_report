@@ -7,16 +7,16 @@
   <title>virtio-blk 的请求处理与写入完成 - virt-report</title>
   <meta name="description" content="从一次 4 KiB 写入跟踪描述符链、块后端和完成回调，说明请求合并、缓存刷新与持久化之间的关系。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=0a7fa7bd1d24">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0a7fa7bd1d24">
-  <link rel="stylesheet" href="../assets/site.css?v=0a7fa7bd1d24">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=051a836f5945">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=051a836f5945">
+  <link rel="shortcut icon" href="../favicon.ico?v=f7cd8e469920">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=f7cd8e469920">
+  <link rel="stylesheet" href="../assets/site.css?v=f7cd8e469920">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=2ac35b001a62">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=2ac35b001a62">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=0a7fa7bd1d24" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=f7cd8e469920" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -77,9 +77,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看4 KiB 写请求的缓冲区与块层路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="4 KiB 写请求的缓冲区与块层路径">
-    <img src="../assets/virtio-blk-request.svg?v=051a836f5945" alt="客户机内存保存请求头、写入数据和状态字节，描述符链连接这三个区域。QEMU 提取头部，把数据 iovec 交给块层；磁盘偏移由 sector 乘以 512 得到。" loading="lazy">
+    <img src="../assets/virtio-blk-request.svg?v=2ac35b001a62" alt="客户机内存保存请求头、写入数据和状态字节，描述符链连接这三个区域。QEMU 提取头部，把数据 iovec 交给块层；磁盘偏移由 sector 乘以 512 得到。" loading="lazy">
   </div>
-  <figcaption>客户机内存保存请求头、写入数据和状态字节，描述符链连接这三个区域。QEMU 提取头部，把数据 iovec 交给块层；磁盘偏移由 sector 乘以 512 得到。 <a href="../assets/virtio-blk-request.svg?v=051a836f5945" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>客户机内存保存请求头、写入数据和状态字节，描述符链连接这三个区域。QEMU 提取头部，把数据 iovec 交给块层；磁盘偏移由 sector 乘以 512 得到。 <a href="../assets/virtio-blk-request.svg?v=2ac35b001a62" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: virtio-blk 的 4 KiB 写请求
   accDescr: 客户机把三个描述符链接为请求头、4096 字节写入数据和一个状态字节。QEMU 读取命令和数据，经 BlockBackend 写入磁盘偏移一兆字节处，完成后写状态。
@@ -156,9 +156,9 @@ len = 设备写入的缓冲区长度，本次只有 status 的 1 字节</code></
     <button type="button" data-mechanism-expand aria-label="放大查看客户机提交、宿主异步处理与客户机回收" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="客户机提交、宿主异步处理与客户机回收">
-    <img src="../assets/virtio-blk-request-cycle.svg?v=051a836f5945" alt="本例为普通中断完成队列。初始化登记的队列回调连接运行时通知，每次提交保存的请求对象连接异步返回。共享队列传递链头和完成，客户机与 QEMU 各自保留本地请求上下文。" loading="lazy">
+    <img src="../assets/virtio-blk-request-cycle.svg?v=2ac35b001a62" alt="本例为普通中断完成队列。初始化登记的队列回调连接运行时通知，每次提交保存的请求对象连接异步返回。共享队列传递链头和完成，客户机与 QEMU 各自保留本地请求上下文。" loading="lazy">
   </div>
-  <figcaption>本例为普通中断完成队列。初始化登记的队列回调连接运行时通知，每次提交保存的请求对象连接异步返回。共享队列传递链头和完成，客户机与 QEMU 各自保留本地请求上下文。 <a href="../assets/virtio-blk-request-cycle.svg?v=051a836f5945" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>本例为普通中断完成队列。初始化登记的队列回调连接运行时通知，每次提交保存的请求对象连接异步返回。共享队列传递链头和完成，客户机与 QEMU 各自保留本地请求上下文。 <a href="../assets/virtio-blk-request-cycle.svg?v=2ac35b001a62" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
   accTitle: virtio-blk 请求从客户机提交到回收
   accDescr: Linux 块层分派一次四千零九十六字节写入，驱动发布链头五。QEMU 取出请求并保存异步回调上下文，后端完成后发布状态和 used。客户机队列回调取回原请求，最终结束块层 request。
@@ -189,9 +189,9 @@ len = 设备写入的缓冲区长度，本次只有 status 的 1 字节</code></
     <button type="button" data-mechanism-expand aria-label="放大查看普通写完成与随后刷新" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="普通写完成与随后刷新">
-    <img src="../assets/virtio-blk-completion.svg?v=051a836f5945" alt="writeback 示例先等待 OUT 成功完成，再提交 FLUSH。普通写归还缓冲区；后续 FLUSH 成功后，才达到这组写入要求的持久化边界。两次命令分别有自己的状态和 used 完成。" loading="lazy">
+    <img src="../assets/virtio-blk-completion.svg?v=2ac35b001a62" alt="writeback 示例先等待 OUT 成功完成，再提交 FLUSH。普通写归还缓冲区；后续 FLUSH 成功后，才达到这组写入要求的持久化边界。两次命令分别有自己的状态和 used 完成。" loading="lazy">
   </div>
-  <figcaption>writeback 示例先等待 OUT 成功完成，再提交 FLUSH。普通写归还缓冲区；后续 FLUSH 成功后，才达到这组写入要求的持久化边界。两次命令分别有自己的状态和 used 完成。 <a href="../assets/virtio-blk-completion.svg?v=051a836f5945" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>writeback 示例先等待 OUT 成功完成，再提交 FLUSH。普通写归还缓冲区；后续 FLUSH 成功后，才达到这组写入要求的持久化边界。两次命令分别有自己的状态和 used 完成。 <a href="../assets/virtio-blk-completion.svg?v=2ac35b001a62" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
   accTitle: virtio-blk 的写完成与刷新完成
   accDescr: 在 writeback 模式下，普通写的完成让客户机回收数据缓冲区。客户机等待写完成后另发 FLUSH，后端刷新成功后才满足该写入的持久化要求。
@@ -280,7 +280,7 @@ len = 设备写入的缓冲区长度，本次只有 status 的 1 字节</code></
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=0a7fa7bd1d24"></script>
-<script src="../assets/mechanism-viewer.js?v=051a836f5945" defer></script>
+  <script src="../assets/site.js?v=f7cd8e469920"></script>
+<script src="../assets/mechanism-viewer.js?v=2ac35b001a62" defer></script>
 </body>
 </html>

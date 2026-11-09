@@ -386,9 +386,9 @@
     {
       "slug": "virtio-device-initialization",
       "topic": "device-virtualization",
-      "title": "virtio 设备初始化与特性协商",
-      "summary": "从 PCI 能力、状态握手到队列地址配置，跟踪一个 4 描述符队列如何开始工作，并区分失败、设备复位与队列复位。",
-      "reviewed_on": "2026-10-19",
+      "title": "Virtio：协议演进、特性协商与设备初始化",
+      "summary": "从早期 Legacy 到 Modern 接口，解释经典规范的演进，并沿 PCI 能力、状态握手与队列配置跟踪设备开始工作的完整路径。",
+      "reviewed_on": "2026-11-09",
       "template": "_virtio_init_article.html",
       "baselines": [
         {
@@ -435,7 +435,7 @@
         },
         {
           "id": "evolution",
-          "title": "从固定布局到明确协商与局部恢复"
+          "title": "从早期草案到 1.4：接口与队列逐步演进"
         },
         {
           "id": "sources",
@@ -2540,9 +2540,9 @@
     {
       "slug": "packed-virtqueue",
       "topic": "device-virtualization",
-      "title": "Packed virtqueue：描述符发布、完成与回绕",
-      "summary": "用四槽共享环解释 AVAIL、USED、wrap 与 Buffer ID，分析描述符链、事件抑制和紧凑布局的取舍。",
-      "reviewed_on": "2026-10-19",
+      "title": "Virtqueue：Split 与 Packed 的请求与完成",
+      "summary": "用同一组请求对照 Split 的 desc、available、used 与 Packed 的状态位、wrap、Buffer ID，解释发布、完成、回收及通知边界。",
+      "reviewed_on": "2026-11-09",
       "template": "_packed_virtqueue_article.html",
       "script": "packed-virtqueue.js",
       "stylesheet": "packed-virtqueue.css",
@@ -2563,11 +2563,19 @@
       "sections": [
         {
           "id": "preface",
-          "title": "Packed virtqueue 的共享描述符环"
+          "title": "用共享队列交接缓冲区"
+        },
+        {
+          "id": "split-layout",
+          "title": "Split：描述缓冲区，分别发布请求和完成"
+        },
+        {
+          "id": "split-lifecycle",
+          "title": "一次 Split 请求的发布、完成与回收"
         },
         {
           "id": "layout",
-          "title": "一个描述符环，加两个事件抑制结构"
+          "title": "Packed：一个描述符环，加两个事件抑制结构"
         },
         {
           "id": "wrap",
@@ -2575,7 +2583,7 @@
         },
         {
           "id": "interactive",
-          "title": "操作一个四槽队列，观察第二圈发布"
+          "title": "切换两种布局，观察同一轮交接"
         },
         {
           "id": "chains",
@@ -2591,7 +2599,7 @@
         },
         {
           "id": "evolution",
-          "title": "紧凑布局带来的收益与复杂度"
+          "title": "两种布局的取舍与适用边界"
         },
         {
           "id": "sources",

@@ -2,13 +2,40 @@
 {% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 {% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 <section id="preface" class="mechanism-section">
-  <h2>Packed virtqueue 的共享描述符环</h2>
-  <p>split virtqueue 把缓冲区描述、可用链头和完成记录放在三个区域。设备处理一个请求，需要读取 available、找到描述符，再把结果写到 used。高请求率场景中，这些元数据访问也会占用缓存和内存带宽。packed virtqueue 将发布与完成状态放到同一个描述符环，减少分散访问，并通过状态位和 wrap 计数区分槽位在不同轮次中的使用状态。</p>
-  <p>本文先用 4 个槽位、每项请求只占一个描述符的例子说明发布、完成和回收，再扩展到描述符链与通知。队列格式依据 VIRTIO 1.2；初始化时必须协商 <code>VIRTIO_F_RING_PACKED</code>，没有协商就继续使用 split。演示让设备按提交顺序完成，便于观察位变化；它没有启用 IN_ORDER 的合并完成功能。</p>
+  <h2>用共享队列交接缓冲区</h2>
+  <p>驱动提交磁盘请求或网络报文时，需要告诉设备缓冲区在哪里、长度多少、能否写入。设备处理后，还要让驱动找到原来的请求并安全复用内存。virtqueue 把这些交接规则放在共享内存中；数据留在描述符指向的缓冲区，通知负责提示另一方检查队列。</p>
+  <p>Split 把描述符、可用链头和完成记录分开放置，双方各自发布进度。Packed 将发布与完成状态放到同一个描述符环，用状态位和 wrap 区分不同轮次。两种格式都要完成同一轮交接：<strong>准备缓冲区 → 发布请求 → 设备处理并发布完成 → 驱动回收</strong>。从发布到回收，驱动不能随意改写正在使用的描述符与缓冲区。</p>
+  <p>本文先讲 Split，再对照 Packed。交互示例使用 4 个槽位，每项请求只占一个描述符，设备按提交顺序完成；不启用 IN_ORDER 的合并完成。队列格式依据 VIRTIO 1.2，只有协商 <code>VIRTIO_F_RING_PACKED</code> 才使用 Packed。协议演进和启用队列的步骤见<a href="virtio-device-initialization.html">Virtio 协议演进与设备初始化</a>。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
+<section id="split-layout" class="mechanism-section">
+  <h2>Split：描述缓冲区，分别发布请求和完成</h2>
+  <table><thead><tr><th scope="col">共享区域</th><th scope="col">保存内容</th><th scope="col">更新方</th></tr></thead><tbody>
+    <tr><td>描述符表 desc</td><td>每项 16 B：<code>addr / len / flags / next</code>。NEXT 连接描述符，WRITE 允许设备写缓冲区</td><td>驱动准备，设备读取</td></tr>
+    <tr><td>可用环 available</td><td><code>ring[N]</code> 中每项为 16 位链头编号；<code>idx</code> 发布新增请求的进度</td><td>驱动写入，设备读取</td></tr>
+    <tr><td>已用环 used</td><td><code>ring[N]</code> 中每项为 <code>{id:32, len:32}</code>；<code>idx</code> 发布完成进度</td><td>设备写入，驱动读取</td></tr>
+  </tbody></table>
+  <p>available 和 used 都是循环使用的数组，存的是链头和完成信息。报文、块请求头及数据位于 desc.addr 指向的环外内存。WRITE 从设备角度解释：磁盘读取或网卡接收需要设备写入缓冲区，磁盘写入或网卡发送通常需要设备读取数据。</p>
+  <p>驱动还会在自己的内存中保存链头到请求上下文的对应关系。设备归还 <code>used.id</code> 后，驱动据此找回请求、释放描述符及缓冲区引用。QEMU 后端也有解析后的 iovec、设备消费位置等私有状态；这些对象不能直接写进共享环让另一侧解引用。描述符地址属于设备可访问的 DMA 地址空间，本例按 GPA 理解；开启 IOMMU 或平台访问约束时还要经过相应映射。</p>
+</section>
+<section id="split-lifecycle" class="mechanism-section">
+  <h2>一次 Split 请求的发布、完成与回收</h2>
+  <p>设队列大小 N=4，索引都从 0 开始。驱动选中空闲描述符 2，提供容量 256 B 的可写缓冲区；设备本次实际写入 64 B。描述符编号 2 与 available 的槽 0 分属两个数组，可以不同。</p>
+  <ol>
+    <li><strong>准备：</strong>驱动填写 <code>desc[2] = {addr, len:256, flags:WRITE}</code>，记录本次请求。此时设备还不能使用这项请求。</li>
+    <li><strong>发布：</strong>将链头 2 写入 <code>avail.ring[0]</code>，完成必要内存屏障后令 <code>avail.idx: 0 → 1</code>。设备看到新索引时，必须能够读取完整描述符。</li>
+    <li><strong>设备处理：</strong>设备比较私有消费位置与 avail.idx，读出链头 2，解析权限和长度，再写入缓冲区。本例把取得请求与处理完成合成一次演示操作。</li>
+    <li><strong>发布完成：</strong>设备写入 <code>used.ring[0] = {id:2, len:64}</code>，保证数据及完成项可见后令 <code>used.idx: 0 → 1</code>。used.len 表示设备写入的长度，desc.len 仍表示提供的容量。</li>
+    <li><strong>回收：</strong>驱动观察到 used.idx 前进，读取 used.id=2，找回原请求并回收资源，推进自己的回收位置。旧环项可以留在内存中，是否为新项由索引判断。</li>
+  </ol>
+  <p>索引与数组槽位也要分开：<code>idx % N</code> 用于定位槽位，16 位 idx 按 65536 回绕，不会每绕一圈数组就清零。设备消费位置、驱动回收位置各自私有；它们与对方发布的索引比较，判断有没有新工作。第 4 次发布后 avail.idx=4，下一次使用槽 0；只要描述符尚未回收，驱动仍不能重复提交同一缓冲区。</p>
+  <h3>多缓冲区请求通过链头交接</h3>
+  <p>一个块读取常用“请求头 → 数据区 → 状态字节”三段直接链，例如 <code>desc[2] → desc[0] → desc[3]</code>。available 只发布链头 2；used 也用 id=2 归还整条链。此时一项请求占三个描述符，四槽队列只能再用一个空闲描述符。协商 INDIRECT_DESC 后，可以让主表的一项指向环外间接表，减少主表占用；间接表内仍使用 Split 的 addr/len/flags/next 布局。</p>
+  <p>两端不要求一提交就通知。驱动发布后检查设备是否需要 kick；设备发布完成后检查驱动是否需要中断。未协商 EVENT_IDX 时用抑制标志，协商后按对方填写的事件索引判断是否越过通知点。队列索引承载事实，门铃和中断用于唤醒处理；即使通知被合并，接收方仍可通过索引读取全部新增项。</p>
+</section>
 <section id="layout" class="mechanism-section">
-  <h2>一个描述符环，加两个事件抑制结构</h2>
+  <h2>Packed：一个描述符环，加两个事件抑制结构</h2>
+  <p>Split 的区域划分清楚，但处理一项请求需要在 available、描述符表和 used 之间访问元数据。Packed 随 VIRTIO 1.1 引入，将发布和完成状态放回描述符环，减少部分分散访问。交接规则仍然成立，只是“有没有新项”的判定从两个共享索引改成描述符状态位和各方进度。</p>
   <table><thead><tr><th scope="col">区域</th><th scope="col">组成</th><th scope="col">职责</th></tr></thead><tbody>
     <tr><td>Descriptor Ring</td><td>N 个 16 B 描述符：<code>addr:64 / len:32 / id:16 / flags:16</code></td><td>驱动发布缓冲区，设备写入完成记录</td></tr>
     <tr><td>Driver Event Suppression</td><td><code>off_wrap:16 / flags:16</code>，共 4 B</td><td>驱动告诉设备何时需要完成通知</td></tr>
@@ -30,16 +57,19 @@
   <p>驱动回收完一个请求后，不需要把槽位清零。旧 flags 留在内存里，下一圈根据翻转后的 wrap 区分新旧。驱动根据已回收的描述符数量限制继续发布；Buffer ID 和数据缓冲区必须等对应请求完成后才能复用。完成记录可以位于不同于原请求的位置，环上槽位与请求资源的生命周期需要分开。wrap 解决代际识别，不能代替空闲数量和所有权管理。<a href="{{ qemu }}hw/virtio/virtio.c#L681-L688">QEMU 的可用状态判断</a></p>
 </section>
 <section id="interactive" class="mechanism-section">
-  <h2>操作一个四槽队列，观察第二圈发布</h2>
-  <p>每次“发布”提供一个容量 256 B 的设备可写缓冲区；设备完成时写入 64 B。按顺序点击发布、完成、回收，也可以先发布 4 项再批量完成。观察第 4 次发布、完成和回收各自越过末尾后，三个进度的 wrap 如何分别变化。Buffer ID 使用 2、0、3、1 的次序，与槽位编号分开。</p>
+  <h2>切换两种布局，观察同一轮交接</h2>
+  <p>每次“发布”提供一个容量 256 B 的设备可写缓冲区；设备完成时写入 64 B。切换布局会保留当前请求进度：Split 用描述符编号 2、0、3、1，Packed 用相同序列作为 Buffer ID。两种格式分别维护自己的数据结构，展示相同操作下的差别；实际设备在初始化时选定一种格式，不能运行中直接切换。</p>
+  <p>可以先发布四项，再完成两项但暂不回收。此时仍不能发布新请求；驱动回收后才恢复容量。继续操作到第二圈，观察 Split 的 idx 与 Packed 的 wrap 如何识别新旧记录。</p>
   <div class="packed-lab" data-packed-lab data-mechanism-view="lab">
-    <div class="mechanism-view-heading"><span data-mechanism-title>四槽 packed virtqueue</span><button type="button" data-mechanism-expand hidden>全屏演示</button></div>
+    <div class="mechanism-view-heading"><span data-mechanism-title>四槽 virtqueue：Split 与 Packed</span><button type="button" data-mechanism-expand hidden>全屏演示</button></div>
+    <div class="packed-lab-formats" role="group" aria-label="队列格式" hidden><button type="button" data-queue-format="split" aria-pressed="true">Split</button><button type="button" data-queue-format="packed" aria-pressed="false">Packed</button></div>
     <div class="packed-lab-controls" hidden><button type="button" data-packed-action="publish">发布一项</button><button type="button" data-packed-action="complete">设备完成</button><button type="button" data-packed-action="reclaim">驱动回收</button><button type="button" data-packed-action="reset">重置</button></div>
-    <p data-packed-status role="status" aria-live="polite">初始环为 0/0，双方期望 wrap=1，因此没有可用项或完成项。</p>
+    <p data-packed-status role="status" aria-live="polite">初始没有可用项或完成项；描述符均为空闲状态。</p>
     <div class="packed-lab-cursors" data-packed-cursors></div>
     <div class="packed-lab-slots" data-packed-slots></div>
+    <div class="split-lab-rings" data-split-rings hidden></div>
     <noscript><p>第一圈依次将槽位的 A/U 从 0/0 更新为 1/0，再由设备完成为 1/1；第二圈发布为 0/1，完成为 0/0。驱动回收不清零 flags。</p></noscript>
-    <p class="packed-lab-note">演示仅包含单描述符、顺序完成，不模拟 DMA 时延、乱序完成和 IN_ORDER 批量归还。A/U 显示状态位，非完整 flags 数值。</p>
+    <p class="packed-lab-note">蓝色表示已发布，绿色表示完成待回收，空白表示可用。演示仅包含单描述符、顺序完成，不模拟 DMA 时延、通知抑制、乱序完成和 IN_ORDER 批量归还。Packed 的 A/U 显示状态位，非完整 flags 数值；旧值保留不代表有新工作。</p>
   </div>
   <p>发布时先写地址、长度、ID 和数据准备，再以必要内存顺序发布 flags。设备观察到可用状态后才能读取请求；完成时先写数据及完成字段，再发布完成状态。CPU 或编译器若把状态写提前，另一方就可能看见“已就绪”却读到旧内容。通知只是唤醒提示，不能代替这两个发布边界。</p>
 </section>
@@ -72,12 +102,21 @@
   <p>批量 flush 会先准备后续完成，再带发布顺序约束地写出首项，使读者不会越过尚未完整写出的批次。IN_ORDER 还允许一条记录表示一批按序处理的缓冲区，这需要额外的批次推导；不能只删除逐项完成写入而保持驱动逻辑不变。<a href="{{ qemu }}hw/virtio/virtio.c#L941-L1040">完成字段与 flags</a>、<a href="{{ qemu }}hw/virtio/virtio.c#L1078-L1110">链长度与完成位置推进</a></p>
 </section>
 <section id="evolution" class="mechanism-section">
-  <h2>紧凑布局带来的收益与复杂度</h2>
+  <h2>两种布局的取舍与适用边界</h2>
+  <table><thead><tr><th scope="col">比较项</th><th scope="col">Split</th><th scope="col">Packed</th></tr></thead><tbody>
+    <tr><td>发布与完成</td><td>available / used 分开，分别更新 idx</td><td>同一描述符环，更新 AVAIL / USED</td></tr>
+    <tr><td>槽位复用</td><td>16 位 idx 前进，idx % N 定位环槽</td><td>位置越过末尾，独立的一位 wrap 翻转</td></tr>
+    <tr><td>直接链</td><td>next 指定下一描述符，可不相邻</td><td>沿相邻槽位前进，可跨环尾</td></tr>
+    <tr><td>找回请求</td><td>used.id 是描述符链头编号</td><td>完成记录携带 Buffer ID，由驱动找回私有上下文</td></tr>
+    <tr><td>完成长度</td><td>used.len 与 desc.len 分开</td><td>完成字段复用环中描述符的 len 等字段</td></tr>
+    <tr><td>通知控制</td><td>环内抑制字段，可选 EVENT_IDX</td><td>独立事件抑制结构，可选按 off_wrap 判断</td></tr>
+    <tr><td>兼容关系</td><td>Legacy 与 Modern 都可使用</td><td>Modern，且双方协商 RING_PACKED</td></tr>
+  </tbody></table>
   <p>packed 随 VIRTIO 1.1 引入，使高吞吐设备可以用更紧凑的共享元数据交换请求。它减少某些路径上的环间跳转和内存占用，但双方都会写描述符环，也可能带来缓存行共享；实际收益依赖后端实现、批量大小、队列深度和 CPU 拓扑。</p>
   <p>相对于 split，packed 的实现增加了 wrap、Buffer ID、跨尾部的链、完成位置及事件偏移之间的配合。双方在特性协商时选定共同布局，运行期间按这一布局访问队列；迁移目标也需支持客户机已经选定的格式。实现和验证的工作主要集中在资源归属与各方进度的对应关系上。</p>
   <p>检查演示时，可以先发布四项，再完成两项但暂不回收：驱动仍不能继续发布，直到回收释放相应资源。这个状态把“设备已处理”与“驱动可继续提交”分开，也说明 wrap 判断必须配合空闲容量管理。评价时可以在相同报文或块请求负载下对比每核吞吐、尾延迟、缓存未命中与通知次数。小队列更省元数据，并不代表能容纳同样多的复杂请求；直接链与间接表的占用也要固定。split 仍有成熟兼容性与清晰的生产者区域，packed 提供另一种局部性取舍。</p>
 </section>
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
-  <ul><li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">VIRTIO 1.2 §2.8</a>：packed 布局、wrap、描述符链、完成与事件抑制。</li><li><a href="https://docs.oasis-open.org/virtio/virtio/v1.1/virtio-v1.1.html">VIRTIO 1.1</a>：packed 队列进入正式规范。</li><li><a href="{{ qemu }}include/standard-headers/linux/virtio_ring.h">QEMU virtio_ring.h</a>：packed 描述符与事件结构。</li><li><a href="{{ qemu }}hw/virtio/virtio.c">QEMU virtio.c</a>：可用检查、链解析、完成发布及 IN_ORDER 分支。</li><li><a href="{{ linux }}drivers/virtio/virtio_ring.c">Linux virtio_ring.c</a>：驱动发布、回收及事件判断。</li></ul>
+  <ul><li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">VIRTIO 1.2 §2.7–2.8</a>：Split 与 Packed 布局、描述符链、完成与事件抑制。</li><li><a href="https://docs.oasis-open.org/virtio/virtio/v1.1/virtio-v1.1.html">VIRTIO 1.1</a>：Packed 队列进入正式规范。</li><li><a href="{{ qemu }}include/standard-headers/linux/virtio_ring.h">QEMU virtio_ring.h</a>：两种描述符与事件结构。</li><li><a href="{{ qemu }}hw/virtio/virtio.c">QEMU virtio.c</a>：可用检查、链解析、完成发布及 IN_ORDER 分支。</li><li><a href="{{ linux }}drivers/virtio/virtio_ring.c">Linux virtio_ring.c</a>：驱动发布、回收及事件判断。</li></ul>
 </section>

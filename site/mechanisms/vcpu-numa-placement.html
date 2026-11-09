@@ -7,16 +7,16 @@
   <title>vCPU 与 NUMA 内存放置 - virt-report</title>
   <meta name="description" content="分析客户机拓扑、线程亲和性、RAM 分配策略与 I/O 后端位置的配合，以及远端内存访问对延迟和带宽的影响。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=0a7fa7bd1d24">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0a7fa7bd1d24">
-  <link rel="stylesheet" href="../assets/site.css?v=0a7fa7bd1d24">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=051a836f5945">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=051a836f5945">
+  <link rel="shortcut icon" href="../favicon.ico?v=f7cd8e469920">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=f7cd8e469920">
+  <link rel="stylesheet" href="../assets/site.css?v=f7cd8e469920">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=2ac35b001a62">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=2ac35b001a62">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=0a7fa7bd1d24" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=f7cd8e469920" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -69,9 +69,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看一个客户机节点对应三条放置关系" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="一个客户机节点对应三条放置关系">
-    <img src="../assets/numa-placement-layers.svg?v=051a836f5945" alt="客户机节点 0 的 vCPU、RAM 和处理其请求的后端需要分别安排。示例将 vCPU 与 RAM 放在宿主节点 1；远端后端或误放的物理页仍可能引入跨节点访问。" loading="lazy">
+    <img src="../assets/numa-placement-layers.svg?v=2ac35b001a62" alt="客户机节点 0 的 vCPU、RAM 和处理其请求的后端需要分别安排。示例将 vCPU 与 RAM 放在宿主节点 1；远端后端或误放的物理页仍可能引入跨节点访问。" loading="lazy">
   </div>
-  <figcaption>客户机节点 0 的 vCPU、RAM 和处理其请求的后端需要分别安排。示例将 vCPU 与 RAM 放在宿主节点 1；远端后端或误放的物理页仍可能引入跨节点访问。 <a href="../assets/numa-placement-layers.svg?v=051a836f5945" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>客户机节点 0 的 vCPU、RAM 和处理其请求的后端需要分别安排。示例将 vCPU 与 RAM 放在宿主节点 1；远端后端或误放的物理页仍可能引入跨节点访问。 <a href="../assets/numa-placement-layers.svg?v=2ac35b001a62" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: 客户机 NUMA 与宿主线程、内存及后端的放置
   accDescr: 客户机节点 0 的 vCPU 线程可以绑定到宿主节点 1，RAM 后端通过独立内存策略分配到该节点。后端线程必须另行安排；如果位于节点 0，访问共享缓冲区仍会跨节点。
@@ -168,7 +168,7 @@ ps -L -p PID -o pid,tid,psr,comm</code></pre>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=0a7fa7bd1d24"></script>
-<script src="../assets/mechanism-viewer.js?v=051a836f5945" defer></script>
+  <script src="../assets/site.js?v=f7cd8e469920"></script>
+<script src="../assets/mechanism-viewer.js?v=2ac35b001a62" defer></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_pagination.html" import pagination %}
 {% block title %}版本 - virt-report{% endblock %}
-{% block description %}QEMU、KVM 与 Libvirt 的历史版本时间线、发布要点，以及 Virtio 协议规范的版本与批准阶段。{% endblock %}
+{% block description %}QEMU、KVM、Libvirt、Virtio、DPDK 与 SPDK 的版本、规范及发布要点。{% endblock %}
 {% block nav_home %}{% endblock %}
 {% block nav_versions %}on{% endblock %}
 {% block content %}
@@ -9,12 +9,11 @@
   <header class="versions-header">
     <div class="kicker">Release Timeline</div>
     <h1>版本</h1>
-    <p>QEMU、KVM、Libvirt 的软件版本与 <a href="?project=virtio#version-list" data-version-project-link="virtio">Virtio 协议规范</a>。按项目查看历史记录、发布要点和官方文档。</p>
+    <p>汇总 QEMU、KVM、Libvirt 的软件版本、<a href="?project=virtio#version-list" data-version-project-link="virtio">Virtio 规范</a>，以及 DPDK、SPDK 的发布记录。按项目查看发布要点与官方文档。</p>
   </header>
   <div class="version-latest" aria-label="最新软件版本与协议规范">
     <span class="version-latest-label">最新版本 / 规范</span>
-    {% for item in content.latest if item %}<a href="#{{ item.anchor }}" data-version-jump><strong>{{ item.project_label }}</strong><span>{{ 'Linux ' if item.project == 'kvm' else '' }}{{ item.version }}</span><time datetime="{{ item.released_on }}">{{ item.released_on }}</time></a>{% endfor %}
-    {% if content.latest_specification %}{% set spec = content.latest_specification %}<a href="#{{ spec.anchor }}" data-version-jump><strong>Virtio</strong><span>{{ spec.version }} <small>{{ spec.stage }} · 协议规范</small></span><time datetime="{{ spec.released_on }}">{{ spec.released_on }}</time></a>{% endif %}
+    {% for item in content.latest if item %}<a href="#{{ item.anchor }}" data-version-jump><strong>{{ item.project_label }}</strong><span>{{ 'Linux ' if item.project == 'kvm' else '' }}{{ item.version }}{% if item.kind == 'specification' %} <small>{{ item.stage }} · 协议规范</small>{% endif %}</span><time datetime="{{ item.released_on }}">{{ item.released_on }}</time></a>{% endfor %}
   </div>
   <div data-version-browser data-view="compact" data-default-project="{{ content.default_project }}">
     <div class="version-controls" id="version-list">
@@ -27,7 +26,7 @@
     <p class="version-view-note" data-version-help>精简显示所选范围内全部功能版本；切换详细视图可查看发布要点与相关统计。</p>
     {% if content.specifications %}
     <div id="virtio-specifications" class="version-topic-note" data-version-spec-note hidden>
-      <p>这里收录 Legacy 经典规范 0.9.5 与 OASIS 1.x 规范。CS 为委员会规范，CSD 为委员会规范草案；0.9.5 是加入 OASIS 前的早期草案。日期均取自文档封面。</p>
+      <p>这里收录早期草案 0.8.7、Legacy 经典规范 0.9.5 与 OASIS 1.x 规范。CS 为委员会规范，CSD 为委员会规范草案。日期取自文档封面；0.8.7 是可核验的早期版本，尚不能据此认定它是首版。<a href="mechanisms/virtio-device-initialization.html#evolution">协议演进与兼容关系</a></p>
       <details>
         <summary>实际部署：Legacy、Modern 与驱动包版本</summary>
         <p>面向现代客户机，选型通常以 1.0 起的 Modern 接口为基础；兼容旧驱动时可使用同时提供 Legacy 与 Modern 接口的 transitional PCI 设备。Libvirt 默认建议使用通用的 <code>virtio</code> 模型；显式选择 PCI 变体时，无旧客户机兼容要求可选 <code>virtio-non-transitional</code>。这是接口选型建议，不能据此推断各版本的部署占比。<a href="https://www.libvirt.org/formatdomain.html#virtio-device-models" target="_blank" rel="noopener noreferrer">Libvirt 设备模型说明</a></p>
@@ -50,7 +49,7 @@
               <div class="version-heading">
                 <h3><span class="version-project">{{ item.project_label }}</span><span>{{ 'Linux ' if item.project == 'kvm' else '' }}{{ item.version }}</span></h3>
                 <div class="version-actions">
-                  <a class="version-source" href="{{ 'https://github.com/oasis-tcs/virtio-admin/blob/master/charter.html' if item.kind == 'specification' and item.stage == 'Legacy' else item.source_url }}" target="_blank" rel="noopener noreferrer">{{ '规范沿革' if item.kind == 'specification' and item.stage == 'Legacy' else '官方规范' if item.kind == 'specification' else '发布标签' if item.date_source == 'release_tag' else '发布公告' }}</a>
+                  <a class="version-source" href="{{ item.history_url|default('https://github.com/oasis-tcs/virtio-admin/blob/master/charter.html') if item.kind == 'specification' and item.stage == 'Legacy' else item.source_url }}" target="_blank" rel="noopener noreferrer">{{ '规范沿革' if item.kind == 'specification' and item.stage == 'Legacy' else '官方规范' if item.kind == 'specification' else '发布标签' if item.date_source == 'release_tag' else '发布说明' if item.date_source == 'release_index' else '发布公告' }}</a>
                   {% if item.kind == 'specification' %}<a class="version-source" href="{{ item.source_url|replace('.html', '.pdf') }}" target="_blank" rel="noopener noreferrer">下载 PDF</a>{% endif %}
                 </div>
               </div>
@@ -82,7 +81,8 @@
     <p>两种视图均展示正式功能版本，不仅限于整数大版本；不列出维护补丁及 RC。{% if content.checked_date %}最近检查：{{ content.checked_date }}。{% endif %}</p>
     <p>{% for item in content.coverage %}{{ item.name }} 自 {{ item.year }} 年起{{ '；' if not loop.last else '。' }}{% endfor %}日期来自官方公告或带日期的发布标签；早期缺乏可核验日期的版本暂不列出。</p>
     <p>提交与贡献者数量仅在官方提供时显示，不等同于代码行数；KVM 随内核发布，不代表每个版本均有 KVM 功能变更。</p>
-    <p><span>官方完整版本记录：</span><a href="https://gitlab.com/qemu-project/qemu/-/tags" target="_blank" rel="noopener noreferrer">QEMU</a><a href="https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux/+refs" target="_blank" rel="noopener noreferrer">KVM / Linux</a><a href="https://gitlab.com/libvirt/libvirt/-/tags?search=%5Ev" target="_blank" rel="noopener noreferrer">Libvirt</a></p>
+    <p>DPDK 是面向高性能数据面的库与驱动集合，SPDK 是面向高性能存储的软件开发套件；两者可以实现 vhost-user 后端，各自维护软件发布版本。</p>
+    <p><span>官方完整版本记录：</span><a href="https://gitlab.com/qemu-project/qemu/-/tags" target="_blank" rel="noopener noreferrer">QEMU</a><a href="https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux/+refs" target="_blank" rel="noopener noreferrer">KVM / Linux</a><a href="https://gitlab.com/libvirt/libvirt/-/tags?search=%5Ev" target="_blank" rel="noopener noreferrer">Libvirt</a><a href="https://core.dpdk.org/download/" target="_blank" rel="noopener noreferrer">DPDK</a><a href="https://spdk.io/releases/" target="_blank" rel="noopener noreferrer">SPDK</a></p>
   </div>
 </article>
 {% endblock %}

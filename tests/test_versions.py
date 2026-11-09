@@ -199,18 +199,19 @@ def test_refresh_preserves_failed_sources_and_removes_future_and_rc(tmp_path, mo
     def fetch(project, *_args):
         if project == "qemu":
             raise RuntimeError("source temporarily unavailable")
-        return [record(project, "7.2" if project == "kvm" else "12.7.0", "2026-09-01"),
+        version = {"kvm": "7.2", "libvirt": "12.7.0", "dpdk": "26.07.0", "spdk": "26.05"}[project]
+        return [record(project, version, "2026-09-01"),
                 record(project, "13.0.0", "2027-01-01"),
                 record(project, "13.0-rc1", "2026-09-01")]
 
     monkeypatch.setattr(versions, "fetch_project", fetch)
     snapshot = versions.refresh(config, today=date(2026, 9, 5))
-    assert len(snapshot["releases"]) == 3
+    assert len(snapshot["releases"]) == 5
     assert snapshot["sources"]["qemu"]["ok"] is False
     assert snapshot["sources"]["libvirt"]["ok"] is True
     assert any(row["version"] == "11.1.0" for row in snapshot["releases"])
     monkeypatch.setattr(versions, "http_get", lambda *_a, **_k: pytest.fail("Web reader requested network"))
-    assert len(versions.load_content(config, today=date(2026, 9, 5))["releases"]) == 3
+    assert len(versions.load_content(config, today=date(2026, 9, 5))["releases"]) == 5
     # A corrupt runtime snapshot still leaves the bundled public record usable.
     (config.db_path.parent / "versions.json").write_text("{broken", encoding="utf-8")
     assert len(versions.load_content(config, today=date(2026, 9, 5))["releases"]) == 1
@@ -316,7 +317,7 @@ def test_reviewed_notes_cover_bundled_english_and_historical_milestones():
         if entry.get("source_url"):
             assert entry["source_url"].startswith("https://"), key
     for row in bundled["releases"]:
-        if row["kind"] == "feature" and row.get("highlights"):
+        if row["project"] in {"qemu", "kvm", "libvirt"} and row["kind"] == "feature" and row.get("highlights"):
             assert f'{row["project"]}:{row["version"]}' in notes
     for key in ("qemu:1.0", "qemu:1.3.0", "qemu:2.11.0", "libvirt:0.9.0", "libvirt:2.4.0", "kvm:5.15"):
         assert notes[key]["source_url"]
@@ -326,7 +327,7 @@ def test_reviewed_notes_cover_bundled_english_and_historical_milestones():
 
 def test_october_public_snapshot_has_reviewed_feature_notes_without_showing_patches(tmp_path):
     bundled = json.loads((versions.CONTENT_DIR / "versions.json").read_text())
-    assert set(bundled) == {"schema_version", "checked_at", "releases"}
+    assert set(bundled) == {"schema_version", "checked_at", "releases", "specifications"}
     records = {(row["project"], row["version"]): row for row in bundled["releases"]}
     assert len(records) == len(bundled["releases"])
     for key in (("libvirt", "12.8.0"), ("qemu", "11.1.2"), ("kvm", "7.2.10")):
