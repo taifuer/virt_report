@@ -502,7 +502,7 @@ def render_versions(config: Config, content: dict) -> Path:
 def render_search_html(config: Config, result: dict, *, static_mode: bool = False) -> str:
     """Render grouped editorial and community search without network or LLM calls."""
     from urllib.parse import urlencode
-    from virt_report import editorial_search
+    from virt_report import editorial_search, versions
 
     env = _env()
     tpl = env.get_template("search.html")
@@ -530,10 +530,11 @@ def render_search_html(config: Config, result: dict, *, static_mode: bool = Fals
         page_url(prepared["page"] + 1)
         if prepared.get("page", 1) < prepared.get("pages", 0) else ""
     )
+    catalogue = editorial_search.catalogue(versions.load_content(config))
     return tpl.render(
         result=prepared, static_mode=static_mode, root="", site_name=config.name,
-        editorial=editorial_search.find(prepared.get("query", "")),
-        editorial_catalogue=editorial_search.catalogue() if static_mode else None,
+        editorial=editorial_search.find(prepared.get("query", ""), catalogue),
+        editorial_catalogue=catalogue if static_mode else None,
         search_asset_version=SEARCH_ASSET_VERSION,
     )
 

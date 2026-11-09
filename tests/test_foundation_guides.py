@@ -11,7 +11,7 @@ from virt_report.render import render
 @pytest.mark.parametrize('slug,sequence', [
     ('virtualization-basics', ['preface', 'isolation', 'architecture', 'example', 'evolution', 'tradeoffs']),
     ('cpu-virtualization', ['preface', 'paths', 'example', 'evolution', 'evaluation']),
-    ('memory-virtualization', ['preface', 'addresses', 'evolution', 'access', 'evaluation', 'experiment']),
+    ('memory-virtualization', ['preface', 'addresses', 'evolution', 'access', 'evaluation', 'verification', 'experiment']),
     ('device-virtualization', ['preface', 'example', 'architecture', 'queue', 'backends', 'evolution', 'evaluation']),
     ('interrupt-virtualization', ['preface', 'example', 'controllers', 'path', 'acceleration', 'evolution', 'evaluation']),
 ])

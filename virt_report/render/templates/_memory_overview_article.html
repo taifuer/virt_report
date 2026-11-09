@@ -52,6 +52,18 @@
   </tbody></table>
   <p>影子页表用软件维护合成关系，EPT/NPT 用额外硬件转换换取更清晰的分工；两者最终都依赖宿主后备页的生命周期。评价时把转换未命中、缺页建图、真实内存访问和脏页跟踪分开，再观察吞吐、尾延迟与内存占用，才能判断优化发生在哪一层。</p>
 </section>
+<section id="verification" class="mechanism-section">
+  <h2>排查入口：内存容量与缺页的分层观察</h2>
+  <p>分析内存占用或访问停顿时，先记录 VM 的内存后备、大页、NUMA 和 balloon 配置，再对齐同一段负载的统计窗口。下面两条命令在管理宿主执行，<code>VM</code> 替换为实际域名；只查询配置和现有统计，不调整容量或采集周期。</p>
+  <pre><code>virsh dumpxml VM
+virsh dommemstat VM</code></pre>
+  <table><thead><tr><th>现象</th><th>从哪里核实</th><th>可以得出的结论</th></tr></thead><tbody>
+    <tr><td>应用第一次访问慢，重复访问快</td><td>在 Guest 运行下节的首次触碰实验，比较进程 minor fault</td><td>能定位 Guest 匿名页按需建立的影响；计数不包含完整的宿主 EPT/NPT 活动</td></tr>
+    <tr><td>Guest 空闲很多，宿主 RSS 仍高</td><td>对照 Guest 内存统计、<code>dommemstat</code> 的 RSS 与 XML 中的后备配置</td><td>Guest 可用容量与宿主驻留量口径不同；空闲页仍可能保留宿主后备，见 <a href="virtio-balloon.html#balloon-measured">balloon 实测</a></td></tr>
+    <tr><td>怀疑 EPT/NPT 建图或宿主调页造成停顿</td><td>进一步在宿主对齐 KVM 缺页事件、宿主缺页与负载时间窗口</td><td>先区分第二级建图和取得后备页的等待；仅凭 Guest 缺页数或 RSS 无法判断 VM-Exit 原因</td></tr>
+  </tbody></table>
+  <p><code>dommemstat</code> 的 Guest 统计依赖驱动和已有采集配置。检查 <code>last-update</code> 是否更新；缺少字段应记为“未提供”，不能填零。命令与字段口径见 <a href="https://www.libvirt.org/manpages/virsh.html#dommemstat">libvirt 手册</a>。下节保留已完成实验的环境和原始计数，便于与自己的结果比较。</p>
+</section>
 <section id="experiment" class="mechanism-section">
   <h2>小实验：对照首次触碰与重复访问</h2>
   <p>在 Linux 客户机里运行下面的单线程程序。它申请 32 MiB 匿名内存，按基础页大小写两遍，并分别统计本进程的 minor fault。第一次写入需要客户机建立匿名页映射；第二遍通常可以复用。程序只调整自己的映射，不需要 root，也不修改系统的大页配置。</p>

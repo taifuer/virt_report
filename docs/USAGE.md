@@ -76,7 +76,9 @@ cp .env.example .env
 
 动态服务直接读取 SQLite，不要求每次报告生成后全量导出。只有执行 `index`，或设置 `schedule.auto_export: true`，才会刷新完整 `site/` 快照。
 
-搜索按“原理讲解、交互演示、社区议题”分组。前两组检索已发布元数据中的标题、简介、章节与演示场景，不重复收录旧链接跳转页；嵌入演示仍归属所在原理文章。纯静态预览通过浏览器本地索引支持前两组搜索，关闭 JavaScript 时保留目录入口。动态服务另外检索社区报告索引，即使社区索引尚未生成，原理与演示搜索仍可用。项目、类型、架构与排序只作用于社区议题。
+搜索按“原理讲解、交互演示、相关论文、版本与规范、社区议题”分组。原理与演示检索标题、简介、章节与演示场景，不重复收录旧链接跳转页；嵌入演示仍归属所在原理文章。论文检索标题、中文介绍、点评、单位、主题和会议年份；版本检索正式功能版本的发布要点及 Virtio 各阶段规范，使用与版本页相同的离线快照。论文和版本结果直达条目，超过五条时折叠其余结果。
+
+纯静态预览通过浏览器本地索引支持以上四类内容，关闭 JavaScript 时保留目录入口。动态服务另外检索社区报告索引；即使社区索引尚未生成，其他四类仍可搜索。项目、类型、架构与排序只作用于社区议题。搜索不联网、不调用模型，不从 DOI 或版本号推断论文已被实现。
 
 升级专题分类或条目链接规则后，执行一次 `topics-refresh` 和 `search-refresh` 更新社区派生索引；原理元数据随代码加载，修改后需重启动态服务，静态页则重新导出。不需要重新调用 AI。导出前确认数据库含有要保留的全部报告，不要用较旧的本地数据库覆盖较新的静态快照。
 
@@ -292,9 +294,15 @@ Mermaid 图源保存在 `virt_report/content/diagrams/*.mmd`，已生成的 SVG 
 .venv/bin/virt-report conference-catalog \
   --venue vee --from-year 2010 --to-year 2026
 
-# 补充公开摘要与已核验单位，并同步公开快照
+# 按会议和年份检查目录覆盖，输出仅供维护者查漏
 .venv/bin/virt-report conference-catalog --no-fetch \
-  --enrich-abstracts --abstract-limit 20
+  --venue osdi --from-year 2010 --to-year 2025 --coverage
+
+# 分批补查公开摘要；包括标题未命中关键词的记录
+.venv/bin/virt-report conference-catalog --no-fetch \
+  --venue osdi --from-year 2010 --to-year 2025 \
+  --enrich-abstracts --abstract-limit 20 --list-candidates
+# 补充已核验单位，并同步已收录论文的公开元数据
 .venv/bin/virt-report conference-catalog --no-fetch \
   --enrich-affiliations --sync-public-metadata
 
@@ -304,6 +312,10 @@ Mermaid 图源保存在 `virt_report/content/diagrams/*.mmd`，已生成的 SVG 
 ```
 
 学术会议条目需要人工复核后才能进入公开内容；目录采集不下载论文全文，人工写作与校核时可按需阅读原论文。公开主链接优先采用出版方、会议官方页或已核实的 DOI；DBLP 记录用于目录溯源，有 DOI 时不再将聚合页作为主链接。历史覆盖年份只说明选录范围，不代表每一届均已导入或全部论文已收录。
+
+`--coverage` 区分目录抓取状态、已存标题、已收录、未审核、关键词候选和缺摘要数；只导入了精选论文的年份仍标记为未检查目录。未举办、目录尚未发布、未抓取和人工审核后无相关论文，不能仅凭公开数量为零相互替代。OLS 与 OSR 的早期经典条目依据原始出版物人工补入，尚未配置全量目录采集。
+
+`--abstract-limit` 限制检查记录数，失败和无摘要也占用名额。优先检查尚未尝试的旧年份，逐条保存状态；无结果或出错的记录七天后可重试，重复执行能推进后续批次。范围受 `--from-year`、`--to-year`、`--venue` 限制。Crossref 返回的 DOI 和标题（包含独立副标题）须匹配；摘要仅进入本地待审目录，不自动发布。历史回补以机制覆盖和正式来源为准，不按年度数量配额凑论文。
 `conference-check` 的来源在 `virt_report/content/conferences.json` 的 `edition_checks` 中配置，
 核对报告保存在数据库同目录的 `conference-checks.json`（默认 `data/`，不提交）。
 首次检查列出全部标题作为基线，后续列出新增标题和仍未收录的匹配候选；来源出错时保留上次成功数据并返回失败状态。
@@ -314,6 +326,7 @@ Mermaid 图源保存在 `virt_report/content/diagrams/*.mmd`，已生成的 SVG 
 DBLP 全量目录继续保存在 SQLite；官方名单检查作为提前发现新论文的补充，两者都不自动发布。
 编辑完成后更新论文、年度点评及对应 `edition_checks` 的日期和说明，再运行 `index` 导出静态快照。
 只有标题的已录用论文须标注 `publication_status: accepted` 和 `evidence_level: title`，不能推断机制、架构或性能数字。
+新增条目记录 `evidence_source_url`、`evidence_level` 和核验日期；旧记录缺少证据等级时保持 `unspecified`，不补写虚假的复核日期。可选 `pdf_url`、`code_url` 和 `artifact_source_url` 分别展示原论文、代码和 Artifact 记录；有代码或评审记录不代表本站已经复现实验。
 
 KVM Forum 的会前预览独立保存在 `virt_report/content/kvm_forum_preview.json`，包含核对日期、公开议题链接与人工点评。
 `kvm-forum` 命令仍用于历史标题和辅助分析，会调用配置中的模型；查看和导出页面不会调用模型，也不会覆盖独立预览。

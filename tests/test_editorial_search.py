@@ -4,14 +4,16 @@ import subprocess
 
 import pytest
 
-from virt_report import db, editorial_search, mechanisms, search
+from virt_report import conferences, db, editorial_search, mechanisms, search, versions
 from virt_report.config import Config
 from virt_report.render import render
 
 
 def test_catalogue_covers_published_pages_without_redirect_duplicates():
     documents = editorial_search.catalogue()["documents"]
-    assert len(documents) == len(mechanisms.articles())
+    assert len([item for item in documents if item["kind"] in {"articles", "demos"}]) == len(mechanisms.articles())
+    assert len([item for item in documents if item["kind"] == "papers"]) == conferences.load_content()["paper_count"]
+    assert {item["kind"] for item in documents} == {"articles", "demos", "papers", "versions"}
     assert len({item["href"] for item in documents}) == len(documents)
     assert not ({item["slug"] for item in documents} & {item["slug"] for item in mechanisms.redirects()})
     assert len([item for item in documents if item["kind"] == "demos"]) == 7
@@ -42,7 +44,8 @@ def test_gpu_sharing_demo_is_discoverable_by_assignment_and_access_terms(query):
 
 @pytest.mark.parametrize("query", ["", "K", "a" * 101, "irqfd", "balloon", "内存", "热迁移",
                                    "QEMU MMIO", "  virtio  GPU ", "<script>bad</script>",
-                                   "__proto__", "constructor", "Straße", "ΟΣ"])
+                                   "__proto__", "constructor", "Straße", "ΟΣ", "Orthus",
+                                   "Virtio 1.2", "Dune", "QEMU 10.2", "OSR"])
 def test_python_and_static_browser_search_agree(query):
     if not shutil.which("node"):
         pytest.skip("Node.js is required for cross-runtime search checks")
@@ -67,6 +70,35 @@ def test_editorial_results_work_without_community_index_and_ignore_community_fil
     assert "搜索索引正在准备" in html
     assert "不影响原理讲解与交互演示" in html
     assert 'data-editorial-results data-static="false">' in html
+
+
+def test_paper_and_specification_results_link_to_real_page_anchors():
+    papers = editorial_search.find("Dune")["papers"]
+    assert papers[0]["href"] == "conference-papers.html#paper-osdi12-dune"
+    specifications = editorial_search.find("Virtio 1.2")["versions"]
+    assert any(item["href"].endswith("#release-virtio-1.2-cs01") for item in specifications)
+    assert not any(item["kind"] == "papers" for item in specifications)
+    html = render.render_search_html(Config(), {"query": "QEMU"}, static_mode=True)
+    assert 'class="editorial-more"' in html
+    assert 'data-editorial-kind="papers"' in html
+    assert 'data-editorial-kind="versions"' in html
+    assert editorial_search.find("OSR 2008")["papers"][0]["slug"] == "osr08-virtio"
+
+
+def test_runtime_release_snapshot_is_not_frozen_in_editorial_cache():
+    content = {"releases": [], "specifications": [], "topics": {}}
+    assert not editorial_search.find("QEMU 12.0", editorial_search.catalogue(content))["versions"]
+    content["releases"].append({"project": "qemu", "project_label": "QEMU", "version": "12.0.0",
+                                "kind": "feature", "released_on": "2027-01-01", "notes": ["新版本要点"]})
+    assert editorial_search.find("QEMU 12.0", editorial_search.catalogue(content))["versions"]
+
+
+def test_editorial_version_search_excludes_maintenance_releases():
+    content = versions.load_content(Config())
+    indexed = {item["slug"] for item in editorial_search.catalogue(content)["documents"]}
+    for release in content["releases"]:
+        key = f'release-{release["project"]}-{release["version"]}'
+        assert (key in indexed) == (release["kind"] == "feature")
 
 
 def test_review_date_displays_existing_metadata_without_refreshing_it():

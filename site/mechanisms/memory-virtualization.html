@@ -48,7 +48,7 @@
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、客户机地址空间与宿主内存</a></li><li><a href="#addresses">二、GVA、GPA、HVA 与 HPA 的对应关系</a></li><li><a href="#evolution">三、从软件合成映射到硬件两级转换</a><ol><li><a href="#evolution-part-1">1. 影子页表把两次转换合成一次</a></li><li><a href="#evolution-part-2">2. EPT/NPT 分开客户机页表与宿主映射</a></li></ol></li><li><a href="#access">四、一次读取中的建图、访问与映射失效</a><ol><li><a href="#access-part-1">1. 缺少 EPT 项时的映射建立</a></li><li><a href="#access-part-2">2. 宿主页变化与旧映射失效</a></li><li><a href="#access-part-3">3. MMIO 访问与脏页跟踪</a></li></ol></li><li><a href="#evaluation">五、转换、后备与跟踪应分别评价</a></li><li><a href="#experiment">六、小实验：对照首次触碰与重复访问</a><ol><li><a href="#first-touch-measured">实测：两遍访问的缺页计数</a></li></ol></li><li><a href="#reading">七、进一步阅读</a></li><li><a href="#sources">八、参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、客户机地址空间与宿主内存</a></li><li><a href="#addresses">二、GVA、GPA、HVA 与 HPA 的对应关系</a></li><li><a href="#evolution">三、从软件合成映射到硬件两级转换</a><ol><li><a href="#evolution-part-1">1. 影子页表把两次转换合成一次</a></li><li><a href="#evolution-part-2">2. EPT/NPT 分开客户机页表与宿主映射</a></li></ol></li><li><a href="#access">四、一次读取中的建图、访问与映射失效</a><ol><li><a href="#access-part-1">1. 缺少 EPT 项时的映射建立</a></li><li><a href="#access-part-2">2. 宿主页变化与旧映射失效</a></li><li><a href="#access-part-3">3. MMIO 访问与脏页跟踪</a></li></ol></li><li><a href="#evaluation">五、转换、后备与跟踪应分别评价</a></li><li><a href="#verification">六、排查入口：内存容量与缺页的分层观察</a></li><li><a href="#experiment">七、小实验：对照首次触碰与重复访问</a><ol><li><a href="#first-touch-measured">实测：两遍访问的缺页计数</a></li></ol></li><li><a href="#reading">八、进一步阅读</a></li><li><a href="#sources">九、参考资料</a></li></ol></nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>客户机地址空间与宿主内存</h2>
   <p>内存虚拟化为每台客户机提供独立的物理地址空间，并将它映射到宿主的后备内存。两台虚拟机都可以从物理地址零开始使用内存，而不读写彼此的数据。客户机应用还有自己的虚拟地址，客户机内核通过页表把它们映射到自己认识的物理页；宿主再决定每个客户机物理页实际由哪块宿主内存承载。</p>
@@ -146,8 +146,20 @@
   </tbody></table>
   <p>影子页表用软件维护合成关系，EPT/NPT 用额外硬件转换换取更清晰的分工；两者最终都依赖宿主后备页的生命周期。评价时把转换未命中、缺页建图、真实内存访问和脏页跟踪分开，再观察吞吐、尾延迟与内存占用，才能判断优化发生在哪一层。</p>
 </section>
+<section id="verification" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>排查入口：内存容量与缺页的分层观察</h2>
+  <p>分析内存占用或访问停顿时，先记录 VM 的内存后备、大页、NUMA 和 balloon 配置，再对齐同一段负载的统计窗口。下面两条命令在管理宿主执行，<code>VM</code> 替换为实际域名；只查询配置和现有统计，不调整容量或采集周期。</p>
+  <pre><code>virsh dumpxml VM
+virsh dommemstat VM</code></pre>
+  <table><thead><tr><th>现象</th><th>从哪里核实</th><th>可以得出的结论</th></tr></thead><tbody>
+    <tr><td>应用第一次访问慢，重复访问快</td><td>在 Guest 运行下节的首次触碰实验，比较进程 minor fault</td><td>能定位 Guest 匿名页按需建立的影响；计数不包含完整的宿主 EPT/NPT 活动</td></tr>
+    <tr><td>Guest 空闲很多，宿主 RSS 仍高</td><td>对照 Guest 内存统计、<code>dommemstat</code> 的 RSS 与 XML 中的后备配置</td><td>Guest 可用容量与宿主驻留量口径不同；空闲页仍可能保留宿主后备，见 <a href="virtio-balloon.html#balloon-measured">balloon 实测</a></td></tr>
+    <tr><td>怀疑 EPT/NPT 建图或宿主调页造成停顿</td><td>进一步在宿主对齐 KVM 缺页事件、宿主缺页与负载时间窗口</td><td>先区分第二级建图和取得后备页的等待；仅凭 Guest 缺页数或 RSS 无法判断 VM-Exit 原因</td></tr>
+  </tbody></table>
+  <p><code>dommemstat</code> 的 Guest 统计依赖驱动和已有采集配置。检查 <code>last-update</code> 是否更新；缺少字段应记为“未提供”，不能填零。命令与字段口径见 <a href="https://www.libvirt.org/manpages/virsh.html#dommemstat">libvirt 手册</a>。下节保留已完成实验的环境和原始计数，便于与自己的结果比较。</p>
+</section>
 <section id="experiment" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">六、</span>小实验：对照首次触碰与重复访问</h2>
+  <h2><span class="mechanism-heading-number">七、</span>小实验：对照首次触碰与重复访问</h2>
   <p>在 Linux 客户机里运行下面的单线程程序。它申请 32 MiB 匿名内存，按基础页大小写两遍，并分别统计本进程的 minor fault。第一次写入需要客户机建立匿名页映射；第二遍通常可以复用。程序只调整自己的映射，不需要 root，也不修改系统的大页配置。</p>
   <p>将代码保存为 <code>first-touch.c</code>。<code>MADV_NOHUGEPAGE</code> 用于排除本段映射的透明大页合并；系统不支持该建议时，程序报错退出，不把不同粒度的结果混在一起。</p>
   <pre><code id="first-touch-example">#define _GNU_SOURCE
@@ -201,7 +213,7 @@ int main(void)
   <p>本次记录没有采集 NPT 缺页、VM-Exit 或 TLB 计数，也没有做吞吐或延迟比较，结论限于上述 Guest 缺页行为。自动测试仍只编译和运行普通 Linux 用户态示例，不会启动虚拟机；表中数字来自这次独立的 KVM 实验。<a href="virtio-balloon.html#balloon-measured">balloon 实测</a>进一步观察后备页被回收、重新访问时的 RSS 变化。</p>
 </section>
 <section id="reading" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">七、</span>进一步阅读</h2>
+  <h2><span class="mechanism-heading-number">八、</span>进一步阅读</h2>
   <p><a href="virtio-balloon.html">virtio-balloon：内存回收、归还与空闲页报告</a>沿 Guest 页与宿主后备页的交接，补充容量调整、回收限制以及与 virtio-mem 的区别。</p>
   <ul>
     <li><a href="kvm-ept-fault.html">KVM 二级地址转换与缺页处理</a>：完整跟踪一页 RAM 的映射与失效。</li>
@@ -213,7 +225,7 @@ int main(void)
   </ul>
 </section>
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">八、</span>参考资料</h2>
+  <h2><span class="mechanism-heading-number">九、</span>参考资料</h2>
   <ul>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/x86/mmu.rst">Linux：MMU 目标、影子模式与两级映射</a></li>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst">Linux：内存槽与 dirty ring API</a></li>

@@ -47,7 +47,7 @@
     <h1>网络 I/O 收发过程</h1>
     <p class="mechanism-authorship">本演示由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
-  <nav class="mechanism-walkthrough-nav" aria-label="文章目录"><a href="#preface">一、场景与边界</a><a href="#walkthrough">二、逐步演示</a><a href="#completion">三、缓冲区与完成语义</a><a href="#evolution">四、后端演进与取舍</a><a href="#sources">五、源码与相关内容</a></nav>
+  <nav class="mechanism-walkthrough-nav" aria-label="文章目录"><a href="#preface">一、场景与边界</a><a href="#walkthrough">二、逐步演示</a><a href="#completion">三、缓冲区与完成语义</a><a href="#evolution">四、后端演进与取舍</a><a href="#verification">五、排查入口：沿收发方向逐段确认</a><a href="#sources">六、源码与相关内容</a></nav>
   <div class="mechanism-layout mechanism-layout--walkthrough">
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>场景与边界</h2>
@@ -383,8 +383,22 @@
   <p>vhost-user 的 Unix socket 负责共享内存、队列和通知配置，逐包数据通过共享内存访问。vDPA 也包括软件实现；本页固定为硬件 direct 模式，关闭 Shadow Virtqueue（SVQ）。启用 SVQ 后，QEMU 会参与队列转接，不能沿用本页的直接访问路径。对应实现分别见<a href="qemu-vhost-net.html">vhost-net 与 vhost-user</a>、<a href="dpdk-vhost-user-net.html">DPDK 网络转发</a>和<a href="vhost-vdpa.html">vhost-vDPA 与 SVQ</a>。</p>
 </section>
 
+<section id="verification" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">五、</span>排查入口：沿收发方向逐段确认</h2>
+  <p>先用运行中 XML 确认网卡型号和后端。下面命令在管理宿主执行，<code>VM</code> 替换为实际域名；QEMU / vhost-net 的 TAP 路径可把 <code>vnet0</code> 替换为接口列表中的目标名。</p>
+  <pre><code>virsh dumpxml VM
+virsh domiflist VM
+virsh domifstat VM vnet0</code></pre>
+  <table><thead><tr><th>现象</th><th>观察顺序</th><th>需要排除的混淆</th></tr></thead><tbody>
+    <tr><td>sendto 成功，远端未收到</td><td>按 Guest 接口、后端出口、宿主网络、远端接口与 socket 逐段对齐计数和丢包</td><td>返回值说明本地接受载荷；TX used 说明缓冲区可归还，两者都不保证远端收到</td></tr>
+    <tr><td>宿主已收包，Guest 应用没数据</td><td>沿后端接收、RX 可用缓冲区、完成提示、NAPI 和 socket 检查</td><td>设备写入 Guest 后仍可能因协议校验、过滤规则或 socket 预算被丢弃</td></tr>
+    <tr><td>吞吐正常，中断计数很少</td><td>先确认通知抑制、NAPI、批处理和轮询方式</td><td>报文数、中断数和 NAPI 轮次不一一对应；不能只靠中断少判断 irqfd 丢失</td></tr>
+  </tbody></table>
+  <p><a href="https://www.libvirt.org/manpages/virsh.html#domifstat">domifstat</a> 只覆盖接口支持的统计。DPDK vhost-user 或硬件 vDPA 需使用对应进程、PMD 或设备计数，不能套用 TAP 名称。比较两端时先确认 TX/RX 的观察视角，以及卸载、分段和合并设置；若要定位到单个报文，应在隔离测试环境收窄流量并关联各段记录。</p>
+</section>
+
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">五、</span>源码与相关内容</h2>
+  <h2><span class="mechanism-heading-number">六、</span>源码与相关内容</h2>
   <p>演示每一步均附相应源码或规范。客户机发送从 <code>__sys_sendto() → udp_sendmsg() → ip_make_skb()</code> 进入网络输出，再由 <code>start_xmit()</code> 提交给 virtio 队列。接收由驱动进入 UDP socket 排队，<code>__sys_recvfrom() → udp_recvmsg()</code> 在读取时复制载荷。QEMU 路径跟踪 <code>virtio_net_flush_tx()</code>、<code>virtio_net_receive_rcu()</code> 和 TAP 回调；vhost-net 跟踪 <code>handle_tx_copy()</code>、<code>handle_rx()</code>；DPDK 跟踪 split 队列消费、复制与 used 发布。</p>
   <ul>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/socket.c#L2209">Linux 6.18 sendto</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/socket.c#L2269">recvfrom</a>与<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/ipv4/udp.c#L2053">UDP 载荷复制</a>：客户机应用入口和返回。</li>

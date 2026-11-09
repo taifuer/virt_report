@@ -105,6 +105,19 @@
   <p>进一步阅读：<a href="qemu-virtio-blk.html">virtio-blk 写入、完成与持久化</a>。原理文章解释协议与设计取舍，本页用于观察一次请求的状态变化，两者互相补充。</p>
 </section>
 {% include '_disk_persistence_lab.html' %}
+<section id="verification" class="mechanism-section">
+  <h2>排查入口：磁盘 I/O 的分段定位</h2>
+  <p>先从运行中的配置确认设备接口、后端、缓存和 IOThread，再选择对应演示场景。以下为管理宿主上的只读查询；<code>VM</code> 替换为实际域名，<code>vda</code> 替换为第一条命令列出的目标盘名。</p>
+  <pre><code>virsh domblklist VM --details
+virsh dumpxml VM
+virsh domblkstat VM vda --human</code></pre>
+  <table><thead><tr><th>现象</th><th>观察顺序</th><th>下一步</th></tr></thead><tbody>
+    <tr><td>应用正在读，虚拟盘读计数不变</td><td>先确认采样窗口、目标盘和 Guest 页缓存，再判断是否形成设备请求</td><td>缓冲读命中不需要访问虚拟盘；计数不变本身不足以证明 virtqueue 卡住</td></tr>
+    <tr><td>虚拟盘 I/O 持续增长，应用延迟仍高</td><td>对照 Guest 块层等待、QEMU / vhost 后端处理以及宿主存储等待</td><td>按“发布队列 → 后端 → 完成 → 驱动回收”缩小范围，再决定在哪一侧做短时追踪</td></tr>
+    <tr><td>写调用已返回，但不清楚是否持久化</td><td>核对应用同步操作、设备 flush/FUA 和后端缓存约定</td><td>读写或 flush 计数用于确认活动；掉电保证需沿 <a href="#persistence">持久化演示</a>检查完整链路</td></tr>
+  </tbody></table>
+  <p>统计应在同一负载窗口前后各读一次，比较增量。<a href="https://www.libvirt.org/manpages/virsh.html#domblkstat">domblkstat</a> 的字段取决于后端支持，缺项不代表零；SPDK 等独立数据面还需查相应后端统计。这些总量不会直接给出 used 索引、通知次数或某个请求的注入时间，定位具体交接仍需两侧追踪关联。</p>
+</section>
 <section id="sources" class="mechanism-section"><h2>源码与相关内容</h2>
   <p>“源码路径”按执行上下文列出关键函数路径，并高亮当前步骤涉及的函数，辅助调用已省略。Guest 与宿主通过共享队列和通知协作；异步提交与完成回调分开展示。示例中的 R1 用来关联两端各自保存的请求对象，具体源码随设备与后端选择更新。</p>
   <ul class="mechanism-sources">

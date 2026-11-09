@@ -3,7 +3,7 @@
   'use strict';
   const clean = value => String(value || '').replace(/\0/g, ' ').trim().replace(/\s+/gu, ' ');
   function find(catalogue, input) {
-    const query = clean(input), result = {query, articles: [], demos: [], error: ''};
+    const query = clean(input), result = {query, articles: [], demos: [], papers: [], versions: [], error: ''};
     if (!query) return result;
     if ([...query].length < 2 || [...query].length > 100) {
       result.error = [...query].length < 2 ? '请至少输入 2 个字符。' : '搜索关键词请控制在 100 个字符以内。';
@@ -47,24 +47,32 @@
     clear.hidden = !input.value;
     const examples = form.querySelector('.search-examples');
     if (examples) examples.hidden = !!result.query;
-    for (const kind of ['articles', 'demos']) {
+    for (const kind of ['articles', 'demos', 'papers', 'versions']) {
       const section = root.querySelector(`[data-editorial-kind="${kind}"]`);
       section.querySelector('[data-editorial-count]').textContent = String(result[kind].length);
       const list = section.querySelector('[data-editorial-list]');
       list.replaceChildren();
       section.querySelector('[data-editorial-empty]').hidden = !!result[kind].length;
-      for (const item of result[kind]) {
+      let more;
+      for (const [i, item] of result[kind].entries()) {
+        if (i === 5 && ['papers', 'versions'].includes(kind)) {
+          more = element('details', '', 'editorial-more');
+          more.append(element('summary', `其余 ${result[kind].length - 5} 条结果`));
+          list.append(more);
+        }
         const card = element('article', '', 'search-result');
         const heading = element('h3', '', 'search-result-title');
         const link = element('a', item.title);
         link.setAttribute('href', item.href);
         heading.append(link);
-        card.append(heading, element('p', item.summary, 'search-summary'));
-        if (item.matched_headings.length) card.append(element('p', '相关章节 / 场景：' + item.matched_headings.join(' · '), 'editorial-match'));
-        list.append(card);
+        card.append(heading);
+        if (item.meta) card.append(element('p', item.meta, 'editorial-match'));
+        card.append(element('p', item.summary, 'search-summary'));
+        if (item.matched_headings.length) card.append(element('p', (item.heading_label || '相关章节 / 场景') + '：' + item.matched_headings.join(' · '), 'editorial-match'));
+        (more || list).append(card);
       }
     }
-    status.textContent = result.error || (result.query ? `原理讲解 ${result.articles.length} 篇，交互演示 ${result.demos.length} 篇。` : '');
+    status.textContent = result.error || (result.query ? `原理讲解 ${result.articles.length} 篇，交互演示 ${result.demos.length} 篇，论文 ${result.papers.length} 篇，版本与规范 ${result.versions.length} 条。` : '');
   }
   function fromURL() {
     input.value = new URL(location.href).searchParams.get('q') || '';
