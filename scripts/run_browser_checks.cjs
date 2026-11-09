@@ -8,12 +8,13 @@ const {spawn} = require('node:child_process');
 const {once} = require('node:events');
 const root = path.resolve(__dirname, '..');
 const artifacts = path.resolve(process.env.BROWSER_ARTIFACT_DIR || '/tmp/virt-report-browser');
-const suites = ['search', 'inline_disclosures', 'versions', 'virtqueue', 'walkthrough_interaction', 'execution_demos'];
+const suites = ['search', 'report_sources', 'inline_disclosures', 'versions', 'virtqueue', 'walkthrough_interaction', 'execution_demos'];
 if (process.argv.includes('--full')) suites.push('walkthrough_global');
 fs.mkdirSync(artifacts, {recursive: true});
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const env = {...process.env,
   SEARCH_SCREENSHOT_DIR: path.join(artifacts, 'search'),
+  REPORT_SOURCES_SCREENSHOT_DIR: path.join(artifacts, 'report-sources'),
   INLINE_DISCLOSURES_SCREENSHOT_DIR: path.join(artifacts, 'disclosures'),
   VERSIONS_SCREENSHOT_DIR: path.join(artifacts, 'versions'),
   VIRTQUEUE_SCREENSHOT_DIR: path.join(artifacts, 'virtqueue'),

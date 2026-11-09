@@ -118,12 +118,16 @@ def _gaps(start: str, end: str, intervals: list[tuple[str, str]]) -> list[dict]:
     return missing
 
 
-def report_coverage(conn, config, start: datetime | str, end: datetime | str) -> dict:
+def report_coverage(conn, config, start: datetime | str, end: datetime | str,
+                    *, period: str | None = None) -> dict:
     """Return JSON-safe completeness for [start, end), never using item extrema.
 
     Legacy windows without explicit overlapping scan records remain unknown;
     callers must not permanently block historical reports on that basis.
+    A period scopes this report's sources; omit it to check all collection sources.
     """
+    from virt_report.report_projects import source_in_report
+
     # Read paths must remain read-only (the Web service can use a read-only DB).
     exists = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='collection_scans'"
@@ -134,6 +138,8 @@ def report_coverage(conn, config, start: datetime | str, end: datetime | str) ->
                 for item in config.sources.mailing_lists]
     expected += [("gitlab", item.name, f"{item.name} GitLab", False, None) for item in config.sources.gitlab]
     for source, project, label, required, active_from in expected:
+        if not source_in_report(project, period):
+            continue
         source_start = max(start, utc_iso(active_from)) if active_from else start
         if source_start >= end:
             continue

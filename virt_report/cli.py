@@ -293,7 +293,7 @@ def _run_period(args, config: Config, period: str) -> int:
         # `fetch` 已负责重建线程；--no-fetch 用于批量回填报告时避免重复全量重建。
         if getattr(args, "wait_for_coverage", False):
             start, end = periods.window(period, key, config.timezone)
-            state = coverage.report_coverage(conn, config, start, end)
+            state = coverage.report_coverage(conn, config, start, end, period=period)
             if state["wait_recommended"]:
                 print(f"{period}报等待目标周期数据补齐: {', '.join(state['missing_sources'])}")
                 return 4

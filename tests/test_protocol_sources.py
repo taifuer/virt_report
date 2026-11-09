@@ -18,13 +18,13 @@ def test_configured_protocol_sources_have_bounded_optional_coverage():
     assert search._project_fields("vhost-user") == ("qemu", "QEMU")
 
 
-def test_template_fallback_keeps_virtio_overview():
+def test_template_fallback_keeps_virtio_provenance_without_repeated_overview():
     origins = [{"project": "virtio-dev", "url": "https://lore.kernel.org/virtio-dev/a/"},
                {"project": "virtio-comment", "url": "https://lore.kernel.org/virtio-comment/a/"}]
     overview, sections = _sanitize([{"project": "Virtio", "summary": "规范评审动态"}],
                                   [{"key": "virtio", "name": "Virtio",
                                     "items": [{"title": "Example", "crossposts": origins}]}], None)
-    assert any(item["project"] == "Virtio" for item in overview)
+    assert not any(item["project"] == "Virtio" for item in overview)
     assert sections[0]["items"][0]["crossposts"] == origins
 
 

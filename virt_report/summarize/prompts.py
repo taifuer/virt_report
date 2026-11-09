@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from virt_report.report_projects import REPORT_PROJECTS, project_of
+from virt_report.report_projects import project_of, projects_for_period, source_in_report
 
 _RANGE = {"daily": "当天", "weekly": "本周", "monthly": "本月"}
 _PERIOD = {"daily": "日", "weekly": "周", "monthly": "月"}
@@ -68,7 +68,7 @@ _SYSTEM = """你是资深虚拟化内核与云平台技术编辑，熟悉 QEMU�
 3. patch series 视为一个事件；同一主题的版本迭代只保留最新或最有信息量的一项，避免补丁清单式罗列。
 4. 标题可做准确、克制的中文编辑，但不得扩大原意；技术名词、函数、设备和架构名保留英文。
 5. 优先级首先依据安全与数据损坏风险、技术影响、讨论质量和成熟度；影响相近时优先 x86/Arm 架构议题，不得只因架构标签压过更重要的变化。
-6. overview 要做跨条目归纳，说明议题与当前阶段。每个有正文条目的项目必须有概览；有条目时不得写“未观察到显著动态”。未选入条目时只能说明未收录，不得推断上游没有活动；采集覆盖情况由系统另行呈现。
+6. overview 只归纳 QEMU、KVM、Libvirt 的议题与当前阶段；这些项目有条目时不得写“未观察到显著动态”。Virtio 正文已有精选点评，不再输出 Virtio 概览。未选入条目时不得推断上游没有活动；采集覆盖情况由系统另行呈现。
 7. 周期措辞必须与报告一致：日报只能写“当日/当天”，周报写“本周”，月报写“本月”，不得混用。
 8. 对 closed/已关闭事项，不得再写“待修复/需尽快修复”；只能说明其历史影响，并提示以原始 issue 的关闭结论为准。关闭不自动等于已修复。
 9. evidence 中 novelty=updated 表示该线程曾进入近期日报。必须结合 PREVIOUS_SUMMARY 与 LATEST 说明“这次新增了什么”，不得原样重复旧结论；novelty=new 才是首次出现。
@@ -85,8 +85,10 @@ _SYSTEM = """你是资深虚拟化内核与云平台技术编辑，熟悉 QEMU�
 }
 
 输出要求：
-- 本次输入的项目为：{project_names}。overview 与 sections 按此顺序呈现；其他项目不凭空补写。JSON 示例中的 ref 仅说明格式，实际必须引用输入证据。
-- items 总数约 {item_count}；质量优先，证据不足可以更少。有有效输入的项目都要覆盖，包括 Virtio 规范讨论。
+- 本次输入的项目为：{project_names}。sections 按此顺序呈现；overview 沿用该顺序并省略 Virtio，其他项目不凭空补写。JSON 示例中的 ref 仅说明格式，实际必须引用输入证据。
+- items 总数约 {item_count}；质量优先，证据不足可以更少。优先覆盖有实质进展的 QEMU、KVM、Libvirt 议题。
+- Virtio 独立议题仅用于周报、月报，选择有明确机制变化、兼容性影响、实现反馈或评审结论的讨论。仅有重复转发、催办或排版修订时可以不选；没有入选条目就省略整个 Virtio section，不写空栏目或“无显著动态”。
+- Virtio 周报说明本周新增的变化、影响和当前阶段；月报合并同一提案的跨周往返及版本迭代，梳理累计进展与未决问题。依据本周期原始证据整理，不拼接或复述日报、周报，也不把邮件数量当成进展。
 - summary 说明事实，impact 解释意义；二者不要重复，均控制在 80 个汉字以内。
 - 使用平实的技术表述，直接说明改动、原因和影响；避免“不是……而是……”式铺垫、反复设问及“赋能、颠覆、真正”等空泛强调。技术限制、适用条件和未验证结论仍须保留，不为简化措辞扩大结论。
 {period_analysis_requirement}
@@ -98,10 +100,12 @@ _SYSTEM = """你是资深虚拟化内核与云平台技术编辑，熟悉 QEMU�
 def system_prompt(period: str, period_key: str,
                   threads_data: list[dict] | None = None) -> str:
     del period_key
+    eligible = projects_for_period(period)
     present = ({project_of(card.get("project", ""))[0] for card in threads_data}
-               if threads_data is not None else {key for key, _name, _members in REPORT_PROJECTS})
-    groups = [(key, name) for key, name, _members in REPORT_PROJECTS if key in present]
-    overview = [{"project": name, "summary": "1-2句归纳议题与当前阶段"} for _key, name in groups]
+               if threads_data is not None else {key for key, _name, _members in eligible})
+    groups = [(key, name) for key, name, _members in eligible if key in present]
+    overview = [{"project": name, "summary": "1-2句归纳议题与当前阶段"}
+                for key, name in groups if key != "virtio"]
     sections = [{"key": key, "name": name, "items": [{
         "ref": "输入中的ref", "title": "准确简洁的标题", "summary": "改了什么及背景",
         "impact": "对研发/用户的具体意义", "tag": "子系统或架构", "status": "依据证据判断",
@@ -119,6 +123,7 @@ def system_prompt(period: str, period_key: str,
 
 
 def build_prompt(period: str, period_key: str, threads_data: list[dict]) -> str:
+    threads_data = [card for card in threads_data if source_in_report(card["project"], period)]
     lines = [
         f"报告周期：{period_key}（{_RANGE[period]}）",
         f"候选证据：{len(threads_data)} 张，已按项目配额和显著性预筛。",

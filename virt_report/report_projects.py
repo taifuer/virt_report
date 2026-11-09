@@ -1,17 +1,28 @@
 """Shared report categories and evidence-backed overview fallbacks."""
 from __future__ import annotations
 
+VIRTIO_SOURCES = ("virtio-dev", "virtio-comment")
 REPORT_PROJECTS = (
     ("qemu", "QEMU", ("qemu-devel", "qemu", "vhost-user")),
     ("kvm", "KVM", ("kvm",)),
     ("libvirt", "Libvirt", ("libvir-list", "libvirt")),
-    ("virtio", "Virtio", ("virtio-dev", "virtio-comment")),
+    ("virtio", "Virtio", VIRTIO_SOURCES),
 )
-
+OVERVIEW_PROJECTS = tuple(group for group in REPORT_PROJECTS if group[0] != "virtio")
 _EMPTY_OVERVIEWS = {
     "本期未观察到显著动态", "本期无显著动态", "本期暂无显著动态",
     "本期未采集到新的社区活动", "本期未收录该项目的议题",
 }
+
+
+def source_in_report(source: str, period: str | None = None) -> bool:
+    """Scope report selection and statistics; collection remains independent."""
+    return period != "daily" or source not in VIRTIO_SOURCES
+
+
+def projects_for_period(period: str) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
+    """Virtio protocol threads are selected only for weekly/monthly reports."""
+    return OVERVIEW_PROJECTS if period == "daily" else REPORT_PROJECTS
 
 
 def project_of(source: str) -> tuple[str, str]:
@@ -24,13 +35,14 @@ def project_of(source: str) -> tuple[str, str]:
 
 def reconcile_overview(overview: list, sections: list,
                        candidates: list[dict] | None = None) -> list[dict]:
-    """Repair missing/empty summaries from published items, without LLM or I/O.
+    """Repair core-project summaries and omit the repetitive Virtio overview.
 
     The fallback describes selection, not upstream activity or source coverage.
     Historical model text and billing remain untouched in the stored report.
     """
-    rows = {row["project"].casefold(): dict(row) for row in overview
-            if isinstance(row, dict) and isinstance(row.get("project"), str)}
+    rows = {row["project"].strip().casefold(): dict(row) for row in overview
+            if isinstance(row, dict) and isinstance(row.get("project"), str)
+            and row["project"].strip().casefold() != "virtio"}
     items_by_key = {}
     for section in sections:
         if not isinstance(section, dict):
@@ -39,7 +51,9 @@ def reconcile_overview(overview: list, sections: list,
         if isinstance(items, list):
             items_by_key.setdefault(section.get("key"), []).extend(
                 item for item in items if isinstance(item, dict))
-    for key, name, _members in REPORT_PROJECTS:
+    # Protocol items carry their own concise commentary; do not repeat them in
+    # the overview, including when rendering historical saved model output.
+    for key, name, _members in OVERVIEW_PROJECTS:
         items = items_by_key.get(key, [])
         row = rows.get(name.casefold())
         if row is None and not items:

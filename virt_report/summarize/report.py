@@ -20,7 +20,10 @@ from virt_report.processing.architecture import (
 )
 from virt_report.processing.category import category_label, classify_change
 from virt_report.processing.topics import topic_links_for_item
-from virt_report.report_projects import REPORT_PROJECTS, project_of, reconcile_overview
+from virt_report.report_projects import (
+    OVERVIEW_PROJECTS, REPORT_PROJECTS, VIRTIO_SOURCES, project_of,
+    projects_for_period, reconcile_overview, source_in_report,
+)
 from . import billing, evidence as evidence_rules, llm_provider, periods, prompts
 
 log = logging.getLogger(__name__)
@@ -402,8 +405,10 @@ def _deduplicate_crossposts(cards: list[dict]) -> list[dict]:
     return result
 
 
-def _stats(conn: sqlite3.Connection, start_iso: str, end_iso: str) -> dict:
-    items = db.get_activity_items_in_window(conn, start_iso, end_iso)
+def _stats(conn: sqlite3.Connection, start_iso: str, end_iso: str,
+           *, period: str | None = None) -> dict:
+    items = [item for item in db.get_activity_items_in_window(conn, start_iso, end_iso)
+             if source_in_report(item["project"], period)]
     by_project: dict[str, int] = {}
     project_source_counts: dict[tuple[str, str], int] = {}
     by_kind: dict[str, int] = {}
@@ -494,13 +499,14 @@ def _fallback(threads_data: list[dict], period: str, period_key: str,
         buckets[key].append(t)
     overview: list[dict] = []
     sections: list[dict] = []
-    for key, name, _ in _PROJECT_GROUPS:
+    for key, name, _ in projects_for_period(period):
         ts = buckets[key]
         if not ts:
             continue
         top_titles = "；".join(t["subject"][:30] for t in ts[:2])
-        overview.append({"project": name,
-                         "summary": f"{range_word}活跃 {len(ts)} 项：{top_titles}{env_hint}"})
+        if key != "virtio":
+            overview.append({"project": name,
+                             "summary": f"{range_word}活跃 {len(ts)} 项：{top_titles}{env_hint}"})
         items = []
         for t in ts[:10]:
             items.append({
@@ -515,7 +521,7 @@ def _fallback(threads_data: list[dict], period: str, period_key: str,
                 "crossposts": t.get("crossposts", []),
             })
         sections.append({"key": key, "name": name, "items": items})
-    if not overview:
+    if not overview and not sections:
         overview = [{"project": "(无)",
                      "summary": f"{period_key} {range_word}无显著活跃数据{env_hint}"}]
     return overview, sections
@@ -534,11 +540,8 @@ def _sanitize(overview: list, sections: list,
             if o.get("summary_source") == "items":
                 ov_map[project.lower()]["summary_source"] = "items"
     ov: list[dict] = []
-    for _key, name, _members in _PROJECT_GROUPS:
+    for _key, name, _members in OVERVIEW_PROJECTS:
         found = ov_map.get(name.lower())
-        if (_key == "virtio" and not any(_project_of(t)[0] == "virtio" for t in (threads_data or []))
-                and not (threads_data is None and found)):
-            continue
         ov.append(found or {"project": name, "summary": ""})
 
     evidence = {t["ref"]: t for t in (threads_data or [])}
@@ -634,6 +637,8 @@ def _sanitize(overview: list, sections: list,
                 "crossposts": it.get("crossposts", [])
                 if isinstance(it.get("crossposts", []), list) else [],
             })
+        if s.get("key") == "virtio" and not items:
+            continue
         secs.append({"key": s.get("key", "") or "", "name": s.get("name", "") or "",
                      "items": items})
     return reconcile_overview(ov, secs, threads_data), secs
@@ -951,13 +956,14 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
     }
     quotas["virtio"] = 0
     protocol_rows = []
-    if any(source.name in {"virtio-dev", "virtio-comment"} for source in config.sources.mailing_lists):
+    if period in {"weekly", "monthly"} and any(
+            source.name in VIRTIO_SOURCES for source in config.sources.mailing_lists):
         protocol_rows = db.get_top_threads_for_projects(
-            conn, start_iso, end_iso, ("virtio-dev", "virtio-comment"), min(5, quotas["qemu"] // 4),
+            conn, start_iso, end_iso, VIRTIO_SOURCES, min(5, quotas["qemu"] // 4),
         )
         quotas["qemu"] -= len(protocol_rows)
     rows = list(protocol_rows)
-    for key, _name, members in _PROJECT_GROUPS:
+    for key, _name, members in projects_for_period(period):
         rows.extend(db.get_top_threads_for_projects(
             conn, start_iso, end_iso, members, quotas[key]
         ))
@@ -967,7 +973,7 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
         rows = _limit_continuing_threads(rows, history)
     threads_data = _build_threads_data(conn, rows, EXCERPT_LEN[period], history, end_iso)
     from virt_report.coverage import report_coverage
-    data_coverage = report_coverage(conn, config, start_iso, end_iso)
+    data_coverage = report_coverage(conn, config, start_iso, end_iso, period=period)
 
     provider = llm_provider.get_provider(config.llm)
     model = {"daily": config.llm.daily_model, "weekly": config.llm.weekly_model,
@@ -1029,7 +1035,7 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
                 parsed = None
                 break  # provider 内部已退避重试, 不再 report 层重试
 
-    stats = _stats(conn, start_iso, end_iso)
+    stats = _stats(conn, start_iso, end_iso, period=period)
     no_activity = (not threads_data and not stats["total_items"]
                    and data_coverage["status"] == "complete")
     overview, sections = [], []
@@ -1050,8 +1056,7 @@ def generate(conn: sqlite3.Connection, config: Config, period: str,
         raw_period_analysis = parsed.get("period_analysis", [])
     if no_activity:
         overview = [{"project": name, "summary": "本期未采集到新的社区活动。"}
-                    for _key, name, _members in _PROJECT_GROUPS
-                    if _key != "virtio" or any(source.name in _members for source in config.sources.mailing_lists)]
+                    for _key, name, _members in OVERVIEW_PROJECTS]
         sections = []
         headline = "本期无新增社区动态"
     elif not parsed or (not overview and not sections):
