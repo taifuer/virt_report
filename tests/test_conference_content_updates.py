@@ -1,8 +1,34 @@
 """Keep publication status independent from the available review evidence."""
 
+from copy import deepcopy
+from html import escape
+
 from virt_report import conferences, kvm_forum
 from virt_report.config import Config
 from virt_report.render import render as html_render
+
+
+def test_conference_directory_omits_maintenance_notes_without_changing_records():
+    content = conferences.load_content()
+    before = deepcopy(content)
+    page = html_render.render_conferences_html(Config(), content)
+    assert content["edition_checks"]
+    assert "venue-check" not in page
+    assert "核对于" not in page
+    assert "本轮未复核" not in page
+    assert "已收录至" not in page
+    assert "核对进度" not in page
+    for venue in content["academic_venues"]:
+        assert f'<h3>{escape(venue["name"])}</h3>' in page
+        assert f'<div class="venue-description"><p>{escape(venue["focus"])}</p></div>' in page
+        assert (f'href="conference-papers.html?venue={venue["key"]}">'
+                f'{venue["paper_count"]} 篇相关论文</a>') in page
+        assert (f'href="{escape(venue["url"])}" target="_blank" '
+                'rel="noopener noreferrer">官方网站</a>') in page
+    timeline = html_render.render_academic_conferences_html(Config(), content)
+    assert 'href="conferences.html#conference-sources">查看收录会议</a>' in timeline
+    assert "核对进度" not in timeline
+    assert content == before
 
 
 def test_paper_archive_keeps_topic_tags_without_community_topic_row():

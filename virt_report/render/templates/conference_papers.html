@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_pagination.html" import pagination %}
 {% block title %}相关论文 - virt-report{% endblock %}
-{% block description %}系统领域学术会议中的虚拟化相关论文列表。{% endblock %}
+{% block description %}系统领域会议与期刊中的虚拟化相关论文列表。{% endblock %}
 {% block nav_home %}{% endblock %}
 {% block nav_conferences %}on{% endblock %}
 {% block content %}
@@ -15,7 +15,7 @@
     </form>
     <div class="paper-active-topic" data-conference-topic-filter hidden><span>主题：<strong data-conference-topic-label></strong></span><button type="button" data-conference-topic-clear>清除主题</button></div>
     <div class="conference-controls" role="group" aria-label="论文筛选">
-      <label>会议<select data-conference-venue><option value="" data-option-label="全部">全部（{{ content.paper_count }}）</option>{% for venue in content.paper_venues %}<option value="{{ venue.key }}" data-option-label="{{ venue.name }}">{{ venue.name }}（{{ venue.paper_count }}）</option>{% endfor %}</select></label>
+      <label>会议 / 期刊<select data-conference-venue><option value="" data-option-label="全部">全部（{{ content.paper_count }}）</option>{% for venue in content.paper_venues %}<option value="{{ venue.key }}" data-option-label="{{ venue.name }}">{{ venue.name }}（{{ venue.paper_count }}）</option>{% endfor %}</select></label>
       <label>年份<select data-conference-year><option value="" data-option-label="全部">全部（{{ content.paper_count }}）</option>{% for year in content.years %}<option value="{{ year }}" data-option-label="{{ year }}">{{ year }}（{{ content.year_counts[year] }}）</option>{% endfor %}</select></label>
       <span data-conference-count aria-live="polite" aria-atomic="true">{{ content.paper_count }} 篇论文</span>
       <button type="button" class="paper-reset" data-conference-reset hidden>清除筛选</button>
@@ -29,6 +29,7 @@
         {% set abstract_url = paper.evidence_source_url if paper.evidence_level == 'abstract' and paper.evidence_source_url and paper.evidence_source_url != paper.url else '' %}
         {% if publication_label or paper.evidence_level in ['title', 'project'] or abstract_url %}<p class="paper-evidence">{{ publication_label }}{% if paper.evidence_level == 'title' %}{% if publication_label %} · {% endif %}目前仅核实标题，待摘要补充{% elif paper.evidence_level == 'project' %}{% if publication_label %} · {% endif %}点评依据<a href="{{ paper.evidence_source_url }}" target="_blank" rel="noopener noreferrer">作者项目说明</a>{% elif abstract_url %}{% if publication_label %} · {% endif %}<a href="{{ abstract_url }}" target="_blank" rel="noopener noreferrer">公开摘要</a>{% endif %}</p>{% endif %}
         <p><strong>内容</strong>{{ paper.introduction }}</p><p class="editor-comment"><strong>点评</strong>{{ paper.commentary }}</p>
+        {% if paper.pdf_url or paper.code_url or paper.artifact_source_url %}<p class="paper-resources">{% for key,label in [('pdf_url','论文 PDF'),('code_url','项目代码'),('artifact_source_url','Artifact 记录')] if paper.get(key) %}{% if not loop.first %} · {% endif %}<a href="{{ paper[key] }}" target="_blank" rel="noopener noreferrer">{{ label }}</a>{% endfor %}</p>{% endif %}
         <div class="paper-tags">{% if paper.representative %}<span class="tag representative">代表性论文</span>{% endif %}{% for architecture in paper.architectures %}<span class="tag arch{% if architecture in ['x86', 'Arm'] %} focus{% endif %}">{{ architecture }}</span>{% endfor %}{% for topic in paper.topics %}<a class="tag" href="conference-papers.html?topic={{ topic|urlencode }}" data-paper-topic="{{ topic }}" title="筛选{{ topic }}论文">{{ topic }}</a>{% endfor %}</div>
       </div>
     </article>{% endfor %}</div>

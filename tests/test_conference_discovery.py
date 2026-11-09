@@ -167,7 +167,7 @@ def test_reviewed_additions_keep_years_evidence_and_institutions():
     published = by_id["sosp26-cpu-virtualization"]
     assert published["publication_status"] == "published"
     assert published["evidence_level"] == "title" and published["architectures"] == []
-    assert all(p["institutions"] for p in by_id.values())
+    assert all(p["institutions"] or p.get("affiliation_note") for p in by_id.values())
     page = render.render_conference_papers_html(Config(), content)
     assert "data-conference-query" in page and "data-paper-topic" in page
     assert 'id="paper-security25-tdxploit"' in page

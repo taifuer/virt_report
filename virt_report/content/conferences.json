@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-11-03",
-  "coverage": "覆盖 2010—2026 年，最近补充于 2026 年 11 月 3 日；各会议核对进度见来源列表",
+  "updated_at": "2026-11-09",
+  "coverage": "选录 2005—2026 年研究，最近补充于 2026 年 11 月 9 日；各年数量反映本站收录范围",
   "method": "离线保存会议目录的标题元数据，再依据会议或机构页面公开的标题、简介或摘要，以及作者项目说明审核虚拟化相关性，必要时核对原论文。论文主链接优先指向出版者、会议官方页或 DOI；论文单位优先采用会议官方页或 Crossref 元数据，缺失时参考机构公开论文页，并规范化去重。不展示作者，不推断通讯作者。公开页面只保留审核后的相关论文、中文转述与编辑点评，不重发布论文全文，不调用 DeepSeek 自动生成。仅有标题证据的论文单独标注，不据此推断实现机制、性能数据或上游落地情况；各会议分别核对，收录数量不代表全部相关论文数量。",
   "edition_checks": [
     {
@@ -56,9 +56,9 @@
     {"key": "security", "name": "安全与漏洞", "paper_ids": ["security26-staleus", "security26-free", "security25-tdxploit"], "releases": []}
   ],
   "analysis": {
-    "coverage": "2010—2026",
+    "coverage": "2005—2026",
     "headline": "从 Hypervisor 机制优化走向轻量化、机密计算与生产协同",
-    "overview": "十七年间，系统虚拟化研究从嵌套运行、I/O 调度、迁移和资源隔离等基础机制，逐步扩展到轻量虚机、设备直通、跨架构执行与机密虚机。近年的变化尤其明显：研究开始同时处理安全边界、可运维性和云端规模约束，VMM 与硬件、客户机及控制面的协同成为主线。",
+    "overview": "早期 QEMU、KVM 与 Virtio 论文分别解释设备与指令模拟、内核中的硬件辅助执行，以及通用虚拟 I/O 接口。后续研究沿嵌套运行、资源管理、迁移和隔离展开，也通过专用客户机、快照与按需加载降低启动成本。以下按已收录论文梳理这些机制的联系，年度数量不用于衡量研究热度。",
     "eras": [
       {
         "years": "2023—2026",
@@ -89,6 +89,11 @@
         "years": "2010—2012",
         "name": "云虚机基础能力成形期",
         "summary": "嵌套虚拟化、I/O 公平、时间一致性、高可用与跨广域迁移共同奠定云端虚机的运行基础。"
+      },
+      {
+        "years": "2005—2008",
+        "name": "执行与虚拟设备接口",
+        "summary": "QEMU 的动态翻译、KVM 的内核执行接口与 Virtio 的驱动和设备约定，构成理解后续虚拟化路径的重要起点。"
       }
     ],
     "years": [
@@ -152,7 +157,7 @@
           "DRAM 隔离",
           "I/O 公平"
         ],
-        "summary": "DuVisor 尝试委托用户态虚拟化，PVM 与 Siloz 分别处理页表和 DRAM 层面的隔离；研究同时关注过量分配环境中的 I/O 公平，说明性能和安全边界必须一起衡量。",
+        "summary": "DuVisor 尝试委托用户态虚拟化，PVM 与 Siloz 分别处理页表和 DRAM 层面的隔离；研究同时关注过量分配环境中的 I/O 公平。AWS Lambda 的按需容器加载则把启动问题延伸到镜像分块、缓存与实际读取路径，补充了只观察 VMM 启动时间时容易遗漏的存储成本。",
         "representative_ids": [
           "osdi23-duvisor",
           "sosp23-pvm",
@@ -203,7 +208,7 @@
           "ARM I/O",
           "多对一虚拟化"
         ],
-        "summary": "Firecracker 使轻量硬件虚拟化成为 Serverless 的实际基础，GiantVM 探索多客户机到单 VMM 的组织方式，LeapIO 则把 ARM 平台的虚拟 NVMe 路径作为性能重点。",
+        "summary": "Firecracker 精简面向 Serverless 的 VMM 与设备模型，SEUSS 通过 unikernel 快照复用初始化状态，Catalyzer 结合按需恢复与环境克隆缩短启动路径。三者可按设备范围、快照边界和兼容性比较。GiantVM 探索多客户机到单 VMM 的组织方式，LeapIO 则研究 ARM 平台的虚拟 NVMe 路径。",
         "representative_ids": [
           "nsdi20-firecracker",
           "asplos20-leapio"
@@ -299,7 +304,7 @@
           "内存去重",
           "I/O"
         ],
-        "summary": "研究一端尝试实时理解客户机内部状态，另一端继续改进宿主机换页、内存分配和跨 VM 去重。虚拟化平台的研究范围由隔离执行扩展到运行诊断和数据中心内存管理。",
+        "summary": "ClickOS 为网络功能组织轻量客户机，OSv 为单应用虚机调整内核与运行接口；两者都利用专用运行环境减少通用系统开销，同时面临不同的应用兼容性约束。其他已收录工作继续研究内省、宿主换页与跨 VM 内存去重。",
         "representative_ids": [
           "vee14-introspection",
           "vee14-tesseract",
@@ -315,7 +320,7 @@
           "迁移",
           "恢复"
         ],
-        "summary": "Halite 优化检查点恢复，Hyper-Switch 缩短虚拟网络路径，MiG 用语义压缩减少桌面虚机迁移流量。同一年度的三项工作显示，虚机生命周期已经需要分别优化存储布局、网络数据面和状态传输。",
+        "summary": "Unikernels 将应用所需的库操作系统与应用一起编译为专用客户机，改变了虚机内部的软件组织。Halite 优化检查点恢复，Hyper-Switch 缩短虚拟网络路径，MiG 用语义压缩减少桌面虚机迁移流量，可分别比较客户机裁剪、存储布局、网络数据面和状态传输的收益。",
         "representative_ids": [
           "atc13-halite",
           "atc13-hyperswitch",
@@ -331,7 +336,7 @@
           "灾难恢复",
           "设备直通"
         ],
-        "summary": "研究从单台虚机扩展到数据中心级 VM 管理、高可用和异地容灾，同时尝试让带直通设备的虚机仍可迁移。虚拟化由服务器整合工具逐渐变成云平台的故障与调度边界。",
+        "summary": "Dune 用硬件虚拟化向进程安全开放页表等特权能力，保留与原有 Linux 进程环境的联系。其他已收录工作关注数据中心级 VM 管理、高可用、异地容灾与直通设备迁移，体现了进程执行机制和整机运维两类不同问题。",
         "representative_ids": [
           "vee12-dvm",
           "vee12-secondsite",
@@ -369,6 +374,22 @@
           "osdi10-mclock",
           "osdi10-time"
         ]
+      },
+      {
+        "year": 2008, "headline": "Virtio 的通用虚拟 I/O 接口",
+        "themes": ["Virtio", "共享队列"],
+        "summary": "Virtio 将驱动侧的通用接口与 Hypervisor 侧的实现分开，通过特性协商和 vring 传输复用驱动。这篇 OSR 期刊论文可与本站收录的早期规范草案及后续 OASIS 文档对照阅读。",
+        "representative_ids": ["osr08-virtio"]
+      },{
+        "year": 2007, "headline": "KVM 将硬件辅助执行接入 Linux",
+        "themes": ["KVM", "vCPU 执行"],
+        "summary": "KVM 通过内核模块与用户态接口组织 Guest 执行，复用 Linux 的调度和资源管理。原论文中的用户态、内核态和 Guest 执行循环，适合用来理解今天的 VM-exit 与返回用户态之间的区别。",
+        "representative_ids": ["ols07-kvm"]
+      },{
+        "year": 2005, "headline": "QEMU 的跨架构动态翻译",
+        "themes": ["QEMU", "动态翻译"],
+        "summary": "QEMU 原始论文介绍跨架构指令翻译以及系统级和用户级模拟。它记录的是早期实现，阅读时应与后来的 TCG 和 KVM 加速路径区分。",
+        "representative_ids": ["atc05-qemu"]
       }
     ]
   },
@@ -382,6 +403,18 @@
       "url": "https://kvm-forum.qemu.org/archive/",
       "page": "kvm-forum.html",
       "focus": "QEMU、KVM、virtio 与虚拟化工程实践，已整理 2010—2025 年议程主题。"
+    },
+    {
+      "key": "ols", "name": "OLS", "full_name": "Ottawa Linux Symposium",
+      "kind": "学术会议", "priority": "经典论文",
+      "url": "https://www.kernel.org/doc/ols/",
+      "focus": "选录 Linux 虚拟化早期设计论文，保留会议原始文集链接。"
+    },
+    {
+      "key": "osr", "name": "OSR", "full_name": "ACM SIGOPS Operating Systems Review",
+      "kind": "期刊", "priority": "经典论文",
+      "url": "https://dl.acm.org/journal/sigops",
+      "focus": "选录与系统虚拟化接口直接相关的经典期刊论文。"
     },
     {
       "key": "vee",
@@ -475,6 +508,135 @@
     }
   ],
   "papers": [
+    {
+      "id": "atc05-qemu", "year": 2005, "venue": "atc",
+      "title": "QEMU, a Fast and Portable Dynamic Translator",
+      "url": "https://www.usenix.org/conference/2005-usenix-annual-technical-conference/qemu-fast-and-portable-dynamic-translator",
+      "pdf_url": "https://www.usenix.org/legacy/event/usenix05/tech/freenix/full_papers/bellard/bellard.pdf",
+      "authors": ["Fabrice Bellard"], "institutions": [],
+      "affiliation_note": "原论文未列出单位",
+      "affiliation_source": "official", "affiliation_source_url": "https://www.usenix.org/legacy/event/usenix05/tech/freenix/full_papers/bellard/bellard.pdf", "affiliation_verified_at": "2026-11-09",
+      "publication_status": "published", "evidence_level": "abstract",
+      "evidence_source_url": "https://www.usenix.org/conference/2005-usenix-annual-technical-conference/qemu-fast-and-portable-dynamic-translator", "evidence_verified_at": "2026-11-09",
+      "introduction": "介绍 QEMU 如何通过动态翻译在不同宿主 CPU 上执行目标指令，并同时支持完整系统模拟与 Linux 用户程序模拟。设备模型与执行引擎共同提供客户机运行环境。",
+      "commentary": "适合作为区分指令翻译、系统模拟和硬件辅助虚拟化的起点。论文描述早期动态翻译实现；今天的 TCG、KVM 加速路径及其性能需要依据对应版本单独分析。",
+      "relation": "直接关联", "topics": ["QEMU", "动态翻译", "系统模拟"]
+    },
+    {
+      "id": "ols07-kvm", "year": 2007, "venue": "ols",
+      "title": "kvm: the Linux Virtual Machine Monitor",
+      "url": "https://www.kernel.org/doc/ols/2007/ols2007v1-pages-225-230.pdf",
+      "authors": ["Avi Kivity", "Yaniv Kamay", "Dor Laor", "Uri Lublin", "Anthony Liguori"],
+      "institutions": ["Qumranet", "IBM"],
+      "affiliation_source": "official", "affiliation_source_url": "https://www.kernel.org/doc/ols/2007/ols2007v1-pages-225-230.pdf", "affiliation_verified_at": "2026-11-09",
+      "publication_status": "published", "evidence_level": "abstract",
+      "evidence_source_url": "https://www.kernel.org/doc/ols/2007/ols2007v1-pages-225-230.pdf", "evidence_verified_at": "2026-11-09",
+      "introduction": "利用 x86 硬件虚拟化扩展，把虚拟机执行接入 Linux。论文解释 /dev/kvm 接口，以及用户态、内核与 Guest 之间的执行循环；部分退出在内核处理，设备模拟等操作返回用户态。",
+      "commentary": "KVM 与用户态 VMM 的职责划分在这里已经清晰可见。它有助于理解硬件退出与返回 QEMU 的区别；内存接口、MMU 和中断细节属于 2007 年实现，不能原样当成当前 KVM API 文档。",
+      "relation": "直接关联", "topics": ["KVM", "vCPU 执行", "VM-exit"], "architectures": ["x86"]
+    },
+    {
+      "id": "osr08-virtio", "year": 2008, "venue": "osr",
+      "title": "virtio: towards a de-facto standard for virtual I/O devices",
+      "url": "https://doi.org/10.1145/1400097.1400108", "doi": "10.1145/1400097.1400108",
+      "pdf_url": "https://dl.acm.org/doi/pdf/10.1145/1400097.1400108",
+      "authors": ["Rusty Russell"], "institutions": ["IBM"],
+      "affiliation_source": "crossref", "affiliation_source_url": "https://api.crossref.org/works/10.1145/1400097.1400108", "affiliation_verified_at": "2026-11-09",
+      "publication_status": "published", "evidence_level": "abstract",
+      "evidence_source_url": "https://research.ibm.com/publications/virtio-towards-a-de-facto-standard-for-virtual-io-devices", "evidence_verified_at": "2026-11-09",
+      "introduction": "为不同 Hypervisor 复用虚拟 I/O 驱动提供通用接口，介绍特性协商、vring 环形传输及 PCI 设备呈现。驱动与设备围绕共同约定交换缓冲区，降低各套虚拟化系统重复实现驱动的成本。",
+      "commentary": "这是理解 Virtio 设计动机的早期材料。正式出版记录为 OSR 42(5) 期刊文章；文中接口早于 OASIS 1.x，不能据此推导 Packed ring 或当前设备扩展。",
+      "relation": "直接关联", "topics": ["Virtio", "半虚拟化", "共享队列"]
+    },
+    {
+      "id": "osdi12-dune", "year": 2012, "venue": "osdi",
+      "title": "Dune: Safe User-level Access to Privileged CPU Features",
+      "url": "https://www.usenix.org/conference/osdi12/technical-sessions/presentation/belay",
+      "pdf_url": "https://www.usenix.org/system/files/conference/osdi12/osdi12-final-117.pdf",
+      "institutions": ["Stanford University"],
+      "affiliation_source": "usenix", "affiliation_source_url": "https://www.usenix.org/conference/osdi12/technical-sessions/presentation/belay", "affiliation_verified_at": "2026-11-09",
+      "publication_status": "published", "evidence_level": "abstract",
+      "evidence_source_url": "https://www.usenix.org/conference/osdi12/technical-sessions/presentation/belay", "evidence_verified_at": "2026-11-09",
+      "introduction": "利用硬件虚拟化，让应用安全地使用页表、特权级与带标签 TLB 等 CPU 能力，同时保留进程的操作系统接口。小型内核模块负责控制边界，用户态库帮助应用管理这些能力。",
+      "commentary": "展示了硬件虚拟化在进程级隔离与运行时优化中的用途。收益依赖应用主动使用这些接口；它提供的进程抽象与运行完整 Guest OS 的虚拟机不同，不能直接替代通用虚机管理。",
+      "relation": "机制相关", "topics": ["硬件虚拟化", "进程隔离", "页表"], "architectures": ["x86"]
+    },
+    {
+      "id": "asplos13-unikernels", "year": 2013, "venue": "asplos",
+      "title": "Unikernels: Library Operating Systems for the Cloud",
+      "url": "https://doi.org/10.1145/2451116.2451167", "doi": "10.1145/2451116.2451167",
+      "pdf_url": "https://anil.recoil.org/papers/2013-asplos-mirage.pdf",
+      "institutions": ["University of Cambridge", "University of Nottingham", "Citrix Systems", "OCamlPro"],
+      "affiliation_source": "official", "affiliation_source_url": "https://anil.recoil.org/papers/2013-asplos-mirage.pdf", "affiliation_verified_at": "2026-11-09",
+      "publication_status": "published", "evidence_level": "abstract",
+      "evidence_source_url": "https://anil.recoil.org/papers/2013-asplos-mirage.pdf", "evidence_verified_at": "2026-11-09",
+      "introduction": "Mirage 将应用和所需操作系统库编译为单用途虚机镜像，在 Hypervisor 提供的虚拟硬件上运行。按应用裁剪代码、单地址空间与类型安全共同减少镜像体积及运行时复杂度。",
+      "commentary": "将客户机内部的软件栈精简到具体服务，是轻量虚机的重要路线。论文以 OCaml 应用验证设计；移植现有程序、调试方式及重新构建成本需要同时考虑，较小镜像不自动等于更强的隔离。",
+      "relation": "直接关联", "topics": ["Unikernel", "轻量虚机", "客户机操作系统"]
+    },
+    {
+      "id": "nsdi14-clickos", "year": 2014, "venue": "nsdi",
+      "title": "ClickOS and the Art of Network Function Virtualization",
+      "url": "https://www.usenix.org/conference/nsdi14/technical-sessions/presentation/martins",
+      "institutions": ["NEC Europe", "University Politehnica of Bucharest"],
+      "affiliation_source": "usenix", "affiliation_source_url": "https://www.usenix.org/conference/nsdi14/technical-sessions/presentation/martins", "affiliation_verified_at": "2026-11-09",
+      "publication_status": "published", "evidence_level": "abstract",
+      "evidence_source_url": "https://www.usenix.org/conference/nsdi14/technical-sessions/presentation/martins", "evidence_verified_at": "2026-11-09",
+      "introduction": "面向防火墙、NAT 等网络功能，组合小型虚机和优化的 Xen I/O 路径，降低启动、内存和包处理成本。研究同时处理客户机软件栈与宿主数据路径，支持多实例网络功能部署。",
+      "commentary": "适合对照通用 Guest 网络栈与专用虚机的取舍。论文在其原型和负载下报告启动与吞吐收益；现有 virtio-net、DPDK 或 vDPA 环境需重新测试，不能直接沿用当年的性能结论。",
+      "relation": "直接关联", "topics": ["Xen", "轻量虚机", "网络 I/O"]
+    },
+    {
+      "id": "atc14-osv", "year": 2014, "venue": "atc",
+      "title": "OSv—Optimizing the Operating System for Virtual Machines",
+      "url": "https://www.usenix.org/conference/atc14/technical-sessions/presentation/kivity",
+      "institutions": ["Cloudius Systems"],
+      "affiliation_source": "usenix", "affiliation_source_url": "https://www.usenix.org/conference/atc14/technical-sessions/presentation/kivity", "affiliation_verified_at": "2026-11-09",
+      "publication_status": "published", "evidence_level": "abstract",
+      "evidence_source_url": "https://www.usenix.org/conference/atc14/technical-sessions/presentation/kivity", "evidence_verified_at": "2026-11-09",
+      "introduction": "为虚拟机中的单应用设计客户机操作系统，利用 Hypervisor 已提供的隔离和硬件抽象，减少客户机软件栈中的重复功能。采用库操作系统风格，支持一部分现有 Linux 应用及专用接口。",
+      "commentary": "优化范围落在 Guest OS 内部，可与精简 VMM 的路线结合阅读。部署时应核对应用所需 API、进程模型和运维工具；论文报告的启动及网络收益依赖其应用与接口选择。",
+      "relation": "直接关联", "topics": ["客户机操作系统", "Unikernel", "轻量虚机"]
+    },
+    {
+      "id": "eurosys20-seuss", "year": 2020, "venue": "eurosys",
+      "title": "SEUSS: Skip Redundant Paths to Make Serverless Fast",
+      "url": "https://doi.org/10.1145/3342195.3392698", "doi": "10.1145/3342195.3392698",
+      "pdf_url": "https://www.cs.bu.edu/~jappavoo/Resources/Papers/seuss.pdf",
+      "institutions": ["Boston University"],
+      "affiliation_source": "official", "affiliation_source_url": "https://www.cs.bu.edu/~jappavoo/Resources/Papers/seuss.pdf", "affiliation_verified_at": "2026-11-09",
+      "publication_status": "published", "evidence_level": "abstract",
+      "evidence_source_url": "https://research.redhat.com/blog/publication/seuss-skip-redundant-paths-to-make-serverless-fast/", "evidence_verified_at": "2026-11-09",
+      "introduction": "将函数运行环境保存为 Unikernel 快照，复用已经完成的初始化状态，并通过页级共享减少大量缓存实例的内存成本。目标是同时改善冷启动和突发请求下的部署密度。",
+      "commentary": "快照的收益取决于可复用状态的范围以及不同函数间的共享程度。适合与 MicroVM 快照比较恢复成本；论文使用专门的系统原型，不能把结果直接当成 QEMU 通用快照的性能。",
+      "relation": "直接关联", "topics": ["Unikernel", "快照恢复", "Serverless"]
+    },
+    {
+      "id": "asplos20-catalyzer", "year": 2020, "venue": "asplos",
+      "title": "Catalyzer: Sub-millisecond Startup for Serverless Computing with Initialization-less Booting",
+      "url": "https://doi.org/10.1145/3373376.3378512", "doi": "10.1145/3373376.3378512",
+      "pdf_url": "https://ipads.se.sjtu.edu.cn/zh/publications/DuASPLOS20.pdf",
+      "institutions": ["Shanghai Jiao Tong University", "Ant Financial Services Group"],
+      "affiliation_source": "crossref", "affiliation_source_url": "https://api.crossref.org/works/10.1145/3373376.3378512", "affiliation_verified_at": "2026-11-09",
+      "publication_status": "published", "evidence_level": "project",
+      "evidence_source_url": "https://ipads.sjtu.edu.cn/pub/projects/catalyzer", "evidence_verified_at": "2026-11-09",
+      "introduction": "通过保存初始化后的沙箱状态，按需恢复用户内存和系统状态，减少函数启动关键路径中的重复初始化；sandbox fork 进一步复用正在运行的沙箱实例状态。",
+      "commentary": "研究重点包括应用初始化和系统状态恢复。标题中的亚毫秒对应特定条件下的结果；评估新负载时仍需统计缺页、外部连接重建及首次请求延迟，不能只比较创建实例的时间。",
+      "relation": "直接关联", "topics": ["沙箱", "快照恢复", "Serverless"]
+    },
+    {
+      "id": "atc23-lambda-loading", "year": 2023, "venue": "atc",
+      "title": "On-demand Container Loading in AWS Lambda",
+      "url": "https://www.usenix.org/conference/atc23/presentation/brooker",
+      "pdf_url": "https://www.usenix.org/system/files/atc23-brooker.pdf",
+      "institutions": ["Amazon Web Services"],
+      "affiliation_source": "usenix", "affiliation_source_url": "https://www.usenix.org/conference/atc23/presentation/brooker", "affiliation_verified_at": "2026-11-09",
+      "publication_status": "published", "evidence_level": "abstract",
+      "evidence_source_url": "https://www.usenix.org/conference/atc23/presentation/brooker", "evidence_verified_at": "2026-11-09",
+      "introduction": "面向 Lambda 大型容器镜像的快速启动，设计按需块加载、缓存和去重的存储系统，并结合加密与纠删码处理安全、成本和可靠性约束。",
+      "commentary": "补充了轻量执行环境启动时的镜像供给问题。即使 VMM 创建很快，首次读取镜像仍可能形成等待；阅读时应区分镜像分发、按需 I/O 与 vCPU 初始化，分别衡量冷缓存和命中缓存的表现。",
+      "relation": "机制相关", "topics": ["镜像加载", "存储 I/O", "Serverless"]
+    },
     {
       "id": "atc26-deltasandbox",
       "year": 2026,

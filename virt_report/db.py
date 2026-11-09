@@ -175,6 +175,8 @@ CREATE TABLE IF NOT EXISTS conference_papers (
     affiliation_source_url TEXT,
     affiliation_verified_at TEXT,
     abstract      TEXT,
+    abstract_checked_at TEXT,
+    abstract_status TEXT,
     doi           TEXT,
     official_url  TEXT,
     source_url    TEXT,
@@ -367,7 +369,7 @@ def _activity_snapshot(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def _migrate_conference_metadata(conn: sqlite3.Connection) -> None:
-    """Add affiliation provenance fields to pre-existing catalogues."""
+    """Add provenance and discovery checkpoints without rewriting old records."""
     columns = {row[1] for row in conn.execute(
         "PRAGMA table_info(conference_papers)"
     )}
@@ -377,6 +379,8 @@ def _migrate_conference_metadata(conn: sqlite3.Connection) -> None:
         "affiliation_source": "TEXT",
         "affiliation_source_url": "TEXT",
         "affiliation_verified_at": "TEXT",
+        "abstract_checked_at": "TEXT",
+        "abstract_status": "TEXT",
     }
     missing = [(name, declaration) for name, declaration in additions.items()
                if name not in columns]

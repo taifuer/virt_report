@@ -511,7 +511,8 @@ def cmd_conference_catalog(args, config: Config) -> None:
             )
         if args.enrich_abstracts:
             result["abstracts_added"] = conferences.enrich_candidate_abstracts(
-                conn, limit=args.abstract_limit
+                conn, limit=args.abstract_limit, start_year=args.from_year,
+                end_year=args.to_year, venues=args.venue,
             )
         if args.discover_dois:
             result["doi_discovery"] = conferences.discover_curated_dois(
@@ -537,9 +538,13 @@ def cmd_conference_catalog(args, config: Config) -> None:
                 conferences.sync_public_metadata(conn)
             )
         candidates = conferences.candidate_rows(
-            conn, start_year=args.from_year, end_year=args.to_year
+            conn, start_year=args.from_year, end_year=args.to_year, venues=args.venue,
         )
         result["candidate_titles"] = len(candidates)
+        if args.coverage:
+            result["coverage"] = conferences.catalogue_coverage(
+                conn, args.from_year, args.to_year, args.venue,
+            )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if args.list_candidates:
             for item in candidates:
@@ -673,9 +678,11 @@ def main(argv: list[str] | None = None) -> int:
     p_catalog.add_argument("--list-candidates", action="store_true",
                            help="在摘要后逐行输出待审核标题")
     p_catalog.add_argument("--enrich-abstracts", action="store_true",
-                           help="通过 Crossref 补充候选议题可用的公开摘要")
+                           help="按选定年份/会议检查 DOI 摘要，包括标题未命中的论文")
     p_catalog.add_argument("--abstract-limit", type=int, default=200,
-                           help="单次最多补充的摘要数")
+                           help="单次最多检查的论文数，包含无摘要和失败记录；7 天后可复查")
+    p_catalog.add_argument("--coverage", action="store_true",
+                           help="列出各会议年份的目录、未审标题及摘要缺口，不改变公开页面")
     p_catalog.add_argument("--enrich-affiliations", action="store_true",
                            help="通过会议官方页和 DOI/Crossref 补充论文单位")
     p_catalog.add_argument("--discover-dois", action="store_true",

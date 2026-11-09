@@ -1273,18 +1273,19 @@ def test_kvm_forum_renders_newest_first_with_source_links():
 def test_conference_catalogue_is_curated_and_renders_without_documents():
     content = conferences.load_content()
     assert content["paper_count"] >= 80
-    assert content["years"] == list(range(2026, 2009, -1))
-    assert all(not paper["url"].lower().endswith((".pdf", ".ppt", ".pptx"))
+    assert content["years"] == list(range(2026, 2009, -1)) + [2008, 2007, 2005]
+    # An original publisher PDF is a valid primary link, not a collection job.
+    assert all(not paper["url"].lower().endswith((".ppt", ".pptx"))
                for paper in content["papers"])
     assert any(paper["venue"] == "vee" for paper in content["papers"])
     assert any("KVM" in paper["topics"] for paper in content["papers"])
-    assert len(content["analysis"]["years"]) == 17
+    assert len(content["analysis"]["years"]) == len(content["years"])
     assert all(item["paper_count"] for item in content["analysis"]["years"])
     assert content["year_counts"] == {
         year: sum(paper["year"] == year for paper in content["papers"])
         for year in content["years"]
     }
-    assert all(paper["institutions"] for paper in content["papers"])
+    assert all(paper["institutions"] or paper.get("affiliation_note") for paper in content["papers"])
     blowfish = next(
         paper for paper in content["papers"] if paper["id"] == "osdi26-blowfish"
     )
@@ -1300,9 +1301,9 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
             f'{content["analysis"]["coverage"]}</span></div>') in page
     assert 'href="kvm-forum.html">查看技术演进</a>' in page
     assert 'href="conference-papers.html">查看相关论文</a>' in page
-    assert (f'跨 {len(content["academic_venues"])} 个系统会议收录 '
+    assert (f'从 {len(content["academic_venues"])} 个会议与期刊收录 '
             f'{content["paper_count"]} 篇虚拟化相关论文') in page
-    assert '<section class="conference-sources" id="conference-sources"><h2>收录学术会议</h2>' in page
+    assert '<section class="conference-sources" id="conference-sources"><h2>收录会议与期刊</h2>' in page
     for venue in content["academic_venues"]:
         assert (f'href="conference-papers.html?venue={venue["key"]}">'
                 f'{venue["paper_count"]} 篇相关论文</a>') in page
@@ -1349,7 +1350,9 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert papers.count('aria-live="polite" aria-atomic="true"') == 2
     assert "编辑点评" not in papers and "<strong>点评</strong>" in papers
     assert "<strong>作者</strong>" not in papers
-    assert papers.count("<strong>单位</strong>") == content["paper_count"]
+    assert papers.count("<strong>单位</strong>") == sum(
+        bool(paper["institutions"]) for paper in content["papers"]
+    )
     assert papers.count('class="paper-credit-more"') == sum(
         len(paper["institutions"]) > conferences.INSTITUTION_DISPLAY_LIMIT
         for paper in content["papers"]

@@ -15,6 +15,7 @@ import sqlite3
 import subprocess
 import time
 import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from html.parser import HTMLParser
 from pathlib import Path
@@ -60,6 +61,8 @@ _DIRECT_PATTERNS = (
     r"\bvirtuali[sz](?:e[ds]?|ation)\b", r"\bvmm\b", r"\bmicrovm",
     r"\bvirtio\b", r"\bvhost\b", r"\bparavirtual", r"\bnested virtual",
     r"\bvm migration\b", r"\blive migration\b", r"\bvm exit",
+    r"\bvms?\b", r"\bunikernel", r"\bfull.system emulation\b",
+    r"\bvirtual disks?\b", r"\bvirtual switching\b", r"\bhypercall",
 )
 _RELATED_PATTERNS = (
     r"\bsev(?:-snp|-es)?\b", r"\btdx\b", r"\barm cca\b", r"\bpkvm\b",
@@ -72,7 +75,6 @@ _RELATED_PATTERNS = (
 )
 _EXCLUDE_PATTERNS = (
     r"\bjava virtual machine\b", r"\bjvm\b", r"\bvirtual reality\b",
-    r"\bvirtual network function\b",
 )
 log = logging.getLogger(__name__)
 
@@ -104,6 +106,18 @@ def _official_title_matches(expected: object, actual: object) -> bool:
         f"{expected_normalized} operational systems",
         f"{expected_normalized} operational systems paper",
     }
+
+
+def _crossref_title_matches(expected: object, message: dict) -> bool:
+    """Some publishers deposit the main title and subtitle in separate fields."""
+    titles, subtitles = message.get("title", []), message.get("subtitle", [])
+    if not isinstance(titles, list) or not titles or not isinstance(titles[0], str):
+        return False
+    combined = titles[0]
+    if isinstance(subtitles, list) and subtitles and isinstance(subtitles[0], str):
+        combined += ": " + subtitles[0]
+    return (_official_title_matches(expected, titles[0])
+            or _official_title_matches(expected, combined))
 
 
 def is_candidate_title(title: str, abstract: str | None = "") -> bool:
@@ -452,7 +466,8 @@ def refresh_catalogue(conn: sqlite3.Connection, start_year: int = 2010,
 
 
 def candidate_rows(conn: sqlite3.Connection, start_year: int = 2010,
-                   end_year: int = 2026) -> list[dict]:
+                   end_year: int = 2026,
+                   venues: Iterable[str] | None = None) -> list[dict]:
     """Return metadata-matched, not-yet-reviewed rows for editorial inspection."""
     rows = conn.execute("""
         SELECT p.* FROM conference_papers p
@@ -460,43 +475,97 @@ def candidate_rows(conn: sqlite3.Connection, start_year: int = 2010,
         WHERE p.year BETWEEN ? AND ? AND r.paper_id IS NULL
         ORDER BY p.year DESC,p.venue,p.title
     """, (start_year, end_year)).fetchall()
+    selected = set(venues) if venues else None
     return [dict(row) for row in rows
-            if is_candidate_title(row["title"], row["abstract"])]
+            if (selected is None or row["venue"] in selected)
+            and is_candidate_title(row["title"], row["abstract"])]
 
 
-def enrich_candidate_abstracts(conn: sqlite3.Connection, limit: int = 200) -> int:
-    """Opportunistically add Crossref abstracts for title-matched DOI records."""
-    session = _request_session()
+def enrich_candidate_abstracts(
+    conn: sqlite3.Connection, limit: int = 200, *, start_year: int = 2010,
+    end_year: int = 2026, venues: Iterable[str] | None = None,
+) -> int:
+    """Inspect a bounded, oldest-first metadata batch, including opaque titles.
+
+    The budget counts attempted records, not successful abstracts. Missing
+    abstracts and failures receive checkpoints so repeated batches make progress.
+    This discovers candidates only; it never publishes a paper or calls an LLM.
+    """
+    if limit < 1 or start_year > end_year:
+        raise ValueError("摘要检查上限须为正数，起始年份不得晚于结束年份")
+    venues = tuple(venues or ())
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     rows = conn.execute("""
         SELECT paper_id,doi,title FROM conference_papers
         WHERE abstract IS NULL AND doi IS NOT NULL
-        ORDER BY year DESC,venue,title
-    """).fetchall()
+          AND year BETWEEN ? AND ?
+          AND (abstract_checked_at IS NULL OR abstract_checked_at < ?)
+    """ + (" AND venue IN (" + ",".join("?" for _ in venues) + ")"
+           if venues else "") + """
+        ORDER BY abstract_checked_at IS NOT NULL, abstract_checked_at,
+                 year,venue,title LIMIT ?
+    """, (start_year, end_year, cutoff, *(venues or []), limit)).fetchall()
     updated = 0
+    session = _request_session()
     for row in rows:
-        if updated >= limit or not is_candidate_title(row["title"]):
-            continue
+        abstract, status = None, "unavailable"
         try:
             payload = _get_json(
                 session, CROSSREF_API.format(row["doi"]), params={}
             )
+            message = payload.get("message", {})
+            if (str(message.get("DOI", "")).casefold() != row["doi"].casefold()
+                    or not _crossref_title_matches(row["title"], message)):
+                status = "mismatch"
+            elif isinstance(message.get("abstract"), str):
+                abstract = _clean_metadata_text(re.sub(r"<[^>]+>", " ", message["abstract"])) or None
+                status = "found" if abstract else "unavailable"
         except (requests.RequestException, subprocess.SubprocessError,
-                json.JSONDecodeError, RuntimeError) as exc:
+                json.JSONDecodeError, RuntimeError, AttributeError) as exc:
             log.warning("摘要补充失败 %s: %s", row["paper_id"], exc)
-            continue
-        abstract = payload.get("message", {}).get("abstract")
-        if not abstract:
-            continue
-        abstract = html.unescape(re.sub(r"<[^>]+>", " ", abstract))
-        abstract = re.sub(r"\s+", " ", abstract).strip()
+            status = "error"
         conn.execute(
-            "UPDATE conference_papers SET abstract=? WHERE paper_id=?",
-            (abstract, row["paper_id"]),
+            "UPDATE conference_papers SET abstract=?,abstract_checked_at=?,"
+            "abstract_status=? WHERE paper_id=? AND abstract IS NULL",
+            (abstract, db.now_utc_iso(), status, row["paper_id"]),
         )
-        updated += 1
+        conn.commit()
+        updated += int(abstract is not None)
         time.sleep(0.5)
-    conn.commit()
+    session.close()
     return updated
+
+
+def catalogue_coverage(conn: sqlite3.Connection, start_year: int = 2010,
+                       end_year: int = 2026,
+                       venues: Iterable[str] | None = None) -> list[dict]:
+    """Show private review gaps; a missing catalogue is not an empty conference."""
+    selected = list(venues or DBLP_STREAMS)
+    result = []
+    for venue in selected:
+        for year in range(start_year, end_year + 1):
+            edition = conn.execute(
+                "SELECT source_status,fetched_at FROM conference_editions "
+                "WHERE venue=? AND year=?", (venue, year),
+            ).fetchone()
+            rows = conn.execute("""
+                SELECT p.title,p.abstract,p.abstract_checked_at,r.relevance
+                FROM conference_papers p LEFT JOIN conference_reviews r
+                ON r.paper_id=p.paper_id WHERE p.venue=? AND p.year=?
+            """, (venue, year)).fetchall()
+            pending = [row for row in rows if row["relevance"] is None]
+            result.append({
+                "venue": venue, "year": year,
+                "catalogue_status": edition["source_status"] if edition else "not_checked",
+                "catalogue_checked_at": edition["fetched_at"] if edition else None,
+                "stored_titles": len(rows),
+                "included": sum(row["relevance"] == "included" for row in rows),
+                "unreviewed": len(pending),
+                "keyword_candidates": sum(is_candidate_title(row["title"], row["abstract"])
+                                          for row in pending),
+                "without_abstract": sum(not row["abstract"] for row in pending),
+            })
+    return result
 
 
 def _clean_metadata_text(value: object) -> str:
@@ -717,7 +786,7 @@ def discover_curated_dois(conn: sqlite3.Connection,
                 "filter": (f"from-pub-date:{row['year']}-01-01,"
                            f"until-pub-date:{row['year']}-12-31"),
                 "rows": 5,
-                "select": "DOI,title,published,issued",
+                "select": "DOI,title,subtitle,published,issued",
                 "mailto": CROSSREF_MAILTO,
             })
         except (requests.RequestException, subprocess.SubprocessError,
@@ -725,11 +794,9 @@ def discover_curated_dois(conn: sqlite3.Connection,
             result["errors"] += 1
             log.warning("DOI 精确匹配失败 %s: %s", row["paper_id"], exc)
             continue
-        expected = _normalized_title(row["title"])
         matches: dict[str, dict] = {}
         for item in payload.get("message", {}).get("items", []) or []:
-            titles = item.get("title", []) or []
-            if not titles or _normalized_title(titles[0]) != expected:
+            if not _crossref_title_matches(row["title"], item):
                 continue
             years = set()
             for key in ("published", "issued"):
@@ -986,6 +1053,13 @@ def load_content() -> dict:
             raise ValueError(f"论文引用未知会议: {paper['venue']}")
         if not paper["url"].startswith("https://"):
             raise ValueError(f"论文链接必须使用 HTTPS: {paper['id']}")
+        for field in ("pdf_url", "code_url", "artifact_source_url"):
+            if paper.get(field) and not paper[field].startswith("https://"):
+                raise ValueError(f"论文资源必须使用 HTTPS: {paper['id']} {field}")
+        # Unrecorded legacy provenance stays unknown, including its review date.
+        paper.setdefault("evidence_level", "unspecified")
+        if paper["evidence_level"] not in {"title", "abstract", "project", "full_text", "unspecified"}:
+            raise ValueError(f"未知论文证据层级: {paper['id']}")
         evidence_url = paper.get("evidence_source_url")
         if evidence_url and not evidence_url.startswith("https://"):
             raise ValueError(f"论文点评来源必须使用 HTTPS: {paper['id']}")
@@ -1078,7 +1152,7 @@ def load_content() -> dict:
         for year in content["years"]
     }
     content["academic_venues"] = [
-        venue for venue in venues if venue["kind"] == "学术会议"
+        venue for venue in venues if venue["kind"] in {"学术会议", "期刊"}
     ]
     content["paper_venues"] = [
         venue for venue in content["academic_venues"] if venue["paper_count"]

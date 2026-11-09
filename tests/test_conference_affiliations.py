@@ -54,11 +54,17 @@ def test_conference_affiliation_schema_migrates_existing_database(tmp_path):
     assert {
         "affiliations_json", "institutions_json", "affiliation_source",
         "affiliation_source_url", "affiliation_verified_at",
+        "abstract_checked_at", "abstract_status",
     } <= columns
     assert migrated.execute(
         "SELECT affiliations_json FROM conference_papers WHERE paper_id='p'"
     ).fetchone()[0] == "[]"
     migrated.close()
+    # Reopening is idempotent and preserves the existing title and empty status.
+    with db.connect(path) as reopened:
+        assert tuple(reopened.execute(
+            "SELECT title,abstract_checked_at,abstract_status FROM conference_papers"
+        ).fetchone()) == ("T", None, None)
 
 
 def test_crossref_affiliation_enrichment_and_public_sync(tmp_path, monkeypatch):
