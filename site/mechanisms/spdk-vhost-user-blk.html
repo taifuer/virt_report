@@ -7,16 +7,16 @@
   <title>SPDK vhost-user-blk 的请求处理路径 - virt-report</title>
   <meta name="description" content="沿一次 4 KiB 写入，分析共享队列、控制器线程、bdev 和 NVMe 的请求交接，以及完成通知与资源释放。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=b1d38984fa3b">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=b1d38984fa3b">
-  <link rel="stylesheet" href="../assets/site.css?v=b1d38984fa3b">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=7bdd8f4b9615">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=7bdd8f4b9615">
+  <link rel="shortcut icon" href="../favicon.ico?v=e9ab166b6427">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=e9ab166b6427">
+  <link rel="stylesheet" href="../assets/site.css?v=e9ab166b6427">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=720ef053ee9a">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=720ef053ee9a">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=b1d38984fa3b" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=e9ab166b6427" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -67,9 +67,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看从客户机 virtqueue 到 NVMe 队列" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="从客户机 virtqueue 到 NVMe 队列">
-    <img src="../assets/spdk-vhost-ownership.svg?v=7bdd8f4b9615" alt="虚线表示初始化与管理，实线表示请求或数据访问。virtqueue、bdev 请求和 NVMe SQ/CQ 属于三个层次，队列数量没有一一对应的要求。" loading="lazy">
+    <img src="../assets/spdk-vhost-ownership.svg?v=720ef053ee9a" alt="虚线表示初始化与管理，实线表示请求或数据访问。virtqueue、bdev 请求和 NVMe SQ/CQ 属于三个层次，队列数量没有一一对应的要求。" loading="lazy">
   </div>
-  <figcaption>虚线表示初始化与管理，实线表示请求或数据访问。virtqueue、bdev 请求和 NVMe SQ/CQ 属于三个层次，队列数量没有一一对应的要求。 <a href="../assets/spdk-vhost-ownership.svg?v=7bdd8f4b9615" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>虚线表示初始化与管理，实线表示请求或数据访问。virtqueue、bdev 请求和 NVMe SQ/CQ 属于三个层次，队列数量没有一一对应的要求。 <a href="../assets/spdk-vhost-ownership.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: SPDK vhost-user-blk 的控制连接与数据路径
     accDescr: QEMU 配置设备和共享内存，SPDK 控制器线程从共享 virtqueue 取得请求，经 bdev 和用户态 NVMe 驱动提交硬件。客户机 RAM 可由硬件 DMA 访问。
@@ -135,9 +135,9 @@ NVMe:   SLBA = 256, NLB = 0（命令字段按块数减一编码）</code></pre>
     <button type="button" data-mechanism-expand aria-label="放大查看一次写入的提交与完成" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="一次写入的提交与完成">
-    <img src="../assets/spdk-vhost-completion.svg?v=7bdd8f4b9615" alt="轮询发现硬件完成后，回调回到原请求；status、used 项与 used.idx 依次发布，再根据通知条件唤醒客户机。" loading="lazy">
+    <img src="../assets/spdk-vhost-completion.svg?v=720ef053ee9a" alt="轮询发现硬件完成后，回调回到原请求；status、used 项与 used.idx 依次发布，再根据通知条件唤醒客户机。" loading="lazy">
   </div>
-  <figcaption>轮询发现硬件完成后，回调回到原请求；status、used 项与 used.idx 依次发布，再根据通知条件唤醒客户机。 <a href="../assets/spdk-vhost-completion.svg?v=7bdd8f4b9615" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>轮询发现硬件完成后，回调回到原请求；status、used 项与 used.idx 依次发布，再根据通知条件唤醒客户机。 <a href="../assets/spdk-vhost-completion.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: SPDK vhost-user-blk 写请求的提交与完成
     accDescr: 客户机发布写请求，SPDK 轮询解析并提交 NVMe。硬件完成后，SPDK 回调写状态并发布 used，条件通知后客户机回收描述符。
@@ -226,7 +226,7 @@ NVMe:   SLBA = 256, NLB = 0（命令字段按块数减一编码）</code></pre>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=b1d38984fa3b"></script>
-<script src="../assets/mechanism-viewer.js?v=7bdd8f4b9615" defer></script>
+  <script src="../assets/site.js?v=e9ab166b6427"></script>
+<script src="../assets/mechanism-viewer.js?v=720ef053ee9a" defer></script>
 </body>
 </html>

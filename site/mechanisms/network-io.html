@@ -7,16 +7,16 @@
   <title>网络 I/O 收发过程 - virt-report</title>
   <meta name="description" content="交互比较 QEMU、vhost-net、DPDK vhost-user 和硬件 vDPA 的 TX/RX 路径，跟踪队列索引、缓冲区与完成语义。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=b1d38984fa3b">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=b1d38984fa3b">
-  <link rel="stylesheet" href="../assets/site.css?v=b1d38984fa3b">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=bee984d79bde">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=bee984d79bde">
-<link rel="stylesheet" href="../assets/execution-demo.css?v=bee984d79bde"><link rel="stylesheet" href="../assets/walkthrough.css?v=bee984d79bde"></head>
+  <link rel="shortcut icon" href="../favicon.ico?v=e9ab166b6427">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=e9ab166b6427">
+  <link rel="stylesheet" href="../assets/site.css?v=e9ab166b6427">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=d55366290fcc">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=d55366290fcc">
+<link rel="stylesheet" href="../assets/execution-demo.css?v=d55366290fcc"><link rel="stylesheet" href="../assets/walkthrough.css?v=d55366290fcc"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=b1d38984fa3b" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=e9ab166b6427" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -51,7 +51,7 @@
   <div class="mechanism-layout mechanism-layout--walkthrough">
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>场景与边界</h2>
-  <p>发送由客户机应用调用 <code>sendto()</code>，UDP/IP 协议栈封装网络帧，再由 virtio-net 驱动交给后端。接收则由驱动预置空 RX 缓冲区，外部报文可以主动到达；经过设备、驱动和协议栈后，数据进入已绑定的 socket，应用再用 <code>recvfrom()</code> 读取。收包不由某次 recvfrom 发起，也不是让网卡去获取指定报文。</p>
+  <p>发送由客户机应用调用 <code>sendto()</code>，UDP/IP 协议栈封装网络帧，再由 virtio-net 驱动交给后端。接收由驱动预置可写 RX 缓冲区；外部报文到达后，经设备、驱动和协议栈进入已绑定的 socket，应用用 <code>recvfrom()</code> 取走数据或等待后续报文。</p>
   <p>QEMU、内核 vhost-net、DPDK vhost-user 与硬件 vDPA 使用相同的客户机设备接口，但数据处理位置和缓冲区交接方式不同。本页分别观察应用调用、Guest 队列、完成中断与宿主处理；它们的“完成”不代表同一件事。</p>
   <p>示例发送 ASCII 字符串 <code>virt-report-demo01</code>，共 18 B。加上 8 B UDP 头、20 B IPv4 头和 14 B Ethernet 头，得到 60 B 帧 P1；virtio-net 另外使用 12 B 网络头，设备 RX 的实际写入量为 72 B。接收应用提供 128 B 缓冲区，成功时 <code>recvfrom()</code> 返回 18。</p>
   <p>队列按 8 个槽位展示，使用直接描述符。发送选取头部不能直接压入 skb 的分支，<code>desc[0] → desc[2]</code> 分别指向 12 B 网络头和 60 B 帧；接收采用 <code>add_recvbuf_small()</code>，<code>desc[2]</code> 提供 <code>12 + GOOD_PACKET_LEN = 1530 B</code> 可写空间。本次实际写入仍为 72 B。页片段还会分配 headroom 和 skb 元数据，分配大小不等于描述符向设备暴露的长度。</p>
@@ -345,8 +345,8 @@
   <h2><span class="mechanism-heading-number">三、</span>缓冲区与完成语义</h2>
   <p>普通发送会把用户数据复制到客户机内核的 skb。应用缓冲区 U0、内核 skb S1、设备描述符，以及 DPDK 路径中的宿主 mbuf 是不同对象。<code>sendto()</code> 返回后，应用可以复用 U0，已经复制出的数据仍可沿后续路径转发。UDP 发送内存预算用于约束本地资源使用；普通无 cork UDP 不会像 TCP 那样保留可靠重传队列。</p>
   <p>TX 发布的是已准备好的帧，后端获得设备可读的缓冲区；RX 提前发布空闲空间，后端获得设备可写的缓冲区。两种方向都先写内容或描述符，再发布索引。通知只提示另一端检查队列，完成记录由 used 保存，多个报文可以共用一次通知。</p>
-  <p>“发布完成”与“Guest 处理中断”不是通知两次。本例先发布 used，再发起一次完成提示；KVM 记录 vLAPIC 待处理中断，目标 vCPU 随后接受它，Guest 回调安排 NAPI。提交、待处理、注入和处理是同一次中断的不同位置。驱动依据 used 消费完成记录，不根据中断次数判断完成了几个报文；实际通知也可以被抑制或由轮询替代。</p>
-  <p><code>avail.ring[n]</code> 保存链头编号，不保存报文本身；描述符的 <code>addr</code> 才指向缓冲区。<code>used.ring[n]</code> 保存链头与本次设备写入长度。槽位已有数据不代表已发布：只有观察到新的索引，另一端才能消费。TX 的 <code>used.len = 0</code> 表示设备没有向可写描述符写入字节，不是帧长为零；RX 的 <code>used.len = 72</code> 则不等于空间容量 1530 B。</p>
+  <p>本例先发布 used，再发起完成提示；KVM 记录 vLAPIC 待处理中断，目标 vCPU 随后接受它，Guest 回调安排 NAPI。这是一次完成通知从提交到处理的完整路径。驱动依据 used 消费完成记录，单次通知可以覆盖多个完成项；通知也可以被抑制或由轮询替代。</p>
+  <p><code>avail.ring[n]</code> 保存链头编号，描述符的 <code>addr</code> 指向缓冲区；<code>used.ring[n]</code> 保存链头与本次设备写入长度。另一端须观察到发布的新索引后才能消费对应槽位。TX 的 <code>used.len = 0</code> 表示设备向可写描述符写入了 0 字节，帧长记录在发送描述符中。RX 的 <code>used.len = 72</code> 是本次写入长度，缓冲区容量为 1530 B。</p>
   <table>
     <thead><tr><th scope="col">观察点</th><th scope="col">已经完成</th><th scope="col">后续工作</th></tr></thead>
     <tbody>
@@ -417,7 +417,7 @@ virsh domifstat VM vnet0</code></pre>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=b1d38984fa3b"></script>
-<script src="../assets/mechanism-viewer.js?v=bee984d79bde" defer></script>
-<script src="../assets/walkthrough-fullscreen.js?v=bee984d79bde" defer></script><script src="../assets/walkthrough-routing.js?v=bee984d79bde" defer></script><script src="../assets/walkthrough-components.js?v=bee984d79bde" defer></script><script src="../assets/walkthrough-events.js?v=bee984d79bde" defer></script><script src="../assets/execution-model.js?v=bee984d79bde" defer></script><script src="../assets/execution-demo.js?v=bee984d79bde" defer></script></body>
+  <script src="../assets/site.js?v=e9ab166b6427"></script>
+<script src="../assets/mechanism-viewer.js?v=d55366290fcc" defer></script>
+<script src="../assets/walkthrough-fullscreen.js?v=d55366290fcc" defer></script><script src="../assets/walkthrough-routing.js?v=d55366290fcc" defer></script><script src="../assets/walkthrough-components.js?v=d55366290fcc" defer></script><script src="../assets/walkthrough-events.js?v=d55366290fcc" defer></script><script src="../assets/execution-model.js?v=d55366290fcc" defer></script><script src="../assets/execution-demo.js?v=d55366290fcc" defer></script></body>
 </html>

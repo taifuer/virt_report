@@ -1,5 +1,6 @@
 """Curation is an explicit, source-backed layer, not a publication-status badge."""
 from copy import deepcopy
+from html import unescape
 import re
 
 import pytest
@@ -18,7 +19,7 @@ def test_selected_readings_are_small_explicit_and_complete():
     assert [p["year"] for p in selected] == sorted((p["year"] for p in selected), reverse=True)
     assert {"cacm74-popek-goldberg", "osdi02-esx-memory", "sosp03-xen",
             "nsdi05-live-migration", "asplos06-software-hardware",
-            "asplos14-kvm-arm", "atc14-gvirt"} <= {p["id"] for p in selected}
+            "asplos14-kvm-arm", "atc14-gvirt", "osdi16-ingens"} <= {p["id"] for p in selected}
     known = {a["slug"] for a in mechanisms.articles()}
     for paper in selected:
         reading = paper["reading"]
@@ -77,15 +78,22 @@ def test_papers_have_compact_title_resources_and_one_classic_filter():
         (paper["year"] for paper in content["papers"]), reverse=True,
     )
     for row in rows:
+        heading = row.split("<h2>", 1)[1].split("</h2>", 1)[0]
         if 'data-curated="true"' in row:
-            heading = row.split("<h2>", 1)[1].split("</h2>", 1)[0]
+            assert 'class="paper-classic-mark"' in heading
+            assert heading.index('class="paper-classic-mark"') < heading.index('<a ')
+            assert 'class="sr-only">经典论文：</span>' in heading
+            assert 'aria-hidden="true" focusable="false"' in heading
             assert 'class="paper-resource-tag"' in heading and ">PDF</a>" in heading
             assert "<strong>内容</strong>" in row and "<strong>点评</strong>" in row
+        else:
+            assert 'class="paper-classic-mark"' not in heading
         assert 'class="relation' not in row and 'class="tag representative' not in row
         assert not re.search(r'<p class="paper-evidence">[^<]*已发表', row)
     assert "<noscript>" in html
     assert html.count('data-conference-classic aria-checked="false"') == 1
     assert html.count('role="switch"') == 1
+    assert html.count('class="paper-reset-slot"') == 1
     assert html.index('data-conference-year') < html.index('data-conference-classic')
     assert f'共 {content["paper_count"]} 篇论文，其中 {content["curated_count"]} 篇经典论文。' in html
     for removed in ("paper-policy", "paper-reading", "paper-resources", "data-conference-scope",
@@ -94,6 +102,61 @@ def test_papers_have_compact_title_resources_and_one_classic_filter():
         assert removed not in html
     assert 'id="paper-sosp26-cpu-virtualization"' not in html
     assert "移除 5 篇" not in html and "6 篇因证据不足" not in html
+
+
+@pytest.mark.parametrize("paper_id,doi", [
+    ("sosp24-vsoc", "10.1145/3694715.3695946"),
+    ("sosp24-vpri", "10.1145/3694715.3695957"),
+    ("asplos24-dmt", "10.1145/3620665.3640358"),
+])
+def test_architecture_papers_link_directly_to_the_publication(paper_id, doi):
+    content = conferences.load_content()
+    paper = next(item for item in content["papers"] if item["id"] == paper_id)
+    assert paper["url"] == f"https://doi.org/{doi}"
+    assert not paper["curated"]
+    if paper_id in {"sosp24-vsoc", "asplos24-dmt"}:
+        assert paper["pdf_url"].startswith("https://") and paper["pdf_url"].endswith(".pdf")
+        assert paper["evidence_level"] == "abstract"
+
+
+def test_classic_comments_include_evidence_without_fragmenting_the_row():
+    content = conferences.load_content()
+    html = render.render_conference_papers_html(Config(), content)
+    for paper in content["curated_papers"]:
+        reading = paper["reading"]
+        row = re.search(
+            rf'<article class="paper-row" id="paper-{re.escape(paper["id"])}".*?</article>',
+            html, re.S,
+        )[0]
+        paragraphs = re.findall(r'<p(?: class="[^"]*")?>(.*?)</p>', row, re.S)
+        # Only the existing content and commentary, plus a provenance note
+        # when an incomplete primary source genuinely needs qualification.
+        assert len(paragraphs) == 2 + bool(reading.get("source_note"))
+        comment = unescape(re.sub(r"<[^>]*>", "", paragraphs[1]))
+        assert comment == (
+            "点评" + reading["evaluation"] + " " + reading["strengths"]
+            + " " + reading["limitations"]
+        )
+        assert "？" not in reading["question"]
+    # Partial evidence remains explicitly qualified even though evaluations
+    # now appear in the public commentary.
+    assert "未完成全文及实验表格复核" in html
+
+
+def test_ingens_is_a_source_backed_2016_memory_paper():
+    content = conferences.load_content()
+    ingens = next(p for p in content["papers"] if p["id"] == "osdi16-ingens")
+    assert (ingens["year"], ingens["venue"]) == (2016, "osdi")
+    assert ingens["curated"] and ingens["evidence_level"] == "full_text"
+    assert ingens["url"] == "https://www.usenix.org/conference/osdi16/technical-sessions/presentation/kwon"
+    assert ingens["pdf_url"] == ingens["reading"]["source_url"]
+    assert len(ingens["authors"]) == 5
+    evaluation = ingens["reading"]["evaluation"]
+    for condition in ("4.3", "Haswell", "Cloudstone", "碎片", "两个网页", "18%", "0.7%"):
+        assert condition in evaluation
+    # Host scheduling is useful further reading, not an automatic expansion
+    # of the system-virtualization paper catalogue.
+    assert not any("Decade of Wasted Cores" in p["title"] for p in content["papers"])
 
 
 def test_editorial_search_retains_ordinary_papers_and_indexes_deep_reviews():
@@ -105,6 +168,8 @@ def test_editorial_search_retains_ordinary_papers_and_indexes_deep_reviews():
     esx = next(p for p in papers if p["slug"] == "osdi02-esx-memory")
     assert "双重换页" in esx["keywords"]
     assert esx["href"].endswith("#paper-osdi02-esx-memory")
+    ingens = next(p for p in papers if p["slug"] == "osdi16-ingens")
+    assert "Cloudstone" in ingens["keywords"] and "0.7%" in ingens["keywords"]
     removed = {p["id"] for p in conferences.load_content()["screening"]["papers"]
                if p["decision"] != "keep"}
     assert removed.isdisjoint({p["slug"] for p in papers})
@@ -113,14 +178,14 @@ def test_editorial_search_retains_ordinary_papers_and_indexes_deep_reviews():
 def test_every_original_and_added_paper_has_an_individual_screening_decision():
     content = conferences.load_content()
     audit = content["screening"]["papers"]
-    assert len(audit) == 123
+    assert len(audit) == 124
     assert sum(p["origin"] == "existing" for p in audit) == 116
-    assert sum(p["origin"] == "added" for p in audit) == 7
+    assert sum(p["origin"] == "added" for p in audit) == 8
     assert len({p["reason"] for p in audit}) == len(audit)
     assert {p["id"] for p in audit if p["decision"] == "keep"} == {
         p["id"] for p in content["papers"]
     }
-    assert content["screening_counts"] == {"keep": 112, "exclude": 5, "defer": 6}
+    assert content["screening_counts"] == {"keep": 113, "exclude": 5, "defer": 6}
     assert not any(p["evidence_level"] == "title" for p in content["papers"])
 
 

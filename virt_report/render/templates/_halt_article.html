@@ -31,7 +31,7 @@
   <h3>轮询预算与阻塞条件</h3>
   <p>轮询期间反复执行 <code>kvm_vcpu_check_block()</code>：检查架构可运行条件、待处理定时器、宿主信号与 UNBLOCK 请求。<code>cpu_relax()</code> 之间还检查期限、<code>need_resched()</code> 和当前 CPU 是否只有一个可运行任务；有调度需要便提前结束轮询。预算为零时直接进入阻塞流程。<a href="{{ linux_source }}virt/kvm/kvm_main.c#L3624-L3642">事件检查</a>、<a href="{{ linux_source }}virt/kvm/kvm_main.c#L3727-L3755">轮询循环</a>、<a href="{{ linux_source }}include/linux/kvm_host.h#L311-L314">轮询继续条件</a></p>
   <h3>Idle Passthrough：不经宿主阻塞的硬件等待</h3>
-  <p>Idle Passthrough 利用硬件虚拟化控制关闭相关指令的退出，不是一项独立的新 CPU 指令。Intel VMX 的 HLT exiting 关闭后，Guest 在 non-root 中进入硬件 HLT 状态；KVM 没有执行 HLT 模拟、halt polling 或 schedule，<code>arch.mp_state</code> 仍可为 RUNNABLE，宿主线程也没有变成 TASK_INTERRUPTIBLE。这是硬件等待，不是持续忙轮询。<a href="{{ linux_source }}arch/x86/kvm/vmx/vmx.c#L4435-L4477">HLT 执行控制</a></p>
+  <p>Idle Passthrough 利用硬件虚拟化控制关闭相关指令的退出。Intel VMX 的 HLT exiting 关闭后，Guest 在 non-root 中进入硬件 HLT 状态，跳过 KVM 的 HLT 模拟、halt polling 和 schedule；<code>arch.mp_state</code> 仍可为 RUNNABLE，宿主线程也保持可运行状态。处理器以硬件 HLT 方式等待唤醒。<a href="{{ linux_source }}arch/x86/kvm/vmx/vmx.c#L4435-L4477">HLT 执行控制</a></p>
   <p>HLT 本身不退出，不代表任何唤醒都免退出。对照演示额外固定 APICv posted 交付、Guest 可接受中断、目标 CPU 不被宿主抢占；满足这些条件才展示无 VM-exit 的唤醒。QEMU 的 <code>-overcommit cpu-pm=on</code> 默认关闭，并须由 KVM 确认能力可用。它适合独占逻辑 CPU；在超卖场景中，空闲 vCPU 不走常规阻塞归还路径，可能影响其他线程的调度延迟。MONITOR/MWAIT 直通与 Guest haltpoll 另有语义，不等同于本文的宿主 halt polling。<a href="{{ qemu_source }}qemu-options.hx#L4894-L4912">QEMU 配置与限制</a>、<a href="https://docs.kernel.org/virt/kvm/api.html#kvm-cap-x86-disable-exits">KVM 能力接口</a></p>
 </section>
 

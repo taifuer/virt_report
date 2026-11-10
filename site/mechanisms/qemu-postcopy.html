@@ -7,16 +7,16 @@
   <title>QEMU 后拷贝迁移的缺页处理与页面传输 - virt-report</title>
   <meta name="description" content="分析目的端接管后的缺页请求、页面安装、线程唤醒与后台传输，以及后拷贝的收敛收益和故障代价。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=b1d38984fa3b">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=b1d38984fa3b">
-  <link rel="stylesheet" href="../assets/site.css?v=b1d38984fa3b">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=7bdd8f4b9615">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=7bdd8f4b9615">
-<link rel="stylesheet" href="../assets/postcopy.css?v=7bdd8f4b9615"></head>
+  <link rel="shortcut icon" href="../favicon.ico?v=e9ab166b6427">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=e9ab166b6427">
+  <link rel="stylesheet" href="../assets/site.css?v=e9ab166b6427">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=720ef053ee9a">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=720ef053ee9a">
+<link rel="stylesheet" href="../assets/postcopy.css?v=720ef053ee9a"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=b1d38984fa3b" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=e9ab166b6427" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -127,9 +127,9 @@ REQ_PAGES：   start: BE64 | len: BE32
     <button type="button" data-mechanism-expand aria-label="放大查看后拷贝缺页处理的线程协作" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="后拷贝缺页处理的线程协作">
-    <img src="../assets/postcopy-page-fault.svg?v=7bdd8f4b9615" alt="图示普通单流、4 KiB 宿主页路径。缺页线程发送请求，接收线程安装完整页；内核唤醒访问线程之后，QEMU 完成接收位图与请求记录的更新。" loading="lazy">
+    <img src="../assets/postcopy-page-fault.svg?v=720ef053ee9a" alt="图示普通单流、4 KiB 宿主页路径。缺页线程发送请求，接收线程安装完整页；内核唤醒访问线程之后，QEMU 完成接收位图与请求记录的更新。" loading="lazy">
   </div>
-  <figcaption>图示普通单流、4 KiB 宿主页路径。缺页线程发送请求，接收线程安装完整页；内核唤醒访问线程之后，QEMU 完成接收位图与请求记录的更新。 <a href="../assets/postcopy-page-fault.svg?v=7bdd8f4b9615" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>图示普通单流、4 KiB 宿主页路径。缺页线程发送请求，接收线程安装完整页；内核唤醒访问线程之后，QEMU 完成接收位图与请求记录的更新。 <a href="../assets/postcopy-page-fault.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 后拷贝缺页处理的线程协作
     accDescr: 目的端访问缺页后由内核阻塞，缺页线程将宿主地址转换为 RAMBlock 与页偏移并请求源端。源端在单流路径优先处理未发送的请求页；目的端接收线程收齐宿主页后通过 UFFDIO_COPY 安装，内核唤醒访问线程，QEMU 随后更新接收位图并删除请求记录。
@@ -222,7 +222,7 @@ REQ_PAGES：   start: BE64 | len: BE32
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=b1d38984fa3b"></script>
-<script src="../assets/mechanism-viewer.js?v=7bdd8f4b9615" defer></script>
-<script src="../assets/postcopy.js?v=7bdd8f4b9615" defer></script></body>
+  <script src="../assets/site.js?v=e9ab166b6427"></script>
+<script src="../assets/mechanism-viewer.js?v=720ef053ee9a" defer></script>
+<script src="../assets/postcopy.js?v=720ef053ee9a" defer></script></body>
 </html>

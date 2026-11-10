@@ -30,7 +30,9 @@ def test_linux_prerequisites_share_navigation_and_pinned_source_baseline(slug):
         assert section["title"] in page
     rendered_sections = re.findall(r'<section id="([^"]+)" class="mechanism-section">', page)
     assert rendered_sections == [section["id"] for section in article["sections"]]
-    assert len(rendered_sections) == 8
+    assert len(rendered_sections) == (10 if slug in {
+        "linux-execution-scheduling", "linux-memory",
+    } else 8)
     assert rendered_sections[1] == ("evolution" if slug == "linux-kernel-evolution" else "history")
     figures = re.findall(r'data-diagram="(linux-[^"]+)"', page)
     assert len(figures) == (4 if slug == "linux-kernel-evolution" else 3)
@@ -98,3 +100,48 @@ def test_linux_articles_keep_worked_examples_and_ownership_boundaries(slug, phra
     page = render.render_mechanisms_html(Config(), slug)
     for phrase in phrases:
         assert phrase in page
+
+
+def test_process_title_keeps_existing_permalink_and_directory_consistency():
+    slug = "linux-execution-scheduling"
+    article = mechanisms.get_article(slug)
+    assert article["title"] == "Linux 进程：执行与调度"
+    for page in (render.render_mechanisms_html(Config(), slug),
+                 render.render_mechanisms_html(Config())):
+        assert article["title"] in page
+        assert "Linux 执行与调度：线程、阻塞和 CPU 时间" not in page
+    assert f'href="mechanisms/{slug}.html"' in render.render_mechanisms_html(Config())
+
+
+@pytest.mark.parametrize("slug,phrases", [
+    ("linux-execution-scheduling", [
+        "CLONE_VM", "CLONE_FILES", "CLONE_THREAD", "files_struct", "mm_struct",
+        "gettid()", "FD_CLOEXEC", "de_thread()", "waitpid()", "僵尸", "孤儿",
+        "FUTEX_WAIT", "EAGAIN", "200000 100000", "schedstat", "throttled_usec",
+    ]),
+    ("linux-memory", [
+        "malloc()", "MAP_PRIVATE", "MAP_SHARED", "mprotect()", "munmap()",
+        "TLB shootdown", "SIGSEGV", "SIGBUS", "PSS", "swap entry", "order 9",
+        "memory.high", "memory.max", "memory.swap.max", "memory.pressure",
+    ]),
+    ("linux-interrupts", [
+        "spin_lock_irqsave()", "struct completion", "wait_for_completion()",
+        "等待超时", "迟到的完成回调", "Documentation/scheduler/completion.rst",
+    ]),
+    ("linux-block-io", ["pread(2)", "共享偏移", "字节数可以少于", "用户页", "缓冲区有效"]),
+    ("linux-network-io", ["EPOLLET", "EAGAIN", "空报文", "接收窗口", "epoll.7.html"]),
+])
+def test_linux_articles_explain_lifecycle_and_resource_limits(slug, phrases):
+    page = render.render_mechanisms_html(Config(), slug)
+    for phrase in phrases:
+        assert phrase in page
+
+
+def test_general_kernel_research_has_sources_and_historical_scope():
+    overview = render.render_mechanisms_html(Config(), "linux-kernel-evolution")
+    assert "An Analysis of Linux Scalability to Many Cores" in overview
+    assert "usenix.org/conference/osdi10/analysis-linux-scalability-many-cores" in overview
+    assert "48 核" in overview and "2.6.35-rc5" in overview
+    memory = render.render_mechanisms_html(Config(), "linux-memory")
+    assert 'href="https://pdos.csail.mit.edu/papers/radixvm:eurosys13.pdf"' in memory
+    assert "EuroSys 2013" in memory and "研究内核" in memory

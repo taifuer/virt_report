@@ -2,34 +2,56 @@
 {% from '_mechanism_diagram.html' import diagram with context %}
 <section id="preface" class="mechanism-section">
   <h2>映射与实际驻留</h2>
-  <p>为进程建立一段虚拟地址，并不等于立即为每个字节准备物理内存。以私有匿名 <code>mmap()</code> 为例：内核先记录可访问的范围和权限，页面可以在首次访问时才建立。这里讨论普通按需分页路径，不包含预填充、锁页等特殊要求。</p>
-  <p>理解这层差异，才能区分进程地址空间、RSS、页缓存和虚拟机配置内存。下文先从一个 Linux 进程观察，再把同样的机制放到 Guest 和宿主两侧。</p>
+  <p>私有匿名 <code>mmap()</code> 在普通按需分页配置下先建立地址范围和访问权限，实际页面随首次访问分配或映射。进程的虚拟地址空间描述可用范围，RSS 统计已经驻留的页面；两者可以相差很大。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 <section id="history" class="mechanism-section">
   <h2>从按需分页到多核内存管理</h2>
-  <p>Linux 内存管理并不是一张页表逐渐变大。地址空间管理、物理页分配、文件缓存与回收各有自己的数据结构；随着内存容量、CPU 数量和映射数量增长，这些层分别演进。</p>
+  <p>地址空间管理、物理页分配、文件缓存与回收各有自己的数据结构。内存容量、CPU 数量和映射数量的增长，分别推动这些结构的演进。</p>
   <table><thead><tr><th>演变主线</th><th>机制变化</th><th>动机与取舍</th></tr></thead><tbody>
     <tr><td>按需分页与写时复制</td><td>映射先描述地址范围，访问时才建立驻留页；fork 后可先共享私有页，写入时再分离</td><td>避免为未访问空间分配、为未修改页复制；代价被移动到缺页路径，第一次访问会更慢</td></tr>
     <tr><td>2.6 时代的地址空间与缓存管理</td><td>VMA 使用链表、红黑树及查找缓存；文件页缓存、反向映射和回收协作</td><td>既要从地址找页，也要从待回收页找到映射它的进程。共享映射和锁竞争使回收不只是释放一块内存</td></tr>
     <tr><td>大内存、SMP 与 NUMA</td><td>按节点与 zone 管理页面，配合每 CPU 缓存、大页和页面迁移</td><td>降低争用和地址转换成本，但需要处理远端访问、连续内存碎片和大页拆分</td></tr>
-    <tr><td>近年的 5.x / 6.x</td><td>folio 表达一组页面，Maple Tree 管理 VMA 区间，可选 MGLRU 改进冷热页识别</td><td>分别优化页面管理粒度、映射查找与回收策略；它们作用于不同层，不是同一种“新分页算法”</td></tr>
+    <tr><td>近年的 5.x / 6.x</td><td>folio 表达一组页面，Maple Tree 管理 VMA 区间，可选 MGLRU 改进冷热页识别</td><td>分别优化页面管理粒度、映射查找与回收策略</td></tr>
   </tbody></table>
-  <p>可直接比较 <a href="https://github.com/torvalds/linux/blob/v2.6.12/include/linux/sched.h#L214">2.6.12 的 mm_struct</a> 中 <code>mmap</code> 与 <code>mm_rb</code>，和当前 <a href="{{ linux }}Documentation/core-api/maple_tree.rst">Maple Tree 的区间索引</a>。Maple Tree 替换的是内核查找 VMA 的组织方式，不是 CPU 硬件使用的多级页表；一次合法访存也不会逐次遍历 VMA 树。</p>
+  <p>可比较 <a href="https://github.com/torvalds/linux/blob/v2.6.12/include/linux/sched.h#L214">2.6.12 的 mm_struct</a> 中 <code>mmap</code> 与 <code>mm_rb</code>，和当前 <a href="{{ linux }}Documentation/core-api/maple_tree.rst">Maple Tree 的区间索引</a>。Maple Tree 供内核查找 VMA；CPU 硬件访存使用多级页表和 TLB。</p>
 </section>
 <section id="structures" class="mechanism-section">
   <h2>地址、页表与物理页</h2>
-  <table><thead><tr><th>对象</th><th>记录内容</th><th>不等于</th></tr></thead><tbody>
-    <tr><td><code>mm_struct</code> / VMA</td><td>地址空间以及各段映射的范围、权限和后备对象</td><td>每个虚拟页都已有驻留页</td></tr>
-    <tr><td>页表项 PTE 等</td><td>地址转换、访问权限和页面状态</td><td>所有条目都有效，也不保证全是普通 RAM</td></tr>
-    <tr><td>page / folio</td><td>物理页面及内核管理状态；folio 可管理一组连续页面</td><td>一个应用对象或一条磁盘请求</td></tr>
-    <tr><td>TLB</td><td>处理器缓存的地址转换信息</td><td>页面内容的缓存，或页表本身</td></tr>
+  <table><thead><tr><th>对象</th><th>记录内容</th><th>用途</th></tr></thead><tbody>
+    <tr><td><code>mm_struct</code> / VMA</td><td>地址空间以及各段映射的范围、权限和后备对象</td><td>内核据此建立映射、检查访问和处理缺页</td></tr>
+    <tr><td>页表项 PTE 等</td><td>地址转换、访问权限和页面状态</td><td>有效映射用于访存；缺项或受限访问进入异常处理</td></tr>
+    <tr><td>page / folio</td><td>物理页面及内核管理状态；folio 可管理一组连续页面</td><td>跟踪页面引用、缓存、回写与回收</td></tr>
+    <tr><td>TLB</td><td>处理器缓存的地址转换信息</td><td>命中时省去相应的页表遍历</td></tr>
   </tbody></table>
-  <p>在 x86 等硬件查表架构上，TLB 未命中通常先由硬件遍历页表；映射有效时无需进入内核。缺页异常意味着转换或权限需要软件处理，既可能是正常的按需分配，也可能最终成为非法访问。不能把 TLB miss、page fault 和磁盘换入画成同一件事。</p>
+  <p>在 x86 等硬件查表架构上，TLB 未命中通常先由硬件遍历页表；映射有效时无需进入内核。缺页异常交给软件处理，可能建立按需映射、从存储读取页面，也可能因地址或权限非法而向进程报告错误。</p>
   <h3>地址拆分与硬件查表</h3>
-  <p>以 x86-64 的 4 KiB 基页为例，虚拟地址 <code>0x400123</code> 的页内偏移是 <code>0x123</code>。若页表把该虚拟页映射到物理页基址 <code>0x12a000</code>，最终物理地址就是 <code>0x12a123</code>。硬件利用页表根和各级索引找到映射，检查访问权限，再结合偏移访存；不会为了每次 load/store 都调用一次 Linux 分配器。</p>
-  <p>多级页表让大段未使用地址不必拥有完整的底层页表。Linux 通用代码表达 PGD、P4D、PUD、PMD、PTE 五级，实际不用的级会折叠；不是每台机器都做五级硬件遍历。大页则可在较高一级直接结束查表。VMA 记录的是“这段地址应该如何处理”，CPU 正常访存消费的是页表中的实际映射。见 <a href="{{ linux }}Documentation/mm/page_tables.rst">页表层级与硬件查表</a>。</p>
+  <p>以 x86-64 的 4 KiB 基页为例，虚拟地址 <code>0x400123</code> 的页内偏移是 <code>0x123</code>。若页表把该虚拟页映射到物理页基址 <code>0x12a000</code>，最终物理地址就是 <code>0x12a123</code>。硬件利用页表根和各级索引找到映射，检查访问权限，再结合偏移访存。</p>
+  <p>多级页表按需建立底层结构，节省稀疏地址空间的页表内存。Linux 通用代码表达 PGD、P4D、PUD、PMD、PTE 五级，具体架构未使用的级会折叠。大页可在较高一级结束查表。见 <a href="{{ linux }}Documentation/mm/page_tables.rst">页表层级与硬件查表</a>。</p>
   <p>文件的 <code>address_space</code> 以文件偏移关联页缓存；进程页表则以虚拟地址关联页面。同一文件页可以被多个进程映射，匿名页也可因 fork 暂时共享。回收时需要反向映射检查或撤销相关 PTE，并处理 TLB 失效，不能只把物理页从一个列表删掉。</p>
+</section>
+<section id="mappings" class="mechanism-section">
+  <h2>分配、映射与解除映射</h2>
+  <p>应用的 <code>malloc()</code> 首先向用户态分配器申请对象。分配器可以从自己的 arena 或空闲块中满足请求，需要扩展时再使用 <code>brk()</code>、<code>mmap()</code> 等接口取得地址空间。因此，分配一个对象、建立一个 VMA、分配一个物理页，发生在不同层次；调用次数和数据大小通常不一一对应。</p>
+  <h3>匿名、文件、私有与共享</h3>
+  <table><thead><tr><th>映射方式</th><th>读取的数据来源</th><th>写入后的归属</th></tr></thead><tbody>
+    <tr><td>私有匿名映射</td><td>初始为零，按需建立页面</td><td>进程的私有数据；普通 fork 后可先共享，再通过 COW 分离</td></tr>
+    <tr><td>共享匿名映射</td><td>内核提供的共享内存对象，通常由 shmem 支持</td><td>共享同一对象的映射可观察修改，线程／进程间仍需同步</td></tr>
+    <tr><td>文件的 <code>MAP_PRIVATE</code> 映射</td><td>普通缓存文件映射可从页缓存读取文件内容</td><td>写入形成私有副本，修改不通过这条映射写回原文件</td></tr>
+    <tr><td>文件的 <code>MAP_SHARED</code> 映射</td><td>同一文件及偏移关联的缓存内容</td><td>修改归属于共享文件内容；何时持久化还受同步调用、文件系统和设备约定影响</td></tr>
+  </tbody></table>
+  <p>对普通页缓存文件映射，<code>read()</code> 先访问页缓存，再把数据复制到用户 buffer；<code>mmap()</code> 则把相关文件页映入进程页表。两者可以关联同一份页缓存，但 mmap 需要承担缺页、页表维护和并发映射管理的成本。文件系统 DAX 等路径另有内存访问约定。</p>
+  <h3>从地址范围到安全释放</h3>
+  <ol>
+    <li><code>mmap()</code> 确定地址范围、权限和后备对象，建立或合并 VMA。普通按需分页下，返回地址时可以尚无数据页和叶子页表项。</li>
+    <li>后续访问触发缺页，内核依据 VMA 决定分配匿名页、关联文件页或处理 COW，再建立对应映射。</li>
+    <li><code>mprotect()</code> 改变权限，可能拆分 VMA、修改已有页表，并使相关 TLB 缓存失效。<code>munmap()</code> 则移除相应地址范围及其映射。</li>
+    <li>撤销映射后，物理页是否可释放还取决于其他映射、页缓存或固定引用。内核必须先完成需要的页表与 TLB 同步，再把可复用的页交回分配器。</li>
+  </ol>
+  <p><code>free()</code> 通常先把对象交回用户态分配器，分配器可能保留内存供下次申请。即使对象已释放，RSS 也可能暂时不降。反过来，文件映射解除后，文件内容仍可能留在页缓存中。接口语义见 <a href="https://man7.org/linux/man-pages/man2/mmap.2.html">mmap(2)</a>；锁与 VMA 管理见 <a href="{{ linux }}Documentation/mm/process_addrs.rst">Process Addresses</a>。</p>
+  <h3>页表修改与 TLB shootdown</h3>
+  <p>同一地址空间的线程可以同时在多个 CPU 上运行，各 CPU 都可能缓存旧转换。例如 A 解除映射并释放页，而 B 仍用旧 TLB 写入该页，就会破坏后来复用这块内存的对象。因此撤销或收紧映射时，内核按架构规则使相关 CPU 的缓存失效，并完成必要同步。地址空间标记和批量失效可以减少成本，远端失效仍可能涉及 CPU 间通知。</p>
+  <p>VMA 锁保护地址范围等元数据，页表锁保护相应页表项，TLB 同步处理硬件缓存中的旧转换；三者覆盖不同对象。相关约定见 <a href="{{ linux }}Documentation/core-api/cachetlb.rst">缓存与 TLB 刷新接口</a>及 <a href="{{ linux }}Documentation/mm/split_page_table_lock.rst">细粒度页表锁</a>。</p>
 </section>
 <section id="faults" class="mechanism-section">
   <h2>首次访问与写时复制</h2>
@@ -39,31 +61,53 @@
   <h3>合法写入与写保护异常</h3>
   <p><code>fork()</code> 后，私有可写 VMA 的约定可以仍是“允许写”，但父子进程的 PTE 被设为只读，用来截住第一次修改。下面以一个普通匿名页 P、父子进程都继续持有映射为例：</p>
   {{ diagram('linux-cow-mappings', '同一虚拟地址，写入后指向不同的物理页', '左边父子共享只读映射，右边子进程经 COW 获得 Q；父进程页表仍指向 P。这里固定父进程继续持有旧页，不展开独占页复用。') }}
-  <p>子进程页表更新前，父子读取的都是 P；发生写保护异常时，内核才为子进程分配 Q，复制旧内容、安装可写映射并重试原写指令。之后子进程继续写 Q，不会每写一个字节都再复制一遍。父进程依然看到 P 中的旧内容：被分离的是页面和映射，不是把父进程整个地址空间重新复制一次。</p>
+  <p>子进程页表更新前，父子读取的都是 P。子进程写入触发保护异常后，内核分配 Q，复制旧内容、安装可写映射并重试原写指令。后续写入直接访问 Q，父进程继续访问 P；这次复制只涉及发生修改的页面。</p>
   <p><a href="{{ linux }}mm/memory.c#L4049">do_wp_page()</a> 会判断页面是否已可独占复用；如果不再需要保留共享副本，可能只恢复写权限。相反，VMA 本身不允许写时，异常不能用 COW 掩盖。修改映射还必须同步相应 TLB 状态，否则 CPU 可能继续使用旧权限或旧地址。</p>
-  <p>以 1 MiB 私有匿名映射为例，若按 4 KiB 基页处理、没有预填充或大页，则覆盖 256 个虚拟页。刚完成 mmap 时不必有 256 个私有驻留页；首次写遍它们才逐步建立实际页面。这里的 256 是地址范围的算术分解，不是对所有机器缺页次数的预测：大页、提前分配与访问方式都可能改变计数。</p>
+  <p>1 MiB 私有匿名映射按 4 KiB 基页划分，覆盖 256 个虚拟页。按需分页时，首次写遍各页才逐步建立私有驻留页。实际缺页计数还受大页、提前分配和访问方式影响。</p>
+  <h3>缺页的结果与统计</h3>
+  <p>缺页入口先确定地址和访问方式是否有效，再处理后备页。映射合法且分配、读取成功时，内核修复页表，CPU 重试原指令；地址或权限非法时可产生 <code>SIGSEGV</code>。例如文件映射建立后文件被截短，访问完全超出新文件结尾的页面可产生 <code>SIGBUS</code>。缺页处理也可能遇到分配失败或底层 I/O 错误。</p>
+  <p>minor fault 通常不需要为取回内容发起存储 I/O，包括建立已有缓存页的映射和部分 COW；major fault 反映需要取回后备内容的路径。minor 仍可能发生分配、锁竞争或回收等待，因此计数只能描述事件类型，延迟要另行测量。文件预读与并发缺页也会改变“一次异常对应多少设备读”的关系。</p>
+  <p>继续看已经写满的 1 MiB 私有匿名区域：普通 fork 后，父子都可映射原来的 256 页，RSS 可以各计入这些驻留页；PSS 则分摊共享部分。若子进程只改写其中 1 页，且父进程继续持有原页，在这个忽略其他开销的模型中，物理数据页增加 1 页，而非再增加 1 MiB。页表和任务结构需要的内存另外计算。</p>
 </section>
 <section id="reclaim" class="mechanism-section">
-  <h2>回收、换页与分配器</h2>
-  <p>页面分配器管理不同大小的物理页块，slab 类分配器在页面之上管理内核对象；它们不是应用虚拟地址分配器的同义词。NUMA 决定页面来自哪个节点，大页可能降低地址转换成本，也会增加连续内存需求和回收、拆分的复杂度。</p>
+  <h2>回收、换页与工作集</h2>
+  <p>工作集是任务在一段时间内持续需要的页面集合。回收需要在腾出空间与保留活跃数据之间取舍，同时满足数据保存、引用和映射的约束。</p>
   <p>内存紧张时，后台回收或分配路径中的直接回收会尝试释放可回收内容：干净的文件页通常可丢弃后重读，脏页需先写回；匿名页在允许且具备 swap 等条件时可换出。被固定、不可迁移或正在使用的页面会限制回收。回收不足可能导致分配失败或 OOM，而不是所有 <code>mmap()</code> 成功的空间都保证以后能写入。</p>
-  <p>RSS 下降可能来自回收或映射变化，并不直接说明应用释放了同样多的逻辑对象。共享页会影响 RSS 与 PSS 的解释；缓存占用内存也不自动意味着泄漏。</p>
-  <p>传统活跃／非活跃 LRU 用访问反馈估计冷热，MGLRU 则按访问时间组织多代页面，并结合页表访问位等信息选择回收对象。更细的冷热判断有扫描和同步成本；是否启用取决于内核配置与运行设置，不是只要升级到某个版本就必然生效。见 <a href="{{ linux }}Documentation/admin-guide/mm/multigen_lru.rst">MGLRU 配置与工作集说明</a>。</p>
-  <p>回收算法真正面对的是一个反馈问题：刚淘汰的文件页若马上又被读入，内核白做了回收和磁盘读取，工作集还可能反复抖动。访问位、页面所属代和重新访问的反馈用于改进冷热判断；但“找到冷页”只是开始，还要确认页能否解除映射、是否需要写回、有没有固定引用。选择回收对象与安全地释放对象是两步。</p>
+  <p>RSS 随驻留页变化；PSS 将共享页按映射它的进程分摊。判断内存用量时，还应区分应用对象、匿名驻留页和可回收文件缓存。</p>
+  <p>传统活跃／非活跃 LRU 用访问反馈估计冷热，MGLRU 按访问时间组织多代页面，并结合页表访问位等信息选择回收对象。冷热判断需要扫描和同步；MGLRU 的启用状态由内核配置及运行设置共同决定。见 <a href="{{ linux }}Documentation/admin-guide/mm/multigen_lru.rst">MGLRU 配置与工作集说明</a>。</p>
+  <p>刚淘汰的文件页若很快又被读入，会增加回收与存储访问成本，频繁发生时可能造成工作集抖动。内核结合访问位、页面所属代和重新访问反馈改进选择。选定候选页后，还须处理映射、写回和固定引用，才能安全释放。</p>
   {{ diagram('linux-page-reclaim', '从候选页到真正可释放的页面', '找到较冷的页面只完成了选择；数据保存、引用、页表和 TLB 状态仍需满足安全释放条件。无法换出或被固定的页面不能直接丢弃。') }}
   <p>图中干净文件页有文件作为后备，丢弃后可以重读；脏文件页尚有未保存修改，必须安排写回并重新判断。匿名页没有原文件可重读，需要可用的换出路径。正因为“冷”与“可立即释放”不同，直接回收才可能让一次内存申请等待很久。</p>
+  <p>匿名页换出后，原页表位置可以保存 swap entry，标识数据的后备位置。再次访问触发缺页时，内核从 swap cache 或相应后备取回数据，恢复正常映射。swap 可以由不同后端承载；换出是否允许，还受系统配置、页面状态和 cgroup 的 swap 额度影响。</p>
 </section>
 <section id="allocation" class="mechanism-section">
   <h2>分配粒度、连续性与内存压力</h2>
   <p>Buddy 页面分配器按 order 管理连续页块：order 为 k 的请求需要 2<sup>k</sup> 个连续基页。对象分配器在这些页之上复用小对象，减少每个对象直接申请整页的浪费。总空闲内存充足，也可能因为缺少合适的连续块而无法满足较高 order 的请求。</p>
+  <p>例如 4 KiB 基页下，一个 2 MiB 页需要 order 9 的连续块。物理页按 NUMA node 和 zone 组织，zone 表达架构相关的可寻址或用途约束；分配标志还决定本次是否允许睡眠、回收或进入 I/O 路径。每 CPU 页缓存可降低常见分配的共享锁开销，SLUB 则在获得的页中切分和复用同类内核对象。</p>
   <p><code>kmalloc()</code> 分配的区域在物理地址上连续；<code>vmalloc()</code> 提供连续的内核虚拟地址，后备物理页不必连续。两者都不能直接推出设备 DMA 地址：是否能 DMA、如何映射以及何时同步，要遵守 DMA API 和设备约束。<a href="{{ linux }}Documentation/core-api/memory-allocation.rst">内存分配指南</a>按对象大小和上下文区分这些选择。</p>
   <p>内存压力还可能来自某个 NUMA 节点或 cgroup，而不是全机总量。后台 kswapd 尽早回收，直接回收可能把延迟记到正在申请内存的线程上；页面规整通过迁移可移动页拼出连续空间，不能移动的固定页会限制效果。THP 可减少页表与 TLB 开销，但不保证每次大页分配都划算，参见 <a href="{{ linux }}Documentation/admin-guide/mm/transhuge.rst">透明大页的工作方式</a>。</p>
+  <p>在常见默认 NUMA 策略下，实际分配通常倾向于执行首次触碰的 CPU 所在节点，仍受 cpuset、内存策略及可用空间约束。初始化线程把一大块内存写满后，工作线程即使迁到其他节点，页面也可能留在原处；远端访问、自动 NUMA 平衡和显式策略会进一步影响性能。机制见 <a href="{{ linux }}Documentation/admin-guide/mm/numa_memory_policy.rst">NUMA 内存策略</a>。</p>
+  <p>THP 与显式 hugetlb 分配有不同的管理方式。THP 尝试透明地使用较大页粒度，并可在条件变化时拆分；hugetlb 使用专门管理的大页资源与接口。Guest 和 Host 的页粒度分别选择，Guest 使用大页后，Host 后备仍可能碎片化。两级转换中的效果见 <a href="kvm-hugepages.html">KVM 大页</a>。</p>
+</section>
+<section id="pressure" class="mechanism-section">
+  <h2>内存额度、回收压力与 OOM</h2>
+  <p>内存分配可能同时受到全机可用页、NUMA 节点、连续性和 cgroup 记账的约束。为进程预留虚拟地址只建立使用约定，实际触碰时仍要经过物理分配和相应的额度检查。</p>
+  <table><thead><tr><th>控制或事件</th><th>作用</th><th>观察方向</th></tr></thead><tbody>
+    <tr><td><code>memory.high</code></td><td>超过阈值的组受到回收与节流压力；该阈值本身不触发 OOM killer</td><td>回收是否持续发生，请求延迟是否增加</td></tr>
+    <tr><td><code>memory.max</code></td><td>为组设置硬限制，回收仍不能满足要求时可能进入组内 OOM 处理</td><td><code>memory.events</code> 的 max、oom 与 oom_kill 等计数</td></tr>
+    <tr><td><code>memory.swap.max</code></td><td>单独限制组可使用的 swap</td><td>匿名页是否仍有可用换出空间，不能仅看全机 swap 剩余量</td></tr>
+    <tr><td>全局内存压力</td><td>由系统级分配与回收处理，必要时进入全局 OOM 路径</td><td>与某个 cgroup 超限分开确认，避免把局部问题归因于整机容量</td></tr>
+  </tbody></table>
+  <p><code>memory.current</code> 包含该组记账的多类内存，文件缓存和部分内核内存也在其中，具体分类可查 <code>memory.stat</code>。多个进程共享页时，cgroup 记账与逐进程 RSS/PSS 的口径不同；把 RSS 相加会重复计算共享页。父级 cgroup 的额度同样约束子组。</p>
+  <p>回收赶不上访问速度时，任务可能反复缺页、回收、再读回，表现为吞吐下降和延迟升高。<code>memory.pressure</code> 的 PSI 指标记录任务因内存压力停顿的情况；它可与 <code>memory.events</code>、缺页和换页增量一起分析。接口定义见 <a href="{{ linux }}Documentation/admin-guide/cgroup-v2.rst">cgroup v2 内存控制器</a>与 <a href="{{ linux }}Documentation/accounting/psi.rst">PSI</a>。</p>
+  <p>OOM 的触发范围、候选任务和组级策略共同决定后续处理，部分分配还会直接失败。定位时应保留内核日志、限制值和事发窗口的计数，区分分配失败、被 OOM 终止，以及仅因直接回收而变慢。</p>
 </section>
 <section id="observe" class="mechanism-section">
   <h2>只读观察与两级映射</h2>
   <p>在实验机查看 <code>/proc/PID/maps</code> 的范围与权限，再看 <code>/proc/PID/smaps_rollup</code> 的 RSS/PSS；<code>/proc/meminfo</code> 与 <code>/proc/vmstat</code> 反映系统层面的内存与回收活动。缺页、换页等计数是累积值，比较间隔差值；读取权限与可用字段可能随配置变化。</p>
+  <p>一次观察可依次核对：maps 中的地址是否有对应 VMA；smaps 中属于匿名还是文件映射、是否共享和使用大页；驻留变化是否伴随 minor/major fault；同一窗口是否出现回收、换出或 cgroup 节流。<code>MemAvailable</code> 是可用容量的估计，<code>MemFree</code> 只统计空闲页；两者都不能单独证明某个节点有足够的连续大块内存。</p>
   <p>Guest 自己管理应用 VA 到 GPA 的页表，宿主管理 GPA 对应的后备内存，KVM 再维护 EPT 等第二级转换。Guest page fault 与 EPT violation 发生在不同层，Guest 分配了页也不意味着宿主早已建立所有映射。反过来，Guest 释放内存通常只是归还自己的分配器，宿主是否回收还取决于 balloon、空闲页报告和后备策略。</p>
-  <p>已有的 <a href="memory-virtualization.html#first-touch-measured">首次触碰实验</a>可对照这些量；这里只提供观察方法，不把示意路径冒充本机测量结果。</p>
+  <p><a href="memory-virtualization.html#first-touch-measured">首次触碰实验</a>提供了对应的环境、步骤与测量结果，可用于对照缺页计数和驻留变化。</p>
 </section>
 <section id="sources" class="mechanism-section">
   <h2>源码与延伸阅读</h2>
@@ -71,5 +115,7 @@
     <li><a href="{{ linux }}mm/mmap.c#L278">映射建立</a>；<a href="{{ linux }}mm/memory.c#L6470">缺页分派</a>；<a href="{{ linux }}mm/vmscan.c#L6612">直接回收入口</a>。</li>
     <li><a href="{{ linux }}Documentation/admin-guide/mm/concepts.rst">Linux 内存概念</a>。再读 <a href="kvm-ept-fault.html">KVM EPT 缺页</a>、<a href="virtio-balloon.html">virtio-balloon</a> 与 <a href="kvm-hugepages.html">KVM 大页</a>。</li>
     <li>原始研究对照：<a href="../conference-papers.html#paper-osdi02-esx-memory">ESX 内存管理</a>；缓存和 I/O 的连接见 <a href="linux-block-io.html">Linux 存储 I/O</a>。</li>
+    <li><a href="../conference-papers.html#paper-osdi16-ingens">Ingens（OSDI 2016）</a>研究 Linux/KVM 大页分配的延迟、内存浪费与公平性，将连续内存供给、后台规整和页共享协调起来。论文采用 Linux 4.3，适合对照理解大页收益与管理成本。</li>
+    <li><a href="https://pdos.csail.mit.edu/papers/radixvm:eurosys13.pdf">RadixVM（EuroSys 2013，作者 PDF）</a>研究多线程并发 mmap/munmap 的元数据竞争、引用计数和远端 TLB 失效。它是研究内核中的地址空间设计，可用于理解可扩展性问题；Linux 6.18 的 VMA 和页表锁以对应源码为准。</li>
   </ul>
 </section>

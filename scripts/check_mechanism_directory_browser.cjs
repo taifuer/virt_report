@@ -67,8 +67,12 @@ async function responsive(page, width) {
 async function check(page,width) {
   await page.setViewportSize({width,height:900});
   await page.goto(url); await ready(page);
-  assert.deepEqual(await page.locator('.mechanism-topic').evaluateAll(nodes => nodes.slice(0,2).map(node => node.id)),
-    ['virtualization-basics', 'linux-foundations'], 'Linux foundations follow virtualization basics');
+  const foundationOrder = ['virtualization-basics', 'cpu-virtualization', 'memory-virtualization',
+    'device-virtualization', 'interrupt-virtualization', 'linux-foundations'];
+  assert.deepEqual(await page.locator('.mechanism-directory-row').first().locator('a').evaluateAll(nodes =>
+    nodes.map(node => node.hash.slice(1))), foundationOrder, 'Linux foundations end the foundations navigation');
+  assert.deepEqual(await page.locator('.mechanism-group').first().locator('.mechanism-topic').evaluateAll(nodes =>
+    nodes.map(node => node.id)), foundationOrder, 'body and navigation keep the same reading order');
   const buttons=page.locator('[data-mechanism-toggle]');
   assert.equal(await buttons.count(),published.filter(topic => topic.details.length).length,
     'only topics with detail articles get a toggle');
@@ -95,7 +99,7 @@ async function check(page,width) {
     const resolve=value=>{probe.style.color=value;return getComputedStyle(probe).color;};
     const brand=resolve('var(--brand)'), ink=resolve('var(--ink)'), muted=resolve('var(--muted)');probe.remove();
     return {brand,ink,muted,category:getComputedStyle(document.querySelector('#live-upgrade .mechanism-topic-label')).color,
-      headings:[...document.querySelectorAll('.mechanism-topic h3 a,.mechanism-list-item h4 a')]
+      headings:[...document.querySelectorAll('.mechanism-topic h3 a,.mechanism-list-item :is(h4,h5) a')]
       .map(a=>getComputedStyle(a).color),chip:getComputedStyle(document.querySelector('.mechanism-directory a')).color};
   });
   assert(colors.headings.every(color=>color===colors.brand),'article/overview titles use the site link color');
@@ -115,6 +119,22 @@ async function check(page,width) {
   if (width >= 1280) assert(summaries.every(p => p.height <= p.line + 1), 'short desktop summaries fit on one line');
   await topic(page,'linux-foundations').screenshot({path:path.join(shots,`directory-${width}-linux.png`)});
   await toggle(page,'linux-foundations').click(); await expanded(page,'linux-foundations',false);
+
+  await toggle(page,'device-virtualization').click(); await expanded(page,'device-virtualization');
+  await toggle(page,'memory-virtualization').click(); await expanded(page,'memory-virtualization');
+  const titleStyles = await page.locator('.mechanism-list-item :is(h4,h5)').evaluateAll(nodes => nodes.map(node => {
+    const style = getComputedStyle(node);
+    return [style.fontFamily, style.fontSize, style.fontWeight, style.lineHeight, style.marginBottom];
+  }));
+  assert(titleStyles.length > 0);
+  assert(titleStyles.every(style => JSON.stringify(style) === JSON.stringify(titleStyles[0])),
+    'clustered h5 titles and ordinary h4 titles share font, weight, size, line height and spacing');
+  const cluster = topic(page,'device-virtualization').locator('.mechanism-cluster').first();
+  assert.equal(await cluster.locator('h5').count(), 2, 'both Virtio and Virtqueue titles are covered');
+  await cluster.screenshot({path:path.join(shots,`directory-${width}-virtio-fonts.png`)});
+  await responsive(page,width);
+  await toggle(page,'device-virtualization').click(); await expanded(page,'device-virtualization',false);
+  await toggle(page,'memory-virtualization').click(); await expanded(page,'memory-virtualization',false);
 
   await toggle(page,'live-upgrade').click(); await expanded(page,'live-upgrade');
   assert.equal(await list(page,'live-upgrade').locator('.mechanism-list-item').count(),2);

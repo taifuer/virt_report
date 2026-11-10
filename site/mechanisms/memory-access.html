@@ -7,16 +7,16 @@
   <title>内存访问与异常处理 - virt-report</title>
   <meta name="description" content="沿 GVA、GPA 与 HPA 区分 RAM 和 MMIO 分派，对照 VFIO 物理 BAR 与 ivshmem 共享 BAR，并在进阶路径观察换页和写保护。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=b1d38984fa3b">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=b1d38984fa3b">
-  <link rel="stylesheet" href="../assets/site.css?v=b1d38984fa3b">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=654efca4fa64">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=654efca4fa64">
-<link rel="stylesheet" href="../assets/execution-demo.css?v=654efca4fa64"><link rel="stylesheet" href="../assets/walkthrough.css?v=654efca4fa64"></head>
+  <link rel="shortcut icon" href="../favicon.ico?v=e9ab166b6427">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=e9ab166b6427">
+  <link rel="stylesheet" href="../assets/site.css?v=e9ab166b6427">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=2c821ec4284f">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=2c821ec4284f">
+<link rel="stylesheet" href="../assets/execution-demo.css?v=2c821ec4284f"><link rel="stylesheet" href="../assets/walkthrough.css?v=2c821ec4284f"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=b1d38984fa3b" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=e9ab166b6427" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -256,10 +256,10 @@
   <h2><span class="mechanism-heading-number">三、</span>地址空间与访问分派</h2>
   <h3 id="address-routing-part-1"><span class="mechanism-heading-number">1. </span>Guest 资源语义与硬件地址转换</h3>
   <p>Guest 内核从固件内存图获知 RAM 范围，通过 PCI 枚举和 BAR 资源获知设备窗口。驱动选择适当的映射、缓存属性与访问接口，例如 <code>ioremap()</code>、<code>readl()</code> / <code>writel()</code>；它通常知道自己在访问 RAM、设备寄存器还是设备暴露的内存，但无需知道宿主 HPA。普通应用也不必了解这些后备细节。<a href="https://docs.kernel.org/driver-api/device-io.html">Linux 设备访问接口</a></p>
-  <p>在本例 x86 环境中，RAM 与 MMIO 都可以由普通访存指令触达。CPU 不是从一条 MOV 指令中猜测用途，也没有一个通用的 Guest PTE“这是 MMIO”标志；它按已配置的地址转换、权限和内存属性执行。Guest 页表得到 GPA，EPT 得到 HPA；随后物理地址译码决定访问内存还是设备窗口。缓存属性约束访问行为，不能单独替代资源类型的判定。</p>
+  <p>在本例 x86 环境中，RAM 与 MMIO 都由普通访存指令触达。CPU 按地址转换、权限和内存属性执行：Guest 页表得到 GPA，EPT 得到 HPA，物理地址译码再选择内存或设备窗口。缓存属性约束访问行为，资源类型由映射与平台地址布局共同确定。</p>
   <h3 id="address-routing-part-2"><span class="mechanism-heading-number">2. </span>QEMU 配置地址空间，KVM 处理退出</h3>
   <p>QEMU 用 <code>MemoryRegion</code> 建立客户机物理地址布局：普通 RAM、共享后备和需要设备回调的区间具有不同属性。MemoryListener 将可映射的 GPA 区间及 HVA 后备注册为 KVM memslot。VFIO 可映射设备区域也可使用 RAM-device 接口，因此“存在 memslot”不等于“物理落点必然是普通 RAM”。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L1505-L1627">memslot 注册</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/memory.c#L1705-L1722">RAM-device 后备接口</a></p>
-  <p>EPT 缺项或权限问题先使处理器退出到 KVM，不会直接跳进 QEMU。对于本例普通 RAM 缺项，KVM 取得后备 PFN 并补建 EPT，必要时由宿主内存管理先提供页面。对于需要模拟的访问，KVM 尝试内核 LAPIC / MMIO 总线；不能在内核完成的部分才通过 <code>KVM_EXIT_MMIO</code> 返回 QEMU，由地址空间分派找到设备回调。QEMU 处理的是设备操作，不是在替 KVM 建 EPT；未分配的地址空洞也不保证存在可处理的设备。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/mmu.c#L4882-L4914">EPT 建图</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L8171-L8222">模拟访问分派</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L8222-L8274">用户态 MMIO 请求</a></p>
+  <p>EPT 缺项或权限问题使处理器退出到 KVM。普通 RAM 缺项由 KVM 取得后备 PFN 并补建 EPT，必要时由宿主内存管理先提供页面。需要模拟的访问先尝试内核 LAPIC / MMIO 总线；不能在内核完成的部分通过 <code>KVM_EXIT_MMIO</code> 返回 QEMU，由地址空间分派找到设备回调。EPT 由 KVM 管理，QEMU 负责相应设备操作；未分配的地址空洞也可能没有可处理的设备。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/mmu/mmu.c#L4882-L4914">EPT 建图</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L8171-L8222">模拟访问分派</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L8222-L8274">用户态 MMIO 请求</a></p>
   <h3 id="address-routing-part-3"><span class="mechanism-heading-number">3. </span>HPA 可以指向 RAM，也可以指向设备窗口</h3>
   <table>
     <thead><tr><th scope="col">访问对象</th><th scope="col">Guest GPA</th><th scope="col">EPT 输出的 HPA</th><th scope="col">实际落点</th></tr></thead>
@@ -269,7 +269,7 @@
       <tr><td>ivshmem 共享 BAR2</td><td><code>0xf0001000</code></td><td><code>0x21001000</code></td><td>宿主共享 RAM 页，不经过物理 PCIe 设备</td></tr>
     </tbody>
   </table>
-  <p>两个 BAR 示例复用 Guest 地址便于对照，代表不同配置，不会在同一地址空间中重叠。VFIO 的 HPA 已是宿主设备窗口地址，不是先访问一份宿主 RAM 再转发到设备。本例宿主 BAR0 的 CPU 物理资源基址为 <code>0xd0000000</code>，加上 offset <code>0x1000</code> 即为目标；固定宿主桥采用恒等窗口，其他平台还可能有 CPU 物理地址与 PCI 总线地址之间的换算。BAR offset 是窗口内偏移，不是另一级页表。<a href="https://docs.kernel.org/core-api/dma-api-howto.html#cpu-and-dma-addresses">CPU 物理地址、总线地址与宿主桥</a></p>
+  <p>两个 BAR 示例使用相同 Guest 地址表示两种独立配置，便于对照。VFIO 的 HPA 指向宿主设备 MMIO 窗口。本例宿主 BAR0 的 CPU 物理资源基址为 <code>0xd0000000</code>，加上窗口内 offset <code>0x1000</code> 即为目标地址。示例宿主桥采用恒等窗口；其他平台可能还需换算 CPU 物理地址与 PCI 总线地址。<a href="https://docs.kernel.org/core-api/dma-api-howto.html#cpu-and-dma-addresses">CPU 物理地址、总线地址与宿主桥</a></p>
   <p>ivshmem 的 BAR2 则将共享内存对象暴露给 Guest。它没有真实 PCIe 设备，不需要 VFIO，也不逐次执行 QEMU 寄存器回调；BAR0 控制寄存器是另一片区域，不能由 BAR2 推断整个设备都无退出。普通 Guest RAM 同样不会因为启用了 VFIO 就自动指向 BAR。设备主动 DMA 访问内存时，才涉及另一个方向的 IOMMU 地址链。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/misc/ivshmem-pci.c#L845-L928">BAR0 与 BAR2 的注册</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/specs/ivshmem-spec.rst#L5-L44">ivshmem 设备规范</a></p>
 </section>
 
@@ -294,7 +294,7 @@
   </table>
   <p>普通 TLB miss 只说明转换缓存没有可用条目。Guest 页表和 EPT 都有效时，硬件能够自行完成遍历。CPU 数据缓存则保存数据或指令，其命中情况与转换缓存要分别观察。</p>
   <p>Guest #PF 示例选用合法匿名映射的首次写入，由客户机内核处理；非法地址与权限错误可能终止应用。宿主缺页示例选用未启用 KVM 异步缺页协议的同步换入，由宿主内存管理提供后备页；在其他配置中，KVM 可以把等待转成异步处理。</p>
-  <p>RAM 缺页也可能需要用户态参与，但必须说明额外配置。例如后拷贝迁移使用 <code>userfaultfd</code> 通知 QEMU 的缺页处理线程，由它向源端请求尚未到达的页面；补齐后，KVM 才能继续建立映射。这不同于普通宿主换页，也不是把 vCPU 的 EPT 退出直接当作 QEMU MMIO 回调。QEMU 在这里提供缺失页面，EPT 仍由 KVM 管理；具体过程见<a href="qemu-postcopy.html">QEMU 后拷贝迁移</a>及<a href="https://www.qemu.org/docs/master/devel/migration/postcopy.html">后拷贝机制说明</a>。</p>
+  <p>后拷贝迁移中的 RAM 缺页还需要用户态参与：<code>userfaultfd</code> 通知 QEMU 缺页处理线程，由它向源端请求尚未到达的页面；补齐后 KVM 继续建立映射。QEMU 在此负责提供数据页，KVM 负责 EPT；具体过程见<a href="qemu-postcopy.html">QEMU 后拷贝迁移</a>及<a href="https://www.qemu.org/docs/master/devel/migration/postcopy.html">后拷贝机制说明</a>。</p>
   <p>只有交给用户态的 MMIO 读才需要这次往返：<code>kvm_run.mmio.data</code> 已填好时，Guest 寄存器仍可能保留旧值，用户态需重新进入 <code>KVM_RUN</code>，由内核先完成待决操作。KVM 在此之前会尝试内核 LAPIC 与 MMIO 总线；命中的 ioeventfd 写通知也可在内核完成。相关执行循环见<a href="kvm-vcpu-run.html">KVM vCPU 运行与退出</a>。</p>
   <p>VFIO 直接访问只适用于允许映射的 BAR 区间，且本例从映射已建立的稳态开始。MSI-X 表、需模拟区域、首次映射缺失与权限变化不属于这条无退出路径。这里的 CPU 地址链是 Guest 页表与 EPT；设备自身发起 DMA 时使用的 IOMMU 地址链是另一个方向，不能串成一次 CPU 读取的必经环节。</p>
 </section>
@@ -337,7 +337,7 @@
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=b1d38984fa3b"></script>
-<script src="../assets/mechanism-viewer.js?v=654efca4fa64" defer></script>
-<script src="../assets/walkthrough-fullscreen.js?v=654efca4fa64" defer></script><script src="../assets/walkthrough-routing.js?v=654efca4fa64" defer></script><script src="../assets/walkthrough-components.js?v=654efca4fa64" defer></script><script src="../assets/walkthrough-events.js?v=654efca4fa64" defer></script><script src="../assets/execution-model.js?v=654efca4fa64" defer></script><script src="../assets/execution-demo.js?v=654efca4fa64" defer></script></body>
+  <script src="../assets/site.js?v=e9ab166b6427"></script>
+<script src="../assets/mechanism-viewer.js?v=2c821ec4284f" defer></script>
+<script src="../assets/walkthrough-fullscreen.js?v=2c821ec4284f" defer></script><script src="../assets/walkthrough-routing.js?v=2c821ec4284f" defer></script><script src="../assets/walkthrough-components.js?v=2c821ec4284f" defer></script><script src="../assets/walkthrough-events.js?v=2c821ec4284f" defer></script><script src="../assets/execution-model.js?v=2c821ec4284f" defer></script><script src="../assets/execution-demo.js?v=2c821ec4284f" defer></script></body>
 </html>

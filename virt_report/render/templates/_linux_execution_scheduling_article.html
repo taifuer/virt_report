@@ -2,52 +2,87 @@
 {% from '_mechanism_diagram.html' import diagram with context %}
 <section id="preface" class="mechanism-section">
   <h2>线程与执行上下文</h2>
-  <p>CPU 当前执行的是某个上下文中的指令。Linux 用 <code>task_struct</code> 描述可调度的任务；同一进程的多个线程通常共享地址空间和文件表，但各有寄存器现场、内核栈和调度状态。这里先看普通 Linux 线程，不引入虚拟化层。</p>
-  <p>线程调用 <code>read()</code> 时，处理器进入内核，仍可能是同一线程在执行。只有它需要等待，或发生抢占等调度事件，才可能换成另一个任务。用户态到内核态的转换、线程上下文切换、Guest 的 VM-exit 是三个不同边界。</p>
+  <p>Linux 用 <code>task_struct</code> 描述可调度的任务。同一进程的多个线程通常共享地址空间和文件表，各自保留寄存器现场、内核栈和调度状态。</p>
+  <p>线程调用 <code>read()</code> 时，由该线程进入内核执行系统调用。需要等待数据或发生抢占时，调度器才可能切换到其他任务。用户态到内核态的转换改变执行权限，线程上下文切换则改变当前运行的任务。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 <section id="history" class="mechanism-section">
   <h2>从时间片调度到 CFS 与 EEVDF</h2>
-  <p>调度器的演变围绕三个逐渐突出的矛盾：任务增多后选择开销上升，多核机器上的全局争用，以及吞吐量与交互延迟之间的冲突。更换选择算法并不意味着进程、阻塞和上下文切换这些基本模型随之消失。</p>
+  <p>调度器持续处理三个问题：任务增多带来的选择开销，多核机器上的共享状态争用，以及吞吐量与交互延迟之间的取舍。</p>
   <table><thead><tr><th>阶段</th><th>主要变化</th><th>解决的问题与代价</th></tr></thead><tbody>
     <tr><td>早期 Linux 的时间片与扫描</td><td>按任务优先级和剩余时间片选择；用扫描与重新计算维护轮转</td><td>结构直接，但任务数量增长会增加扫描工作，共享运行队列也限制 SMP 扩展</td></tr>
     <tr><td>2002 年的 O(1) 设计、早期 2.6</td><td>每 CPU 运行队列；active / expired 优先级数组与位图；active 为空时交换数组角色</td><td>减少全局锁与全体任务重算。O(1) 描述主要选择操作，不保证唤醒延迟为常数；交互性仍依赖优先级调整策略</td></tr>
     <tr><td>Linux 2.6.23：CFS</td><td>用权重归一化的虚拟运行时间 vruntime 表示已获得的 CPU 服务，借助有序树选择服务较少的实体</td><td>以统一的公平模型减少交互性启发式；时间片粒度和唤醒抢占仍需平衡响应与切换成本</td></tr>
     <tr><td>Linux 6.6 起：EEVDF</td><td>先根据服务欠账 lag 判断是否有资格，再比较虚拟截止时间</td><td>将“应得多少 CPU”与“何时服务更合适”分开。短请求可改善响应，但不是实时期限保证</td></tr>
   </tbody></table>
-  <p>历史依据可对照 Ingo Molnar 的 <a href="https://github.com/torvalds/linux/blob/v2.6.12/Documentation/sched-design.txt">O(1) 原始设计</a>，以及内核的 <a href="{{ linux }}Documentation/scheduler/sched-design-CFS.rst">CFS</a>、<a href="{{ linux }}Documentation/scheduler/sched-eevdf.rst">EEVDF</a> 文档。O(1) 的数组属于历史实现；当前源码中的 <code>cfs_rq</code> 名称仍然保留，不意味着选择逻辑仍停留在早期 CFS。</p>
+  <p>历史依据可对照 Ingo Molnar 的 <a href="https://github.com/torvalds/linux/blob/v2.6.12/Documentation/sched-design.txt">O(1) 原始设计</a>，以及内核的 <a href="{{ linux }}Documentation/scheduler/sched-design-CFS.rst">CFS</a>、<a href="{{ linux }}Documentation/scheduler/sched-eevdf.rst">EEVDF</a> 文档。当前公平调度类保留了 <code>cfs_rq</code> 等命名，并在其上实现 EEVDF 的记账与选择规则。</p>
   {{ diagram('linux-scheduler-evolution', '三个时期，三种选择依据', '比较的是普通调度主线：O(1) 的优先级数组、CFS 的公平进度，以及 EEVDF 的资格与截止时间；不包含实时调度类。') }}
-  <p>沿图从左向右，变化的是“用什么信息挑出下一位”，而不是每换一代就重新定义进程。当前系统依然需要运行队列、睡眠唤醒和上下文切换；新算法也必须维护旧算法不必维护的记账信息。</p>
+</section>
+<section id="objects" class="mechanism-section">
+  <h2>进程、线程与共享资源</h2>
+  <p>Linux 为每个可调度线程建立一个 <code>task_struct</code>。通常所说的多线程进程，是同一线程组中的多个任务：它们有各自的执行现场，通过引用共享地址空间、文件描述符表等对象。调度器逐线程分配 CPU 时间，资源共享范围由创建时的标志和后续操作决定。</p>
+  <table><thead><tr><th>对象</th><th>普通多线程进程中的关系</th><th>实际影响</th></tr></thead><tbody>
+    <tr><td><code>task_struct</code>、内核栈、寄存器现场</td><td>每个线程各有一份</td><td>A 阻塞时，B 可以继续执行；A 恢复后从自己的等待位置继续</td></tr>
+    <tr><td><code>mm_struct</code>、VMA 与页表</td><td>线程共享同一个地址空间</td><td>A 修改共享内存中的对象，B 可按同步规则观察到；内存可见性还需锁或原子操作保证</td></tr>
+    <tr><td><code>files_struct</code> 与 fd 表</td><td>线程通常共享 fd 表，表项引用打开的文件对象</td><td>A 关闭某个 fd 会影响其他线程后续对该编号的查找；已取得的文件引用另有生命期</td></tr>
+    <tr><td><code>sighand_struct</code>、<code>signal_struct</code></td><td>共享信号处置与线程组级状态，信号屏蔽字由各线程维护</td><td>注册处理函数影响整个进程；由哪个线程接收信号取决于目标和屏蔽状态</td></tr>
+    <tr><td>用户栈与线程局部存储 TLS</td><td>各线程使用不同区域，区域仍位于共享地址空间内</td><td>执行位置和局部数据可以独立；地址空间层面仍允许线程访问彼此的栈</td></tr>
+  </tbody></table>
+  <p><code>getpid()</code> 返回线程组 ID，<code>gettid()</code> 返回调用线程的 TID；线程组首线程的 TID 与 TGID 相同。在 <code>/proc/PID/task/</code> 中可以看到该组的线程。同一任务在不同 PID namespace 中可以有不同编号，观察时还需确定所在的命名空间。</p>
+  <p><code>clone()</code> / <code>clone3()</code> 用标志表达共享关系：<code>CLONE_VM</code> 共享地址空间，<code>CLONE_FILES</code> 共享 fd 表，<code>CLONE_SIGHAND</code> 共享信号处置，<code>CLONE_THREAD</code> 加入同一线程组。标志之间存在依赖，线程库负责按约定组合。源码可从 <a href="{{ linux }}kernel/fork.c#L1514">copy_mm()</a>、<a href="{{ linux }}kernel/fork.c#L1573">copy_files()</a> 和 <a href="{{ linux }}kernel/fork.c#L1652">copy_signal()</a> 对照这些选择。</p>
+  <p>例如父进程先打开文件，再执行普通 <code>fork()</code>：父子拥有不同的 fd 表，但对应表项仍可引用同一个 <code>struct file</code>，从而共享文件偏移。父进程关闭自己的 fd，不会删除子进程表中的表项。共享 fd 表、共享打开的文件、共享文件内容，是三种不同的关系。</p>
+</section>
+<section id="lifecycle" class="mechanism-section">
+  <h2>创建、执行新程序与退出</h2>
+  <p>以 shell 启动一个命令为例，进程创建负责产生新的执行实体，程序加载负责替换它执行的映像，等待接口负责收取退出结果。</p>
+  <ol>
+    <li><strong>创建：</strong><code>fork()</code> 进入内核后，经创建路径分配任务结构、内核栈和标识，按规则复制或共享资源。普通私有内存主要通过写时复制共享原有物理页，页表和任务元数据仍有建立成本。多线程进程 fork 后，子进程只包含发起调用的那个线程。</li>
+    <li><strong>变为可运行：</strong><a href="{{ linux }}kernel/fork.c#L2568">kernel_clone()</a> 在 <code>copy_process()</code> 完成后调用 <code>wake_up_new_task()</code>，把子任务交给调度器。父进程得到子 PID，子进程看到返回值 0；二者谁先获得 CPU 由调度决定。</li>
+    <li><strong>加载程序：</strong>子进程调用 <code>execve()</code>，内核读取可执行文件格式，建立新的代码、数据、栈和入口状态。成功后从新程序入口继续；进程身份延续，设置了 <code>FD_CLOEXEC</code> 的 fd 被关闭。多线程 exec 还要结束同组其他线程，见 <a href="{{ linux }}fs/exec.c#L1099">begin_new_exec()</a> 中的 <code>de_thread()</code> 和 <code>exec_mmap()</code>。</li>
+    <li><strong>退出：</strong>任务释放自己持有的地址空间、文件等引用。用户态退出整个进程与仅结束某个线程的语义不同；线程库和 libc 的包装函数会选择相应系统调用。内核通过 <a href="{{ linux }}kernel/exit.c#L1082">do_group_exit()</a> 协调线程组退出。</li>
+    <li><strong>收取结果：</strong>通常父进程用 <code>waitpid()</code> / <code>waitid()</code> 取得退出状态，释放保留的退出记录。僵尸进程保存这些记录，已经结束用户程序执行；设置自动回收策略时，处理方式也会不同。</li>
+  </ol>
+  <p>子进程已退出、父进程尚未 wait，是“僵尸”；父进程先退出，仍在运行的子进程被接管，是“孤儿”。两者涉及不同的生命期。多线程 fork 的子进程还可能继承由已不存在的其他线程持有的用户锁，因此在 exec 前必须遵守相应的线程安全约束。</p>
+  <h3>信号的生成、挂起与处理</h3>
+  <p>信号先成为线程或进程的待处理状态。面向进程的信号由内核选择合适的未屏蔽线程接收；面向线程的信号有明确目标。执行用户态处理函数前，内核为该线程准备信号帧，保存原执行现场，处理结束后通过返回路径恢复。信号处置、屏蔽和返回规则可对照 <a href="https://man7.org/linux/man-pages/man7/signal.7.html">signal(7)</a>。</p>
+  <p>可中断等待收到合适信号时，可以结束等待并返回错误或按接口规则重启。处于不可中断等待的任务可能要等相应内核条件完成后才继续退出；发送信号的时间与任务真正停止的时间需要分别观察。</p>
 </section>
 <section id="states" class="mechanism-section">
   <h2>任务状态与运行队列</h2>
-  <table><thead><tr><th>观察对象</th><th>含义</th><th>容易误读的地方</th></tr></thead><tbody>
+  <table><thead><tr><th>观察对象</th><th>含义</th><th>调度状态</th></tr></thead><tbody>
     <tr><td>正在执行</td><td>已获得某个逻辑 CPU，正在执行指令</td><td>进入内核后不一定更换任务</td></tr>
     <tr><td>可运行</td><td>具备运行条件，但可能仍在等待 CPU</td><td><code>TASK_RUNNING</code> 同时涵盖就绪和正在执行，R 不等于此刻独占一个核</td></tr>
     <tr><td>睡眠／等待</td><td>等待数据、锁、定时器等条件，不继续参与正常的 CPU 竞争</td><td>唤醒是重新具备运行资格，不是立即开始运行</td></tr>
   </tbody></table>
-  <p>运行队列 <code>rq</code> 是每 CPU 的调度结构，不是一条全局 FIFO。不同调度类维护自己的实体和选择规则；任务的 CPU affinity、cpuset、负载均衡和资源配额又约束了它能在哪里、何时运行。线程迁移还可能改变缓存和 NUMA 局部性。</p>
-  <p><code>task_struct</code> 表达任务，<code>sched_entity</code> 表达公平调度实体；启用组调度时，实体还可能代表一个任务组。<code>rq</code> 管理本 CPU 的整体调度状态，<code>cfs_rq</code> 是公平类／相应组的状态。不能把一个用户进程的 PID、某个线程的调度实体和一整个 CPU 的运行队列看作同一对象。</p>
+  <p>每个 CPU 都有自己的运行队列 <code>rq</code>，不同调度类维护各自的实体和选择规则。CPU affinity、cpuset、负载均衡和资源配额共同约束任务的运行位置与时机。线程迁移还可能改变缓存和 NUMA 局部性。</p>
+  <p><code>task_struct</code> 表达任务，<code>sched_entity</code> 表达公平调度实体；启用组调度时，实体还可能代表一个任务组。<code>rq</code> 管理本 CPU 的整体调度状态，<code>cfs_rq</code> 管理公平类或相应组的状态。</p>
 </section>
 <section id="path" class="mechanism-section">
   <h2>阻塞、唤醒与上下文切换</h2>
+  <h3>从用户指令进入内核</h3>
+  <p>以 x86-64 系统调用为例，入口代码保存必要的用户寄存器现场，建立内核执行环境，再根据系统调用号分派处理函数。<code>current</code> 仍指向发起调用的任务，系统调用消耗的执行时间记入该任务的内核态时间。返回用户态前，内核还要处理待办信号、重新调度等工作，见 <a href="{{ linux }}Documentation/core-api/entry.rst">入口与退出约定</a>。</p>
+  <p>此时有三种常见去向：条件已满足，直接完成调用；仍需等待，把任务置为相应等待状态并调度其他任务；被允许的抢占打断，稍后恢复内核中的执行位置。系统调用入口、异常或中断入口负责建立现场，调度器负责选择后续执行哪个任务。</p>
   {{ diagram('linux-task-wakeup', '等待、唤醒与重新运行', '图示需要等待的读取；完成时只使任务重新可运行，不保证立即获得 CPU。') }}
   <ol>
     <li>线程 A 进入内核发起读取。缓存已满足请求时，可直接复制数据并返回，没有必要睡眠。</li>
-    <li>若必须等待 I/O，内核在相应等待结构上登记任务并检查条件，再按约定设置状态和调度出去。登记与重查条件的配合是为了避免“完成发生了，却错过唤醒”。</li>
-    <li>调度器挑选 B，通过上下文切换保存 A 的执行现场并恢复 B。地址空间不同还涉及相应的内存上下文处理；不是每次切换都要把所有缓存清空。</li>
+    <li>若必须等待 I/O，以等待队列的 <code>wait_event()</code> 为例：先登记等待者并设置等待状态，再检查完成条件；条件仍未满足才调用调度器。这样，检查与睡眠之间到达的完成也能被观察到。</li>
+    <li>调度器挑选 B，通过上下文切换保存 A 的执行现场并恢复 B。地址空间不同还涉及相应的内存上下文处理。</li>
     <li>I/O 完成路径更新状态、唤醒 A。A 重新可运行，等调度器选中后从内核等待位置继续，处理返回值，最终返回用户态。</li>
   </ol>
-  <p><a href="{{ linux }}kernel/sched/core.c#L4143">try_to_wake_up()</a> 处理状态与入队协调，<a href="{{ linux }}kernel/sched/core.c#L6784">__schedule()</a> 负责选择与切换。中断处理函数可以促成唤醒，但并不是直接在中断入口调用应用的下一条指令。</p>
+  <p><a href="{{ linux }}kernel/sched/core.c#L4143">try_to_wake_up()</a> 处理状态与入队协调，<a href="{{ linux }}kernel/sched/core.c#L6784">__schedule()</a> 负责选择与切换。中断处理可以唤醒 A，A 的后续执行仍由调度器安排。</p>
+  <p><a href="{{ linux }}include/linux/wait.h#L300-L329">等待队列循环</a>在 <code>prepare_to_wait_event()</code> 后检查条件，结束时用 <code>finish_wait()</code> 清理等待项并恢复运行状态。完成侧须先更新条件再唤醒；等待侧可能在调用调度器前就发现条件成立。</p>
   <h3>切换时的寄存器与内核栈</h3>
-  <p>A 的内核调用栈保留了“正在等待这次读取”的执行位置。<a href="{{ linux }}kernel/sched/core.c#L5269">context_switch()</a> 协调地址空间切换，再由架构相关的 <code>switch_to()</code> 切换所需寄存器和内核栈。B 因而从自己的执行位置继续，而不是从程序入口重跑。A 被再次选中时，也先恢复内核中的等待路径，处理 I/O 结果后才返回用户态。</p>
+  <p>A 的内核调用栈保留了等待此次读取的执行位置。<a href="{{ linux }}kernel/sched/core.c#L5269">context_switch()</a> 协调地址空间切换，再由架构相关的 <code>switch_to()</code> 切换所需寄存器和内核栈。B 从自己的执行位置继续。A 被再次选中时，先恢复内核中的等待路径，处理 I/O 结果后返回用户态。</p>
   <p>同一进程的线程可以共享 <code>mm_struct</code>，但不能共享各自的内核栈和调度状态；跨进程切换则还需切换内存上下文。地址空间切换不等于把内存内容复制一遍，TLB 是否失效、保留哪些带标记条目，由架构与内核的转换缓存管理决定。</p>
+  <h3>用户锁与 futex 等待</h3>
+  <p>普通用户态互斥锁在无竞争时可以用原子操作完成加锁和解锁。需要睡眠时，线程库才使用 futex 等内核机制。以 <code>FUTEX_WAIT</code> 为例，内核在受保护的入队路径中检查用户地址的值是否仍等于预期值；值已经改变时返回 <code>EAGAIN</code>，避免把一次已经发生的状态变化漏掉。</p>
+  <p>释放方先按同步协议更新锁状态，再在需要时调用 <code>FUTEX_WAKE</code>。唤醒让等待者重新竞争 CPU 和锁，获得 CPU 后仍须检查条件。内存访问的 acquire/release 顺序由锁算法保证，futex 提供等待与唤醒；源码见 <a href="{{ linux }}kernel/futex/waitwake.c#L591">futex_wait_setup()</a> 的值检查和队列协调。</p>
 </section>
 <section id="policy" class="mechanism-section">
   <h2>公平调度与资源约束</h2>
-  <h3>先把实际运行时间换成公平账本</h3>
-  <p>CFS 引入的核心不是“所有任务运行同样久”，而是按权重分享 CPU。忽略整数换算细节，<code>Δvruntime = Δ实际运行时间 × 基准权重 / 任务权重</code>。权重越大，同样运行 1 ms 增加的虚拟时间越少。若 A、B 在同一 CPU 和任务组内持续竞争，权重比为 2∶1，公平目标就是长期约 2∶1 的 CPU 服务，而不是各一半。这个换算仍用于 EEVDF，见 <a href="{{ linux }}kernel/sched/fair.c#L290">calc_delta_fair()</a>。</p>
-  <h3>再区分资格与先后顺序</h3>
+  <h3>按权重计算虚拟运行时间</h3>
+  <p>CFS 按权重分配 CPU 时间。忽略整数换算细节，<code>Δvruntime = Δ实际运行时间 × 基准权重 / 任务权重</code>。权重越大，同样运行 1 ms 增加的虚拟时间越少。若 A、B 在同一 CPU 和任务组内持续竞争，权重比为 2∶1，公平目标就是长期约 2∶1 的 CPU 服务。这个换算仍用于 EEVDF，见 <a href="{{ linux }}kernel/sched/fair.c#L290">calc_delta_fair()</a>。</p>
+  <h3>资格与虚拟截止时间</h3>
   <p>Linux 6.18 用运行队列的加权平均虚拟时间 V 估算公平进度。实体 i 的服务差额可写作 <code>lagᵢ = 权重ᵢ × (V − vruntimeᵢ)</code>：非负表示没有超额占用，才有资格参与这一轮选择。随后比较合格实体的虚拟截止时间。截止时间在建立或更新该次服务请求时，按起始虚拟时间加上权重归一化的请求长度计算，并非每次检查都向后推。</p>
   <p>看一个等权重、同一队列的简化推演，虚拟时间用 ms 表示；暂不考虑组层级、睡眠、整数舍入和当前实体的时间片保护：</p>
   <table><thead><tr><th>观察点</th><th>公平账本</th><th>选择结果</th></tr></thead><tbody>
@@ -55,28 +90,39 @@
     <tr><td>B 已运行 1，A 尚未运行</td><td>vA = 0，vB = 1，V = 0.5；A 欠服务，B 超额服务</td><td>下一次选择不能只因 B 的请求短就一直选 B；A 合格，B 不合格</td></tr>
     <tr><td>A 随后也运行了 1</td><td>vA = vB = V = 1，两者重新合格</td><td>此时再比较各自尚有效或更新后的截止时间</td></tr>
   </tbody></table>
-  <p>这个例子解释了短请求响应与长期公平如何配合，不是承诺真实内核恰好在每个表格边界抢占。实现还需维护树上的最小虚拟时间、当前任务保护以及睡眠实体的记账，参见 <a href="{{ linux }}kernel/sched/fair.c#L654">avg_vruntime()</a>、<a href="{{ linux }}kernel/sched/fair.c#L930">pick_eevdf()</a> 与 <a href="{{ linux }}kernel/sched/fair.c#L1041">update_deadline()</a>。</p>
+  <p>实际抢占时机还受当前任务的时间片保护等规则影响。实现需维护树上的最小虚拟时间和睡眠实体的记账，参见 <a href="{{ linux }}kernel/sched/fair.c#L654">avg_vruntime()</a>、<a href="{{ linux }}kernel/sched/fair.c#L930">pick_eevdf()</a> 与 <a href="{{ linux }}kernel/sched/fair.c#L1041">update_deadline()</a>。</p>
   <p>实时调度类、SCHED_DEADLINE 等另有规则；EEVDF 的虚拟截止时间不是应用的实时期限。一个任务睡眠后，CPU 可以给其他任务使用；唤醒时再衔接其公平账本。因而 nice 权重不是固定百分比配额，短暂睡眠也不能任意抹掉已获得的超额服务。</p>
   {{ diagram('linux-eevdf-choice', '先过资格门槛，再比较截止时间', '取上表 B 运行了 1 ms 后的状态：本轮 A 合格，B 不合格。虚拟截止时间只在合格候选者之间比较，短请求不能无限插队。') }}
-  <p>读图时不要把“本轮不合格”理解成线程进入 I/O 睡眠：B 仍是可运行任务，只是在这次公平选择中暂不应获得更多服务。队列进度变化后，其资格会重新判断。图中是选择规则的简化推演，实际实现还受当前任务保护等条件影响。</p>
+  <p>B 仍是可运行任务。它因已获得超额服务而暂时失去本轮资格；队列的虚拟时间推进后，调度器会重新判断其资格。</p>
 </section>
 <section id="placement" class="mechanism-section">
   <h2>选择任务、选择 CPU 与限制资源</h2>
   <p>“哪个任务先运行”和“把任务放到哪个 CPU”是相互影响但不同的决策。唤醒时要考虑允许的 CPU 集合、空闲情况和缓存亲和性；周期性或空闲时的负载均衡又会在调度域之间迁移任务。迁移可能缓解排队，也可能让热缓存失效或增加远端 NUMA 访存。</p>
   <p>对普通公平调度任务，cgroup v2 的 <code>cpu.weight</code> 表示竞争时的相对份额，<code>cpu.max</code> 则限制一个周期内可使用的运行预算。权重低不等于 CPU 空闲时也不能运行；预算耗尽的组即使仍有可运行任务，也可能被限流到下一周期。二者与 CPU affinity 一起决定了任务实际可以获得的服务。</p>
+  <p>例如 <code>cpu.max = 200000 100000</code> 表示每 100 ms 周期最多使用 200 ms 的 CPU 时间，约为两个 CPU 的持续计算额度。若 4 个线程被允许并行运行在 4 个 CPU 上，在忽略调度细节的算术模型中，约 50 ms 就能用完这份预算；其余时间可能被限流。额度控制与把线程绑定到两个固定 CPU 的效果不同，父级 cgroup 的限制也继续生效。</p>
+  <p>CPU 选择还使用任务负载与利用率估计。近期较忙的任务、刚唤醒的任务和长时间睡眠的任务，具有不同的估计状态；调度域、CPU capacity、缓存共享和 NUMA 拓扑共同影响放置。任务从一个 CPU 迁到另一个 CPU 后，数据页可以仍留在原节点，后续访存的代价要结合内存位置判断。</p>
   <p>在线程等待链上，可把总延迟拆成等待事件的时间、事件完成后等待调度的时间，以及恢复运行后的处理时间。提升调度优先级只可能影响其中部分环节，不能缩短磁盘介质延迟，也不能替一个被持锁线程阻塞的任务完成工作。机制依据见 <a href="{{ linux }}Documentation/scheduler/sched-domains.rst">调度域</a>与 <a href="{{ linux }}Documentation/admin-guide/cgroup-v2.rst">cgroup v2 CPU 控制器</a>。</p>
 </section>
 <section id="observe" class="mechanism-section">
   <h2>只读观察与虚拟化对照</h2>
   <p>可在自己的实验机用 <code>ps -eLo pid,tid,psr,stat,comm</code> 区分进程和线程，用 <code>/proc/PID/task/TID/status</code> 查看任务状态与切换计数。PSR 是最近使用的 CPU，不承诺后续固定在那里；采样也可能错过短暂的运行和等待。读取这些信息不需要改变调度策略，权限仍取决于系统配置。</p>
+  <table><thead><tr><th>观察入口</th><th>可以回答的问题</th><th>统计边界</th></tr></thead><tbody>
+    <tr><td><code>/proc/PID/task/TID/status</code></td><td>线程标识、状态、允许的 CPU，以及自愿／非自愿切换计数</td><td>切换次数不包含每次等待持续了多久</td></tr>
+    <tr><td><code>/proc/PID/task/TID/stat</code></td><td>累计用户态、内核态 CPU 时间</td><td>时间字段按时钟滴答计，阻塞期间没有持续累加为执行时间</td></tr>
+    <tr><td><code>/proc/PID/task/TID/schedstat</code></td><td>可用时查看执行时间、运行队列等待时间和运行次数</td><td>受调度统计配置影响；运行队列等待与等待 I/O 属于不同时间段</td></tr>
+    <tr><td>任务所在 cgroup 的 <code>cpu.stat</code></td><td>CPU 使用量与 <code>nr_throttled</code>、<code>throttled_usec</code></td><td>组级累计统计，应比较同一时间窗口的增量</td></tr>
+  </tbody></table>
+  <p>一次请求变慢时，先区分线程正在计算、可运行却在排队、预算耗尽，还是等待锁或 I/O。总 CPU 利用率较低时，单核串行瓶颈、亲和性约束和等待依赖仍可能限制进度。上述统计定义见 <a href="{{ linux }}Documentation/scheduler/sched-stats.rst">调度统计文档</a>与 <a href="{{ linux }}Documentation/filesystems/proc.rst">proc 文件系统文档</a>。</p>
   <p>QEMU 的 vCPU 线程仍是宿主可调度任务。Guest 调度器先决定让哪个 Guest 线程占用 vCPU，宿主调度器再决定该 vCPU 线程何时占用物理 CPU；Guest 已经“可运行”，宿主却可能没给它 CPU。VM-exit 只是离开 Guest 执行环境，宿主线程可以继续在 KVM 中处理，并不必然被换出。</p>
-  <p>Guest 空闲与宿主线程睡眠也不是无条件一一对应；HLT exiting、halt polling 等策略会改变行为，见 <a href="kvm-vcpu-halt.html">KVM vCPU 阻塞、轮询与唤醒</a>。本篇不把这些虚拟化策略混入普通线程的状态定义。</p>
+  <p>Guest 空闲时，HLT exiting 与 halt polling 等配置决定宿主是否继续执行、轮询或睡眠，见 <a href="kvm-vcpu-halt.html">KVM vCPU 阻塞、轮询与唤醒</a>。</p>
 </section>
 <section id="sources" class="mechanism-section">
   <h2>源码与延伸阅读</h2>
   <ul>
+    <li><a href="https://man7.org/linux/man-pages/man2/clone.2.html">clone / clone3 的资源共享</a>、<a href="https://man7.org/linux/man-pages/man2/execve.2.html">execve 的程序替换</a>、<a href="{{ linux }}kernel/exit.c#L1162">退出状态与 wait 回收</a>。</li>
     <li><a href="{{ linux }}kernel/sched/core.c#L4107">调度核心：唤醒的同步约定</a>；<a href="{{ linux }}kernel/sched/fair.c#L930">公平类的 EEVDF 选择</a>。</li>
     <li><a href="{{ linux }}Documentation/scheduler/sched-eevdf.rst">Linux EEVDF 说明</a>；<a href="https://pages.cs.wisc.edu/~remzi/OSTEP/">OSTEP</a> 的进程与调度章节适合补充概念和练习。</li>
+    <li><a href="https://doi.org/10.1145/2901318.2901326">The Linux Scheduler: a Decade of Wasted Cores</a>（EuroSys 2016；<a href="https://people.ece.ubc.ca/~sasha/papers/eurosys16-final29.pdf">作者 PDF</a>）研究 CFS 时期的四类负载均衡缺陷：部分 CPU 空闲，其他运行队列却仍有任务等待。实验主要采用 64 核、8 个 NUMA 节点的 AMD 机器，并用队列可视化与在线不变量检查定位问题；工具最初基于 Linux 3.17，后移植到 4.3。这些历史结果用于说明调度诊断方法，当前 EEVDF 的任务选择与负载均衡行为仍需按运行内核核验。</li>
     <li>继续阅读 <a href="linux-interrupts.html">Linux 中断</a>、<a href="kvm-vcpu-run.html">KVM vCPU 执行</a> 和 <a href="vcpu-numa-placement.html">vCPU 与 NUMA 放置</a>；原始设计见 <a href="../conference-papers.html#paper-ols07-kvm">KVM 精选论文</a>。</li>
   </ul>
 </section>

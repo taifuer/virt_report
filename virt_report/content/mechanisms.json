@@ -26,12 +26,6 @@
       "overview": "virtualization-basics"
     },
     {
-      "slug": "linux-foundations", "group": "foundations",
-      "title": "Linux 内核基础",
-      "summary": "从早期 PC 到多核与云计算，理解 Linux 的发展演变，以及调度、内存和 I/O 的协作。",
-      "overview": "linux-kernel-evolution"
-    },
-    {
       "slug": "cpu-virtualization",
       "overview": "cpu-virtualization",
       "group": "foundations",
@@ -74,6 +68,12 @@
       "group": "foundations",
       "title": "中断虚拟化",
       "summary": "从设备完成事件到客户机中断处理，分析路由、注入与硬件加速。"
+    },
+    {
+      "slug": "linux-foundations", "group": "foundations",
+      "title": "Linux 内核基础",
+      "summary": "从早期 PC 到多核与云计算，理解 Linux 的发展演变，以及调度、内存和 I/O 的协作。",
+      "overview": "linux-kernel-evolution"
     },
     {
       "slug": "vm-startup",
@@ -185,14 +185,16 @@
     },
     {
       "slug": "linux-execution-scheduling", "topic": "linux-foundations",
-      "title": "Linux 执行与调度：线程、阻塞和 CPU 时间",
-      "summary": "线程如何让出和重新获得 CPU；从 O(1)、CFS 到 EEVDF 的调度演变。",
+      "title": "Linux 进程：执行与调度",
+      "summary": "从进程与线程的资源共享、创建和退出，到系统调用、阻塞唤醒与 CPU 调度。",
       "reviewed_on": "2026-11-10", "template": "_linux_execution_scheduling_article.html",
-      "search_terms": ["task_struct", "O(1)", "CFS", "EEVDF", "进程", "线程", "调度器", "runqueue", "cpu.max"],
+      "search_terms": ["task_struct", "mm_struct", "fork", "clone3", "execve", "waitpid", "PID", "TGID", "futex", "信号", "O(1)", "CFS", "EEVDF", "进程", "线程", "调度器", "runqueue", "cpu.max"],
       "baselines": [{"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}],
       "sections": [
         {"id": "preface", "title": "线程与执行上下文"},
         {"id": "history", "title": "从时间片调度到 CFS 与 EEVDF"},
+        {"id": "objects", "title": "进程、线程与共享资源"},
+        {"id": "lifecycle", "title": "创建、执行新程序与退出"},
         {"id": "states", "title": "任务状态与运行队列"},
         {"id": "path", "title": "阻塞、唤醒与上下文切换"},
         {"id": "policy", "title": "公平调度与资源约束"},
@@ -204,17 +206,19 @@
     {
       "slug": "linux-memory", "topic": "linux-foundations",
       "title": "Linux 内存：地址空间、缺页与页面回收",
-      "summary": "从一次内存访问理解地址转换、按需分配、写时复制与页面回收。",
+      "summary": "沿分配、映射、访问与回收，解释地址空间、页表、写时复制、NUMA 和内存压力。",
       "reviewed_on": "2026-11-10", "template": "_linux_memory_article.html",
-      "search_terms": ["VMA", "PTE", "page fault", "COW", "buddy", "slab", "NUMA", "Maple Tree", "MGLRU", "folio"],
+      "search_terms": ["VMA", "PTE", "page fault", "COW", "mmap", "malloc", "MAP_SHARED", "MAP_PRIVATE", "TLB shootdown", "buddy", "SLUB", "NUMA", "Maple Tree", "MGLRU", "folio", "memory.high", "memory.max", "OOM", "RSS", "PSS"],
       "baselines": [{"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}],
       "sections": [
         {"id": "preface", "title": "映射与实际驻留"},
         {"id": "history", "title": "从按需分页到多核内存管理"},
         {"id": "structures", "title": "地址、页表与物理页"},
+        {"id": "mappings", "title": "分配、映射与解除映射"},
         {"id": "faults", "title": "首次访问与写时复制"},
-        {"id": "reclaim", "title": "回收、换页与分配器"},
+        {"id": "reclaim", "title": "回收、换页与工作集"},
         {"id": "allocation", "title": "分配粒度、连续性与内存压力"},
+        {"id": "pressure", "title": "内存额度、回收压力与 OOM"},
         {"id": "observe", "title": "只读观察与两级映射"},
         {"id": "sources", "title": "源码与延伸阅读"}
       ]

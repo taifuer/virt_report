@@ -62,7 +62,7 @@ if (r &lt;= 0)
   <h2>跟踪实例：CPUID 后读取一个设备寄存器</h2>
   <h3>在内核中处理 CPUID</h3>
   <p>客户机执行 CPUID 时，VMX 后端按硬件退出原因找到 <code>kvm_emulate_cpuid()</code>。该函数读取客户机 EAX、ECX，按照虚拟 CPU 配置计算结果，写回 EAX、EBX、ECX、EDX，并推进被模拟的指令。普通执行路径返回“已处理”，<code>vcpu_run()</code> 继续循环，QEMU 的那次 KVM_RUN 仍未返回。<a href="{{ linux_source }}arch/x86/kvm/cpuid.c#L2090-L2105">CPUID 模拟</a></p>
-  <p>这里的结果来自客户机可见的 CPU 配置，并非简单复制宿主 CPUID。QEMU 在启动时参与配置虚拟 CPU 能力，但常规 CPUID 查询不需要每次再回到 QEMU 查询。</p>
+  <p>查询结果来自客户机可见的 CPU 配置。QEMU 在启动时参与设置虚拟 CPU 能力，后续常规 CPUID 查询由 KVM 使用已保存的配置处理。</p>
   <h3>返回 QEMU 读取设备寄存器</h3>
   <p>假设客户机读取一个由 QEMU 模拟的 32 位设备寄存器，地址为 <code>0xf0001000</code>。该设备访问不能由 KVM 内核设备处理，进入用户态 MMIO 路径。KVM 记录待完成的读操作，写入请求后返回：</p>
   <pre><code>exit_reason       = KVM_EXIT_MMIO

@@ -3,11 +3,11 @@
   <div class="paper-meta"><span>{{ paper.year }}</span><strong>{{ venues_by_key[paper.venue].name }}</strong></div>
   <div class="paper-body">
     {% set pdf = paper.reading.source_url if paper.curated else paper.get('pdf_url') %}
-    <h2><a href="{{ paper.url }}" target="_blank" rel="noopener noreferrer">{{ paper.title }}</a>{% if pdf %} <a class="paper-resource-tag" href="{{ pdf }}" target="_blank" rel="noopener noreferrer" aria-label="PDF：{{ paper.title }}">PDF</a>{% endif %}{% if paper.get('code_url') %} <a class="paper-resource-tag" href="{{ paper.code_url }}" target="_blank" rel="noopener noreferrer">代码</a>{% endif %}</h2>
+    <h2>{% if paper.curated %}<span class="paper-classic-mark" title="经典论文"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m12 2.5 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5-5.8-3.1-5.8 3.1 1.1-6.5L2.6 9.3l6.5-.9Z"/></svg><span class="sr-only">经典论文：</span></span>{% endif %}<a href="{{ paper.url }}" target="_blank" rel="noopener noreferrer">{{ paper.title }}</a>{% if pdf %} <a class="paper-resource-tag" href="{{ pdf }}" target="_blank" rel="noopener noreferrer" aria-label="PDF：{{ paper.title }}">PDF</a>{% endif %}{% if paper.get('code_url') %} <a class="paper-resource-tag" href="{{ paper.code_url }}" target="_blank" rel="noopener noreferrer">代码</a>{% endif %}</h2>
     {% if paper.institution_label %}<div class="paper-credit"{% if paper.affiliation_source_label %} title="单位元数据来源：{{ paper.affiliation_source_label }}{% if paper.affiliation_verified_at %}；核验时间：{{ paper.affiliation_verified_at }}{% endif %}"{% endif %}><strong>单位</strong><div class="paper-credit-content"><span>{{ paper.institution_label }}</span>{% if paper.institution_hidden %}<details class="paper-credit-more"><summary>另 {{ paper.institution_hidden|length }} 家单位</summary><span>{{ paper.institution_hidden_label }}</span></details>{% endif %}</div></div>{% endif %}
     {% if paper.curated %}
       <p><strong>内容</strong>{{ paper.reading.question }} {{ paper.reading.mechanism }}</p>
-      <p class="editor-comment"><strong>点评</strong>{{ paper.reading.strengths }} {{ paper.reading.limitations }}</p>
+      <p class="editor-comment"><strong>点评</strong>{{ paper.reading.evaluation }} {{ paper.reading.strengths }} {{ paper.reading.limitations }}</p>
       {% if paper.reading.source_note %}<p class="paper-evidence">{{ paper.reading.source_note }}</p>{% endif %}
     {% else %}
       {% if paper.evidence_level == 'title' %}<p class="paper-evidence">目前仅核实标题，待摘要补充；以下不作为机制与实验结论。</p>{% endif %}

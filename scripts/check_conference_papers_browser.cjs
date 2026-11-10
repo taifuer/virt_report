@@ -31,6 +31,26 @@ async function facetCounts(page, papers, key) {
     assert(!option.value || count > 0, 'unavailable options remain absent');
   }
 }
+async function controlGeometry(page) {
+  return page.evaluate(() => Object.fromEntries([
+    '.conference-controls', '[data-conference-venue]', '[data-conference-year]',
+    '[data-conference-classic]', '.paper-reset-slot',
+  ].map(selector => {
+    const box = document.querySelector(selector).getBoundingClientRect();
+    return [selector, {x: box.x + scrollX, y: box.y + scrollY, width: box.width, height: box.height}];
+  })));
+}
+async function stableControls(page, baseline, state) {
+  const actual = await controlGeometry(page);
+  for (const selector of Object.keys(baseline)) {
+    for (const key of ['x', 'y', 'width', 'height']) {
+      assert(Math.abs(actual[selector][key] - baseline[selector][key]) <= 1,
+        `${state}: ${selector} ${key} stays stable (${baseline[selector][key]} / ${actual[selector][key]})`);
+    }
+  }
+  assert.equal(actual['[data-conference-venue]'].width, actual['[data-conference-year]'].width);
+  assert.equal(actual['[data-conference-venue]'].height, actual['[data-conference-year]'].height);
+}
 (async () => {
   fs.mkdirSync(shots, {recursive: true});
   const browser = await chromium.launch({headless: true});
@@ -40,9 +60,12 @@ async function facetCounts(page, papers, key) {
       ? route.continue() : route.abort());
     const page = await context.newPage(), errors = [];
     page.on('pageerror', error => errors.push(String(error)));
-    for (const width of [1440, 390, 320]) {
+    for (const width of [1440, 861, 860, 768, 640, 620, 390, 320]) {
       await page.setViewportSize({width, height: 1000});
       await page.goto(url); await ready(page);
+      const geometry = await controlGeometry(page);
+      assert.equal(await page.locator('[data-conference-item][data-curated="true"] h2 .paper-classic-mark').count(), selectedCount);
+      assert.equal(await page.locator('[data-conference-item][data-curated="false"] .paper-classic-mark').count(), 0);
       assert.equal(await classic(page).count(), 1);
       assert.equal(await classic(page).getAttribute('role'), 'switch');
       assert.equal(await classic(page).getAttribute('aria-checked'), 'false', 'default is all papers');
@@ -60,6 +83,7 @@ async function facetCounts(page, papers, key) {
       assert.equal(await classic(page).getAttribute('aria-checked'), 'true');
       assert.equal(new URL(page.url()).searchParams.get('scope'), 'curated');
       await page.reload(); await ready(page);
+      await stableControls(page, geometry, `classic/${width}`);
       assert.equal(await classic(page).getAttribute('aria-checked'), 'true', 'explicit filter survives reload');
       assert.equal(await page.locator(visible).count(), Math.min(10, selectedCount));
       assert(await page.locator(visible).evaluateAll(nodes => nodes.every(n => n.dataset.curated === 'true')));
@@ -85,12 +109,28 @@ async function facetCounts(page, papers, key) {
         assert.equal(venueBox.width, yearBox.width);
       }
       await page.screenshot({path: path.join(shots, `classics-${width}.png`)});
+      await page.locator('[data-conference-query]').fill('Ingens');
+      assert.equal(await page.locator(visible).count(), 1);
+      const ingens = page.locator('#paper-osdi16-ingens');
+      assert(await ingens.isVisible());
+      assert.equal(await ingens.locator('.editor-comment').count(), 1);
+      assert.equal(await ingens.locator('p').count(), 2, 'content and commentary stay merged');
+      assert(await ingens.locator('h2 .paper-classic-mark svg').isVisible());
+      await stableControls(page, geometry, `query/${width}`);
+      const comment = await ingens.locator('.editor-comment').innerText();
+      for (const term of ['4.3', 'Cloudstone', '18%', '两个网页', '0.7%', '后台扫描']) {
+        assert(comment.includes(term), `Ingens retains evaluation context: ${term}`);
+      }
+      await noOverflow(page);
+      await page.screenshot({path: path.join(shots, `ingens-${width}.png`)});
+      await page.locator('[data-conference-query]').fill('');
       await page.locator('[data-conference-year]').selectOption(years(selected)[0]);
       const latest = selected.filter(p => String(p.year) === years(selected)[0]);
       assert.equal(await page.locator(visible).count(), latest.length);
       assert.deepEqual((await options(page, 'venue')).sort(), [...new Set(latest.map(p => p.venue))].sort());
       await facetCounts(page, latest, 'venue');
       await page.locator('[data-conference-reset]').click();
+      await stableControls(page, geometry, `reset/${width}`);
       await page.locator('[data-conference-next]').click();
       assert.equal(await page.locator(visible).count(), selectedCount - 10);
       assert(await page.locator('[data-conference-next]').isDisabled());
@@ -128,6 +168,7 @@ async function facetCounts(page, papers, key) {
       assert(await page.locator('[data-conference-empty]').isVisible());
       assert.deepEqual(await options(page, 'year'), []);
       assert.deepEqual(await options(page, 'venue'), []);
+      await stableControls(page, geometry, `empty/${width}`);
       await classic(page).click();
       assert.equal(await page.locator(visible).count(), 1);
       await page.goBack(); await ready(page);

@@ -246,7 +246,8 @@ def test_memory_article_explains_resource_dispatch_and_separates_postcopy_from_m
         "普通 Guest RAM", "VFIO 物理 BAR0", "ivshmem 共享 BAR2", "CPU 物理地址与 PCI 总线地址",
     ))
     assert 'href="qemu-postcopy.html"' in page and "userfaultfd" in page
-    assert "QEMU 的缺页处理线程" in page and "不是把 vCPU 的 EPT 退出" in page
+    assert "通知 QEMU 缺页处理线程" in page and "向源端请求尚未到达的页面" in page
+    assert "补齐后 KVM 继续建立映射" in page and "QEMU 在此负责提供数据页，KVM 负责 EPT" in page
     assert not any("QEMU 建 EPT" == item["label"] for item in get_demo("memory-access")["scenarios"])
 
 

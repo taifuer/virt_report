@@ -46,9 +46,9 @@ def test_directory_has_reading_order_and_real_anchors_only():
     directory = re.search(r'<nav class="mechanism-directory".*?</nav>', page, re.S).group()
     assert page.index('结合源码与图解') < page.index('class="mechanism-directory"')
     assert re.findall(r'href="#([^"]+)"', directory) == [
-        'virtualization-basics', 'linux-foundations',
+        'virtualization-basics',
         'cpu-virtualization', 'memory-virtualization', 'device-virtualization',
-        'interrupt-virtualization', 'vm-startup', 'migration', 'hotplug',
+        'interrupt-virtualization', 'linux-foundations', 'vm-startup', 'migration', 'hotplug',
         'live-upgrade', 'qemu-internals', 'kvm-internals', 'libvirt-internals',
         'block-io-walkthrough',
         'network-io-walkthrough', 'cpu-execution-walkthrough',
@@ -56,9 +56,9 @@ def test_directory_has_reading_order_and_real_anchors_only():
         'gpu-execution-walkthrough', 'virtio-gpu-walkthrough',
     ]
     assert re.findall(r'<section class="mechanism-topic" id="([^"]+)"', page) == [
-        'virtualization-basics', 'linux-foundations',
+        'virtualization-basics',
         'cpu-virtualization', 'memory-virtualization', 'device-virtualization',
-        'interrupt-virtualization', 'vm-startup', 'migration', 'hotplug',
+        'interrupt-virtualization', 'linux-foundations', 'vm-startup', 'migration', 'hotplug',
         'live-upgrade', 'qemu-internals', 'kvm-internals', 'libvirt-internals',
         'block-io-walkthrough',
         'network-io-walkthrough', 'cpu-execution-walkthrough',

@@ -6,7 +6,7 @@
 <section id="preface" class="mechanism-section">
   <h2>从创建进程到执行第一条指令</h2>
   <p>QEMU 根据启动参数创建一台完整的虚拟计算机：CPU 与内存提供执行环境，磁盘提供系统镜像，网卡连接外部网络，芯片组、总线、中断控制器和固件把这些部件组织起来。硬件模型完成创建与复位后，客户机 CPU 开始执行固件，再由固件装载操作系统。</p>
-  <p>本文固定 x86 的 <code>pc-q35-10.2</code>、KVM 加速、SeaBIOS、BIOS 可引导的 Linux 系统盘与 virtio 设备。主线是“QEMU 建立机器 → 映射固件 → 设置复位状态 → VM-entry → 固件 → 引导程序 → Guest 内核 → Guest 用户态”。先讲机器如何建立，再把 vCPU 第一次取指与后续代码交接连起来；UEFI、直接加载内核和恢复运行不混入这条冷启动路径。</p>
+  <p>以 x86 的 <code>pc-q35-10.2</code>、KVM 加速、SeaBIOS、BIOS 可引导的 Linux 系统盘与 virtio 设备为例，冷启动依次经过“QEMU 建立机器 → 映射固件 → 设置复位状态 → VM-entry → 固件 → 引导程序 → Guest 内核 → Guest 用户态”。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -74,11 +74,11 @@ vmfd
 
 <section id="firmware" class="mechanism-section">
   <h2>固件文件与 Guest 物理地址映射</h2>
-  <p>在客户机运行前，QEMU 已从宿主文件系统读入 <code>bios-256k.bin</code>，创建有宿主内存作为后备的 <code>pc.bios</code> 区域，并把它映射到 Guest 物理地址空间。ROM 装载与复位处理把固件字节放到对应后备中；普通冷启动将该区域设为只读。它不是从 Guest 系统盘读取，也不等同于 <code>-m 4G</code> 配置的普通 RAM。</p>
+  <p>在客户机运行前，QEMU 从宿主文件系统读入 <code>bios-256k.bin</code>，创建以宿主内存为后备的 <code>pc.bios</code> 区域，并映射到 Guest 物理地址空间。ROM 装载与复位处理填入固件字节；普通冷启动将该区域设为只读。固件 ROM 与 <code>-m 4G</code> 配置的客户机 RAM 分别管理。</p>
   <table><thead><tr><th scope="col">对象</th><th scope="col">本例范围或位置</th><th scope="col">含义</th></tr></thead><tbody>
-    <tr><td>固件文件</td><td><code>bios-256k.bin</code>，256 KiB</td><td>宿主上的代码文件；不是客户机磁盘镜像中的一个文件。</td></tr>
+    <tr><td>固件文件</td><td><code>bios-256k.bin</code>，256 KiB</td><td>QEMU 从宿主文件系统载入的固件代码。</td></tr>
     <tr><td>完整 BIOS ROM</td><td>GPA <code>0xfffc0000–0xffffffff</code></td><td>顶端地址是 4 GiB − 1；起点为 4 GiB − 固件大小，与 -m 容量无关。</td></tr>
-    <tr><td>低端 ISA BIOS 别名</td><td>GPA <code>0x000e0000–0x000fffff</code></td><td>映射同一 ROM 的最后 128 KiB，即文件偏移 <code>0x20000–0x3ffff</code>；不是额外的一份固件。</td></tr>
+    <tr><td>低端 ISA BIOS 别名</td><td>GPA <code>0x000e0000–0x000fffff</code></td><td>映射同一 ROM 的最后 128 KiB，即文件偏移 <code>0x20000–0x3ffff</code>。</td></tr>
     <tr><td>复位取指位置</td><td>GPA <code>0xfffffff0</code></td><td>落在完整 ROM 的文件偏移 <code>0x3fff0</code>，即固件末尾前 16 字节。</td></tr>
     <tr><td>Guest 普通 RAM</td><td>由 -m 与 Q35 内存布局决定</td><td>后续存放固件工作区、引导程序、内核、initramfs 和用户进程；与 ROM、MMIO 一起组成 Guest 地址空间。</td></tr>
   </tbody></table>
@@ -92,15 +92,15 @@ vmfd
   <h3>复位寄存器与第一条机器指令</h3>
   <ol>
     <li>QEMU 复位回调设置 <code>env.eip</code>、CS、控制寄存器与 BSP / AP 状态；寄存器同步经 <code>KVM_SET_REGS</code>、<code>KVM_SET_SREGS / KVM_SET_SREGS2</code> 等接口写入内核 vCPU。CS 的 selector 与隐藏基址是分别传递的。</li>
-    <li><code>cont</code> 放行后，QEMU 的 vCPU 宿主线程进入 <code>kvm_cpu_exec() → ioctl(KVM_RUN)</code>。KVM 准备 Guest 状态和 VMCS，执行 VM-entry；不是 QEMU 用 C 函数调用跳进固件，也不是另起一个“Guest OS 宿主线程”。</li>
-    <li>物理 CPU 进入 Guest 执行上下文，按 CS.base + EIP 从已映射的 ROM 取机器指令。本例首条是下方的远跳转，仍是固件代码，不是 Linux 入口。</li>
+    <li><code>cont</code> 放行后，QEMU 的 vCPU 宿主线程进入 <code>kvm_cpu_exec() → ioctl(KVM_RUN)</code>。KVM 准备 Guest 状态和 VMCS，执行 VM-entry。</li>
+    <li>物理 CPU 进入 Guest 执行上下文，按 CS.base + EIP 从已映射的 ROM 取机器指令。本例首条是下方固件代码中的远跳转。</li>
   </ol>
   <pre><code>CS.base + EIP          = 0xffff0000 + 0xfff0 = GPA 0xfffffff0
 ROM 文件偏移           = 0xfffffff0 - 0xfffc0000 = 0x3fff0
 该处 5 字节            = ea 5b e0 00 f0
 16 位指令              = ljmp $0xf000, $0xe05b
 远跳转后 CS.base + IP   = 0x000f0000 + 0xe05b = GPA 0x000fe05b</code></pre>
-  <p>远跳转重新装载 CS，转入低端 BIOS 别名中的固件 POST 入口。<code>0xe05b</code> 是这份随附二进制的具体偏移，不是所有 BIOS 的固定入口；SeaBIOS 源码写的是 <code>ljmpw $SEG_BIOS, $entry_post</code>。第一条机器指令由“ROM 字节 + 复位寄存器 + VM-entry”共同确定，不是通过给 KVM 指定一个 Linux C 函数地址来启动。<a href="{{ seabios_source }}src/romlayout.S#L687-L690">SeaBIOS reset_vector</a>；<a href="{{ qemu_source }}pc-bios/bios-256k.bin">对应固件二进制</a></p>
+  <p>远跳转重新装载 CS，转入低端 BIOS 别名中的固件 POST 入口。<code>0xe05b</code> 是这份随附二进制的具体偏移；SeaBIOS 源码写作 <code>ljmpw $SEG_BIOS, $entry_post</code>。ROM 字节提供指令内容，复位寄存器确定取指地址，VM-entry 使处理器开始执行 Guest 代码。<a href="{{ seabios_source }}src/romlayout.S#L687-L690">SeaBIOS reset_vector</a>；<a href="{{ qemu_source }}pc-bios/bios-256k.bin">对应固件二进制</a></p>
   <table><thead><tr><th scope="col">时刻</th><th scope="col">CPU 0：BSP</th><th scope="col">CPU 1：AP</th></tr></thead><tbody>
     <tr><td>机器创建完成，-S 生效</td><td>线程与 KVM vCPU 已存在，stopped = true</td><td>线程与 KVM vCPU 已存在，stopped = true</td></tr>
     <tr><td>复位后的多处理器状态</td><td><code>KVM_MP_STATE_RUNNABLE</code></td><td>内核 irqchip 路径下为 <code>KVM_MP_STATE_UNINITIALIZED</code></td></tr>
@@ -108,7 +108,7 @@ ROM 文件偏移           = 0xfffffff0 - 0xfffc0000 = 0x3fff0
     <tr><td>客户机开始执行</td><td>从复位向量取指</td><td>等待客户机的 INIT / SIPI 启动序列，随后从指定入口执行</td></tr>
   </tbody></table>
   <p><code>qmp_cont()</code> 完成状态检查后调用 vm_start，后者更新运行状态、通知后端、恢复虚拟时钟并唤醒 vCPU。KVM_RUN 最终让 BSP 进入客户机。AP 的宿主线程也可以进入内核等待启动事件，因此看到两个线程或两次 ioctl 入口，不等于两个客户机 CPU 都在执行固件指令。</p>
-  <p>不指定 -S 时，普通冷启动会在初始化结束路径中自动调用 cont。后续 VM-exit 可以由 KVM 在内核中处理并再次进入 Guest；需要用户态设备模拟时，KVM_RUN 才以相应退出原因返回 QEMU。一次 KVM_RUN 可以跨过很多 Guest 指令，固件、内核和用户态也不是各对应一次 ioctl。详见<a href="kvm-vcpu-run.html">KVM vCPU 执行与 I/O 退出</a>。</p>
+  <p>不指定 -S 时，普通冷启动会在初始化结束路径中自动调用 cont。后续 VM-exit 可以由 KVM 在内核中处理并再次进入 Guest；需要用户态设备模拟时，KVM_RUN 才以相应退出原因返回 QEMU。一次 KVM_RUN 可以跨过很多 Guest 指令，也可以跨越固件、内核和用户态的执行阶段。详见<a href="kvm-vcpu-run.html">KVM vCPU 执行与 I/O 退出</a>。</p>
 </section>
 
 <section id="guest-boot" class="mechanism-section">
@@ -117,7 +117,7 @@ ROM 文件偏移           = 0xfffffff0 - 0xfffc0000 = 0x3fff0
   <table><thead><tr><th scope="col">阶段</th><th scope="col">代码从哪里来</th><th scope="col">怎样交给下一阶段</th></tr></thead><tbody>
     <tr><td>SeaBIOS</td><td>QEMU 已映射的 BIOS ROM，后续可使用 RAM 工作区</td><td>初始化平台、枚举 PCI；按 bootindex 选择系统盘，用固件自己的 virtio-blk 驱动读取引导扇区。</td></tr>
     <tr><td>磁盘引导程序</td><td>传统 BIOS 硬盘启动把首个引导扇区读到 Guest RAM <code>0x7c00</code>，再跳转执行；后续阶段继续从磁盘装载</td><td>例如 GRUB 装入 Linux bzImage、initramfs 与命令行，准备 boot_params，再按 x86 启动协议跳入内核入口。bootindex 不指定这个入口。</td></tr>
-    <tr><td>Linux 早期入口</td><td>已载入 Guest RAM 的内核映像</td><td>执行启动汇编、建立所需的模式与页表、解压和重定位内核，进入架构初始化，再到 <code>start_kernel()</code>。它不是上电后的第一条指令。</td></tr>
+    <tr><td>Linux 早期入口</td><td>已载入 Guest RAM 的内核映像</td><td>执行启动汇编、建立所需的模式与页表、解压和重定位内核，进入架构初始化，再到 <code>start_kernel()</code>。</td></tr>
     <tr><td>Guest 内核初始化</td><td>Guest 内核页表映射的代码与数据</td><td>初始化调度、内存和驱动；<code>rest_init()</code> 创建 PID 1 任务，由该任务执行 <code>kernel_init()</code>，准备根文件系统并执行首个用户程序。</td></tr>
     <tr><td>Guest 用户态</td><td>initramfs 或根文件系统中的可执行文件，被装入进程地址空间</td><td>通常先执行 initramfs 的 <code>/init</code>，再切换根文件系统并 exec 真正的 init；无该早期程序时，内核按配置尝试 <code>/sbin/init</code> 等。之后启动系统服务和普通应用。</td></tr>
   </tbody></table>
@@ -175,7 +175,7 @@ ROM 文件偏移           = 0xfffffff0 - 0xfffc0000 = 0x3fff0
     <tr><td><a href="{{ qemu_source }}hw/core/machine.c#L1780-L1832">qdev_machine_creation_done</a>、<a href="{{ qemu_source }}target/i386/cpu.c#L8661-L8683">x86 复位寄存器</a></td><td>初始化收尾、ROM、整机复位与 BSP 取指地址。</td></tr>
     <tr><td><a href="{{ qemu_source }}hw/i386/pc_q35.c#L352-L361">Q35 默认固件</a>、<a href="{{ qemu_source }}hw/i386/x86-common.c#L1009-L1087">x86_bios_rom_init</a></td><td>固件选择、ROM 文件装载、高端映射与低端 ISA 别名。</td></tr>
     <tr><td><a href="{{ qemu_source }}target/i386/kvm/kvm.c#L5296">kvm_arch_put_registers</a>、<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L3191">KVM_RUN</a></td><td>把复位寄存器同步给 KVM，再由宿主线程进入内核，物理 CPU 执行 Guest。</td></tr>
-    <tr><td><a href="{{ linux_source }}arch/x86/boot/compressed/head_64.S">压缩内核启动汇编</a>、<a href="{{ linux_source }}arch/x86/kernel/head_64.S">解压后内核启动汇编</a>、<a href="{{ linux_source }}init/main.c">start_kernel / kernel_init</a></td><td>从引导协议入口、架构启动到执行首个用户程序；不是 QEMU 的函数调用链。</td></tr>
+    <tr><td><a href="{{ linux_source }}arch/x86/boot/compressed/head_64.S">压缩内核启动汇编</a>、<a href="{{ linux_source }}arch/x86/kernel/head_64.S">解压后内核启动汇编</a>、<a href="{{ linux_source }}init/main.c">start_kernel / kernel_init</a></td><td>Guest 内核从引导协议入口、架构启动到执行首个用户程序的路径。</td></tr>
     <tr><td><a href="{{ qemu_source }}monitor/qmp-cmds.c#L66-L113">qmp_cont</a>、<a href="{{ qemu_source }}system/cpus.c#L757-L807">vm_start</a></td><td>继续执行前的状态检查、通知与 vCPU 恢复。</td></tr>
   </tbody></table>
 </section>

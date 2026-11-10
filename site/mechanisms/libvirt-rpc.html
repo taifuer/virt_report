@@ -7,16 +7,16 @@
   <title>Libvirt RPC 的编码与调用分发 - virt-report</title>
   <meta name="description" content="以一次虚拟机信息查询为例，解析 RPC 报文、XDR 编码、服务端分发与响应匹配，并说明守护进程拆分后的调用边界。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=b1d38984fa3b">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=b1d38984fa3b">
-  <link rel="stylesheet" href="../assets/site.css?v=b1d38984fa3b">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=7bdd8f4b9615">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=7bdd8f4b9615">
+  <link rel="shortcut icon" href="../favicon.ico?v=e9ab166b6427">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=e9ab166b6427">
+  <link rel="stylesheet" href="../assets/site.css?v=e9ab166b6427">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=720ef053ee9a">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=720ef053ee9a">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=b1d38984fa3b" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=e9ab166b6427" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -90,9 +90,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看Libvirt RPC 的报文组成" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="Libvirt RPC 的报文组成">
-    <img src="../assets/libvirt-rpc-framing.svg?v=7bdd8f4b9615" alt="长度与六个头字段构成 28 字节公共部分；type 和 status 决定后面的载荷类型。正常响应沿用请求的 program、version、procedure 和 serial。" loading="lazy">
+    <img src="../assets/libvirt-rpc-framing.svg?v=720ef053ee9a" alt="长度与六个头字段构成 28 字节公共部分；type 和 status 决定后面的载荷类型。正常响应沿用请求的 program、version、procedure 和 serial。" loading="lazy">
   </div>
-  <figcaption>长度与六个头字段构成 28 字节公共部分；type 和 status 决定后面的载荷类型。正常响应沿用请求的 program、version、procedure 和 serial。 <a href="../assets/libvirt-rpc-framing.svg?v=7bdd8f4b9615" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>长度与六个头字段构成 28 字节公共部分；type 和 status 决定后面的载荷类型。正常响应沿用请求的 program、version、procedure 和 serial。 <a href="../assets/libvirt-rpc-framing.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: Libvirt RPC 的报文组成
   accDescr: 一条 RPC 消息先有四字节总长度，再有二十四字节公共头，然后按消息类型和状态携带调用参数、返回值、错误或事件。GetInfo 示例请求五十六字节，响应六十字节。
@@ -132,9 +132,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看一次 virDomainGetInfo 调用的往返" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="一次 virDomainGetInfo 调用的往返">
-    <img src="../assets/libvirt-rpc-dispatch.svg?v=7bdd8f4b9615" alt="客户端和服务端分别绑定 remote 与 QEMU 驱动。UUID 用于定位服务端对象，响应通过同一连接上的 program、version、serial 匹配等待者。" loading="lazy">
+    <img src="../assets/libvirt-rpc-dispatch.svg?v=720ef053ee9a" alt="客户端和服务端分别绑定 remote 与 QEMU 驱动。UUID 用于定位服务端对象，响应通过同一连接上的 program、version、serial 匹配等待者。" loading="lazy">
   </div>
-  <figcaption>客户端和服务端分别绑定 remote 与 QEMU 驱动。UUID 用于定位服务端对象，响应通过同一连接上的 program、version、serial 匹配等待者。 <a href="../assets/libvirt-rpc-dispatch.svg?v=7bdd8f4b9615" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>客户端和服务端分别绑定 remote 与 QEMU 驱动。UUID 用于定位服务端对象，响应通过同一连接上的 program、version、serial 匹配等待者。 <a href="../assets/libvirt-rpc-dispatch.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
   accTitle: 一次 virDomainGetInfo 调用的往返
   accDescr: 客户端公开 API 经 remote 驱动编码请求；服务端 RPC 分发到 QEMU 驱动，按 UUID 查找对象并读取信息；结果携带相同 serial 返回给对应等待调用。
@@ -193,7 +193,7 @@
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=b1d38984fa3b"></script>
-<script src="../assets/mechanism-viewer.js?v=7bdd8f4b9615" defer></script>
+  <script src="../assets/site.js?v=e9ab166b6427"></script>
+<script src="../assets/mechanism-viewer.js?v=720ef053ee9a" defer></script>
 </body>
 </html>

@@ -551,7 +551,7 @@
       "url": "https://www.usenix.org/conference/osdi-02/memory-resource-management-vmware-esx-server",
       "pdf_url": "https://www.usenix.org/legacy/event/osdi02/tech/waldspurger/waldspurger.pdf",
       "introduction": "把 balloon、内容相同页共享、工作集估计和分配策略组合起来，在不修改通用客户机内核的前提下管理虚机内存超配。",
-      "commentary": "重点不是省下多少内存，而是宿主不知道 Guest 页价值时如何协作回收，以及容量效率与性能隔离之间如何取舍。",
+      "commentary": "Guest 驱动利用自己的页使用信息参与回收，减少宿主与 Guest 独立换页带来的重复工作；容量效率还需与性能隔离、扫描和 COW 成本一起权衡。",
       "relation": "直接关联", "topics": ["内存管理", "Balloon", "页共享", "资源隔离"], "architectures": ["x86"],
       "institutions": ["VMware"], "affiliation_source": "usenix",
       "affiliation_source_url": "https://www.usenix.org/legacy/event/osdi02/tech/waldspurger/waldspurger.pdf",
@@ -2813,9 +2813,11 @@
       "year": 2024,
       "venue": "sosp",
       "title": "vSoC: Efficient Virtual System-on-Chip on Heterogeneous Hardware",
-      "url": "https://sigops.org/s/conferences/sosp/2024/schedule.html",
+      "url": "https://doi.org/10.1145/3694715.3695946",
+      "pdf_url": "https://thucloud.com/zhenhua/papers/%5BSOSP%2724%5D%20vSoC.pdf",
+      "evidence_level": "abstract",
       "introduction": "针对移动设备模拟器中客户机 SoC 统一内存与主机分离设备内存之间的不匹配，构建统一共享虚拟内存框架，改善高吞吐设备模拟。",
-      "commentary": "这项工作提醒我们，设备模拟的主要瓶颈未必是指令执行，而可能是客户机和主机设备内存模型的差异。它与通用 QEMU/KVM 的关系偏方法层，但对 Arm、移动虚拟化和复杂设备模型很有参考价值。",
+      "commentary": "vSoC 将客户机和宿主设备的内存视图衔接起来，并用预取隐藏部分一致性维护开销。它适合对照分析移动 SoC 模拟器中的共享内存和设备协作；论文围绕移动应用验证效果，迁移到其他设备模型时还需核对数据共享与同步约定。",
       "relation": "机制相关",
       "topics": [
         "设备虚拟化",
@@ -2831,9 +2833,9 @@
       "year": 2024,
       "venue": "sosp",
       "title": "VPRI: Efficient I/O Page Fault Handling via Software-Hardware Co-Design for IaaS Clouds",
-      "url": "https://sigops.org/s/conferences/sosp/2024/schedule.html",
+      "url": "https://doi.org/10.1145/3694715.3695957",
       "introduction": "面向设备直通与虚机按需分页难以兼容的问题，通过软硬件协同处理 I/O 页错误，减少静态锁定客户机内存带来的资源限制。",
-      "commentary": "它瞄准的是 IOMMU、设备直通和虚机内存弹性之间长期存在的冲突。如果类似接口进入通用硬件，VFIO/IOMMUFD 与 QEMU 设备直通路径将获得更细粒度的内存管理空间。",
+      "commentary": "设备直通要求 DMA 能访问有效的后备页，按需分页则希望延后物理内存分配。VPRI 研究两者如何协同，适合与 IOMMU、页固定和虚机内存弹性一起阅读；落地条件需要结合论文中的硬件与驱动接口确认。",
       "relation": "机制相关",
       "topics": [
         "I/O",
@@ -2848,9 +2850,11 @@
       "year": 2024,
       "venue": "asplos",
       "title": "Direct Memory Translation for Virtualized Clouds",
-      "url": "https://www.asplos-conference.org/asplos2024/main-program/abstracts/index.html",
+      "url": "https://doi.org/10.1145/3620665.3640358",
+      "pdf_url": "https://tianyin.github.io/pub/dmt.pdf",
+      "evidence_level": "abstract",
       "introduction": "针对 x86 虚拟化和嵌套虚拟化中多级页表遍历开销，以客户机和主机协作的连续翻译项区域缩短地址翻译路径。",
-      "commentary": "DMT 代表了从“优化页表缓存”转向“重新设计地址翻译契约”的方向。收益依赖硬件扩展，短期难直接落入 KVM，但它揭示的多级页表成本会持续影响大内存虚机和嵌套虚拟化。",
+      "commentary": "DMT 通过 VMA 与连续翻译项区域的对应关系直接定位末级页表项，并让 Guest 与 Host 协作减少中间转换。研究同时涉及操作系统内存布局和处理器翻译机制；收益建立在相应软硬件扩展上，现有 KVM 的软件配置无法单独提供这套能力。",
       "relation": "机制相关",
       "topics": [
         "内存",
@@ -4243,6 +4247,33 @@
       "architectures": [
         "x86"
       ]
+    },
+    {
+      "id": "osdi16-ingens",
+      "year": 2016,
+      "venue": "osdi",
+      "title": "Coordinated and Efficient Huge Page Management with Ingens",
+      "url": "https://www.usenix.org/conference/osdi16/technical-sessions/presentation/kwon",
+      "pdf_url": "https://www.usenix.org/system/files/conference/osdi16/osdi16-kwon.pdf",
+      "introduction": "协调 Linux/KVM 的大页提升、拆分、规整和页共享，跟踪使用率与访问频率，在进程和虚机间分配连续内存，降低地址翻译成本并控制延迟与容量浪费。",
+      "commentary": "Linux/KVM 4.3、双路 Haswell 的碎片化内存实验中，修改版 Cloudstone 吞吐提升 18%；无碎片负载另测得平均 0.7% 开销。后台扫描与规整仍消耗 CPU，结果取决于访问密度、碎片和所用策略。",
+      "relation": "直接关联",
+      "topics": ["内存管理", "大页", "KVM", "页共享", "资源隔离"],
+      "architectures": ["x86"],
+      "authors": ["Youngjin Kwon", "Hangchen Yu", "Simon Peter", "Christopher J. Rossbach", "Emmett Witchel"],
+      "author_affiliations": [
+        {"name": "Youngjin Kwon", "institutions": ["The University of Texas at Austin"]},
+        {"name": "Hangchen Yu", "institutions": ["The University of Texas at Austin"]},
+        {"name": "Simon Peter", "institutions": ["The University of Texas at Austin"]},
+        {"name": "Christopher J. Rossbach", "institutions": ["The University of Texas at Austin", "VMware Research Group"]},
+        {"name": "Emmett Witchel", "institutions": ["The University of Texas at Austin"]}
+      ],
+      "institutions": ["The University of Texas at Austin", "VMware Research Group"],
+      "affiliation_source": "usenix",
+      "affiliation_source_url": "https://www.usenix.org/system/files/conference/osdi16/osdi16-kwon.pdf",
+      "affiliation_verified_at": "2026-11-10",
+      "evidence_level": "full_text",
+      "evidence_source_url": "https://www.usenix.org/system/files/conference/osdi16/osdi16-kwon.pdf"
     },
     {
       "id": "vee16-kvm-hsa",

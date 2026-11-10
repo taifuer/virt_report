@@ -35,8 +35,8 @@ def test_firmware_mapping_matches_the_fixed_256k_image_and_reset_vector():
     reset = 0xffff0000 + 0xfff0
     assert reset - rom_base == 0x3fff0
     assert (0xf000 << 4) + int.from_bytes(bytes.fromhex("5b e0"), "little") == 0xfe05b
-    assert "不是额外的一份固件" in html
-    assert "不是所有 BIOS 的固定入口" in html
+    assert "映射同一 ROM 的最后 128 KiB" in html
+    assert "是这份随附二进制的具体偏移" in html
     assert "selector × 16" in html and "隐藏基址" in html
 
 
@@ -44,7 +44,8 @@ def test_first_fetch_is_physical_cpu_execution_not_a_qemu_function_call():
     html = page()
     for marker in ("KVM_SET_REGS", "KVM_SET_SREGS / KVM_SET_SREGS2",
                    "ioctl(KVM_RUN)", "VM-entry", "物理 CPU",
-                   "不是 QEMU 用 C 函数调用跳进固件", "一次 KVM_RUN 可以跨过很多 Guest 指令"):
+                   "物理 CPU 进入 Guest 执行上下文", "按 CS.base + EIP 从已映射的 ROM 取机器指令",
+                   "一次 KVM_RUN 可以跨过很多 Guest 指令"):
         assert marker in html
     diagram = (ROOT / "virt_report/content/diagrams/qemu-startup-vcpu.mmd").read_text()
     assert "物理 CPU · Guest 上下文" in diagram
@@ -58,8 +59,8 @@ def test_kernel_entry_and_userspace_handoff_are_not_conflated_with_reset():
                    "PID 1", "kernel_execve()", "/init", "/sbin/init", "CPL 从 0 到 3",
                    "VMX 仍是 non-root", "不天然引起 VM-exit", "动态链接器"):
         assert marker in html
-    assert "它不是上电后的第一条指令" in html
-    assert "不是 QEMU 的函数调用链" in html
+    assert "VM-entry → 固件 → 引导程序 → Guest 内核 → Guest 用户态" in html
+    assert "Guest 内核从引导协议入口、架构启动到执行首个用户程序的路径" in html
 
 
 def test_alternative_boot_paths_do_not_replace_the_bios_cold_start_story():

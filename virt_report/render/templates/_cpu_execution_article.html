@@ -33,9 +33,9 @@
   <p>CPUID 的结果由虚拟 CPU 配置决定，KVM 在内核中完成查询。MMIO 示例需要设备模型提供读结果：第一次 KVM_RUN 返回请求，QEMU 填入数据，第二次进入内核才消费数据并完成指令。<a href="{{ linux }}arch/x86/kvm/cpuid.c#L2090-L2105">CPUID 处理</a>与<a href="{{ linux }}arch/x86/kvm/x86.c#L11936-L11958">用户态 I/O 继续处理</a>分别体现了这两种分工。</p>
   <p>在 HLT 截获场景中，客户机已进入空闲，KVM 可以短暂轮询，也可以阻塞宿主线程；本例固定轮询预算为 0。后端事件到达后，线程先变为可运行，随后才有机会被调度。<code>TASK_RUNNING</code> 同时覆盖运行队列中的等待者和当前执行者，分析延迟时还要观察调度事件。</p>
   <h3>Idle Passthrough 与硬件等待</h3>
-  <p>Idle Passthrough 是利用硬件能力的运行策略，不是一条新的指令。以 Intel VMX 为例，KVM 根据预先启用的 <code>KVM_X86_DISABLE_EXITS_HLT</code> 清除 <code>HLT exiting</code>，Guest HLT 便直接进入 non-root 下的硬件等待，不执行 <code>kvm_emulate_halt()</code>、halt polling 或宿主 <code>schedule()</code>。这不是忙轮询；硬件 HLT 状态也不是 KVM 软件的 HALTED。<a href="{{ linux }}arch/x86/kvm/vmx/vmx.c#L4435-L4477">执行控制配置</a></p>
+  <p>Idle Passthrough 通过关闭相关指令拦截，让 Guest 直接使用硬件等待。以 Intel VMX 为例，KVM 根据预先启用的 <code>KVM_X86_DISABLE_EXITS_HLT</code> 清除 <code>HLT exiting</code>，Guest HLT 进入 non-root 下的硬件等待，跳过 <code>kvm_emulate_halt()</code>、halt polling 和宿主 <code>schedule()</code>。处理器保持 Guest 执行环境，KVM 软件的 vCPU 状态仍可为 RUNNABLE。<a href="{{ linux }}arch/x86/kvm/vmx/vmx.c#L4435-L4477">执行控制配置</a></p>
   <p>直通选项固定采用另一宿主 CPU 发布的 posted interrupt：发送方运行 KVM 代码，目标 CPU 同步 PIR 并唤醒 Guest，不能把发送方的执行误认为目标 vCPU 退出。这里同时选用了两项独立条件：HLT 不截获，以及 APICv posted 交付。前者不保证所有唤醒都无退出；普通宿主 IRQ、定时器、抢占或配置变化仍可能要求退出。本例不插入这些额外事件，故目标 vCPU 的退出次数保持 0。</p>
-  <p>QEMU 的 <code>-overcommit cpu-pm=on</code> 可请求关闭受支持的相关退出，默认关闭；并非所有平台与安全策略都允许。它主要适合绑定独占逻辑 CPU 的低延迟场景：Guest 空闲不会经常规阻塞路径主动归还 CPU，超卖共享时可能拖延其他线程，宿主 CPU 使用率统计也可能不计入 Guest 的硬件空闲。MONITOR/MWAIT 直通还有监视地址唤醒等语义，不混入本次 HLT 演示。<a href="{{ qemu }}qemu-options.hx#L4894-L4912">QEMU 的配置与取舍</a>、<a href="{{ linux }}arch/x86/kvm/x86.c#L4763-L4778">KVM 能力限制</a></p>
+  <p>QEMU 的 <code>-overcommit cpu-pm=on</code> 可请求关闭受支持的相关退出，默认关闭，启用还受平台与安全策略限制。它主要适合绑定独占逻辑 CPU 的低延迟场景：Guest 空闲不会经常规阻塞路径主动归还 CPU，超卖共享时可能拖延其他线程，宿主 CPU 使用率统计也可能不计入 Guest 的硬件空闲。<a href="{{ qemu }}qemu-options.hx#L4894-L4912">QEMU 的配置与取舍</a>、<a href="{{ linux }}arch/x86/kvm/x86.c#L4763-L4778">KVM 能力限制</a></p>
   <h3>任务休眠与两层调度</h3>
   <p>定时休眠示例中，任务 A 请求等待 1 ms。Guest 内核创建 <code>hrtimer_sleeper</code>，登记到期回调，再把 A 交给调度器等待。如果任务 B 可以运行，Guest 就选择 B，vCPU 继续执行指令；没有其他可运行的普通任务时，Guest 进入 idle，本例通过 HLT 把等待机会交给 KVM。这样，同一个应用请求会对应两条不同的 vCPU 路径。</p>
   <table>

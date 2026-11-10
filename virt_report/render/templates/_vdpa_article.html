@@ -4,7 +4,7 @@
 <section id="preface" class="mechanism-section">
   <h2>vDPA 的 virtio 接口与队列卸载</h2>
   <p>高报文率虚拟机常把大量宿主 CPU 时间花在队列解析、缓冲区访问和网络转发上。vhost-net 把处理放进宿主内核，vhost-user 允许独立进程接管；如果设备本身能够消费 virtio 队列，还可以进一步减少软件参与。vDPA 为这类设备提供框架：数据路径遵循 virtio，设备的配置方式可以由厂商驱动转换。</p>
-  <p>本文以 QEMU 中的 vhost-vDPA 网络后端为主线，先看组件分工，再追踪直接模式下的一次发送，随后展开队列、DMA 地址和通知配置，最后说明 Shadow Virtqueue 怎样参与迁移。vDPA 框架支持硬件和软件实现；本文的发送例子使用硬件，迁移部分再引入 QEMU 中转的影子队列。</p>
+  <p>QEMU 的 vhost-vDPA 网络后端通过 vDPA 接口配置队列、DMA 地址与通知。直接模式下，硬件消费 Guest virtqueue；迁移时可使用 QEMU 中转的 Shadow Virtqueue。vDPA 框架也支持软件实现，下面的发送例子采用硬件后端。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 <section id="roles" class="mechanism-section">

@@ -21,7 +21,11 @@ const slugs = ['linux-kernel-evolution', 'linux-execution-scheduling', 'linux-me
       for (const slug of slugs) {
         const response = await page.goto(`${base}/mechanisms/${slug}.html`);
         assert.equal(response.status(), 200);
-        assert.equal(await page.locator('.mechanism-section').count(), 8);
+        assert.equal(await page.locator('.mechanism-section').count(),
+          ['linux-execution-scheduling', 'linux-memory'].includes(slug) ? 10 : 8);
+        if (slug === 'linux-execution-scheduling') {
+          assert.equal(await page.locator('h1').innerText(), 'Linux 进程：执行与调度');
+        }
         const history = page.locator(slug === 'linux-kernel-evolution' ? '#evolution' : '#history');
         assert.equal(await history.locator('tbody tr').count(), 4);
         await history.scrollIntoViewIfNeeded();
@@ -34,6 +38,16 @@ const slugs = ['linux-kernel-evolution', 'linux-execution-scheduling', 'linux-me
         assert(await example.locator('h3').count() > 0, `${slug}: concrete mechanism explanation`);
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${slug}/${width}: example overflow`);
         await example.screenshot({path: path.join(shots, `${slug}-example-${width}.png`)});
+        const expanded = slug === 'linux-execution-scheduling' ? ['objects', 'lifecycle'] :
+          slug === 'linux-memory' ? ['mappings', 'pressure'] : [];
+        for (const id of expanded) {
+          const section = page.locator(`#${id}`);
+          await section.scrollIntoViewIfNeeded();
+          assert(await section.isVisible(), `${slug}: ${id} readable`);
+          assert(await page.locator(`.mechanism-toc a[href="#${id}"]`).count() > 0, `${id}: in navigation`);
+          assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${slug}/${width}/${id}: overflow`);
+          await section.screenshot({path: path.join(shots, `${slug}-${id}-${width}.png`)});
+        }
         const figures = page.locator('.mechanism-diagram');
         assert.equal(await figures.count(), slug === 'linux-kernel-evolution' ? 4 : 3);
         for (const figure of await figures.all()) {

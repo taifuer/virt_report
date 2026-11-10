@@ -27,7 +27,7 @@ KVM 负责运行客户机 CPU 和递送虚拟设备事件。QEMU 负责虚拟设
 
 ### backing、resource 与 scanout
 
-先看普通二维后端，一幅画面涉及三组对象。**客户机后备内存（backing）**保存客户机写入的像素；**资源（resource）**是设备通过 `resource_id` 管理的图像对象；**scanout**表示一个显示输出及其选中的资源区域。QEMU 普通二维后端给资源分配 pixman 图像，像素传输时把 backing 中的数据复制到这张图像中。
+普通二维后端用三组对象管理一幅画面。**客户机后备内存（backing）**保存客户机写入的像素；**资源（resource）**是设备通过 `resource_id` 管理的图像对象；**scanout**表示一个显示输出及其选中的资源区域。QEMU 普通二维后端给资源分配 pixman 图像，像素传输时把 backing 中的数据复制到这张图像中。
 
 scanout 不要求再保存一份完整像素。QEMU 创建的 `DisplaySurface` 可以直接引用 pixman 图像的相应区域。后续 `RESOURCE_FLUSH` 告诉显示后端哪些区域更新了，显示后端再按自身方式处理窗口重绘或远程传输。[资源与输出结构](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/hw/virtio/virtio-gpu.h#L45)、[显示表面的建立](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/display/virtio-gpu.c#L655)。
 

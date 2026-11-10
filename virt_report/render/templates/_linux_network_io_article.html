@@ -2,8 +2,8 @@
 {% from '_mechanism_diagram.html' import diagram with context %}
 <section id="preface" class="mechanism-section">
   <h2>接收事件与发送请求</h2>
-  <p>网络不是“应用请求读一个包，网卡才去取那个包”。外部可随时发来报文；内核先处理并按协议、地址和端口分派，匹配的数据进入 socket 队列。应用调用 <code>recvmsg()</code>，是读取队列中的数据或等待未来数据，不是向远端发出一次硬件读请求。</p>
-  <p>这里固定普通 UDP、复制式缓冲区交接和常见网卡 NAPI 路径。TCP 字节流、零拷贝、AF_XDP、分段卸载等有额外规则，不在主线中增加分支。普通 UDP 不提供逐包的远端收到确认。</p>
+  <p>外部可随时发来报文。网卡接收后，内核按协议、地址和端口分派，匹配的数据进入 socket 队列。应用调用 <code>recvmsg()</code> 从队列读取数据，队列为空时可以等待后续报文。</p>
+  <p>以普通 UDP、复制式缓冲区交接和网卡 NAPI 路径为例，下面跟踪接收、发送与资源回收。UDP 提供数据报传输，本身不提供逐包的远端收到确认。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 <section id="history" class="mechanism-section">
@@ -15,7 +15,7 @@
     <tr><td>逐包重复工作 → GSO / GRO 等批处理</td><td>在合适的协议和设备条件下减少协议栈重复处理</td><td>内核观察的 skb 数量与链路帧数可能不同，抓包和计数需识别所在层次</td></tr>
     <tr><td>专用高速路径：XDP / AF_XDP</td><td>把部分处理提前，或让应用直接管理报文缓冲区的交接</td><td>需要额外程序、队列与内存管理；不自动获得普通 socket 协议栈的全部语义</td></tr>
   </tbody></table>
-  <p>这些是可以组合的优化，而不是“有了新机制就不再需要中断或 socket”。低负载是否合并通知、流量如何分散、是否绕过部分协议处理，分别由硬件能力、驱动和应用需求决定。普通应用仍可沿下面的 UDP socket 主线收发。</p>
+  <p>NAPI、多队列和分段卸载可以组合使用，分别影响通知开销、CPU 分工和协议处理批次。具体组合取决于硬件能力、驱动与应用需求。</p>
 </section>
 <section id="structures" class="mechanism-section">
   <h2>缓冲区、队列与 socket</h2>
@@ -25,7 +25,7 @@
     <tr><td>驱动 RX/TX ring</td><td>设备描述符及 DMA 缓冲区的引用</td><td>提交前与设备完成后分别由驱动按协议管理</td></tr>
     <tr><td>socket 接收队列</td><td>已通过协议处理、等待应用读取的数据</td><td>有数据可读与应用实际取走是两个阶段</td></tr>
   </tbody></table>
-  <p>硬件 ring、socket 队列和 virtqueue 是不同对象。描述符指向缓冲区而不是把整帧放在 ring 项里；skb 的引用结束也不保证所有共享数据立即释放。</p>
+  <p>硬件 ring 管理设备描述符，socket 队列管理应用待收数据，virtqueue 管理 Guest 与虚拟后端的请求。描述符引用数据缓冲区；共享数据的最后一个引用结束后，内存才能回收。</p>
 </section>
 <section id="rx" class="mechanism-section">
   <h2>外部数据到应用</h2>
@@ -37,9 +37,12 @@
     <li>应用被调度并读取 socket，内核将载荷复制到用户空间。数据先到时可直接取，应用先等待时则要等报文到达。</li>
   </ol>
   <h3>UDP 分派与接收就绪</h3>
-  <p>应用创建 socket、绑定本地地址和端口后，内核已经具备用于分派报文的对象，无需等每一次 recv 才创建接收请求。报文经过协议检查后，UDP 根据目的地址、端口及 socket 的绑定／连接条件进行查找。匹配成功且接收内存额度允许时，skb 进入 socket 接收队列，再通过数据就绪回调通知等待者；可对照 <a href="{{ linux }}net/ipv4/udp.c#L1699">__udp_enqueue_schedule_skb()</a> 中入队与 <code>sk_data_ready</code> 的顺序。</p>
+  <p>应用创建 socket 并绑定本地地址和端口后，内核即可分派报文。UDP 经过协议检查，再按目的地址、端口及 socket 的绑定／连接条件查找。匹配成功且接收内存额度允许时，skb 进入 socket 接收队列，数据就绪回调随后通知等待者；可对照 <a href="{{ linux }}net/ipv4/udp.c#L1699">__udp_enqueue_schedule_skb()</a> 中入队与 <code>sk_data_ready</code> 的顺序。</p>
   <p>若应用已经阻塞在 recv，通知使它有机会重新运行；若应用尚未调用 recv，数据可以先排队，之后直接读取；若用 epoll，得到的是“此刻值得尝试读取”的就绪提示，真正取数据仍是 recv 一类调用。其他线程也可能抢先取走数据，因此就绪不保证下一次非阻塞读取一定成功。</p>
-  <p>没有匹配 socket、socket 接收额度不足和网卡缺少 RX buffer，分别发生在不同边界。UDP 用户缓冲区太小则可能截断已经到达 socket 的数据报；它不是网卡收不到帧。<a href="{{ linux }}net/core/dev.c#L7745">net_rx_action()</a> 展示设备轮询预算，<a href="{{ linux }}net/ipv4/udp.c#L2053">udp_recvmsg()</a> 展示从接收队列向应用交付的路径。</p>
+  <p>无匹配 socket、接收额度不足和网卡缺少 RX buffer，分别发生在不同阶段。用户缓冲区过小则可能在读取时截断已经入队的 UDP 数据报。<a href="{{ linux }}net/core/dev.c#L7745">net_rx_action()</a> 展示设备轮询预算，<a href="{{ linux }}net/ipv4/udp.c#L2053">udp_recvmsg()</a> 展示向应用交付的路径。</p>
+  <h3>epoll 与应用的读取循环</h3>
+  <p>默认水平触发模式下，只要描述符仍就绪，后续 epoll 等待可以继续返回它。使用边沿触发 <code>EPOLLET</code> 时，常见做法是配合非阻塞 socket，在得到读事件后持续接收，直到返回 <code>EAGAIN</code>。若为公平性提前停止，事件循环需要自行记住尚未处理完的描述符，避免留着数据却一直等待下一条边沿通知。见 <a href="https://man7.org/linux/man-pages/man7/epoll.7.html">epoll 的两种触发模式</a>。</p>
+  <p>UDP 保留数据报边界，一次接收最多取一条普通数据报，缓冲区不足时可能截断。长度为 0 的 UDP 数据报也合法，recv 返回 0 可以表示收到了空报文；TCP 流在非零接收长度下返回 0 则通常表示对端有序关闭。应用必须按 socket 类型解释返回结果，接口约定见 <a href="https://man7.org/linux/man-pages/man2/recv.2.html">recv(2)</a>。</p>
 </section>
 <section id="tx" class="mechanism-section">
   <h2>从 sendto 到缓冲区回收</h2>
@@ -51,7 +54,7 @@
     <li><strong>用户到内核：</strong>载荷复制进内核维护的报文存储。成功返回后，这条普通复制路径不再引用原用户 buffer，应用可以重用它。</li>
     <li><strong>协议栈到驱动：</strong>通过 <code>ndo_start_xmit()</code> 提交 skb。驱动接受后负责后续释放，并将相关内存映射成设备可用的 DMA 地址，填写 TX 描述符、通知设备。</li>
     <li><strong>设备到驱动：</strong>驱动观察到 TX completion，确认设备已结束相关访问，再解除或同步 DMA 映射、释放 skb 引用和描述符槽位。</li>
-    <li><strong>恢复提交：</strong>如果此前因 TX ring 空间不足停止了队列，回收出空间后可唤醒队列，让上游继续发送；这不是向远端查询是否收到了报文。</li>
+    <li><strong>恢复提交：</strong>如果此前因 TX ring 空间不足停止了队列，回收出空间后可唤醒队列，让上游继续发送。</li>
   </ol>
   <p>驱动必须在资源用尽前适当停止队列，并协调检查与唤醒，避免“已经回收出空间，队列却永远停着”。如果返回 <code>NETDEV_TX_BUSY</code>，skb 所有权仍属于调用方，驱动不能保留或释放它。驱动约定见 <a href="{{ linux }}Documentation/networking/driver.rst">Softnet 驱动指南</a>。这条所有权链解释了：sendto 已返回，内核仍会在之后处理 TX completion。</p>
   <table><thead><tr><th>观察到的事件</th><th>确认的边界</th><th>不能推出</th></tr></thead><tbody>
@@ -60,21 +63,22 @@
     <tr><td>物理 NIC TX completion</td><td>按驱动／设备协议可回收本地 TX 资源</td><td>远端协议栈或应用已经处理</td></tr>
     <tr><td>协议／应用层应答</td><td>取决于该协议：例如 TCP ACK 确认接收序列空间</td><td>TCP ACK 也不证明远端应用已读；UDP 本身没有这类确认</td></tr>
   </tbody></table>
-  <p>以 QEMU + TAP 普通复制发送为例：先把帧交给宿主 TAP，TAP 接受后后端不再需要 Guest 发送缓冲区，便可发布 Used。宿主对自己的报文副本继续转发，不必等待 Guest 回收，也不必把物理 NIC 完成回传为另一次 virtio TX 完成。Guest Used 与宿主 NIC completion 各自归还本层的资源，不存在“必须等远端确认才归还 Guest 队列”的依赖。</p>
-  <p>发布 Used、通过 irqfd 或 QEMU 设备通知 KVM、交付 Guest 中断，是同一完成事件的不同环节，不是重复发送多个业务确认。通知是否实际发出还受抑制、合并和驱动轮询影响。</p>
+  <p>以 QEMU + TAP 普通复制发送为例，TAP 接受帧后，后端结束对 Guest 发送缓冲区的访问并可发布 Used。宿主继续转发自己的报文副本。Guest Used 与物理 NIC completion 分别归还两层的资源，后续转发可与 Guest 回收并行。</p>
+  <p>发布 Used、通过 irqfd 或 QEMU 设备通知 KVM、交付 Guest 中断，是同一完成事件的不同环节。通知是否发出还受抑制、合并和驱动轮询影响。</p>
 </section>
 <section id="scaling" class="mechanism-section">
   <h2>批处理、多核与缓冲区生命期</h2>
   {{ diagram('linux-napi-budget', '一次通知可以启动多轮轮询', '示例固定 100 个 RX 包、每轮预算 64、期间无新包。第二轮靠已保留的 NAPI 调度状态继续，不需要设备为剩下的 36 个包再发一次中断。') }}
   <p>NAPI 一轮 poll 受到 RX 预算约束；仍有工作时可继续被调度，处理完成才恢复相应通知。这样可以摊薄每次中断和调度的成本，但一次取很多包也可能让先到的小请求多等一会儿。TX completion 也可在 poll 中回收，不能把 poll 返回的 RX 工作量直接当作所有完成操作的数量。</p>
-  <p>例如只观察 RX，预算为 64、队列已有 100 个包，期间没有新到包：第一轮处理 64 个并返回预算值，保留后续轮询；下一轮处理剩余 36 个，确认本轮工作已结束后调用 <code>napi_complete_done()</code>，成功完成再按设备规则重新开通知。这里的 64 只是示例预算；若恰好处理满预算且队列也空了，需要按 NAPI 接口规则报告，不能不加判断地完成。批处理因此同时涉及工作量、调度状态和通知使能，而不仅是一个 for 循环。</p>
-  <p>多核分流又是另一层：RSS 由网卡选择接收队列；RPS 在内核中选择后续协议处理 CPU；RFS 进一步考虑消费数据的应用位置；XPS 影响发送队列选择。它们的目的包括并行和局部性，不是把同一条流的每个包任意撒到所有 CPU。跨核转交可能增加 IPI 和缓存迁移；已有合适硬件分流时，重复增加软件转交未必获益。见 <a href="{{ linux }}Documentation/networking/scaling.rst">Linux 网络扩展机制</a>。</p>
+  <p>例如 RX 预算为 64、队列已有 100 个包，期间无新到包：第一轮处理 64 个并返回预算值，保留后续轮询；下一轮处理剩余 36 个，调用 <code>napi_complete_done()</code> 成功结束本轮后，再按设备规则恢复通知。若处理数量恰好等于预算且队列已空，可继续保留轮询，也可完成后返回 <code>budget - 1</code>。预算为 0 的调用用于 TX 等处理，此时禁止调用 <code>napi_complete_done()</code>。</p>
+  <p>RSS 由网卡选择接收队列，RPS 在内核中选择后续协议处理 CPU，RFS 进一步考虑应用位置，XPS 影响发送队列选择。这些机制按流分工，兼顾并行与局部性。跨核转交会增加 IPI 和缓存迁移成本，已有合适硬件分流时，应测量软件分流的额外收益。见 <a href="{{ linux }}Documentation/networking/scaling.rst">Linux 网络扩展机制</a>。</p>
   <p>GSO 在发送方向保留较大的逻辑报文，稍后由软件或支持卸载的设备分段；GRO 在接收方向合并符合条件的报文，减少后续重复处理。可否合并、如何分段取决于协议与特性协商，不能把任意 UDP 数据报都当作一个连续字节流。相关约束见 <a href="{{ linux }}Documentation/networking/segmentation-offloads.rst">分段卸载文档</a>。</p>
-  <p>零拷贝改变的是某些数据复制与所有权转交，不会消除完成边界。例如 AF_XDP 用 UMEM 和 FILL、RX、TX、COMPLETION rings 管理缓冲区；返回 completion 后应用才能复用对应帧，这仍不是远端收到确认。它既有 copy 模式，也有依赖驱动支持的 zero-copy 模式，不能只看到 AF_XDP 名字就断定没有复制。见 <a href="{{ linux }}Documentation/networking/af_xdp.rst">AF_XDP 的 rings 与模式</a>。</p>
+  <p>AF_XDP 用 UMEM 和 FILL、RX、TX、COMPLETION rings 管理缓冲区；发送帧返回 completion 后，应用才能复用该帧。它支持 copy 模式，以及依赖驱动能力的 zero-copy 模式。两种模式都要求按环上的所有权约定交接内存，见 <a href="{{ linux }}Documentation/networking/af_xdp.rst">AF_XDP 的 rings 与模式</a>。</p>
 </section>
 <section id="observe" class="mechanism-section">
   <h2>只读观察与 virtio-net</h2>
-  <p>可读取 <code>ip -s link</code>、<code>ss -u -a -m</code> 和 <code>/proc/net/softnet_stat</code>；硬件驱动支持时，<code>ethtool -S 接口名</code> 可补充队列计数。注意各层计数口径和权限差异，drops 不自动定位到同一丢包位置。此处不要求修改网卡、关闭卸载或向生产网络发压测流量。</p>
+  <p>可读取 <code>ip -s link</code>、<code>ss -u -a -m</code> 和 <code>/proc/net/softnet_stat</code>；驱动支持时，<code>ethtool -S 接口名</code> 可补充队列计数。各层 drops 的统计位置不同，定位丢包需要对照同一负载窗口中的设备、协议栈和 socket 计数。</p>
+  <p>接收路径上，RX ring、协议栈处理能力和 socket 接收额度是不同的容量约束。应用消费不及时，可能使 socket 排队和丢包，即使网卡 ring 仍有空间；扩大 socket 缓冲区能吸收部分突发，但也可能延长排队，无法弥补持续的处理速率差。普通 UDP 没有接收窗口反馈，接收方本地缓冲区耗尽时不能依靠 UDP 自动让发送方减速。</p>
   <p>虚机接收时，Guest 驱动也先发布可写 RX buffer；后端将外部到达的数据写入这些缓冲区并发布 Used，Guest 协议栈再交给 socket。应用无需先为每个包发 virtio 请求。结合 <a href="network-io.html">网络 I/O 演示</a> 和 <a href="virtio-net-rx.html">Virtio RX 路径</a>，可以把 Guest 与宿主的两套队列分开观察。</p>
 </section>
 <section id="sources" class="mechanism-section">

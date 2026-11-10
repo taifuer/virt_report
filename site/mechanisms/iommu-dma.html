@@ -7,16 +7,16 @@
   <title>IOMMU：DMA 地址转换、缓存与失效 - virt-report</title>
   <meta name="description" content="沿一块网卡的接收缓冲区，解释设备上下文、I/O 页表、IOTLB、权限检查与安全回收，区分数据访问和映射管理的成本。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=b1d38984fa3b">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=b1d38984fa3b">
-  <link rel="stylesheet" href="../assets/site.css?v=b1d38984fa3b">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=7bdd8f4b9615">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=7bdd8f4b9615">
-<link rel="stylesheet" href="../assets/iommu-lab.css?v=7bdd8f4b9615"></head>
+  <link rel="shortcut icon" href="../favicon.ico?v=e9ab166b6427">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=e9ab166b6427">
+  <link rel="stylesheet" href="../assets/site.css?v=e9ab166b6427">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=720ef053ee9a">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=720ef053ee9a">
+<link rel="stylesheet" href="../assets/iommu-lab.css?v=720ef053ee9a"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=b1d38984fa3b" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=e9ab166b6427" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -109,7 +109,7 @@
 <p>在 Intel VT-d 传统模式中，总线号先索引 Root Table，得到该总线的 Context Table；设备号和功能号再选择 Context Entry。上下文记录转换类型、页表根地址、地址宽度和 Domain ID。这里的硬件 Domain ID 用于区分转换缓存所属的地址空间，不能与客户机中的进程 ID 混用。</p>
 <p>本例 <code>03:00.0</code> 对应 Root Table 的第 3 项，以及该 Context Table 中设备/功能号为 0 的项。Linux 的 <code>iommu_context_addr()</code> 完成这两个索引；<code>domain_context_mapping_one()</code> 将页表根和域标识写入上下文。硬件可缓存上下文，运行时不必每次重新读取整张表。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/intel/iommu.c#L348-L386">上下文寻址</a> · <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/intel/iommu.c#L1455-L1504">上下文配置</a></p>
 <h3 id="translation-part-2"><span class="mechanism-heading-number">2. </span>页表提供映射，缓存减少重复遍历</h3>
-<p>多级 I/O 页表逐级缩小地址范围，叶子项给出目标物理页和访问权限。对于 4 KiB 叶子，低 12 位是页内偏移。页表级数受地址宽度与硬件配置影响；本文将多级遍历合并显示，不把所有平台都画成固定四级。</p>
+<p>多级 I/O 页表逐级缩小地址范围，叶子项给出目标物理页和访问权限。对于 4 KiB 叶子，低 12 位是页内偏移。页表级数由地址宽度与硬件配置决定，图中合并显示多级遍历。</p>
 <p>IOTLB 保存已经取得的转换及权限。命中时可复用缓存结果；未命中时，硬件遍历页表并取得可用转换。<strong>IOTLB 未命中是正常的缓存事件，页表中没有有效映射才是另一种情况。</strong> 在本文普通 DMA 模式下，缺失映射或写权限不足会阻止访问；它不会自动变成由 QEMU 补一页后继续的 CPU 缺页流程。</p>
 <figure class="mechanism-diagram" data-diagram="iommu-address-path" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
@@ -117,9 +117,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看一次 DMA 写入的转换路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="一次 DMA 写入的转换路径">
-    <img src="../assets/iommu-address-path.svg?v=7bdd8f4b9615" alt="设备上下文确定地址空间，IOTLB 与页表提供转换和权限。图中的“遍历页表”由硬件执行，Linux 的映射函数负责事先维护页表。" loading="lazy">
+    <img src="../assets/iommu-address-path.svg?v=720ef053ee9a" alt="设备上下文确定地址空间，IOTLB 与页表提供转换和权限。图中的“遍历页表”由硬件执行，Linux 的映射函数负责事先维护页表。" loading="lazy">
   </div>
-  <figcaption>设备上下文确定地址空间，IOTLB 与页表提供转换和权限。图中的“遍历页表”由硬件执行，Linux 的映射函数负责事先维护页表。 <a href="../assets/iommu-address-path.svg?v=7bdd8f4b9615" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>设备上下文确定地址空间，IOTLB 与页表提供转换和权限。图中的“遍历页表”由硬件执行，Linux 的映射函数负责事先维护页表。 <a href="../assets/iommu-address-path.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 设备标识、IOTLB 与 I/O 页表共同确定一次 DMA 写入
     accDescr: PCIe 网卡携带 Requester ID 和 IOVA 发起 DMA 写。设备上下文确定地址空间，IOTLB 命中时复用转换，未命中时硬件遍历页表。有效映射并且写权限允许时访问 HPA；缺失映射或权限不足则阻止访问。
@@ -175,7 +175,7 @@
 </section>
 <section id="receive" class="mechanism-section">
 <h2><span class="mechanism-heading-number">四、</span>接收、缓存命中与访问故障</h2>
-<p>下面固定使用同一个缓冲区，切换四种初始条件：第一次转换、已有缓存、仅允许设备读取、目标页未映射。正常路径继续展示停用缓冲区后的回收过程。故障路径在访问检查处停止，不把未写入的数据当作一次成功接收。</p>
+<p>演示使用同一个缓冲区，分别展示第一次转换、已有缓存、仅允许设备读取、目标页未映射四种条件。正常路径继续到停用缓冲区后的回收，故障路径在访问检查处停止并报告原因。</p>
 <section class="iommu-lab" data-iommu-lab data-mechanism-view="lab" aria-labelledby="iommu-lab-title">
   <div class="mechanism-view-heading"><h3 id="iommu-lab-title">一次接收与缓冲区回收</h3><button type="button" data-mechanism-expand hidden>全屏演示</button></div>
   <p>网卡向 IOVA 0x00400080 写入 64 B。观察转换缓存、页表与后备页在访问和回收阶段的变化。</p>
@@ -208,9 +208,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看从停止使用到解除映射" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="从停止使用到解除映射">
-    <img src="../assets/iommu-buffer-lifetime.svg?v=7bdd8f4b9615" alt="示意按安全回收顺序拆开设备停止、页表修改、转换缓存失效及后备页释放。图中 UNMAP 内的子步骤不表示调用返回后还允许保留旧转换。" loading="lazy">
+    <img src="../assets/iommu-buffer-lifetime.svg?v=720ef053ee9a" alt="示意按安全回收顺序拆开设备停止、页表修改、转换缓存失效及后备页释放。图中 UNMAP 内的子步骤不表示调用返回后还允许保留旧转换。" loading="lazy">
   </div>
-  <figcaption>示意按安全回收顺序拆开设备停止、页表修改、转换缓存失效及后备页释放。图中 UNMAP 内的子步骤不表示调用返回后还允许保留旧转换。 <a href="../assets/iommu-buffer-lifetime.svg?v=7bdd8f4b9615" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>示意按安全回收顺序拆开设备停止、页表修改、转换缓存失效及后备页释放。图中 UNMAP 内的子步骤不表示调用返回后还允许保留旧转换。 <a href="../assets/iommu-buffer-lifetime.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: DMA 缓冲区从停止使用到安全回收
     accDescr: 设备队列停止并确认在途访问结束后，宿主执行撤销映射，内核清除页表并同步转换缓存。等待失效完成后再释放映射对后备页的引用。示意采用无 ATS 的同步撤销路径。
@@ -322,7 +322,7 @@ IOMMU 子系统执行 iotlb_sync
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=b1d38984fa3b"></script>
-<script src="../assets/mechanism-viewer.js?v=7bdd8f4b9615" defer></script>
-<script src="../assets/iommu-lab.js?v=7bdd8f4b9615" defer></script></body>
+  <script src="../assets/site.js?v=e9ab166b6427"></script>
+<script src="../assets/mechanism-viewer.js?v=720ef053ee9a" defer></script>
+<script src="../assets/iommu-lab.js?v=720ef053ee9a" defer></script></body>
 </html>

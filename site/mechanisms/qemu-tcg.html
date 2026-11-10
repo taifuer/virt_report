@@ -7,16 +7,16 @@
   <title>QEMU TCG 的翻译块与执行循环 - virt-report</title>
   <meta name="description" content="从客户机指令到宿主代码，分析 TCG 中间表示、翻译块缓存、直接链接、代码失效与异常状态恢复。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=b1d38984fa3b">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=b1d38984fa3b">
-  <link rel="stylesheet" href="../assets/site.css?v=b1d38984fa3b">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=7bdd8f4b9615">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=7bdd8f4b9615">
-<link rel="stylesheet" href="../assets/tcg-tb.css?v=7bdd8f4b9615"></head>
+  <link rel="shortcut icon" href="../favicon.ico?v=e9ab166b6427">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=e9ab166b6427">
+  <link rel="stylesheet" href="../assets/site.css?v=e9ab166b6427">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=720ef053ee9a">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=720ef053ee9a">
+<link rel="stylesheet" href="../assets/tcg-tb.css?v=720ef053ee9a"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=b1d38984fa3b" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=e9ab166b6427" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -75,7 +75,7 @@
   <table><thead><tr><th scope="col">执行阶段</th><th scope="col">TCG 处理</th><th scope="col">相关机制</th></tr></thead><tbody>
     <tr><td>第一次 A → B</td><td>分别生成 A、B；满足条件时把 A 的出口连到 B</td><td>指令译码、IR、宿主代码、TB 保存的条件</td></tr>
     <tr><td>再次 B → A → B</td><td>查找已有 A，建立 B → A；随后同页循环可直接跳转</td><td>缓存复用与直接链接的成本差异</td></tr>
-    <tr><td>B → C，跨页</td><td>按新 PC 查找 C；没有 C 才翻译</td><td>跨页分支为何保留查找，缓存仍然有效</td></tr>
+    <tr><td>B → C，跨页</td><td>按新 PC 查找 C；没有 C 才翻译</td><td>跨页分支经过查找，命中后复用缓存</td></tr>
     <tr><td>执行 A 中的内存读取</td><td>经软件 TLB 访问 RAM，必要时进入 helper</td><td>客户机地址转换、MMIO 与异常位置恢复</td></tr>
     <tr><td>客户机改写 A 的指令</td><td>使重叠 TB 失效、拆除相关链接，再按新字节翻译</td><td>代码页追踪与旧宿主代码的撤销</td></tr>
   </tbody></table>
@@ -92,9 +92,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看TCG 的翻译与运行路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="TCG 的翻译与运行路径">
-    <img src="../assets/tcg-translation-pipeline.svg?v=7bdd8f4b9615" alt="译码、IR 优化和代码生成发生在缓存未命中时；生成的宿主代码可多次执行，并按需要访问 CPU 状态、客户机内存和 helper。" loading="lazy">
+    <img src="../assets/tcg-translation-pipeline.svg?v=720ef053ee9a" alt="译码、IR 优化和代码生成发生在缓存未命中时；生成的宿主代码可多次执行，并按需要访问 CPU 状态、客户机内存和 helper。" loading="lazy">
   </div>
-  <figcaption>译码、IR 优化和代码生成发生在缓存未命中时；生成的宿主代码可多次执行，并按需要访问 CPU 状态、客户机内存和 helper。 <a href="../assets/tcg-translation-pipeline.svg?v=7bdd8f4b9615" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>译码、IR 优化和代码生成发生在缓存未命中时；生成的宿主代码可多次执行，并按需要访问 CPU 状态、客户机内存和 helper。 <a href="../assets/tcg-translation-pipeline.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: TCG 的翻译与运行路径
     accDescr: 缓存未命中时，客户机前端将 x86 指令译为 TCG IR，公共优化与寄存器分配后由宿主后端输出代码。运行时 CPUArchState 提供寄存器状态，生成代码通过软件 TLB 或 helper 访问客户机内存与设备。
@@ -139,9 +139,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看TB 的查找、生成、链接与失效" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="TB 的查找、生成、链接与失效">
-    <img src="../assets/tcg-tb-lifecycle.svg?v=7bdd8f4b9615" alt="已缓存但尚未链接的代码仍需查找；直接链接省去目标查找。代码写入触发失效时，同时清理查询结构和跳转关系。" loading="lazy">
+    <img src="../assets/tcg-tb-lifecycle.svg?v=720ef053ee9a" alt="已缓存但尚未链接的代码仍需查找；直接链接省去目标查找。代码写入触发失效时，同时清理查询结构和跳转关系。" loading="lazy">
   </div>
-  <figcaption>已缓存但尚未链接的代码仍需查找；直接链接省去目标查找。代码写入触发失效时，同时清理查询结构和跳转关系。 <a href="../assets/tcg-tb-lifecycle.svg?v=7bdd8f4b9615" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>已缓存但尚未链接的代码仍需查找；直接链接省去目标查找。代码写入触发失效时，同时清理查询结构和跳转关系。 <a href="../assets/tcg-tb-lifecycle.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TD
     accTitle: TB 的查找、生成、链接与失效
     accDescr: 主循环查询每 vCPU 跳转缓存与全局 QHT。未命中时翻译并发布 TB，命中则执行缓存代码。同页静态分支可修补为直接链接，其他合适分支通过 helper 查询。代码改写使相交 TB 失效，同时清理缓存并撤销入链与出链。
@@ -259,7 +259,7 @@
   <h2><span class="mechanism-heading-number">十、</span>TCG 的演进与性能取舍</h2>
   <h3 id="evolution-part-1"><span class="mechanism-heading-number">1. </span>从 dyngen 到 TCG，再到多线程执行</h3>
   <p><a href="https://lists.gnu.org/archive/html/qemu-devel/2008-02/msg00011.html">2008 年引入 TCG</a>时，Fabrice Bellard 明确提出要减少不同 GCC 版本带来的问题，并改善代码生成。早期 dyngen 依赖预先编译的微操作片段；TCG 逐步改为由公共 IR 和宿主后端直接组织代码，使优化与寄存器分配拥有更明确的接口。代价是每种宿主后端都要实现、验证指令编码及相关约束。</p>
-  <p>TB 缓存和直接链接减少了热代码的重复工作，但引入了代码页追踪、跳转撤销和精确异常恢复。较大的块可以摊薄入口开销，也会增大生成成本和失效时的重做范围；复杂优化若明显拖慢首次翻译，对短生命周期程序未必划算。这些取舍解释了 TCG 为什么围绕有界 TB 持续优化，而不简单追求把整段程序提前编译完。</p>
+  <p>TB 缓存和直接链接减少热代码的重复工作，同时需要维护代码页追踪、跳转撤销和精确异常恢复。较大的块可以摊薄入口开销，也会增加生成成本与失效后的重做量。短生命周期程序还对首次翻译延迟敏感；TCG 在块大小、生成速度和重复执行收益之间取舍。</p>
   <p><a href="https://lists.gnu.org/archive/html/qemu-devel/2017-02/msg05682.html">2017 年的 MTTCG 设计</a>进一步把系统模拟从单线程轮转推向每 vCPU 一线程。旧模型天然串行化了许多共享访问；并行后，原子指令、内存屏障、TB 发布与清理都要获得明确的同步规则。当前实现支持并行翻译和细粒度锁，但设备共享状态、代码改写频率及客户机锁竞争仍会限制扩展性。</p>
   <h3 id="evolution-part-2"><span class="mechanism-heading-number">2. </span>沿主路径判断优化是否有效</h3>
   <table><thead><tr><th scope="col">主要耗时</th><th scope="col">改进方向</th><th scope="col">代价与验证</th></tr></thead><tbody>
@@ -301,7 +301,7 @@
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=b1d38984fa3b"></script>
-<script src="../assets/mechanism-viewer.js?v=7bdd8f4b9615" defer></script>
-<script src="../assets/tcg-tb.js?v=7bdd8f4b9615" defer></script></body>
+  <script src="../assets/site.js?v=e9ab166b6427"></script>
+<script src="../assets/mechanism-viewer.js?v=720ef053ee9a" defer></script>
+<script src="../assets/tcg-tb.js?v=720ef053ee9a" defer></script></body>
 </html>

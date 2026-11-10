@@ -7,16 +7,16 @@
   <title>vCPU 与 NUMA 内存放置 - virt-report</title>
   <meta name="description" content="分析客户机拓扑、线程亲和性、RAM 分配策略与 I/O 后端位置的配合，以及远端内存访问对延迟和带宽的影响。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=b1d38984fa3b">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=b1d38984fa3b">
-  <link rel="stylesheet" href="../assets/site.css?v=b1d38984fa3b">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=7bdd8f4b9615">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=7bdd8f4b9615">
+  <link rel="shortcut icon" href="../favicon.ico?v=e9ab166b6427">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=e9ab166b6427">
+  <link rel="stylesheet" href="../assets/site.css?v=e9ab166b6427">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=720ef053ee9a">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=720ef053ee9a">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=b1d38984fa3b" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=e9ab166b6427" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -69,9 +69,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看一个客户机节点对应三条放置关系" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="一个客户机节点对应三条放置关系">
-    <img src="../assets/numa-placement-layers.svg?v=7bdd8f4b9615" alt="客户机节点 0 的 vCPU、RAM 和处理其请求的后端需要分别安排。示例将 vCPU 与 RAM 放在宿主节点 1；远端后端或误放的物理页仍可能引入跨节点访问。" loading="lazy">
+    <img src="../assets/numa-placement-layers.svg?v=720ef053ee9a" alt="客户机节点 0 的 vCPU、RAM 和处理其请求的后端需要分别安排。示例将 vCPU 与 RAM 放在宿主节点 1；远端后端或误放的物理页仍可能引入跨节点访问。" loading="lazy">
   </div>
-  <figcaption>客户机节点 0 的 vCPU、RAM 和处理其请求的后端需要分别安排。示例将 vCPU 与 RAM 放在宿主节点 1；远端后端或误放的物理页仍可能引入跨节点访问。 <a href="../assets/numa-placement-layers.svg?v=7bdd8f4b9615" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>客户机节点 0 的 vCPU、RAM 和处理其请求的后端需要分别安排。示例将 vCPU 与 RAM 放在宿主节点 1；远端后端或误放的物理页仍可能引入跨节点访问。 <a href="../assets/numa-placement-layers.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: 客户机 NUMA 与宿主线程、内存及后端的放置
   accDescr: 客户机节点 0 的 vCPU 线程可以绑定到宿主节点 1，RAM 后端通过独立内存策略分配到该节点。后端线程必须另行安排；如果位于节点 0，访问共享缓冲区仍会跨节点。
@@ -118,7 +118,7 @@
 <section id="allocation" class="mechanism-section">
   <h2><span class="mechanism-heading-number">四、</span>从内存映射到物理页分配</h2>
   <p>QEMU 创建 RAM 后端时，先获得一段宿主虚拟地址映射。使用按需分配的匿名内存时，许多物理页在后续缺页时才真正分配。分配位置取决于适用的 NUMA 内存策略、允许的节点集合以及当时的资源状况；默认局部分配下，触发分配的线程所在节点会影响结果。</p>
-  <p>这解释了为什么“启动完成后再绑核”可能晚了一步：预分配线程或启动过程中运行的线程已经让页落在别的节点。单纯调整线程亲和性不会把这些页一起搬走。共享内存、文件后端和大页还有各自的分配约束，也不宜用一个 first touch 规则概括所有情况。</p>
+  <p>启动完成后再绑核时，预分配线程或先前运行的线程可能已把页面分配到其他节点。调整线程亲和性仅改变运行位置，已有页面的迁移需要另行处理。共享内存、文件后端和大页还须遵守各自的分配约束。</p>
   <p><code>HostMemoryBackend</code> 保存 RAM 区域、host_nodes、policy 和 prealloc 等属性。QEMU 的 Linux 路径先通过 <code>mbind()</code> 为后端应用节点策略，再执行预分配，避免预分配先发生而策略尚未生效。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/backends/hostmem.c#L367-L432">内存策略与预分配的顺序</a></p>
   <table><thead><tr><th>常见策略</th><th>适用思路</th><th>取舍</th></tr></thead><tbody>
     <tr><td>bind / Libvirt strict</td><td>把分配约束在指定节点集合内，维持明确的局部性</td><td>节点内存不足时可能分配失败，不能假定其他节点有空闲就一定能启动</td></tr>
@@ -168,7 +168,7 @@ ps -L -p PID -o pid,tid,psr,comm</code></pre>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=b1d38984fa3b"></script>
-<script src="../assets/mechanism-viewer.js?v=7bdd8f4b9615" defer></script>
+  <script src="../assets/site.js?v=e9ab166b6427"></script>
+<script src="../assets/mechanism-viewer.js?v=720ef053ee9a" defer></script>
 </body>
 </html>

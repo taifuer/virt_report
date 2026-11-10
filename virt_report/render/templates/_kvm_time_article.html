@@ -6,7 +6,7 @@
   <p>客户机安排一个 1 ms 后执行的任务，需要先知道当前时间，再设置一个到期通知。虚拟化使这两步有了不同的困难：vCPU 可能被宿主抢占，恢复时应能读出已经经过的时间；定时事件即使已经到期，处理线程也可能还没有得到 CPU。迁移到另一台服务器后，物理计数器的起点和频率还可能改变。</p>
   <p>Linux 将提供时间读数的机制称为 <strong>clocksource</strong>，将产生定时中断的机制称为 <strong>clockevent</strong>。本文以 x86 客户机的 KVM pvclock 和 Intel TSC-deadline 定时器为例，沿“读出当前时间—设置截止时刻—接收到期中断”说明两条路径。示例使用内核虚拟 LAPIC。</p>
   <p>客户机 Linux 读取时钟、安排自己的任务，并处理虚拟定时中断；宿主 KVM 提供时间换算参数和虚拟 LAPIC 定时器，宿主 Linux 提供实际定时及线程调度。QEMU 主要在创建、暂停和迁移时协调这些状态，不参与客户机每一次 pvclock 读取。</p>
-  <p>先看最终要保证的行为：客户机在 5.002 s 安排一个 1 ms 后的任务，目标时刻就是 5.003 s。如果 vCPU 一直到 5.004 s 才获得运行机会，恢复后应能读到已经经过的时间，定时任务则已经迟到约 1 ms。下面分别解释读数怎样保持一致，以及到期事件怎样到达客户机。</p>
+  <p>客户机在 5.002 s 安排一个 1 ms 后的任务，目标时刻为 5.003 s。如果 vCPU 到 5.004 s 才获得运行机会，恢复后应能读到经过的时间，此时定时任务已迟到约 1 ms。时钟读数的一致性与到期事件的交付时机需要分别处理。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 <section id="tsc" class="mechanism-section">
@@ -48,7 +48,7 @@ now_ns   = 5,000,000,000 + 2,000,000 = 5.002 s</code></pre>
 </section>
 <section id="timer" class="mechanism-section">
   <h2>从定时截止时刻到客户机中断</h2>
-  <p>KVM 保存客户机写入的 deadline，再选择当前可用的定时方式。先看软件定时分支：<code>start_sw_tscdeadline()</code> 读取当前客户机 TSC，将剩余 ticks 按客户机频率换成纳秒，以宿主 hrtimer 安排到期。先不计编程耗时与注入提前量，上述例子剩余 2,000,000 ticks，换算后是 1,000,000 ns；实际安排会根据采样时刻和提前量调整。</p>
+  <p>KVM 保存客户机写入的 deadline，再选择可用的定时方式。软件定时分支中的 <code>start_sw_tscdeadline()</code> 读取当前客户机 TSC，将剩余 ticks 按客户机频率换成纳秒，以宿主 hrtimer 安排到期。上述例子剩余 2,000,000 ticks，对应 1,000,000 ns；实际安排还会根据采样时刻、编程耗时和注入提前量调整。</p>
   {{ diagram('kvm-deadline-timer', '软件定时分支：到期、唤醒与客户机处理', '图中省略注入提前量补偿。vCPU 设置截止时刻后进入空闲并阻塞；hrtimer 回调记录到期，唤醒使线程可运行，再由宿主调度、虚拟 LAPIC 投递及客户机处理依次衔接。') }}
   <p>通用到期路径增加 <code>lapic_timer.pending</code>，设置 <code>KVM_REQ_UNBLOCK</code>，由定时器回调触发 kick。阻塞中的 vCPU 被唤醒；获得 CPU 后，KVM 将定时器向量交给虚拟 LAPIC。客户机允许中断、优先级满足条件时才接受它，随后执行定时处理并安排就绪任务。<a href="{{ linux }}arch/x86/kvm/lapic.c#L1976-L2044">到期与软件 deadline</a></p>
   <p>这条路径中有三个时间点：deadline、客户机进入中断处理程序、应用任务实际开始运行。它们之间可夹着宿主排队、客户机屏蔽中断以及客户机调度。时钟保持连续，只保证能够计量经过的时间；到期通知和任务执行仍可能迟到。</p>

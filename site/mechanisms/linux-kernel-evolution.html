@@ -7,16 +7,16 @@
   <title>Linux 内核基础：发展演变与核心机制 - virt-report</title>
   <meta name="description" content="从单处理器 PC 到多核与云计算，沿一次文件读取理解内核各子系统的分工与协作。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=b1d38984fa3b">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=b1d38984fa3b">
-  <link rel="stylesheet" href="../assets/site.css?v=b1d38984fa3b">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=7bdd8f4b9615">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=7bdd8f4b9615">
+  <link rel="shortcut icon" href="../favicon.ico?v=e9ab166b6427">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=e9ab166b6427">
+  <link rel="stylesheet" href="../assets/site.css?v=e9ab166b6427">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=720ef053ee9a">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=720ef053ee9a">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=b1d38984fa3b" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=e9ab166b6427" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -52,16 +52,16 @@
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>内核的位置与基本分工</h2>
   <p>同一台机器可以一边编译程序，一边保存文件、接收网络请求。CPU 和内存是有限的，磁盘和网卡又按自己的节奏工作。Linux 内核负责把这些资源组织成应用可使用的进程、地址空间、文件和 socket：决定谁获得 CPU，维护地址与权限，把 I/O 交给设备，并在结果就绪时让等待者继续。</p>
-  <p>Linux 严格说是内核，不等于整个发行版。Shell、C 库、systemd、容器运行时和 QEMU 都是用户空间软件；发行版把内核与这些工具、配置和软件包组合成可用系统。应用通常通过库封装的系统调用请求内核服务，普通计算和已映射内存访问则直接执行，不需要每条指令都请求内核。</p>
+  <p>Linux 内核与 Shell、C 库、systemd 等用户空间软件共同组成发行版。应用通常通过库封装的系统调用请求内核服务，普通计算和已映射内存访问则由处理器直接执行。</p>
   <figure class="mechanism-diagram" data-diagram="linux-kernel-architecture" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
     <span data-mechanism-title>应用、内核子系统与硬件</span>
     <button type="button" data-mechanism-expand aria-label="放大查看应用、内核子系统与硬件" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="应用、内核子系统与硬件">
-    <img src="../assets/linux-kernel-architecture.svg?v=7bdd8f4b9615" alt="实线表示主要调用或访问关系，虚线表示资源支持与事件通知。各子系统相互协作，不是每次请求都依次经过所有方框。" loading="lazy">
+    <img src="../assets/linux-kernel-architecture.svg?v=720ef053ee9a" alt="实线表示主要调用或访问关系，虚线表示资源支持与事件通知。各子系统相互协作，不是每次请求都依次经过所有方框。" loading="lazy">
   </div>
-  <figcaption>实线表示主要调用或访问关系，虚线表示资源支持与事件通知。各子系统相互协作，不是每次请求都依次经过所有方框。 <a href="../assets/linux-kernel-architecture.svg?v=7bdd8f4b9615" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>实线表示主要调用或访问关系，虚线表示资源支持与事件通知。各子系统相互协作，不是每次请求都依次经过所有方框。 <a href="../assets/linux-kernel-architecture.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: Linux 应用、内核与硬件的分工
     accDescr: 应用经系统调用访问内核服务。调度管理 CPU 时间，内存管理地址与页面，文件和网络路径经驱动使用设备。设备还通过中断报告事件；这些子系统协作，不是每次请求都顺序遍历全部组件。
@@ -79,21 +79,21 @@
     H -.中断通知.-&gt; D
 </code></pre></details>
 </figure>
-  <p>图中的系统调用是权限边界，不是把请求发给另一个“内核进程”。线程执行 read 时，通常由同一线程进入内核并使用自己的内核栈；需要等待或被抢占时才可能切换任务。设备中断可以打断正在执行的上下文，内核工作线程也可以处理后台工作，所以内核不只有“替应用执行系统调用”这一种运行方式。</p>
-  <p>Linux 通常称为<strong>单体内核</strong>：调度、内存、文件系统和大量驱动在内核权限下协作，可直接调用彼此的接口。它又支持可加载模块；模块化方便按需装载和维护，但模块仍在内核中执行，不因此获得用户进程那样的故障隔离。后文从发展过程解释这套结构为什么不断增加新的队列、记账和同步机制。</p>
+  <p>系统调用切换执行权限：线程执行 read 时，由同一线程进入内核并使用自己的内核栈；等待或抢占可能引发任务切换。设备中断处理、内核工作线程也是执行内核代码的方式。</p>
+  <p>Linux 采用<strong>单体内核</strong>结构：调度、内存、文件系统和大量驱动在内核权限下协作，可直接调用彼此的接口。可加载模块方便按需装载和维护，模块与其余内核代码共享权限和地址空间，模块故障也可能影响整个系统。</p>
 <p class="mechanism-baselines">源码版本：<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
 <section id="evolution" class="mechanism-section">
   <h2><span class="mechanism-heading-number">二、</span>从早期 PC 到通用内核</h2>
-  <p>1991 年的 Linux 0.01 面向 i386 AT 机器。Linus 的<a href="https://www.kernel.org/pub/linux/kernel/Historic/old-versions/RELNOTES-0.01">原始发布说明</a>列出有限的磁盘、屏幕、键盘和串口支持，部分系统调用还未实现，并明确它更适合阅读和实验。后来支持的机器、设备和工作负载不断扩大；内核的历史不是同一个算法简单加速，而是不断重新处理并发、规模和可靠性问题。</p>
+  <p>1991 年的 Linux 0.01 面向 i386 AT 机器。Linus 的<a href="https://www.kernel.org/pub/linux/kernel/Historic/old-versions/RELNOTES-0.01">原始发布说明</a>列出有限的磁盘、屏幕、键盘和串口支持，部分系统调用还未实现，主要用于阅读和实验。随着机器、设备和工作负载增多，内核逐步完善功能，并调整数据结构以应对并发、规模和可靠性需求。</p>
   <figure class="mechanism-diagram" data-diagram="linux-kernel-milestones" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
     <span data-mechanism-title>早期演进的四个节点</span>
     <button type="button" data-mechanism-expand aria-label="放大查看早期演进的四个节点" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="早期演进的四个节点">
-    <img src="../assets/linux-kernel-milestones.svg?v=7bdd8f4b9615" alt="图中是发布节点，不是所有机制首次出现的精确边界；2.6 是长期演进的一个系列，不能把后续功能都算到 2.6.0。" loading="lazy">
+    <img src="../assets/linux-kernel-milestones.svg?v=720ef053ee9a" alt="图中是发布节点，不是所有机制首次出现的精确边界；2.6 是长期演进的一个系列，不能把后续功能都算到 2.6.0。" loading="lazy">
   </div>
-  <figcaption>图中是发布节点，不是所有机制首次出现的精确边界；2.6 是长期演进的一个系列，不能把后续功能都算到 2.6.0。 <a href="../assets/linux-kernel-milestones.svg?v=7bdd8f4b9615" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>图中是发布节点，不是所有机制首次出现的精确边界；2.6 是长期演进的一个系列，不能把后续功能都算到 2.6.0。 <a href="../assets/linux-kernel-milestones.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart LR
     accTitle: Linux 从早期 PC 到通用内核的发布节点
     accDescr: 1991 年 0.01 面向 i386 PC 实验，1994 年 1.0 完善可用系统，1996 年 2.0 支持 SMP，2003 年开始的 2.6 系列持续发展多核扩展和响应能力。节点是版本里程碑，并非每项能力的首次出现日期。
@@ -108,33 +108,33 @@
     <tr><td>2003 起：2.6 系列</td><td>服务器、桌面与嵌入式负载并存，多核和大内存逐渐普及</td><td>每 CPU 运行队列、内核可抢占性、细粒度同步和 NUMA 管理持续发展；同一系列内也会替换重要算法</td></tr>
     <tr><td>此后的持续演进</td><td>更多核、更快设备、虚拟化与多租户共用机器</td><td>多队列 I/O、批处理、资源控制与虚拟化进入核心路径；优化重点从单项操作延迟扩展到并行、局部性与尾延迟</td></tr>
   </tbody></table>
-  <p>1.0、2.0、2.6.0 的时间可核对 kernel.org 的 <a href="https://www.kernel.org/pub/linux/kernel/v1.0/">1994 年归档</a>、<a href="https://www.kernel.org/pub/linux/kernel/v2.0/">1996 年归档</a>和<a href="https://www.kernel.org/pub/linux/kernel/v2.6/">2003 年起的归档</a>。2.0 源码包内的 <code>Documentation/SMP.txt</code> 已说明多处理器支持，也列出调度与中断分配等待改进项。这里把“支持一种硬件”和“有效利用它”分开看：两者往往相隔多个版本的工程工作。</p>
+  <p>1.0、2.0、2.6.0 的时间可核对 kernel.org 的 <a href="https://www.kernel.org/pub/linux/kernel/v1.0/">1994 年归档</a>、<a href="https://www.kernel.org/pub/linux/kernel/v2.0/">1996 年归档</a>和<a href="https://www.kernel.org/pub/linux/kernel/v2.6/">2003 年起的归档</a>。2.0 源码包内的 <code>Documentation/SMP.txt</code> 已说明多处理器支持，也列出调度与中断分配等待改进项；多核扩展能力在后续版本中继续完善。</p>
   <h3 id="evolution-part-1">从一把共享锁到分散状态</h3>
   <p>单 CPU 上，只要处理好中断和任务切换，共享结构相对容易推理。到了 SMP，两颗 CPU 可以同时修改同一条队列；一把大锁容易保证互斥，却也让其他 CPU 排队。缩小锁的保护范围、按 CPU 或队列拆分状态可以减少争用，但又需要处理负载不均、跨 CPU 唤醒和状态汇总。新增的复杂度，是换取并行能力的成本。</p>
-  <p>这条思路贯穿后续各篇：调度器的每 CPU 运行队列，块层的多队列，网卡的多队列与亲和性，内存分配器的每 CPU 缓存，都在避免“所有 CPU 反复争抢同一个中心”。它们不是同一个实现，也没有彻底消除共享与同步。</p>
+  <p>调度器的每 CPU 运行队列、块层与网卡的多队列、内存分配器的每 CPU 缓存，都通过拆分状态减少共享路径上的争用。跨队列操作和全局状态仍需同步。</p>
 </section>
 <section id="scaling" class="mechanism-section">
   <h2><span class="mechanism-heading-number">三、</span>多核与高速设备带来的改变</h2>
   <h3 id="scaling-part-1"><span class="mechanism-heading-number">1. </span>CPU：从挑选任务到公平与响应</h3>
   <p>早期扫描任务的办法容易理解，任务多了却会增加选择工作。2002 年的 O(1) 设计利用每 CPU 优先级数组减少这类开销；Linux 2.6.23 的 CFS 用权重归一化的运行时间衡量服务份额；Linux 6.6 起的 EEVDF 再把“有没有资格获得服务”与“谁的虚拟截止时间更早”分开。目标从来不只是跑得多：交互任务希望早点响应，长期运行任务希望得到公平份额，频繁切换又会消耗 CPU。算法和数值例子见<a href="linux-execution-scheduling.html#policy">公平调度与资源约束</a>。</p>
   <h3 id="scaling-part-2"><span class="mechanism-heading-number">2. </span>内存：容量变大后，距离与管理成本也变重要</h3>
-  <p>虚拟地址让程序不必直接管理物理页，按需分页和 COW 又把未必需要的分配、复制推迟到实际访问。多核大机器中，NUMA 使不同内存位置的访问代价不同；海量映射与页面也增加查找、加锁和回收成本。Maple Tree 管理地址区间，folio 调整页面管理粒度，MGLRU 改善回收时的冷热判断：三者分别解决不同问题，并不是某一种“新内存”替换了页表。详见<a href="linux-memory.html">地址空间、缺页与页面回收</a>。</p>
+  <p>虚拟地址让程序不必直接管理物理页，按需分页和 COW 把分配、复制推迟到需要时。多核大机器中，NUMA 使不同内存位置的访问代价不同；大量映射与页面也增加查找、加锁和回收成本。Maple Tree 管理地址区间，folio 调整页面管理粒度，MGLRU 改善回收时的冷热判断。详见<a href="linux-memory.html">地址空间、缺页与页面回收</a>。</p>
   <h3 id="scaling-part-3"><span class="mechanism-heading-number">3. </span>I/O：设备越快，软件交接越显眼</h3>
   <p>机械盘的寻道很贵，调整请求顺序可能省下大量等待；SSD/NVMe 减少这部分成本后，队列锁、跨核访问和提交开销更容易成为瓶颈。blk-mq 把软件提交与硬件队列关联，允许多核并行推进。网络则面对小包带来的高事件率，NAPI 用“通知启动、按预算批量处理”摊薄每包开销。二者共同引出的取舍是：批量越大，平均开销可能越低，但某个短请求也可能等待更久。</p>
-  <p>io_uring 的共享 SQ/CQ 解决应用与内核的提交和结果交接；它并不取代文件系统或 blk-mq。原始实现在 <a href="https://github.com/torvalds/linux/blob/v5.1/fs/io_uring.c">Linux 5.1 源码</a>可见。把调用改成异步，也没有消除设备完成和缓冲区生命期：提交者可以先做其他事，但相关数据仍必须保持到约定的完成边界。</p>
+  <p>io_uring 用共享 SQ/CQ 交接应用请求与结果，具体操作仍交给文件系统、块层等子系统执行。原始实现在 <a href="https://github.com/torvalds/linux/blob/v5.1/fs/io_uring.c">Linux 5.1 源码</a>可见。异步提交允许应用继续其他工作，相关缓冲区仍须按接口约定保持有效。</p>
 </section>
 <section id="isolation" class="mechanism-section">
   <h2><span class="mechanism-heading-number">四、</span>容器、虚拟机与资源管理</h2>
-  <p>云环境把问题从“让一个应用跑得快”扩大为“让多个工作负载在同一台机器上可控地共存”。namespace 为进程提供不同的资源视图，例如 PID、挂载点和网络；cgroup 控制器则做资源记账、分配和限制。前者不能代替 CPU 配额，后者也不能替进程创建一个独立内核。容器还会组合权限、capability、seccomp 等机制，不能只凭两个名称就认定具备完整安全隔离。</p>
+  <p>多个工作负载共用机器时，需要隔离资源视图并控制用量。namespace 隔离 PID、挂载点和网络等资源视图，cgroup 控制器负责资源记账、分配和限制。容器还组合 capability、seccomp 等机制限制权限与系统调用；隔离效果取决于具体配置和威胁模型。</p>
   <figure class="mechanism-diagram" data-diagram="linux-isolation-layers" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
     <span data-mechanism-title>共享宿主内核与独立 Guest 内核</span>
     <button type="button" data-mechanism-expand aria-label="放大查看共享宿主内核与独立 Guest 内核" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="共享宿主内核与独立 Guest 内核">
-    <img src="../assets/linux-isolation-layers.svg?v=7bdd8f4b9615" alt="容器应用调用宿主内核，Guest 应用先调用 Guest 内核。两条路径最终都依赖宿主资源；图示常见软件设备路径，不展开初始化和设备直通。" loading="lazy">
+    <img src="../assets/linux-isolation-layers.svg?v=720ef053ee9a" alt="容器应用调用宿主内核，Guest 应用先调用 Guest 内核。两条路径最终都依赖宿主资源；图示常见软件设备路径，不展开初始化和设备直通。" loading="lazy">
   </div>
-  <figcaption>容器应用调用宿主内核，Guest 应用先调用 Guest 内核。两条路径最终都依赖宿主资源；图示常见软件设备路径，不展开初始化和设备直通。 <a href="../assets/linux-isolation-layers.svg?v=7bdd8f4b9615" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>容器应用调用宿主内核，Guest 应用先调用 Guest 内核。两条路径最终都依赖宿主资源；图示常见软件设备路径，不展开初始化和设备直通。 <a href="../assets/linux-isolation-layers.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 容器共享内核与 QEMU KVM 虚机的不同层次
     accDescr: 容器进程的系统调用进入宿主内核，Guest 应用的系统调用先进入 Guest 内核。QEMU 在宿主用户态组装虚拟机，KVM 在宿主内核支持 vCPU 执行，两侧都依赖宿主调度、内存和设备资源。
@@ -155,22 +155,22 @@
     R --&gt; P[&#34;物理 CPU、内存与设备&#34;]
 </code></pre></details>
 </figure>
-  <p>图中容器应用的系统调用进入宿主内核；Guest 应用的系统调用先进入自己的 Guest 内核。Guest 内核再使用 vCPU、Guest 物理地址和虚拟设备。KVM 接入硬件虚拟化，QEMU 组装机器和提供设备模型，宿主调度器仍需给 vCPU 线程分配 CPU。虚拟机因此多了一层独立的内核状态，而不是把容器的资源限制调得更严格。</p>
-  <p><a href="https://github.com/torvalds/linux/blob/v2.6.20/drivers/kvm/Kconfig">Linux 2.6.20 的 KVM 配置</a>已通过 <code>/dev/kvm</code> 暴露硬件虚拟化能力；<a href="https://github.com/torvalds/linux/blob/v2.6.24/Documentation/cgroups.txt">2.6.24 的 cgroups 文档</a>解释了把任务按资源需求分组的设计。两条路线可以组合：QEMU 进程同样能受宿主 cgroup 限制，Guest 内部还可以运行容器。它们不是互斥的“内核发展阶段”。</p>
+  <p>容器应用的系统调用进入宿主内核，Guest 应用的系统调用进入自己的 Guest 内核。Guest 内核使用 vCPU、Guest 物理地址和虚拟设备。KVM 接入硬件虚拟化，QEMU 组装机器并提供设备模型，宿主调度器给 vCPU 线程分配 CPU。</p>
+  <p><a href="https://github.com/torvalds/linux/blob/v2.6.20/drivers/kvm/Kconfig">Linux 2.6.20 的 KVM 配置</a>已通过 <code>/dev/kvm</code> 暴露硬件虚拟化能力；<a href="https://github.com/torvalds/linux/blob/v2.6.24/Documentation/cgroups.txt">2.6.24 的 cgroups 文档</a>解释了按资源需求组织任务的设计。两者可以组合使用：QEMU 进程能受宿主 cgroup 限制，Guest 内部也可以运行容器。</p>
   <p>例如 Guest 应用等待虚拟磁盘读取，可能既有 Guest 设备队列等待，也有宿主存储排队；完成后 Guest 任务虽然可运行，vCPU 线程仍可能没拿到物理 CPU。排查时必须标明自己观察的是哪一层，不能把 Guest 的 CPU 利用率直接当成宿主调度结果。继续对照<a href="virtualization-basics.html">虚拟化基础</a>与<a href="kvm-vcpu-run.html">KVM vCPU 执行</a>。</p>
 </section>
 <section id="request" class="mechanism-section">
   <h2><span class="mechanism-heading-number">五、</span>一次文件读取串起五个子系统</h2>
-  <p>设应用从本地普通文件读取 4 KiB，元数据已就绪，数据没有命中页缓存；不展开预读、压缩和虚拟化。下面跟踪数据和等待状态，而不是假设每个函数都属于独立线程。</p>
+  <p>以本地普通文件的 4 KiB 缓存读取为例，假设元数据已就绪、数据未命中页缓存，且本次仅提交所需区间的设备读。数据处理与线程等待按下列顺序衔接。</p>
   <figure class="mechanism-diagram" data-diagram="linux-read-cooperation" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
     <span data-mechanism-title>缓存未命中、设备完成与线程继续</span>
     <button type="button" data-mechanism-expand aria-label="放大查看缓存未命中、设备完成与线程继续" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="缓存未命中、设备完成与线程继续">
-    <img src="../assets/linux-read-cooperation.svg?v=7bdd8f4b9615" alt="应用与内核执行两列表示同一读取线程的两个权限阶段；设备完成处理可以发生在另一个 CPU。图示先睡眠、后完成的情况，快速完成时可能不必睡眠。" loading="lazy">
+    <img src="../assets/linux-read-cooperation.svg?v=720ef053ee9a" alt="应用与内核执行两列表示同一读取线程的两个权限阶段；设备完成处理可以发生在另一个 CPU。图示先睡眠、后完成的情况，快速完成时可能不必睡眠。" loading="lazy">
   </div>
-  <figcaption>应用与内核执行两列表示同一读取线程的两个权限阶段；设备完成处理可以发生在另一个 CPU。图示先睡眠、后完成的情况，快速完成时可能不必睡眠。 <a href="../assets/linux-read-cooperation.svg?v=7bdd8f4b9615" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>应用与内核执行两列表示同一读取线程的两个权限阶段；设备完成处理可以发生在另一个 CPU。图示先睡眠、后完成的情况，快速完成时可能不必睡眠。 <a href="../assets/linux-read-cooperation.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 一次缓存未命中的文件读取与线程等待
     accDescr: 同一应用线程通过系统调用进入内核，提交设备读取后等待。设备 DMA 和完成通知由完成路径处理，页状态更新后唤醒线程；线程重新获得 CPU 才复制数据并返回用户态。
@@ -192,6 +192,7 @@
 </code></pre></details>
 </figure>
   <h3 id="request-part-1">数据沿 I/O 路径走，线程沿调度状态走</h3>
+  <p>文件描述符 fd 是进程文件表中的索引，表项引用 <code>struct file</code>，后者保存打开方式、文件偏移和操作接口，并关联 inode 等文件对象。普通文件的页缓存按文件对象与偏移组织，多次打开同一文件可以访问同一份缓存；各次打开的文件偏移却可以独立。任务通过这些引用进入文件系统，文件系统再把数据页与设备请求联系起来。</p>
   <ol>
     <li><strong>系统调用与文件系统：</strong>应用提供文件描述符、缓冲区和长度。内核定位文件区间、检查缓存；命中时可复制并返回，本次根本不需要设备读取。</li>
     <li><strong>内存与块层：</strong>缓存未命中时准备接收数据的内存，文件系统把文件偏移映射到块位置，块层组织 bio/request，驱动设置 DMA 和设备命令。物理地址与 DMA 地址不能随意互换。</li>
@@ -199,26 +200,25 @@
     <li><strong>中断与完成：</strong>设备更新完成状态，驱动通过中断或轮询发现结果。完成回调更新页状态、记录错误、释放资源，并唤醒等待者。一次通知可能覆盖多个完成项。</li>
     <li><strong>恢复执行：</strong>线程重新可运行，等获得 CPU 后检查结果、复制数据到用户缓冲区，再从系统调用返回。唤醒不等于已经返回。</li>
   </ol>
-  <p>源码可以沿 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/mm/filemap.c#L2899">generic_file_read_iter() 的读取选择</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/block/blk-mq.c#L1158">blk_mq_end_request() 的请求完成</a>和<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/sched/core.c#L4143">try_to_wake_up() 的任务唤醒</a>分别观察。它们通过数据结构、完成回调和等待状态衔接，不是一串始终运行在同一个 CPU 上的同步函数调用。</p>
-  <p>把同一请求的耗时粗分为“CPU 上执行、等待设备、等待获得 CPU”，就能看出为什么只优化调度器未必改善慢盘，只换快盘也未必解决 CPU 过载。实际路径可能有多段等待与并行，这个拆分用于定位边界，不是精确性能公式。</p>
+  <p>源码可以沿 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/mm/filemap.c#L2899">generic_file_read_iter() 的读取选择</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/block/blk-mq.c#L1158">blk_mq_end_request() 的请求完成</a>和<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/sched/core.c#L4143">try_to_wake_up() 的任务唤醒</a>分别观察。这些路径通过数据结构、完成回调和等待状态衔接，可以在不同 CPU 上执行。</p>
+  <p>排查读取延迟时，可分别统计 CPU 执行、设备等待和调度等待。设备完成较慢时关注存储路径，完成后仍迟迟无法运行时关注 CPU 竞争。</p>
   <p>网络接收又有一个重要不同：外部报文可以先到，驱动预先准备 RX 缓冲区；recv 是从 socket 取数据或等待数据，并不命令远端发送特定报文。发送完成也首先描述本地资源可回收，不代表远端已收到。五篇详解分别展开<a href="linux-execution-scheduling.html">调度</a>、<a href="linux-memory.html">内存</a>、<a href="linux-interrupts.html">中断</a>、<a href="linux-block-io.html">存储</a>和<a href="linux-network-io.html">网络</a>。</p>
 </section>
 <section id="development" class="mechanism-section">
   <h2><span class="mechanism-heading-number">六、</span>版本演进与长期维护</h2>
-  <p>现代内核按发布周期滚动演进：补丁先经子系统评审、集成测试，再在约两周的合并窗口进入主线；随后若干 rc 版本集中修复问题，正式版之后由 stable 或长期维护分支继续接收适合回移的修复。Linux 的版本号不是语义化版本承诺，不能把 5.x 到 6.x 当作整个架构被推翻。流程依据见<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/process/2.Process.rst">内核开发过程</a>。</p>
-  <p>同样写着“Linux 6.x”的两台机器，实际行为仍可能不同：发行版可能回移补丁，内核配置决定某功能是否编译，运行参数和驱动决定是否启用，硬件也有自己的限制。本文固定源码基线解释当前机制，同时用旧版源码标注历史；上线评估应查实际发行版的变更记录与配置，而不是只比较主版本号。</p>
+  <p>现代内核按发布周期滚动演进：补丁先经子系统评审、集成测试，再在约两周的合并窗口进入主线；随后若干 rc 版本集中修复问题，正式版之后由 stable 或长期维护分支继续接收适合回移的修复。5.x 到 6.x 等主版本号变化也延续这套流程。依据见<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/process/2.Process.rst">内核开发过程</a>。</p>
+  <p>实际行为取决于发行版回移的补丁、内核配置、运行参数、驱动与硬件能力。上线评估需要同时核对这些条件。文章以固定源码基线解释机制，并用旧版源码标注历史变化。</p>
   <p>兼容性也有边界：内核重视已有用户空间程序继续工作，但内部驱动接口并非永久不变。发行版的模块 ABI 承诺还可能与上游不同。LTS 表示一条维护线，不意味着每个新功能都会回移，更不表示所有硬件和工作负载都应采用同一内核配置。</p>
 </section>
 <section id="reading" class="mechanism-section">
   <h2><span class="mechanism-heading-number">七、</span>只读观察与阅读路径</h2>
-  <p>可先观察自己的实验环境，不必先调参数或制造压力。下面命令只读取信息；路径和权限因发行版、内核配置及容器可见性而异。</p>
+  <p>下面命令只读取信息；路径和权限因发行版、内核配置及容器可见性而异。</p>
   <table><thead><tr><th>观察入口</th><th>对应问题</th><th>解释边界</th></tr></thead><tbody>
     <tr><td><code>uname -r</code>、<code>lscpu</code></td><td>正在运行的内核与 CPU/NUMA 拓扑</td><td>在 VM 中看到的可能是 Guest 视图；版本字符串不是完整补丁清单</td></tr>
     <tr><td><code>ps -eLo pid,tid,psr,stat,comm</code></td><td>哪些线程可运行、睡眠，最近在哪个 CPU 上执行</td><td>一次快照不能解释整段延迟，R 也不保证此刻正在执行</td></tr>
     <tr><td><code>/proc/meminfo</code>、<code>/proc/vmstat</code></td><td>驻留、缓存、回收与缺页活动</td><td>缓存不是自动等同泄漏；许多计数需要比较时间窗口内的增量</td></tr>
     <tr><td><code>/proc/interrupts</code>、<code>/proc/diskstats</code>、<code>ip -s link</code></td><td>通知、块设备与网络工作量</td><td>三者处于不同统计层次，不能期待中断数、请求数和包数一一对应</td></tr>
   </tbody></table>
-  <p>例如“文件读取慢”可以先分成：是否真正发出块 I/O，设备完成是否慢，完成后线程是否仍在等 CPU。再选择对应子系统的统计或跟踪工具。先明确观察对象和完成边界，比同时修改多个调度、缓存和中断参数更容易验证原因。</p>
   <p>对应原理可分开追踪：<a href="linux-execution-scheduling.html#path">阻塞后恢复执行</a>解释线程的去向；<a href="linux-memory.html#faults">缺页与 COW</a>解释地址和物理页的关系；<a href="linux-interrupts.html#completion">通知与完成</a>解释事件交接；<a href="linux-block-io.html#writes">写入与持久化</a>、<a href="linux-network-io.html#tx">网络发送与回收</a>则对比两种不同的完成语义。</p>
 </section>
 <section id="sources" class="mechanism-section">
@@ -227,6 +227,7 @@
     <li>早期材料：<a href="https://www.kernel.org/pub/linux/kernel/Historic/old-versions/RELNOTES-0.01">Linux 0.01 发布说明</a>；<a href="https://www.kernel.org/pub/linux/kernel/v2.0/">2.0 源码与 SMP 说明</a>。这些用于还原当时的约束，不作为现代调参指南。</li>
     <li>演变依据：<a href="https://github.com/torvalds/linux/blob/v2.6.12/Documentation/sched-design.txt">O(1) 设计</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/scheduler/sched-design-CFS.rst">CFS</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/scheduler/sched-eevdf.rst">EEVDF</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/block/blk-mq.rst">blk-mq</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/networking/napi.rst">NAPI</a>。</li>
     <li>资源与虚拟化：<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/admin-guide/cgroup-v2.rst">cgroup v2</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst">KVM API</a>；开发与兼容性：<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/process/2.Process.rst">开发流程</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/process/stable-api-nonsense.rst">内核内部接口的边界</a>。</li>
+    <li><a href="https://www.usenix.org/conference/osdi10/analysis-linux-scalability-many-cores">An Analysis of Linux Scalability to Many Cores（OSDI 2010）</a>用 48 核机器上的应用负载分析 Linux 的共享状态与多核瓶颈，讨论局部修改如何改善扩展性。论文基于 Linux 2.6.35-rc5，可用于学习从应用表现追到内核竞争点的方法，历史测量与当前内核分别看待。</li>
   </ul>
 </section></div>
   </div>
@@ -235,7 +236,7 @@
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=b1d38984fa3b"></script>
-<script src="../assets/mechanism-viewer.js?v=7bdd8f4b9615" defer></script>
+  <script src="../assets/site.js?v=e9ab166b6427"></script>
+<script src="../assets/mechanism-viewer.js?v=720ef053ee9a" defer></script>
 </body>
 </html>

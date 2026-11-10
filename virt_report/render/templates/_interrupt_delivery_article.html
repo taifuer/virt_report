@@ -29,7 +29,7 @@
     </tbody>
   </table>
   <p>两种 posted 路径共用 CPU 侧的 posted-interrupt processing，区别在上游是谁写 PIR：一个是 KVM 软件，一个是 VT-d IOMMU。不能把 APICv 与 VT-d posted 看成两种完全并列、互斥的中断方案。演示固定目标 vCPU 正在另一物理 CPU 上运行、IF 与优先级允许等条件，才展示无需为本次交付退出目标 Guest 的路径。</p>
-  <p>DPDK 的 <code>callfd</code> 是 eventfd 文件描述符，<code>irqfd</code> 是 KVM 对 eventfd 和 GSI 路由的绑定。QEMU 事先建立内存共享、MSI 路由，并经 <code>VHOST_USER_SET_VRING_CALL</code> 把 fd 交给后端；逐次通知由 DPDK 直接写入。SPDK vhost-user 也可使用同一类交接方式，这里不另加一套重复演示。</p>
+  <p>DPDK 的 <code>callfd</code> 是 eventfd 文件描述符，<code>irqfd</code> 是 KVM 对 eventfd 和 GSI 路由的绑定。QEMU 事先建立内存共享、MSI 路由，并经 <code>VHOST_USER_SET_VRING_CALL</code> 把 fd 交给后端；逐次通知由 DPDK 直接写入。SPDK vhost-user 也可使用这类交接方式。</p>
   <p>本例只生成一次完成事件。<code>write(callfd) → irqfd → PIR / IRR → Guest handler</code> 是它在不同层的推进；posted notification 是提示目标 CPU 检查 PID 的宿主通知，并非第二次设备完成。快速 irqfd 路由可在 eventfd 写调用内执行，不表示唤醒 QEMU 或另一个用户态监听线程。相比“后端通知 QEMU、QEMU 再转发”，这里省去了用户态中转；相比 QEMU 自己直接提交 MSI，不能只凭箭头数量断言性能高低。</p>
   <h3>直通设备的路径选择</h3>
   <p>同一块直通网卡、NVMe 控制器或 GPU，都可能采用上表两条 MSI-X 路径。不是按设备类型划分，也不是应用逐次 I/O 选择：宿主在设备绑定、路由建立或更新时配置 IRTE，IOMMU 按当前表项处理设备发出的消息。Guest 驱动仍配置 MSI-X 并处理设备完成，通常不需要感知宿主是否使用 posting。</p>

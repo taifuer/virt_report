@@ -46,7 +46,7 @@ def test_numa_article_distinguishes_guest_topology_and_physical_placement():
     page = render.render_mechanisms_html(Config(), "vcpu-numa-placement")
     for marker in (
         "nodeid=0", "host-nodes=1", "先通过", "mbind()", "再执行预分配",
-        "单纯调整线程亲和性不会把这些页一起搬走", "IOThread",
+        "调整线程亲和性仅改变运行位置", "已有页面的迁移需要另行处理", "IOThread",
         "Cpus_allowed_list", "numa_maps", "numastat -p", "迁移后应重新验证",
     ):
         assert marker in page
