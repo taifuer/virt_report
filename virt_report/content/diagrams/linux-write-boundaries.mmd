@@ -1,0 +1,16 @@
+sequenceDiagram
+    accTitle: 普通缓存写、设备完成与持久化的不同边界
+    accDescr: 简化示例中普通 write 将内容复制到页缓存便返回；随后同步路径发起数据写入，设备普通完成可能只到易失缓存，再经 FLUSH 确认非易失存储后结束同步。实际文件系统还需处理元数据、日志和错误，可能使用 FUA 等不同命令组合。
+    participant A as 应用
+    participant K as 页缓存与<br/>文件系统
+    participant D as 有易失写缓存<br/>的设备
+    A->>K: 普通 write：复制内容、标脏
+    K-->>A: write 成功：内核已接受
+    A->>K: 发起同步并等待
+    K->>D: 提交数据写入
+    D-->>K: 普通写完成：可能仍在易失缓存
+    Note over K,D: 请求完成不自动等于耐断电
+    K->>D: 本例使用 FLUSH
+    D->>D: 落实缓存持久化要求
+    D-->>K: FLUSH 成功完成
+    K-->>A: 所需同步工作完成，返回结果

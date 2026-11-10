@@ -1,0 +1,18 @@
+flowchart TB
+    accTitle: 容器共享内核与 QEMU KVM 虚机的不同层次
+    accDescr: 容器进程的系统调用进入宿主内核，Guest 应用的系统调用先进入 Guest 内核。QEMU 在宿主用户态组装虚拟机，KVM 在宿主内核支持 vCPU 执行，两侧都依赖宿主调度、内存和设备资源。
+    C["容器应用\n宿主用户态进程"]
+    subgraph V["虚拟机内的独立内核"]
+        A["Guest 应用"] -->|系统调用| G["Guest 内核"]
+    end
+    Q["QEMU · 宿主用户态\n设备模型与后端"]
+    subgraph H["宿主 Linux 内核"]
+        K["KVM\nvCPU 与二级映射"]
+        R["共享的调度、内存与 I/O\nnamespace 视图 / cgroup 控制"]
+        K --> R
+    end
+    C -->|系统调用| R
+    G -->|vCPU 执行与退出| K
+    G -.虚拟设备请求.-> Q
+    Q -->|设备后端 I/O| R
+    R --> P["物理 CPU、内存与设备"]

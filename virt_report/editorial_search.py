@@ -29,6 +29,7 @@ def _editorial_documents() -> list[dict]:
             ]),
         })
     for paper in conferences.load_content()["papers"]:
+        reading = paper.get("reading") or {}
         documents.append({
             "slug": paper["id"], "title": paper["title"],
             "summary": paper["introduction"], "kind": "papers",
@@ -37,7 +38,11 @@ def _editorial_documents() -> list[dict]:
             "meta": f'{paper["venue_name"]} · {paper["year"]}',
             "keywords": " ".join([paper["commentary"], *paper.get("institutions", []),
                                   *paper.get("architectures", []), paper["id"],
-                                  paper["venue_name"], str(paper["year"])]),
+                                  paper["venue_name"], str(paper["year"]),
+                                  *(reading.get(key, "") for key in (
+                                      "reason", "question", "mechanism", "evaluation",
+                                      "strengths", "limitations", "relevance",
+                                  ))]),
         })
     return documents
 

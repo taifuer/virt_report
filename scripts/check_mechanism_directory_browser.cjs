@@ -67,6 +67,8 @@ async function responsive(page, width) {
 async function check(page,width) {
   await page.setViewportSize({width,height:900});
   await page.goto(url); await ready(page);
+  assert.deepEqual(await page.locator('.mechanism-topic').evaluateAll(nodes => nodes.slice(0,2).map(node => node.id)),
+    ['virtualization-basics', 'linux-foundations'], 'Linux foundations follow virtualization basics');
   const buttons=page.locator('[data-mechanism-toggle]');
   assert.equal(await buttons.count(),published.filter(topic => topic.details.length).length,
     'only topics with detail articles get a toggle');
@@ -101,6 +103,18 @@ async function check(page,width) {
   assert.equal(colors.category,colors.muted,'non-linked category heading is gray');
   await responsive(page,width);
   await page.screenshot({path:path.join(shots,`directory-${width}-collapsed.png`)});
+
+  await toggle(page,'linux-foundations').click(); await expanded(page,'linux-foundations');
+  assert.equal(await topic(page,'linux-foundations').locator('h3 a').getAttribute('href'),
+    'mechanisms/linux-kernel-evolution.html', 'Linux foundations has a real overview');
+  assert.equal(await list(page,'linux-foundations').locator('.mechanism-list-item').count(), 5);
+  const summaries = await list(page,'linux-foundations').locator('.mechanism-list-item > p').evaluateAll(nodes =>
+    nodes.map(node => ({height:node.getBoundingClientRect().height, line:parseFloat(getComputedStyle(node).lineHeight),
+      width:node.getBoundingClientRect().width, available:node.parentElement.getBoundingClientRect().width})));
+  assert(summaries.every(p => Math.abs(p.width-p.available) < 1), 'summaries use full available width');
+  if (width >= 1280) assert(summaries.every(p => p.height <= p.line + 1), 'short desktop summaries fit on one line');
+  await topic(page,'linux-foundations').screenshot({path:path.join(shots,`directory-${width}-linux.png`)});
+  await toggle(page,'linux-foundations').click(); await expanded(page,'linux-foundations',false);
 
   await toggle(page,'live-upgrade').click(); await expanded(page,'live-upgrade');
   assert.equal(await list(page,'live-upgrade').locator('.mechanism-list-item').count(),2);

@@ -1,0 +1,89 @@
+{% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
+{% from '_mechanism_diagram.html' import diagram with context %}
+<section id="preface" class="mechanism-section">
+  <h2>应用 I/O 与设备 I/O</h2>
+  <p>一次 <code>read()</code> 或 <code>write()</code> 不等于一个磁盘命令。这里先看普通 Linux 文件系统上的文件 I/O，区分页缓存、块层与设备完成，再对照虚拟磁盘；不把网络文件系统、DAX 或所有异步接口混成同一条路径。</p>
+  <p>判断“完成”要先问完成了哪一层：数据复制到应用、数据交给内核缓存、设备结束一个请求，以及断电后仍可恢复，语义都不同。同步或异步描述等待与交付方式，并不自动决定持久化强度。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+<section id="history" class="mechanism-section">
+  <h2>从机械磁盘调度到多队列块层</h2>
+  <p>块层的设计目标随设备和 CPU 改变。机械盘时代，寻道和旋转等待很贵，合并相邻请求、调整访问顺序往往收益明显；低延迟 SSD 和 NVMe 则使软件锁、跨核缓存争用与每次提交的 CPU 开销更显眼。设备速度提高后，沿用一条高度共享的软件队列容易先把 CPU 路径变成瓶颈。</p>
+  <table><thead><tr><th>发展脉络</th><th>主要矛盾</th><th>保留下来的设计问题</th></tr></thead><tbody>
+    <tr><td>机械盘与单队列块层</td><td>通过合并、排序减少昂贵的机械访问</td><td>吞吐与请求等待时间之间的平衡；不能无限延后某类请求</td></tr>
+    <tr><td>SSD、SMP 与 blk-mq</td><td>更多 CPU 同时提交，集中式队列与锁限制扩展</td><td>使用软件提交上下文和硬件队列映射，减少全局争用；仍需调度、资源分配和同步</td></tr>
+    <tr><td>NVMe 等多队列设备</td><td>利用多个提交／完成队列并行处理</td><td>队列与 CPU/NUMA 的亲和性、tag 数量、完成回收和背压</td></tr>
+    <tr><td>应用接口：同步调用、原生 AIO、io_uring</td><td>减少等待占用与大量小 I/O 的提交／完成开销</td><td>这是应用接口的另一条演变线，不替代文件系统、页缓存或 blk-mq</td></tr>
+  </tbody></table>
+  <p><a href="{{ linux }}Documentation/block/blk-mq.rst">blk-mq 设计文档</a>从机械盘和 SSD 的差异解释了多队列的动机。Jens Axboe 的 <a href="https://kernel.dk/io_uring.pdf">io_uring 原始设计说明</a>则讨论应用与内核之间的共享提交／完成环；两者解决的边界不同，不能把“使用 io_uring”写成直接绕过全部块层。</p>
+</section>
+<section id="structures" class="mechanism-section">
+  <h2>页缓存、bio 与 request</h2>
+  <table><thead><tr><th>对象</th><th>职责</th><th>与相邻层的关系</th></tr></thead><tbody>
+    <tr><td>Page cache / folio</td><td>缓存文件内容，记录页的有效、脏和回写状态</td><td>命中可免去本次设备读取；脏页可能稍后写回</td></tr>
+    <tr><td>bio</td><td>描述一段块 I/O 的方向、位置与内存片段，并承接完成回调</td><td>文件系统和块设备映射层可能拆分或组合工作</td></tr>
+    <tr><td>blk-mq request</td><td>面向块设备驱动调度和提交，关联 tag、队列与 bio</td><td>多个 bio 可合并；一个系统调用也可能产生多个 request</td></tr>
+    <tr><td>设备队列与 DMA 缓冲区</td><td>按设备协议执行读写和返回状态</td><td>地址、长度、访问权及缓冲区生命期由驱动维护</td></tr>
+  </tbody></table>
+  <p>blk-mq 使用软件提交上下文与硬件队列映射来减少多核争用，调度策略和设备队列数仍因驱动配置而异。不能从“应用发出一次读取”直接推出“一次中断、一条 bio、一条 request”。</p>
+  <p>具体看，<code>blk_mq_ctx</code> 是软件提交上下文，<code>blk_mq_hw_ctx</code> 组织映射到硬件队列的工作，tag 用于在有限槽位中标识在途请求。设备完成后，驱动依据标识找到 request，再沿 bio 的完成关系向上交付结果。这也是请求乱序完成时仍能找回原调用的基础，并不依赖“第几个中断对应第几个读取”。</p>
+  {{ diagram('linux-block-buffers', '请求结构不等于数据缓冲区', '粗实线是普通缓存读取的数据移动，虚线是控制信息与引用。bio 和 request 描述工作，并不各自保存一份完整文件数据。') }}
+  <p>例如下文的 4 KiB 读取，设备先把数据放进页缓存中的内存，随后 CPU 才复制到用户 buffer；不是先把文件内容填进 bio，再填进 request。缓存命中时，左边的设备读取可以省去，右边向用户空间复制的工作仍可能存在。</p>
+</section>
+<section id="read" class="mechanism-section">
+  <h2>一次读请求及其完成</h2>
+  {{ diagram('linux-block-completion', '缓存未命中后的读取与完成', '图中抽象一个读取路径，不表示 read、bio 和 request 一一对应；完成状态先更新，等待者被调度后才返回。') }}
+  <ol>
+    <li>应用读取某个文件区间，VFS 与文件系统确定对应内容。页缓存已有效时，复制到用户缓冲区即可返回。</li>
+    <li>缓存缺失时，文件系统准备页并把文件偏移映射到块位置，提交所需 I/O；预读、稀疏文件或元数据访问会让工作量不同于应用请求长度。</li>
+    <li>块层组织 bio/request，驱动准备 DMA 与设备命令。需要等待的线程可睡眠；异步接口则通过相应完成队列交付结果。</li>
+    <li>设备完成后，驱动通过中断或轮询取回状态，块层结束请求并调用上层完成处理。页变为可读或记录错误，等待者被唤醒，之后才继续复制和返回。</li>
+  </ol>
+  <p>可对照 <a href="{{ linux }}mm/filemap.c#L2899">generic_file_read_iter()</a> 的直接／缓存读取选择、<a href="{{ linux }}block/blk-mq.c#L3120">blk_mq_submit_bio()</a> 的提交入口，以及 <a href="{{ linux }}block/blk-mq.c#L1158">blk_mq_end_request()</a> 的完成与释放。不是所有文件系统都直接使用同一个读取入口，但层次划分仍有参考价值。</p>
+  <h3>追踪同一份 4 KiB 数据</h3>
+  <p>假设应用用 <code>pread(fd, buf, 4096, 4096)</code> 读取文件的第二个 4 KiB 区间；文件已有内容，元数据已在内存，本次数据未命中缓存。为便于追踪，固定 4 KiB 基页、单个文件系统块，不展开预读、压缩和多设备映射：</p>
+  <table><thead><tr><th>位置</th><th>本层如何标识请求</th><th>数据与状态</th></tr></thead><tbody>
+    <tr><td>VFS / 文件系统</td><td>打开的文件与字节偏移 4096</td><td>找到文件对应的页缓存位置，准备尚未有效的数据页</td></tr>
+    <tr><td>文件系统块映射</td><td>文件逻辑块 1 → 假设设备上第 100 个 4 KiB 块</td><td>文件偏移与设备位置通过文件系统映射关联，不是相同编号</td></tr>
+    <tr><td>bio / request</td><td>块层以 512 B 为 sector 单位，本例起点为 800；请求关联 tag</td><td>内存片段指向页缓存的数据页，驱动准备设备可访问的 DMA 映射</td></tr>
+    <tr><td>设备完成 → 上层回调</td><td>依据设备返回的命令标识找回 request，再完成对应 bio</td><td>成功后上层把缓存页标为有效、解除相应等待；失败则传播错误</td></tr>
+    <tr><td>读取线程恢复</td><td>回到原来这次 pread</td><td>把缓存内容复制到 buf，成功时返回 4096；以后命中缓存可不再提交设备读</td></tr>
+  </tbody></table>
+  <p>这里有两种不同的移动：设备 DMA 写入内核的页缓存，之后 CPU 把数据复制到用户 buf。普通 buffered read 并非让设备直接 DMA 到用户指针；Direct I/O 才采用另一套用户页与设备 I/O 的衔接方式。请求标识和完成回调让读取线程不必在 CPU 上一直忙等。</p>
+</section>
+<section id="writes" class="mechanism-section">
+  <h2>写入完成与持久化</h2>
+  <table><thead><tr><th>观察到的完成</th><th>通常能够确认</th><th>尚不能据此确认</th></tr></thead><tbody>
+    <tr><td>普通 buffered write 返回</td><td>返回长度对应的数据已被内核接受，通常进入页缓存并标脏</td><td>设备已写完、后续回写不会失败</td></tr>
+    <tr><td>块设备写请求成功完成</td><td>设备按所协商命令语义完成请求，相关资源可进入回收流程</td><td>普通易失写缓存中的数据已经耐断电</td></tr>
+    <tr><td>正确实现栈上的 fsync / fdatasync 成功</td><td>相应文件数据及要求的元数据按接口约定同步</td><td>跨文件事务原子性；新建文件名的目录项也未必由文件 fsync 一并保证</td></tr>
+  </tbody></table>
+  <p>写入同样需要完成处理：传播设备错误、结束上层请求、更新回写状态、释放 tag 和缓冲区，并让等待者继续。通知可以被合并或由轮询替代，但不能凭空省略请求完成状态。设备支持的 FLUSH/FUA 用于明确缓存与持久化边界，不能把它们和普通写完成混为一谈。</p>
+  <h3>脏页写回与完成处理</h3>
+  <p>一次普通 write 可以先把新内容复制到页缓存并标脏，应用随即继续。后台回写或同步调用把脏数据组成设备请求，并跟踪正在写回的状态。完成回调结束这轮写回、记录错误并唤醒相关等待者；若页面在写回期间又被修改，还需要保留再次回写的工作。否则内核既无法安全回收页面，也无法判断 fsync 应该等待什么。</p>
+  <p>持久化还跨越设备的易失缓存。<code>REQ_PREFLUSH</code> 要求相关设备缓存先刷出，再开始带该标志的数据 I/O；<code>REQ_FUA</code> 要求这次写的数据达到非易失存储后才报告完成。文件系统据此安排数据、日志和元数据的先后关系。它们不是一句“write 成功”就隐含的条件，具体组合由文件系统和设备能力决定，见 <a href="{{ linux }}Documentation/block/writeback_cache_control.rst">块层缓存控制约定</a>。</p>
+  <p><code>O_DIRECT</code> 主要影响页缓存路径，不自动等于持久化；异步提交也不等于“不需要完成”。在虚机中，Guest 的 virtio-blk 写请求、QEMU 后端 I/O 和物理存储又是不同层。后端必须兑现 Guest 可见的写缓存与 flush 约定，并通过底层支持的同步机制落实；不能据此推断 virtio-blk 直接暴露了全部物理设备命令。</p>
+  {{ diagram('linux-write-boundaries', 'write 返回、设备完成与持久化完成', '固定设备有易失写缓存，以数据写入后再 FLUSH 为示例。实际 fsync 还受文件系统日志、元数据、错误及设备能力影响，不一定照此生成两条命令。') }}
+  <p>从上往下看，应用第一次得到的成功仅覆盖缓存写入；中间的设备完成让内核结束那条请求；最后的同步结果才覆盖要求的持久化工作。异步接口可以改变结果的交付方式，却不能把第一条边界直接提升成最后一条。</p>
+</section>
+<section id="queues" class="mechanism-section">
+  <h2>队列深度、合并与背压</h2>
+  <p>应用的在途 I/O 数、块层可分配的 tag、驱动队列容量和设备真正执行的命令数不是同一个值。没有可用 tag 或设备暂时不能接受请求时，块层需要等待、暂缓派发或稍后重试；异步接口也不能创造无限的队列容量。相邻请求可以合并，过大的请求又可能按设备限制拆分，因此各层请求计数未必相等。</p>
+  <p>队列深度帮助设备隐藏等待，却也会增加排队。一个纯粹的算术例子：在稳定负载、统计边界一致的前提下，若完成速率为每秒 100,000 次、平均每次从进入到完成为 100 μs，则平均在途数量约为 <code>100,000 × 0.0001 = 10</code>。这不是设备性能承诺，也不能反推“把队列设成 10 就一定达到该速率”；继续加深队列可能主要增加尾延迟。</p>
+  <p>io_uring 的 SQ/CQ 承载应用请求和结果；blk-mq 队列承载块请求；virtqueue 则连接 Guest 驱动与虚拟设备。即使它们都叫 ring 或 queue，也不是同一块内存、同一组索引。共享 SQ/CQ 减少的是部分提交与完成交接开销，不意味着所有数据载荷都零拷贝，也不保证每个操作都完全不阻塞。</p>
+  <p>完成仍以该操作的语义为准：异步写的成功结果不能自动升级为持久化保证；持有用户内存的异步请求还要求在约定完成前维持缓冲区有效。选择接口、队列深度与缓存策略时，需要同时考虑 CPU 成本、吞吐、延迟和错误处理。</p>
+</section>
+<section id="observe" class="mechanism-section">
+  <h2>只读观察与虚拟磁盘</h2>
+  <p><code>/proc/PID/io</code> 区分部分进程级 I/O 计数，<code>/proc/diskstats</code> 提供块设备统计。它们的统计层次不同，预读、缓存、合并和文件系统元数据都会影响对应关系；应看同一时间窗口的增量，而不是直接拿累计字节相除得出命中率。</p>
+  <p>还可只读查看 <code>/sys/block/设备名/queue/</code> 下存在的 <code>scheduler</code>、<code>nr_requests</code>、<code>logical_block_size</code> 等属性。它们分别描述调度选择、部分请求分配限制与块大小，不能用一个字段代替所有层的队列深度；不同设备驱动暴露的属性也不完全相同。</p>
+  <p>这些观察不需要清空缓存、写裸设备或改变生产队列参数。虚机还应分别观察 Guest、QEMU 和宿主设备：Guest 页缓存命中时没有新的 virtio 请求，宿主页缓存命中时也可能没有物理读。通过 <a href="virtio-blk-read.html">磁盘 I/O 演示</a> 可继续观察 Descriptor Table、Buffer、Available Ring、Used Ring 和完成通知。</p>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2>源码与延伸阅读</h2>
+  <ul>
+    <li><a href="{{ linux }}Documentation/block/blk-mq.rst">blk-mq 结构与完成路径</a>、<a href="{{ linux }}Documentation/block/writeback_cache_control.rst">块设备写缓存、FLUSH 与 FUA</a>。</li>
+    <li><a href="{{ linux }}block/blk-core.c#L911">submit_bio()</a>、<a href="{{ linux }}block/blk-mq.c#L1158">请求完成</a>；接口语义可对照 <a href="https://man7.org/linux/man-pages/man2/fsync.2.html">fsync(2)</a>。</li>
+    <li>继续阅读 <a href="linux-memory.html">页缓存与内存回收背景</a>、<a href="qemu-virtio-blk.html">QEMU virtio-blk 后端</a>、<a href="qemu-aio-iothread.html">异步 I/O 与 IOThread</a>。</li>
+  </ul>
+</section>

@@ -188,67 +188,92 @@ document.querySelectorAll('[data-pager]').forEach(root=>{
   select.addEventListener('change',()=>{size=Number(select.value);page=0;draw();scrollList(root)});draw();
 });
 document.querySelectorAll('[data-conference-browser]').forEach(root=>{
-  const items=[...root.querySelectorAll('[data-conference-item]')],venue=root.querySelector('[data-conference-venue]'),year=root.querySelector('[data-conference-year]'),count=root.querySelector('[data-conference-count]'),status=root.querySelector('[data-conference-status]'),empty=root.querySelector('[data-conference-empty]'),prev=root.querySelector('[data-conference-prev]'),next=root.querySelector('[data-conference-next]'),sizeSelect=root.querySelector('[data-conference-size]');
+  const items=[...root.querySelectorAll('[data-conference-item]')].sort((a,b)=>Number(a.dataset.order)-Number(b.dataset.order)),venue=root.querySelector('[data-conference-venue]'),year=root.querySelector('[data-conference-year]'),status=root.querySelector('[data-conference-status]'),empty=root.querySelector('[data-conference-empty]'),prev=root.querySelector('[data-conference-prev]'),next=root.querySelector('[data-conference-next]'),sizeSelect=root.querySelector('[data-conference-size]');
   if(!venue||!year||!prev||!next||!sizeSelect)return;
   const form=root.querySelector('[data-conference-search]'),query=root.querySelector('[data-conference-query]'),clear=root.querySelector('[data-conference-clear]'),reset=root.querySelector('[data-conference-reset]'),topicFilter=root.querySelector('[data-conference-topic-filter]'),topicLabel=root.querySelector('[data-conference-topic-label]');
+  const list=root.querySelector('.paper-list'),classic=root.querySelector('[data-conference-classic]');
+  const options=new Map([venue,year].map(select=>[select,[...select.options].map(option=>({value:option.value,label:option.textContent}))]));
+  list.append(...items);
   const normalize=value=>value.normalize('NFKC').toLocaleLowerCase().replace(/\s+/g,' ').trim();
   const indexed=new Map(items.map(item=>[item,{text:normalize(item.textContent),topics:JSON.parse(item.dataset.topics||'[]')}]));
-  const params=new URLSearchParams(location.search);
-  if([...venue.options].some(option=>option.value===params.get('venue')))venue.value=params.get('venue');
-  if([...year.options].some(option=>option.value===params.get('year')))year.value=params.get('year');
-  if(query)query.value=(params.get('q')||'').slice(0,120);
-  let topic=(params.get('topic')||'').slice(0,100);
-  let {page,size}=readPageState();sizeSelect.value=String(size);
+  let scope='all',topic='',page=0,size=10,selectedVenue='',selectedYear='';
+  const restore=()=>{
+    const params=new URLSearchParams(location.search);
+    scope=params.get('scope')==='curated'?'curated':'all';
+    const validValue=(select,key)=>options.get(select).some(option=>option.value===params.get(key))?params.get(key):'';
+    selectedVenue=validValue(venue,'venue');selectedYear=validValue(year,'year');
+    query.value=(params.get('q')||'').slice(0,120);
+    topic=(params.get('topic')||'').slice(0,100);
+    ({page,size}=readPageState());sizeSelect.value=String(size);
+  };
+  const inScope=item=>scope==='all'||item.dataset.curated==='true';
   const matchesText=item=>{
     const data=indexed.get(item),words=normalize(query?.value||'').split(' ').filter(Boolean);
     return (!topic||data.topics.includes(topic))&&words.every(word=>data.text.includes(word));
   };
-  const matches=item=>matchesText(item)&&(!venue.value||item.dataset.venue===venue.value)&&(!year.value||item.dataset.year===year.value);
-  const facetCounts=(select,key,otherKey,otherValue)=>{
-    const available=items.filter(item=>matchesText(item)&&(!otherValue||item.dataset[otherKey]===otherValue));
-    [...select.options].forEach(option=>{
-      const optionCount=option.value?available.filter(item=>item.dataset[key]===option.value).length:available.length;
-      option.textContent=`${option.dataset.optionLabel}（${optionCount}）`;
-      option.disabled=Boolean(option.value)&&optionCount===0&&option.value!==select.value;
+  const matches=item=>inScope(item)&&matchesText(item)&&(!selectedVenue||item.dataset.venue===selectedVenue)&&(!selectedYear||item.dataset.year===selectedYear);
+  const syncFacets=()=>{
+    const available=items.filter(item=>inScope(item)&&matchesText(item));
+    if(!available.some(item=>item.dataset.venue===selectedVenue))selectedVenue='';
+    if(!available.some(item=>item.dataset.year===selectedYear&&(!selectedVenue||item.dataset.venue===selectedVenue)))selectedYear='';
+    [[venue,'venue',selectedVenue,'year',selectedYear],[year,'year',selectedYear,'venue',selectedVenue]].forEach(([select,key,value,otherKey,otherValue])=>{
+      const candidates=available.filter(item=>!otherValue||item.dataset[otherKey]===otherValue),counts=new Map();
+      candidates.forEach(item=>counts.set(item.dataset[key],(counts.get(item.dataset[key])||0)+1));
+      // Remove unavailable options instead of leaving a native menu full of zeros.
+      select.replaceChildren(...options.get(select).filter(option=>!option.value||counts.has(option.value)).map(option=>new Option(`${option.label}（${option.value?counts.get(option.value):candidates.length}）`,option.value)));
+      select.value=value;
     });
   };
+  const persist=(push=false,clearHash=false)=>{
+    const url=new URL(location.href);
+    const values={scope:scope==='curated'?scope:'',venue:selectedVenue,year:selectedYear,q:query.value.trim(),topic,page:page?String(page+1):'',per_page:size===10?'':String(size)};
+    Object.entries(values).forEach(([key,value])=>{if(value)url.searchParams.set(key,value);else url.searchParams.delete(key)});
+    if(clearHash)url.hash='';
+    if(url.href!==location.href)history[push?'pushState':'replaceState'](null,'',`${url.pathname}${url.search}${url.hash}`);
+  };
   const draw=()=>{
-    facetCounts(venue,'venue','year',year.value);facetCounts(year,'year','venue',venue.value);
+    classic.setAttribute('aria-checked',String(scope==='curated'));
+    syncFacets();
     const matching=items.filter(matches);
     const pages=Math.max(1,Math.ceil(matching.length/size));page=Math.max(0,Math.min(page,pages-1));
     items.forEach(item=>item.hidden=true);matching.slice(page*size,(page+1)*size).forEach(item=>item.hidden=false);
-    count.textContent=`${matching.length} 篇论文`;if(empty)empty.hidden=matching.length>0;
+    if(empty)empty.hidden=matching.length>0;
     status.textContent=`${page+1} / ${pages}`;prev.disabled=page===0;next.disabled=page===pages-1;
     if(clear)clear.hidden=!query.value;
     if(topicFilter)topicFilter.hidden=!topic;
     if(topicLabel)topicLabel.textContent=topic;
-    if(reset)reset.hidden=!(venue.value||year.value||topic||query?.value);
+    if(reset)reset.hidden=!(selectedVenue||selectedYear||topic||query?.value);
     root.querySelectorAll('[data-paper-topic]').forEach(link=>{const active=link.dataset.paperTopic===topic;link.classList.toggle('active',active);if(active)link.setAttribute('aria-current','true');else link.removeAttribute('aria-current')});
-    writeListState({venue:venue.value,year:year.value,q:query?.value.trim()||'',topic,page:page+1,per_page:size});
   };
-  const changed=()=>{page=0;writeListState({},'');draw()};
-  [venue,year].forEach(control=>control.addEventListener('change',changed));
+  const changed=(push=true)=>{page=0;draw();persist(push,true)};
+  venue.addEventListener('change',()=>{selectedVenue=venue.value;changed()});
+  year.addEventListener('change',()=>{selectedYear=year.value;changed()});
+  classic.addEventListener('click',()=>{scope=scope==='curated'?'all':'curated';changed()});
   form?.addEventListener('submit',event=>{event.preventDefault();changed()});
-  query?.addEventListener('input',changed);
+  query?.addEventListener('input',()=>changed(false));
   clear?.addEventListener('click',()=>{query.value='';changed();query.focus()});
-  reset?.addEventListener('click',()=>{venue.value='';year.value='';topic='';if(query)query.value='';changed()});
+  reset?.addEventListener('click',()=>{selectedVenue='';selectedYear='';topic='';if(query)query.value='';changed()});
   root.querySelector('[data-conference-topic-clear]')?.addEventListener('click',()=>{topic='';changed()});
   root.querySelectorAll('[data-paper-topic]').forEach(link=>link.addEventListener('click',event=>{
     if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey||event.button!==0)return;
-    event.preventDefault();topic=link.dataset.paperTopic;changed();scrollList(root);
+    event.preventDefault();topic=link.dataset.paperTopic;scope='all';changed();scrollList(root);
   }));
   sizeSelect.addEventListener('change',()=>{size=Number(sizeSelect.value);changed();scrollList(root.querySelector('.paper-list'))});
-  const move=delta=>{page+=delta;writeListState({},'');draw();scrollList(root.querySelector('.paper-list'))};
+  const move=delta=>{page+=delta;draw();persist(true,true);scrollList(list)};
   const revealPaper=()=>{
     const target=items.find(item=>`#${item.id}`===location.hash);
     if(!target)return false;
-    if(!matches(target)){venue.value='';year.value='';topic='';if(query)query.value=''}
-    page=Math.floor(items.filter(matches).indexOf(target)/size);draw();
+    if(target.dataset.curated!=='true')scope='all';
+    if(!matches(target)){selectedVenue='';selectedYear='';topic='';if(query)query.value=''}
+    page=Math.floor(items.filter(matches).indexOf(target)/size);draw();persist();
     requestAnimationFrame(()=>scrollList(target));return true;
   };
   window.addEventListener('hashchange',revealPaper);
+  window.addEventListener('popstate',()=>{restore();if(!revealPaper()){draw();persist()}});
   prev.addEventListener('click',()=>move(-1));next.addEventListener('click',()=>move(1));
-  if(!revealPaper())draw();
+  restore();if(!revealPaper()){draw();persist()}
+  root.querySelector('[data-conference-enhanced]').hidden=false;
+  root.querySelector('[data-conference-controls]').hidden=false;
 });
 document.querySelectorAll('[data-version-browser]').forEach(root=>{
   const items=[...root.querySelectorAll('[data-version-item]')],groups=[...root.querySelectorAll('[data-version-group]')],project=root.querySelector('[data-version-project]'),year=root.querySelector('[data-version-year]'),sizeSelect=root.querySelector('[data-version-size]'),prev=root.querySelector('[data-version-prev]'),next=root.querySelector('[data-version-next]'),status=root.querySelector('[data-version-status]'),controls=root.querySelector('[data-version-controls]'),viewButtons=[...root.querySelectorAll('[data-version-view]')];

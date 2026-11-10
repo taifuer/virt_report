@@ -29,6 +29,15 @@ STATIC_ASSET_NAMES = ("brand-mark.png", "site.css", "site.js")
 SEARCH_ASSET_NAMES = ("search.css", "editorial-search.js")
 FAVICON_ASSET_NAMES = ("favicon-32.png", "favicon.ico")
 MECHANISM_DIAGRAM_NAMES = (
+    "linux-kernel-architecture", "linux-kernel-milestones",
+    "linux-isolation-layers", "linux-read-cooperation",
+    "linux-scheduler-evolution", "linux-eevdf-choice",
+    "linux-cow-mappings", "linux-page-reclaim",
+    "linux-irq-identifiers", "linux-irq-rearm",
+    "linux-block-buffers", "linux-write-boundaries",
+    "linux-network-tx-ownership", "linux-napi-budget",
+    "linux-task-wakeup", "linux-page-fault", "linux-interrupt-completion",
+    "linux-block-completion", "linux-network-handoffs",
     "migration-architecture", "migration-precopy-sequence", "migration-load-dispatch",
     "multifd-synchronization", "dirty-ring-handoff", "postcopy-page-fault",
     "virtqueue-tx-layout", "virtqueue-private-shared", "vhost-user-control-data", "vfio-address-paths",

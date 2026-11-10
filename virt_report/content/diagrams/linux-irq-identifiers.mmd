@@ -1,0 +1,7 @@
+flowchart TB
+    accTitle: 一次 MSI-X 通知中的三个编号空间
+    accDescr: 示意 RX 队列 2 配置使用 MSI-X 表项 3，消息路由到目标 CPU 的向量 0x51，内核关联 Linux IRQ 137 并调用保存队列上下文的处理函数。这些编号由配置与分配建立关系，不是同一个编号。
+    A["网卡 RX 队列 2"] --> B["MSI-X 表项 3\n消息地址与数据"]
+    B -->|配置的消息路由| C["目标 CPU\n中断向量 0x51"]
+    C -->|内核关联| D["Linux IRQ 137\nirq_desc / irqaction"]
+    D --> E["驱动处理函数\n检查 RX 队列 2"]

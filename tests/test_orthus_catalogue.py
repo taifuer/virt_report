@@ -104,7 +104,6 @@ def test_catalogue_prefers_supplied_doi_and_keeps_source_provenance(
     ("vee14-introspection", "10.1145/2576195.2576196"),
     ("vee14-tesseract", "10.1145/2576195.2576198"),
     ("vee14-mortar", "10.1145/2576195.2576203"),
-    ("vee12-dvm", "10.1145/2151024.2151032"),
     ("vee12-secondsite", "10.1145/2151024.2151039"),
     ("vee12-compsc", "10.1145/2151024.2151040"),
     ("vee11-rehype", "10.1145/1952682.1952692"),
@@ -117,10 +116,12 @@ def test_verified_papers_link_to_the_conference_doi(paper_id, doi):
     assert paper["url"] == f"https://doi.org/{doi}"
 
 
-def test_dvm_keeps_the_2012_conference_title():
-    paper = next(p for p in conferences.load_content()["papers"]
-                 if p["id"] == "vee12-dvm")
-    assert paper["title"] == "DVM: Towards a Datacenter-Scale Virtual Machine"
+def test_dvm_is_excluded_as_a_distributed_programming_vm():
+    content = conferences.load_content()
+    assert not any(p["id"] == "vee12-dvm" for p in content["papers"])
+    record = next(p for p in content["screening"]["papers"] if p["id"] == "vee12-dvm")
+    assert record["decision"] == "exclude"
+    assert "DISA" in record["reason"]
 
 
 def test_hyperfresh_is_discoverable_with_its_nested_replacement_boundary():

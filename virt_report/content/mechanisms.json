@@ -26,6 +26,12 @@
       "overview": "virtualization-basics"
     },
     {
+      "slug": "linux-foundations", "group": "foundations",
+      "title": "Linux 内核基础",
+      "summary": "从早期 PC 到多核与云计算，理解 Linux 的发展演变，以及调度、内存和 I/O 的协作。",
+      "overview": "linux-kernel-evolution"
+    },
+    {
       "slug": "cpu-virtualization",
       "overview": "cpu-virtualization",
       "group": "foundations",
@@ -159,6 +165,114 @@
     "1.2": ["device-virtualization", "virtio-device-initialization", "packed-virtqueue", "qemu-network-tx", "virtio-net-rx", "qemu-virtio-blk", "virtio-blk-read", "network-io", "interrupt-delivery", "virtio-gpu"]
   },
   "articles": [
+    {
+      "slug": "linux-kernel-evolution", "topic": "linux-foundations",
+      "title": "Linux 内核基础：发展演变与核心机制",
+      "summary": "从单处理器 PC 到多核与云计算，沿一次文件读取理解内核各子系统的分工与协作。",
+      "reviewed_on": "2026-11-10", "template": "_linux_kernel_evolution_article.html",
+      "search_terms": ["Linux 历史", "内核演变", "SMP", "单体内核", "系统调用", "cgroups", "namespace", "KVM", "merge window", "LTS"],
+      "baselines": [{"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}],
+      "sections": [
+        {"id": "preface", "title": "内核的位置与基本分工"},
+        {"id": "evolution", "title": "从早期 PC 到通用内核"},
+        {"id": "scaling", "title": "多核与高速设备带来的改变"},
+        {"id": "isolation", "title": "容器、虚拟机与资源管理"},
+        {"id": "request", "title": "一次文件读取串起五个子系统"},
+        {"id": "development", "title": "版本演进与长期维护"},
+        {"id": "reading", "title": "只读观察与阅读路径"},
+        {"id": "sources", "title": "源码与延伸阅读"}
+      ]
+    },
+    {
+      "slug": "linux-execution-scheduling", "topic": "linux-foundations",
+      "title": "Linux 执行与调度：线程、阻塞和 CPU 时间",
+      "summary": "线程如何让出和重新获得 CPU；从 O(1)、CFS 到 EEVDF 的调度演变。",
+      "reviewed_on": "2026-11-10", "template": "_linux_execution_scheduling_article.html",
+      "search_terms": ["task_struct", "O(1)", "CFS", "EEVDF", "进程", "线程", "调度器", "runqueue", "cpu.max"],
+      "baselines": [{"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}],
+      "sections": [
+        {"id": "preface", "title": "线程与执行上下文"},
+        {"id": "history", "title": "从时间片调度到 CFS 与 EEVDF"},
+        {"id": "states", "title": "任务状态与运行队列"},
+        {"id": "path", "title": "阻塞、唤醒与上下文切换"},
+        {"id": "policy", "title": "公平调度与资源约束"},
+        {"id": "placement", "title": "选择任务、选择 CPU 与限制资源"},
+        {"id": "observe", "title": "只读观察与虚拟化对照"},
+        {"id": "sources", "title": "源码与延伸阅读"}
+      ]
+    },
+    {
+      "slug": "linux-memory", "topic": "linux-foundations",
+      "title": "Linux 内存：地址空间、缺页与页面回收",
+      "summary": "从一次内存访问理解地址转换、按需分配、写时复制与页面回收。",
+      "reviewed_on": "2026-11-10", "template": "_linux_memory_article.html",
+      "search_terms": ["VMA", "PTE", "page fault", "COW", "buddy", "slab", "NUMA", "Maple Tree", "MGLRU", "folio"],
+      "baselines": [{"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}],
+      "sections": [
+        {"id": "preface", "title": "映射与实际驻留"},
+        {"id": "history", "title": "从按需分页到多核内存管理"},
+        {"id": "structures", "title": "地址、页表与物理页"},
+        {"id": "faults", "title": "首次访问与写时复制"},
+        {"id": "reclaim", "title": "回收、换页与分配器"},
+        {"id": "allocation", "title": "分配粒度、连续性与内存压力"},
+        {"id": "observe", "title": "只读观察与两级映射"},
+        {"id": "sources", "title": "源码与延伸阅读"}
+      ]
+    },
+    {
+      "slug": "linux-interrupts", "topic": "linux-foundations",
+      "title": "Linux 中断：硬件事件、处理上下文与完成通知",
+      "summary": "设备事件如何到达 CPU，驱动如何处理完成队列并唤醒等待线程。",
+      "reviewed_on": "2026-11-10", "template": "_linux_interrupts_article.html",
+      "search_terms": ["IRQ", "MSI-X", "softirq", "workqueue", "中断上下文", "PREEMPT_RT", "EOI", "竞态"],
+      "baselines": [{"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}],
+      "sections": [
+        {"id": "preface", "title": "事件与处理上下文"},
+        {"id": "history", "title": "从共享中断线到多队列与线程化处理"},
+        {"id": "identifiers", "title": "硬件标识与内核 IRQ"},
+        {"id": "path", "title": "中断入口与延后处理"},
+        {"id": "completion", "title": "通知、完成与唤醒"},
+        {"id": "races", "title": "屏蔽、重开与通知竞态"},
+        {"id": "observe", "title": "只读观察与客户机中断"},
+        {"id": "sources", "title": "源码与延伸阅读"}
+      ]
+    },
+    {
+      "slug": "linux-block-io", "topic": "linux-foundations",
+      "title": "Linux 存储 I/O：页缓存、块请求与持久化",
+      "summary": "一次文件读写如何经过页缓存、块层与设备；完成和持久化分别意味着什么。",
+      "reviewed_on": "2026-11-10", "template": "_linux_block_io_article.html",
+      "search_terms": ["VFS", "page cache", "bio", "blk-mq", "fsync", "O_DIRECT", "FUA", "io_uring", "NVMe", "队列深度"],
+      "baselines": [{"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}],
+      "sections": [
+        {"id": "preface", "title": "应用 I/O 与设备 I/O"},
+        {"id": "history", "title": "从机械磁盘调度到多队列块层"},
+        {"id": "structures", "title": "页缓存、bio 与 request"},
+        {"id": "read", "title": "一次读请求及其完成"},
+        {"id": "writes", "title": "写入完成与持久化"},
+        {"id": "queues", "title": "队列深度、合并与背压"},
+        {"id": "observe", "title": "只读观察与虚拟磁盘"},
+        {"id": "sources", "title": "源码与延伸阅读"}
+      ]
+    },
+    {
+      "slug": "linux-network-io", "topic": "linux-foundations",
+      "title": "Linux 网络 I/O：收包、发包与缓冲区交接",
+      "summary": "沿 UDP 收发追踪 socket、skb 与网卡队列，解释 NAPI 和多核收发的设计。",
+      "reviewed_on": "2026-11-10", "template": "_linux_network_io_article.html",
+      "search_terms": ["skb", "NAPI", "socket", "recvfrom", "sendto", "TX completion", "DMA", "RSS", "RPS", "GSO", "GRO", "AF_XDP"],
+      "baselines": [{"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}],
+      "sections": [
+        {"id": "preface", "title": "接收事件与发送请求"},
+        {"id": "history", "title": "从逐包中断到批处理与多核收发"},
+        {"id": "structures", "title": "缓冲区、队列与 socket"},
+        {"id": "rx", "title": "外部数据到应用"},
+        {"id": "tx", "title": "从 sendto 到缓冲区回收"},
+        {"id": "scaling", "title": "批处理、多核与缓冲区生命期"},
+        {"id": "observe", "title": "只读观察与 virtio-net"},
+        {"id": "sources", "title": "源码与延伸阅读"}
+      ]
+    },
     {
       "slug": "virtualization-basics",
       "topic": "virtualization-basics",

@@ -999,6 +999,14 @@ def sync_public_metadata(conn: sqlite3.Connection,
 
 def _read_content() -> dict:
     content = json.loads(CONTENT_PATH.read_text(encoding="utf-8"))
+    readings_path = CONTENT_PATH.with_name("paper_readings.json")
+    if readings_path.exists():
+        content["reading_selection"] = json.loads(
+            readings_path.read_text(encoding="utf-8")
+        )
+    screening_path = CONTENT_PATH.with_name("paper_screening.json")
+    if screening_path.exists():
+        content["screening"] = json.loads(screening_path.read_text(encoding="utf-8"))
     if not INSTITUTION_OVERRIDES_PATH.exists():
         return content
     overrides = json.loads(
@@ -1028,10 +1036,119 @@ def _read_content() -> dict:
     return content
 
 
+def _validate_screening(content: dict) -> None:
+    """Require an individual admission decision, not just a keyword match."""
+    audit = content.get("screening")
+    if audit is None:
+        return  # Isolated metadata fixtures need not supply an editorial audit.
+    if not isinstance(audit, dict) or not isinstance(audit.get("papers"), list):
+        raise ValueError("论文筛选必须提供逐篇记录")
+    datetime.strptime(audit.get("reviewed_on", ""), "%Y-%m-%d")
+    records = audit.get("papers", [])
+    if any(not isinstance(record, dict) or not isinstance(record.get("id"), str)
+           or not record["id"].strip() for record in records):
+        raise ValueError("论文筛选记录缺少有效 id")
+    ids = [record["id"] for record in records]
+    if len(ids) != len(set(ids)):
+        raise ValueError("论文筛选记录包含重复 id")
+    for record in records:
+        if (record.get("decision") not in {"keep", "exclude", "defer"}
+                or record.get("origin") not in {"existing", "added"}
+                or not isinstance(record.get("title"), str) or not record["title"].strip()
+                or type(record.get("year")) is not int
+                or not isinstance(record.get("reason"), str)
+                or not record["reason"].strip()
+                or record.get("review_basis") not in {
+                    "editorial_record", "primary_abstract", "author_project",
+                    "pdf_sections", "primary_excerpt", "title",
+                }
+                or not record.get("source_url", "").startswith("https://")):
+            raise ValueError(f"论文筛选记录缺少决定、理由或来源: {record['id']}")
+        if record["decision"] == "keep" and record["review_basis"] == "title":
+            raise ValueError(f"仅有标题不能正式收录: {record['id']}")
+    kept = {record["id"] for record in records if record["decision"] == "keep"}
+    public = {paper["id"] for paper in content["papers"]}
+    if kept != public:
+        raise ValueError("公开论文与逐篇筛选的保留集合不一致")
+    by_id = {record["id"]: record for record in records}
+    if any((paper["title"], paper["year"]) != (
+        by_id[paper["id"]]["title"], by_id[paper["id"]]["year"],
+    ) for paper in content["papers"]):
+        raise ValueError("论文标题或年份与筛选记录不一致，需要重新核对")
+    content["screening_counts"] = {
+        decision: sum(record["decision"] == decision for record in records)
+        for decision in ("keep", "exclude", "defer")
+    }
+
+
+def _apply_reading_selection(content: dict) -> None:
+    """Curate explicitly; annual examples and publication status are not votes."""
+    selection = content.setdefault("reading_selection", {})
+    if not isinstance(selection, dict) or not isinstance(selection.get("papers", {}), dict):
+        raise ValueError("精选解读必须是按论文 id 组织的记录")
+    readings = selection.get("papers", {})
+    by_id = {paper["id"]: paper for paper in content["papers"]}
+    unknown = readings.keys() - by_id.keys()
+    if unknown:
+        raise ValueError(f"精选解读引用未知论文: {sorted(unknown)}")
+    if readings:
+        from virt_report import mechanisms
+
+        articles_by_slug = {item["slug"]: item for item in mechanisms.articles()}
+        datetime.strptime(selection.get("reviewed_on", ""), "%Y-%m-%d")
+        for field in ("policy", "reading_method", "method_url"):
+            if not isinstance(selection.get(field), str) or not selection[field].strip():
+                raise ValueError(f"精选标准缺少字段: {field}")
+        if not selection["method_url"].startswith("https://"):
+            raise ValueError("精选阅读方法必须提供 HTTPS 来源")
+    required = {
+        "basis", "reason", "question", "mechanism", "evaluation", "strengths",
+        "limitations", "relevance", "guide", "source_kind", "source_url",
+    }
+    for order, paper in enumerate(content["papers"]):
+        paper["archive_order"] = order
+        paper["curated"] = paper["id"] in readings
+        paper["reading"] = None
+        reading = readings.get(paper["id"])
+        if reading is None:
+            continue
+        if not isinstance(reading, dict) or any(
+            not isinstance(reading.get(key), str) or not reading[key].strip()
+            for key in required
+        ):
+            raise ValueError(f"精选论文缺少完整解读: {paper['id']}")
+        if reading["basis"] not in {"奠基机制", "代表性设计", "工程价值"}:
+            raise ValueError(f"未知精选依据: {paper['id']}")
+        if reading["source_kind"] not in {"pdf", "primary_excerpt"}:
+            raise ValueError(f"未知精选阅读依据: {paper['id']}")
+        if reading["source_kind"] != "pdf" and not reading.get("source_note"):
+            raise ValueError(f"非全文解读必须说明证据边界: {paper['id']}")
+        for key in ("source_url", "support_url"):
+            if reading.get(key) and not reading[key].startswith("https://"):
+                raise ValueError(f"精选来源必须使用 HTTPS: {paper['id']}")
+        slugs = reading.get("related_articles", [])
+        if not slugs or any(slug not in articles_by_slug for slug in slugs):
+            raise ValueError(f"精选解读缺少有效的站内延伸阅读: {paper['id']}")
+        paper["reading"] = {
+            **reading,
+            "reviewed_on": selection["reviewed_on"],
+            "articles": [articles_by_slug[slug] for slug in slugs],
+        }
+    content["curated_papers"] = sorted(
+        (paper for paper in content["papers"] if paper["curated"]),
+        key=lambda paper: (-paper["year"], paper["title"]),
+    )
+    content["regular_papers"] = [
+        paper for paper in content["papers"] if not paper["curated"]
+    ]
+    content["curated_count"] = len(content["curated_papers"])
+
+
 @lru_cache(maxsize=1)
 def load_content() -> dict:
     """Return validated public content plus derived page data."""
     content = _read_content()
+    _validate_screening(content)
     venues = content.get("venues", [])
     venue_keys = {item["key"] for item in venues}
     if len(venue_keys) != len(venues):
@@ -1183,6 +1300,7 @@ def load_content() -> dict:
             for key, item in known_topics.items()
             if paper["id"] in item["paper_ids"]
         ]
+    _apply_reading_selection(content)
     return content
 
 

@@ -1,0 +1,86 @@
+{% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
+{% from '_mechanism_diagram.html' import diagram with context %}
+<section id="preface" class="mechanism-section">
+  <h2>内核的位置与基本分工</h2>
+  <p>同一台机器可以一边编译程序，一边保存文件、接收网络请求。CPU 和内存是有限的，磁盘和网卡又按自己的节奏工作。Linux 内核负责把这些资源组织成应用可使用的进程、地址空间、文件和 socket：决定谁获得 CPU，维护地址与权限，把 I/O 交给设备，并在结果就绪时让等待者继续。</p>
+  <p>Linux 严格说是内核，不等于整个发行版。Shell、C 库、systemd、容器运行时和 QEMU 都是用户空间软件；发行版把内核与这些工具、配置和软件包组合成可用系统。应用通常通过库封装的系统调用请求内核服务，普通计算和已映射内存访问则直接执行，不需要每条指令都请求内核。</p>
+  {{ diagram('linux-kernel-architecture', '应用、内核子系统与硬件', '实线表示主要调用或访问关系，虚线表示资源支持与事件通知。各子系统相互协作，不是每次请求都依次经过所有方框。') }}
+  <p>图中的系统调用是权限边界，不是把请求发给另一个“内核进程”。线程执行 read 时，通常由同一线程进入内核并使用自己的内核栈；需要等待或被抢占时才可能切换任务。设备中断可以打断正在执行的上下文，内核工作线程也可以处理后台工作，所以内核不只有“替应用执行系统调用”这一种运行方式。</p>
+  <p>Linux 通常称为<strong>单体内核</strong>：调度、内存、文件系统和大量驱动在内核权限下协作，可直接调用彼此的接口。它又支持可加载模块；模块化方便按需装载和维护，但模块仍在内核中执行，不因此获得用户进程那样的故障隔离。后文从发展过程解释这套结构为什么不断增加新的队列、记账和同步机制。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+<section id="evolution" class="mechanism-section">
+  <h2>从早期 PC 到通用内核</h2>
+  <p>1991 年的 Linux 0.01 面向 i386 AT 机器。Linus 的<a href="https://www.kernel.org/pub/linux/kernel/Historic/old-versions/RELNOTES-0.01">原始发布说明</a>列出有限的磁盘、屏幕、键盘和串口支持，部分系统调用还未实现，并明确它更适合阅读和实验。后来支持的机器、设备和工作负载不断扩大；内核的历史不是同一个算法简单加速，而是不断重新处理并发、规模和可靠性问题。</p>
+  {{ diagram('linux-kernel-milestones', '早期演进的四个节点', '图中是发布节点，不是所有机制首次出现的精确边界；2.6 是长期演进的一个系列，不能把后续功能都算到 2.6.0。') }}
+  <table><thead><tr><th>阶段</th><th>机器与需求的变化</th><th>对内核设计的影响</th></tr></thead><tbody>
+    <tr><td>1991—1994：从 0.01 到 1.0</td><td>从少量 PC 上的实验走向可用系统</td><td>逐步完善进程、虚拟内存、文件系统、网络和驱动支持；稳定的应用接口开始承载越来越多软件</td></tr>
+    <tr><td>1996：Linux 2.0 与 SMP</td><td>一台机器上不止一个处理器，需要同时执行多个任务</td><td>共享内核数据必须正确同步；“可以在多个 CPU 上运行”不等于共享路径已经能线性扩展</td></tr>
+    <tr><td>2003 起：2.6 系列</td><td>服务器、桌面与嵌入式负载并存，多核和大内存逐渐普及</td><td>每 CPU 运行队列、内核可抢占性、细粒度同步和 NUMA 管理持续发展；同一系列内也会替换重要算法</td></tr>
+    <tr><td>此后的持续演进</td><td>更多核、更快设备、虚拟化与多租户共用机器</td><td>多队列 I/O、批处理、资源控制与虚拟化进入核心路径；优化重点从单项操作延迟扩展到并行、局部性与尾延迟</td></tr>
+  </tbody></table>
+  <p>1.0、2.0、2.6.0 的时间可核对 kernel.org 的 <a href="https://www.kernel.org/pub/linux/kernel/v1.0/">1994 年归档</a>、<a href="https://www.kernel.org/pub/linux/kernel/v2.0/">1996 年归档</a>和<a href="https://www.kernel.org/pub/linux/kernel/v2.6/">2003 年起的归档</a>。2.0 源码包内的 <code>Documentation/SMP.txt</code> 已说明多处理器支持，也列出调度与中断分配等待改进项。这里把“支持一种硬件”和“有效利用它”分开看：两者往往相隔多个版本的工程工作。</p>
+  <h3>从一把共享锁到分散状态</h3>
+  <p>单 CPU 上，只要处理好中断和任务切换，共享结构相对容易推理。到了 SMP，两颗 CPU 可以同时修改同一条队列；一把大锁容易保证互斥，却也让其他 CPU 排队。缩小锁的保护范围、按 CPU 或队列拆分状态可以减少争用，但又需要处理负载不均、跨 CPU 唤醒和状态汇总。新增的复杂度，是换取并行能力的成本。</p>
+  <p>这条思路贯穿后续各篇：调度器的每 CPU 运行队列，块层的多队列，网卡的多队列与亲和性，内存分配器的每 CPU 缓存，都在避免“所有 CPU 反复争抢同一个中心”。它们不是同一个实现，也没有彻底消除共享与同步。</p>
+</section>
+<section id="scaling" class="mechanism-section">
+  <h2>多核与高速设备带来的改变</h2>
+  <h3>CPU：从挑选任务到公平与响应</h3>
+  <p>早期扫描任务的办法容易理解，任务多了却会增加选择工作。2002 年的 O(1) 设计利用每 CPU 优先级数组减少这类开销；Linux 2.6.23 的 CFS 用权重归一化的运行时间衡量服务份额；Linux 6.6 起的 EEVDF 再把“有没有资格获得服务”与“谁的虚拟截止时间更早”分开。目标从来不只是跑得多：交互任务希望早点响应，长期运行任务希望得到公平份额，频繁切换又会消耗 CPU。算法和数值例子见<a href="linux-execution-scheduling.html#policy">公平调度与资源约束</a>。</p>
+  <h3>内存：容量变大后，距离与管理成本也变重要</h3>
+  <p>虚拟地址让程序不必直接管理物理页，按需分页和 COW 又把未必需要的分配、复制推迟到实际访问。多核大机器中，NUMA 使不同内存位置的访问代价不同；海量映射与页面也增加查找、加锁和回收成本。Maple Tree 管理地址区间，folio 调整页面管理粒度，MGLRU 改善回收时的冷热判断：三者分别解决不同问题，并不是某一种“新内存”替换了页表。详见<a href="linux-memory.html">地址空间、缺页与页面回收</a>。</p>
+  <h3>I/O：设备越快，软件交接越显眼</h3>
+  <p>机械盘的寻道很贵，调整请求顺序可能省下大量等待；SSD/NVMe 减少这部分成本后，队列锁、跨核访问和提交开销更容易成为瓶颈。blk-mq 把软件提交与硬件队列关联，允许多核并行推进。网络则面对小包带来的高事件率，NAPI 用“通知启动、按预算批量处理”摊薄每包开销。二者共同引出的取舍是：批量越大，平均开销可能越低，但某个短请求也可能等待更久。</p>
+  <p>io_uring 的共享 SQ/CQ 解决应用与内核的提交和结果交接；它并不取代文件系统或 blk-mq。原始实现在 <a href="https://github.com/torvalds/linux/blob/v5.1/fs/io_uring.c">Linux 5.1 源码</a>可见。把调用改成异步，也没有消除设备完成和缓冲区生命期：提交者可以先做其他事，但相关数据仍必须保持到约定的完成边界。</p>
+</section>
+<section id="isolation" class="mechanism-section">
+  <h2>容器、虚拟机与资源管理</h2>
+  <p>云环境把问题从“让一个应用跑得快”扩大为“让多个工作负载在同一台机器上可控地共存”。namespace 为进程提供不同的资源视图，例如 PID、挂载点和网络；cgroup 控制器则做资源记账、分配和限制。前者不能代替 CPU 配额，后者也不能替进程创建一个独立内核。容器还会组合权限、capability、seccomp 等机制，不能只凭两个名称就认定具备完整安全隔离。</p>
+  {{ diagram('linux-isolation-layers', '共享宿主内核与独立 Guest 内核', '容器应用调用宿主内核，Guest 应用先调用 Guest 内核。两条路径最终都依赖宿主资源；图示常见软件设备路径，不展开初始化和设备直通。') }}
+  <p>图中容器应用的系统调用进入宿主内核；Guest 应用的系统调用先进入自己的 Guest 内核。Guest 内核再使用 vCPU、Guest 物理地址和虚拟设备。KVM 接入硬件虚拟化，QEMU 组装机器和提供设备模型，宿主调度器仍需给 vCPU 线程分配 CPU。虚拟机因此多了一层独立的内核状态，而不是把容器的资源限制调得更严格。</p>
+  <p><a href="https://github.com/torvalds/linux/blob/v2.6.20/drivers/kvm/Kconfig">Linux 2.6.20 的 KVM 配置</a>已通过 <code>/dev/kvm</code> 暴露硬件虚拟化能力；<a href="https://github.com/torvalds/linux/blob/v2.6.24/Documentation/cgroups.txt">2.6.24 的 cgroups 文档</a>解释了把任务按资源需求分组的设计。两条路线可以组合：QEMU 进程同样能受宿主 cgroup 限制，Guest 内部还可以运行容器。它们不是互斥的“内核发展阶段”。</p>
+  <p>例如 Guest 应用等待虚拟磁盘读取，可能既有 Guest 设备队列等待，也有宿主存储排队；完成后 Guest 任务虽然可运行，vCPU 线程仍可能没拿到物理 CPU。排查时必须标明自己观察的是哪一层，不能把 Guest 的 CPU 利用率直接当成宿主调度结果。继续对照<a href="virtualization-basics.html">虚拟化基础</a>与<a href="kvm-vcpu-run.html">KVM vCPU 执行</a>。</p>
+</section>
+<section id="request" class="mechanism-section">
+  <h2>一次文件读取串起五个子系统</h2>
+  <p>设应用从本地普通文件读取 4 KiB，元数据已就绪，数据没有命中页缓存；不展开预读、压缩和虚拟化。下面跟踪数据和等待状态，而不是假设每个函数都属于独立线程。</p>
+  {{ diagram('linux-read-cooperation', '缓存未命中、设备完成与线程继续', '应用与内核执行两列表示同一读取线程的两个权限阶段；设备完成处理可以发生在另一个 CPU。图示先睡眠、后完成的情况，快速完成时可能不必睡眠。') }}
+  <h3>数据沿 I/O 路径走，线程沿调度状态走</h3>
+  <ol>
+    <li><strong>系统调用与文件系统：</strong>应用提供文件描述符、缓冲区和长度。内核定位文件区间、检查缓存；命中时可复制并返回，本次根本不需要设备读取。</li>
+    <li><strong>内存与块层：</strong>缓存未命中时准备接收数据的内存，文件系统把文件偏移映射到块位置，块层组织 bio/request，驱动设置 DMA 和设备命令。物理地址与 DMA 地址不能随意互换。</li>
+    <li><strong>调度：</strong>线程登记等待并重查条件。数据仍未就绪才睡眠，让 CPU 可以执行其他任务；睡眠并没有停止设备。</li>
+    <li><strong>中断与完成：</strong>设备更新完成状态，驱动通过中断或轮询发现结果。完成回调更新页状态、记录错误、释放资源，并唤醒等待者。一次通知可能覆盖多个完成项。</li>
+    <li><strong>恢复执行：</strong>线程重新可运行，等获得 CPU 后检查结果、复制数据到用户缓冲区，再从系统调用返回。唤醒不等于已经返回。</li>
+  </ol>
+  <p>源码可以沿 <a href="{{ linux }}mm/filemap.c#L2899">generic_file_read_iter() 的读取选择</a>、<a href="{{ linux }}block/blk-mq.c#L1158">blk_mq_end_request() 的请求完成</a>和<a href="{{ linux }}kernel/sched/core.c#L4143">try_to_wake_up() 的任务唤醒</a>分别观察。它们通过数据结构、完成回调和等待状态衔接，不是一串始终运行在同一个 CPU 上的同步函数调用。</p>
+  <p>把同一请求的耗时粗分为“CPU 上执行、等待设备、等待获得 CPU”，就能看出为什么只优化调度器未必改善慢盘，只换快盘也未必解决 CPU 过载。实际路径可能有多段等待与并行，这个拆分用于定位边界，不是精确性能公式。</p>
+  <p>网络接收又有一个重要不同：外部报文可以先到，驱动预先准备 RX 缓冲区；recv 是从 socket 取数据或等待数据，并不命令远端发送特定报文。发送完成也首先描述本地资源可回收，不代表远端已收到。五篇详解分别展开<a href="linux-execution-scheduling.html">调度</a>、<a href="linux-memory.html">内存</a>、<a href="linux-interrupts.html">中断</a>、<a href="linux-block-io.html">存储</a>和<a href="linux-network-io.html">网络</a>。</p>
+</section>
+<section id="development" class="mechanism-section">
+  <h2>版本演进与长期维护</h2>
+  <p>现代内核按发布周期滚动演进：补丁先经子系统评审、集成测试，再在约两周的合并窗口进入主线；随后若干 rc 版本集中修复问题，正式版之后由 stable 或长期维护分支继续接收适合回移的修复。Linux 的版本号不是语义化版本承诺，不能把 5.x 到 6.x 当作整个架构被推翻。流程依据见<a href="{{ linux }}Documentation/process/2.Process.rst">内核开发过程</a>。</p>
+  <p>同样写着“Linux 6.x”的两台机器，实际行为仍可能不同：发行版可能回移补丁，内核配置决定某功能是否编译，运行参数和驱动决定是否启用，硬件也有自己的限制。本文固定源码基线解释当前机制，同时用旧版源码标注历史；上线评估应查实际发行版的变更记录与配置，而不是只比较主版本号。</p>
+  <p>兼容性也有边界：内核重视已有用户空间程序继续工作，但内部驱动接口并非永久不变。发行版的模块 ABI 承诺还可能与上游不同。LTS 表示一条维护线，不意味着每个新功能都会回移，更不表示所有硬件和工作负载都应采用同一内核配置。</p>
+</section>
+<section id="reading" class="mechanism-section">
+  <h2>只读观察与阅读路径</h2>
+  <p>可先观察自己的实验环境，不必先调参数或制造压力。下面命令只读取信息；路径和权限因发行版、内核配置及容器可见性而异。</p>
+  <table><thead><tr><th>观察入口</th><th>对应问题</th><th>解释边界</th></tr></thead><tbody>
+    <tr><td><code>uname -r</code>、<code>lscpu</code></td><td>正在运行的内核与 CPU/NUMA 拓扑</td><td>在 VM 中看到的可能是 Guest 视图；版本字符串不是完整补丁清单</td></tr>
+    <tr><td><code>ps -eLo pid,tid,psr,stat,comm</code></td><td>哪些线程可运行、睡眠，最近在哪个 CPU 上执行</td><td>一次快照不能解释整段延迟，R 也不保证此刻正在执行</td></tr>
+    <tr><td><code>/proc/meminfo</code>、<code>/proc/vmstat</code></td><td>驻留、缓存、回收与缺页活动</td><td>缓存不是自动等同泄漏；许多计数需要比较时间窗口内的增量</td></tr>
+    <tr><td><code>/proc/interrupts</code>、<code>/proc/diskstats</code>、<code>ip -s link</code></td><td>通知、块设备与网络工作量</td><td>三者处于不同统计层次，不能期待中断数、请求数和包数一一对应</td></tr>
+  </tbody></table>
+  <p>例如“文件读取慢”可以先分成：是否真正发出块 I/O，设备完成是否慢，完成后线程是否仍在等 CPU。再选择对应子系统的统计或跟踪工具。先明确观察对象和完成边界，比同时修改多个调度、缓存和中断参数更容易验证原因。</p>
+  <p>对应原理可分开追踪：<a href="linux-execution-scheduling.html#path">阻塞后恢复执行</a>解释线程的去向；<a href="linux-memory.html#faults">缺页与 COW</a>解释地址和物理页的关系；<a href="linux-interrupts.html#completion">通知与完成</a>解释事件交接；<a href="linux-block-io.html#writes">写入与持久化</a>、<a href="linux-network-io.html#tx">网络发送与回收</a>则对比两种不同的完成语义。</p>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2>源码与延伸阅读</h2>
+  <ul>
+    <li>早期材料：<a href="https://www.kernel.org/pub/linux/kernel/Historic/old-versions/RELNOTES-0.01">Linux 0.01 发布说明</a>；<a href="https://www.kernel.org/pub/linux/kernel/v2.0/">2.0 源码与 SMP 说明</a>。这些用于还原当时的约束，不作为现代调参指南。</li>
+    <li>演变依据：<a href="https://github.com/torvalds/linux/blob/v2.6.12/Documentation/sched-design.txt">O(1) 设计</a>、<a href="{{ linux }}Documentation/scheduler/sched-design-CFS.rst">CFS</a>、<a href="{{ linux }}Documentation/scheduler/sched-eevdf.rst">EEVDF</a>、<a href="{{ linux }}Documentation/block/blk-mq.rst">blk-mq</a>、<a href="{{ linux }}Documentation/networking/napi.rst">NAPI</a>。</li>
+    <li>资源与虚拟化：<a href="{{ linux }}Documentation/admin-guide/cgroup-v2.rst">cgroup v2</a>、<a href="{{ linux }}Documentation/virt/kvm/api.rst">KVM API</a>；开发与兼容性：<a href="{{ linux }}Documentation/process/2.Process.rst">开发流程</a>、<a href="{{ linux }}Documentation/process/stable-api-nonsense.rst">内核内部接口的边界</a>。</li>
+  </ul>
+</section>

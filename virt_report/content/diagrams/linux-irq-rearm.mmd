@@ -1,0 +1,16 @@
+sequenceDiagram
+    accTitle: 队列空检查与重新打开通知之间的竞争窗口
+    accDescr: 本例设备在屏蔽期间保留待通知事件。驱动判空后又到一个包，NAPI 完成并重新打开通知，设备根据保留状态再次通知。不能假定所有设备都有此保证；实际驱动必须按硬件协议复查或重新调度。
+    participant D as 网卡队列<br/>本例保留 pending
+    participant P as 驱动 poll
+    participant N as NAPI 核心
+    Note over D,P: 本轮队列通知被屏蔽
+    P->>D: 消费完成项，最后检查队列
+    D-->>P: 此刻为空
+    D->>D: 新包到达，记录完成与 pending
+    Note over D,P: 竞争窗口：判空不代表之后一直空
+    P->>N: napi_complete_done()
+    N-->>P: 本例成功结束本轮
+    P->>D: 按设备约定重新使能通知
+    D-->>P: 保留事件触发通知
+    P->>N: 调度新一轮 poll

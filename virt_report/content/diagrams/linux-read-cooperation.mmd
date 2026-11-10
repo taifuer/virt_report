@@ -1,0 +1,18 @@
+sequenceDiagram
+    accTitle: 一次缓存未命中的文件读取与线程等待
+    accDescr: 同一应用线程通过系统调用进入内核，提交设备读取后等待。设备 DMA 和完成通知由完成路径处理，页状态更新后唤醒线程；线程重新获得 CPU 才复制数据并返回用户态。
+    participant A as 读取线程<br/>用户态
+    participant K as 同一线程<br/>内核态
+    participant D as 存储设备
+    participant C as 驱动与完成路径
+    A->>K: read：文件、缓冲区、长度
+    K->>K: 缓存未命中<br/>准备页与块请求
+    K->>D: 提交设备命令与 DMA 缓冲区
+    Note over A,K: 登记等待、重查条件<br/>仍需等待则睡眠<br/>CPU 可运行其他任务
+    D->>D: 将数据 DMA 到页缓存
+    D-->>C: 发布完成状态，发出通知
+    C->>C: 消费完成<br/>更新页状态、记录错误
+    C-->>K: 唤醒：变为可运行
+    Note over A,K: 调度器再次选中该线程
+    K->>K: 检查结果<br/>复制到用户 buffer
+    K-->>A: 返回已读取长度或错误

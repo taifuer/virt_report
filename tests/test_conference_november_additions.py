@@ -13,14 +13,14 @@ ABSTRACT_IDS = {
     "osdi26-ramryder", "nsdi26-wallet", "nsdi26-cstar",
     "security26-hyperaudit", "eurosys26-bask", "asplos26-arancini",
 }
-NEW_IDS = ATC_IDS | ABSTRACT_IDS | {"asplos26-cemu"}
+NEW_IDS = ABSTRACT_IDS | {"asplos26-cemu"}
 
 
 def paper_block(page, pid):
     return page.split(f'id="paper-{pid}"', 1)[1].split("</article>", 1)[0]
 
 
-def test_twelve_additions_have_unique_ids_and_verified_institutions():
+def test_retained_additions_have_unique_ids_and_verified_institutions():
     content = conferences.load_content()
     papers = content["papers"]
     assert NEW_IDS <= {paper["id"] for paper in papers}
@@ -38,27 +38,23 @@ def test_twelve_additions_have_unique_ids_and_verified_institutions():
         assert not paper.get("abstract")  # Store paraphrases, not copied abstracts.
 
 
-def test_atc_reopens_current_tracking_without_relabeling_acceptance_as_publication():
+def test_atc_tracking_is_separate_from_title_only_paper_admission():
     content = conferences.load_content()
     venue = next(item for item in content["venues"] if item["key"] == "atc")
     assert venue["name"] == "ATC"
-    assert venue["latest_year"] == 2026
+    assert venue["latest_year"] == 2025
     assert "2025 年及以前为 USENIX ATC" in venue["focus"]
     assert "ACM SIGOPS" in venue["focus"]
     assert venue["latest_check"]["parser"] == "atc"
     assert venue["latest_check"]["source_url"] == "https://atc.sigops.org/2026/accepted.html"
     assert any(p["id"] == "atc25-hyperturtle" for p in content["papers"])
     page = render.render_conference_papers_html(Config(), content)
-    for paper in content["papers"]:
-        if paper["id"] not in ATC_IDS:
-            continue
-        assert paper["publication_status"] == "accepted"
-        assert paper["evidence_level"] == "title"
-        assert paper["architectures"] == []
-        assert not paper.get("published_on")
-        block = paper_block(page, paper["id"])
-        assert "已录用" in block and "目前仅核实标题，待摘要补充" in block
-        assert "已发表" not in block
+    assert ATC_IDS.isdisjoint(p["id"] for p in content["papers"])
+    audit = {p["id"]: p for p in content["screening"]["papers"]}
+    for pid in ATC_IDS:
+        assert audit[pid]["decision"] == "defer"
+        assert audit[pid]["review_basis"] == "title"
+        assert f'id="paper-{pid}"' not in page
 
 
 def test_abstracts_and_author_project_are_distinct_review_sources():
@@ -73,12 +69,13 @@ def test_abstracts_and_author_project_are_distinct_review_sources():
     assert "QEMU 8.0" in cemu["introduction"] and "FEMU" in cemu["introduction"]
     page = render.render_conference_papers_html(Config(), content)
     block = paper_block(page, cemu["id"])
-    assert 'href="https://github.com/cs-qyzhang/CEMU"' in block
-    assert "作者项目说明" in block and "待摘要补充" not in block
+    assert cemu["evidence_source_url"] == "https://github.com/cs-qyzhang/CEMU"
+    assert "作者项目说明" not in block and "待摘要补充" not in block
     for pid in ("eurosys26-bask", "asplos26-arancini"):
         block = paper_block(page, pid)
-        assert f'href="{by_id[pid]["evidence_source_url"]}"' in block
-        assert "公开摘要" in block
+        assert by_id[pid]["evidence_source_url"].startswith("https://")
+        assert f'href="{by_id[pid]["url"]}"' in block
+        assert "摘要与来源" not in block
 
 
 def test_year_review_and_check_notes_reflect_scope_of_the_update():
@@ -87,7 +84,7 @@ def test_year_review_and_check_notes_reflect_scope_of_the_update():
     assert content["updated_at"] >= "2026-11-02"
     for name in ("RamRyder", "CStar", "Wallet", "HyperAudit", "ATC 2026"):
         assert name in year["summary"]
-    assert "目前依据标题" in year["summary"]
+    assert "标题级候选暂不公开" in year["summary"]
     assert year["paper_count"] == content["year_counts"][2026]
     assert set(year["representative_ids"]) <= {p["id"] for p in content["papers"]}
     checks = {item["venue"]: item for item in content["edition_checks"]}

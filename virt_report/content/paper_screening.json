@@ -1,0 +1,1243 @@
+{
+  "version": 1,
+  "reviewed_on": "2026-11-10",
+  "scope": "以系统虚拟化为主：VMM/Hypervisor、真实 ISA 模拟、Guest/Host CPU/内存/I/O 契约、VM 状态迁移及其隔离安全。云、Serverless、容器、AI 或 VM 关键词不是自动收录依据。",
+  "method": "逐条复核标题、现有介绍和点评所陈述的贡献；边界不清的条目补查一手摘要、作者项目或原文段落。editorial_record 表示这次仅重审既有内容与来源指向，不声称新读过全文；pdf_sections 仅表示核对相关段落。精选深读范围另见 paper_readings.json。",
+  "decisions": {
+    "keep": "保留公开目录；是否精选另行决定",
+    "exclude": "与当前机制主题关联不足，移出公开目录",
+    "defer": "相关方向明确但证据不足，待核实后重新评审"
+  },
+  "papers": [
+    {
+      "id": "cacm74-popek-goldberg",
+      "title": "Formal Requirements for Virtualizable Third Generation Architectures",
+      "year": 1974,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "直接定义 VMM 与可虚拟化充分条件，是系统虚拟化理论起点。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.cse.iitb.ac.in/~puru/courses/spring2024-25/downloads/popekgoldberg.pdf"
+    },
+    {
+      "id": "osdi02-esx-memory",
+      "title": "Memory Resource Management in VMware ESX Server",
+      "year": 2002,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "研究 Hypervisor 内存超配、balloon、页共享与跨 Guest 资源分配。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.usenix.org/legacy/event/osdi02/tech/waldspurger/waldspurger.pdf"
+    },
+    {
+      "id": "sosp03-xen",
+      "title": "Xen and the Art of Virtualization",
+      "year": 2003,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "联合设计 Guest 内核、Hypervisor、页表与共享 I/O ring，属于核心系统虚拟化。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.cl.cam.ac.uk/research/srg/netos/papers/2003-xensosp.pdf"
+    },
+    {
+      "id": "nsdi05-live-migration",
+      "title": "Live Migration of Virtual Machines",
+      "year": 2005,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "直接研究运行中 VM 的 pre-copy、状态交接和业务连续性。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.usenix.org/legacy/events/nsdi05/tech/full_papers/clark/clark.pdf"
+    },
+    {
+      "id": "asplos06-software-hardware",
+      "title": "A Comparison of Software and Hardware Techniques for x86 Virtualization",
+      "year": 2006,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "比较二进制翻译与硬件辅助 VMM，分析退出和 MMU 虚拟化开销。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://web.stanford.edu/class/archive/cs/cs240/cs240.1136/readings/asplos235_adams.pdf"
+    },
+    {
+      "id": "asplos14-kvm-arm",
+      "title": "KVM/ARM: The Design and Implementation of the Linux ARM Hypervisor",
+      "year": 2014,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "解释 KVM/ARM 特权级分工与进入主线的工程取舍。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.nieh.net/pubs/asplos2014_kvmarm.pdf"
+    },
+    {
+      "id": "atc14-gvirt",
+      "title": "A Full GPU Virtualization Solution with Mediated Pass-Through",
+      "year": 2014,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "研究原生 Guest GPU 驱动、mediator、地址隔离与共享设备执行。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.usenix.org/system/files/conference/atc14/atc14-paper-tian.pdf"
+    },
+    {
+      "id": "atc05-qemu",
+      "title": "QEMU, a Fast and Portable Dynamic Translator",
+      "year": 2005,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "QEMU 原始设计直接覆盖 CPU 动态翻译、软件 MMU 与完整系统模拟。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.usenix.org/legacy/event/usenix05/tech/freenix/full_papers/bellard/bellard.pdf"
+    },
+    {
+      "id": "ols07-kvm",
+      "title": "kvm: the Linux Virtual Machine Monitor",
+      "year": 2007,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "KVM 原始论文界定 Linux 内核执行控制与用户态 VMM 的接口。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.kernel.org/doc/ols/2007/ols2007v1-pages-225-230.pdf"
+    },
+    {
+      "id": "osr08-virtio",
+      "title": "virtio: towards a de-facto standard for virtual I/O devices",
+      "year": 2008,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "通用虚拟 I/O 接口与共享缓冲区交接是 Guest 和设备后端的基础契约。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://ozlabs.org/~rusty/virtio-spec/virtio-paper.pdf"
+    },
+    {
+      "id": "osdi12-dune",
+      "title": "Dune: Safe User-level Access to Privileged CPU Features",
+      "year": 2012,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "主动利用 VMX 暴露受控特权能力；虽不是完整 Guest OS，研究的是硬件虚拟化机制。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.usenix.org/system/files/conference/osdi12/osdi12-final-117.pdf"
+    },
+    {
+      "id": "asplos13-unikernels",
+      "title": "Unikernels: Library Operating Systems for the Cloud",
+      "year": 2013,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "以 Hypervisor 上运行的专用 Guest 镜像重构操作系统边界，而非普通应用裁剪。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://anil.recoil.org/papers/2013-asplos-mirage.pdf"
+    },
+    {
+      "id": "nsdi14-clickos",
+      "title": "ClickOS and the Art of Network Function Virtualization",
+      "year": 2014,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "同时修改 Xen I/O 路径和轻量 Guest，直接研究虚机网络功能的执行成本。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/nsdi14/technical-sessions/presentation/martins"
+    },
+    {
+      "id": "atc14-osv",
+      "title": "OSv—Optimizing the Operating System for Virtual Machines",
+      "year": 2014,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "为单应用虚机构建 Guest OS，明确利用 Hypervisor 隔离和设备抽象。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/atc14/technical-sessions/presentation/kivity"
+    },
+    {
+      "id": "eurosys20-seuss",
+      "title": "SEUSS: Skip Redundant Paths to Make Serverless Fast",
+      "year": 2020,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "核心是 unikernel 快照、状态复用和实例隔离，不是一般 FaaS 请求调度。",
+      "review_basis": "editorial_record",
+      "source_url": "https://research.redhat.com/blog/publication/seuss-skip-redundant-paths-to-make-serverless-fast/"
+    },
+    {
+      "id": "asplos20-catalyzer",
+      "title": "Catalyzer: Sub-millisecond Startup for Serverless Computing with Initialization-less Booting",
+      "year": 2020,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "通过 gVisor 沙箱执行环境的系统状态恢复与 sandbox fork 改变启动边界；作为虚拟化运行时对照，而非泛收 Serverless。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://ipads.se.sjtu.edu.cn/zh/publications/DuASPLOS20.pdf"
+    },
+    {
+      "id": "atc23-lambda-loading",
+      "title": "On-demand Container Loading in AWS Lambda",
+      "year": 2023,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "原文 §2.1 和图 4 明确由本地 agent 经 Firecracker 的 virtio 块设备提供 Guest 镜像，属于虚机存储启动路径。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.usenix.org/system/files/atc23-brooker.pdf"
+    },
+    {
+      "id": "atc26-deltasandbox",
+      "title": "δSandbox: Millisecond-Scale Sandbox Checkpoint and Rollback for Stateful AI Agents",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "exclude",
+      "reason": "作者项目主体是 OverlayFS、CRIU 与进程状态的事务式回滚；和 VM 快照可类比，但并未研究 Guest/VMM 状态交接，移出当前系统虚拟化目录。",
+      "review_basis": "author_project",
+      "source_url": "https://dongyunpeng-sjtu.github.io/deltabox/"
+    },
+    {
+      "id": "atc26-fm2",
+      "title": "FM2: Fast Live VM Migration in CXL Memory Pools",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "defer",
+      "reason": "标题直接指向 CXL 内存池上的 VM 迁移，但现有记录只有录用标题，尚不足以核实具体机制；补齐一手摘要后再决定收录。",
+      "review_basis": "title",
+      "source_url": "https://atc.sigops.org/2026/accepted.html"
+    },
+    {
+      "id": "atc26-pave",
+      "title": "PAVE: Prebuilding Address Translations for Fast Nested MicroVM Restore",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "defer",
+      "reason": "标题涉及嵌套 MicroVM 的地址转换预建；当前只有标题，不能据此确认实现、贡献及边界，移入待复核。",
+      "review_basis": "title",
+      "source_url": "https://atc.sigops.org/2026/accepted.html"
+    },
+    {
+      "id": "atc26-joseph",
+      "title": "Joseph: Hypervisor–RDMA Co-Design for Kernel-Bypass Remote MicroVM SnapStart",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "defer",
+      "reason": "标题涉及 Hypervisor/RDMA 协同恢复，但当前没有足够的一手机制说明，不将标题推测当作普通论文点评。",
+      "review_basis": "title",
+      "source_url": "https://atc.sigops.org/2026/accepted.html"
+    },
+    {
+      "id": "atc26-chameleon",
+      "title": "Chameleon: Adaptive Memory Overcommitment for Disaggregated Virtual Machines",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "defer",
+      "reason": "标题属于虚机内存超配方向；缺少已核实的摘要或作者实现说明，先移出公开列表而非判定不相关。",
+      "review_basis": "title",
+      "source_url": "https://atc.sigops.org/2026/accepted.html"
+    },
+    {
+      "id": "atc26-courier",
+      "title": "Courier: Host-Transparent Direct Network I/O for Secure Containers in Cloud VMs",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "defer",
+      "reason": "标题涉及云 VM 内安全容器的直接 I/O；未核实 Guest/Host 边界与宿主透明条件，先待复核。",
+      "review_basis": "title",
+      "source_url": "https://atc.sigops.org/2026/accepted.html"
+    },
+    {
+      "id": "osdi26-ramryder",
+      "title": "Break On Through to the Other Side: Pooling Memory Elastically with RamRyder",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "调整 Guest 页到宿主内存通道的映射，研究虚机容量、带宽与性能隔离。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/osdi26/presentation/zhou-yanbo"
+    },
+    {
+      "id": "nsdi26-wallet",
+      "title": "Wallet: Confidential Serverless Computing",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "机密 VM 内的嵌套执行与 trustlet 隔离是核心，不仅是函数服务应用。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/nsdi26/presentation/sabanic"
+    },
+    {
+      "id": "nsdi26-cstar",
+      "title": "CStar Gateway: Augmenting Public Cloud Infrastructure for Heterogeneous Network Function Virtualization",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "重新划分网络功能 VM、vNIC/vSwitch 与 FPGA 之间的职责，保留为虚拟网络架构研究。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/nsdi26/presentation/li-haonan"
+    },
+    {
+      "id": "security26-hyperaudit",
+      "title": "HyperAudit: Towards User Transparent and Highly Efficient System Auditing for Cloud Platforms",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "通过 Hypervisor 保护 Guest 日志并交给隔离 VM，实质依赖虚机内省与隔离边界。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/zhang-renpeng"
+    },
+    {
+      "id": "eurosys26-bask",
+      "title": "BASK: Batch And SmartNIC-offloaded KSM",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "将 KSM 页去重卸载至 SmartNIC，涉及共享页一致性、回滚与宿主内存成本；作为虚机内存管理相关机制保留，不称其为 KVM 专用方案。",
+      "review_basis": "editorial_record",
+      "source_url": "https://pure.kaist.ac.kr/en/publications/bask-batch-and-smartnic-offloaded-ksm/"
+    },
+    {
+      "id": "asplos26-arancini",
+      "title": "Arancini: A Hybrid Binary Translator for Weak Memory Model Architectures",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "研究真实 ISA 间二进制翻译及内存序保持，可对照 QEMU TCG；不是 JVM 等语言级虚拟机，也不据此宣称完整系统虚拟化。",
+      "review_basis": "editorial_record",
+      "source_url": "https://research-portal.st-andrews.ac.uk/en/publications/arancini-a-hybrid-binary-translator-for-weak-memory-model-archite/"
+    },
+    {
+      "id": "asplos26-cemu",
+      "title": "CEMU: Enabling Full-System Emulation of Computational Storage beyond Hardware Limits",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "作者实现明确基于 FEMU/QEMU，建立 Guest 可访问的计算存储设备模型。",
+      "review_basis": "editorial_record",
+      "source_url": "https://github.com/cs-qyzhang/CEMU"
+    },
+    {
+      "id": "security26-free",
+      "title": "Enjoy the Free Lunch, Someone Paid for Us: Escaping Resource Limits of MicroVM-based Containers",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "直接研究 MicroVM 的实际宿主消耗与资源记账边界，涉及 VMM 隔离有效性。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/wang-shiwen"
+    },
+    {
+      "id": "security26-aspbreaker",
+      "title": "Jailbreaking the AMD Secure Processor: Enabling Live Analysis of SEV-SNP's Undocumented Security Boundaries",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "分析 SEV-SNP 固件边界对虚机内存保护和证明的影响，属于机密虚拟化安全。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/shen"
+    },
+    {
+      "id": "security26-fabricked",
+      "title": "FABRICKED: Misconfiguring Infinity Fabric to Break AMD SEV-SNP",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "攻击对象是 SEV-SNP 的 VM 内存与证明保证，硬件互连配置直接破坏虚机信任边界。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/schlueter-1"
+    },
+    {
+      "id": "security26-khost",
+      "title": "Khost: KVM-based Near Native MCU Firmware Rehosting",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "实际改造 KVM 的执行、页表与中断机制来重托管固件，保留为虚拟化机制的工程应用。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/wang-chunlin"
+    },
+    {
+      "id": "sosp26-cpu-virtualization",
+      "title": "You Can Always Get What You Want: CPU Virtualization Made Fast and Free",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "defer",
+      "reason": "题目明确相关，但现有点评仅依据标题和单位，未核实一手机制说明；发表状态不能代替收录证据。",
+      "review_basis": "title",
+      "source_url": "https://dl.acm.org/doi/10.1145/3830418.3843895"
+    },
+    {
+      "id": "security26-staleus",
+      "title": "STALEUS: Breaking AMD SEV-SNP via Memory Incoherence",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "研究恶意 Hypervisor 利用内存不一致破坏 SEV-SNP 客户机隔离。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/schlueter-2"
+    },
+    {
+      "id": "security26-ovs-side-channels",
+      "title": "Side-Channel Attacks on Open vSwitch",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "Open vSwitch 共享转发缓存泄漏租户信息，直接涉及虚拟网络数据面的隔离边界。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/kim-daewoo"
+    },
+    {
+      "id": "security25-tdxploit",
+      "title": "TDXploit: Novel Techniques for Single-Stepping and Cache Attacks on Intel TDX",
+      "year": 2025,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "研究 Intel TDX 可信域的单步控制与缓存侧信道，属于机密 VM 的安全保证。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/usenixsecurity25/presentation/rauscher"
+    },
+    {
+      "id": "osdi26-mwait-sched",
+      "title": "What Are You (M)Waiting For: The Hidden Cost of Idle in the Hyperscale Cloud",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "解决 mwait 直通使 Hypervisor 失去 vCPU 空闲可见性的问题，直接关联调度与退出策略。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/osdi26/presentation/wang-yun"
+    },
+    {
+      "id": "osdi26-janus",
+      "title": "JANUS: Cross-World, Cooperative Nested Virtualization for Secure Containers",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "重分嵌套 Hypervisor 的 CPU 切换与内存翻译职责，是多层虚拟化机制。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/osdi26/presentation/lai"
+    },
+    {
+      "id": "osdi26-nested-sev",
+      "title": "Nested SEV: Secure and Generic SEV Support for Nested Virtualization",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "虚拟化 SEV 上下文以支持嵌套 VM，直接处理 L0/L1/L2 信任关系。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/osdi26/presentation/takiguchi"
+    },
+    {
+      "id": "osdi26-blowfish",
+      "title": "Blowfish: Elastic Virtual Machine Memory for Disaggregated Memory",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "联合 Guest 冷热页跟踪与 Hypervisor 回收，研究分离内存中的 VM 弹性。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/osdi26/presentation/zhang-yulong"
+    },
+    {
+      "id": "osdi26-m3u",
+      "title": "M3U: Scalable Kernel Memory Management for Efficient Post-Copy Live Migration of High-End Virtual Machines",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "重构大 VM 后拷贝中的内核缺页与设备状态处理，直接属于迁移路径。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/osdi26/presentation/xu-yizhe"
+    },
+    {
+      "id": "osdi26-infinidefrag",
+      "title": "Compaction-Free Memory Defragmentation for Virtualization via Infinite Guest Physical Address Space",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "通过 GPA/HPA 映射重组减少虚机内存碎片，直接研究二阶段地址空间。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/osdi26/presentation/zeng"
+    },
+    {
+      "id": "osdi26-goodkit",
+      "title": "Inside Out: A Paradigm Shift in VM Introspection",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "重新组织 VMM 与内省监控 VM 的隔离和内存观测，属于 VMI 架构。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/osdi26/presentation/teguia"
+    },
+    {
+      "id": "osdi26-dvla",
+      "title": "DVLA: Dynamic VM Lifetime Aware Scheduling for Drifting Lifetime Distributions and Long-Lived VM Placement Debt",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "exclude",
+      "reason": "贡献主要是生命周期预测、集群放置和离线迁移调度；将热迁移用作控制面工具，不分析新的 VMM/Guest 机制，超出当前目录的机制重点。",
+      "review_basis": "primary_abstract",
+      "source_url": "https://www.usenix.org/conference/osdi26/presentation/zhang-zhengtong"
+    },
+    {
+      "id": "fast26-cylon",
+      "title": "Cylon: Fast and Accurate Full-System Emulation of CXL-SSDs",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "建立 CXL-SSD 全系统模拟并处理 Hypervisor trap 与时延校准，直接关联设备模拟。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/fast26/presentation/yoon"
+    },
+    {
+      "id": "fast26-thinkahead",
+      "title": "How Soon is Now? Preloading Images for Virtual Disks with ThinkAhead",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "以虚拟磁盘镜像的块预载改善 VM 冷启动 I/O，关联虚拟存储后端而非一般缓存论文。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/fast26/presentation/chen"
+    },
+    {
+      "id": "fast26-rosenbridge",
+      "title": "RosenBridge: A Framework for Enabling Express I/O Paths Across the Virtualization Boundary",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "设计 virtio-ndp 接口跨越 Guest/Host I/O 边界，是半虚拟化设备研究。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/fast26/presentation/qiu"
+    },
+    {
+      "id": "eurosys26-necofuzz",
+      "title": "NecoFuzz: Effective Fuzzing of Nested Virtualization via Fuzz-Harness Virtual Machines",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "被测对象是嵌套虚拟化的接口和状态组合，专用 VM 是测试框架核心。",
+      "review_basis": "editorial_record",
+      "source_url": "https://dl.acm.org/doi/10.1145/3767295.3769347"
+    },
+    {
+      "id": "eurosys26-squeezy",
+      "title": "Squeezy: Rapid VM Memory Reclamation for Serverless Functions",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "直接针对承载函数的 VM 做内存回收，不因 Serverless 标签而收录。",
+      "review_basis": "editorial_record",
+      "source_url": "https://dl.acm.org/doi/10.1145/3767295.3769357"
+    },
+    {
+      "id": "eurosys26-x86-riscv",
+      "title": "Practical and Efficient x86-64 Emulation on RISC-V",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "研究真实 x86-64 ISA 在 RISC-V 上的执行模拟，属于本站 QEMU/跨 ISA 执行范围。",
+      "review_basis": "editorial_record",
+      "source_url": "https://dl.acm.org/doi/10.1145/3767295.3803574"
+    },
+    {
+      "id": "eurosys26-heterogeneous-migration",
+      "title": "Everything You Need to Know About Virtual Machine Live Migration Between Heterogeneous Processors",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "研究异构处理器间 VM 状态与兼容性条件，直接关联迁移正确性。",
+      "review_basis": "editorial_record",
+      "source_url": "https://dl.acm.org/doi/10.1145/3767295.3803609"
+    },
+    {
+      "id": "asplos26-sgiov",
+      "title": "SG-IOV: Socket-Granular I/O Virtualization for SmartNIC-Based Container Networks",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "exclude",
+      "reason": "作者材料定位为 socket 粒度的容器网络卸载；有 I/O 虚拟化术语，但当前未体现 Guest/VMM 设备边界，移出以系统虚机为主的目录。",
+      "review_basis": "author_project",
+      "source_url": "https://pages.cs.wisc.edu/~mgliu/proj-cleannic.html"
+    },
+    {
+      "id": "asplos26-vm-recovery",
+      "title": "Fault Escaping: Improving Robustness of DPU Enhanced Platform with Mutual Assisted VM Recovery",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "研究 DPU 与主机故障下 VM 状态的协作恢复，直接关联虚机连续性。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.asplos-conference.org/asplos2026/program/index.html"
+    },
+    {
+      "id": "nsdi26-zoc",
+      "title": "ZOC: Elastic and Cost-Efficient Virtual SmartNIC Architecture for Cloud Physical Machines",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "用专用服务 VM 和直通 NIC 组织虚拟 SmartNIC，研究跨域设备抽象与资源共享。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/nsdi26/presentation/guan-naixuan"
+    },
+    {
+      "id": "security26-stackwarp",
+      "title": "StackWarp: Breaking AMD SEV-SNP Integrity via Deterministic Stack-Pointer Manipulation through the CPU's Stack Engine",
+      "year": 2026,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "恶意宿主影响 SEV-SNP Guest 的栈状态，直接检验机密虚机完整性。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/zhang-ruiyi"
+    },
+    {
+      "id": "atc25-hyperturtle",
+      "title": "Accelerating Nested Virtualization with HyperTurtle",
+      "year": 2025,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "将嵌套 Hypervisor 路径安全委托 L0 执行，以减少跨层退出。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/atc25/presentation/zur"
+    },
+    {
+      "id": "osdi25-vio",
+      "title": "To PRI or Not To PRI, That's the Question",
+      "year": 2025,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "在 virtio 与直通路径间切换以协调 DMA、性能和 VM 内存超配。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/osdi25/presentation/wang-yun"
+    },
+    {
+      "id": "osdi25-krr",
+      "title": "KRR: Efficient and Scalable Kernel Record Replay",
+      "year": 2025,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "Guest/Host 协同记录内核执行，面向多核虚机确定性回放与 I/O 事件。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/osdi25/presentation/zhang-tianren"
+    },
+    {
+      "id": "osdi25-kamino",
+      "title": "Kamino: Efficient VM Allocation at Scale with Latency-Driven Cache-Aware Scheduling",
+      "year": 2025,
+      "origin": "existing",
+      "decision": "exclude",
+      "reason": "一手摘要说明优化的是分配请求到 allocator agent 的缓存与延迟，并非 vCPU 调度或 VMM 机制；移出而不否定其云工程价值。",
+      "review_basis": "primary_abstract",
+      "source_url": "https://www.usenix.org/conference/osdi25/presentation/domingo"
+    },
+    {
+      "id": "security25-tetd",
+      "title": "TETD: Trusted Execution in Trust Domains",
+      "year": 2025,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "在 TDX Trust Domain 内重划可信执行区，并复用 VMM 的内存/vCPU 管理。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/usenixsecurity25/presentation/wang-zhanbo"
+    },
+    {
+      "id": "security25-cofunc",
+      "title": "Serverless Functions Made Confidential and Efficient with Split Containers",
+      "year": 2025,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "把微内核与 LibOS 放入 SEV/TDX 机密 VM，拆分可信与不可信管理边界。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/usenixsecurity25/presentation/shi-jiacheng"
+    },
+    {
+      "id": "osdi24-sabre",
+      "title": "Sabre: Hardware-Accelerated Snapshot Compression for Serverless MicroVMs",
+      "year": 2024,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "针对 Firecracker MicroVM 内存快照的压缩、预取与恢复，不是泛化数据压缩。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/osdi24/presentation/lazarev"
+    },
+    {
+      "id": "osdi24-cxl-memory-tiers",
+      "title": "Managing Memory Tiers with CXL in Virtualized Environments",
+      "year": 2024,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "研究虚拟化环境的 CXL 页放置与 VM 间性能隔离。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/osdi24/presentation/zhong-yuhong"
+    },
+    {
+      "id": "sosp24-vsoc",
+      "title": "vSoC: Efficient Virtual System-on-Chip on Heterogeneous Hardware",
+      "year": 2024,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "解决 Guest SoC 与宿主设备内存模型差异，属于完整设备/系统模拟。",
+      "review_basis": "editorial_record",
+      "source_url": "https://sigops.org/s/conferences/sosp/2024/schedule.html"
+    },
+    {
+      "id": "sosp24-vpri",
+      "title": "VPRI: Efficient I/O Page Fault Handling via Software-Hardware Co-Design for IaaS Clouds",
+      "year": 2024,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "设备 I/O page fault 与 VM 按需分页协同，直接研究直通和内存虚拟化。",
+      "review_basis": "editorial_record",
+      "source_url": "https://sigops.org/s/conferences/sosp/2024/schedule.html"
+    },
+    {
+      "id": "asplos24-dmt",
+      "title": "Direct Memory Translation for Virtualized Clouds",
+      "year": 2024,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "重设计 Guest/Host 地址翻译契约，面向二阶段及嵌套页表开销。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.asplos-conference.org/asplos2024/main-program/abstracts/index.html"
+    },
+    {
+      "id": "asplos24-cps",
+      "title": "CPS: A Cooperative Para-virtualized Scheduling Framework for Manycore Machines",
+      "year": 2024,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "KVM 原型通过 Guest/Host 调度协作改善 vCPU 可见性，区别于集群放置算法。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.asplos-conference.org/asplos2024/main-program/abstracts/index.html"
+    },
+    {
+      "id": "asplos24-veil",
+      "title": "Veil: A Protected Services Framework for Confidential Virtual Machines",
+      "year": 2024,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "利用 SEV-SNP VMPL 在机密 VM 内隔离受保护服务，直接改变 Guest 信任边界。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.asplos-conference.org/asplos2024/main-program/abstracts/index.html"
+    },
+    {
+      "id": "osdi23-duvisor",
+      "title": "Security and Performance in the Delegated User-level Virtualization",
+      "year": 2023,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "将虚机运行面委托用户态并结合硬件扩展，重划 VMM 权限与执行控制。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/osdi23/presentation/chen"
+    },
+    {
+      "id": "sosp23-pvm",
+      "title": "PVM: Efficient Shadow Paging for Deploying Secure Containers in Cloud-native Environment",
+      "year": 2023,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "在不暴露嵌套硬件能力时，以影子页表和 Guest Hypervisor 支持安全容器。",
+      "review_basis": "editorial_record",
+      "source_url": "https://sigops.org/s/conferences/sosp/2023/toc.html"
+    },
+    {
+      "id": "sosp23-siloz",
+      "title": "Siloz: Leveraging DRAM Isolation Domains to Prevent Inter-VM Rowhammer",
+      "year": 2023,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "由 Hypervisor 按 DRAM 拓扑隔离 VM 与 EPT 页，直接针对跨 VM Rowhammer。",
+      "review_basis": "editorial_record",
+      "source_url": "https://sigops.org/s/conferences/sosp/2023/toc.html"
+    },
+    {
+      "id": "socc23-anubis",
+      "title": "Maximizing VMs' IO Performance on Overcommitted CPUs with Fairness",
+      "year": 2023,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "利用 KVM exit 和中断信号调整宿主 vCPU 调度，直接处理虚拟化双层调度问题。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.sigops.org/s/conferences/socc/2023/toc.html"
+    },
+    {
+      "id": "atc22-rund",
+      "title": "RunD: A Lightweight Secure Container Runtime for High-density Deployment and High-concurrency Startup in Serverless Computing",
+      "year": 2022,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "优化一容器一 MicroVM 的宿主、Guest 和镜像路径，有明确虚机启动与隔离边界。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/atc22/presentation/li-zijun-rund"
+    },
+    {
+      "id": "vee22-clusterrr",
+      "title": "ClusterRR: A Record and Replay Framework for Virtual Machine Cluster",
+      "year": 2022,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "在 QEMU/KVM 中协调虚机执行与网络事件回放，是 VM 集群记录回放机制。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.sigops.org/s/conferences/vee/2022/toc.html"
+    },
+    {
+      "id": "asplos21-reap",
+      "title": "Benchmarking, Analysis, and Optimization of Serverless Function Snapshots",
+      "year": 2021,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "原型基于 Firecracker，预取 Guest 内存工作集以改善快照后的缺页路径。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.research.ed.ac.uk/en/publications/benchmarking-analysis-and-optimization-of-serverless-function-sna/"
+    },
+    {
+      "id": "sosp21-twinvisor",
+      "title": "TwinVisor: Hardware-isolated Confidential Virtual Machines for ARM",
+      "year": 2021,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "以 Arm TrustZone 与双 Hypervisor 隔离机密 VM，研究宿主资源管理和可信基拆分。",
+      "review_basis": "editorial_record",
+      "source_url": "https://sigops.org/s/conferences/sosp/2021/toc.html"
+    },
+    {
+      "id": "vee21-adamig",
+      "title": "Adaptive Live Migration of Virtual Machines under Limited Network Bandwidth",
+      "year": 2021,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "基于 QEMU 调整 VM 迁移方式与参数，直接应对带宽和脏页收敛条件。",
+      "review_basis": "editorial_record",
+      "source_url": "https://conf.researchr.org/details/vee-2021/vee-2021-papers/11/Adaptive-Live-Migration-of-Virtual-Machines-under-Limited-Network-Bandwidth"
+    },
+    {
+      "id": "vee21-virtio-mem",
+      "title": "virtio-mem: Paravirtualized Memory Hot(Un)Plug",
+      "year": 2021,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "提出并实现细粒度 virtio 内存热插拔接口，直接关联 QEMU/KVM/Linux 上游工程。",
+      "review_basis": "editorial_record",
+      "source_url": "https://conf.researchr.org/details/vee-2021/vee-2021-papers/4/virtio-mem-Paravirtualized-Memory-Hot-Un-Plug"
+    },
+    {
+      "id": "nsdi20-firecracker",
+      "title": "Firecracker: Lightweight Virtualization for Serverless Applications",
+      "year": 2020,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "KVM 上的精简 VMM 与设备集合设计，具有明确生产使用场景和实现边界。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.usenix.org/system/files/nsdi20-paper-agache.pdf"
+    },
+    {
+      "id": "vee20-giantvm",
+      "title": "GiantVM: A Type-II Hypervisor Implementing Many-to-one Virtualization",
+      "year": 2020,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "实际基于 QEMU/KVM 将多台主机聚合为一个系统 Guest，区别于自定义分布式语言虚拟机。",
+      "review_basis": "editorial_record",
+      "source_url": "https://conf.researchr.org/details/vee-2020/vee-2020-papers/10/GiantVM-A-Type-II-Hypervisor-Implementing-Many-to-one-Virtualization"
+    },
+    {
+      "id": "asplos20-leapio",
+      "title": "LeapIO: Efficient and Portable Virtual NVMe Storage on ARM SoCs",
+      "year": 2020,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "把虚拟 NVMe 后端卸载到 Arm 协处理器，为未修改 Guest 提供存储设备。",
+      "review_basis": "editorial_record",
+      "source_url": "https://asplos-conference.org/wp-content/uploads/2020/abstracts/paper_6_4.html"
+    },
+    {
+      "id": "vee22-portkey",
+      "title": "Portkey: Hypervisor-Assisted Container Migration in Nested Cloud Environments",
+      "year": 2022,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "Hypervisor 参与嵌套云容器迁移的跨层状态协调，并非只在 VM 里运行普通容器。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/3516807.3516817"
+    },
+    {
+      "id": "asplos19-orthus",
+      "title": "Fast and Scalable VMM Live Upgrade in Large Cloud Infrastructure",
+      "year": 2019,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "直接处理新旧 KVM/QEMU 共存、VM grafting 和直通设备交接；PDF 受限，解读单独披露证据边界。",
+      "review_basis": "primary_excerpt",
+      "source_url": "https://www.alibabacloud.com/blog/alibaba-cloud-releases-major-paper-at-asplos19_594741"
+    },
+    {
+      "id": "vee19-live-replacement",
+      "title": "Fast and Live Hypervisor Replacement",
+      "year": 2019,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "利用嵌套虚拟化与内存重映射替换 L1 Hypervisor，与同内核 Dual KVM 路线互补。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/3313808.3313821"
+    },
+    {
+      "id": "vee19-acrn",
+      "title": "ACRN: A Big Little Hypervisor for IoT Development",
+      "year": 2019,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "面向嵌入式平台设计 Hypervisor，处理实时性、可信基与设备共享。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/3313808.3313816"
+    },
+    {
+      "id": "vee19-teev",
+      "title": "TEEv: Virtualizing Trusted Execution Environments on Mobile Platforms",
+      "year": 2019,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "一手摘要明确 TEE-visor 隔离多个 vTEE 操作系统实例，是执行环境虚拟化而非普通可信应用。",
+      "review_basis": "primary_abstract",
+      "source_url": "https://conf.researchr.org/details/vee-2019/vee-2019-papers/11/TEEv-Virtualizing-Trusted-Execution-Environments-on-Mobile-Platforms"
+    },
+    {
+      "id": "atc19-nica",
+      "title": "NICA: An Infrastructure for Inline Acceleration of Network Applications",
+      "year": 2019,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "在 KVM 中虚拟化共享 FPGA SmartNIC 的逻辑和 I/O 路径，提供 VM 间隔离。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/atc19/presentation/eran"
+    },
+    {
+      "id": "atc19-mts",
+      "title": "MTS: Bringing Multi-Tenancy to Virtual Networking",
+      "year": 2019,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "拆分高权限虚拟交换数据面并增强租户隔离，直接关联宿主虚拟网络架构。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/atc19/presentation/thimmaraju"
+    },
+    {
+      "id": "security19-hypsec",
+      "title": "Protecting Cloud Virtual Machines from Hypervisor and Host Operating System Exploits",
+      "year": 2019,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "改造 KVM 的可信与不可信组件分界，保护 Guest 免受宿主攻破影响。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/usenixsecurity19/presentation/li-shih-wei"
+    },
+    {
+      "id": "vee18-gmig",
+      "title": "gMig: Efficient GPU Live Migration Optimized by Software Dirty Page for Full Virtualization",
+      "year": 2018,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "处理全虚拟化 GPU 的设备脏页与迁移状态，不是普通 GPU 计算优化。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/3186411.3186414"
+    },
+    {
+      "id": "vee18-live-migration-scale",
+      "title": "VM Live Migration At Scale",
+      "year": 2018,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "研究批量 VM 热迁移本身的资源竞争和落地约束，作为机制扩展到生产规模的补充。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/3186411.3186415"
+    },
+    {
+      "id": "vee18-demon",
+      "title": "Demon: An Efficient Solution for on-Device MMU Virtualization in Mediated Pass-Through",
+      "year": 2018,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "研究 mediated pass-through 中设备侧 MMU 虚拟化，直接涉及映射和共享设备访问。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/3186411.3186416"
+    },
+    {
+      "id": "atc18-hyperupcalls",
+      "title": "The Design and Implementation of Hyperupcalls",
+      "year": 2018,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "允许 Hypervisor 受控执行 Guest 提供的代码，改变跨层语义交换接口。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/atc18/presentation/amit"
+    },
+    {
+      "id": "atc18-epti",
+      "title": "EPTI: Efficient Defence against Meltdown Attack for Unpatched VMs",
+      "year": 2018,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "利用 EPT 在 Guest 外实现用户/内核页隔离，是虚拟化层的兼容性安全修复。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/atc18/presentation/hua"
+    },
+    {
+      "id": "atc17-kvm-arm",
+      "title": "Optimizing the Design and Implementation of the Linux ARM Hypervisor",
+      "year": 2017,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "重构 KVM/ARM 的异常级别与执行模式，直接关联主线 Hypervisor 设计。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/atc17/technical-sessions/presentation/dall"
+    },
+    {
+      "id": "atc17-multi-hypervisor",
+      "title": "Multi-Hypervisor Virtual Machines: Enabling an Ecosystem of Hypervisor-level Services",
+      "year": 2017,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "通过嵌套 KVM/QEMU 在同一 Guest 下组合隔离的 Hypervisor 服务。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/atc17/technical-sessions/presentation/gopalan"
+    },
+    {
+      "id": "sosp17-neve",
+      "title": "NEVE: Nested Virtualization Extensions for ARM",
+      "year": 2017,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "扩展 Arm 硬件和软件的嵌套虚拟化执行，属于多层 CPU/MMU 虚拟化。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.sigops.org/s/conferences/sosp/2017/program.html"
+    },
+    {
+      "id": "sosp17-lightvm",
+      "title": "My VM is Lighter (and Safer) than your Container",
+      "year": 2017,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "同时裁剪 Xen 工具栈与 Guest 镜像，直接研究 VM 创建成本和密度。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.sigops.org/s/conferences/sosp/2017/program.html"
+    },
+    {
+      "id": "vee16-kvm-hsa",
+      "title": "Building a KVM-based Hypervisor for a Heterogeneous System Architecture Compliant System",
+      "year": 2016,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "将 KVM 适配 CPU/加速器共享的 HSA 资源与执行模型。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/2892242.2892246"
+    },
+    {
+      "id": "vee16-ept",
+      "title": "Performance Implications of Extended Page Tables on Virtualized x86 Processors",
+      "year": 2016,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "直接量化虚拟化 x86 的二阶段页表成本，作为内存虚拟化基线。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/2892242.2892258"
+    },
+    {
+      "id": "vee16-migration-optimizations",
+      "title": "On Selecting the Right Optimizations for Virtual Machine Migration",
+      "year": 2016,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "比较 VM 迁移机制在负载与网络条件下的选择，不是一般集群调度。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/2892242.2892247"
+    },
+    {
+      "id": "vee16-urgent-eviction",
+      "title": "Urgent Virtual Machine Eviction with Enlightened Post-Copy",
+      "year": 2016,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "由 Guest 配合 post-copy 尽快释放源主机，改变运行状态迁移路径。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/2892242.2892252"
+    },
+    {
+      "id": "atc16-hyperprobe",
+      "title": "Hyperprobe: Towards Virtual Machine Extrospection",
+      "year": 2016,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "从 Guest 行为识别底层 KVM 特征和缺陷，研究虚拟化可观察性边界。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/atc16/technical-sessions/presentation/xiao"
+    },
+    {
+      "id": "vee15-direct-interrupt",
+      "title": "A Comprehensive Implementation and Evaluation of Direct Interrupt Delivery",
+      "year": 2015,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "实现和测量直接中断投递，涉及设备、Hypervisor 和 Guest 路由控制。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/2731186.2731189"
+    },
+    {
+      "id": "vee15-rdma-io",
+      "title": "A Hybrid I/O Virtualization Framework for RDMA-capable Network Interfaces",
+      "year": 2015,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "研究 RDMA NIC 在 VM 中的混合共享/直访接口，处理隔离与控制路径。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/2731186.2731200"
+    },
+    {
+      "id": "vee15-virtual-cluster",
+      "title": "Supporting High Performance Molecular Dynamics in Virtualized Clusters using IOMMU, SR-IOV, and GPUDirect",
+      "year": 2015,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "核心是 IOMMU/SR-IOV/GPUDirect 在虚拟集群中的集成和边界，HPC 只是验证负载。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/2731186.2731194"
+    },
+    {
+      "id": "vee14-introspection",
+      "title": "Real-time Deep Virtual Machine Introspection and Its Applications",
+      "year": 2014,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "研究如何在 Guest 外恢复实时高层状态，是虚机内省机制。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/2576195.2576196"
+    },
+    {
+      "id": "vee14-tesseract",
+      "title": "Tesseract: Reconciling Guest I/O and Hypervisor Swapping in a VM",
+      "year": 2014,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "协调 Guest I/O 与 Hypervisor swapping，直接应对双层内存管理的信息缺失。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/2576195.2576198"
+    },
+    {
+      "id": "vee14-mortar",
+      "title": "Mortar: Filling the Gaps in Data Center Memory",
+      "year": 2014,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "围绕 VM 空闲内存利用和跨层资源共享展开，保留为虚机内存治理相关研究。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/2576195.2576203"
+    },
+    {
+      "id": "atc13-halite",
+      "title": "Optimizing VM Checkpointing for Restore Performance in VMware ESXi",
+      "year": 2013,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "优化 VMware ESXi 的内存检查点布局与按需恢复，直接服务虚机恢复路径。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/atc13/technical-sessions/presentation/zhang"
+    },
+    {
+      "id": "atc13-hyperswitch",
+      "title": "Hyper-Switch: A Scalable Software Virtual Switching Architecture",
+      "year": 2013,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "在驱动域和 Hypervisor 间重新分配虚拟交换职责，直接面向 VM 网络数据面。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/atc13/technical-sessions/presentation/ram"
+    },
+    {
+      "id": "atc13-mig",
+      "title": "MiG: Efficient Migration of Desktop VMs Using Semantic Compression",
+      "year": 2013,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "按 Guest 内存语义压缩迁移状态，直接优化桌面 VM 迁移。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/atc13/technical-sessions/presentation/rai"
+    },
+    {
+      "id": "vee12-dvm",
+      "title": "DVM: Towards a Datacenter-Scale Virtual Machine",
+      "year": 2012,
+      "origin": "existing",
+      "decision": "exclude",
+      "reason": "原文建立 DISA 自定义并行编程模型和分布式执行引擎，不是运行通用 Guest OS 的系统 VMM；同名 VM 不足以进入此目录。",
+      "review_basis": "primary_abstract",
+      "source_url": "https://researchportal.hkust.edu.hk/en/publications/dvm-towards-a-datacenter-scale-virtual-machine/"
+    },
+    {
+      "id": "vee12-secondsite",
+      "title": "SecondSite: Disaster Tolerance as a Service",
+      "year": 2012,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "以 VM 运行状态复制与跨站故障切换实现容灾，状态一致性是设计核心。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/2151024.2151039"
+    },
+    {
+      "id": "vee12-compsc",
+      "title": "CompSC: Live Migration with Pass-through Devices",
+      "year": 2012,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "直接处理设备直通状态无法随 RAM 简单迁移的问题。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/2151024.2151040"
+    },
+    {
+      "id": "vee11-rehype",
+      "title": "ReHype: Enabling VM Survival across Hypervisor Failures",
+      "year": 2011,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "Hypervisor 失败后保留并恢复 VM 运行状态，属于 VMM 可靠性机制。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/1952682.1952692"
+    },
+    {
+      "id": "vee11-checkpoint",
+      "title": "Fast and Space-Efficient Virtual Machine Checkpointing",
+      "year": 2011,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "直接减少完整 VM 运行状态检查点的时间与空间成本。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/1952682.1952694"
+    },
+    {
+      "id": "vee11-cloudnet",
+      "title": "CloudNet: Dynamic Pooling of Cloud Resources by Live WAN Migration of Virtual Machines",
+      "year": 2011,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "处理 VM 广域在线迁移的内存、网络身份与存储衔接，而非只调用迁移的放置算法。",
+      "review_basis": "editorial_record",
+      "source_url": "https://doi.org/10.1145/1952682.1952699"
+    },
+    {
+      "id": "osdi10-turtles",
+      "title": "The Turtles Project: Design and Implementation of Nested Virtualization",
+      "year": 2010,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "在 KVM 中实现未修改 Hypervisor 的嵌套运行与多层状态合成。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.usenix.org/legacy/events/osdi10/tech/full_papers/Ben-Yehuda.pdf"
+    },
+    {
+      "id": "osdi10-mclock",
+      "title": "mClock: Handling Throughput Variability for Hypervisor IO Scheduling",
+      "year": 2010,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "直接在 Hypervisor I/O 调度中实现 VM 间预约、上限与比例公平。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.usenix.org/legacy/events/osdi10/tech/full_papers/Gulati.pdf"
+    },
+    {
+      "id": "osdi10-time",
+      "title": "Virtualize Everything but Time",
+      "year": 2010,
+      "origin": "existing",
+      "decision": "keep",
+      "reason": "面向 Xen VM 的时间源虚拟化和迁移后的时钟连续性。",
+      "review_basis": "editorial_record",
+      "source_url": "https://www.usenix.org/conference/osdi10/virtualize-everything-time"
+    }
+  ]
+}

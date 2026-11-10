@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Linux 中断：硬件事件、处理上下文与完成通知 - virt-report</title>
+  <meta name="description" content="设备事件如何到达 CPU，驱动如何处理完成队列并唤醒等待线程。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=b1d38984fa3b">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=b1d38984fa3b">
+  <link rel="stylesheet" href="../assets/site.css?v=b1d38984fa3b">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=7bdd8f4b9615">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=7bdd8f4b9615">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=b1d38984fa3b" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="linux-kernel-evolution.html">Linux 内核基础</a></div>
+    <h1>Linux 中断：硬件事件、处理上下文与完成通知</h1>
+    <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、事件与处理上下文</a></li><li><a href="#history">二、从共享中断线到多队列与线程化处理</a></li><li><a href="#identifiers">三、硬件标识与内核 IRQ</a></li><li><a href="#path">四、中断入口与延后处理</a><ol><li><a href="#path-part-1">中断上下文与接收线程</a></li></ol></li><li><a href="#completion">五、通知、完成与唤醒</a><ol><li><a href="#completion-part-1">一个批次可以只有一次硬件通知</a></li></ol></li><li><a href="#races">六、屏蔽、重开与通知竞态</a></li><li><a href="#observe">七、只读观察与客户机中断</a></li><li><a href="#sources">八、源码与延伸阅读</a></li></ol></nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">一、</span>事件与处理上下文</h2>
+  <p>设备把数据写入内存，与 CPU 开始处理这些数据，是两件事。以普通网卡为例，DMA 完成后，设备可发中断提示驱动检查队列；驱动也可以轮询发现完成。不论采用哪种方式，真正的工作记录在设备状态和队列中，中断只是通知。</p>
+  <p>下面以常见 x86 Linux 的非实时内核路径说明概念。同步异常（例如执行当前访存指令触发缺页）与外设异步中断不是同一种事件；系统调用进入内核也不能一概称为设备中断。</p>
+<p class="mechanism-baselines">源码版本：<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
+<section id="history" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">二、</span>从共享中断线到多队列与线程化处理</h2>
+  <p>中断机制的演变有两条线：设备如何把事件送到 CPU，以及 CPU 在什么上下文里处理工作。前者解决中断线共享、路由与多核扩展，后者解决高负载开销、并发和响应延迟。MSI-X、softirq 与 IRQ 线程并不处在同一层，不能排列成一串互相替代的版本。</p>
+  <table><thead><tr><th>发展脉络</th><th>要解决的问题</th><th>机制与取舍</th></tr></thead><tbody>
+    <tr><td>早期 PC 到 SMP：PIC、APIC 与共享 INTx</td><td>有限的硬件中断线，多设备共享与多 CPU 路由</td><td>控制器提供屏蔽、优先级和路由；共享 IRQ 的驱动仍须辨认是否是本设备的事件</td></tr>
+    <tr><td>PCI MSI / MSI-X：从电平线到消息</td><td>共享线带来的处理与扩展限制</td><td>设备以消息事务通知，MSI-X 便于为不同队列配置向量；实际可分配数量受设备与平台约束</td></tr>
+    <tr><td>多核与高包速率：softirq、NAPI 与工作队列</td><td>在硬中断入口处理太多工作，抢占应用 CPU，或频繁进出中断</td><td>把可延后的工作放到相应上下文，批量推进；仍须控制预算、锁与 CPU 间共享</td></tr>
+    <tr><td>低延迟与实时需求：线程化 IRQ、PREEMPT_RT</td><td>长时间不可抢占区段使高优先级任务迟迟不能运行</td><td>让更多工作成为可调度线程，并调整锁语义；最底层入口与部分关键路径仍不能随意睡眠</td></tr>
+  </tbody></table>
+  <p>这些机制今天仍然并存：一块 MSI-X 网卡可以由 hardirq 调度 NAPI；某个慢速设备则可能用线程化 IRQ。依据见 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/PCI/msi-howto.rst">PCI MSI 驱动指南</a>与 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/core-api/real-time/theory.rst">PREEMPT_RT 的设计说明</a>。后者改变的是内核的可抢占与锁模型，不是把所有中断都变成普通用户线程。</p>
+</section>
+<section id="identifiers" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">三、</span>硬件标识与内核 IRQ</h2>
+  <table><thead><tr><th>层次</th><th>含义</th><th>不能直接等同</th></tr></thead><tbody>
+    <tr><td>MSI / MSI-X</td><td>PCI 设备通过消息写事务报告事件；MSI-X 可配置多个表项</td><td>MSI-X 表项编号不是 Linux IRQ 编号</td></tr>
+    <tr><td>CPU 中断向量</td><td>经过路由后，CPU 按向量进入相应入口</td><td>某个向量不永久对应某个应用或数据包</td></tr>
+    <tr><td>Linux IRQ</td><td>内核用 irq_desc、irq_chip 与 irqaction 组织控制器操作和驱动处理函数</td><td>IRQ 号、硬件中断号与 CPU 向量属于不同命名空间</td></tr>
+  </tbody></table>
+  <p>驱动注册处理函数，内核与中断控制器协作配置路由和目标 CPU。IRQ affinity 影响中断在哪里被处理，不等于把后续应用也绑在那个 CPU；网络处理还可能通过队列和跨 CPU 工作分派继续推进。</p>
+  <p>以 PCI 驱动为例，<code>pci_alloc_irq_vectors()</code> 请求设备可用的向量，<code>pci_irq_vector()</code> 把设备内的向量索引转换为 Linux IRQ，随后 <code>request_irq()</code> 或 <code>request_threaded_irq()</code> 关联处理函数。驱动提供队列等上下文，通用 IRQ 层维护分派关系；设备的向量编号并不直接充当 CPU 的 IDT 下标。</p>
+  <p>例如，驱动可以让 RX 队列 2 使用 MSI-X 表项 3，内核给它分配 Linux IRQ 137，并把消息路由到某个目标 CPU 的向量 0x51。这里的编号仅作示例：表项 3 不是由队列号固定计算出的，137 也不等于 0x51。CPU 根据向量进入入口，内核再找到对应 irq_desc 和已注册的驱动处理函数；驱动根据初始化时保存的队列上下文检查 RX 队列 2。</p>
+  <figure class="mechanism-diagram" data-diagram="linux-irq-identifiers" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>队列、MSI-X 表项、CPU 向量与 Linux IRQ</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看队列、MSI-X 表项、CPU 向量与 Linux IRQ" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="队列、MSI-X 表项、CPU 向量与 Linux IRQ">
+    <img src="../assets/linux-irq-identifiers.svg?v=7bdd8f4b9615" alt="所有编号仅为示例，由初始化配置和内核分配建立关系，不存在把队列号直接换算成 IRQ 号的通用公式。" loading="lazy">
+  </div>
+  <figcaption>所有编号仅为示例，由初始化配置和内核分配建立关系，不存在把队列号直接换算成 IRQ 号的通用公式。 <a href="../assets/linux-irq-identifiers.svg?v=7bdd8f4b9615" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+    accTitle: 一次 MSI-X 通知中的三个编号空间
+    accDescr: 示意 RX 队列 2 配置使用 MSI-X 表项 3，消息路由到目标 CPU 的向量 0x51，内核关联 Linux IRQ 137 并调用保存队列上下文的处理函数。这些编号由配置与分配建立关系，不是同一个编号。
+    A[&#34;网卡 RX 队列 2&#34;] --&gt; B[&#34;MSI-X 表项 3\n消息地址与数据&#34;]
+    B --&gt;|配置的消息路由| C[&#34;目标 CPU\n中断向量 0x51&#34;]
+    C --&gt;|内核关联| D[&#34;Linux IRQ 137\nirq_desc / irqaction&#34;]
+    D --&gt; E[&#34;驱动处理函数\n检查 RX 队列 2&#34;]
+</code></pre></details>
+</figure>
+  <p>这张图解释的是一次通知的路由，不是报文数据走过的路径。数据已通过 DMA 放在接收缓冲区中；CPU 收到向量后进入驱动，再根据队列里的完成记录找到数据。改变中断亲和性可以改变接收通知的 CPU，并不会把 socket 的应用线程自动迁过去。</p>
+</section>
+<section id="path" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">四、</span>中断入口与延后处理</h2>
+  <ol>
+    <li>设备发布完成状态并发出允许的中断，处理器保存必要现场，进入内核架构相关入口。</li>
+    <li>通用 IRQ 层调用驱动注册的处理函数，完成必要的状态确认与通知控制。不是每个处理函数都要在这里把整个请求处理完。</li>
+    <li>驱动可调度延后工作。例如网卡调度 NAPI，在轮询函数中批量处理 RX 和 TX completion；线程化 IRQ 则可唤醒对应的内核线程。</li>
+    <li>延后路径更新上层队列、释放资源，必要时唤醒等待任务。应用要等自己被调度后，才继续执行。</li>
+  </ol>
+  <table><thead><tr><th>上下文</th><th>典型用途</th><th>约束</th></tr></thead><tbody>
+    <tr><td>hardirq</td><td>快速响应与调度后续工作</td><td>不能任意睡眠，应避免长时间占用 CPU</td></tr>
+    <tr><td>softirq / 常规 NAPI</td><td>有预算的批量网络处理等</td><td>通常也不能睡眠；即使由 ksoftirqd 承接，仍须遵守该回调的上下文约束</td></tr>
+    <tr><td>IRQ 线程 / 普通 workqueue</td><td>在可调度线程中完成延后工作</td><td>可按进程上下文规则阻塞，但持锁与原子区段仍有限制</td></tr>
+  </tbody></table>
+  <p>PREEMPT_RT、threaded NAPI 和 busy polling 会改变部分执行位置；不能把某条普通路径说成所有内核配置的唯一行为。代码入口可对照 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/irq/handle.c#L249">handle_irq_event()</a> 与 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/irq/manage.c#L2066">request_threaded_irq()</a>。</p>
+  <h3 id="path-part-1">中断上下文与接收线程</h3>
+  <p>网卡中断到达时，这个 CPU 可能正在执行完全无关的线程 B。hardirq 进入内核中断上下文，执行驱动注册的函数；它不是先找到接收应用 A，再把 CPU 调度给 A。中断退出后，内核可能处理待办 softirq，再决定是否需要调度。应用 A 的接收条件满足后，只是重新变成可运行任务。</p>
+  <p>线程化 IRQ 才具有独立的、可被调度的 IRQ 线程。主处理函数返回 <code>IRQ_WAKE_THREAD</code> 时，通用 IRQ 层唤醒已注册的线程函数；它与“唤醒接收应用”仍是两个对象。普通 workqueue 也由工作线程执行回调，而 softirq 是内核登记的延后处理类别，不是用户线程发起的一次软件系统调用。</p>
+</section>
+<section id="completion" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">五、</span>通知、完成与唤醒</h2>
+  <figure class="mechanism-diagram" data-diagram="linux-interrupt-completion" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>完成、通知与继续运行</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看完成、通知与继续运行" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="完成、通知与继续运行">
+    <img src="../assets/linux-interrupt-completion.svg?v=7bdd8f4b9615" alt="一次中断可以促成多项完成的处理；线程是否需要唤醒、何时实际运行，是后续的独立条件。" loading="lazy">
+  </div>
+  <figcaption>一次中断可以促成多项完成的处理；线程是否需要唤醒、何时实际运行，是后续的独立条件。 <a href="../assets/linux-interrupt-completion.svg?v=7bdd8f4b9615" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart LR
+    accTitle: 完成状态、通知、唤醒和运行是不同环节
+    accDescr: 设备先按协议发布完成状态，驱动可通过中断或轮询发现并处理。处理结果可能唤醒等待线程，线程被调度后才继续执行；中断不是完成状态本身。
+    A[&#34;设备发布完成状态&#34;] --&gt; B[&#34;驱动发现完成\n中断通知或轮询&#34;]
+    B --&gt; C[&#34;读取结果、回收资源&#34;]
+    C --&gt;|&#34;满足等待条件&#34;| D[&#34;唤醒等待线程&#34;]
+    D --&gt; E[&#34;调度后继续执行&#34;]
+</code></pre></details>
+</figure>
+  <p>四个边界应分开看：设备记录完成；通知 CPU 检查；驱动处理完成并唤醒等待者；等待者获得 CPU。屏蔽通知不会把已经完成的 DMA 撤销，解除屏蔽也不代表应用立即运行。驱动必须按设备协议处理状态读取、重新开中断和竞争窗口，不能只依赖“数中断”。</p>
+  <p>一次中断可覆盖多个队列完成项；轮询发现完成则可能不需要新的中断。网络 TX completion 表示某层可以回收发送资源，不是远端收到确认。磁盘请求的完成状态可以携带错误；普通写入完成也未必代表已持久化。这些语义由设备和上层协议决定，不由“用了中断”决定。</p>
+  <h3 id="completion-part-1">一个批次可以只有一次硬件通知</h3>
+  <p>假设 RX 队列积累了 3 个完成项，设备触发一次 MSI-X，驱动调度一次 NAPI poll 并读走这 3 项。IRQ 计数增加 1，收包工作量却是 3；是否唤醒应用还取决于报文是否通过协议检查、是否匹配 socket，以及有没有等待者。这里没有丢掉 2 次中断，也不需要给每个包补发一次中断。队列保存可消费的记录，通知负责让消费者有机会检查。</p>
+  <p>沿这一过程可以分别定位停顿：完成项未出现，查设备与 DMA；完成项已有但 poll 不运行，查通知与调度；socket 已有数据但应用没运行，查等待唤醒和 CPU 调度。这比把全部延迟都称为“中断慢”更有区分度。</p>
+</section>
+<section id="races" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>屏蔽、重开与通知竞态</h2>
+  <p>考虑接收队列的一次处理：驱动暂时屏蔽该队列通知，轮询取走所有已完成项，准备退出。若它刚判断“队列空”时又到一个包，处理不当就可能既没有继续轮询，也没有等到下一次通知。因此“队列空了再开中断”不是足够完整的算法，必须结合设备的状态保留、重新使能和复查规则封闭这个竞争窗口。</p>
+  <p>NAPI 在仍有工作时保持调度状态；满足完成条件后，驱动通过完成接口结束这一轮，再按硬件约定恢复通知。预算耗尽与确认队列已空是两种情况。早期 <a href="https://github.com/torvalds/linux/blob/v2.6.12/Documentation/networking/NAPI_HOWTO.txt">NAPI 设计文档的附录 2</a>就专门讨论了漏掉队列尾部报文的竞态，现代接口规则见 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/networking/napi.rst">NAPI 文档</a>。</p>
+  <p>还要区分三种操作：确认或清除设备事件，向中断控制器报告 EOI，以及消费队列里的完成项。它们不能互相替代。CPU 对共享队列的访问顺序、DMA 数据可见性也必须满足协议；一致性 DMA 内存仍不意味着可以省略所有内存屏障，非一致性映射还可能需要 DMA 同步操作，参见 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/core-api/dma-api-howto.rst">DMA API</a>。</p>
+  <p>这解释了为什么“中断次数减少”未必是故障：中断合并与轮询可以用一次通知处理许多项；但如果完成记录不断积压且消费者没有推进，就应检查队列所有权、通知重新使能和消费者是否真正获得 CPU，而不是只检查 IRQ 计数。</p>
+  <figure class="mechanism-diagram" data-diagram="linux-irq-rearm" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>判空后又到包：重新使能必须覆盖竞争窗口</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看判空后又到包：重新使能必须覆盖竞争窗口" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="判空后又到包：重新使能必须覆盖竞争窗口">
+    <img src="../assets/linux-irq-rearm.svg?v=7bdd8f4b9615" alt="仅示意设备保留 pending、使能后重新通知的一条正确路径；不具备这一保证的设备，需要按协议复查或重新调度。不可直接把图当作通用驱动代码。" loading="lazy">
+  </div>
+  <figcaption>仅示意设备保留 pending、使能后重新通知的一条正确路径；不具备这一保证的设备，需要按协议复查或重新调度。不可直接把图当作通用驱动代码。 <a href="../assets/linux-irq-rearm.svg?v=7bdd8f4b9615" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
+    accTitle: 队列空检查与重新打开通知之间的竞争窗口
+    accDescr: 本例设备在屏蔽期间保留待通知事件。驱动判空后又到一个包，NAPI 完成并重新打开通知，设备根据保留状态再次通知。不能假定所有设备都有此保证；实际驱动必须按硬件协议复查或重新调度。
+    participant D as 网卡队列&lt;br/&gt;本例保留 pending
+    participant P as 驱动 poll
+    participant N as NAPI 核心
+    Note over D,P: 本轮队列通知被屏蔽
+    P-&gt;&gt;D: 消费完成项，最后检查队列
+    D--&gt;&gt;P: 此刻为空
+    D-&gt;&gt;D: 新包到达，记录完成与 pending
+    Note over D,P: 竞争窗口：判空不代表之后一直空
+    P-&gt;&gt;N: napi_complete_done()
+    N--&gt;&gt;P: 本例成功结束本轮
+    P-&gt;&gt;D: 按设备约定重新使能通知
+    D--&gt;&gt;P: 保留事件触发通知
+    P-&gt;&gt;N: 调度新一轮 poll
+</code></pre></details>
+</figure>
+  <p>这里第二次通知对应新到达的工作，不是给前一批报文重复确认。若驱动清掉 pending 又没有复查队列，就可能让新包留在队列里而无人继续处理。问题在于生产者与消费者的交接规则，而不是单纯“中断开得早还是晚”。</p>
+</section>
+<section id="observe" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">七、</span>只读观察与客户机中断</h2>
+  <p>在实验机读取 <code>/proc/interrupts</code> 可看 IRQ 在各 CPU 的累计计数，读取 <code>/proc/softirqs</code> 可看 softirq 类别计数；两者都不能直接当作包数或 I/O 请求数。应比较同一负载窗口前后的变化，并结合驱动队列统计。读取权限和可见字段依赖系统配置。</p>
+  <p>虚拟化再增加了路由与交付边界：后端发布 Guest 队列完成，通过 QEMU 设备通知或 eventfd/irqfd 进入 KVM，KVM 建立待处理中断状态，再由软件注入或相应硬件辅助路径交付 Guest。Guest 驱动随后按自己的 IRQ/NAPI 路径处理。这通常是同一完成事件的递送过程，不是每经过一层都产生一个新的业务完成通知。</p>
+  <p>直通设备也可产生 MSI-X；宿主转发与 VT-d posted interrupt 是这些消息的不同递送路径，不是“MSI-X 或硬件”的二选一。见 <a href="interrupt-delivery.html">中断传递演示</a>。</p>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">八、</span>源码与延伸阅读</h2>
+  <ul>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/irq/handle.c#L177">IRQ action 与线程唤醒</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/softirq.c#L654">softirq 入口</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/core/dev.c#L7745">NET_RX softirq</a>。</li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/core-api/genericirq.rst">通用 IRQ 框架</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/networking/napi.rst">NAPI 的预算与执行方式</a>。</li>
+    <li>继续阅读 <a href="linux-execution-scheduling.html">线程阻塞与唤醒</a>、<a href="linux-network-io.html">网络收发</a>、<a href="kvm-virtio-interrupt.html">Virtio 完成中断路径</a>。</li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#linux-foundations">Linux 内核基础原理</a></nav>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-10">2026-11-10</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=b1d38984fa3b"></script>
+<script src="../assets/mechanism-viewer.js?v=7bdd8f4b9615" defer></script>
+</body>
+</html>

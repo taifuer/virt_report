@@ -1,0 +1,16 @@
+sequenceDiagram
+    accTitle: 普通 UDP 发送的缓冲区交接
+    accDescr: 应用载荷复制为内核报文，协议栈将 skb 交给驱动，驱动接受后设置 DMA 和 TX 描述符。sendto 可先返回，设备完成之后驱动回收 DMA 映射和 skb。该完成不表示远端收到。
+    participant A as 应用 buffer
+    participant S as UDP/IP 与<br/>发送队列
+    participant D as 网卡驱动<br/>TX ring
+    participant N as 物理网卡
+    A->>S: sendto：复制载荷，构造 skb
+    S->>D: ndo_start_xmit(skb)
+    D->>N: DMA 映射、描述符、提交
+    D-->>S: 接受 skb，接管后续释放
+    S-->>A: sendto 成功，可复用原 buffer
+    Note over D,N: 本例此后才观察到设备完成<br/>期间 skb 数据仍须有效
+    N-->>D: TX completion
+    D->>D: 处理 DMA 映射、释放 skb 引用<br/>回收槽位，必要时唤醒发送队列
+    Note over A,N: 不包含远端接收确认；UDP 本身不提供该确认

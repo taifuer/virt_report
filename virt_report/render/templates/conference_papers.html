@@ -1,39 +1,34 @@
 {% extends "base.html" %}
 {% from "_pagination.html" import pagination %}
+{% from "_conference_paper.html" import paper_row %}
 {% block title %}相关论文 - virt-report{% endblock %}
-{% block description %}系统领域会议与期刊中的虚拟化相关论文列表。{% endblock %}
+{% block description %}虚拟化相关论文与点评，支持按经典论文、会议、期刊和年份筛选。{% endblock %}
 {% block nav_home %}{% endblock %}
 {% block nav_conferences %}on{% endblock %}
 {% block content %}
 <article class="conference-page">
-  <header><div class="kicker"><a href="conferences.html">会议</a> · Academic Paper Archive</div><h1>相关论文</h1><p>保留与系统虚拟化机制直接相关或能解释其演进的论文；代表性标记只用于辅助观察技术脉络。</p></header>
+  <header><div class="kicker"><a href="conferences.html">会议</a> · Research Papers</div><h1>相关论文</h1><p>共 {{ content.paper_count }} 篇论文，其中 {{ content.curated_count }} 篇经典论文。</p></header>
   <section class="conference-section paper-observer" data-conference-browser data-default-size="10">
-    <form class="paper-search" role="search" action="conference-papers.html" data-conference-search>
-      <label class="sr-only" for="paper-query">搜索论文标题、中文点评或单位</label>
-      <div class="paper-search-input"><input id="paper-query" name="q" type="search" maxlength="120" placeholder="搜索标题、中文点评或单位…" autocomplete="off" data-conference-query><button type="button" data-conference-clear aria-label="清除关键词" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
-      <button type="submit">搜索</button>
-    </form>
-    <div class="paper-active-topic" data-conference-topic-filter hidden><span>主题：<strong data-conference-topic-label></strong></span><button type="button" data-conference-topic-clear>清除主题</button></div>
-    <div class="conference-controls" role="group" aria-label="论文筛选">
-      <label>会议 / 期刊<select data-conference-venue><option value="" data-option-label="全部">全部（{{ content.paper_count }}）</option>{% for venue in content.paper_venues %}<option value="{{ venue.key }}" data-option-label="{{ venue.name }}">{{ venue.name }}（{{ venue.paper_count }}）</option>{% endfor %}</select></label>
-      <label>年份<select data-conference-year><option value="" data-option-label="全部">全部（{{ content.paper_count }}）</option>{% for year in content.years %}<option value="{{ year }}" data-option-label="{{ year }}">{{ year }}（{{ content.year_counts[year] }}）</option>{% endfor %}</select></label>
-      <span data-conference-count aria-live="polite" aria-atomic="true">{{ content.paper_count }} 篇论文</span>
-      <button type="button" class="paper-reset" data-conference-reset hidden>清除筛选</button>
-    </div>
-    <p class="conference-empty" data-conference-empty hidden>当前筛选条件下没有已审核论文。</p>
-    <div class="paper-list paginated-list" id="paper-list">{% for paper in content.papers %}<article class="paper-row" id="paper-{{ paper.id }}" data-conference-item data-venue="{{ paper.venue }}" data-year="{{ paper.year }}" data-topics='{{ paper.topics|tojson }}'{% if loop.index > 10 %} hidden{% endif %}>
-      <div class="paper-meta"><span>{{ paper.year }}</span><strong>{{ venues_by_key[paper.venue].name }}</strong><span class="relation {{ 'direct' if paper.relation == '直接关联' else '' }}">{{ paper.relation }}</span></div>
-      <div class="paper-body"><h2><a href="{{ paper.url }}" target="_blank" rel="noopener noreferrer">{{ paper.title }}</a></h2>
-        {% if paper.institution_label %}<div class="paper-credit"{% if paper.affiliation_source_label %} title="单位元数据来源：{{ paper.affiliation_source_label }}{% if paper.affiliation_verified_at %}；核验时间：{{ paper.affiliation_verified_at }}{% endif %}"{% endif %}><strong>单位</strong><div class="paper-credit-content"><span>{{ paper.institution_label }}</span>{% if paper.institution_hidden %}<details class="paper-credit-more"><summary>另 {{ paper.institution_hidden|length }} 家单位</summary><span>{{ paper.institution_hidden_label }}</span></details>{% endif %}</div></div>{% endif %}
-        {% set publication_label = {'accepted': '已录用', 'published': '已发表'}.get(paper.get('publication_status'), '') %}
-        {% set abstract_url = paper.evidence_source_url if paper.evidence_level == 'abstract' and paper.evidence_source_url and paper.evidence_source_url != paper.url else '' %}
-        {% if publication_label or paper.evidence_level in ['title', 'project'] or abstract_url %}<p class="paper-evidence">{{ publication_label }}{% if paper.evidence_level == 'title' %}{% if publication_label %} · {% endif %}目前仅核实标题，待摘要补充{% elif paper.evidence_level == 'project' %}{% if publication_label %} · {% endif %}点评依据<a href="{{ paper.evidence_source_url }}" target="_blank" rel="noopener noreferrer">作者项目说明</a>{% elif abstract_url %}{% if publication_label %} · {% endif %}<a href="{{ abstract_url }}" target="_blank" rel="noopener noreferrer">公开摘要</a>{% endif %}</p>{% endif %}
-        <p><strong>内容</strong>{{ paper.introduction }}</p><p class="editor-comment"><strong>点评</strong>{{ paper.commentary }}</p>
-        {% if paper.pdf_url or paper.code_url or paper.artifact_source_url %}<p class="paper-resources">{% for key,label in [('pdf_url','论文 PDF'),('code_url','项目代码'),('artifact_source_url','Artifact 记录')] if paper.get(key) %}{% if not loop.first %} · {% endif %}<a href="{{ paper[key] }}" target="_blank" rel="noopener noreferrer">{{ label }}</a>{% endfor %}</p>{% endif %}
-        <div class="paper-tags">{% if paper.representative %}<span class="tag representative">代表性论文</span>{% endif %}{% for architecture in paper.architectures %}<span class="tag arch{% if architecture in ['x86', 'Arm'] %} focus{% endif %}">{{ architecture }}</span>{% endfor %}{% for topic in paper.topics %}<a class="tag" href="conference-papers.html?topic={{ topic|urlencode }}" data-paper-topic="{{ topic }}" title="筛选{{ topic }}论文">{{ topic }}</a>{% endfor %}</div>
+    <div data-conference-enhanced hidden>
+      <form class="paper-search" role="search" action="conference-papers.html" data-conference-search>
+        <label class="sr-only" for="paper-query">搜索论文标题、中文点评或单位</label>
+        <div class="paper-search-input"><input id="paper-query" name="q" type="search" maxlength="120" placeholder="搜索论文标题、内容或单位…" autocomplete="off" data-conference-query><button type="button" data-conference-clear aria-label="清除关键词" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+        <button type="submit">搜索</button>
+      </form>
+      <div class="paper-active-topic" data-conference-topic-filter hidden><span>主题：<strong data-conference-topic-label></strong></span><button type="button" data-conference-topic-clear>清除主题</button></div>
+      <div class="conference-controls" role="group" aria-label="论文筛选">
+        <label>会议 / 期刊<select data-conference-venue><option value="" data-option-label="全部">全部</option>{% for venue in content.paper_venues %}<option value="{{ venue.key }}" data-option-label="{{ venue.name }}">{{ venue.name }}</option>{% endfor %}</select></label>
+        <label>年份<select data-conference-year><option value="" data-option-label="全部">全部</option>{% for year in content.years %}<option value="{{ year }}" data-option-label="{{ year }}">{{ year }}</option>{% endfor %}</select></label>
+        <button type="button" class="paper-reset" data-conference-reset hidden>清除筛选</button>
+        <button type="button" role="switch" class="paper-classic-filter" data-conference-classic aria-checked="false"><span class="paper-switch-track" aria-hidden="true"></span><span>只看经典</span></button>
       </div>
-    </article>{% endfor %}</div>
-    {{ pagination(namespace='conference', pages=([1, (content.paper_count + 9) // 10]|max), label='论文分页') }}
+      <p class="conference-empty" data-conference-empty hidden>没有匹配的论文。</p>
+    </div>
+    <noscript><p class="conference-method">以下显示全部论文。筛选和分页需要 JavaScript。</p></noscript>
+    <div class="paper-list paginated-list" id="paper-list">
+      {% for paper in content.papers %}{{ paper_row(paper, venues_by_key) }}{% endfor %}
+    </div>
+    {{ pagination(namespace='conference', label='论文分页', hidden=true) }}
   </section>
 </article>
 {% endblock %}

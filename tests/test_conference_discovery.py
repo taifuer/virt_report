@@ -162,16 +162,17 @@ def test_catalogue_uses_stored_abstract_for_opaque_titles(tmp_path):
 def test_reviewed_additions_keep_years_evidence_and_institutions():
     content = conferences.load_content()
     by_id = {item["id"]: item for item in content["papers"]}
-    assert content["paper_count"] >= 90
+    assert content["paper_count"] > content["curated_count"]
     assert by_id["security25-tdxploit"]["year"] == 2025
-    published = by_id["sosp26-cpu-virtualization"]
-    assert published["publication_status"] == "published"
-    assert published["evidence_level"] == "title" and published["architectures"] == []
+    assert "sosp26-cpu-virtualization" not in by_id
+    deferred = next(item for item in content["screening"]["papers"]
+                    if item["id"] == "sosp26-cpu-virtualization")
+    assert deferred["decision"] == "defer"
     assert all(p["institutions"] or p.get("affiliation_note") for p in by_id.values())
     page = render.render_conference_papers_html(Config(), content)
     assert "data-conference-query" in page and "data-paper-topic" in page
     assert 'id="paper-security25-tdxploit"' in page
-    assert "目前仅核实标题，待摘要补充" in page
+    assert "目前仅核实标题，待摘要补充" not in page
     assert "paper-community-links" not in page
     assert 'data-paper-topic="在线迁移"' in page
     # The search index uses rendered text, not another copy of paper prose.

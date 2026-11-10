@@ -1,0 +1,16 @@
+flowchart LR
+    accTitle: O1、CFS 和 EEVDF 的选择依据
+    accDescr: O1 通过优先级数组和位图选择任务，CFS 按权重记账并偏向虚拟运行时间较小的实体，EEVDF 先判断服务资格再比较虚拟截止时间。三者是普通调度主线的历史演变，不包含所有调度类。
+    subgraph A["O(1) · 早期 2.6"]
+        direction TB
+        A1["active / expired 数组"] --> A2["位图找优先级\nactive 为空时交换数组"]
+    end
+    subgraph B["CFS · 2.6.23"]
+        direction TB
+        B1["运行时间按权重归一化"] --> B2["比较 vruntime\n偏向服务较少的实体"]
+    end
+    subgraph C["EEVDF · 6.6 起"]
+        direction TB
+        C1["lag 判断服务资格"] --> C2["合格者中比较\n虚拟截止时间"]
+    end
+    A --> B --> C

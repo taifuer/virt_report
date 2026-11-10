@@ -1,0 +1,13 @@
+sequenceDiagram
+    accTitle: 缓冲读取未命中时的完成与唤醒
+    accDescr: 文件读取在页缓存未命中时，经文件系统和块层提交设备请求。设备完成后内核更新页与 I/O 状态、唤醒等待线程，线程被调度后复制数据并返回；图不承诺系统调用与块请求一一对应。
+    participant T as 读取线程
+    participant K as 页缓存与块 I/O
+    participant D as 块设备
+    T->>K: read：页缓存未命中
+    K->>D: 文件系统映射后提交块请求
+    T->>T: 等待页就绪，可调度出去
+    D-->>K: DMA 数据与完成状态
+    K->>K: 更新页及请求状态
+    K-->>T: 唤醒等待者
+    T->>T: 获得 CPU 后复制数据、返回

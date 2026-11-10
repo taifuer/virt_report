@@ -46,7 +46,7 @@ def test_directory_has_reading_order_and_real_anchors_only():
     directory = re.search(r'<nav class="mechanism-directory".*?</nav>', page, re.S).group()
     assert page.index('结合源码与图解') < page.index('class="mechanism-directory"')
     assert re.findall(r'href="#([^"]+)"', directory) == [
-        'virtualization-basics',
+        'virtualization-basics', 'linux-foundations',
         'cpu-virtualization', 'memory-virtualization', 'device-virtualization',
         'interrupt-virtualization', 'vm-startup', 'migration', 'hotplug',
         'live-upgrade', 'qemu-internals', 'kvm-internals', 'libvirt-internals',
@@ -56,7 +56,7 @@ def test_directory_has_reading_order_and_real_anchors_only():
         'gpu-execution-walkthrough', 'virtio-gpu-walkthrough',
     ]
     assert re.findall(r'<section class="mechanism-topic" id="([^"]+)"', page) == [
-        'virtualization-basics',
+        'virtualization-basics', 'linux-foundations',
         'cpu-virtualization', 'memory-virtualization', 'device-virtualization',
         'interrupt-virtualization', 'vm-startup', 'migration', 'hotplug',
         'live-upgrade', 'qemu-internals', 'kvm-internals', 'libvirt-internals',
@@ -75,7 +75,8 @@ def test_directory_has_reading_order_and_real_anchors_only():
 
 def test_directory_counts_primary_articles_without_extra_related_rows():
     counts = {topic['slug']: len(topic['articles']) for topic in mechanisms.topics()}
-    assert counts == {'virtualization-basics': 1, 'cpu-virtualization': 6, 'memory-virtualization': 6,
+    assert counts == {'linux-foundations': 6, 'virtualization-basics': 1,
+                      'cpu-virtualization': 6, 'memory-virtualization': 6,
                       'device-virtualization': 15, 'interrupt-virtualization': 2,
                       'vm-startup': 2, 'migration': 7, 'hotplug': 4,
                       'live-upgrade': 2, 'qemu-internals': 6, 'libvirt-internals': 2,

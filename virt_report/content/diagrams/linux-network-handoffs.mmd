@@ -1,0 +1,15 @@
+sequenceDiagram
+    accTitle: 外部报文到达与应用接收
+    accDescr: 驱动预备接收缓冲区，外部报文可主动到达。网卡 DMA 后由 NAPI 和协议栈处理并进入匹配的 socket 队列；recvmsg 消费数据，未到达时等待，已到达时可直接读取。
+    participant N as 物理网卡
+    participant K as 驱动与协议栈
+    participant S as socket 接收队列
+    participant A as 应用线程
+    K->>N: 预备 RX 缓冲区
+    A->>S: recvmsg：队列空，等待
+    N->>N: 外部报文到达、DMA
+    N-->>K: 通知 RX 工作
+    K->>K: NAPI 取包、协议处理
+    K->>S: 匹配 socket，入队
+    S-->>A: 唤醒；调度后复制载荷
+    Note over S,A: 若数据已在队列中，recvmsg 可直接消费

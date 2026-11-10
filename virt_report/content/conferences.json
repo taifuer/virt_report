@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "updated_at": "2026-11-09",
-  "coverage": "选录 2005—2026 年研究，最近补充于 2026 年 11 月 9 日；各年数量反映本站收录范围",
-  "method": "离线保存会议目录的标题元数据，再依据会议或机构页面公开的标题、简介或摘要，以及作者项目说明审核虚拟化相关性，必要时核对原论文。论文主链接优先指向出版者、会议官方页或 DOI；论文单位优先采用会议官方页或 Crossref 元数据，缺失时参考机构公开论文页，并规范化去重。不展示作者，不推断通讯作者。公开页面只保留审核后的相关论文、中文转述与编辑点评，不重发布论文全文，不调用 DeepSeek 自动生成。仅有标题证据的论文单独标注，不据此推断实现机制、性能数据或上游落地情况；各会议分别核对，收录数量不代表全部相关论文数量。",
+  "updated_at": "2026-11-10",
+  "coverage": "选录 1974—2026 年研究；默认精选阅读，全部列表也须通过相关性审核，不承诺穷尽收录",
+  "method": "离线保存会议标题元数据，逐篇审核其与系统虚拟化的实质关联；关键词只用于发现候选，不自动收录。普通论文也须能说明 VMM、真实 ISA 模拟、Guest/Host 机制或 VM 隔离与状态交接的联系。边界条目核对一手摘要、作者项目或原文；只有标题的候选暂不公开。精选另写问题、机制、证据、优点和局限，并明确阅读范围。单位按会议或机构元数据规范化，不推断通讯作者。不转载全文，不调用 DeepSeek 自动生成；收录数量不代表研究热度或全部相关文献数量。",
   "edition_checks": [
     {
       "venue": "atc", "year": 2026, "checked_at": "2026-11-02",
       "status": "录用名单已核对",
-      "note": "ACM SIGOPS ATC 已公布 135 篇录用论文；选录 6 篇虚拟化及相关机制研究。5 篇依据标题与单位信息，δSandbox 另核对作者项目说明与官方 Artifact Evaluation 记录。",
+      "note": "2026-11-02 已核对录用名单与部分作者材料；2026-11-10 相关性复核后，5 篇仅有标题的记录转为待核实，1 篇进程沙箱回滚研究移出当前目录。名单核对不等于公开收录。",
       "source_url": "https://atc.sigops.org/2026/accepted.html",
       "parser": "atc"
     },
@@ -28,7 +28,7 @@
     {
       "venue": "sosp", "year": 2026, "checked_at": "2026-10-12",
       "status": "议程与出版信息已核对",
-      "note": "CPU 虚拟化论文已正式发表并补充 DOI 链接；当前仍仅依据标题，待核实摘要后完善点评。",
+      "note": "已核对议程、出版信息与 CPU 虚拟化论文 DOI；该条目仍缺已核实的一手机制说明，2026-11-10 转为待复核，不因已发表自动收录。",
       "source_url": "https://sigops.org/s/conferences/sosp/2026/schedule.html",
       "parser": "sosp"
     },
@@ -56,9 +56,9 @@
     {"key": "security", "name": "安全与漏洞", "paper_ids": ["security26-staleus", "security26-free", "security25-tdxploit"], "releases": []}
   ],
   "analysis": {
-    "coverage": "2005—2026",
+    "coverage": "1974—2026",
     "headline": "从 Hypervisor 机制优化走向轻量化、机密计算与生产协同",
-    "overview": "早期 QEMU、KVM 与 Virtio 论文分别解释设备与指令模拟、内核中的硬件辅助执行，以及通用虚拟 I/O 接口。后续研究沿嵌套运行、资源管理、迁移和隔离展开，也通过专用客户机、快照与按需加载降低启动成本。以下按已收录论文梳理这些机制的联系，年度数量不用于衡量研究热度。",
+    "overview": "从可虚拟化条件、ESX 内存管理和 Xen 半虚拟化开始，QEMU、KVM 与 Virtio 分别解释指令模拟、硬件辅助执行和通用虚拟 I/O 接口。后续研究沿嵌套运行、资源管理、迁移和隔离展开。以下仅按通过相关性筛选的论文梳理机制联系，年度示例不自动进入精选，数量不用于衡量研究热度。",
     "eras": [
       {
         "years": "2023—2026",
@@ -91,9 +91,9 @@
         "summary": "嵌套虚拟化、I/O 公平、时间一致性、高可用与跨广域迁移共同奠定云端虚机的运行基础。"
       },
       {
-        "years": "2005—2008",
+        "years": "1974—2008",
         "name": "执行与虚拟设备接口",
-        "summary": "QEMU 的动态翻译、KVM 的内核执行接口与 Virtio 的驱动和设备约定，构成理解后续虚拟化路径的重要起点。"
+        "summary": "从可虚拟化条件、内存超配与半虚拟化，到 QEMU 翻译、KVM 执行接口和 Virtio 共享队列，建立系统虚拟化的基础契约。"
       }
     ],
     "years": [
@@ -108,7 +108,7 @@
           "隔离与审计",
           "沙箱回滚"
         ],
-        "summary": "截至 2026 年 11 月 2 日，已收录研究继续细分虚机运行中的资源与交接成本：OSDI 的 RamRyder、Blowfish 关注弹性内存，M3U 处理大虚机后拷贝迁移；EuroSys 的 BASK 将内存去重工作延伸至 SmartNIC。NSDI 的 CStar Gateway 与 FAST 的高速 I/O 研究分别调整网络和存储数据路径，ASPLOS 的 CEMU、Arancini 补充设备模拟与跨架构翻译。隔离研究则从机密虚机的硬件安全，扩展到 Wallet 的函数执行隔离和 HyperAudit 的审计日志保护。ATC 2026 的已录用议题进一步关注 CXL 内存池迁移、嵌套 MicroVM 恢复和安全容器网络；这些条目目前依据标题，具体实现及收益仍待摘要核实。同届 δSandbox 面向有状态 AI Agent 的高频试错，通过文件与进程状态的增量检查点支持回滚；这是操作系统层的相关机制，可与虚机快照比较状态范围和恢复成本。SOSP 的新 CPU 虚拟化论文已正式发表，当前点评也仅依据标题。",
+        "summary": "已收录研究继续细分虚机的资源与交接成本：RamRyder、Blowfish 关注弹性内存，M3U 处理大虚机后拷贝，BASK 将页去重延伸至 SmartNIC。CStar Gateway 与 FAST 的高速 I/O 工作分别调整网络和存储数据路径，CEMU、Arancini 补充设备模拟与跨 ISA 翻译。Wallet、HyperAudit 关注机密执行和审计边界。2026-11-10 逐篇复核移除了泛云控制面和进程沙箱等关联较弱的条目；ATC 2026 与 SOSP 的标题级候选暂不公开，等待一手机制材料，不据题目推断实现或收益。",
         "representative_ids": [
           "osdi26-janus",
           "osdi26-m3u",
@@ -208,7 +208,7 @@
           "ARM I/O",
           "多对一虚拟化"
         ],
-        "summary": "Firecracker 精简面向 Serverless 的 VMM 与设备模型，SEUSS 通过 unikernel 快照复用初始化状态，Catalyzer 结合按需恢复与环境克隆缩短启动路径。三者可按设备范围、快照边界和兼容性比较。GiantVM 探索多客户机到单 VMM 的组织方式，LeapIO 则研究 ARM 平台的虚拟 NVMe 路径。",
+        "summary": "Firecracker 精简面向 Serverless 的 VMM 与设备模型，SEUSS 通过 unikernel 快照复用初始化状态，Catalyzer 结合按需恢复与环境克隆缩短启动路径。三者可按设备范围、快照边界和兼容性比较。GiantVM 探索将多台物理主机聚合为一个系统虚机，LeapIO 则研究 Arm 平台的虚拟 NVMe 路径。",
         "representative_ids": [
           "nsdi20-firecracker",
           "asplos20-leapio"
@@ -304,7 +304,7 @@
           "内存去重",
           "I/O"
         ],
-        "summary": "ClickOS 为网络功能组织轻量客户机，OSv 为单应用虚机调整内核与运行接口；两者都利用专用运行环境减少通用系统开销，同时面临不同的应用兼容性约束。其他已收录工作继续研究内省、宿主换页与跨 VM 内存去重。",
+        "summary": "KVM/ARM 解释 ARMv7 的 split-mode 虚拟化，gVirt 展示 GPU mediated pass-through 的直接访问与仲裁边界。ClickOS 和 OSv 分别为网络功能与单应用裁剪 Guest；其余工作研究虚机内省、Guest I/O 与宿主换页的协作，以及空闲内存共享。",
         "representative_ids": [
           "vee14-introspection",
           "vee14-tesseract",
@@ -336,10 +336,9 @@
           "灾难恢复",
           "设备直通"
         ],
-        "summary": "Dune 用硬件虚拟化向进程安全开放页表等特权能力，保留与原有 Linux 进程环境的联系。其他已收录工作关注数据中心级 VM 管理、高可用、异地容灾与直通设备迁移，体现了进程执行机制和整机运维两类不同问题。",
+        "summary": "Dune 用硬件虚拟化向进程安全开放页表等特权能力，保留 Linux 进程接口。SecondSite 研究 VM 状态复制与跨站故障切换，CompSC 处理设备直通 VM 的迁移：三者分别对应执行权限、容灾状态和设备连续性，而不是一般数据中心编程框架。",
         "representative_ids": [
-          "vee12-dvm",
-          "vee12-secondsite",
+            "vee12-secondsite",
           "vee12-compsc"
         ]
       },
@@ -386,14 +385,40 @@
         "summary": "KVM 通过内核模块与用户态接口组织 Guest 执行，复用 Linux 的调度和资源管理。原论文中的用户态、内核态和 Guest 执行循环，适合用来理解今天的 VM-exit 与返回用户态之间的区别。",
         "representative_ids": ["ols07-kvm"]
       },{
-        "year": 2005, "headline": "QEMU 的跨架构动态翻译",
-        "themes": ["QEMU", "动态翻译"],
-        "summary": "QEMU 原始论文介绍跨架构指令翻译以及系统级和用户级模拟。它记录的是早期实现，阅读时应与后来的 TCG 和 KVM 加速路径区分。",
-        "representative_ids": ["atc05-qemu"]
+        "year": 2006, "headline": "以事件成本分析软件与硬件虚拟化",
+        "themes": ["二进制翻译", "硬件辅助", "MMU"],
+        "summary": "第一代硬件辅助并非在所有负载中胜过成熟软件 VMM；对照研究把原因追到退出成本和 MMU 处理。应保留分析方法，而不是把当年的性能排序用于现代处理器。",
+        "representative_ids": ["asplos06-software-hardware"]
+      },{
+        "year": 2005, "headline": "指令模拟与运行中迁移的两条基础路径",
+        "themes": ["QEMU", "动态翻译", "Pre-copy"],
+        "summary": "QEMU 原始论文解释跨架构翻译，Xen 热迁移研究则把内存迭代复制、短暂停机与业务连续性连起来；两者分别回答如何运行和如何搬移一台虚机。",
+        "representative_ids": ["atc05-qemu", "nsdi05-live-migration"]
+      },{
+        "year": 2003, "headline": "Xen 的半虚拟化接口",
+        "themes": ["Xen", "半虚拟化", "共享环"],
+        "summary": "Xen 以适配 Guest 内核为代价，保留应用 ABI，并联合设计页表、事件和共享 I/O ring，为后续虚拟 I/O 接口提供了重要参照。",
+        "representative_ids": ["sosp03-xen"]
+      },{
+        "year": 2002, "headline": "ESX 的内存超配与协作回收",
+        "themes": ["Balloon", "页共享", "资源管理"],
+        "summary": "ESX 将 Guest 协作回收、内容页共享和工作集估计结合起来，说明内存容量效率与性能隔离必须同时考虑。",
+        "representative_ids": ["osdi02-esx-memory"]
+      },{
+        "year": 1974, "headline": "形式化描述可虚拟化条件",
+        "themes": ["虚拟化理论", "敏感指令"],
+        "summary": "Popek 与 Goldberg 用等价性、资源控制和效率定义 VMM，并在明确的机器模型下给出充分条件。这是理论起点，不是宣称现代实现只能采用一种技术。",
+        "representative_ids": ["cacm74-popek-goldberg"]
       }
     ]
   },
   "venues": [
+    {
+      "key": "cacm", "name": "CACM", "full_name": "Communications of the ACM",
+      "kind": "期刊", "priority": "经典论文",
+      "url": "https://cacm.acm.org/",
+      "focus": "选录建立虚拟化基本概念与形式化条件的奠基研究。"
+    },
     {
       "key": "kvm-forum",
       "name": "KVM Forum",
@@ -508,6 +533,90 @@
     }
   ],
   "papers": [
+    {
+      "id": "cacm74-popek-goldberg", "year": 1974, "venue": "cacm",
+      "title": "Formal Requirements for Virtualizable Third Generation Architectures",
+      "url": "https://doi.org/10.1145/361011.361073",
+      "pdf_url": "https://www.cse.iitb.ac.in/~puru/courses/spring2024-25/downloads/popekgoldberg.pdf",
+      "introduction": "用形式化机器模型定义 VMM 的等价性、资源控制与效率，并给出基于敏感指令和特权指令关系的可虚拟化充分条件。",
+      "commentary": "价值在于把虚拟化的正确性与执行方式分开讨论。定理有明确模型假设，不能把一个充分条件反过来当作所有虚拟化实现的必要条件。",
+      "relation": "直接关联", "topics": ["虚拟化理论", "Hypervisor", "指令虚拟化"],
+      "institutions": ["University of California, Los Angeles", "Honeywell Information Systems", "Harvard University"],
+      "affiliation_source": "institution", "affiliation_source_url": "https://www.cse.iitb.ac.in/~puru/courses/spring2024-25/downloads/popekgoldberg.pdf",
+      "affiliation_verified_at": "2026-11-10", "evidence_level": "full_text"
+    },
+    {
+      "id": "osdi02-esx-memory", "year": 2002, "venue": "osdi",
+      "title": "Memory Resource Management in VMware ESX Server",
+      "url": "https://www.usenix.org/conference/osdi-02/memory-resource-management-vmware-esx-server",
+      "pdf_url": "https://www.usenix.org/legacy/event/osdi02/tech/waldspurger/waldspurger.pdf",
+      "introduction": "把 balloon、内容相同页共享、工作集估计和分配策略组合起来，在不修改通用客户机内核的前提下管理虚机内存超配。",
+      "commentary": "重点不是省下多少内存，而是宿主不知道 Guest 页价值时如何协作回收，以及容量效率与性能隔离之间如何取舍。",
+      "relation": "直接关联", "topics": ["内存管理", "Balloon", "页共享", "资源隔离"], "architectures": ["x86"],
+      "institutions": ["VMware"], "affiliation_source": "usenix",
+      "affiliation_source_url": "https://www.usenix.org/legacy/event/osdi02/tech/waldspurger/waldspurger.pdf",
+      "affiliation_verified_at": "2026-11-10", "evidence_level": "full_text"
+    },
+    {
+      "id": "sosp03-xen", "year": 2003, "venue": "sosp",
+      "title": "Xen and the Art of Virtualization",
+      "url": "https://www.cl.cam.ac.uk/research/srg/netos/papers/2003-xensosp.pdf",
+      "pdf_url": "https://www.cl.cam.ac.uk/research/srg/netos/papers/2003-xensosp.pdf",
+      "introduction": "通过修改 Guest 内核使用半虚拟化接口，在早期 x86 上提供多操作系统隔离；应用 ABI 保持兼容，页表更新由 Hypervisor 校验，I/O 使用共享环与事件通知。",
+      "commentary": "这是以 Guest 内核适配换取接口简化与性能的代表性设计；应与无需修改 Guest 内核的硬件辅助执行路线对照阅读。",
+      "relation": "直接关联", "topics": ["Xen", "半虚拟化", "共享环", "资源隔离"], "architectures": ["x86"],
+      "institutions": ["University of Cambridge"], "affiliation_source": "institution",
+      "affiliation_source_url": "https://www.cl.cam.ac.uk/research/srg/netos/papers/2003-xensosp.pdf",
+      "affiliation_verified_at": "2026-11-10", "evidence_level": "full_text"
+    },
+    {
+      "id": "nsdi05-live-migration", "year": 2005, "venue": "nsdi",
+      "title": "Live Migration of Virtual Machines",
+      "url": "https://www.usenix.org/conference/nsdi-05/live-migration-virtual-machines",
+      "pdf_url": "https://www.usenix.org/legacy/events/nsdi05/tech/full_papers/clark/clark.pdf",
+      "introduction": "在 Xen 上以迭代 pre-copy、短暂停机复制和提交协议转移运行中的虚机，同时衔接网络连接与共享存储。",
+      "commentary": "把总迁移时间、停机窗口和业务退化分开衡量，是今天阅读迁移优化论文仍应保留的框架。热页写入速率和可用带宽决定 pre-copy 是否收敛。",
+      "relation": "直接关联", "topics": ["在线迁移", "Pre-copy", "脏页", "Xen"], "architectures": ["x86"],
+      "institutions": ["University of Cambridge", "University of Copenhagen"], "affiliation_source": "usenix",
+      "affiliation_source_url": "https://www.usenix.org/legacy/events/nsdi05/tech/full_papers/clark/clark.pdf",
+      "affiliation_verified_at": "2026-11-10", "evidence_level": "full_text"
+    },
+    {
+      "id": "asplos06-software-hardware", "year": 2006, "venue": "asplos",
+      "title": "A Comparison of Software and Hardware Techniques for x86 Virtualization",
+      "url": "https://web.stanford.edu/class/archive/cs/cs240/cs240.1136/readings/asplos235_adams.pdf",
+      "pdf_url": "https://web.stanford.edu/class/archive/cs/cs240/cs240.1136/readings/asplos235_adams.pdf",
+      "introduction": "对照 VMware 二进制翻译和第一代硬件辅助 VMM，按页表更新、上下文切换及 I/O 等事件分析开销，而非只比较总体吞吐。",
+      "commentary": "经典之处是拆解软硬件边界的成本；当时的硬件缺少 EPT/NPT，不能把软件方案在部分测试中更快的结果套用到现代处理器。",
+      "relation": "直接关联", "topics": ["二进制翻译", "硬件辅助", "MMU", "性能分析"], "architectures": ["x86"],
+      "institutions": ["VMware"], "affiliation_source": "institution",
+      "affiliation_source_url": "https://web.stanford.edu/class/archive/cs/cs240/cs240.1136/readings/asplos235_adams.pdf",
+      "affiliation_verified_at": "2026-11-10", "evidence_level": "full_text"
+    },
+    {
+      "id": "asplos14-kvm-arm", "year": 2014, "venue": "asplos",
+      "title": "KVM/ARM: The Design and Implementation of the Linux ARM Hypervisor",
+      "url": "https://doi.org/10.1145/2541940.2541946",
+      "pdf_url": "https://www.nieh.net/pubs/asplos2014_kvmarm.pdf",
+      "introduction": "以 split-mode virtualization 将最小硬件控制放在 Hyp mode，其余处理复用 Linux 内核，说明 KVM 如何适配 ARM 的特权级与内存模型。",
+      "commentary": "既有架构取舍与实机评估，也记录了进入主线的工程过程。论文主要针对 ARMv7，不能直接当作今天 arm64 VHE/nVHE 的完整实现说明。",
+      "relation": "直接关联", "topics": ["KVM", "Arm", "Stage-2", "Hypervisor"], "architectures": ["Arm"],
+      "institutions": ["Columbia University"], "affiliation_source": "institution",
+      "affiliation_source_url": "https://www.nieh.net/pubs/asplos2014_kvmarm.pdf",
+      "affiliation_verified_at": "2026-11-10", "evidence_level": "full_text"
+    },
+    {
+      "id": "atc14-gvirt", "year": 2014, "venue": "atc",
+      "title": "A Full GPU Virtualization Solution with Mediated Pass-Through",
+      "url": "https://www.usenix.org/conference/atc14/technical-sessions/presentation/tian",
+      "pdf_url": "https://www.usenix.org/system/files/conference/atc14/atc14-paper-tian.pdf",
+      "introduction": "gVirt 允许 Guest 使用原生 GPU 驱动：性能敏感资源直接映射，特权寄存器和页表操作由 mediator 处理，并通过调度与命令保护共享 GPU。",
+      "commentary": "它具体说明了 mediated pass-through 的边界：部分访问直达不等于整块设备独占直通，命令审计、页表隔离和上下文切换仍有成本。",
+      "relation": "直接关联", "topics": ["GPU", "Mediated pass-through", "设备虚拟化", "GVT-g"], "architectures": ["x86"],
+      "institutions": ["Intel"], "affiliation_source": "usenix",
+      "affiliation_source_url": "https://www.usenix.org/system/files/conference/atc14/atc14-paper-tian.pdf",
+      "affiliation_verified_at": "2026-11-10", "evidence_level": "full_text"
+    },
     {
       "id": "atc05-qemu", "year": 2005, "venue": "atc",
       "title": "QEMU, a Fast and Portable Dynamic Translator",
@@ -633,176 +742,9 @@
       "affiliation_source": "usenix", "affiliation_source_url": "https://www.usenix.org/conference/atc23/presentation/brooker", "affiliation_verified_at": "2026-11-09",
       "publication_status": "published", "evidence_level": "abstract",
       "evidence_source_url": "https://www.usenix.org/conference/atc23/presentation/brooker", "evidence_verified_at": "2026-11-09",
-      "introduction": "面向 Lambda 大型容器镜像的快速启动，设计按需块加载、缓存和去重的存储系统，并结合加密与纠删码处理安全、成本和可靠性约束。",
-      "commentary": "补充了轻量执行环境启动时的镜像供给问题。即使 VMM 创建很快，首次读取镜像仍可能形成等待；阅读时应区分镜像分发、按需 I/O 与 vCPU 初始化，分别衡量冷缓存和命中缓存的表现。",
+      "introduction": "把容器镜像预先展平为文件系统块镜像，由本地 agent 按需获取数据，并通过 Firecracker 的 virtio 块设备交给 Guest。分块缓存、去重和加密共同处理大镜像启动的延迟与成本。",
+      "commentary": "收录依据是原文 §2.1 与图 4 的 MicroVM 存储路径，而非 Lambda 或容器标签。VMM 创建很快仍可能等待镜像读入；应分开衡量冷缓存、缓存命中和首次请求。它描述特定生产架构，不是通用 virtio-blk 的缓存策略。",
       "relation": "机制相关", "topics": ["镜像加载", "存储 I/O", "Serverless"]
-    },
-    {
-      "id": "atc26-deltasandbox",
-      "year": 2026,
-      "venue": "atc",
-      "title": "δSandbox: Millisecond-Scale Sandbox Checkpoint and Rollback for Stateful AI Agents",
-      "url": "https://atc.sigops.org/2026/accepted.html",
-      "introduction": "面向 AI Agent 的搜索、试错与并行分支，研究沙箱文件和进程状态的检查点与回滚。作者项目及会议 artifact 使用 DeltaBox 名称，通过 DeltaFS 保存文件变化、DeltaCR 保存进程状态变化，减少相邻检查点的重复复制。",
-      "commentary": "高频试错让运行中的状态保存和回退成为沙箱的重要开销。对虚机快照研究的借鉴在于同时考虑状态增量、文件与内存的一致恢复，以及多分支的保存成本。公开项目围绕进程和文件系统展开，评价时需要单独检查其隔离边界、外部副作用和回滚范围。",
-      "relation": "相关机制",
-      "topics": [
-        "Agent 沙箱",
-        "检查点恢复",
-        "增量快照",
-        "进程状态",
-        "文件系统"
-      ],
-      "architectures": [],
-      "evidence_level": "project",
-      "evidence_source_url": "https://dongyunpeng-sjtu.github.io/deltabox/",
-      "artifact_source_url": "https://sysartifacts.github.io/atc2026/results",
-      "project_title": "DeltaBox: Scaling Stateful AI Agents with Millisecond-Level Sandbox Checkpoint/Rollback",
-      "publication_status": "accepted",
-      "institutions": [
-        "Shanghai Jiao Tong University",
-        "Huawei Technologies"
-      ],
-      "affiliation_source": "official",
-      "affiliation_source_url": "https://atc.sigops.org/2026/accepted.html",
-      "affiliation_verified_at": "2026-11-02"
-    },
-    {
-      "id": "atc26-fm2",
-      "year": 2026,
-      "venue": "atc",
-      "title": "FM2: Fast Live VM Migration in CXL Memory Pools",
-      "url": "https://atc.sigops.org/2026/accepted.html",
-      "introduction": "面向 CXL 内存池研究虚机热迁移，关注新的内存组织方式下如何缩短迁移路径。",
-      "commentary": "可与基于网络传页的预拷贝、后拷贝研究对照，分析内存池拓扑对数据移动和状态切换的影响。进一步评价时，应同时观察停机时间、迁移后的访问局部性和故障处理。",
-      "relation": "直接关联",
-      "topics": [
-        "热迁移",
-        "CXL",
-        "内存池"
-      ],
-      "architectures": [],
-      "evidence_level": "title",
-      "evidence_source_url": "https://atc.sigops.org/2026/accepted.html",
-      "publication_status": "accepted",
-      "institutions": [
-        "University of Washington",
-        "Google",
-        "Microsoft Research"
-      ],
-      "affiliation_source": "official",
-      "affiliation_source_url": "https://atc.sigops.org/2026/accepted.html",
-      "affiliation_verified_at": "2026-11-02"
-    },
-    {
-      "id": "atc26-pave",
-      "year": 2026,
-      "venue": "atc",
-      "title": "PAVE: Prebuilding Address Translations for Fast Nested MicroVM Restore",
-      "url": "https://atc.sigops.org/2026/accepted.html",
-      "introduction": "研究通过预先建立地址转换，加快嵌套 MicroVM 的恢复。",
-      "commentary": "这一方向把恢复开销进一步细分到地址转换准备，可与快照读取和客户机状态装载研究互相补充。评估时需要区分预建成本与恢复时延，并关注映射失效后的处理及额外内存占用。",
-      "relation": "直接关联",
-      "topics": [
-        "microVM",
-        "嵌套虚拟化",
-        "快照恢复",
-        "地址转换"
-      ],
-      "architectures": [],
-      "evidence_level": "title",
-      "evidence_source_url": "https://atc.sigops.org/2026/accepted.html",
-      "publication_status": "accepted",
-      "institutions": [
-        "University of Macau"
-      ],
-      "affiliation_source": "official",
-      "affiliation_source_url": "https://atc.sigops.org/2026/accepted.html",
-      "affiliation_verified_at": "2026-11-02"
-    },
-    {
-      "id": "atc26-joseph",
-      "year": 2026,
-      "venue": "atc",
-      "title": "Joseph: Hypervisor–RDMA Co-Design for Kernel-Bypass Remote MicroVM SnapStart",
-      "url": "https://atc.sigops.org/2026/accepted.html",
-      "introduction": "围绕远程 MicroVM 快照启动，研究 Hypervisor 与 RDMA 协同及内核旁路路径。",
-      "commentary": "可与 PAVE 分别观察远程数据获取和地址转换准备对恢复时延的影响。读这类设计时，需要区分传输完成、内存就绪与客户机开始执行，同时考察旁路路径的权限管理和故障恢复。",
-      "relation": "直接关联",
-      "topics": [
-        "microVM",
-        "快照恢复",
-        "RDMA",
-        "启动优化"
-      ],
-      "architectures": [],
-      "evidence_level": "title",
-      "evidence_source_url": "https://atc.sigops.org/2026/accepted.html",
-      "publication_status": "accepted",
-      "institutions": [
-        "University of Macau",
-        "Wuhan University"
-      ],
-      "affiliation_source": "official",
-      "affiliation_source_url": "https://atc.sigops.org/2026/accepted.html",
-      "affiliation_verified_at": "2026-11-02"
-    },
-    {
-      "id": "atc26-chameleon",
-      "year": 2026,
-      "venue": "atc",
-      "title": "Chameleon: Adaptive Memory Overcommitment for Disaggregated Virtual Machines",
-      "url": "https://atc.sigops.org/2026/accepted.html",
-      "introduction": "研究分离式虚拟机的自适应内存超分，将资源分离场景与内存容量管理结合。",
-      "commentary": "可与 Blowfish 的弹性内存研究对照，关注容量共享时的负载变化和资源争用。评价超分策略需要同时考虑回收代价、远程访问延迟与租户隔离，单独提高容量利用率不足以说明应用收益。",
-      "relation": "直接关联",
-      "topics": [
-        "内存超分",
-        "分离式内存",
-        "弹性内存"
-      ],
-      "architectures": [],
-      "evidence_level": "title",
-      "evidence_source_url": "https://atc.sigops.org/2026/accepted.html",
-      "publication_status": "accepted",
-      "institutions": [
-        "Peking University",
-        "Institute of Computing Technology, Chinese Academy of Sciences",
-        "University of Chinese Academy of Sciences",
-        "Tongji University",
-        "Shanghai Jiao Tong University"
-      ],
-      "affiliation_source": "official",
-      "affiliation_source_url": "https://atc.sigops.org/2026/accepted.html",
-      "affiliation_verified_at": "2026-11-02"
-    },
-    {
-      "id": "atc26-courier",
-      "year": 2026,
-      "venue": "atc",
-      "title": "Courier: Host-Transparent Direct Network I/O for Secure Containers in Cloud VMs",
-      "url": "https://atc.sigops.org/2026/accepted.html",
-      "introduction": "研究云虚机内安全容器的直接网络 I/O，并以宿主透明作为设计目标。",
-      "commentary": "适合与嵌套虚拟化和虚拟网卡研究对照，把容器、客户机与宿主之间的数据路径放到一起分析。需要进一步核实宿主透明的具体条件，以及隔离、资源共享和迁移能力如何保留。",
-      "relation": "直接关联",
-      "topics": [
-        "安全容器",
-        "虚拟网络",
-        "I/O 虚拟化"
-      ],
-      "architectures": [],
-      "evidence_level": "title",
-      "evidence_source_url": "https://atc.sigops.org/2026/accepted.html",
-      "publication_status": "accepted",
-      "institutions": [
-        "Huazhong University of Science and Technology",
-        "Ant Group",
-        "The University of Texas at Arlington",
-        "Alibaba Group"
-      ],
-      "affiliation_source": "official",
-      "affiliation_source_url": "https://atc.sigops.org/2026/accepted.html",
-      "affiliation_verified_at": "2026-11-02"
     },
     {
       "id": "osdi26-ramryder",
@@ -1068,22 +1010,6 @@
       "institutions": ["Fudan University"], "affiliation_source": "usenix",
       "affiliation_source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/wang-chunlin",
       "affiliation_verified_at": "2026-09-05"
-    },
-    {
-      "id": "sosp26-cpu-virtualization",
-      "year": 2026, "venue": "sosp",
-      "title": "You Can Always Get What You Want: CPU Virtualization Made Fast and Free",
-      "url": "https://dl.acm.org/doi/10.1145/3830418.3843895",
-      "doi": "10.1145/3830418.3843895", "published_on": "2026-09-28",
-      "publication_source_url": "https://api.crossref.org/works/10.1145/3830418.3843895",
-      "introduction": "SOSP 2026 已正式发表的 CPU 虚拟化论文，研究目标指向 CPU 虚拟化效率。当前点评仅依据官方议程中的标题与单位，尚未核实可用的公开摘要。",
-      "commentary": "它值得作为 CPU 执行开销方向的新线索跟踪，但标题中的 Fast and Free 不能直接理解为零开销。待核实简介或摘要后，再核对其架构前提、实现方式及适用负载；当前不判断是否采用 KVM，也不推断性能数字。",
-      "relation": "直接关联", "topics": ["CPU 虚拟化", "性能"],
-      "architectures": [], "publication_status": "published", "evidence_level": "title",
-      "institutions": ["Shanghai Jiao Tong University", "Alibaba Group"],
-      "affiliation_source": "official",
-      "affiliation_source_url": "https://sigops.org/s/conferences/sosp/2026/schedule.html",
-      "affiliation_verified_at": "2026-10-12"
     },
     {
       "id": "security26-staleus",
@@ -1769,23 +1695,6 @@
       "affiliation_verified_at": "2026-08-04T12:11:19Z"
     },
     {
-      "id": "osdi26-dvla",
-      "year": 2026,
-      "venue": "osdi",
-      "title": "DVLA: Dynamic VM Lifetime Aware Scheduling for Drifting Lifetime Distributions and Long-Lived VM Placement Debt",
-      "url": "https://www.usenix.org/conference/osdi26/presentation/zhang-zhengtong",
-      "introduction": "结合在线放置与离线迁移校正，动态适配虚机生命周期分布变化，并处理长期虚机分散造成的资源回收债务。",
-      "commentary": "它把在线迁移从故障或维护工具变成持续偿还放置债务的调度手段。虚机生命周期预测的价值不只在初次放置，还在后续重整是否值得执行。",
-      "relation": "直接关联",
-      "topics": [
-        "虚机调度",
-        "生命周期",
-        "在线迁移",
-        "资源利用率"
-      ],
-      "architectures": []
-    },
-    {
       "id": "fast26-cylon",
       "year": 2026,
       "venue": "fast",
@@ -2183,22 +2092,6 @@
         "x86",
         "Arm"
       ]
-    },
-    {
-      "id": "asplos26-sgiov",
-      "year": 2026,
-      "venue": "asplos",
-      "title": "SG-IOV: Socket-Granular I/O Virtualization for SmartNIC-Based Container Networks",
-      "url": "https://www.asplos-conference.org/asplos2026/program/index.html",
-      "introduction": "面向 SmartNIC 容器网络，把 I/O 虚拟化粒度细化到 socket，以改善多租户网络路径的隔离和共享效率。",
-      "commentary": "它不直接改造 VM 设备模型，但反映 I/O 虚拟化正在从设备与队列继续下沉到应用连接语义，对未来虚机与容器共享 SmartNIC 的接口设计具有参考价值。",
-      "relation": "演进关联",
-      "topics": [
-        "SmartNIC",
-        "I/O 虚拟化",
-        "容器网络"
-      ],
-      "architectures": []
     },
     {
       "id": "asplos26-vm-recovery",
@@ -2601,98 +2494,6 @@
       "affiliation_source": "usenix",
       "affiliation_source_url": "https://www.usenix.org/conference/osdi25/presentation/zhang-tianren",
       "affiliation_verified_at": "2026-08-04T12:11:23Z"
-    },
-    {
-      "id": "osdi25-kamino",
-      "year": 2025,
-      "venue": "osdi",
-      "title": "Kamino: Efficient VM Allocation at Scale with Latency-Driven Cache-Aware Scheduling",
-      "url": "https://www.usenix.org/conference/osdi25/presentation/domingo",
-      "introduction": "面向大规模云控制面的 VM 分配请求，依据分配器缓存状态与预计端到端延迟选择处理节点。",
-      "commentary": "这项工作关注创建虚机之前的控制面决策延迟，与运行期 vCPU 调度分属不同阶段。分配规则、缓存命中和请求排队共同影响大规模虚机创建速度，可作为分析生产系统启动链路的补充。",
-      "relation": "机制相关",
-      "topics": [
-        "控制面",
-        "虚机分配",
-        "调度",
-        "云规模"
-      ],
-      "architectures": [],
-      "authors": [
-        "David Domingo",
-        "Hugo Barbalho",
-        "Marco Molinaro",
-        "Kuan Liu",
-        "Abhisek Pan",
-        "David Dion",
-        "Thomas Moscibroda",
-        "Sudarsun Kannan",
-        "Ishai Menache"
-      ],
-      "author_affiliations": [
-        {
-          "name": "David Domingo",
-          "institutions": [
-            "Rutgers University"
-          ]
-        },
-        {
-          "name": "Hugo Barbalho",
-          "institutions": [
-            "Microsoft Research"
-          ]
-        },
-        {
-          "name": "Marco Molinaro",
-          "institutions": [
-            "Microsoft Research"
-          ]
-        },
-        {
-          "name": "Kuan Liu",
-          "institutions": [
-            "Microsoft Azure"
-          ]
-        },
-        {
-          "name": "Abhisek Pan",
-          "institutions": [
-            "Microsoft Azure"
-          ]
-        },
-        {
-          "name": "David Dion",
-          "institutions": [
-            "Microsoft Azure"
-          ]
-        },
-        {
-          "name": "Thomas Moscibroda",
-          "institutions": [
-            "Microsoft Azure"
-          ]
-        },
-        {
-          "name": "Sudarsun Kannan",
-          "institutions": [
-            "Rutgers University"
-          ]
-        },
-        {
-          "name": "Ishai Menache",
-          "institutions": [
-            "Microsoft Research"
-          ]
-        }
-      ],
-      "institutions": [
-        "Rutgers University",
-        "Microsoft Research",
-        "Microsoft Azure"
-      ],
-      "affiliation_source": "usenix",
-      "affiliation_source_url": "https://www.usenix.org/conference/osdi25/presentation/domingo",
-      "affiliation_verified_at": "2026-08-04T12:11:24Z"
     },
     {
       "id": "security25-tetd",
@@ -4989,23 +4790,6 @@
       "affiliation_source": "usenix",
       "affiliation_source_url": "https://www.usenix.org/conference/atc13/technical-sessions/presentation/rai",
       "affiliation_verified_at": "2026-08-04T12:11:37Z"
-    },
-    {
-      "id": "vee12-dvm",
-      "year": 2012,
-      "venue": "vee",
-      "title": "DVM: Towards a Datacenter-Scale Virtual Machine",
-      "url": "https://doi.org/10.1145/2151024.2151032",
-      "introduction": "通过 DISA 指令集与执行引擎，把多个计算节点组织为统一的执行环境，让应用在共享地址空间中运行并行任务。",
-      "commentary": "DVM 反映早期云研究试图突破单台服务器边界。虽然现代云更常通过集群调度组合实例，但跨节点内存、加速器和故障处理仍延续类似问题。",
-      "relation": "直接关联",
-      "topics": [
-        "虚机集群",
-        "数据中心",
-        "资源聚合",
-        "云计算"
-      ],
-      "architectures": []
     },
     {
       "id": "vee12-secondsite",

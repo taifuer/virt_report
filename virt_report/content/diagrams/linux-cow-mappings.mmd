@@ -1,0 +1,14 @@
+flowchart LR
+    accTitle: fork 后共享页面与子进程写时复制
+    accDescr: fork 后父子进程的页表都以只读权限指向物理页 P；本例父进程继续持有 P，子进程写入触发 COW 后获得新页 Q，父进程仍指向 P。允许写的 VMA 与暂时只读的 PTE 是不同层次。
+    subgraph BEFORE["fork 后，尚未写入"]
+        direction TB
+        A["父进程页表\nPTE 只读"] --> P["物理页 P\n共享旧内容"]
+        B["子进程页表\nPTE 只读"] --> P
+    end
+    subgraph AFTER["子进程写入后"]
+        direction TB
+        C["父进程页表\n仍指向 P"] --> P2["物理页 P\n旧内容不变"]
+        D["子进程页表\n改为可写"] --> Q["新物理页 Q\n复制旧内容后修改"]
+    end
+    BEFORE -->|"COW：复制并更新映射"| AFTER

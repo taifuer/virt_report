@@ -8,9 +8,6 @@ from virt_report.render import render
 
 
 EXPECTED_INSTITUTIONS = {
-    "atc26-deltasandbox": [
-        "Shanghai Jiao Tong University", "Huawei Technologies",
-    ],
     "atc22-rund": ["Shanghai Jiao Tong University", "Alibaba Group"],
     "asplos21-reap": [
         "University of Edinburgh", "Microsoft Research", "EPFL",
@@ -49,32 +46,17 @@ def test_sandbox_additions_have_unique_verified_institutions(paper_id):
     assert not paper["institution_hidden"]
 
 
-def test_deltasandbox_is_accepted_process_checkpoint_work_with_project_evidence():
+def test_process_checkpoint_work_is_screened_out_not_hidden_in_ordinary_list():
     content = conferences.load_content()
-    paper = next(p for p in content["papers"] if p["id"] == "atc26-deltasandbox")
-    assert paper["year"] == 2026 and paper["venue"] == "atc"
-    assert paper["title"].startswith("δSandbox:")
-    assert paper["publication_status"] == "accepted"
-    assert not paper.get("published_on")
-    assert paper["evidence_level"] == "project"
-    assert paper["relation"] == "相关机制"
-    assert paper["url"] == "https://atc.sigops.org/2026/accepted.html"
-    assert paper["evidence_source_url"] == "https://dongyunpeng-sjtu.github.io/deltabox/"
-    assert paper["artifact_source_url"] == "https://sysartifacts.github.io/atc2026/results"
-    assert paper["project_title"].startswith("DeltaBox:")
-    assert "DeltaBox" in paper["introduction"]
-    assert "DeltaFS" in paper["introduction"] and "DeltaCR" in paper["introduction"]
-    assert "进程" in paper["introduction"] and "文件" in paper["introduction"]
-    assert "Agent 沙箱" in paper["topics"]
-    assert "KVM" not in paper["topics"] and "microVM" not in paper["topics"]
-    assert paper["architectures"] == []
-
+    assert not any(p["id"] == "atc26-deltasandbox" for p in content["papers"])
+    audit = next(p for p in content["screening"]["papers"] if p["id"] == "atc26-deltasandbox")
+    assert audit["decision"] == "exclude"
+    assert audit["review_basis"] == "author_project"
+    assert "OverlayFS" in audit["reason"] and "CRIU" in audit["reason"]
+    assert audit["source_url"] == "https://dongyunpeng-sjtu.github.io/deltabox/"
     page = render.render_conference_papers_html(Config(), content)
-    block = paper_block(page, paper["id"])
-    assert "已录用" in block and "已发表" not in block
-    assert "作者项目说明" in block and "待摘要补充" not in block
-    assert f'href="{paper["evidence_source_url"]}"' in block
-    assert 'data-paper-topic="Agent 沙箱"' in block
+    assert 'id="paper-atc26-deltasandbox"' not in page
+    assert 'data-paper-topic="Agent 沙箱"' not in page
 
 
 @pytest.mark.parametrize("paper_id", ["asplos21-reap", "atc22-rund"])
@@ -88,7 +70,7 @@ def test_serverless_papers_retain_published_abstract_based_identity(paper_id):
     assert not any("Agent" in topic for topic in paper["topics"])
     page = render.render_conference_papers_html(Config(), content)
     block = paper_block(page, paper_id)
-    assert "已发表" in block and "已录用" not in block
+    assert "已发表" not in block and "已录用" not in block
     assert "作者项目说明" not in block and "待摘要补充" not in block
 
 
@@ -107,7 +89,7 @@ def test_reap_records_publisher_affiliations_and_primary_abstract():
     assert "工作集" in paper["introduction"] and "预取" in paper["introduction"]
 
 
-@pytest.mark.parametrize("year, name", [(2021, "REAP"), (2022, "RunD"), (2026, "δSandbox")])
+@pytest.mark.parametrize("year, name", [(2021, "REAP"), (2022, "RunD")])
 def test_sandbox_additions_are_reflected_in_annual_reviews_and_counts(year, name):
     content = conferences.load_content()
     review = next(item for item in content["analysis"]["years"] if item["year"] == year)

@@ -21,12 +21,12 @@ def test_conference_directory_omits_maintenance_notes_without_changing_records()
     for venue in content["academic_venues"]:
         assert f'<h3>{escape(venue["name"])}</h3>' in page
         assert f'<div class="venue-description"><p>{escape(venue["focus"])}</p></div>' in page
-        assert (f'href="conference-papers.html?venue={venue["key"]}">'
+        assert (f'href="conference-papers.html?scope=all&amp;venue={venue["key"]}">'
                 f'{venue["paper_count"]} 篇相关论文</a>') in page
         assert (f'href="{escape(venue["url"])}" target="_blank" '
                 'rel="noopener noreferrer">官方网站</a>') in page
     timeline = html_render.render_academic_conferences_html(Config(), content)
-    assert 'href="conferences.html#conference-sources">查看收录会议</a>' in timeline
+    assert 'href="conferences.html#conference-sources">收录会议</a>' in timeline
     assert "核对进度" not in timeline
     assert content == before
 
@@ -67,44 +67,28 @@ def test_kvm_forum_preview_replaces_withdrawn_session_without_inflating_count():
     assert "Scheduling KVM Sandboxes" not in page
 
 
-def test_sosp_publication_keeps_title_only_evidence_and_verified_sources():
+def test_sosp_publication_does_not_override_title_only_admission_decision():
     content = conferences.load_content()
-    paper = next(item for item in content["papers"]
-                 if item["id"] == "sosp26-cpu-virtualization")
+    assert not any(p["id"] == "sosp26-cpu-virtualization" for p in content["papers"])
+    audit = next(p for p in content["screening"]["papers"]
+                 if p["id"] == "sosp26-cpu-virtualization")
+    assert audit["decision"] == "defer"
+    assert audit["review_basis"] == "title"
+    assert audit["source_url"] == "https://dl.acm.org/doi/10.1145/3830418.3843895"
     check = next(item for item in content["edition_checks"]
                  if item["venue"] == "sosp" and item["year"] == 2026)
-
-    assert paper["publication_status"] == "published"
-    assert paper["evidence_level"] == "title"
-    assert paper["doi"] == "10.1145/3830418.3843895"
-    assert paper["url"] == f'https://dl.acm.org/doi/{paper["doi"]}'
-    assert paper["published_on"] == "2026-09-28"
-    assert paper["publication_source_url"] == (
-        f'https://api.crossref.org/works/{paper["doi"]}'
-    )
-    assert not paper.get("abstract")
-    assert "尚未核实可用的公开摘要" in paper["introduction"]
-    assert "不推断性能数字" in paper["commentary"]
-    assert paper["institutions"] == [
-        "Shanghai Jiao Tong University", "Alibaba Group",
-    ]
-    assert paper["affiliation_source_url"] == check["source_url"]
     assert check["source_url"].endswith("/sosp/2026/schedule.html")
-    assert check["checked_at"] == paper["affiliation_verified_at"] == "2026-10-12"
+    assert "不因已发表自动收录" in check["note"]
+    page = html_render.render_conference_papers_html(Config(), content)
+    assert 'id="paper-sosp26-cpu-virtualization"' not in page
 
 
-def test_published_paper_renders_status_without_overstating_evidence():
+def test_publication_badges_are_not_presented_as_a_quality_rating():
     content = conferences.load_content()
     page = html_render.render_conference_papers_html(Config(), content)
-    paper = page.split('id="paper-sosp26-cpu-virtualization"', 1)[1]
-    paper = paper.split("</article>", 1)[0]
-
-    assert 'href="https://dl.acm.org/doi/10.1145/3830418.3843895"' in paper
-    assert "已发表" in paper
-    assert "目前仅核实标题，待摘要补充" in paper
-    assert "已录用" not in paper
-    assert '<p class="paper-evidence"> ·' not in paper
-
+    block = page.split('id="paper-atc05-qemu"', 1)[1].split("</article>", 1)[0]
+    assert "已发表" not in block and "已录用" not in block
+    assert "<strong>点评</strong>" in block and ">PDF</a>" in block
+    assert "入选理由" not in block and "评估与证据" not in block
     timeline = html_render.render_academic_conferences_html(Config(), content)
-    assert "SOSP 的新 CPU 虚拟化论文已正式发表" in timeline
-    assert "SOSP 录用名单出现" not in timeline
+    assert 'href="conference-papers.html">相关论文</a>' in timeline

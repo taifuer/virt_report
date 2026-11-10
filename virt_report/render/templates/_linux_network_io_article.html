@@ -1,0 +1,87 @@
+{% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
+{% from '_mechanism_diagram.html' import diagram with context %}
+<section id="preface" class="mechanism-section">
+  <h2>接收事件与发送请求</h2>
+  <p>网络不是“应用请求读一个包，网卡才去取那个包”。外部可随时发来报文；内核先处理并按协议、地址和端口分派，匹配的数据进入 socket 队列。应用调用 <code>recvmsg()</code>，是读取队列中的数据或等待未来数据，不是向远端发出一次硬件读请求。</p>
+  <p>这里固定普通 UDP、复制式缓冲区交接和常见网卡 NAPI 路径。TCP 字节流、零拷贝、AF_XDP、分段卸载等有额外规则，不在主线中增加分支。普通 UDP 不提供逐包的远端收到确认。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+<section id="history" class="mechanism-section">
+  <h2>从逐包中断到批处理与多核收发</h2>
+  <p>网络压力通常同时体现在带宽和包速率上：同样的字节速率，小包需要更多次收包、协议处理与队列操作。早期逐包触发并处理的方式，在高负载下可能让 CPU 忙于中断而没有足够时间让应用消费数据。2002 年的 <a href="https://github.com/torvalds/linux/blob/v2.6.12/Documentation/networking/NAPI_HOWTO.txt">NAPI 设计说明</a>已经把中断抑制、有预算的轮询和减少过载成本列为核心动机。</p>
+  <table><thead><tr><th>发展方向</th><th>解决什么</th><th>代价与边界</th></tr></thead><tbody>
+    <tr><td>中断驱动接收 → NAPI</td><td>低负载靠通知启动，高负载按预算批量轮询</td><td>需要正确重新使能通知；预算和批量大小会影响延迟与其他任务获得 CPU 的机会</td></tr>
+    <tr><td>单队列 → RSS、多队列与软件分流</td><td>让多个 CPU 分担不同流的处理</td><td>队列数、IRQ 亲和性与应用位置需要协调；跨核转交也有缓存和 IPI 开销</td></tr>
+    <tr><td>逐包重复工作 → GSO / GRO 等批处理</td><td>在合适的协议和设备条件下减少协议栈重复处理</td><td>内核观察的 skb 数量与链路帧数可能不同，抓包和计数需识别所在层次</td></tr>
+    <tr><td>专用高速路径：XDP / AF_XDP</td><td>把部分处理提前，或让应用直接管理报文缓冲区的交接</td><td>需要额外程序、队列与内存管理；不自动获得普通 socket 协议栈的全部语义</td></tr>
+  </tbody></table>
+  <p>这些是可以组合的优化，而不是“有了新机制就不再需要中断或 socket”。低负载是否合并通知、流量如何分散、是否绕过部分协议处理，分别由硬件能力、驱动和应用需求决定。普通应用仍可沿下面的 UDP socket 主线收发。</p>
+</section>
+<section id="structures" class="mechanism-section">
+  <h2>缓冲区、队列与 socket</h2>
+  <table><thead><tr><th>对象</th><th>保存什么</th><th>生命期边界</th></tr></thead><tbody>
+    <tr><td>应用 buffer</td><td>用户提供的发送载荷或接收空间</td><td>普通复制式发送返回后可复用；零拷贝接口另有约定</td></tr>
+    <tr><td>skb</td><td>协议元数据及对线性区、分页数据等的引用</td><td>可能复制、克隆或共享引用；不是固定等于一块连续内存</td></tr>
+    <tr><td>驱动 RX/TX ring</td><td>设备描述符及 DMA 缓冲区的引用</td><td>提交前与设备完成后分别由驱动按协议管理</td></tr>
+    <tr><td>socket 接收队列</td><td>已通过协议处理、等待应用读取的数据</td><td>有数据可读与应用实际取走是两个阶段</td></tr>
+  </tbody></table>
+  <p>硬件 ring、socket 队列和 virtqueue 是不同对象。描述符指向缓冲区而不是把整帧放在 ring 项里；skb 的引用结束也不保证所有共享数据立即释放。</p>
+</section>
+<section id="rx" class="mechanism-section">
+  <h2>外部数据到应用</h2>
+  {{ diagram('linux-network-handoffs', '外部到包与应用读取', '图示普通 UDP 成功接收的一次通知；NAPI 可批量轮询，不要求每个包触发一次中断，也不要求应用先调用 recvmsg。') }}
+  <ol>
+    <li>驱动事先向网卡准备可写接收缓冲区；外部帧到达后，网卡 DMA 写入数据并发布接收状态。</li>
+    <li>中断通常触发 NAPI 调度，poll 按预算批量取包；持续轮询期间可暂时抑制重复设备通知。</li>
+    <li>内核处理以太网、IP 和 UDP，验证并分派到匹配 socket；数据可排队，等待中的接收线程可以被唤醒。</li>
+    <li>应用被调度并读取 socket，内核将载荷复制到用户空间。数据先到时可直接取，应用先等待时则要等报文到达。</li>
+  </ol>
+  <h3>UDP 分派与接收就绪</h3>
+  <p>应用创建 socket、绑定本地地址和端口后，内核已经具备用于分派报文的对象，无需等每一次 recv 才创建接收请求。报文经过协议检查后，UDP 根据目的地址、端口及 socket 的绑定／连接条件进行查找。匹配成功且接收内存额度允许时，skb 进入 socket 接收队列，再通过数据就绪回调通知等待者；可对照 <a href="{{ linux }}net/ipv4/udp.c#L1699">__udp_enqueue_schedule_skb()</a> 中入队与 <code>sk_data_ready</code> 的顺序。</p>
+  <p>若应用已经阻塞在 recv，通知使它有机会重新运行；若应用尚未调用 recv，数据可以先排队，之后直接读取；若用 epoll，得到的是“此刻值得尝试读取”的就绪提示，真正取数据仍是 recv 一类调用。其他线程也可能抢先取走数据，因此就绪不保证下一次非阻塞读取一定成功。</p>
+  <p>没有匹配 socket、socket 接收额度不足和网卡缺少 RX buffer，分别发生在不同边界。UDP 用户缓冲区太小则可能截断已经到达 socket 的数据报；它不是网卡收不到帧。<a href="{{ linux }}net/core/dev.c#L7745">net_rx_action()</a> 展示设备轮询预算，<a href="{{ linux }}net/ipv4/udp.c#L2053">udp_recvmsg()</a> 展示从接收队列向应用交付的路径。</p>
+</section>
+<section id="tx" class="mechanism-section">
+  <h2>从 sendto 到缓冲区回收</h2>
+  <p>应用提交载荷，协议栈形成报文，经过路由、排队和驱动提交给设备。普通复制式 <code>sendto()</code> 成功返回表示本地接受了返回长度对应的数据，不保证物理发送已经结束。网卡完成 DMA/发送工作后，驱动再回收该次提交占用的描述符与缓冲区；这个完成不等于远端收到，更不等于远端应用处理成功。</p>
+  <h3>发送缓冲区的所有权交接</h3>
+  {{ diagram('linux-network-tx-ownership', '先返回发送调用，再回收设备资源', '示意路由已就绪、驱动直接接受且设备稍后完成的一次 UDP 复制发送。图中的先后是一条允许的执行轨迹，不代表 sendto 必须等待物理发送。') }}
+  <p>继续看普通 UDP 复制发送，并假设路由与邻居解析已就绪。应用提交载荷后，内核构造或填充 skb、建立 UDP/IP 等协议头，选择出口设备与发送队列。qdisc 管理设备前的软件排队和调度；可以直接发送时也可能走快速路径，并非每个包都会在软件队列里停留。</p>
+  <ol>
+    <li><strong>用户到内核：</strong>载荷复制进内核维护的报文存储。成功返回后，这条普通复制路径不再引用原用户 buffer，应用可以重用它。</li>
+    <li><strong>协议栈到驱动：</strong>通过 <code>ndo_start_xmit()</code> 提交 skb。驱动接受后负责后续释放，并将相关内存映射成设备可用的 DMA 地址，填写 TX 描述符、通知设备。</li>
+    <li><strong>设备到驱动：</strong>驱动观察到 TX completion，确认设备已结束相关访问，再解除或同步 DMA 映射、释放 skb 引用和描述符槽位。</li>
+    <li><strong>恢复提交：</strong>如果此前因 TX ring 空间不足停止了队列，回收出空间后可唤醒队列，让上游继续发送；这不是向远端查询是否收到了报文。</li>
+  </ol>
+  <p>驱动必须在资源用尽前适当停止队列，并协调检查与唤醒，避免“已经回收出空间，队列却永远停着”。如果返回 <code>NETDEV_TX_BUSY</code>，skb 所有权仍属于调用方，驱动不能保留或释放它。驱动约定见 <a href="{{ linux }}Documentation/networking/driver.rst">Softnet 驱动指南</a>。这条所有权链解释了：sendto 已返回，内核仍会在之后处理 TX completion。</p>
+  <table><thead><tr><th>观察到的事件</th><th>确认的边界</th><th>不能推出</th></tr></thead><tbody>
+    <tr><td>sendto 返回</td><td>本地发送调用的接受结果；普通复制路径不再依赖原用户 buffer</td><td>物理 NIC 已发完</td></tr>
+    <tr><td>virtio-net TX Used</td><td>虚拟后端结束了对此 Guest 描述符链的访问</td><td>宿主物理 NIC 已完成，或远端已收到</td></tr>
+    <tr><td>物理 NIC TX completion</td><td>按驱动／设备协议可回收本地 TX 资源</td><td>远端协议栈或应用已经处理</td></tr>
+    <tr><td>协议／应用层应答</td><td>取决于该协议：例如 TCP ACK 确认接收序列空间</td><td>TCP ACK 也不证明远端应用已读；UDP 本身没有这类确认</td></tr>
+  </tbody></table>
+  <p>以 QEMU + TAP 普通复制发送为例：先把帧交给宿主 TAP，TAP 接受后后端不再需要 Guest 发送缓冲区，便可发布 Used。宿主对自己的报文副本继续转发，不必等待 Guest 回收，也不必把物理 NIC 完成回传为另一次 virtio TX 完成。Guest Used 与宿主 NIC completion 各自归还本层的资源，不存在“必须等远端确认才归还 Guest 队列”的依赖。</p>
+  <p>发布 Used、通过 irqfd 或 QEMU 设备通知 KVM、交付 Guest 中断，是同一完成事件的不同环节，不是重复发送多个业务确认。通知是否实际发出还受抑制、合并和驱动轮询影响。</p>
+</section>
+<section id="scaling" class="mechanism-section">
+  <h2>批处理、多核与缓冲区生命期</h2>
+  {{ diagram('linux-napi-budget', '一次通知可以启动多轮轮询', '示例固定 100 个 RX 包、每轮预算 64、期间无新包。第二轮靠已保留的 NAPI 调度状态继续，不需要设备为剩下的 36 个包再发一次中断。') }}
+  <p>NAPI 一轮 poll 受到 RX 预算约束；仍有工作时可继续被调度，处理完成才恢复相应通知。这样可以摊薄每次中断和调度的成本，但一次取很多包也可能让先到的小请求多等一会儿。TX completion 也可在 poll 中回收，不能把 poll 返回的 RX 工作量直接当作所有完成操作的数量。</p>
+  <p>例如只观察 RX，预算为 64、队列已有 100 个包，期间没有新到包：第一轮处理 64 个并返回预算值，保留后续轮询；下一轮处理剩余 36 个，确认本轮工作已结束后调用 <code>napi_complete_done()</code>，成功完成再按设备规则重新开通知。这里的 64 只是示例预算；若恰好处理满预算且队列也空了，需要按 NAPI 接口规则报告，不能不加判断地完成。批处理因此同时涉及工作量、调度状态和通知使能，而不仅是一个 for 循环。</p>
+  <p>多核分流又是另一层：RSS 由网卡选择接收队列；RPS 在内核中选择后续协议处理 CPU；RFS 进一步考虑消费数据的应用位置；XPS 影响发送队列选择。它们的目的包括并行和局部性，不是把同一条流的每个包任意撒到所有 CPU。跨核转交可能增加 IPI 和缓存迁移；已有合适硬件分流时，重复增加软件转交未必获益。见 <a href="{{ linux }}Documentation/networking/scaling.rst">Linux 网络扩展机制</a>。</p>
+  <p>GSO 在发送方向保留较大的逻辑报文，稍后由软件或支持卸载的设备分段；GRO 在接收方向合并符合条件的报文，减少后续重复处理。可否合并、如何分段取决于协议与特性协商，不能把任意 UDP 数据报都当作一个连续字节流。相关约束见 <a href="{{ linux }}Documentation/networking/segmentation-offloads.rst">分段卸载文档</a>。</p>
+  <p>零拷贝改变的是某些数据复制与所有权转交，不会消除完成边界。例如 AF_XDP 用 UMEM 和 FILL、RX、TX、COMPLETION rings 管理缓冲区；返回 completion 后应用才能复用对应帧，这仍不是远端收到确认。它既有 copy 模式，也有依赖驱动支持的 zero-copy 模式，不能只看到 AF_XDP 名字就断定没有复制。见 <a href="{{ linux }}Documentation/networking/af_xdp.rst">AF_XDP 的 rings 与模式</a>。</p>
+</section>
+<section id="observe" class="mechanism-section">
+  <h2>只读观察与 virtio-net</h2>
+  <p>可读取 <code>ip -s link</code>、<code>ss -u -a -m</code> 和 <code>/proc/net/softnet_stat</code>；硬件驱动支持时，<code>ethtool -S 接口名</code> 可补充队列计数。注意各层计数口径和权限差异，drops 不自动定位到同一丢包位置。此处不要求修改网卡、关闭卸载或向生产网络发压测流量。</p>
+  <p>虚机接收时，Guest 驱动也先发布可写 RX buffer；后端将外部到达的数据写入这些缓冲区并发布 Used，Guest 协议栈再交给 socket。应用无需先为每个包发 virtio 请求。结合 <a href="network-io.html">网络 I/O 演示</a> 和 <a href="virtio-net-rx.html">Virtio RX 路径</a>，可以把 Guest 与宿主的两套队列分开观察。</p>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2>源码与延伸阅读</h2>
+  <ul>
+    <li><a href="{{ linux }}net/ipv4/udp.c#L1270">udp_sendmsg()</a>、<a href="{{ linux }}net/core/dev.c#L4670">__dev_queue_xmit()</a>、<a href="{{ linux }}net/ipv4/udp.c#L2053">udp_recvmsg()</a>。</li>
+    <li><a href="{{ linux }}Documentation/networking/napi.rst">NAPI 轮询、预算和 TX completion</a>；<a href="https://man7.org/linux/man-pages/man2/send.2.html">send(2)</a> 的成功与交付边界。</li>
+    <li>继续阅读 <a href="linux-interrupts.html">中断与完成通知</a>、<a href="qemu-network-tx.html">QEMU 网络 TX</a>、<a href="dpdk-vhost-user-net.html">DPDK vhost-user 网络后端</a>。</li>
+  </ul>
+</section>
