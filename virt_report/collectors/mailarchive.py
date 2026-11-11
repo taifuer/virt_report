@@ -79,7 +79,7 @@ def fetch(conn: sqlite3.Connection, source, *, since: datetime | None = None,
             "updated_at": created_iso,
             "url": link,
             "labels": [],
-            "body_excerpt": base.extract_excerpt(body),
+            **base.body_fields(body),
             "raw_json": {"msg_num": msg_num, "source": "mail-archive.com"},
         }
         if db.upsert_item(conn, item):

@@ -221,7 +221,7 @@ def fetch(conn: sqlite3.Connection, source, *, since: datetime | None = None,
                 "created_at": created_iso, "updated_at": created_iso,
                 # mbox 无单消息页; 用 lore.kernel.org 的 message-id 链接 (验证 200 可访问)
                 "url": f"https://lore.kernel.org/{project}/{quote(mid, safe='')}/",
-                "labels": [], "body_excerpt": base.extract_excerpt(body),
+                "labels": [], **base.body_fields(body),
                 "raw_json": {"from": frm, "in_reply_to": in_reply_to},
             }
             if db.upsert_item(conn, item):

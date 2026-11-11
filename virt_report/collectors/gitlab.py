@@ -86,7 +86,7 @@ def _issue_to_item(issue: dict, project: str) -> dict:
         "updated_at": base.norm_utc_iso(issue.get("updated_at")),
         "url": issue.get("web_url"),
         "labels": labels,
-        "body_excerpt": base.extract_excerpt(base.strip_html(desc)),
+        **base.body_fields(base.strip_html(desc)),
         "raw_json": {
             "type": "issue", "iid": iid, "state": issue.get("state"),
             "labels": labels, "user_notes_count": issue.get("user_notes_count", 0),
@@ -116,7 +116,7 @@ def _mr_to_item(mr: dict, project: str) -> dict:
         "updated_at": base.norm_utc_iso(mr.get("updated_at")),
         "url": mr.get("web_url"),
         "labels": labels,
-        "body_excerpt": base.extract_excerpt(base.strip_html(desc)),
+        **base.body_fields(base.strip_html(desc)),
         "raw_json": {
             "type": "mr", "iid": iid, "state": mr.get("state"),
             "labels": labels, "user_notes_count": mr.get("user_notes_count", 0),

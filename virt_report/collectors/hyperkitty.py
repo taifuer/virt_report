@@ -156,20 +156,20 @@ def fetch(conn: sqlite3.Connection, source, *, since: datetime | None = None,
             pending.append((item, detail_url))
 
     # 正文详情彼此独立，受控并发显著缩短月度回填；SQLite 写入仍在主线程串行完成。
-    def load_detail(pair: tuple[dict, str]) -> tuple[dict, str, bool]:
+    def load_detail(pair: tuple[dict, str]) -> tuple[dict, dict, bool]:
         item, detail_url = pair
         try:
             detail = base.http_get(detail_url).json()
-            return item, base.extract_excerpt(detail.get("content", "")), True
+            return item, base.body_fields(detail.get("content", "")), True
         except Exception as exc:
             log.warning("hyperkitty %s: 邮件详情失败 %s: %s",
                         project, detail_url, exc)
-            return item, "", False
+            return item, {}, False
 
     with ThreadPoolExecutor(max_workers=6, thread_name_prefix="hyperkitty") as pool:
-        for item, excerpt, detail_ok in pool.map(load_detail, pending):
+        for item, body, detail_ok in pool.map(load_detail, pending):
             complete = complete and detail_ok
-            item["body_excerpt"] = excerpt
+            item.update(body)
             if db.upsert_item(conn, item):
                 new_count += 1
 

@@ -176,7 +176,7 @@ def fetch(conn, source, *, since: datetime | None = None, max_pages: int = 8) ->
             "kind": base.classify_subject(subject), "created_at": created_iso,
             "updated_at": created_iso, "activity_at": created_iso,
             "url": f"https://lore.kernel.org/{project}/{quote(message_id, safe='')}/",
-            "labels": [], "body_excerpt": base.extract_excerpt(_body_text(message)),
+            "labels": [], **base.body_fields(_body_text(message)),
             "raw_json": {"in_reply_to": in_reply_to, "git_commit": commit,
                          "git_epoch": source.url},
         }

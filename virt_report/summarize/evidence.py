@@ -45,7 +45,7 @@ def mail_application_evidence(items: list[dict], root: str) -> dict:
     for item in items:
         if item is root_item or item.get("source") != "ml":
             continue
-        body = item.get("body_excerpt") or ""
+        body = item.get("body_text") or item.get("body_excerpt") or ""
         # A later withdrawal makes the earlier application insufficient.
         if re.search(r"^\s*(?:(?:but|however)[,\s]+)?(?:(?:I have|I've|I|we have|we)\s+)?"
                      r"(?:reverted|unapplied|dropped)\b", body, re.I | re.M):

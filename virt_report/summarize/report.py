@@ -248,14 +248,16 @@ def _parse_root(thread_key: str) -> str:
 
 
 def _thread_context(conn: sqlite3.Connection, row,
-                    end_iso: str | None = None) -> dict:
+                    end_iso: str | None = None, excerpt_len: int = 600) -> dict:
+    from virt_report.summarize import mail_context
+
     items = db.get_thread_items_as_of(conn, row, end_iso or db.now_utc_iso())
     if not items:
         return {"excerpt": "", "latest_excerpt": "", "review_excerpt": "",
                 "state": ""}
-    excerpts = [(it["body_excerpt"] or "") for it in items]
+    excerpts = [mail_context.excerpt(mail_context.body(it), excerpt_len) for it in items]
     review_item = next((item for item in reversed(items)
-                        if any(signal in (item["body_excerpt"] or "").lower()
+                        if any(signal in mail_context.body(item).lower()
                                for signal in ("reviewed-by:", "acked-by:", "tested-by:"))), None)
     try:
         raw = json.loads(items[-1]["raw_json"] or "{}")
@@ -270,7 +272,9 @@ def _thread_context(conn: sqlite3.Connection, row,
         "message_ids": sorted({item["message_id"].strip().strip("<>")
                                for item in items if item["source"] == "ml" and item.get("message_id")}),
         "latest_excerpt": excerpts[-1] if len(excerpts) > 1 else "",
-        "review_excerpt": (review_item["body_excerpt"] or "") if review_item else "",
+        "review_excerpt": mail_context.excerpt(mail_context.body(review_item), excerpt_len) if review_item else "",
+        "discussion_evidence": mail_context.discussion_evidence(
+            items, [items[0], items[-1], *([review_item] if review_item else [])]),
         "opening_at": items[0].get("activity_at") or items[0]["created_at"],
         "latest_at": items[-1].get("activity_at") or items[-1]["created_at"],
         "review_at": (review_item.get("activity_at") or review_item["created_at"]) if review_item else "",
@@ -339,7 +343,7 @@ def _build_threads_data(conn: sqlite3.Connection, rows, excerpt_len: int = 300,
                         end_iso: str | None = None) -> list[dict]:
     data = []
     for i, r in enumerate(rows, 1):
-        context = _thread_context(conn, r, end_iso)
+        context = _thread_context(conn, r, end_iso, excerpt_len)
         if not context.get("history_known", True):
             # A timestamp alone is not enough evidence for a technical summary.
             continue
@@ -357,9 +361,10 @@ def _build_threads_data(conn: sqlite3.Connection, rows, excerpt_len: int = 300,
             "participants": r["participant_count"],
             "topic": r["topic_tag"],
             "subject": r["subject"],
-            "excerpt": context["excerpt"][:excerpt_len],
-            "latest_excerpt": context["latest_excerpt"][:excerpt_len],
-            "review_excerpt": context["review_excerpt"][:excerpt_len],
+            "excerpt": context["excerpt"],
+            "latest_excerpt": context["latest_excerpt"],
+            "review_excerpt": context["review_excerpt"],
+            "discussion_evidence": context.get("discussion_evidence", []),
             "opening_at": context.get("opening_at", ""),
             "latest_at": context.get("latest_at", ""),
             "review_at": context.get("review_at", ""),

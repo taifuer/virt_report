@@ -74,7 +74,7 @@ def _entry_to_item(entry, project: str) -> dict | None:
         "updated_at": base.to_utc_iso(updated),
         "url": link,
         "labels": [],
-        "body_excerpt": base.extract_excerpt(body),
+        **base.body_fields(body),
         "raw_json": {"subject": subject, "author": author, "email": author_email,
                      "in_reply_to": in_reply_to},
     }

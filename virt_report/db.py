@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS items (
     url           TEXT,
     labels        TEXT,                   -- JSON array
     body_excerpt  TEXT,
+    body_text     TEXT,
     raw_json      TEXT,
     first_fetched_at TEXT NOT NULL,
     UNIQUE(source, project, native_id)
@@ -259,6 +260,8 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON;")
     conn.executescript(SCHEMA)
     _migrate_items_v2(conn)
+    if "body_text" not in {row[1] for row in conn.execute("PRAGMA table_info(items)")}:
+        conn.execute("ALTER TABLE items ADD COLUMN body_text TEXT")
     _migrate_activity_history(conn)
     _migrate_conference_metadata(conn)
     conn.executescript("""
@@ -361,7 +364,7 @@ def _activity_snapshot(row: sqlite3.Row) -> dict[str, Any]:
         item.update({
             "subject": f"GitLab {item['native_id']}（历史内容未保存）",
             "kind": "mr" if item["native_id"].startswith("mr:") else "issue",
-            "body_excerpt": "", "raw_json": "{}", "labels": "[]", "author": None,
+            "body_excerpt": "", "body_text": "", "raw_json": "{}", "labels": "[]", "author": None,
             "updated_at": row["activity_at"],
             "history_note": "该时间点仅有活动时间记录，历史标题、正文和状态未保存。",
         })
@@ -586,6 +589,7 @@ def upsert_item(conn: sqlite3.Connection, item: dict[str, Any]) -> bool:
         "url": item.get("url"),
         "labels": json.dumps(labels, ensure_ascii=False),
         "body_excerpt": item.get("body_excerpt"),
+        "body_text": item.get("body_text"),
         "raw_json": json.dumps(raw, ensure_ascii=False) if raw is not None else None,
         "first_fetched_at": item.get("first_fetched_at") or now_utc_iso(),
     }
@@ -595,11 +599,11 @@ def upsert_item(conn: sqlite3.Connection, item: dict[str, Any]) -> bool:
             INSERT INTO items (
                 source, project, native_id, message_id, in_reply_to, thread_root,
                 author, subject, kind, created_at, updated_at, activity_at, url, labels,
-                body_excerpt, raw_json, first_fetched_at
+                body_excerpt, body_text, raw_json, first_fetched_at
             ) VALUES (
                 :source, :project, :native_id, :message_id, :in_reply_to, :thread_root,
                 :author, :subject, :kind, :created_at, :updated_at, :activity_at, :url, :labels,
-                :body_excerpt, :raw_json, :first_fetched_at
+                :body_excerpt, :body_text, :raw_json, :first_fetched_at
             )
             ON CONFLICT(source, project, native_id) DO UPDATE SET
                 updated_at = excluded.updated_at,
@@ -609,6 +613,7 @@ def upsert_item(conn: sqlite3.Connection, item: dict[str, Any]) -> bool:
                 kind = COALESCE(NULLIF(excluded.kind, ''), items.kind),
                 url = COALESCE(NULLIF(excluded.url, ''), items.url),
                 body_excerpt = COALESCE(NULLIF(excluded.body_excerpt, ''), items.body_excerpt),
+                body_text = COALESCE(NULLIF(excluded.body_text, ''), items.body_text),
                 raw_json = COALESCE(excluded.raw_json, items.raw_json),
                 labels = excluded.labels
             WHERE items.source != 'gitlab' OR excluded.activity_at >= items.activity_at

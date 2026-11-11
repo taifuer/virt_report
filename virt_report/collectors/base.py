@@ -125,25 +125,45 @@ def strip_html(html: str) -> str:
     return text
 
 
-def extract_excerpt(body: str, max_chars: int = 600) -> str:
-    """从邮件/描述正文取摘要：去引文、去邮件头/trailer、去 patch diff、截断。"""
-    if not body:
+def clean_body(body: str, max_chars: int = 24000) -> str:
+    """Keep bounded public prose, including changelogs after a mail separator."""
+    if not body or max_chars <= 0:
         return ""
     lines: list[str] = []
     for ln in body.splitlines():
-        if ln.startswith(">"):
+        if ln.lstrip().startswith(">"):
             continue
         if _HEADER_LINE_RE.match(ln):
             continue
-        if ln.startswith("diff --git") or ln.startswith("---") or ln.startswith("+++"):
+        if ln.startswith(("diff --git", "--- a/", "+++ b/")):
             break
         if re.match(r"^@@ ", ln):
             break
-        lines.append(ln)
+        if ln.strip() != "---":
+            lines.append(ln)
     text = "\n".join(lines).strip()
     if len(text) > max_chars:
-        text = text[:max_chars].rsplit(" ", 1)[0] + "…"
+        marker = "\n[正文中段超出保存上限]\n"
+        if max_chars <= len(marker):
+            return text[:max_chars]
+        head = (max_chars - len(marker)) * 3 // 4
+        text = text[:head] + marker + text[-(max_chars - len(marker) - head):]
     return text
+
+
+def extract_excerpt(body: str, max_chars: int = 600) -> str:
+    """Return a short list excerpt; report evidence uses the retained body."""
+    if max_chars <= 0:
+        return ""
+    text = clean_body(body)
+    if len(text) > max_chars:
+        text = text[:max_chars - 1].rsplit(" ", 1)[0] + "…"
+    return text
+
+
+def body_fields(body: str) -> dict[str, str]:
+    """Separate compact display text from bounded evidence retained locally."""
+    return {"body_excerpt": extract_excerpt(body), "body_text": clean_body(body)}
 
 
 def lore_msgid_from_url(url: str) -> str | None:
