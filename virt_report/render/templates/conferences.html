@@ -5,7 +5,7 @@
 {% block nav_conferences %}on{% endblock %}
 {% block content %}
 <article class="conference-page">
-  <header><div class="kicker">Conference Archive</div><h1>会议</h1><p>按工程实践与学术研究两条线索，观察 QEMU、KVM 及相关虚拟化技术的长期演进。</p></header>
+  <header><h1>会议</h1><p>按工程实践与学术研究两条线索，观察 QEMU、KVM 及相关虚拟化技术的长期演进。</p></header>
   <div class="conference-guides">
     <section class="conference-guide-row">
       <div><h2>KVM Forum</h2><span class="guide-range">{{ forum_coverage }}</span></div>
@@ -14,15 +14,15 @@
     </section>
     <section class="conference-guide-row">
       <div><h2>学术会议</h2><span class="guide-range">{{ content.analysis.coverage }}</span></div>
-      <p>收录 {{ content.paper_count }} 篇虚拟化相关论文，其中 {{ content.curated_count }} 篇经典论文，附机制介绍与点评。</p>
-      <div class="conference-guide-actions"><a class="forum-source" href="conference-papers.html">相关论文</a><a class="forum-source" href="academic-conferences.html">查看技术演进</a></div>
+      <p>收录 {{ content.article_count }} 篇论文{% if content.monograph_count %}、{{ content.monograph_count }} 部专著{% endif %}，其中 {{ content.curated_count }} 篇经典论文，附机制介绍与点评。</p>
+      <div class="conference-guide-actions"><a class="forum-source" href="conference-papers.html">查看相关论文</a><a class="forum-source" href="academic-conferences.html">查看技术演进</a></div>
     </section>
   </div>
-  <section class="conference-sources" id="conference-sources"><h2>收录会议与期刊</h2>
-    <div class="venue-list">{% for venue in content.academic_venues %}<div class="venue-row">
+  <section class="conference-sources" id="conference-sources"><h2>收录会议与出版物</h2>
+    <div class="venue-list">{% for venue in content.publication_venues %}<div class="venue-row">
       <div class="venue-name"><h3>{{ venue.name }}</h3><small>{{ venue.full_name }}</small></div>
       <div class="venue-description"><p>{{ venue.focus }}</p></div>
-      <div class="venue-actions"><a href="conference-papers.html?scope=all&amp;venue={{ venue.key }}">{{ venue.paper_count }} 篇相关论文</a><a href="{{ venue.url }}" target="_blank" rel="noopener noreferrer">官方网站</a></div>
+      <div class="venue-actions"><a href="conference-papers.html?scope=all&amp;venue={{ venue.key }}">{{ venue.count_label }}</a><a href="{{ venue.url }}" target="_blank" rel="noopener noreferrer">官方网站</a></div>
     </div>{% endfor %}</div>
   </section>
   <p class="conference-method">{{ content.coverage }}。</p>

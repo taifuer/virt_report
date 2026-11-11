@@ -1108,6 +1108,8 @@ def _apply_reading_selection(content: dict) -> None:
     for order, paper in enumerate(content["papers"]):
         paper["archive_order"] = order
         paper["curated"] = paper["id"] in readings
+        if paper.get("domain") == "kernel" and not paper["curated"]:
+            raise ValueError(f"内核方向仅收录经典论文: {paper['id']}")
         paper["reading"] = None
         reading = readings.get(paper["id"])
         if reading is None:
@@ -1129,9 +1131,11 @@ def _apply_reading_selection(content: dict) -> None:
         slugs = reading.get("related_articles", [])
         if not slugs or any(slug not in articles_by_slug for slug in slugs):
             raise ValueError(f"精选解读缺少有效的站内延伸阅读: {paper['id']}")
+        reviewed_on = reading.get("reviewed_on", selection["reviewed_on"])
+        datetime.strptime(reviewed_on, "%Y-%m-%d")
         paper["reading"] = {
             **reading,
-            "reviewed_on": selection["reviewed_on"],
+            "reviewed_on": reviewed_on,
             "articles": [articles_by_slug[slug] for slug in slugs],
         }
     content["curated_papers"] = sorted(
@@ -1151,6 +1155,7 @@ def load_content() -> dict:
     _validate_screening(content)
     venues = content.get("venues", [])
     venue_keys = {item["key"] for item in venues}
+    venue_kinds = {item["key"]: item["kind"] for item in venues}
     if len(venue_keys) != len(venues):
         raise ValueError("会议目录包含重复 key")
     for check in content.get("edition_checks", []):
@@ -1168,6 +1173,15 @@ def load_content() -> dict:
             raise ValueError(f"论文 id 重复: {paper['id']}")
         if paper["venue"] not in venue_keys:
             raise ValueError(f"论文引用未知会议: {paper['venue']}")
+        paper.setdefault("publication_type", "research")
+        if paper["publication_type"] not in {"research", "survey", "monograph"}:
+            raise ValueError(f"未知文献类型: {paper['id']}")
+        if (paper["publication_type"] == "monograph") != (
+            venue_kinds[paper["venue"]] == "专著系列"
+        ):
+            raise ValueError(f"文献类型与出版来源不一致: {paper['id']}")
+        if paper.get("published_online"):
+            datetime.strptime(paper["published_online"], "%Y-%m-%d")
         if not paper["url"].startswith("https://"):
             raise ValueError(f"论文链接必须使用 HTTPS: {paper['id']}")
         for field in ("pdf_url", "code_url", "artifact_source_url"):
@@ -1211,7 +1225,7 @@ def load_content() -> dict:
         )
         paper["affiliation_source_label"] = {
             "usenix": "USENIX 官方页面", "crossref": "Crossref",
-            "official": "会议官方页面",
+            "official": "出版方或会议官方页面",
             "institution": "机构论文页面",
         }.get(paper.get("affiliation_source"), paper.get("affiliation_source", ""))
         paper.setdefault("architectures", [])
@@ -1231,6 +1245,10 @@ def load_content() -> dict:
         paper["venue_name"] = venue_names[paper["venue"]]
     for venue in venues:
         venue["paper_count"] = counts[venue["key"]]
+        venue["count_label"] = (
+            f'{venue["paper_count"]} 部专著' if venue["kind"] == "专著系列"
+            else f'{venue["paper_count"]} 篇相关论文'
+        )
         checks = [item for item in content.get("edition_checks", [])
                   if item["venue"] == venue["key"]]
         venue["latest_check"] = max(
@@ -1254,12 +1272,21 @@ def load_content() -> dict:
     for item in analysis.get("years", []):
         year_papers = [paper for paper in papers if paper["year"] == item["year"]]
         item["paper_count"] = len(year_papers)
+        item["monograph_count"] = sum(
+            paper["publication_type"] == "monograph" for paper in year_papers
+        )
         ids = item.get("representative_ids", [])
         item["representative_papers"] = [by_id[pid] for pid in ids if pid in by_id]
 
     content["analysis"] = analysis
     content["papers"] = papers
+    # Keep the archive total stable for pagination/search, with books counted
+    # separately wherever the public UI says "papers" rather than "records".
     content["paper_count"] = len(papers)
+    content["monograph_count"] = sum(
+        paper["publication_type"] == "monograph" for paper in papers
+    )
+    content["article_count"] = len(papers) - content["monograph_count"]
     content["direct_count"] = sum(
         paper["relation"] == "直接关联" for paper in papers
     )
@@ -1271,8 +1298,12 @@ def load_content() -> dict:
     content["academic_venues"] = [
         venue for venue in venues if venue["kind"] in {"学术会议", "期刊"}
     ]
+    content["publication_venues"] = [
+        venue for venue in venues
+        if venue["kind"] in {"学术会议", "期刊", "专著系列"}
+    ]
     content["paper_venues"] = [
-        venue for venue in content["academic_venues"] if venue["paper_count"]
+        venue for venue in content["publication_venues"] if venue["paper_count"]
     ]
     related = {"topics": content.get("topic_links", [])}
     known_topics = {item["key"]: item for item in related["topics"]}

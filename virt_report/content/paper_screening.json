@@ -1,14 +1,174 @@
 {
   "version": 1,
-  "reviewed_on": "2026-11-10",
-  "scope": "以系统虚拟化为主：VMM/Hypervisor、真实 ISA 模拟、Guest/Host CPU/内存/I/O 契约、VM 状态迁移及其隔离安全。云、Serverless、容器、AI 或 VM 关键词不是自动收录依据。",
+  "reviewed_on": "2026-11-11",
+  "scope": "以系统虚拟化为主：VMM/Hypervisor、真实 ISA 模拟、Guest/Host CPU/内存/I/O 契约、VM 状态迁移及其隔离安全。内核原始研究仅收录进程、CPU 调度、内存管理与 I/O 的经典论文，须核对原文并关联对应原理文章。另选与相关体系结构和云基础设施机制紧密关联的专题综述及教程型专著，核对出版信息、类型和覆盖范围，收录不自动赋予经典星标。云、Serverless、容器、AI 或 VM 关键词不是自动收录依据。",
   "method": "逐条复核标题、现有介绍和点评所陈述的贡献；边界不清的条目补查一手摘要、作者项目或原文段落。editorial_record 表示这次仅重审既有内容与来源指向，不声称新读过全文；pdf_sections 仅表示核对相关段落。精选深读范围另见 paper_readings.json。",
   "decisions": {
     "keep": "保留公开目录；是否精选另行决定",
-    "exclude": "与当前机制主题关联不足，移出公开目录",
+    "exclude": "不符合当前选题范围或编辑取舍，移出公开目录",
     "defer": "相关方向明确但证据不足，待核实后重新评审"
   },
   "papers": [
+    {
+      "id": "csur24-cxl",
+      "title": "An Introduction to the Compute Express Link (CXL) Interconnect",
+      "year": 2024,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "用户确认补充的体系结构综述；核对摘要及引言，覆盖 CXL 1.0、2.0、3.0 的一致性互连和内存池化，明确工程侧重点与作者预印本来源。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://arxiv.org/pdf/2306.11227v3"
+    },
+    {
+      "id": "comst24-network-acceleration",
+      "title": "Empowering Cloud Computing With Network Acceleration: A Survey",
+      "year": 2024,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "用户确认补充；根据正式原文摘要核对 XDP、DPDK、RDMA 参照及四维分类，补充云网络加速与虚拟化共享的方案比较。",
+      "review_basis": "primary_abstract",
+      "source_url": "https://cris.unibo.it/retrieve/249c5d98-73ff-4fdd-9fe9-6940f960fd82/COMST_Final_Editorial.pdf"
+    },
+    {
+      "id": "csur23-vm-interference",
+      "title": "Performance Interference of Virtual Machines: A Survey",
+      "year": 2023,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "用户确认补充的虚机性能干扰综述；核对摘要和第 1 节，介绍测量建模与调度优化框架，区分 2023 正式发表、2022 作者稿及被综述实验的适用范围。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.cs.newpaltz.edu/~lik/publications/Weiwei-Lin-ACM-CSUR-2022"
+    },
+    {
+      "id": "csur24-transient-execution",
+      "title": "Transient-Execution Attacks: A Computer Architect Perspective",
+      "year": 2024,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "用户确认补充；核对出版方摘要、引言及相关原文段落，从处理器机制解释瞬态执行与隔离边界；按 2024 卷期归档并注明 2023 在线发表。",
+      "review_basis": "primary_excerpt",
+      "source_url": "https://doi.org/10.1145/3603619"
+    },
+    {
+      "id": "slca20-memory-consistency",
+      "title": "A Primer on Memory Consistency and Cache Coherence, Second Edition",
+      "year": 2020,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "用户确认补充的教程型专著；核对出版方简介、目录与第二版年份，以一致性模型和缓存协议补充多核内存基础，单独计为专著并保留原始和现出版方 DOI。",
+      "review_basis": "primary_abstract",
+      "source_url": "https://link.springer.com/book/10.1007/978-3-031-01764-3"
+    },
+    {
+      "id": "asplos20-mitosis",
+      "title": "Mitosis: Transparently Self-Replicating Page-Tables for Large-Memory Machines",
+      "year": 2020,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "用户确认补充的 NUMA 页表研究；核对 Linux 4.17 原型、副本同步与多插槽评估，按内核经典收录并区分进程页表和 KVM 第二级页表。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://retoachermann.ch/static/papers/achermann-2020-mts.pdf"
+    },
+    {
+      "id": "nsdi19-shinjuku",
+      "title": "Shinjuku: Preemptive Scheduling for μsecond-scale Tail Latency",
+      "year": 2019,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "用户确认补充；Dune、posted interrupts 和可信调度器的 APIC 映射直接使用硬件虚拟化机制，核对抢占路径与 RocksDB 实验的负载、协议及专用核约束。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.usenix.org/system/files/nsdi19-kaffes.pdf"
+    },
+    {
+      "id": "eurosys16-linux-scheduler",
+      "title": "The Linux Scheduler: a Decade of Wasted Cores",
+      "year": 2016,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "用户确认补充的 Linux 调度经典；核对多核负载均衡缺陷、诊断工具与 make/R 实验，限定为历史 CFS 研究及可迁移的诊断方法。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://people.ece.ubc.ca/sasha/papers/eurosys16-final29.pdf"
+    },
+    {
+      "id": "systor13-blk-mq",
+      "title": "Linux Block IO: Introducing Multi-queue SSD Access on Multi-core Systems",
+      "year": 2013,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "Linux 多队列块层的原始设计，补充内核 I/O 经典；核对两级队列与 null 设备实验边界。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.kernel.dk/blk-mq.pdf"
+    },
+    {
+      "id": "atc12-netmap",
+      "title": "netmap: A Novel Framework for Fast Packet I/O",
+      "year": 2012,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "预分配、共享环与批量收发构成高速网络 I/O 的代表设计；按内核经典收录，注明 FreeBSD 测量与 Linux 移植的区别。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.usenix.org/system/files/conference/atc12/atc12-final186.pdf"
+    },
+    {
+      "id": "cacm68-working-set",
+      "title": "The Working Set Model for Program Behavior",
+      "year": 1968,
+      "origin": "added",
+      "decision": "exclude",
+      "reason": "按用户要求移除：1968 年工作集模型年代较早，本轮内核选题优先贴近现代实现；保留筛选记录以避免重复补录。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://denninginstitute.com/pjd/PUBS/WSModel_1968.pdf"
+    },
+    {
+      "id": "cacm74-unix",
+      "title": "The UNIX Time-Sharing System",
+      "year": 1974,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "进程映像、fork、程序替换和管道构成现代 Unix 类内核的接口基础；限定为经典内核阅读。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.cs.cmu.edu/~15712/papers/ritchie74.pdf"
+    },
+    {
+      "id": "osdi94-lottery",
+      "title": "Lottery Scheduling: Flexible Proportional-Share Resource Management",
+      "year": 1994,
+      "origin": "added",
+      "decision": "exclude",
+      "reason": "按用户要求移除：1994 年抽签调度以早期 Mach 原型为背景，本轮调度选题优先贴近现代 Linux；保留筛选记录以避免重复补录。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.usenix.org/legacy/publications/library/proceedings/osdi/full_papers/waldspurger.pdf"
+    },
+    {
+      "id": "sosp97-disco",
+      "title": "Disco: Running Commodity Operating Systems on Scalable Multiprocessors",
+      "year": 1997,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "1990 年代 VMM 复兴的代表工作，直接连接虚拟机、NUMA、页面迁移与共享，补齐早期机制脉络。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://web.stanford.edu/class/archive/cs/cs240/cs240.1056/readings/disco.pdf"
+    },
+    {
+      "id": "asplos08-two-dimensional-page-walks",
+      "title": "Accelerating Two-Dimensional Page Walks for Virtualized Systems",
+      "year": 2008,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "针对虚拟化二维页表遍历的缓存设计，是理解 EPT/NPT 与大页成本的代表性体系结构研究。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.cs.columbia.edu/~cdall/candidacy/pdf/Bhargava2008.pdf"
+    },
+    {
+      "id": "eurosys13-radixvm",
+      "title": "RadixVM: Scalable Address Spaces for Multithreaded Applications",
+      "year": 2013,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "将共享地址空间扩展性和物理页安全复用一起解决，补充内核内存管理经典；明确 xv6 原型与 Linux 的实现边界。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://pdos.csail.mit.edu/papers/radixvm:eurosys13.pdf"
+    },
     {
       "id": "osdi16-ingens",
       "title": "Coordinated and Efficient Huge Page Management with Ingens",

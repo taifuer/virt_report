@@ -1,6 +1,26 @@
 /* Local full-window reading: preserve demo DOM/state; zoom diagrams without clipping. */
 (function () {
   'use strict';
+  const toc = document.querySelector('.mechanism-toc');
+  const toggle = toc?.querySelector('[data-toc-toggle]');
+  if (!toggle) return;
+  const links = toc.querySelector('#mechanism-toc-links');
+  const heading = toc.querySelector('[data-toc-heading]');
+  const mobile = matchMedia('(max-width: 960px)');
+  let expanded = false;
+  function sync() {
+    toggle.hidden = !mobile.matches;
+    heading.hidden = mobile.matches;
+    links.hidden = mobile.matches && !expanded;
+    toggle.setAttribute('aria-expanded', String(!links.hidden));
+    toggle.querySelector('[data-toc-action]').textContent = links.hidden ? '展开' : '收起';
+  }
+  toggle.addEventListener('click', () => { expanded = !expanded; sync(); });
+  mobile.addEventListener('change', sync);
+  sync();
+})();
+(function () {
+  'use strict';
   const dialog = document.createElement('dialog');
   if (typeof dialog.showModal !== 'function') return;
   dialog.className = 'mechanism-viewer';

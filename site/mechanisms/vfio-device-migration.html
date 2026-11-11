@@ -7,16 +7,16 @@
   <title>VFIO 设备热迁移：设备状态与 DMA 交接 - virt-report</title>
   <meta name="description" content="跟踪直通网卡在源端和目的端之间的状态交接，区分 RAM 脏页与设备内部状态，分析预拷贝、停止 DMA、恢复校验和失败边界。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=e9ab166b6427">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=e9ab166b6427">
-  <link rel="stylesheet" href="../assets/site.css?v=e9ab166b6427">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=720ef053ee9a">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=720ef053ee9a">
-<link rel="stylesheet" href="../assets/vfio-migration-lab.css?v=720ef053ee9a"></head>
+  <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
+  <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=773f22046b09">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=773f22046b09">
+<link rel="stylesheet" href="../assets/vfio-migration-lab.css?v=773f22046b09"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=e9ab166b6427" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=0ad6552bf0f5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -48,7 +48,7 @@
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、直通网卡的状态交接</a></li><li><a href="#consistency">二、RAM、设备状态与运行权</a></li><li><a href="#states">三、VFIO 用状态机约束设备行为</a></li><li><a href="#precopy">四、运行阶段：同步 RAM 与预拷贝设备状态</a></li><li><a href="#handoff">五、停机阶段：停止 DMA 并形成恢复点</a></li><li><a href="#dma-dirty">六、DMA 脏页跟踪接入 RAM 迁移</a></li><li><a href="#failure">七、取消迁移与失败边界</a></li><li><a href="#evolution">八、从停机导出到运行中准备</a></li><li><a href="#sources">九、源码入口与参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2><ol id="mechanism-toc-links"><li><a href="#preface">一、直通网卡的状态交接</a></li><li><a href="#consistency">二、RAM、设备状态与运行权</a></li><li><a href="#states">三、VFIO 用状态机约束设备行为</a></li><li><a href="#precopy">四、运行阶段：同步 RAM 与预拷贝设备状态</a></li><li><a href="#handoff">五、停机阶段：停止 DMA 并形成恢复点</a></li><li><a href="#dma-dirty">六、DMA 脏页跟踪接入 RAM 迁移</a></li><li><a href="#failure">七、取消迁移与失败边界</a></li><li><a href="#evolution">八、从停机导出到运行中准备</a></li><li><a href="#sources">九、源码入口与参考资料</a></li></ol></nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
 <h2><span class="mechanism-heading-number">一、</span>直通网卡的状态交接</h2>
 <p>一台虚拟机使用直通网卡 VF 接收数据包。网卡把报文写入客户机的接收缓冲区，推进接收队列，并产生完成通知。迁移这台虚拟机时，目的端既要拿到报文所在的 RAM，也要恢复网卡已经处理到哪一个请求。只恢复其中一部分，就可能把旧缓冲区当作新报文，或让已经完成的请求再次执行。</p>
@@ -101,9 +101,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看一次收包涉及的三类变化" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="一次收包涉及的三类变化">
-    <img src="../assets/vfio-migration-consistency.svg?v=720ef053ee9a" alt="CPU 与设备都能修改客户机 RAM；VFIO 导出的设备状态是另一条数据流。停止所有相关写入者后，目的端才能得到一致的恢复点。" loading="lazy">
+    <img src="../assets/vfio-migration-consistency.svg?v=773f22046b09" alt="CPU 与设备都能修改客户机 RAM；VFIO 导出的设备状态是另一条数据流。停止所有相关写入者后，目的端才能得到一致的恢复点。" loading="lazy">
   </div>
-  <figcaption>CPU 与设备都能修改客户机 RAM；VFIO 导出的设备状态是另一条数据流。停止所有相关写入者后，目的端才能得到一致的恢复点。 <a href="../assets/vfio-migration-consistency.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>CPU 与设备都能修改客户机 RAM；VFIO 导出的设备状态是另一条数据流。停止所有相关写入者后，目的端才能得到一致的恢复点。 <a href="../assets/vfio-migration-consistency.svg?v=773f22046b09" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: VFIO 迁移中的 RAM 与设备状态
     accDescr: 客户机 CPU 和网卡 DMA 分别写入客户机 RAM，KVM 与设备或 IOMMU 脏页跟踪把变化交给 RAM 迁移。网卡内部状态通过另一条 VFIO 数据流迁移。源端停止所有相关写入后，目的端同时完成 RAM、CPU 和设备状态恢复，才可以运行。
@@ -188,9 +188,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看源端、迁移流与目的端的交接" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="源端、迁移流与目的端的交接">
-    <img src="../assets/vfio-migration-handoff.svg?v=720ef053ee9a" alt="RAM 和设备状态在停机窗口内都要完成。图中的并列分支表示共同的完成条件，不要求它们按固定先后发送，也不表示两者必然使用并行通道。" loading="lazy">
+    <img src="../assets/vfio-migration-handoff.svg?v=773f22046b09" alt="RAM 和设备状态在停机窗口内都要完成。图中的并列分支表示共同的完成条件，不要求它们按固定先后发送，也不表示两者必然使用并行通道。" loading="lazy">
   </div>
-  <figcaption>RAM 和设备状态在停机窗口内都要完成。图中的并列分支表示共同的完成条件，不要求它们按固定先后发送，也不表示两者必然使用并行通道。 <a href="../assets/vfio-migration-handoff.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>RAM 和设备状态在停机窗口内都要完成。图中的并列分支表示共同的完成条件，不要求它们按固定先后发送，也不表示两者必然使用并行通道。 <a href="../assets/vfio-migration-handoff.svg?v=773f22046b09" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 单块 VF 在源端与目的端之间的迁移交接
     accDescr: 源端继续运行时迭代 RAM，可选地预拷贝设备状态。目的端处于 RESUMING，并确认初始数据加载。源端暂停 vCPU 并停止设备 DMA 后，完成最终 RAM 和设备状态传输。目的端校验全部恢复状态后才能运行，源端不再执行。
@@ -414,7 +414,7 @@
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=e9ab166b6427"></script>
-<script src="../assets/mechanism-viewer.js?v=720ef053ee9a" defer></script>
-<script src="../assets/vfio-migration-lab.js?v=720ef053ee9a" defer></script></body>
+  <script src="../assets/site.js?v=0ad6552bf0f5"></script>
+<script src="../assets/mechanism-viewer.js?v=773f22046b09" defer></script>
+<script src="../assets/vfio-migration-lab.js?v=773f22046b09" defer></script></body>
 </html>

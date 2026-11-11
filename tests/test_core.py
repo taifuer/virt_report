@@ -1274,7 +1274,7 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     content = conferences.load_content()
     assert content["paper_count"] > content["curated_count"] > 0
     assert content["years"] == list(range(2026, 2009, -1)) + [
-        2008, 2007, 2006, 2005, 2003, 2002, 1974,
+        2008, 2007, 2006, 2005, 2003, 2002, 1997, 1974,
     ]
     # An original publisher PDF is a valid primary link, not a collection job.
     assert all(not paper["url"].lower().endswith((".ppt", ".pptx"))
@@ -1296,19 +1296,21 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
 
     page = html_render.render_conferences_html(Config(), content)
     assert "<title>会议 - virt-report</title>" in page
-    assert '<div class="kicker">Conference Archive</div>' in page
+    assert '<header><h1>会议</h1>' in page
+    assert 'class="kicker"' not in page
+    assert 'Conference Archive' not in page
     assert "学术会议" in page and "academic-conferences.html" in page
     assert '<div><h2>KVM Forum</h2><span class="guide-range">2010—2026</span></div>' in page
     assert (f'<div><h2>学术会议</h2><span class="guide-range">'
             f'{content["analysis"]["coverage"]}</span></div>') in page
     assert 'href="kvm-forum.html">查看技术演进</a>' in page
-    assert 'href="conference-papers.html">相关论文</a>' in page
+    assert 'href="conference-papers.html">查看相关论文</a>' in page
     assert f'其中 {content["curated_count"]} 篇经典论文' in page
-    assert f'{content["paper_count"]} 篇虚拟化相关论文' in page
-    assert '<section class="conference-sources" id="conference-sources"><h2>收录会议与期刊</h2>' in page
-    for venue in content["academic_venues"]:
+    assert f'{content["article_count"]} 篇论文、{content["monograph_count"]} 部专著' in page
+    assert '<section class="conference-sources" id="conference-sources"><h2>收录会议与出版物</h2>' in page
+    for venue in content["publication_venues"]:
         assert (f'href="conference-papers.html?scope=all&amp;venue={venue["key"]}">'
-                f'{venue["paper_count"]} 篇相关论文</a>') in page
+                f'{venue["count_label"]}</a>') in page
     assert "国内技术活动" not in page
     assert "持续讨论与技术来源" not in page
     assert '<details class="conference-sources"' not in page
@@ -1320,7 +1322,8 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
 
     timeline = html_render.render_academic_conferences_html(Config(), content)
     assert "<title>学术会议 - virt-report</title>" in timeline
-    assert "会议</a> · Academic Conference Review" in timeline
+    assert '<nav class="kicker" aria-label="面包屑">' in timeline
+    assert 'Academic Conference Review' not in timeline
     assert timeline.index('id="year-2026"') < timeline.index('id="year-2010"')
     assert "技术演进" not in timeline.split("<h1>", 1)[1].split("</h1>", 1)[0]
     assert f'{content["paper_count"]} 篇论文' not in timeline
@@ -1331,7 +1334,10 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
 
     papers = html_render.render_conference_papers_html(Config(), content)
     assert "<title>相关论文 - virt-report</title>" in papers
-    assert "会议</a> · Research Papers" in papers
+    assert '<h1>论文</h1>' in papers
+    assert 'aria-label="会议目录"' not in papers
+    assert 'research-index-link' not in papers
+    assert 'research-nav' not in papers and 'Research Papers' not in papers
     assert "会议</a> · <a href=\"academic-conferences.html\">学术会议</a>" not in papers
     paper_tags = [part.split(">", 1)[0]
                   for part in papers.split("data-conference-item")[1:]]
@@ -1367,7 +1373,7 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
 
     assets = (html_render.ASSETS_DIR / "site.js").read_text(encoding="utf-8")
     assert "new URLSearchParams(location.search)" in assets
-    assert "matching.length" in assets and "data-conference-classic" in assets
+    assert "matching.length" in assets and "data-conference-filter" in assets
     assert "syncFacets()" in assets
     assert "select.replaceChildren" in assets and "counts.has(option.value)" in assets
     assert "counts.get(option.value)" in assets
@@ -1425,7 +1431,8 @@ def test_kvm_forum_uses_conference_navigation():
     page = html_render.render_kvm_forum_html(Config(), editions, analysis)
     assert 'href="conferences.html" class="on" aria-current="page">会议</a>' in page
     assert ">KVM Forum</a>" not in page.split("</nav>", 1)[0]
-    assert "会议</a> · KVM Forum Review" in page
+    assert '<nav class="kicker" aria-label="面包屑">' in page
+    assert 'KVM Forum Review' not in page
     assert "会议</a> · Conference Archive" not in page
 
 

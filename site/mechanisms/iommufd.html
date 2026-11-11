@@ -7,16 +7,16 @@
   <title>IOMMUFD：设备绑定与 I/O 地址空间管理 - virt-report</title>
   <meta name="description" content="沿一块 VF 的接入与回收，解释设备 fd、DEVICE、IOAS 和 HWPT 的关系，以及附着、映射、共享和失败回滚。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=e9ab166b6427">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=e9ab166b6427">
-  <link rel="stylesheet" href="../assets/site.css?v=e9ab166b6427">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=720ef053ee9a">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=720ef053ee9a">
-<link rel="stylesheet" href="../assets/iommufd-lab.css?v=720ef053ee9a"></head>
+  <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
+  <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=773f22046b09">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=773f22046b09">
+<link rel="stylesheet" href="../assets/iommufd-lab.css?v=773f22046b09"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=e9ab166b6427" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=0ad6552bf0f5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -48,7 +48,7 @@
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、设备分配中的地址空间管理</a></li><li><a href="#objects">二、两个文件描述符与三类对象</a></li><li><a href="#setup">三、一块 VF 从打开到可用</a><ol><li><a href="#setup-part-1">1. 打开与绑定</a></li><li><a href="#setup-part-2">2. 分配地址空间与附着页表</a></li><li><a href="#setup-part-3">3. 注册 RAM 映射</a></li></ol></li><li><a href="#lifecycle">四、映射建立后的 DMA 与资源回收</a></li><li><a href="#sharing">五、共享与失败处理</a></li><li><a href="#implementation">六、源码中的控制路径</a></li><li><a href="#evolution">七、从 VFIO Container 到独立的页表管理</a></li><li><a href="#sources">八、参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2><ol id="mechanism-toc-links"><li><a href="#preface">一、设备分配中的地址空间管理</a></li><li><a href="#objects">二、两个文件描述符与三类对象</a></li><li><a href="#setup">三、一块 VF 从打开到可用</a><ol><li><a href="#setup-part-1">1. 打开与绑定</a></li><li><a href="#setup-part-2">2. 分配地址空间与附着页表</a></li><li><a href="#setup-part-3">3. 注册 RAM 映射</a></li></ol></li><li><a href="#lifecycle">四、映射建立后的 DMA 与资源回收</a></li><li><a href="#sharing">五、共享与失败处理</a></li><li><a href="#implementation">六、源码中的控制路径</a></li><li><a href="#evolution">七、从 VFIO Container 到独立的页表管理</a></li><li><a href="#sources">八、参考资料</a></li></ol></nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
 <h2><span class="mechanism-heading-number">一、</span>设备分配中的地址空间管理</h2>
 <p>把一块网卡 VF 分配给虚拟机，需要同时建立两类访问：客户机通过设备寄存器提交请求，网卡通过 DMA 访问客户机内存。VFIO 提供设备区域、配置空间和中断接口；IOMMUFD 管理 DMA 使用的地址空间与硬件页表。两者通过设备绑定和页表附着连接起来。</p>
@@ -113,9 +113,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看IOMMUFD 中的设备、逻辑地址空间与硬件页表" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="IOMMUFD 中的设备、逻辑地址空间与硬件页表">
-    <img src="../assets/iommufd-objects.svg?v=720ef053ee9a" alt="上半部分是用户态管理入口，下半部分是对象关系。第二块设备和 HWPT 展示同一 IOAS 的扩展方式；它们不属于后文单 VF 演示的必需对象。" loading="lazy">
+    <img src="../assets/iommufd-objects.svg?v=773f22046b09" alt="上半部分是用户态管理入口，下半部分是对象关系。第二块设备和 HWPT 展示同一 IOAS 的扩展方式；它们不属于后文单 VF 演示的必需对象。" loading="lazy">
   </div>
-  <figcaption>上半部分是用户态管理入口，下半部分是对象关系。第二块设备和 HWPT 展示同一 IOAS 的扩展方式；它们不属于后文单 VF 演示的必需对象。 <a href="../assets/iommufd-objects.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>上半部分是用户态管理入口，下半部分是对象关系。第二块设备和 HWPT 展示同一 IOAS 的扩展方式；它们不属于后文单 VF 演示的必需对象。 <a href="../assets/iommufd-objects.svg?v=773f22046b09" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: IOMMUFD 的文件描述符与对象关系
     accDescr: QEMU 分别通过 VFIO 设备文件和 IOMMUFD 文件管理设备及页表；DEVICE 附着到 HWPT，HWPT 关联统一的 IOAS 映射。兼容设备可共享硬件页表，其他设备可以通过另一个硬件页表共享 IOAS。
@@ -176,9 +176,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看单个 VF 的初始化、运行与回收" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="单个 VF 的初始化、运行与回收">
-    <img src="../assets/iommufd-lifecycle.svg?v=720ef053ee9a" alt="初始化沿 QEMU 的先附着、后映射顺序；回收示意显式释放依赖。正常 DMA 位于设备与宿主内存之间，用户态只参与配置和生命周期管理。" loading="lazy">
+    <img src="../assets/iommufd-lifecycle.svg?v=773f22046b09" alt="初始化沿 QEMU 的先附着、后映射顺序；回收示意显式释放依赖。正常 DMA 位于设备与宿主内存之间，用户态只参与配置和生命周期管理。" loading="lazy">
   </div>
-  <figcaption>初始化沿 QEMU 的先附着、后映射顺序；回收示意显式释放依赖。正常 DMA 位于设备与宿主内存之间，用户态只参与配置和生命周期管理。 <a href="../assets/iommufd-lifecycle.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>初始化沿 QEMU 的先附着、后映射顺序；回收示意显式释放依赖。正常 DMA 位于设备与宿主内存之间，用户态只参与配置和生命周期管理。 <a href="../assets/iommufd-lifecycle.svg?v=773f22046b09" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 单个 VF 的 IOMMUFD 生命周期
     accDescr: QEMU 先绑定 VFIO 设备，再分配 IOAS 和 HWPT，附着设备，映射 RAM；设备使用映射进行 DMA。停止队列和在途 DMA 后，解除关联、撤销映射并回收对象及文件描述符。
@@ -411,7 +411,7 @@
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=e9ab166b6427"></script>
-<script src="../assets/mechanism-viewer.js?v=720ef053ee9a" defer></script>
-<script src="../assets/iommufd-lab.js?v=720ef053ee9a" defer></script></body>
+  <script src="../assets/site.js?v=0ad6552bf0f5"></script>
+<script src="../assets/mechanism-viewer.js?v=773f22046b09" defer></script>
+<script src="../assets/iommufd-lab.js?v=773f22046b09" defer></script></body>
 </html>

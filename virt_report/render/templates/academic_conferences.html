@@ -5,13 +5,13 @@
 {% block nav_conferences %}on{% endblock %}
 {% block content %}
 <article class="forum-page academic-page">
-  <header><div class="kicker"><a href="conferences.html">会议</a> · Academic Conference Review</div><h1>学术会议</h1><p>汇总系统领域会议中与虚拟化直接相关的标题与公开简介，按年度观察技术演变。</p></header>
-  <p class="conference-method">{{ content.coverage }}。<a href="conference-papers.html">相关论文</a> · <a href="conferences.html#conference-sources">收录会议</a></p>
+  <header><nav class="kicker" aria-label="面包屑"><a href="conferences.html">会议</a></nav><h1>学术会议</h1><p>汇总系统领域会议中与虚拟化直接相关的标题与公开简介，按年度观察技术演变。</p></header>
+  <p class="conference-method">{{ content.coverage }}。<a href="conference-papers.html">查看相关论文</a> · <a href="conferences.html#conference-sources">收录会议</a></p>
   <section class="forum-overview"><h2>{{ content.analysis.headline }}</h2><p>{{ content.analysis.overview }}</p>
     {% if content.analysis.eras %}<div class="era-list">{% for era in content.analysis.eras %}<div class="era"><strong><span class="era-years">{{ era.years }}</span><span class="era-name">{{ era.name }}</span></strong><span class="era-summary">{{ era.summary }}</span></div>{% endfor %}</div>{% endif %}
   </section>
   <div class="forum-years">{% for item in content.analysis.years %}<section class="forum-year" id="year-{{ item.year }}">
-    <div><h2>{{ item.year }}</h2><span class="talk-count">{{ item.paper_count }} 篇论文</span></div>
+    <div><h2>{{ item.year }}</h2><span class="talk-count">{{ item.paper_count - item.monograph_count }} 篇论文{% if item.monograph_count %} · {{ item.monograph_count }} 部专著{% endif %}</span></div>
     <div><h3>{{ item.headline }}</h3>
       {% if item.themes %}<div class="theme-list">{% for theme in item.themes %}<span class="tag">{{ theme }}</span>{% endfor %}</div>{% endif %}
       <p>{{ item.summary }}</p>

@@ -3,6 +3,23 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const model = require('../virt_report/render/assets/execution-model.js');
+test('comparison aligns reviewed phase IDs despite display labels, never ordinal positions', () => {
+  const make = (start, title = '发布与通知') => ({nodes: [], structures: [],
+    steps: Array.from({length: 6}, (_, i) => ({id: `s${i}`, changes: {}, nodeStates: {}})),
+    phases: [{id: 'initial', title: '准备', start: 's0'},
+      {id: 'notify', title, start: `s${start}`}],
+  });
+  const before = make(2), after = make(4, '发布与轮询');
+  assert.equal(model.matchingPhase(before, model.buildTrace(before), 3,
+    after, model.buildTrace(after)).index, 4);
+  const incompatible = make(4, '接收补充');
+  incompatible.phases[1].id = 'refill';
+  assert.equal(model.matchingPhase(before, model.buildTrace(before), 3,
+    incompatible, model.buildTrace(incompatible)), null);
+  const missing = {...after}; delete missing.phases;
+  assert.equal(model.matchingPhase(before, model.buildTrace(before), 3,
+    missing, model.buildTrace(missing)), null);
+});
 test('phase navigation groups operations without dropping playback or deep-link positions', () => {
   const scene = {nodes: [], structures: [], phases: [
     {id: 'submit', title: '提交请求', start: 'initial'},

@@ -333,7 +333,7 @@ def test_catalogue_about_and_export_work_without_database_and_preserve_reports(t
 
 
 @pytest.mark.parametrize("path,status,marker", [
-    ("/mechanisms.html", 200, "Virtualization Internals"),
+    ("/mechanisms.html", 200, "<h1>原理</h1>"),
     ("/mechanisms/qemu-memory-migration.html", 200, "QEMU 预拷贝迁移的内存迭代与停机控制"),
     ("/mechanisms/qemu-migration-stream.html", 200, "QEMU 迁移流格式与状态恢复"),
     ("/mechanisms/qemu-multifd.html", 200, "QEMU MultiFD 的任务分发与跨通道同步"),

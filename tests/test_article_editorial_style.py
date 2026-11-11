@@ -55,7 +55,8 @@ def test_linux_further_reading_keeps_historical_evaluation_context():
     page = render.render_mechanisms_html(Config(), "linux-execution-scheduling")
     sources = page.split('<section id="sources"', 1)[1]
     assert 'href="https://doi.org/10.1145/2901318.2901326"' in sources
-    assert 'href="https://people.ece.ubc.ca/~sasha/papers/eurosys16-final29.pdf"' in sources
+    assert 'href="https://people.ece.ubc.ca/sasha/papers/eurosys16-final29.pdf"' in sources
+    assert 'href="../conference-papers.html#paper-eurosys16-linux-scheduler"' in sources
     for context in ("EuroSys 2016", "CFS", "64 核", "NUMA", "Linux 3.17", "4.3", "EEVDF"):
         assert context in sources
     memory = render.render_mechanisms_html(Config(), "linux-memory")

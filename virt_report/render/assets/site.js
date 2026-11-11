@@ -191,27 +191,30 @@ document.querySelectorAll('[data-conference-browser]').forEach(root=>{
   const items=[...root.querySelectorAll('[data-conference-item]')].sort((a,b)=>Number(a.dataset.order)-Number(b.dataset.order)),venue=root.querySelector('[data-conference-venue]'),year=root.querySelector('[data-conference-year]'),status=root.querySelector('[data-conference-status]'),empty=root.querySelector('[data-conference-empty]'),prev=root.querySelector('[data-conference-prev]'),next=root.querySelector('[data-conference-next]'),sizeSelect=root.querySelector('[data-conference-size]');
   if(!venue||!year||!prev||!next||!sizeSelect)return;
   const form=root.querySelector('[data-conference-search]'),query=root.querySelector('[data-conference-query]'),clear=root.querySelector('[data-conference-clear]'),reset=root.querySelector('[data-conference-reset]'),topicFilter=root.querySelector('[data-conference-topic-filter]'),topicLabel=root.querySelector('[data-conference-topic-label]');
-  const list=root.querySelector('.paper-list'),classic=root.querySelector('[data-conference-classic]');
+  const list=root.querySelector('.paper-list'),filters=[...root.querySelectorAll('[data-conference-filter]')],sort=root.querySelector('[data-conference-sort]');
   const options=new Map([venue,year].map(select=>[select,[...select.options].map(option=>({value:option.value,label:option.textContent}))]));
   list.append(...items);
   const normalize=value=>value.normalize('NFKC').toLocaleLowerCase().replace(/\s+/g,' ').trim();
   const indexed=new Map(items.map(item=>[item,{text:normalize(item.textContent),topics:JSON.parse(item.dataset.topics||'[]')}]));
-  let scope='all',topic='',page=0,size=10,selectedVenue='',selectedYear='';
+  let scope='all',topic='',page=0,size=10,selectedVenue='',selectedYear='',sortOrder='newest';
   const restore=()=>{
     const params=new URLSearchParams(location.search);
-    scope=params.get('scope')==='curated'?'curated':'all';
+    scope=['curated','surveys'].includes(params.get('scope'))?params.get('scope'):'all';
+    sortOrder=params.get('sort')==='oldest'?'oldest':'newest';
+    if(sort)sort.value=sortOrder;
     const validValue=(select,key)=>options.get(select).some(option=>option.value===params.get(key))?params.get(key):'';
     selectedVenue=validValue(venue,'venue');selectedYear=validValue(year,'year');
     query.value=(params.get('q')||'').slice(0,120);
     topic=(params.get('topic')||'').slice(0,100);
     ({page,size}=readPageState());sizeSelect.value=String(size);
   };
-  const inScope=item=>scope==='all'||item.dataset.curated==='true';
+  const inScope=item=>scope==='curated'?item.dataset.curated==='true':scope==='surveys'?['survey','monograph'].includes(item.dataset.publicationType):true;
   const matchesText=item=>{
     const data=indexed.get(item),words=normalize(query?.value||'').split(' ').filter(Boolean);
     return (!topic||data.topics.includes(topic))&&words.every(word=>data.text.includes(word));
   };
   const matches=item=>inScope(item)&&matchesText(item)&&(!selectedVenue||item.dataset.venue===selectedVenue)&&(!selectedYear||item.dataset.year===selectedYear);
+  const ordered=()=>[...items].sort((a,b)=>(sortOrder==='oldest'?1:-1)*(Number(a.dataset.year)-Number(b.dataset.year))||Number(a.dataset.order)-Number(b.dataset.order));
   const syncFacets=()=>{
     const available=items.filter(item=>inScope(item)&&matchesText(item));
     if(!available.some(item=>item.dataset.venue===selectedVenue))selectedVenue='';
@@ -226,15 +229,16 @@ document.querySelectorAll('[data-conference-browser]').forEach(root=>{
   };
   const persist=(push=false,clearHash=false)=>{
     const url=new URL(location.href);
-    const values={scope:scope==='curated'?scope:'',venue:selectedVenue,year:selectedYear,q:query.value.trim(),topic,page:page?String(page+1):'',per_page:size===10?'':String(size)};
+    const values={scope:scope==='all'?'':scope,venue:selectedVenue,year:selectedYear,q:query.value.trim(),topic,sort:sortOrder==='oldest'?sortOrder:'',page:page?String(page+1):'',per_page:size===10?'':String(size)};
     Object.entries(values).forEach(([key,value])=>{if(value)url.searchParams.set(key,value);else url.searchParams.delete(key)});
     if(clearHash)url.hash='';
     if(url.href!==location.href)history[push?'pushState':'replaceState'](null,'',`${url.pathname}${url.search}${url.hash}`);
   };
   const draw=()=>{
-    classic.setAttribute('aria-checked',String(scope==='curated'));
+    filters.forEach(button=>button.setAttribute('aria-pressed',String(scope===button.dataset.conferenceFilter)));
     syncFacets();
-    const matching=items.filter(matches);
+    const sorted=ordered(),matching=sorted.filter(matches);
+    list.append(...sorted);
     const pages=Math.max(1,Math.ceil(matching.length/size));page=Math.max(0,Math.min(page,pages-1));
     items.forEach(item=>item.hidden=true);matching.slice(page*size,(page+1)*size).forEach(item=>item.hidden=false);
     if(empty)empty.hidden=matching.length>0;
@@ -248,7 +252,8 @@ document.querySelectorAll('[data-conference-browser]').forEach(root=>{
   const changed=(push=true)=>{page=0;draw();persist(push,true)};
   venue.addEventListener('change',()=>{selectedVenue=venue.value;changed()});
   year.addEventListener('change',()=>{selectedYear=year.value;changed()});
-  classic.addEventListener('click',()=>{scope=scope==='curated'?'all':'curated';changed()});
+  sort?.addEventListener('change',()=>{sortOrder=sort.value;changed()});
+  filters.forEach(button=>button.addEventListener('click',()=>{scope=scope===button.dataset.conferenceFilter?'all':button.dataset.conferenceFilter;changed()}));
   form?.addEventListener('submit',event=>{event.preventDefault();changed()});
   query?.addEventListener('input',()=>changed(false));
   clear?.addEventListener('click',()=>{query.value='';changed();query.focus()});
@@ -263,9 +268,9 @@ document.querySelectorAll('[data-conference-browser]').forEach(root=>{
   const revealPaper=()=>{
     const target=items.find(item=>`#${item.id}`===location.hash);
     if(!target)return false;
-    if(target.dataset.curated!=='true')scope='all';
+    if(!inScope(target))scope='all';
     if(!matches(target)){selectedVenue='';selectedYear='';topic='';if(query)query.value=''}
-    page=Math.floor(items.filter(matches).indexOf(target)/size);draw();persist();
+    page=Math.floor(ordered().filter(matches).indexOf(target)/size);draw();persist();
     requestAnimationFrame(()=>scrollList(target));return true;
   };
   window.addEventListener('hashchange',revealPaper);

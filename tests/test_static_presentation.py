@@ -2,7 +2,8 @@
 from pathlib import Path
 
 from scripts.refresh_static_presentation import (
-    Document, protected_report_parts, refresh_page_chrome, refresh_report_html, refresh_topic_html,
+    Document, protected_report_parts, refresh_listing_heading, refresh_page_chrome,
+    refresh_report_html, refresh_topic_html,
 )
 from virt_report.report_links import report_item_anchor
 
@@ -68,6 +69,22 @@ def test_snapshot_chrome_tracks_principle_and_version_routes():
                          ("versions.html", "versions.html")):
         result = refresh_page_chrome(html, path, "virt-report")
         assert f'href="{target}" class="on" aria-current="page"' in result
+
+
+def test_listing_heading_refresh_preserves_entries_breadcrumbs_and_report_dates():
+    label = '<div class="kicker">Report Archive</div>'
+    body = '<h1>日报</h1><p>共 99 期</p></header><a href="2026-11-11.html">原记录</a>'
+    html = '<header>' + label + body
+    for period in ("daily", "weekly", "monthly"):
+        relative = f"{period}/index.html"
+        result = refresh_listing_heading(html, relative)
+        assert result == '<header>' + body
+        assert refresh_listing_heading(result, relative) == result
+    assert refresh_listing_heading(html, "daily/2026-11-11.html") == html
+    breadcrumb = '<header><div class="kicker"><a href="topics.html">Topic Tracker</a></div></header>'
+    assert refresh_listing_heading(breadcrumb, "topics.html") == breadcrumb
+    report = '<header><div class="kicker">Daily Brief · 2026-11-11</div></header>'
+    assert refresh_listing_heading(report, "daily/index.html") == report
 
 
 def test_topic_and_conference_snapshots_use_current_shared_header():

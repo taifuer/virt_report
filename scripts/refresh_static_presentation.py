@@ -252,6 +252,25 @@ def refresh_page_chrome(html: str, relative: str, site_name: str) -> str:
     return apply_edits(html, edits)
 
 
+def refresh_listing_heading(html: str, relative: str) -> str:
+    """Remove redundant listing eyebrows without rebuilding stored content."""
+    labels = {
+        "topics.html": "Topic Tracker",
+        "daily/index.html": "Report Archive",
+        "weekly/index.html": "Report Archive",
+        "monthly/index.html": "Report Archive",
+    }
+    label = labels.get(relative)
+    if label is None:
+        return html
+    doc = Document(html)
+    edits = [(node.start, node.end, "") for node in doc.nodes
+             if node.tag == "div" and node.attrs == {"class": "kicker"}
+             and node.parent and node.parent.tag == "header"
+             and doc.text(node) == label and not doc.descendants(node)]
+    return apply_edits(html, edits)
+
+
 def refresh_snapshot(site: Path) -> dict:
     files = sorted(site.rglob("*.html"))
     originals = {path: path.read_text(encoding="utf-8") for path in files}
@@ -279,8 +298,10 @@ def refresh_snapshot(site: Path) -> dict:
     changes[site / "search.html"] = render.render_search_html(config, result, static_mode=True)
     render.export_brand_assets(site)
     for path, html in changes.items():
+        relative = path.relative_to(site).as_posix()
+        html = refresh_listing_heading(html, relative)
         updated = refresh_asset_urls(refresh_page_chrome(
-            html, path.relative_to(site).as_posix(), config.name,
+            html, relative, config.name,
         ))
         if updated != originals.get(path):
             path.write_text(updated, encoding="utf-8")

@@ -7,16 +7,16 @@
   <title>QEMU 预拷贝迁移的内存迭代与停机控制 - virt-report</title>
   <meta name="description" content="脏页跟踪、内存重传与切换条件，以及带宽、写入负载和停机时间之间的关系。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
-  <link rel="shortcut icon" href="../favicon.ico?v=e9ab166b6427">
-  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=e9ab166b6427">
-  <link rel="stylesheet" href="../assets/site.css?v=e9ab166b6427">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=720ef053ee9a">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=720ef053ee9a">
-<link rel="stylesheet" href="../assets/precopy-lab.css?v=720ef053ee9a"></head>
+  <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
+  <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=773f22046b09">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=773f22046b09">
+<link rel="stylesheet" href="../assets/precopy-lab.css?v=773f22046b09"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
-    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=e9ab166b6427" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=0ad6552bf0f5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
     <div class="mobile-head-tools">
       <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -48,7 +48,7 @@
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol><li><a href="#preface">一、预拷贝迁移与停机控制</a></li><li><a href="#principle">二、运行中复制与停机交接</a></li><li><a href="#iteration">三、脏页位图与页面重传</a><ol><li><a href="#iteration-part-1">1. 迁移位图与脏页记录</a></li><li><a href="#iteration-part-2">2. 页面重传与跟踪顺序</a></li><li><a href="#iteration-part-3">3. 扫描轮次与发送批次</a></li></ol></li><li><a href="#convergence">四、带宽与写脏速率决定收敛</a></li><li><a href="#downtime">五、从剩余量估算停机时间</a><ol><li><a href="#downtime-part-1">1. 从时间目标换算剩余量阈值</a></li><li><a href="#downtime-part-2">2. 停机目标与实际停机时间</a></li></ol></li><li><a href="#implementation">六、源码：迭代与最终状态保存</a></li><li><a href="#optimization">七、并行、限速与后拷贝的取舍</a><ol><li><a href="#optimization-part-1">1. 传输能力不足：并行化</a></li><li><a href="#optimization-part-2">2. 写脏速度过高：从统一限速到按 vCPU 限制</a></li><li><a href="#optimization-part-3">3. 跟踪本身有开销：缩短清除与读页的间隔</a></li><li><a href="#optimization-part-4">4. 减少流量与控制收尾成本</a></li></ol></li><li><a href="#sources">八、参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2><ol id="mechanism-toc-links"><li><a href="#preface">一、预拷贝迁移与停机控制</a></li><li><a href="#principle">二、运行中复制与停机交接</a></li><li><a href="#iteration">三、脏页位图与页面重传</a><ol><li><a href="#iteration-part-1">1. 迁移位图与脏页记录</a></li><li><a href="#iteration-part-2">2. 页面重传与跟踪顺序</a></li><li><a href="#iteration-part-3">3. 扫描轮次与发送批次</a></li></ol></li><li><a href="#convergence">四、带宽与写脏速率决定收敛</a></li><li><a href="#downtime">五、从剩余量估算停机时间</a><ol><li><a href="#downtime-part-1">1. 从时间目标换算剩余量阈值</a></li><li><a href="#downtime-part-2">2. 停机目标与实际停机时间</a></li></ol></li><li><a href="#implementation">六、源码：迭代与最终状态保存</a></li><li><a href="#optimization">七、并行、限速与后拷贝的取舍</a><ol><li><a href="#optimization-part-1">1. 传输能力不足：并行化</a></li><li><a href="#optimization-part-2">2. 写脏速度过高：从统一限速到按 vCPU 限制</a></li><li><a href="#optimization-part-3">3. 跟踪本身有开销：缩短清除与读页的间隔</a></li><li><a href="#optimization-part-4">4. 减少流量与控制收尾成本</a></li></ol></li><li><a href="#sources">八、参考资料</a></li></ol></nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>预拷贝迁移与停机控制</h2>
@@ -66,9 +66,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看预拷贝迁移与最终状态交接" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="预拷贝迁移与最终状态交接">
-    <img src="../assets/migration-precopy-sequence.svg?v=720ef053ee9a" alt="运行期间传送内存；暂停后同步余页与处理器、设备状态，目的端完成恢复后继续执行。" loading="lazy">
+    <img src="../assets/migration-precopy-sequence.svg?v=773f22046b09" alt="运行期间传送内存；暂停后同步余页与处理器、设备状态，目的端完成恢复后继续执行。" loading="lazy">
   </div>
-  <figcaption>运行期间传送内存；暂停后同步余页与处理器、设备状态，目的端完成恢复后继续执行。 <a href="../assets/migration-precopy-sequence.svg?v=720ef053ee9a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>运行期间传送内存；暂停后同步余页与处理器、设备状态，目的端完成恢复后继续执行。 <a href="../assets/migration-precopy-sequence.svg?v=773f22046b09" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: QEMU 预拷贝迁移的主要时序
     accDescr: 先发送流头及 RAM 布局，再在源端运行时迭代传页；暂停后传最后脏页和 CPU、设备状态。目标端加载完成后才启动。
@@ -310,7 +310,7 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
-  <script src="../assets/site.js?v=e9ab166b6427"></script>
-<script src="../assets/mechanism-viewer.js?v=720ef053ee9a" defer></script>
-<script src="../assets/mechanisms.js?v=720ef053ee9a" defer></script></body>
+  <script src="../assets/site.js?v=0ad6552bf0f5"></script>
+<script src="../assets/mechanism-viewer.js?v=773f22046b09" defer></script>
+<script src="../assets/mechanisms.js?v=773f22046b09" defer></script></body>
 </html>

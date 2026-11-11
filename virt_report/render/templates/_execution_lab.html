@@ -15,9 +15,11 @@
       <div class="walkthrough-choice" data-execution-scenario-choice><label for="execution-scenario">{{ demo.selector.scenarioLabel }}</label>
         <select id="execution-scenario" data-execution-scenario></select>
       </div>
+      {% if demo.id == 'network-io' %}<label class="walkthrough-align"><input type="checkbox" data-execution-align>切换时对齐阶段</label>{% endif %}
       <button type="button" class="walkthrough-expand" data-execution-expand data-walkthrough-expand aria-pressed="false">全屏演示</button>
     </div>
     <p class="execution-summary walkthrough-summary" data-execution-summary></p>
+    {% if demo.id == 'network-io' %}<p class="walkthrough-help" data-execution-align-note role="status" hidden></p>{% endif %}
     {% set selector_categories = demo.selector.categories|default([{'id': '', 'groups': demo.selector.groups}]) %}
     {% for category in selector_categories %}{% for group in category.groups if group.advanced %}
     <details class="walkthrough-advanced" data-execution-advanced{% if category.id %} data-execution-advanced-category="{{ category.id }}" hidden{% endif %}>

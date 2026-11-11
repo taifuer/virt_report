@@ -65,5 +65,12 @@
       ? stops(trace, view).map(index => ({id: trace[index].id, title: trace[index].title, index, end: index}))
       : phases(scene, trace);
   }
-  return {buildTrace, stops, project, next, phases, navigation, orderedSteps};
+  function matchingPhase(previousScene, previousTrace, index, scene, trace) {
+    // Match author-controlled phase IDs, never ordinal positions. Display names
+    // may distinguish notification, polling and doorbells at the same boundary.
+    if (!previousScene.phases || !scene.phases) return null;
+    const previous = phases(previousScene, previousTrace).find(phase => phase.index <= index && index <= phase.end);
+    return previous ? phases(scene, trace).find(phase => phase.id === previous.id) || null : null;
+  }
+  return {buildTrace, stops, project, next, phases, navigation, orderedSteps, matchingPhase};
 });

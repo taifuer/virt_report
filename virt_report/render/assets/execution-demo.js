@@ -76,7 +76,24 @@
   }
 
   function selectScenario(id) {
-    pause(); firstBranch = null; selectedNode = null; buildScene(id); index = 0; render(true);
+    const previousScene = scene, previousTrace = trace, previousIndex = index;
+    const align = one('[data-execution-align]')?.checked;
+    pause(); firstBranch = null; selectedNode = null; buildScene(id); index = 0;
+    const note = one('[data-execution-align-note]');
+    if (note) note.hidden = !align;
+    if (align) {
+      const sameOperation = membership.get(previousScene.id).group.operation === membership.get(scene.id).group.operation;
+      const phase = sameOperation && model.matchingPhase(previousScene, previousTrace, previousIndex, scene, trace);
+      if (phase) {
+        const stop = model.stops(trace, view).find(step => step >= phase.index && step <= phase.end);
+        if (stop === undefined) view = 'overview';
+        index = stop ?? phase.index;
+        note.textContent = `已对齐“${phase.title}”阶段起点。后续步骤按当前后端展开。`;
+      } else {
+        note.textContent = '当前场景没有可对齐的同方向阶段，已回到初始状态。';
+      }
+    }
+    progress(); render(true);
   }
 
   function sourceLink(id) {
@@ -378,6 +395,8 @@
     url.searchParams.set(urlKey('step'), trace[index].id);
     if (firstBranch) url.searchParams.set(urlKey('order'), firstBranch);
     else url.searchParams.delete(urlKey('order'));
+    if (one('[data-execution-align]')?.checked) url.searchParams.set(urlKey('align'), 'phase');
+    else url.searchParams.delete(urlKey('align'));
     try { history.replaceState(null, '', url); } catch { /* Playback also works from local files. */ }
   }
 
@@ -535,6 +554,8 @@
   }
   function move(position, stop = true) {
     if (stop) pause();
+    const note = one('[data-execution-align-note]');
+    if (note) note.hidden = true;
     animateNext = position > index;
     index = model.project(trace, view, Math.max(0, Math.min(trace.length - 1, position)));
     render(stop);
@@ -550,6 +571,10 @@
     pause(); const params = new URL(location.href).searchParams;
     view = views.includes(params.get(urlKey('view'))) ? params.get(urlKey('view')) : 'overview';
     firstBranch = params.get(urlKey('order'));
+    const align = one('[data-execution-align]');
+    if (align) align.checked = params.get(urlKey('align')) === 'phase';
+    const note = one('[data-execution-align-note]');
+    if (note) note.hidden = true;
     buildScene(params.get(urlKey('scenario')));
     index = model.project(trace, view, Math.max(0, trace.findIndex(frame => frame.id === params.get(urlKey('step')))));
     render(false, false);
@@ -567,6 +592,11 @@
   }));
   one('[data-execution-scenario]').addEventListener('change', event => {
     selectScenario(event.target.value);
+  });
+  one('[data-execution-align]')?.addEventListener('change', () => {
+    const note = one('[data-execution-align-note]');
+    if (note) note.hidden = true;
+    writeLocation();
   });
   all('[data-execution-advanced-scenario]').forEach(button => button.addEventListener('click', () => {
     selectScenario(button.dataset.executionAdvancedScenario);

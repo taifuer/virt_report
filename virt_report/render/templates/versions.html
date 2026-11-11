@@ -7,12 +7,10 @@
 {% block content %}
 <article class="versions-page">
   <header class="versions-header">
-    <div class="kicker">Release Timeline</div>
     <h1>版本</h1>
     <p>汇总 QEMU、KVM、Libvirt 的软件版本、<a href="?project=virtio#version-list" data-version-project-link="virtio">Virtio 规范</a>，以及 DPDK、SPDK 的发布记录。按项目查看发布要点与官方文档。</p>
   </header>
   <div class="version-latest" aria-label="最新软件版本与协议规范">
-    <span class="version-latest-label">最新版本 / 规范</span>
     {% for item in content.latest if item %}<a href="#{{ item.anchor }}" data-version-jump><strong>{{ item.project_label }}</strong><span>{{ 'Linux ' if item.project == 'kvm' else '' }}{{ item.version }}{% if item.kind == 'specification' %} <small>{{ item.stage }} · 协议规范</small>{% endif %}</span><time datetime="{{ item.released_on }}">{{ item.released_on }}</time></a>{% endfor %}
   </div>
   <div data-version-browser data-view="compact" data-default-project="{{ content.default_project }}">

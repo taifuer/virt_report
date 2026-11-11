@@ -25,6 +25,7 @@ def test_navigation_groups_reports_and_exposes_reference_pages():
     assert [node.text() for node in reports.find("a")] == ["日报", "周报", "月报"]
     direct_links = [node for node in nav.children if getattr(node, "tag", "") == "a"]
     assert [node.text() for node in direct_links] == ["首页", "专题", "会议", "版本", "原理", "关于", ""]
+    assert direct_links[2].attrs["href"] == "conferences.html"
     assert direct_links[0].attrs["aria-current"] == "page"
     assert 'aria-controls="site-navigation" hidden' in page
     assert 'id="site-navigation" hidden' not in page
@@ -87,6 +88,57 @@ def test_reference_page_marks_its_navigation_destination():
     current = [link for link in navigation(page).find("a")
                if link.attrs.get("aria-current") == "page"]
     assert len(current) == 1 and current[0].attrs["href"] == "versions.html"
+    assert 'version-latest-label' not in page
+    assert 'aria-label="最新软件版本与协议规范"' in page
+    assert '<div class="kicker">' not in page
+
+
+def test_directory_eyebrows_are_removed_but_context_is_retained():
+    for filename in ("conferences.html", "conference_papers.html", "versions.html", "mechanisms.html",
+                     "topics.html", "archive.html", "search.html", "metrics.html",
+                     "metrics_login.html"):
+        template = render._env().loader.get_source(render._env(), filename)[0]
+        assert 'class="kicker"' not in template, filename
+    for filename in ("report.html", "report_pending.html", "topic_detail.html"):
+        template = render._env().loader.get_source(render._env(), filename)[0]
+        assert 'class="kicker"' in template, filename
+    mechanism = render._env().loader.get_source(render._env(), "mechanism.html")[0]
+    assert 'class="kicker mechanism-breadcrumb"' in mechanism
+
+
+def test_conference_pages_express_parent_child_navigation():
+    from virt_report import conferences, kvm_forum
+
+    config, content = Config(), conferences.load_content()
+    papers = render.render_conference_papers_html(config, content)
+    document = Document(papers).root
+    article = next(node for node in document.find("article")
+                   if node.attrs.get("class") == "conference-page")
+    heading_links = article.find("header")[0].find("a")
+    assert heading_links == []
+    assert 'href="conferences.html" class="on" aria-current="page">会议</a>' in papers
+    directory_page = render.render_conferences_html(config, content)
+    directory = Document(directory_page).root
+    directory_article = directory.find("article")[0]
+    assert directory_article.find("header")[0].find("nav") == []
+    assert any(node.text() == "查看相关论文" and node.attrs["href"] == "conference-papers.html"
+               for node in directory_article.find("a"))
+    editions, analysis = kvm_forum.load_content()
+    children = (
+        render.render_academic_conferences_html(config, content),
+        render.render_kvm_forum_html(config, editions, analysis),
+    )
+    for page in children:
+        doc = Document(page).root
+        breadcrumb = next(node for node in doc.find("nav")
+                          if node.attrs.get("aria-label") == "面包屑")
+        assert [node.attrs["href"] for node in breadcrumb.find("a")] == ["conferences.html"]
+    for page in (directory_page, papers, *children):
+        current = [link for link in navigation(page).find("a")
+                   if link.attrs.get("aria-current") == "page"]
+        assert len(current) == 1
+        assert current[0].text() == "会议"
+        assert current[0].attrs["href"] == "conferences.html"
 
 
 def test_mobile_menu_has_progressive_disclosure_and_footer_is_compact():

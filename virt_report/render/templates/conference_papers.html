@@ -2,12 +2,15 @@
 {% from "_pagination.html" import pagination %}
 {% from "_conference_paper.html" import paper_row %}
 {% block title %}相关论文 - virt-report{% endblock %}
-{% block description %}虚拟化相关论文与点评，支持按经典论文、会议、期刊和年份筛选。{% endblock %}
+{% block description %}虚拟化相关研究、综述与教程型专著，支持按经典论文、出版来源和年份筛选。{% endblock %}
 {% block nav_home %}{% endblock %}
 {% block nav_conferences %}on{% endblock %}
 {% block content %}
 <article class="conference-page">
-  <header><div class="kicker"><a href="conferences.html">会议</a> · Research Papers</div><h1>相关论文</h1><p>共 {{ content.paper_count }} 篇论文，其中 {{ content.curated_count }} 篇经典论文。</p></header>
+  <header>
+    <h1>论文</h1>
+    <p>共 {{ content.article_count }} 篇论文{% if content.monograph_count %}、{{ content.monograph_count }} 部专著{% endif %}，其中 {{ content.curated_count }} 篇经典论文。</p>
+  </header>
   <section class="conference-section paper-observer" data-conference-browser data-default-size="10">
     <div data-conference-enhanced hidden>
       <form class="paper-search" role="search" action="conference-papers.html" data-conference-search>
@@ -17,10 +20,14 @@
       </form>
       <div class="paper-active-topic" data-conference-topic-filter hidden><span>主题：<strong data-conference-topic-label></strong></span><button type="button" data-conference-topic-clear>清除主题</button></div>
       <div class="conference-controls" role="group" aria-label="论文筛选">
-        <label>会议 / 期刊<select data-conference-venue><option value="" data-option-label="全部">全部</option>{% for venue in content.paper_venues %}<option value="{{ venue.key }}" data-option-label="{{ venue.name }}">{{ venue.name }}</option>{% endfor %}</select></label>
+        <label>来源<select data-conference-venue><option value="" data-option-label="全部">全部</option>{% for venue in content.paper_venues %}<option value="{{ venue.key }}" data-option-label="{{ venue.name }}">{{ venue.name }}</option>{% endfor %}</select></label>
         <label>年份<select data-conference-year><option value="" data-option-label="全部">全部</option>{% for year in content.years %}<option value="{{ year }}" data-option-label="{{ year }}">{{ year }}</option>{% endfor %}</select></label>
+        <label>排序<select data-conference-sort><option value="newest">最新优先</option><option value="oldest">最早优先</option></select></label>
         <div class="paper-reset-slot"><button type="button" class="paper-reset" data-conference-reset hidden>清除筛选</button></div>
-        <button type="button" role="switch" class="paper-classic-filter" data-conference-classic aria-checked="false"><span class="paper-switch-track" aria-hidden="true"></span><span>只看经典</span></button>
+        <div class="paper-quick-filters" role="group" aria-label="快捷筛选">
+          <button type="button" data-conference-filter="curated" aria-pressed="false">经典</button>
+          <button type="button" data-conference-filter="surveys" aria-pressed="false" title="综述与教程型专著">综述</button>
+        </div>
       </div>
       <p class="conference-empty" data-conference-empty hidden>没有匹配的论文。</p>
     </div>

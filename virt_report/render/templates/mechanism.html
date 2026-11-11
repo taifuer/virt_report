@@ -20,7 +20,7 @@
   {% endif %}
   <div class="mechanism-layout{% if article.presentation == 'walkthrough' %} mechanism-layout--walkthrough{% endif %}">
     {% if article.presentation != 'walkthrough' %}
-    <nav class="mechanism-toc" aria-label="文章目录"><h2>目录</h2><ol>{% for section in article_outline %}<li><a href="#{{ section.id }}">{{ section.number }}{{ section.title }}</a>{% if section.children %}<ol>{% for child in section.children %}<li><a href="#{{ child.id }}">{{ child.number }}{{ child.title }}</a></li>{% endfor %}</ol>{% endif %}</li>{% endfor %}</ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录"><h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2><ol id="mechanism-toc-links">{% for section in article_outline %}<li><a href="#{{ section.id }}">{{ section.number }}{{ section.title }}</a>{% if section.children %}<ol>{% for child in section.children %}<li><a href="#{{ child.id }}">{{ child.number }}{{ child.title }}</a></li>{% endfor %}</ol>{% endif %}</li>{% endfor %}</ol></nav>
     {% endif %}
     <div class="mechanism-prose">{{ article_body }}</div>
   </div>

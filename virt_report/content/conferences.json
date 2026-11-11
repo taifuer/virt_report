@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "updated_at": "2026-11-10",
-  "coverage": "选录 1974—2026 年研究；默认精选阅读，全部列表也须通过相关性审核，不承诺穷尽收录",
-  "method": "离线保存会议标题元数据，逐篇审核其与系统虚拟化的实质关联；关键词只用于发现候选，不自动收录。普通论文也须能说明 VMM、真实 ISA 模拟、Guest/Host 机制或 VM 隔离与状态交接的联系。边界条目核对一手摘要、作者项目或原文；只有标题的候选暂不公开。精选另写问题、机制、证据、优点和局限，并明确阅读范围。单位按会议或机构元数据规范化，不推断通讯作者。不转载全文，不调用 DeepSeek 自动生成；收录数量不代表研究热度或全部相关文献数量。",
+  "updated_at": "2026-11-11",
+  "coverage": "选录 1974—2026 年研究，默认按年份倒序；系统虚拟化之外，补充内核经典论文及相关体系结构、云基础设施的专题综述与教程型专著",
+  "method": "离线保存出版元数据，逐篇审核其与系统虚拟化的实质关联；关键词只用于发现候选，不自动收录。普通研究论文须能说明 VMM、真实 ISA 模拟、Guest/Host 机制或 VM 隔离与状态交接的联系。内核的进程、调度、内存、处理器与 I/O 原始研究补充经过原文核对的经典论文；专题综述与教程型专著另行审核覆盖范围，并标明文献类型。边界条目核对一手摘要、作者项目或原文；只有标题的候选暂不公开。精选另写问题、机制、证据、优点和局限，并明确阅读范围。单位按出版方或机构元数据规范化，不推断通讯作者。不转载全文，不调用 DeepSeek 自动生成；收录数量不代表研究热度或全部相关文献数量。",
   "edition_checks": [
     {
       "venue": "atc", "year": 2026, "checked_at": "2026-11-02",
@@ -206,12 +206,14 @@
           "microVM",
           "Serverless",
           "ARM I/O",
-          "多对一虚拟化"
+          "多对一虚拟化",
+          "页表局部性"
         ],
-        "summary": "Firecracker 精简面向 Serverless 的 VMM 与设备模型，SEUSS 通过 unikernel 快照复用初始化状态，Catalyzer 结合按需恢复与环境克隆缩短启动路径。三者可按设备范围、快照边界和兼容性比较。GiantVM 探索将多台物理主机聚合为一个系统虚机，LeapIO 则研究 Arm 平台的虚拟 NVMe 路径。",
+        "summary": "Firecracker 精简面向 Serverless 的 VMM 与设备模型，SEUSS 通过 unikernel 快照复用初始化状态，Catalyzer 结合按需恢复与环境克隆缩短启动路径。三者可按设备范围、快照边界和兼容性比较。GiantVM 探索将多台物理主机聚合为一个系统虚机，LeapIO 则研究 Arm 平台的虚拟 NVMe 路径。Mitosis 在 Linux 中复制和迁移页表，减少多插槽机器上地址翻译的远端访问。",
         "representative_ids": [
           "nsdi20-firecracker",
-          "asplos20-leapio"
+          "asplos20-leapio",
+          "asplos20-mitosis"
         ]
       },
       {
@@ -221,14 +223,16 @@
           "热升级",
           "SmartNIC",
           "虚拟交换",
-          "IoT"
+          "IoT",
+          "微秒级抢占"
         ],
-        "summary": "Orthus 通过 Dual KVM、VM grafting 与设备交接实现同机 VMM 热升级；同年的 Fast and Live Hypervisor Replacement 扩展 HyperFresh，以嵌套虚拟化和内存重映射替换 L1 Hypervisor。NICA 与 MTS 分别处理 SmartNIC 共享和虚拟交换隔离，ACRN 则反映虚拟化向嵌入式与 IoT 场景扩展。",
+        "summary": "Orthus 通过 Dual KVM、VM grafting 与设备交接实现同机 VMM 热升级；同年的 Fast and Live Hypervisor Replacement 扩展 HyperFresh，以嵌套虚拟化和内存重映射替换 L1 Hypervisor。NICA 与 MTS 分别处理 SmartNIC 共享和虚拟交换隔离，ACRN 则反映虚拟化向嵌入式与 IoT 场景扩展。Shinjuku 借助 Dune 与 posted interrupts 实现微秒级抢占，降低混合长短请求的尾延迟。",
         "representative_ids": [
           "asplos19-orthus",
           "vee19-live-replacement",
           "atc19-nica",
-          "vee19-acrn"
+          "vee19-acrn",
+          "nsdi19-shinjuku"
         ]
       },
       {
@@ -272,11 +276,12 @@
           "在线迁移",
           "异构架构"
         ],
-        "summary": "这一阶段的研究仍紧贴 Hypervisor 基本机制：量化 EPT 的性能影响、选择合适的迁移优化，并把 KVM 适配到异构系统架构。Hyperprobe 也表明客户机可从可观察行为反推 KVM 版本与缺陷。",
+        "summary": "这一阶段的研究量化 EPT 的性能影响、选择迁移优化，并把 KVM 适配到异构系统架构。Hyperprobe 分析客户机可观察到的 KVM 行为；Linux 调度研究通过运行队列可视化与在线检查定位多核负载不均衡。",
         "representative_ids": [
           "vee16-kvm-hsa",
           "vee16-ept",
-          "vee16-migration-optimizations"
+          "vee16-migration-optimizations",
+          "eurosys16-linux-scheduler"
         ]
       },
       {
@@ -320,7 +325,7 @@
           "迁移",
           "恢复"
         ],
-        "summary": "Unikernels 将应用所需的库操作系统与应用一起编译为专用客户机，改变了虚机内部的软件组织。Halite 优化检查点恢复，Hyper-Switch 缩短虚拟网络路径，MiG 用语义压缩减少桌面虚机迁移流量，可分别比较客户机裁剪、存储布局、网络数据面和状态传输的收益。",
+        "summary": "Unikernels 将应用所需的库操作系统与应用一起编译为专用客户机。Halite、Hyper-Switch 和 MiG 分别优化恢复、虚拟网络与迁移流量。内核机制方面，blk-mq 以两级队列缓解多核块 I/O 的锁竞争，RadixVM 研究共享地址空间的并发操作。",
         "representative_ids": [
           "atc13-halite",
           "atc13-hyperswitch",
@@ -336,7 +341,7 @@
           "灾难恢复",
           "设备直通"
         ],
-        "summary": "Dune 用硬件虚拟化向进程安全开放页表等特权能力，保留 Linux 进程接口。SecondSite 研究 VM 状态复制与跨站故障切换，CompSC 处理设备直通 VM 的迁移：三者分别对应执行权限、容灾状态和设备连续性，而不是一般数据中心编程框架。",
+        "summary": "Dune 用硬件虚拟化向进程安全开放页表等特权能力，保留 Linux 进程接口。SecondSite 研究 VM 状态复制与跨站故障切换，CompSC 处理设备直通 VM 的迁移。netmap 则在操作系统网络 I/O 层结合批处理、预分配和共享缓冲区，降低用户态收发包开销。",
         "representative_ids": [
             "vee12-secondsite",
           "vee12-compsc"
@@ -405,14 +410,37 @@
         "summary": "ESX 将 Guest 协作回收、内容页共享和工作集估计结合起来，说明内存容量效率与性能隔离必须同时考虑。",
         "representative_ids": ["osdi02-esx-memory"]
       },{
-        "year": 1974, "headline": "形式化描述可虚拟化条件",
-        "themes": ["虚拟化理论", "敏感指令"],
-        "summary": "Popek 与 Goldberg 用等价性、资源控制和效率定义 VMM，并在明确的机器模型下给出充分条件。这是理论起点，不是宣称现代实现只能采用一种技术。",
-        "representative_ids": ["cacm74-popek-goldberg"]
+        "year": 1997, "headline": "Disco 与多处理器虚拟化",
+        "themes": ["Hypervisor", "NUMA", "页面共享"],
+        "summary": "Disco 在 ccNUMA 机器上协调多个操作系统实例，通过页面迁移、复制和共享改善资源利用，为后续 VMM 设计提供参照。",
+        "representative_ids": ["sosp97-disco"]
+      },{
+        "year": 1974, "headline": "虚拟化条件与 UNIX 进程接口",
+        "themes": ["虚拟化理论", "敏感指令", "进程"],
+        "summary": "Popek 与 Goldberg 在明确机器模型下给出可虚拟化充分条件；UNIX 论文展示进程、程序映像、文件描述符与管道的组合。两项工作分别建立虚拟化理论和内核接口的经典参照。",
+        "representative_ids": ["cacm74-popek-goldberg", "cacm74-unix"]
       }
     ]
   },
   "venues": [
+    {
+      "key": "csur", "name": "ACM CSUR", "full_name": "ACM Computing Surveys",
+      "kind": "期刊", "priority": "选择性",
+      "url": "https://dl.acm.org/journal/csur",
+      "focus": "选录体系结构、虚拟化性能与隔离安全的专题综述，注明技术覆盖范围。"
+    },
+    {
+      "key": "comst", "name": "IEEE COMST", "full_name": "IEEE Communications Surveys & Tutorials",
+      "kind": "期刊", "priority": "选择性",
+      "url": "https://www.comsoc.org/publications/journals/ieee-communications-surveys-tutorials",
+      "focus": "选录云网络加速、网络虚拟化与资源共享的综述。"
+    },
+    {
+      "key": "slca", "name": "SLCA", "full_name": "Synthesis Lectures on Computer Architecture",
+      "kind": "专著系列", "priority": "选择性",
+      "url": "https://link.springer.com/series/16916",
+      "focus": "体系结构教程型专著，选录内存一致性、缓存一致性及异构处理器基础。"
+    },
     {
       "key": "cacm", "name": "CACM", "full_name": "Communications of the ACM",
       "kind": "期刊", "priority": "经典论文",
@@ -523,6 +551,12 @@
       "focus": "只选择虚机存储、virtio/vhost、NVMe 和 I/O 虚拟化内容。"
     },
     {
+      "key": "systor", "name": "SYSTOR", "full_name": "International Systems and Storage Conference",
+      "kind": "学术会议", "priority": "经典论文",
+      "url": "https://www.systor.org/2013/program.html",
+      "focus": "选录 Linux 块 I/O 与多核存储路径的经典设计。"
+    },
+    {
       "key": "usenix-security",
       "name": "USENIX Security",
       "full_name": "USENIX Security Symposium",
@@ -533,6 +567,314 @@
     }
   ],
   "papers": [
+    {
+      "id": "csur24-cxl",
+      "year": 2024,
+      "venue": "csur",
+      "publication_type": "survey",
+      "title": "An Introduction to the Compute Express Link (CXL) Interconnect",
+      "authors": ["Debendra Das Sharma", "Robert Blankenship", "Daniel Berger"],
+      "url": "https://doi.org/10.1145/3669900",
+      "doi": "10.1145/3669900",
+      "pdf_url": "https://arxiv.org/pdf/2306.11227v3",
+      "introduction": "综述 CXL 1.0、2.0 与 3.0，从 CPU 与设备的一致性访问讲到内存扩展、池化、共享和互连拓扑，解释 PCIe 物理基础上的缓存与内存语义。",
+      "commentary": "适合连接处理器缓存、异构设备和分层内存管理。重点是协议与硬件工程；操作系统策略和安全机制展开较少。覆盖范围截至 CXL 3.0，具体平台能力需结合设备与软件实现核对。按 2024 年正式论文收录，PDF 为作者预印本。",
+      "relation": "相关机制",
+      "domain": "architecture",
+      "topics": ["综述", "CXL", "体系结构", "内存池化", "缓存一致性"],
+      "institutions": ["Intel", "Microsoft", "University of Washington"],
+      "affiliation_source": "crossref",
+      "affiliation_source_url": "https://api.crossref.org/works/10.1145/3669900",
+      "affiliation_verified_at": "2026-11-11",
+      "evidence_level": "full_text",
+      "evidence_source_url": "https://arxiv.org/pdf/2306.11227v3"
+    },
+    {
+      "id": "comst24-network-acceleration",
+      "year": 2024,
+      "venue": "comst",
+      "publication_type": "survey",
+      "title": "Empowering Cloud Computing With Network Acceleration: A Survey",
+      "authors": ["Lorenzo Rosa", "Luca Foschini", "Antonio Corradi"],
+      "url": "https://doi.org/10.1109/COMST.2024.3377531",
+      "doi": "10.1109/COMST.2024.3377531",
+      "pdf_url": "https://cris.unibo.it/retrieve/249c5d98-73ff-4fdd-9fe9-6940f960fd82/COMST_Final_Editorial.pdf",
+      "introduction": "以 XDP、DPDK、RDMA 为参照，综述云平台提供网络加速的研究。从访问接口、虚拟化技术、服务化和安全四个维度，分析快速数据路径与多租户资源管理的衔接。",
+      "commentary": "把网络性能与共享、隔离、弹性等云平台要求放在一起比较，可补充 virtio/vhost 与设备直通的方案选择。价值在于分类框架和技术取舍；各方案的性能数字需要连同硬件、负载和测试条件阅读。",
+      "relation": "直接关联",
+      "topics": ["综述", "网络虚拟化", "网络加速", "DPDK", "XDP", "RDMA"],
+      "institutions": ["University of Bologna"],
+      "affiliation_source": "institution",
+      "affiliation_source_url": "https://cris.unibo.it/retrieve/249c5d98-73ff-4fdd-9fe9-6940f960fd82/COMST_Final_Editorial.pdf",
+      "affiliation_verified_at": "2026-11-11",
+      "evidence_level": "abstract",
+      "evidence_source_url": "https://cris.unibo.it/retrieve/249c5d98-73ff-4fdd-9fe9-6940f960fd82/COMST_Final_Editorial.pdf"
+    },
+    {
+      "id": "csur23-vm-interference",
+      "year": 2023,
+      "venue": "csur",
+      "publication_type": "survey",
+      "title": "Performance Interference of Virtual Machines: A Survey",
+      "authors": ["Weiwei Lin", "Chennian Xiong", "Wentai Wu", "Fang Shi", "Keqin Li", "Minxian Xu"],
+      "url": "https://doi.org/10.1145/3573009",
+      "doi": "10.1145/3573009",
+      "pdf_url": "https://www.cs.newpaltz.edu/~lik/publications/Weiwei-Lin-ACM-CSUR-2022",
+      "introduction": "综述同机虚拟机共享 CPU、内存与 I/O 资源时的性能干扰。按建模目标、指标和方法整理研究，再比较感知干扰的调度与联合优化策略。",
+      "commentary": "将干扰成因、测量预测和调度决策连起来，适合分析混部与性能隔离。应用可见性、采样开销和负载变化是落地时的关键条件。正式发表年份为 2023；作者稿文件名含 2022，所综述实验的硬件与年代各不相同。",
+      "relation": "直接关联",
+      "topics": ["综述", "性能隔离", "资源竞争", "虚拟机调度", "混部"],
+      "institutions": ["South China University of Technology", "Peng Cheng Laboratory", "State University of New York at New Paltz", "Shenzhen Institutes of Advanced Technology, Chinese Academy of Sciences"],
+      "affiliation_source": "institution",
+      "affiliation_source_url": "https://www.cs.newpaltz.edu/~lik/publications/Weiwei-Lin-ACM-CSUR-2022",
+      "affiliation_verified_at": "2026-11-11",
+      "evidence_level": "full_text",
+      "evidence_source_url": "https://www.cs.newpaltz.edu/~lik/publications/Weiwei-Lin-ACM-CSUR-2022"
+    },
+    {
+      "id": "csur24-transient-execution",
+      "year": 2024,
+      "published_online": "2023-10-06",
+      "venue": "csur",
+      "publication_type": "survey",
+      "title": "Transient-Execution Attacks: A Computer Architect Perspective",
+      "authors": ["Luís Fiolhais", "Leonel Sousa"],
+      "url": "https://doi.org/10.1145/3603619",
+      "doi": "10.1145/3603619",
+      "pdf_url": "https://dl.acm.org/doi/pdf/10.1145/3603619",
+      "introduction": "从乱序执行、分支预测和缓存等微体系结构出发，综述 Spectre 类与 Meltdown 类攻击，串起瞬态访问、侧信道传递和防御方法。",
+      "commentary": "用体系结构状态与微体系结构状态的区别解释信息泄漏，可补充进程及虚机隔离的硬件边界。通用模型用于理解机制；具体风险与缓解效果仍取决于处理器型号和系统配置。按 2024 年卷期归档，在线发表于 2023 年 10 月。",
+      "relation": "相关机制",
+      "domain": "architecture",
+      "topics": ["综述", "体系结构", "瞬态执行", "Spectre", "Meltdown", "隔离安全"],
+      "institutions": ["INESC-ID", "Instituto Superior Técnico, Universidade de Lisboa"],
+      "affiliation_source": "official",
+      "affiliation_source_url": "https://doi.org/10.1145/3603619",
+      "affiliation_verified_at": "2026-11-11",
+      "evidence_level": "full_text",
+      "evidence_source_url": "https://doi.org/10.1145/3603619"
+    },
+    {
+      "id": "slca20-memory-consistency",
+      "year": 2020,
+      "venue": "slca",
+      "publication_type": "monograph",
+      "edition": 2,
+      "title": "A Primer on Memory Consistency and Cache Coherence, Second Edition",
+      "authors": ["Vijay Nagarajan", "Daniel J. Sorin", "Mark D. Hill", "David A. Wood"],
+      "url": "https://doi.org/10.1007/978-3-031-01764-3",
+      "doi": "10.1007/978-3-031-01764-3",
+      "original_doi": "10.2200/S00962ED2V01Y201910CAC049",
+      "pdf_url": "https://pages.cs.wisc.edu/~markhill/papers/primer2020_2nd_edition.pdf",
+      "introduction": "教程型专著，区分内存一致性模型与缓存一致性协议，循序介绍顺序一致性、TSO、弱内存模型、监听和目录协议；第二版补充 GPU 等异构处理器及形式化验证。",
+      "commentary": "适合建立多核访存、锁与内存屏障的概念基础，并衔接共享队列的发布与消费。CPU 共享内存模型与设备 DMA、MMIO 的顺序要求需要分别核对。这里收录 2020 年第二版；Springer 电子版上架于 2022 年，属于同一版本。",
+      "relation": "相关机制",
+      "domain": "architecture",
+      "topics": ["教程型专著", "体系结构", "内存一致性", "缓存一致性", "内存屏障", "GPU"],
+      "institutions": ["University of Edinburgh", "Duke University", "University of Wisconsin-Madison"],
+      "affiliation_source": "official",
+      "affiliation_source_url": "https://link.springer.com/book/10.1007/978-3-031-01764-3",
+      "affiliation_verified_at": "2026-11-11",
+      "evidence_level": "abstract",
+      "evidence_source_url": "https://link.springer.com/book/10.1007/978-3-031-01764-3"
+    },
+    {
+      "id": "asplos20-mitosis",
+      "year": 2020,
+      "venue": "asplos",
+      "title": "Mitosis: Transparently Self-Replicating Page-Tables for Large-Memory Machines",
+      "authors": ["Reto Achermann", "Ashish Panwar", "Abhishek Bhattacharjee", "Timothy Roscoe", "Jayneel Gandhi"],
+      "url": "https://doi.org/10.1145/3373376.3378468",
+      "doi": "10.1145/3373376.3378468",
+      "pdf_url": "https://retoachermann.ch/static/papers/achermann-2020-mts.pdf",
+      "introduction": "应用数据位于本地 NUMA 节点时，页表仍可能在远端。Mitosis 在 Linux 中按插槽复制和迁移页表，让硬件地址翻译使用本地副本。",
+      "commentary": "连接 NUMA 放置、TLB miss 与页表维护成本；研究原型以 Linux 4.17 为基础，复制对象是页表，应用数据仍按内存策略放置。",
+      "relation": "相关机制",
+      "domain": "kernel",
+      "topics": ["内核经典", "Linux", "NUMA", "页表复制", "页表迁移", "TLB"],
+      "institutions": ["ETH Zurich", "IISc Bangalore", "Yale University", "VMware Research"],
+      "affiliation_source": "institution",
+      "affiliation_source_url": "https://retoachermann.ch/static/papers/achermann-2020-mts.pdf",
+      "affiliation_verified_at": "2026-11-11",
+      "evidence_level": "full_text"
+    },
+    {
+      "id": "nsdi19-shinjuku",
+      "year": 2019,
+      "venue": "nsdi",
+      "title": "Shinjuku: Preemptive Scheduling for μsecond-scale Tail Latency",
+      "authors": ["Kostis Kaffes", "Timothy Chong", "Jack Tigar Humphries", "Adam Belay", "David Mazières", "Christos Kozyrakis"],
+      "url": "https://www.usenix.org/conference/nsdi19/presentation/kaffes",
+      "pdf_url": "https://www.usenix.org/system/files/nsdi19-kaffes.pdf",
+      "introduction": "混合长短请求容易让短请求排队等待。Shinjuku 在基于 Dune 的单地址空间系统中，用低开销中断与集中调度实现微秒级抢占。",
+      "commentary": "将虚拟化中断机制连接到请求调度和尾延迟；适用前提包括可信调度器、专用执行核和特定数据面环境。",
+      "relation": "直接关联",
+      "topics": ["Dune", "硬件辅助虚拟化", "posted interrupts", "抢占调度", "尾延迟", "网络 I/O"],
+      "institutions": ["Stanford University", "Massachusetts Institute of Technology"],
+      "affiliation_source": "usenix",
+      "affiliation_source_url": "https://www.usenix.org/conference/nsdi19/presentation/kaffes",
+      "affiliation_verified_at": "2026-11-11",
+      "evidence_level": "full_text"
+    },
+    {
+      "id": "eurosys16-linux-scheduler",
+      "year": 2016,
+      "venue": "eurosys",
+      "title": "The Linux Scheduler: a Decade of Wasted Cores",
+      "authors": ["Jean-Pierre Lozi", "Baptiste Lepers", "Justin Funston", "Fabien Gaud", "Vivien Quéma", "Alexandra Fedorova"],
+      "url": "https://doi.org/10.1145/2901318.2901326",
+      "doi": "10.1145/2901318.2901326",
+      "pdf_url": "https://people.ece.ubc.ca/sasha/papers/eurosys16-final29.pdf",
+      "introduction": "可运行线程持续排队时，部分 CPU 仍可能长期空闲。论文分析 Linux 多核负载均衡中的四类缺陷，以在线检查与运行队列可视化定位原因并验证修复。",
+      "commentary": "适合结合 Linux 调度与 vCPU/NUMA 放置理解宿主 CPU 利用率；测量对应当年的 CFS 与硬件，当前内核需按版本核验。",
+      "relation": "相关机制",
+      "domain": "kernel",
+      "topics": ["内核经典", "Linux", "CPU 调度", "CFS", "负载均衡", "NUMA", "性能诊断"],
+      "institutions": ["Université Nice Sophia-Antipolis", "EPFL", "University of British Columbia", "Coho Data", "Grenoble INP / ENSIMAG"],
+      "affiliation_source": "institution",
+      "affiliation_source_url": "https://people.ece.ubc.ca/sasha/papers/eurosys16-final29.pdf",
+      "affiliation_verified_at": "2026-11-11",
+      "evidence_level": "full_text"
+    },
+    {
+      "id": "systor13-blk-mq",
+      "year": 2013,
+      "venue": "systor",
+      "title": "Linux Block IO: Introducing Multi-queue SSD Access on Multi-core Systems",
+      "authors": ["Matias Bjørling", "Jens Axboe", "David Nellans", "Philippe Bonnet"],
+      "url": "https://doi.org/10.1145/2485732.2485740",
+      "pdf_url": "https://www.kernel.dk/blk-mq.pdf",
+      "introduction": "SSD 的高 IOPS 暴露出单请求队列的锁竞争和跨核访存成本。论文用软件暂存队列与硬件派发队列组织并行提交，形成 blk-mq 的早期设计。",
+      "commentary": "适合结合 Linux 块层与 virtio-blk 队列讲解阅读；原文实验用于隔离软件开销，具体 SSD 与文件系统的性能需另测。",
+      "relation": "相关机制",
+      "domain": "kernel",
+      "topics": ["内核经典", "Linux", "blk-mq", "块 I/O", "多队列", "NUMA"],
+      "institutions": ["IT University of Copenhagen", "Fusion-io"],
+      "affiliation_source": "official",
+      "affiliation_source_url": "https://www.systor.org/2013/program.html",
+      "affiliation_verified_at": "2026-11-11",
+      "evidence_level": "full_text"
+    },
+    {
+      "id": "atc12-netmap",
+      "year": 2012,
+      "venue": "atc",
+      "title": "netmap: A Novel Framework for Fast Packet I/O",
+      "authors": ["Luigi Rizzo"],
+      "url": "https://www.usenix.org/conference/atc12/technical-sessions/presentation/rizzo",
+      "pdf_url": "https://www.usenix.org/system/files/conference/atc12/atc12-final186.pdf",
+      "introduction": "逐包分配、系统调用和内存复制限制高速收发。netmap 用预分配缓冲区、共享环与批处理降低开销，由内核校验请求并操作网卡。",
+      "commentary": "适合比较 socket、netmap 与 DPDK 的数据交接方式；论文性能数据来自 FreeBSD，Linux 移植单独说明。",
+      "relation": "相关机制",
+      "domain": "kernel",
+      "topics": ["内核经典", "netmap", "网络 I/O", "批处理", "共享缓冲区"],
+      "institutions": ["University of Pisa"],
+      "affiliation_source": "usenix",
+      "affiliation_source_url": "https://www.usenix.org/conference/atc12/technical-sessions/presentation/rizzo",
+      "affiliation_verified_at": "2026-11-11",
+      "evidence_level": "full_text"
+    },
+    {
+      "id": "cacm74-unix",
+      "year": 1974,
+      "venue": "cacm",
+      "title": "The UNIX Time-Sharing System",
+      "url": "https://doi.org/10.1145/361011.361061",
+      "pdf_url": "https://www.cs.cmu.edu/~15712/papers/ritchie74.pdf",
+      "introduction": "小型分时系统怎样用少量接口组织进程、程序执行和进程间通信？",
+      "commentary": "衔接 Linux 进程文章中的 fork／execve／wait 和文件表继承，区分创建进程与装入程序。",
+      "relation": "相关机制",
+      "domain": "kernel",
+      "topics": [
+        "内核经典",
+        "进程",
+        "fork",
+        "exec",
+        "管道"
+      ],
+      "institutions": [
+        "Bell Laboratories"
+      ],
+      "affiliation_source": "institution",
+      "affiliation_source_url": "https://www.cs.cmu.edu/~15712/papers/ritchie74.pdf",
+      "affiliation_verified_at": "2026-11-11",
+      "evidence_level": "full_text"
+    },
+    {
+      "id": "sosp97-disco",
+      "year": 1997,
+      "venue": "sosp",
+      "title": "Disco: Running Commodity Operating Systems on Scalable Multiprocessors",
+      "url": "https://web.stanford.edu/class/archive/cs/cs240/cs240.1056/readings/disco.pdf",
+      "pdf_url": "https://web.stanford.edu/class/archive/cs/cs240/cs240.1056/readings/disco.pdf",
+      "introduction": "已有操作系统怎样在大型 ccNUMA 多处理器上扩展，同时控制移植与维护成本？",
+      "commentary": "与 vCPU/NUMA 放置、共享页和虚拟机内存管理结合阅读，关注 Guest 分配与宿主实际页位置的区别。",
+      "relation": "直接关联",
+      "topics": [
+        "Hypervisor",
+        "NUMA",
+        "内存共享",
+        "页面迁移"
+      ],
+      "institutions": [
+        "Stanford University"
+      ],
+      "affiliation_source": "institution",
+      "affiliation_source_url": "https://web.stanford.edu/class/archive/cs/cs240/cs240.1056/readings/disco.pdf",
+      "affiliation_verified_at": "2026-11-11",
+      "evidence_level": "full_text"
+    },
+    {
+      "id": "asplos08-two-dimensional-page-walks",
+      "year": 2008,
+      "venue": "asplos",
+      "title": "Accelerating Two-Dimensional Page Walks for Virtualized Systems",
+      "url": "https://doi.org/10.1145/1346281.1346286",
+      "pdf_url": "https://www.cs.columbia.edu/~cdall/candidacy/pdf/Bhargava2008.pdf",
+      "introduction": "嵌套页表减少软件介入后，怎样降低二维页表遍历带来的额外访存？",
+      "commentary": "补充 EPT/NPT、大页和首次缺页文章：映射已建立后的硬件遍历与需要 KVM 处理的映射缺页分别分析。",
+      "relation": "直接关联",
+      "topics": [
+        "地址翻译",
+        "嵌套页表",
+        "TLB",
+        "大页",
+        "体系结构"
+      ],
+      "institutions": [
+        "Advanced Micro Devices"
+      ],
+      "affiliation_source": "institution",
+      "affiliation_source_url": "https://www.cs.columbia.edu/~cdall/candidacy/pdf/Bhargava2008.pdf",
+      "affiliation_verified_at": "2026-11-11",
+      "evidence_level": "full_text"
+    },
+    {
+      "id": "eurosys13-radixvm",
+      "year": 2013,
+      "venue": "eurosys",
+      "title": "RadixVM: Scalable Address Spaces for Multithreaded Applications",
+      "url": "https://pdos.csail.mit.edu/papers/radixvm:eurosys13.pdf",
+      "pdf_url": "https://pdos.csail.mit.edu/papers/radixvm:eurosys13.pdf",
+      "introduction": "多线程操作互不重叠的地址范围时，怎样避免被共享地址空间的锁串行化？",
+      "commentary": "用于理解 Linux mmap/munmap、锁与 TLB 失效的约束。RadixVM 的 radix tree 与 Linux 的 Maple Tree 分属不同实现。",
+      "relation": "相关机制",
+      "domain": "kernel",
+      "topics": [
+        "内核经典",
+        "地址空间",
+        "多核扩展",
+        "TLB shootdown",
+        "内存管理"
+      ],
+      "institutions": [
+        "Massachusetts Institute of Technology"
+      ],
+      "affiliation_source": "institution",
+      "affiliation_source_url": "https://pdos.csail.mit.edu/papers/radixvm:eurosys13.pdf",
+      "affiliation_verified_at": "2026-11-11",
+      "evidence_level": "full_text"
+    },
     {
       "id": "cacm74-popek-goldberg", "year": 1974, "venue": "cacm",
       "title": "Formal Requirements for Virtualizable Third Generation Architectures",
