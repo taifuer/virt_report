@@ -1,0 +1,15 @@
+%%{init: {"sequence": {"width": 220, "actorMargin": 110, "messageMargin": 20, "wrap": false}}}%%
+sequenceDiagram
+  accTitle: 四个 vCPU 从固件初始化到 Linux SMP 上线
+  accDescr: 4 个 vCPU 的宿主线程预先创建。BSP 执行固件，SeaBIOS 通过 INIT/SIPI 唤起 AP 1 至 3，AP 完成固件初始化后停驻。引导程序在 BSP 上进入 Linux；内核使用自己的启动跳板和每 CPU 环境再次启动 AP。CPU 上线后，各 vCPU 独立运行内核与应用任务，共享同一台机器的 RAM。
+  participant B as BSP · vCPU 0
+  participant A as AP · vCPU 1、2、3
+  Note over B,A: QEMU 已创建 4 个宿主 vCPU 线程，共享 Guest RAM
+  B->>B: 复位向量 → SeaBIOS
+  B->>A: 固件 INIT / SIPI
+  A->>A: entry_smp：初始化 → HLT 停驻
+  B->>B: 引导程序 → Linux 早期入口<br/>准备每 CPU 数据、栈和 idle 任务
+  B->>A: 内核 INIT / SIPI
+  A->>A: Linux 跳板 → start_secondary<br/>各自初始化 CPU 与 LAPIC
+  A-->>B: CPU online 与 CPUHP 上线进度
+  Note over B,A: SMP 上线完成：各 vCPU 独立调度内核任务与应用线程

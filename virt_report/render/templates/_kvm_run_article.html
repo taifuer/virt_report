@@ -22,7 +22,7 @@
     <tr><td>vCPU 描述符</td><td>一个客户机处理器的执行状态</td><td>设置寄存器、映射交接区、调用 KVM_RUN</td></tr>
   </tbody></table>
   <p>创建 VM 得到的是待配置对象，内存槽描述 GPA 与用户态 RAM 后备范围的关系，vCPU 创建也不会自行启动客户机。准备完毕后，QEMU 的对应宿主线程调用 KVM_RUN，才开始执行这个 vCPU。线程进入内核、进入客户机、再返回用户态时，仍是同一个可被 Linux 调度的任务；它不必独占一个物理核。<a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L149-L161">VM 创建接口</a>、<a href="{{ linux_source }}include/linux/kvm_host.h#L326-L350">vCPU 对象</a></p>
-  <p>在 QEMU 中，这条准备路径从一个 <code>CPUState</code> 对象衔接到一个宿主线程：<code>kvm_start_vcpu_thread()</code> 创建线程，入口 <code>kvm_vcpu_thread_fn()</code> 接收同一个 CPUState。线程先执行 <code>kvm_init_vcpu()</code>，取得 vCPU 描述符并映射 <code>kvm_run</code>，再进入下面的循环。机器模型、RAM 和设备的建立过程见<a href="qemu-vm-startup.html">QEMU 虚拟机启动过程</a>。</p>
+  <p>在 QEMU 中，这条准备路径从一个 <code>CPUState</code> 对象衔接到一个宿主线程：<code>kvm_start_vcpu_thread()</code> 创建线程，入口 <code>kvm_vcpu_thread_fn()</code> 接收同一个 CPUState。线程先执行 <code>kvm_init_vcpu()</code>，取得 vCPU 描述符并映射 <code>kvm_run</code>，再进入下面的循环。机器模型、RAM 和设备的建立过程见<a href="qemu-vm-startup.html">QEMU 虚拟机启动过程</a>；Guest 发现并启动多个 CPU、安排应用线程的过程见<a href="multi-vcpu-coordination.html">多 vCPU 协同</a>。</p>
   <pre><code>do {
     qemu_process_cpu_events(cpu);
 

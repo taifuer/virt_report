@@ -30,7 +30,7 @@
       "overview": "cpu-virtualization",
       "group": "foundations",
       "title": "CPU 虚拟化",
-      "summary": "客户机执行、退出处理、调度与时钟，以及 TCG 指令翻译、代码缓存和执行交接。"
+      "summary": "客户机执行、多 vCPU 启动与协同、调度和时钟，以及 TCG 指令翻译、代码缓存和执行交接。"
     },
     {
       "slug": "memory-virtualization",
@@ -3154,6 +3154,32 @@
           "id": "sources",
           "title": "参考资料"
         }
+      ]
+    },
+    {
+      "slug": "multi-vcpu-coordination",
+      "topic": "cpu-virtualization",
+      "title": "多 vCPU 协同：从固件启动到应用并行",
+      "summary": "以一台 4 vCPU 虚拟机串起拓扑发现、BSP/AP 固件启动、Linux SMP 上线、共享内存与跨核通知，再跟踪应用线程在 Guest 与宿主两层调度中的运行。",
+      "search_terms": ["SMP", "多核", "多处理器", "BSP", "AP", "INIT", "SIPI", "MADT", "CPUID", "IPI", "共享内存", "多线程", "双层调度", "steal time"],
+      "reviewed_on": "2026-11-12",
+      "template": "_multi_vcpu_article.html",
+      "baselines": [
+        {"project": "QEMU", "version": "10.2.0", "commit": "698104725efad4b29079d857dfdebbd804e34c99", "url": "https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99"},
+        {"project": "SeaBIOS", "version": "QEMU 10.2.0 随附固件", "commit": "b52ca86e094d19b58e2304417787e96b940e39c6", "url": "https://github.com/coreboot/seabios/tree/b52ca86e094d19b58e2304417787e96b940e39c6"},
+        {"project": "Linux", "version": "6.18", "commit": "7d0a66e4bb9081d75c82ec4957c50034cb0ea449", "url": "https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449"}
+      ],
+      "sections": [
+        {"id": "preface", "title": "一台机器的四条执行流"},
+        {"id": "machine", "title": "创建四个 vCPU 与共享机器资源"},
+        {"id": "discovery", "title": "处理器发现与拓扑描述"},
+        {"id": "firmware", "title": "固件初始化与引导交接"},
+        {"id": "kernel", "title": "Linux SMP 启动与 CPU 上线"},
+        {"id": "cooperation", "title": "共享数据、同步与跨核通知"},
+        {"id": "scheduling", "title": "Guest 与宿主的双层调度"},
+        {"id": "application", "title": "应用线程的并行执行"},
+        {"id": "verification", "title": "对照宿主线程与 Guest CPU"},
+        {"id": "sources", "title": "源码与参考资料"}
       ]
     },
     {

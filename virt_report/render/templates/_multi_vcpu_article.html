@@ -1,0 +1,228 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+{% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
+{% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
+{% set seabios = 'https://github.com/coreboot/seabios/blob/b52ca86e094d19b58e2304417787e96b940e39c6/' %}
+
+<section id="preface" class="mechanism-section">
+  <h2>一台机器的四条执行流</h2>
+  <p>一台 4 vCPU 虚拟机有四套处理器执行状态：各自保存指令位置、寄存器和本地中断状态，共享同一台机器的 RAM 与设备。固件和操作系统通过处理器拓扑、启动协议与中断控制器使用这些执行流。Linux 将 CPU 上线后，四个 vCPU 可以分别执行内核任务和应用线程。</p>
+  <p>在 QEMU/KVM 中，每个 vCPU 由一个 QEMU 宿主线程驱动。Guest 调度器把任务安排到 vCPU，宿主调度器把这些 vCPU 线程安排到实际逻辑 CPU。本文以 x86-64、Q35、SeaBIOS 和 Linux Guest 为例，沿“创建 → 固件 → 引导 → SMP 上线 → 应用并行”跟踪这两层关系。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+
+<section id="machine" class="mechanism-section">
+  <h2>创建四个 vCPU 与共享机器资源</h2>
+  <p>下面创建一台 4 vCPU、4 GiB RAM 的机器，拓扑为 1 个 socket、每 socket 4 个 core、每 core 1 个 thread。使用已有的、支持 BIOS 引导和 virtio 磁盘的可丢弃 Linux 镜像；<code>/path/demo.qcow2</code> 需换成实际路径。<code>-snapshot</code> 将磁盘修改放入临时层，退出后丢弃；<code>-S</code> 让 Guest 等待管理端放行，便于先观察已创建的线程。</p>
+  <pre><code>qemu-system-x86_64 \
+  -machine pc-q35-10.2,accel=kvm,kernel-irqchip=on \
+  -bios bios-256k.bin -cpu host \
+  -smp cpus=4,maxcpus=4,sockets=1,cores=4,threads=1 \
+  -m 4G -snapshot \
+  -drive file=/path/demo.qcow2,if=virtio,format=qcow2 \
+  -nic none -display none -serial stdio \
+  -pidfile /tmp/multi-vcpu.pid \
+  -qmp unix:/tmp/multi-vcpu-qmp.sock,server=on,wait=off \
+  -S</code></pre>
+  <p>宿主需提供可用的 KVM；<code>bios-256k.bin</code> 来自相应 QEMU 固件目录。Guest 需配置串口控制台才能在这个终端看到登录和启动日志。这里使用内核 irqchip，后文按 KVM 内核中的 LAPIC 路径解释启动事件与 IPI。</p>
+  <p><code>x86_cpus_init()</code> 按数量和拓扑创建 CPU 对象、分配 APIC ID。KVM 执行后端通过 <code>kvm_start_vcpu_thread()</code> 为每个 CPU 创建宿主线程；该线程在 <code>kvm_init_vcpu()</code> 中建立 KVM vCPU 和 <code>kvm_run</code> 交接区，随后进入自己的运行循环。放行执行后，线程调用 <code>KVM_RUN</code>，物理处理器进入相应 Guest 上下文。<a href="{{ qemu }}hw/i386/x86-common.c#L57-L121">CPU 创建</a>、<a href="{{ qemu }}accel/kvm/kvm-accel-ops.c#L30-L75">线程与运行循环</a></p>
+  <table><thead><tr><th scope="col">范围</th><th scope="col">保存的内容</th><th scope="col">运行中的用途</th></tr></thead><tbody>
+    <tr><td>每个 vCPU</td><td>寄存器、指令位置、控制寄存器、本地 APIC 状态，以及各自的 KVM vCPU 对象</td><td>保持独立的执行现场、接收面向该 CPU 的事件</td></tr>
+    <tr><td>整台虚拟机</td><td>Guest RAM、KVM 内存槽、平台设备和中断路由</td><td>让多个 CPU 访问共同的内存和设备</td></tr>
+    <tr><td>宿主线程</td><td>宿主调度状态、内核栈、线程亲和性</td><td>承载 Guest 执行以及对应的 KVM 内核处理</td></tr>
+  </tbody></table>
+  <p>虚拟拓扑描述 Guest 看见的 socket/core/thread 关系；物理 CPU 分配由宿主调度、亲和性和资源限制决定。<code>-smp 4</code> 配置四个虚拟处理器，专用核隔离和绑定需要另行配置。vCPU 线程执行 Guest 时会释放 QEMU 的 BQL，各线程可以同时进入 Guest；需要受 BQL 保护的设备模拟时才回到相应串行区域。线程创建细节见<a href="qemu-vm-startup.html#vcpu">QEMU 启动</a>，执行与退出边界见<a href="kvm-vcpu-run.html">KVM vCPU 执行</a>。</p>
+</section>
+
+<section id="discovery" class="mechanism-section">
+  <h2>处理器发现与拓扑描述</h2>
+  <p>Guest 面对的是一台多处理器机器。QEMU 的 CPU 配置会反映到 CPUID、虚拟本地 APIC 和交给 Guest 的 ACPI 表中。Linux 依据这些接口建立自己的 CPU 编号与拓扑；QEMU 宿主线程的 TID 则用于宿主侧观测。</p>
+  <table><thead><tr><th scope="col">接口</th><th scope="col">提供的信息</th><th scope="col">Linux 的使用方式</th></tr></thead><tbody>
+    <tr><td>ACPI MADT</td><td>处理器对应的 Local APIC / x2APIC 条目、APIC ID 及启用标志</td><td>登记可用处理器及其中断控制器标识</td></tr>
+    <tr><td>CPUID</td><td>处理器特性、拓扑层级与缓存信息，具体叶子取决于 CPU 模型</td><td>识别能力，建立 core、SMT、package 等关系</td></tr>
+    <tr><td>虚拟 Local APIC</td><td>本 CPU 的中断状态、定时器和 IPI 发送接口</td><td>指定目标处理器、发送启动或跨核通知</td></tr>
+    <tr><td>ACPI SRAT / SLIT（配置 NUMA 时）</td><td>CPU 与内存的邻近域，以及节点距离</td><td>建立 NUMA 放置与负载均衡依据</td></tr>
+  </tbody></table>
+  <p>MADT 枚举与 CPUID 拓扑互相配合：前者提供处理器条目，后者描述处理器能力与层级。MADT 中的 Enabled 是固件提供的可用性标志；Linux 的 <code>online</code> 是内核完成 CPU 上线流程后的运行状态。对应规则见 <a href="https://uefi.org/specs/ACPI/6.6/05_ACPI_Software_Programming_Model.html#multiple-apic-description-table-madt">ACPI MADT</a>、<a href="{{ linux }}Documentation/arch/x86/topology.rst">Linux x86 拓扑</a>。</p>
+  <p>本例的简单拓扑通常显示为 Guest CPU 0–3。一般情况下，<strong>Guest CPU 编号、APIC ID、QEMU cpu-index、宿主 TID 和宿主逻辑 CPU 编号是五种标识</strong>，需要按接口含义建立对应。热插拔还会涉及 possible、present 和 online 集合，见<a href="x86-vcpu-hotplug.html">x86 vCPU 热插拔</a>。</p>
+</section>
+
+<section id="firmware" class="mechanism-section">
+  <h2>固件初始化与引导交接</h2>
+  <p>复位后，BSP（启动处理器）从复位向量执行固件；其余 AP（辅助处理器）等待启动事件。BSP/AP 是启动角色，系统运行后各个在线 CPU 都能执行内核任务和应用线程。</p>
+  <p>SeaBIOS 的 <code>smp_setup() → smp_scan()</code> 会在低地址准备启动跳板，并向 AP 发送 INIT/SIPI。INIT 建立启动所需的处理器状态，SIPI 的向量指定低地址启动页，入口物理地址为 <code>vector &lt;&lt; 12</code>。本例 AP 由该跳板进入固件的 <code>entry_smp</code>。</p>
+  <p>AP 进入 32 位固件代码后，先取得保护共享栈的 <code>SMPLock</code>，再执行 <code>handle_smp()</code>：记录 APIC ID、同步固件记录的 MSR 设置并增加 CPU 计数。完成后释放锁，进入 HLT 循环停驻。这一小段固件初始化按锁串行使用共享栈。BSP 等到发现的 CPU 数达到预期，继续平台初始化和系统引导。<a href="{{ seabios }}src/fw/smp.c#L62-L184">处理器发现与 MSR 同步</a>、<a href="{{ seabios }}src/romlayout.S#L204-L221">AP 入口与停驻</a></p>
+  {{ diagram('multi-vcpu-boot', 'BSP 与 AP 的两阶段启动', 'SeaBIOS 先使用 AP 完成固件初始化，Linux 随后用自己的跳板和每 CPU 环境完成 SMP 上线。图中 AP 一栏代表 vCPU 1、2、3；运行阶段每个 CPU 都有独立的执行流。') }}
+  <p>BSP 继续执行引导程序，由引导程序加载 Linux 内核和 initramfs，准备启动参数并交给内核入口。内核代码和数据放入这台机器共享的 Guest RAM，后续 AP 从同一份内核映像中的辅助入口开始执行。各 AP 使用自己的栈和处理器现场，共同组成一个 Linux 实例。</p>
+  <p>UEFI 固件可通过 MP Services 在引导阶段向 AP 分派初始化、内存测试等工作；操作系统接管后的 CPU 管理属于内核自己的 SMP 生命周期。这里的 SeaBIOS 入口和共享栈锁是该固件的具体实现。<a href="https://uefi.org/specs/PI/1.8/V2_DXE_Boot_Services_Protocols.html#mp-services-protocol-overview">UEFI MP Services</a></p>
+</section>
+
+<section id="kernel" class="mechanism-section">
+  <h2>Linux SMP 启动与 CPU 上线</h2>
+  <p>Linux 在启动 CPU 上完成早期内存、调度等初始化，解析处理器信息，为辅助 CPU 准备每 CPU 数据、idle 任务和启动环境。<code>smp_init()</code> 建立所需的 idle / CPU hotplug 线程，再调用 <code>bringup_nonboot_cpus()</code> 推进辅助 CPU 上线。实际启动数量还受 <code>CONFIG_SMP</code>、内核启动参数及可用处理器信息约束。<a href="{{ linux }}kernel/smp.c#L992-L1010">Linux SMP 初始化</a></p>
+  <ol>
+    <li><strong>准备入口与现场。</strong>本例 x86 路径由 <code>do_boot_cpu()</code> 准备 Linux 启动跳板和入口信息，将后续 C 入口设为 <code>start_secondary()</code>，并准备对应 idle 任务的栈。</li>
+    <li><strong>发送启动事件。</strong>传统 x86 AP 启动路径通过 INIT/SIPI 让目标 AP 从 Linux 跳板开始。平台提供其他启动回调时，内核会使用对应路径；图中按 Q35/SeaBIOS 的常规路径展开。</li>
+    <li><strong>目标 AP 初始化自身。</strong>跳板完成模式与页表等交接，进入 <code>start_secondary()</code>。AP 建立 CPU、本地异常与中断环境，完成和控制 CPU 的启动握手、时钟等初始化。</li>
+    <li><strong>推进上线状态。</strong>内核设置 CPU online、启用本地中断和时钟事件，再进入 <code>cpu_startup_entry(CPUHP_AP_ONLINE_IDLE)</code>。CPU hotplug 状态机继续完成所需回调；调度器随后可以在允许的在线 CPU 上安排任务。</li>
+  </ol>
+  <p>这些步骤有明确的跨 CPU 握手。现代 Linux 的 AP 启动可包含并行阶段，具体受平台、配置和拓扑约束；每个 CPU 仍需完成自己的初始化与上线检查。<a href="{{ linux }}arch/x86/kernel/smpboot.c#L232-L316">start_secondary</a>、<a href="{{ linux }}arch/x86/kernel/smpboot.c#L695-L780">INIT/SIPI 路径</a>、<a href="{{ linux }}arch/x86/kernel/smpboot.c#L842-L905">do_boot_cpu</a></p>
+  <table><thead><tr><th scope="col">已达到的状态</th><th scope="col">此时具备的能力</th></tr></thead><tbody>
+    <tr><td>QEMU 已创建 vCPU</td><td>宿主线程和 KVM 执行对象存在，可接收后续启动事件</td></tr>
+    <tr><td>固件已发现 AP</td><td>该处理器已参与固件初始化，并有相应平台描述</td></tr>
+    <tr><td>Linux 已登记处理器</td><td>内核能为其建立编号、拓扑和每 CPU 资源</td></tr>
+    <tr><td>Linux CPU 上线流程完成</td><td>该 CPU 可以承载正常内核任务与应用线程</td></tr>
+  </tbody></table>
+  <p>每个在线 CPU 都有自己的运行队列、当前任务和 idle 任务。内核全局对象与许多子系统数据仍在共享内存中；<code>per_cpu</code> 数据则把热点状态按 CPU 分开，减少竞争。线程在 CPU 间迁移时，由调度器保存和恢复线程现场；不同进程的地址空间切换还涉及各自的页表。</p>
+</section>
+
+<section id="cooperation" class="mechanism-section">
+  <h2>共享数据、同步与跨核通知</h2>
+  <p>以一个服务进程为例：线程 A 接收任务并放入队列，工作线程 B 从队列取出任务。假设 A 当前运行在 vCPU 0，B 曾运行在 vCPU 2，现在正在等待条件变量。两个线程共享进程地址空间，队列数据最终位于共同的 Guest RAM。</p>
+  <ol>
+    <li><strong>发布任务。</strong>A 持有互斥锁修改队列，记录任务内容和队列状态，通知条件变量并释放锁。锁和条件变量协议协调数据可见性与等待关系。</li>
+    <li><strong>使工作线程可运行。</strong>B 确实在内核等待时，线程库可借助 futex 唤醒路径让它重新进入调度竞争。Guest 调度器结合亲和性和负载选择 CPU；这里假设仍选择 vCPU 2。</li>
+    <li><strong>按需通知目标 CPU。</strong>若目标 CPU 需要及时重新调度，内核可发送 reschedule IPI 或相关远程唤醒通知。正在轮询的 idle CPU、不同的唤醒实现及已有待处理状态，可能采用其他交接方式。</li>
+    <li><strong>取得运行机会并消费。</strong>vCPU 2 获得宿主 CPU 时间后，处理相应事件并由 Guest 调度器选择 B。B 重新取得互斥锁、在循环中检查条件，取走任务并执行。</li>
+  </ol>
+  <p>共享内存承载数据，同步原语规定访问顺序，通知推动接收方检查工作。普通 RAM 访问在地址映射建立后由处理器和缓存一致性机制完成；线程同步还需满足编译器和硬件内存模型。内核使用锁、原子操作和 acquire/release 等屏障规则，用户态程序使用 pthread 或语言提供的同步原语。<code>volatile</code> 不能代替线程同步。<a href="{{ linux }}Documentation/core-api/wrappers/memory-barriers.rst">Linux 内存屏障</a>、<a href="https://man7.org/linux/man-pages/man3/pthread_cond_wait.3.html">条件变量等待规则</a></p>
+  <h3>Guest IPI 与宿主协调</h3>
+  <p>Guest 内核通过虚拟 LAPIC 指定目标 APIC ID 和向量；启用相应半虚拟化能力时也可使用 PV IPI 接口。在内核 irqchip 的软件处理路径中，KVM 将请求送到目标虚拟 LAPIC，保存待处理中断或启动事件，按目标 vCPU 状态触发 kick / 唤醒。目标获得执行机会并满足相应中断递送条件后，进入 Guest 的处理程序。<a href="{{ linux }}arch/x86/kvm/lapic.c#L1593-L1602">IPI 发送与路由</a>、<a href="{{ linux }}arch/x86/kvm/lapic.c#L808-L850">PV IPI</a></p>
+  <p>部分 APIC 操作会触发硬件 VM-exit 并在 KVM 内完成处理；APICv / AVIC 等能力可以加速相应操作和中断递送。是否退出、是否需要唤醒线程，以及是否返回 QEMU 用户态，取决于操作类型、配置和目标运行状态。一次 Guest IPI 并不必然导致 <code>KVM_RUN</code> 返回 QEMU。中断控制器与加速层次见<a href="interrupt-virtualization.html">中断虚拟化</a>。</p>
+  <table><thead><tr><th scope="col">协作层次</th><th scope="col">典型用途</th><th scope="col">接收与执行方</th></tr></thead><tbody>
+    <tr><td>Guest IPI</td><td>重新调度、跨 CPU 函数调用、Guest 页表变更后的 TLB shootdown</td><td>目标 Guest CPU 上的 Linux 处理程序</td></tr>
+    <tr><td>KVM 内部请求与宿主 IPI</td><td>促使 vCPU 线程处理 KVM 状态更新，例如二阶段映射失效</td><td>宿主内核中的 KVM 执行路径</td></tr>
+  </tbody></table>
+  <p>Guest TLB shootdown 同步的是 Guest 地址空间转换，KVM 的二阶段映射失效维护的是 GPA 到宿主后备的转换；两者可能相互作用，但处理层次不同。宿主内部请求位、kick 和进入 Guest 前的复查，见<a href="kvm-vcpu-requests.html">KVM vCPU 请求与跨 CPU 同步</a>。</p>
+</section>
+
+<section id="scheduling" class="mechanism-section">
+  <h2>Guest 与宿主的双层调度</h2>
+  <p>Guest 调度器选择“哪个任务在哪个 vCPU 上执行”，宿主调度器选择“哪个 vCPU 线程在哪个宿主逻辑 CPU 上执行”。两层都可以排队、抢占与迁移。Guest 当前任务仍标记为正在运行时，承载它的宿主线程可能已经被宿主抢占。</p>
+  {{ diagram('multi-vcpu-scheduling', '四个 vCPU 与两个可用宿主逻辑 CPU 的示意', '示例时刻 T0、T1 获得宿主执行时间，T2、T3 等待后续时间片。实线表示当前执行关系，虚线表示后续运行机会；任务到 vCPU、线程到宿主 CPU 的映射均可随调度变化。') }}
+  <p>图中假设只有两个宿主逻辑 CPU 可提供执行时间，因此同一时刻最多有两个 vCPU 在它们上面执行。后续时间片可以换成其他 vCPU，也可以被宿主其他任务占用。宿主逻辑 CPU 可能是不同物理核，也可能是同核 SMT 线程；它们能够提供的实际执行资源有差别。</p>
+  <h3>等待、抢占与并行效率</h3>
+  <p>假设 vCPU 0 上的线程持有 Guest 自旋锁，此时宿主抢占了 vCPU 0；vCPU 1 上的等待者即使正在运行，也要等持锁者重新获得执行时间。这就是锁持有者被抢占带来的放大效应。PV spinlock、steal time 和半虚拟化调度提示可帮助 Guest 识别或减少部分无效等待，效果取决于功能是否暴露、Guest 是否采用以及实际竞争情况。<a href="{{ qemu }}docs/system/i386/kvm-pv.rst">KVM 半虚拟化能力</a></p>
+  <p>Guest 空闲 CPU 可以进入 idle / HLT，宿主据此进行有限轮询或阻塞；中断和新工作到达后再唤醒。事件已挂起、宿主线程已可运行、Guest 已执行中断处理，是不同的时刻。等待与唤醒细节见<a href="kvm-vcpu-halt.html">KVM vCPU 阻塞、轮询与唤醒</a>。</p>
+  <p>应用的并行工作量、串行区和锁竞争决定可扩展性；宿主 CPU 时间、CPU 配额与内存局部性决定能获得的资源。Guest affinity 约束应用线程可用的 vCPU，宿主 affinity 约束 vCPU 线程可用的物理逻辑 CPU，两者需要分别观察。NUMA 放置见<a href="vcpu-numa-placement.html">vCPU 与 NUMA 内存放置</a>，Linux 任务选择与状态转换见<a href="linux-execution-scheduling.html">Linux 进程：执行与调度</a>。</p>
+</section>
+
+<section id="application" class="mechanism-section">
+  <h2>应用线程的并行执行</h2>
+  <p>系统服务和应用启动后，Linux 把进程中的可运行线程安排到在线 CPU。一个线程某一时刻在一个 vCPU 上执行；多个线程或进程则能分布到不同 vCPU。单进程可以通过 pthread 创建多个工作线程，共享地址空间，同时保留各自的栈、寄存器现场与内核调度实体。</p>
+  <p>下面的 C 程序把固定总量的整数计算分给 1 个或 4 个 pthread 工作线程。每个线程处理不同区间，主线程通过 <code>pthread_join()</code> 等待并汇总结果。程序打印 Guest TID 以及开始、结束时所在的 Guest CPU；这些编号只描述 Guest 的视图。两个模式总工作量相同，校验和应一致。</p>
+  <p>在可丢弃 Guest 中将代码保存为 <code>vcpu-workers.c</code>，使用 C 编译器与 pthread 库编译。示例输出顺序取决于调度，CPU 采样只反映采样时刻。</p>
+  <pre><code id="multi-vcpu-worker-code">#define _GNU_SOURCE
+#include &lt;inttypes.h&gt;
+#include &lt;pthread.h&gt;
+#include &lt;sched.h&gt;
+#include &lt;stdint.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;string.h&gt;
+#include &lt;sys/syscall.h&gt;
+#include &lt;unistd.h&gt;
+
+#ifndef WORK_ITEMS
+#define WORK_ITEMS UINT64_C(200000000)
+#endif
+
+struct job {
+    uint64_t begin, end, sum;
+    int id;
+};
+
+static void *work(void *arg)
+{
+    struct job *j = arg;
+    uint64_t sum = 0;
+    int first_cpu = sched_getcpu();
+    for (uint64_t i = j-&gt;begin; i &lt; j-&gt;end; i++) {
+        uint64_t x = i + UINT64_C(0x9e3779b97f4a7c15);
+        x = (x ^ (x &gt;&gt; 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+        x = (x ^ (x &gt;&gt; 27)) * UINT64_C(0x94d049bb133111eb);
+        sum += x ^ (x &gt;&gt; 31);
+    }
+    j-&gt;sum = sum;
+    printf("worker=%d guest_tid=%ld guest_cpu=%d-&gt;%d\n",
+           j-&gt;id, (long)syscall(SYS_gettid), first_cpu, sched_getcpu());
+    return NULL;
+}
+
+int main(int argc, char **argv)
+{
+    if (argc != 2 || (strcmp(argv[1], "1") &amp;&amp; strcmp(argv[1], "4"))) {
+        fprintf(stderr, "usage: %s 1|4\n", argv[0]);
+        return 2;
+    }
+    int n = argv[1][0] - '0';
+    const uint64_t total = WORK_ITEMS;
+    struct job jobs[4] = {0};
+    pthread_t threads[4];
+    for (int i = 0; i &lt; n; i++) {
+        jobs[i] = (struct job){.begin = total * i / n,
+                              .end = total * (i + 1) / n, .id = i};
+        int err = pthread_create(&amp;threads[i], NULL, work, &amp;jobs[i]);
+        if (err) {
+            fprintf(stderr, "pthread_create: %s\n", strerror(err));
+            return 1;
+        }
+    }
+    uint64_t sum = 0;
+    for (int i = 0; i &lt; n; i++) {
+        int err = pthread_join(threads[i], NULL);
+        if (err) {
+            fprintf(stderr, "pthread_join: %s\n", strerror(err));
+            return 1;
+        }
+        sum += jobs[i].sum;
+    }
+    printf("workers=%d checksum=%" PRIu64 "\n", n, sum);
+    return 0;
+}</code></pre>
+  <pre><code>cc -O2 -Wall -Wextra -pthread vcpu-workers.c -o vcpu-workers
+time ./vcpu-workers 1
+time ./vcpu-workers 4</code></pre>
+  <p>观察校验和、Guest CPU 分布和 wall time，再结合宿主负载重复运行。<code>time</code> 的 user 时间累计各线程消耗，多个线程并行时可以超过 wall time。四个线程只提供并行机会，实际加速比需由相同环境下的测量得出；线程启动、频率变化和宿主争用都会影响短测试。<code>pthread_join()</code> 同时建立工作线程结束与主线程读取结果之间的同步关系。</p>
+  <p>本程序用互不重叠的计算区间演示应用并行；前一节的共享任务队列则说明有依赖关系的协作。实际服务器常同时采用任务队列、多工作线程与 I/O 线程，并通过锁、条件变量或无锁算法安排任务交接。</p>
+</section>
+
+<section id="verification" class="mechanism-section">
+  <h2>对照宿主线程与 Guest CPU</h2>
+  <p>下面的观测对应开头的可丢弃虚拟机。文中的时序图和线程分配图是机制示意，耗时、线程 ID 与 CPU 分布由实际环境记录；编译运行示例程序也应区分宿主验证与 Guest 内验证。</p>
+  <h3>宿主：从创建到放行执行</h3>
+  <p>在另一个终端读取 QEMU PID，列出线程和最近执行位置。<code>psr</code> 是宿主逻辑 CPU 编号的采样，<code>stat</code> 是宿主任务状态。</p>
+  <pre><code>pid=$(cat /tmp/multi-vcpu.pid)
+ps -L -p "$pid" -o pid,tid,psr,stat,comm
+socat - UNIX-CONNECT:/tmp/multi-vcpu-qmp.sock</code></pre>
+  <p><code>socat</code> 连接成功后，读取 QMP greeting，再逐条输入以下请求并观察响应：</p>
+  <pre><code>{"execute":"qmp_capabilities"}
+{"execute":"query-status"}
+{"execute":"query-cpus-fast"}
+{"execute":"cont"}</code></pre>
+  <p>在 <code>cont</code> 前可以看到四个 vCPU 的信息，而 Guest 尚未执行固件。<code>query-cpus-fast</code> 顶层 <code>thread-id</code> 对应宿主 TID；<code>props.thread-id</code> 表示虚拟拓扑中的 SMT 位置，本例四个核的该字段都是 0。<code>cpu-index</code> 是 QEMU 索引，Guest CPU 编号应在 Guest 中核对。</p>
+  <h3>Guest：从发现到上线</h3>
+  <pre><code>uname -r
+lscpu -e=CPU,ONLINE,SOCKET,CORE,NODE
+cat /sys/devices/system/cpu/possible
+cat /sys/devices/system/cpu/present
+cat /sys/devices/system/cpu/online
+dmesg | grep -Ei 'smp|smpboot|CPU topo|Brought up'
+cat /proc/interrupts</code></pre>
+  <p>内核具备 SMP 支持且 CPU 均正常上线时，本例通常显示 <code>online: 0-3</code>。若数量不同，结合启动日志检查 CPU 限制、初始化错误和当前在线状态。<code>possible</code> 的范围还受内核配置与枚举策略影响，应分别读取三个集合。某些系统读取 dmesg 需要额外权限。</p>
+  <p><code>/proc/interrupts</code> 的每列对应 Guest CPU，RES、CAL、TLB 等统计项的名称和出现情况随内核、架构及配置变化。它们可以辅助观察跨核活动；单次计数增加无法直接归因到某个应用任务，PV 优化也可能改变通知次数。</p>
+  <h3>两侧对照</h3>
+  <p>Guest 运行上面的 1 / 4 线程程序时，再观察宿主的 vCPU 线程。四个 Guest CPU online、四个工作线程可运行、四个宿主 vCPU 线程同时获得 CPU，是不同层面的条件。<code>ps</code> 和程序打印都是瞬时采样；需要证明时间上的重叠执行时，应进一步采集两侧调度轨迹并对齐观测窗口。实验结束后从 Guest 正常关机，等待 QEMU 退出；<code>-snapshot</code> 下的 Guest 文件修改会随之丢弃。</p>
+</section>
+
+<section id="sources" class="mechanism-section">
+  <h2>源码与参考资料</h2>
+  <ul>
+    <li><a href="{{ qemu }}accel/kvm/kvm-accel-ops.c#L30-L75">QEMU：每 vCPU 宿主线程与执行循环</a>、<a href="{{ qemu }}accel/kvm/kvm-all.c">KVM_CREATE_VCPU、KVM_RUN 与 BQL 交接</a>。</li>
+    <li><a href="{{ qemu }}hw/i386/acpi-build.c">QEMU：x86 ACPI 表构造</a>、<a href="{{ qemu }}qapi/machine.json">query-cpus-fast 的字段定义</a>。</li>
+    <li><a href="{{ seabios }}src/fw/smp.c#L62-L184">SeaBIOS：AP 发现与初始化</a>、<a href="{{ seabios }}src/romlayout.S#L204-L221">辅助处理器入口和 HLT 停驻</a>。</li>
+    <li><a href="{{ linux }}kernel/smp.c#L992-L1010">Linux：smp_init</a>、<a href="{{ linux }}arch/x86/kernel/smpboot.c#L232-L316">start_secondary 与 CPU online</a>、<a href="{{ linux }}kernel/cpu.c">CPU hotplug 状态机</a>。</li>
+    <li><a href="{{ linux }}kernel/sched/core.c">Linux：任务唤醒与调度</a>、<a href="{{ linux }}arch/x86/kvm/lapic.c">KVM：虚拟 LAPIC 与 IPI</a>、<a href="{{ linux }}Documentation/virt/kvm/vcpu-requests.rst">宿主 KVM 请求机制</a>。</li>
+    <li><a href="{{ linux }}Documentation/core-api/wrappers/memory-barriers.rst">Linux 内存屏障</a>、<a href="{{ qemu }}docs/system/i386/kvm-pv.rst">KVM 半虚拟化特性</a>。</li>
+    <li><a href="https://uefi.org/specs/ACPI/6.6/05_ACPI_Software_Programming_Model.html#multiple-apic-description-table-madt">ACPI 6.6：MADT</a>、<a href="https://uefi.org/specs/PI/1.8/V2_DXE_Boot_Services_Protocols.html#mp-services-protocol-overview">UEFI PI 1.8：MP Services</a>。</li>
+    <li><a href="https://man7.org/linux/man-pages/man3/pthread_create.3.html">pthread_create(3)</a>、<a href="https://man7.org/linux/man-pages/man3/pthread_join.3.html">pthread_join(3)</a>、<a href="https://man7.org/linux/man-pages/man3/pthread_cond_wait.3.html">pthread_cond_wait(3)</a>。</li>
+  </ul>
+</section>

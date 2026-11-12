@@ -76,7 +76,7 @@ def test_directory_has_reading_order_and_real_anchors_only():
 def test_directory_counts_primary_articles_without_extra_related_rows():
     counts = {topic['slug']: len(topic['articles']) for topic in mechanisms.topics()}
     assert counts == {'linux-foundations': 6, 'virtualization-basics': 1,
-                      'cpu-virtualization': 6, 'memory-virtualization': 6,
+                      'cpu-virtualization': 7, 'memory-virtualization': 6,
                       'device-virtualization': 15, 'interrupt-virtualization': 2,
                       'vm-startup': 2, 'migration': 7, 'hotplug': 4,
                       'live-upgrade': 2, 'qemu-internals': 6, 'libvirt-internals': 2,

@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=773f22046b09">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=773f22046b09">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=428e6e8b26d1">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=428e6e8b26d1">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -94,9 +94,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看从后端创建到系统盘引导的初始化顺序" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="从后端创建到系统盘引导的初始化顺序">
-    <img src="../assets/qemu-startup-phases.svg?v=773f22046b09" alt="块后端在早期后端阶段创建，KVM 随后初始化，网络后端在晚期后端阶段创建。板级初始化建立 CPU、内存和总线，命令行设备再连接磁盘与网络后端；复位和 cont 后客户机开始固件与系统引导。" loading="lazy">
+    <img src="../assets/qemu-startup-phases.svg?v=428e6e8b26d1" alt="块后端在早期后端阶段创建，KVM 随后初始化，网络后端在晚期后端阶段创建。板级初始化建立 CPU、内存和总线，命令行设备再连接磁盘与网络后端；复位和 cont 后客户机开始固件与系统引导。" loading="lazy">
   </div>
-  <figcaption>块后端在早期后端阶段创建，KVM 随后初始化，网络后端在晚期后端阶段创建。板级初始化建立 CPU、内存和总线，命令行设备再连接磁盘与网络后端；复位和 cont 后客户机开始固件与系统引导。 <a href="../assets/qemu-startup-phases.svg?v=773f22046b09" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>块后端在早期后端阶段创建，KVM 随后初始化，网络后端在晚期后端阶段创建。板级初始化建立 CPU、内存和总线，命令行设备再连接磁盘与网络后端；复位和 cont 后客户机开始固件与系统引导。 <a href="../assets/qemu-startup-phases.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart LR
   accTitle: 从后端创建到系统盘引导的初始化顺序
   accDescr: QEMU 先创建 MachineState，在早期后端阶段打开文件与 qcow2 块图，再配置 KVM，晚期后端阶段建立 user 或 TAP 网络后端。Q35 板级初始化创建暂停的 CPU 线程、RAM、固件与总线；命令行 virtio-blk 和 virtio-net 设备连接已有后端。整机复位后由 cont 启动客户机，固件从系统盘引导操作系统，再初始化磁盘和网络驱动。
@@ -153,9 +153,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看vCPU 创建握手与首次执行" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="vCPU 创建握手与首次执行">
-    <img src="../assets/qemu-startup-vcpu.svg?v=773f22046b09" alt="KVM vCPU 和共享区由新线程建立；主线程等待 created 通知，再继续机器初始化。cont 之后，BSP 从复位向量开始，其他处理器等待启动事件。" loading="lazy">
+    <img src="../assets/qemu-startup-vcpu.svg?v=428e6e8b26d1" alt="KVM vCPU 和共享区由新线程建立；主线程等待 created 通知，再继续机器初始化。cont 之后，BSP 从复位向量开始，其他处理器等待启动事件。" loading="lazy">
   </div>
-  <figcaption>KVM vCPU 和共享区由新线程建立；主线程等待 created 通知，再继续机器初始化。cont 之后，BSP 从复位向量开始，其他处理器等待启动事件。 <a href="../assets/qemu-startup-vcpu.svg?v=773f22046b09" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>KVM vCPU 和共享区由新线程建立；主线程等待 created 通知，再继续机器初始化。cont 之后，BSP 从复位向量开始，其他处理器等待启动事件。 <a href="../assets/qemu-startup-vcpu.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
   accTitle: vCPU 创建握手与首次执行
   accDescr: 主线程创建 CPU 对象并等待 vCPU 线程建立内核接口。机器初始化映射 BIOS ROM，复位状态经 KVM_SET_REGS 与 KVM_SET_SREGS 同步；cont 后 vCPU 宿主线程进入 KVM_RUN，物理 CPU 经 VM-entry 执行 Guest。BSP 在 0xfffffff0 取出固件远跳转，AP 等待 INIT 和 SIPI。
@@ -249,6 +249,7 @@ ROM 文件偏移           = 0xfffffff0 - 0xfffc0000 = 0x3fff0
 <section id="guest-boot" class="mechanism-section">
   <h2><span class="mechanism-heading-number">七、</span>同一个 vCPU：固件 → 内核 → 用户态</h2>
   <p>以下继续跟踪 BSP 的代码执行。QEMU 提供硬件模型与磁盘 I/O，装载下一阶段并改变 Guest 指令指针的工作，由正在执行的固件、引导程序或 Guest 内核完成；QEMU 不会在每个阶段重新创建 vCPU 或替它调用下一个 C 入口。</p>
+  <p>其他 AP 先参与固件的处理器初始化，再由 Linux 的 SMP 启动流程上线。BSP/AP 的完整交接、跨核协作与应用并行见<a href="multi-vcpu-coordination.html">多 vCPU 协同</a>。</p>
   <table><thead><tr><th scope="col">阶段</th><th scope="col">代码从哪里来</th><th scope="col">怎样交给下一阶段</th></tr></thead><tbody>
     <tr><td>SeaBIOS</td><td>QEMU 已映射的 BIOS ROM，后续可使用 RAM 工作区</td><td>初始化平台、枚举 PCI；按 bootindex 选择系统盘，用固件自己的 virtio-blk 驱动读取引导扇区。</td></tr>
     <tr><td>磁盘引导程序</td><td>传统 BIOS 硬盘启动把首个引导扇区读到 Guest RAM <code>0x7c00</code>，再跳转执行；后续阶段继续从磁盘装载</td><td>例如 GRUB 装入 Linux bzImage、initramfs 与命令行，准备 boot_params，再按 x86 启动协议跳入内核入口。bootindex 不指定这个入口。</td></tr>
@@ -335,6 +336,6 @@ ROM 文件偏移           = 0xfffffff0 - 0xfffc0000 = 0x3fff0
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=773f22046b09" defer></script>
+<script src="../assets/mechanism-viewer.js?v=428e6e8b26d1" defer></script>
 </body>
 </html>

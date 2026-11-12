@@ -114,6 +114,7 @@ ROM 文件偏移           = 0xfffffff0 - 0xfffc0000 = 0x3fff0
 <section id="guest-boot" class="mechanism-section">
   <h2>同一个 vCPU：固件 → 内核 → 用户态</h2>
   <p>以下继续跟踪 BSP 的代码执行。QEMU 提供硬件模型与磁盘 I/O，装载下一阶段并改变 Guest 指令指针的工作，由正在执行的固件、引导程序或 Guest 内核完成；QEMU 不会在每个阶段重新创建 vCPU 或替它调用下一个 C 入口。</p>
+  <p>其他 AP 先参与固件的处理器初始化，再由 Linux 的 SMP 启动流程上线。BSP/AP 的完整交接、跨核协作与应用并行见<a href="multi-vcpu-coordination.html">多 vCPU 协同</a>。</p>
   <table><thead><tr><th scope="col">阶段</th><th scope="col">代码从哪里来</th><th scope="col">怎样交给下一阶段</th></tr></thead><tbody>
     <tr><td>SeaBIOS</td><td>QEMU 已映射的 BIOS ROM，后续可使用 RAM 工作区</td><td>初始化平台、枚举 PCI；按 bootindex 选择系统盘，用固件自己的 virtio-blk 驱动读取引导扇区。</td></tr>
     <tr><td>磁盘引导程序</td><td>传统 BIOS 硬盘启动把首个引导扇区读到 Guest RAM <code>0x7c00</code>，再跳转执行；后续阶段继续从磁盘装载</td><td>例如 GRUB 装入 Linux bzImage、initramfs 与命令行，准备 boot_params，再按 x86 启动协议跳入内核入口。bootindex 不指定这个入口。</td></tr>

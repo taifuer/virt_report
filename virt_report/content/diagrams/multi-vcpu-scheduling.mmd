@@ -1,0 +1,23 @@
+flowchart TB
+  accTitle: Guest 任务与宿主 vCPU 线程的双层调度
+  accDescr: 示例时刻，4 个 Guest 工作线程分别由 vCPU 0 至 3 承载，对应 4 个 QEMU 宿主线程。假设此刻可提供 2 个宿主逻辑 CPU，T0 与 T1 正在运行，T2 与 T3 等待后续时间片。Guest 任务可以迁移到其他 vCPU，宿主线程也可以在亲和性允许的 CPU 间迁移；图中箭头不表示永久绑定。
+  subgraph G[Guest 调度器：选择任务与 vCPU]
+    direction LR
+    W0[工作线程 W0] --> V0[vCPU 0]
+    W1[工作线程 W1] --> V1[vCPU 1]
+    W2[工作线程 W2] --> V2[vCPU 2]
+    W3[工作线程 W3] --> V3[vCPU 3]
+  end
+  subgraph H[Host 调度器：选择宿主线程与逻辑 CPU]
+    direction LR
+    T0[QEMU 线程 T0] --> P0[宿主逻辑 CPU A]
+    T1[QEMU 线程 T1] --> P1[宿主逻辑 CPU B]
+    T2[QEMU 线程 T2] -. 等待后续时间片 .-> P0
+    T3[QEMU 线程 T3] -. 等待后续时间片 .-> P1
+  end
+  V0 -->|对应执行线程| T0
+  V1 -->|对应执行线程| T1
+  V2 -->|对应执行线程| T2
+  V3 -->|对应执行线程| T3
+  classDef waiting fill:#f4f3eb,stroke:#b1a587,color:#544d3d
+  class T2,T3 waiting

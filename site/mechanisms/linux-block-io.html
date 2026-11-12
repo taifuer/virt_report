@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=773f22046b09">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=773f22046b09">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=428e6e8b26d1">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=428e6e8b26d1">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -81,9 +81,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看请求结构不等于数据缓冲区" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="请求结构不等于数据缓冲区">
-    <img src="../assets/linux-block-buffers.svg?v=773f22046b09" alt="粗实线是普通缓存读取的数据移动，虚线是控制信息与引用。bio 和 request 描述工作，并不各自保存一份完整文件数据。" loading="lazy">
+    <img src="../assets/linux-block-buffers.svg?v=428e6e8b26d1" alt="粗实线是普通缓存读取的数据移动，虚线是控制信息与引用。bio 和 request 描述工作，并不各自保存一份完整文件数据。" loading="lazy">
   </div>
-  <figcaption>粗实线是普通缓存读取的数据移动，虚线是控制信息与引用。bio 和 request 描述工作，并不各自保存一份完整文件数据。 <a href="../assets/linux-block-buffers.svg?v=773f22046b09" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>粗实线是普通缓存读取的数据移动，虚线是控制信息与引用。bio 和 request 描述工作，并不各自保存一份完整文件数据。 <a href="../assets/linux-block-buffers.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 缓存读取中数据与请求描述分开保存
     accDescr: 存储设备将文件数据 DMA 到页缓存，再由 CPU 复制到用户缓冲区。bio 引用页缓存中的内存片段，request 与 tag 组织设备请求；它们是控制信息，不是文件数据副本。
@@ -104,9 +104,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看缓存未命中后的读取与完成" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="缓存未命中后的读取与完成">
-    <img src="../assets/linux-block-completion.svg?v=773f22046b09" alt="图中抽象一个读取路径，不表示 read、bio 和 request 一一对应；完成状态先更新，等待者被调度后才返回。" loading="lazy">
+    <img src="../assets/linux-block-completion.svg?v=428e6e8b26d1" alt="图中抽象一个读取路径，不表示 read、bio 和 request 一一对应；完成状态先更新，等待者被调度后才返回。" loading="lazy">
   </div>
-  <figcaption>图中抽象一个读取路径，不表示 read、bio 和 request 一一对应；完成状态先更新，等待者被调度后才返回。 <a href="../assets/linux-block-completion.svg?v=773f22046b09" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>图中抽象一个读取路径，不表示 read、bio 和 request 一一对应；完成状态先更新，等待者被调度后才返回。 <a href="../assets/linux-block-completion.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 缓冲读取未命中时的完成与唤醒
     accDescr: 文件读取在页缓存未命中时，经文件系统和块层提交设备请求。设备完成后内核更新页与 I/O 状态、唤醒等待线程，线程被调度后复制数据并返回；图不承诺系统调用与块请求一一对应。
@@ -162,9 +162,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看write 返回、设备完成与持久化完成" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="write 返回、设备完成与持久化完成">
-    <img src="../assets/linux-write-boundaries.svg?v=773f22046b09" alt="固定设备有易失写缓存，以数据写入后再 FLUSH 为示例。实际 fsync 还受文件系统日志、元数据、错误及设备能力影响，不一定照此生成两条命令。" loading="lazy">
+    <img src="../assets/linux-write-boundaries.svg?v=428e6e8b26d1" alt="固定设备有易失写缓存，以数据写入后再 FLUSH 为示例。实际 fsync 还受文件系统日志、元数据、错误及设备能力影响，不一定照此生成两条命令。" loading="lazy">
   </div>
-  <figcaption>固定设备有易失写缓存，以数据写入后再 FLUSH 为示例。实际 fsync 还受文件系统日志、元数据、错误及设备能力影响，不一定照此生成两条命令。 <a href="../assets/linux-write-boundaries.svg?v=773f22046b09" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>固定设备有易失写缓存，以数据写入后再 FLUSH 为示例。实际 fsync 还受文件系统日志、元数据、错误及设备能力影响，不一定照此生成两条命令。 <a href="../assets/linux-write-boundaries.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 普通缓存写、设备完成与持久化的不同边界
     accDescr: 简化示例中普通 write 将内容复制到页缓存便返回；随后同步路径发起数据写入，设备普通完成可能只到易失缓存，再经 FLUSH 确认非易失存储后结束同步。实际文件系统还需处理元数据、日志和错误，可能使用 FUA 等不同命令组合。
@@ -213,6 +213,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=773f22046b09" defer></script>
+<script src="../assets/mechanism-viewer.js?v=428e6e8b26d1" defer></script>
 </body>
 </html>

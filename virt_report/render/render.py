@@ -48,6 +48,7 @@ MECHANISM_DIAGRAM_NAMES = (
     "libvirt-rpc-framing", "libvirt-rpc-dispatch",
     "qom-types-objects", "qom-device-lifecycle",
     "qemu-startup-phases", "qemu-startup-vcpu",
+    "multi-vcpu-boot", "multi-vcpu-scheduling",
     "libvirt-domain-start", "libvirt-domain-state",
     "cpr-state-ownership", "cpr-transfer-sequence",
     "orthus-dual-kvm", "orthus-vm-grafting", "orthus-device-handover",
