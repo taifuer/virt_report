@@ -47,7 +47,7 @@
     clear.hidden = !input.value;
     const examples = form.querySelector('.search-examples');
     if (examples) examples.hidden = !!result.query;
-    for (const kind of ['articles', 'demos', 'papers', 'versions']) {
+    for (const kind of ['articles', 'papers', 'versions']) {
       const section = root.querySelector(`[data-editorial-kind="${kind}"]`);
       section.querySelector('[data-editorial-count]').textContent = String(result[kind].length);
       const list = section.querySelector('[data-editorial-list]');
@@ -72,7 +72,7 @@
         (more || list).append(card);
       }
     }
-    status.textContent = result.error || (result.query ? `原理讲解 ${result.articles.length} 篇，交互演示 ${result.demos.length} 篇，论文 ${result.papers.length} 篇，版本与规范 ${result.versions.length} 条。` : '');
+    status.textContent = result.error || (result.query ? `原理讲解 ${result.articles.length} 篇，论文 ${result.papers.length} 篇，版本与规范 ${result.versions.length} 条。` : '');
   }
   function fromURL() {
     input.value = new URL(location.href).searchParams.get('q') || '';

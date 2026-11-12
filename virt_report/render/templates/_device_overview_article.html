@@ -34,7 +34,7 @@
   <p>两个环循环使用数组槽位，报文本身保存在描述符指向的缓冲区。写好内容后才能发布进度，看到完成后才能复用缓冲区，这两条规则决定了队列的正确性。发送链让设备读取数据；接收链则预先提供可写空间。kick 与中断用于提示另一方检查队列，多项请求可以共享一次通知。</p>
   <span id="queue-part-1" class="mechanism-topic-alias" aria-hidden="true"></span>
   <p>队列通用规则由初始化与队列文章集中展开。下面沿处理位置比较后端；网络和磁盘演示则从应用调用跟踪到完成交付，可用于对照这些组件在一次实际请求中的分工。</p>
-  <p>双方必须先确认共同支持的特性和队列格式，再配置共享区域并开始处理。字段、索引回绕与链 <code>0 → 2</code> 的变化见<a href="qemu-network-tx.html#virtqueue">发送队列交互图</a>，协商和启用顺序见<a href="virtio-device-initialization.html">virtio 设备初始化</a>。客户机接口确定后，可以单独改变处理 P1 的后端。</p>
+  <p>双方必须先确认共同支持的特性和队列格式，再配置共享区域并开始处理。字段、索引回绕与链 <code>0 → 2</code> 的变化见<a href="network-io.html#virtqueue">发送队列交互图</a>，协商和启用顺序见<a href="virtio-device-initialization.html">virtio 设备初始化</a>。客户机接口确定后，可以单独改变处理 P1 的后端。</p>
 </section>
 <section id="backends" class="mechanism-section">
   <h2>保留 virtio 接口，改变队列处理位置</h2>
@@ -63,24 +63,6 @@
     <tr><td>减少软件数据处理</td><td>VFIO 分配或 vDPA 卸载</td><td>硬件能力、隔离粒度与状态迁移支持</td></tr>
   </tbody></table>
   <p>先固定报文大小、队列数和 CPU 预算，再比较吞吐、尾延迟、丢包与 CPU 占用。随后核对启动、热插拔、迁移和故障恢复：硬件能发送报文，不代表它能导出完整设备状态。把请求、缓冲区和状态所有者逐项画出来，才容易发现省下了哪次交接，又新增了哪项协调。</p>
-</section>
-<section id="reading" class="mechanism-section">
-  <h2>沿队列与后端继续阅读</h2>
-  <ul>
-    <li><a href="virtio-gpu.html">virtio-gpu：资源、渲染与编解码</a>：二维更新、三维渲染和视频命令的资源交接与同步。</li>
-    <li><a href="virtio-device-initialization.html">Virtio 协议演进与设备初始化</a>：从早期接口到特性协商、队列启用，区分失败与复位。</li>
-    <li><a href="qemu-network-tx.html">e1000 与 virtio-net 发包路径</a>：交互查看描述符、环索引与缓冲区。</li>
-    <li><a href="virtio-net-rx.html">virtio-net 接收与 NAPI</a>：可写缓冲区、完成归还与预算轮询。</li>
-    <li><a href="packed-virtqueue.html">Split 与 Packed virtqueue</a>：用同一组请求对照两种布局的发布、完成、回收与通知。</li>
-    <li><a href="vhost-vdpa.html">vhost-vDPA</a>：硬件数据路径、DMA 映射与迁移时的影子队列。</li>
-    <li><a href="qemu-vhost-net.html">vhost-net 与 vhost-user</a>：队列消费者、控制通道与通知绑定。</li>
-    <li><a href="dpdk-vhost-user-net.html">DPDK vhost-user 报文收发</a>：virtqueue、mbuf 与物理网卡发送环。</li>
-    <li><a href="spdk-vhost-user-blk.html">SPDK vhost-user-blk</a>、<a href="qemu-virtio-blk.html">QEMU virtio-blk</a>：存储请求与完成语义。</li>
-    <li><a href="virtio-blk-read.html">磁盘 I/O 读写过程</a>：交互观察 Guest、KVM、QEMU 与后端的交接、共享队列和中断注入。</li>
-    <li><a href="qemu-vfio-dma.html">VFIO 与 DMA 地址转换</a>：直通设备访问内存及隔离边界；继续阅读 <a href="iommu-dma.html">IOMMU 的转换与缓存失效</a>、<a href="iommufd.html">IOMMUFD 的设备与地址空间管理</a>。</li>
-    <li><a href="qemu-viommu.html">vIOMMU：客户机 DMA 映射与失效同步</a>：客户机管理 DMA 地址后，页表、宿主映射与转换缓存的同步。</li>
-    <li><a href="virtio-gpu.html">virtio-gpu 的二维资源与画面更新</a>：从客户机像素缓冲区到宿主图像、scanout 和显示更新，再区分三维加速接口。</li>
-  </ul>
 </section>
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>

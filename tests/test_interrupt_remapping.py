@@ -160,8 +160,7 @@ def test_posted_scheduling_is_not_taught_as_an_automatic_remapping_fallback():
     assert "关闭 APICv 只是本例条件" in " ".join(scene("vtd-remapped")["assumptions"])
 
 
-@pytest.mark.parametrize("template", ["_interrupt_delivery_article.html",
-                                    "_interrupt_overview_article.html"])
+@pytest.mark.parametrize("template", ["_interrupt_overview_article.html"])
 def test_related_articles_distinguish_msix_route_configuration_and_scheduling(template):
     content = (PACKAGE / "render" / "templates" / template).read_text()
     for concept in ("都使用 MSI-X", "NVMe 控制器或 GPU", "单一 vCPU",

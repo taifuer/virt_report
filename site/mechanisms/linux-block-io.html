@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=428e6e8b26d1">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=428e6e8b26d1">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -43,17 +43,20 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="linux-kernel-evolution.html">Linux 内核基础</a></div>
+    <div class="mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true">/</span><a href="../mechanisms.html#linux-foundations">Linux 内核</a></div>
     <h1>Linux 存储 I/O：页缓存、块请求与持久化</h1>
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2><ol id="mechanism-toc-links"><li><a href="#preface">一、应用 I/O 与设备 I/O</a></li><li><a href="#history">二、从机械磁盘调度到多队列块层</a></li><li><a href="#structures">三、页缓存、bio 与 request</a></li><li><a href="#read">四、一次读请求及其完成</a><ol><li><a href="#read-part-1">1. 追踪同一份 4 KiB 数据</a></li><li><a href="#read-part-2">2. 直接 I/O 与用户缓冲区</a></li></ol></li><li><a href="#writes">五、写入完成与持久化</a><ol><li><a href="#writes-part-1">脏页写回与完成处理</a></li></ol></li><li><a href="#queues">六、队列深度、合并与背压</a></li><li><a href="#observe">七、只读观察与虚拟磁盘</a></li><li><a href="#sources">八、源码与延伸阅读</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、应用 I/O 与设备 I/O</a></li><li><a href="#history">二、从机械磁盘调度到多队列块层</a></li><li><a href="#structures">三、页缓存、bio 与 request</a></li><li><a href="#read">四、一次读请求及其完成</a><ol><li><a href="#read-part-1">1. 追踪同一份 4 KiB 数据</a></li><li><a href="#read-part-2">2. 直接 I/O 与用户缓冲区</a></li></ol></li><li><a href="#writes">五、写入完成与持久化</a><ol><li><a href="#writes-part-1">脏页写回与完成处理</a></li></ol></li><li><a href="#queues">六、队列深度、合并与背压</a></li><li><a href="#observe">七、只读观察与虚拟磁盘</a></li><li><a href="#sources">八、源码与参考资料</a></li></ol>
+    </nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>应用 I/O 与设备 I/O</h2>
   <p>普通文件 I/O 通过 VFS、文件系统、页缓存和块层衔接应用与设备。缓存命中的读取可以直接返回；缓存缺失时，文件系统把文件区间转换成设备请求。一个系统调用可能对应零个、一个或多个设备命令。</p>
   <p>完成状态随层次而异：读取返回后应用可以使用数据，缓存写入返回后内核负责后续回写，设备请求结束后驱动可以回收资源。持久化还需兑现文件系统与设备的同步约定。同步或异步描述等待与交付方式，并不自动决定持久化强度。</p>
-<p class="mechanism-baselines">源码版本：<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
+<p class="mechanism-baselines">源码版本：Linux 6.18。</p></section>
 <section id="history" class="mechanism-section">
   <h2><span class="mechanism-heading-number">二、</span>从机械磁盘调度到多队列块层</h2>
   <p>块层的设计目标随设备和 CPU 改变。机械盘时代，寻道和旋转等待很贵，合并相邻请求、调整访问顺序往往收益明显；低延迟 SSD 和 NVMe 则使软件锁、跨核缓存争用与每次提交的 CPU 开销更显眼。设备速度提高后，沿用一条高度共享的软件队列容易先把 CPU 路径变成瓶颈。</p>
@@ -63,7 +66,7 @@
     <tr><td>NVMe 等多队列设备</td><td>利用多个提交／完成队列并行处理</td><td>队列与 CPU/NUMA 的亲和性、tag 数量、完成回收和背压</td></tr>
     <tr><td>应用接口：同步调用、原生 AIO、io_uring</td><td>减少等待占用与大量小 I/O 的提交／完成开销</td><td>这是应用接口的另一条演变线，不替代文件系统、页缓存或 blk-mq</td></tr>
   </tbody></table>
-  <p><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/block/blk-mq.rst">blk-mq 设计文档</a>从机械盘和 SSD 的差异解释了多队列的动机。Jens Axboe 的 <a href="https://kernel.dk/io_uring.pdf">io_uring 原始设计说明</a>讨论应用与内核之间的共享提交／完成环。应用可通过 io_uring 提交请求，再由文件系统和块层完成相应 I/O。</p>
+  <p>blk-mq 设计文档从机械盘和 SSD 的差异解释了多队列的动机。Jens Axboe 的 io_uring 原始设计说明讨论应用与内核之间的共享提交／完成环。应用可通过 io_uring 提交请求，再由文件系统和块层完成相应 I/O。</p>
 </section>
 <section id="structures" class="mechanism-section">
   <h2><span class="mechanism-heading-number">三、</span>页缓存、bio 与 request</h2>
@@ -81,9 +84,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看请求结构不等于数据缓冲区" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="请求结构不等于数据缓冲区">
-    <img src="../assets/linux-block-buffers.svg?v=428e6e8b26d1" alt="粗实线是普通缓存读取的数据移动，虚线是控制信息与引用。bio 和 request 描述工作，并不各自保存一份完整文件数据。" loading="lazy">
+    <img src="../assets/linux-block-buffers.svg?v=e8d4285d5a39" alt="粗实线是普通缓存读取的数据移动，虚线是控制信息与引用。bio 和 request 描述工作，并不各自保存一份完整文件数据。" loading="lazy">
   </div>
-  <figcaption>粗实线是普通缓存读取的数据移动，虚线是控制信息与引用。bio 和 request 描述工作，并不各自保存一份完整文件数据。 <a href="../assets/linux-block-buffers.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>粗实线是普通缓存读取的数据移动，虚线是控制信息与引用。bio 和 request 描述工作，并不各自保存一份完整文件数据。 <a href="../assets/linux-block-buffers.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 缓存读取中数据与请求描述分开保存
     accDescr: 存储设备将文件数据 DMA 到页缓存，再由 CPU 复制到用户缓冲区。bio 引用页缓存中的内存片段，request 与 tag 组织设备请求；它们是控制信息，不是文件数据副本。
@@ -104,9 +107,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看缓存未命中后的读取与完成" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="缓存未命中后的读取与完成">
-    <img src="../assets/linux-block-completion.svg?v=428e6e8b26d1" alt="图中抽象一个读取路径，不表示 read、bio 和 request 一一对应；完成状态先更新，等待者被调度后才返回。" loading="lazy">
+    <img src="../assets/linux-block-completion.svg?v=e8d4285d5a39" alt="图中抽象一个读取路径，不表示 read、bio 和 request 一一对应；完成状态先更新，等待者被调度后才返回。" loading="lazy">
   </div>
-  <figcaption>图中抽象一个读取路径，不表示 read、bio 和 request 一一对应；完成状态先更新，等待者被调度后才返回。 <a href="../assets/linux-block-completion.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>图中抽象一个读取路径，不表示 read、bio 和 request 一一对应；完成状态先更新，等待者被调度后才返回。 <a href="../assets/linux-block-completion.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 缓冲读取未命中时的完成与唤醒
     accDescr: 文件读取在页缓存未命中时，经文件系统和块层提交设备请求。设备完成后内核更新页与 I/O 状态、唤醒等待线程，线程被调度后复制数据并返回；图不承诺系统调用与块请求一一对应。
@@ -128,9 +131,9 @@
     <li>块层组织 bio/request，驱动准备 DMA 与设备命令。需要等待的线程可睡眠；异步接口则通过相应完成队列交付结果。</li>
     <li>设备完成后，驱动通过中断或轮询取回状态，块层结束请求并调用上层完成处理。页变为可读或记录错误，等待者被唤醒，之后才继续复制和返回。</li>
   </ol>
-  <p>通用读取路径可对照 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/mm/filemap.c#L2899">generic_file_read_iter()</a> 的直接／缓存读取选择、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/block/blk-mq.c#L3120">blk_mq_submit_bio()</a> 的提交入口，以及 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/block/blk-mq.c#L1158">blk_mq_end_request()</a> 的完成与释放；具体文件系统也可实现自己的读取入口。</p>
+  <p>通用读取路径可对照 generic_file_read_iter() 的直接／缓存读取选择、blk_mq_submit_bio() 的提交入口，以及 blk_mq_end_request() 的完成与释放；具体文件系统也可实现自己的读取入口。</p>
   <h3 id="read-part-1"><span class="mechanism-heading-number">1. </span>追踪同一份 4 KiB 数据</h3>
-  <p>普通 <code>read()</code> 使用并推进打开文件对象中的偏移，<code>pread()</code> 显式指定本次偏移，保持该共享偏移不变。多个线程或 fork 后的进程可以引用同一个打开文件对象；用 pread 分配不同读取区间，可以减少对共享偏移的依赖。文件内容本身的并发修改仍需由应用协议协调，见 <a href="https://man7.org/linux/man-pages/man2/pread.2.html">pread(2)</a>。</p>
+  <p>普通 <code>read()</code> 使用并推进打开文件对象中的偏移，<code>pread()</code> 显式指定本次偏移，保持该共享偏移不变。多个线程或 fork 后的进程可以引用同一个打开文件对象；用 pread 分配不同读取区间，可以减少对共享偏移的依赖。文件内容本身的并发修改仍需由应用协议协调，见 pread(2)。</p>
   <p>假设应用用 <code>pread(fd, buf, 4096, 4096)</code> 读取文件的第二个 4 KiB 区间；文件已有内容，元数据已在内存，本次数据未命中缓存。为便于追踪，固定 4 KiB 基页、单个文件系统块，不展开预读、压缩和多设备映射：</p>
   <table><thead><tr><th>位置</th><th>本层如何标识请求</th><th>数据与状态</th></tr></thead><tbody>
     <tr><td>VFS / 文件系统</td><td>打开的文件与字节偏移 4096</td><td>找到文件对应的页缓存位置，准备尚未有效的数据页</td></tr>
@@ -141,7 +144,7 @@
   </tbody></table>
   <p>成功读取的字节数可以少于请求长度，例如遇到文件结尾。应用须检查实际返回值，按需求处理剩余区间和错误；块请求已经结束也可能携带失败状态。异步接口把相应结果放入完成记录，仍须检查长度或错误码。</p>
   <h3 id="read-part-2"><span class="mechanism-heading-number">2. </span>直接 I/O 与用户缓冲区</h3>
-  <p>Direct I/O 通常绕过文件页缓存，把用户页纳入 I/O 的引用与固定管理，再由驱动建立设备需要的 DMA 映射。对齐要求、文件系统特性和设备能力决定具体路径，部分情况也可能回退或使用中间缓冲区。iomap 的处理见 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/filesystems/iomap/operations.rst">Direct I/O 接口说明</a>。</p>
+  <p>Direct I/O 通常绕过文件页缓存，把用户页纳入 I/O 的引用与固定管理，再由驱动建立设备需要的 DMA 映射。对齐要求、文件系统特性和设备能力决定具体路径，部分情况也可能回退或使用中间缓冲区。iomap 的处理见 Direct I/O 接口说明。</p>
   <p>异步直接读取尚未完成时，应用必须保持目标缓冲区有效，并按接口约定等待结果后再使用或复用它。页被固定保证的是相应物理页的生命期，应用与设备仍需遵守数据访问顺序。完成路径逐步交付结果、释放页引用及设备映射，并归还请求槽位；线程在这段时间可以睡眠或处理其他工作。</p>
 </section>
 <section id="writes" class="mechanism-section">
@@ -154,7 +157,7 @@
   <p>写入同样需要完成处理：传播设备错误、结束上层请求、更新回写状态、释放 tag 和缓冲区，并让等待者继续。通知可以被合并或由轮询替代，但不能凭空省略请求完成状态。设备支持的 FLUSH/FUA 用于明确缓存与持久化边界，不能把它们和普通写完成混为一谈。</p>
   <h3 id="writes-part-1">脏页写回与完成处理</h3>
   <p>一次普通 write 可以先把新内容复制到页缓存并标脏，应用随即继续。后台回写或同步调用把脏数据组成设备请求，并跟踪正在写回的状态。完成回调结束这轮写回、记录错误并唤醒相关等待者；若页面在写回期间又被修改，还需要保留再次回写的工作。否则内核既无法安全回收页面，也无法判断 fsync 应该等待什么。</p>
-  <p>持久化还跨越设备的易失缓存。<code>REQ_PREFLUSH</code> 要求相关设备缓存先刷出，再开始带该标志的数据 I/O；<code>REQ_FUA</code> 要求这次写的数据达到非易失存储后才报告完成。文件系统据此安排数据、日志和元数据的先后关系，具体组合由文件系统和设备能力决定，见 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/block/writeback_cache_control.rst">块层缓存控制约定</a>。</p>
+  <p>持久化还跨越设备的易失缓存。<code>REQ_PREFLUSH</code> 要求相关设备缓存先刷出，再开始带该标志的数据 I/O；<code>REQ_FUA</code> 要求这次写的数据达到非易失存储后才报告完成。文件系统据此安排数据、日志和元数据的先后关系，具体组合由文件系统和设备能力决定，见 块层缓存控制约定。</p>
   <p><code>O_DIRECT</code> 主要影响页缓存路径，不自动等于持久化；异步提交也不等于“不需要完成”。在虚机中，Guest 的 virtio-blk 写请求、QEMU 后端 I/O 和物理存储又是不同层。后端必须兑现 Guest 可见的写缓存与 flush 约定，并通过底层支持的同步机制落实；不能据此推断 virtio-blk 直接暴露了全部物理设备命令。</p>
   <figure class="mechanism-diagram" data-diagram="linux-write-boundaries" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
@@ -162,9 +165,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看write 返回、设备完成与持久化完成" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="write 返回、设备完成与持久化完成">
-    <img src="../assets/linux-write-boundaries.svg?v=428e6e8b26d1" alt="固定设备有易失写缓存，以数据写入后再 FLUSH 为示例。实际 fsync 还受文件系统日志、元数据、错误及设备能力影响，不一定照此生成两条命令。" loading="lazy">
+    <img src="../assets/linux-write-boundaries.svg?v=e8d4285d5a39" alt="固定设备有易失写缓存，以数据写入后再 FLUSH 为示例。实际 fsync 还受文件系统日志、元数据、错误及设备能力影响，不一定照此生成两条命令。" loading="lazy">
   </div>
-  <figcaption>固定设备有易失写缓存，以数据写入后再 FLUSH 为示例。实际 fsync 还受文件系统日志、元数据、错误及设备能力影响，不一定照此生成两条命令。 <a href="../assets/linux-write-boundaries.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>固定设备有易失写缓存，以数据写入后再 FLUSH 为示例。实际 fsync 还受文件系统日志、元数据、错误及设备能力影响，不一定照此生成两条命令。 <a href="../assets/linux-write-boundaries.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 普通缓存写、设备完成与持久化的不同边界
     accDescr: 简化示例中普通 write 将内容复制到页缓存便返回；随后同步路径发起数据写入，设备普通完成可能只到易失缓存，再经 FLUSH 确认非易失存储后结束同步。实际文件系统还需处理元数据、日志和错误，可能使用 FUA 等不同命令组合。
@@ -196,23 +199,22 @@
   <h2><span class="mechanism-heading-number">七、</span>只读观察与虚拟磁盘</h2>
   <p><code>/proc/PID/io</code> 区分部分进程级 I/O 计数，<code>/proc/diskstats</code> 提供块设备统计。它们的统计层次不同，预读、缓存、合并和文件系统元数据都会影响对应关系；应看同一时间窗口的增量，而不是直接拿累计字节相除得出命中率。</p>
   <p>还可只读查看 <code>/sys/block/设备名/queue/</code> 下存在的 <code>scheduler</code>、<code>nr_requests</code>、<code>logical_block_size</code> 等属性。它们分别描述调度选择、部分请求分配限制与块大小，不能用一个字段代替所有层的队列深度；不同设备驱动暴露的属性也不完全相同。</p>
-  <p>虚机应分别观察 Guest、QEMU 和宿主设备：Guest 页缓存命中时没有新的 virtio 请求，宿主页缓存命中时也可能没有物理读。通过 <a href="virtio-blk-read.html">磁盘 I/O 演示</a> 可继续观察 Descriptor Table、Buffer、Available Ring、Used Ring 和完成通知。</p>
+  <p>虚机应分别观察 Guest、QEMU 和宿主设备：Guest 页缓存命中时没有新的 virtio 请求，宿主页缓存命中时也可能没有物理读。通过 <a href="qemu-virtio-blk.html">磁盘 I/O 演示</a> 可继续观察 Descriptor Table、Buffer、Available Ring、Used Ring 和完成通知。</p>
 </section>
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">八、</span>源码与延伸阅读</h2>
+  <h2><span class="mechanism-heading-number">八、</span>源码与参考资料</h2>
   <ul>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/block/blk-mq.rst">blk-mq 结构与完成路径</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/block/writeback_cache_control.rst">块设备写缓存、FLUSH 与 FUA</a>。</li>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/block/blk-core.c#L911">submit_bio()</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/block/blk-mq.c#L1158">请求完成</a>；接口语义可对照 <a href="https://man7.org/linux/man-pages/man2/fsync.2.html">fsync(2)</a>。</li>
-    <li>继续阅读 <a href="linux-memory.html">页缓存与内存回收背景</a>、<a href="qemu-virtio-blk.html">QEMU virtio-blk 后端</a>、<a href="qemu-aio-iothread.html">异步 I/O 与 IOThread</a>。</li>
   </ul>
 </section></div>
   </div>
-  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#linux-foundations">Linux 内核基础原理</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-11-10">2026-11-10</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
+  <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#linux-foundations">Linux 内核</a></nav>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-10">2026-11-10</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=428e6e8b26d1" defer></script>
+<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
 </body>
 </html>

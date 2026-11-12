@@ -17,14 +17,18 @@ def test_libvirt_migration_has_five_phases_and_explicit_failure_boundaries():
     for phase in ("Begin", "Prepare", "Perform", "Finish", "Confirm"):
         assert f"<td>{phase} ·" in source
     for marker in (
-        "managed direct", "p2p", "控制面", "数据面", "PERFORM3_DONE",
+        "managed direct", "p2p", "控制路径", "数据路径", "TLS",
         "qemuMigrationCookie", "qemuMigrationSrcConfirmPhase",
-        "VIR_MIGRATE_POSTCOPY_RESUME", "RPC 响应在网络中丢失",
-        "不能证明对方已停止", "持久定义", "domjobinfo demo --completed --keep-completed",
+        "Finish 的成功响应没有返回 A", "双端写同一磁盘",
+        "持久定义", "domjobinfo demo --completed --keep-completed",
     ):
         assert marker in source
     assert "4d937284669ecf180abea087d0b3ad67d9476349" in source
     assert "libvirt-migration-phases" in source
+    assert 'postcopy' not in source.lower()
+    for flag in ('--live', '--p2p', '--persistent', '--undefinesource', '--tls',
+                 '--bandwidth', '--copy-storage-all', '--copy-storage-inc'):
+        assert flag in source
 
 
 def test_cpr_example_shell_is_valid_and_uses_isolated_resources():

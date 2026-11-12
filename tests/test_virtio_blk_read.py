@@ -27,11 +27,11 @@ def clear_editorial_caches():
 
 
 def test_flow_is_allowlisted_and_matches_article_source_baselines():
-    article = mechanisms.get_article("virtio-blk-read")
+    article = mechanisms.get_article("qemu-virtio-blk")
     flow = mechanisms.get_flow(article["flow"])
-    assert article["presentation"] == "walkthrough"
-    assert article["topic"] == "block-io-walkthrough"
-    assert article["title"] == "磁盘 I/O 读写过程"
+    assert article.get("presentation") != "walkthrough"
+    assert article["topic"] == "device-virtualization"
+    assert article["title"] == "虚拟磁盘 I/O：请求处理、完成与持久化"
     assert article["baselines"] == flow["baselines"]
     assert flow["request"]["bytes"] == 4096
     assert flow["request"]["queueSize"] == 8
@@ -103,12 +103,11 @@ def test_walkthrough_embeds_safe_data_and_loads_model_before_ui_without_network(
 
     monkeypatch.setattr(socket, "create_connection", unexpected_io)
     monkeypatch.setattr(sqlite3, "connect", unexpected_io)
-    page = render.render_mechanisms_html(Config(), "virtio-blk-read")
-    assert "磁盘 I/O 读写过程 - virt-report" in page
-    assert "mechanism-article--walkthrough" in page
-    assert "mechanism-layout--walkthrough" in page
-    assert 'class="mechanism-walkthrough-nav"' in page
-    assert 'class="mechanism-toc"' not in page
+    page = render.render_mechanisms_html(Config(), "qemu-virtio-blk")
+    assert "虚拟磁盘 I/O：请求处理、完成与持久化 - virt-report" in page
+    assert 'class="mechanism-layout"' in page
+    assert 'class="mechanism-toc"' in page
+    assert '<template id="mechanism-lab-assets">' in page
     match = re.search(r'<script\b(?=[^>]*\btype="application/json")'
                       r'(?=[^>]*\bid="virtio-blk-read-data")[^>]*>(.*?)</script>', page, re.S)
     assert match is not None
@@ -129,19 +128,21 @@ def test_walkthrough_has_catalogue_and_existing_article_entry_points():
     catalogue = render.render_mechanisms_html(Config())
     assert "mechanism-walkthrough-entry" not in catalogue
     assert 'href="mechanisms/virtio-blk-read.html#walkthrough"' not in catalogue
-    assert catalogue.count('href="mechanisms/virtio-blk-read.html"') == 1
+    assert catalogue.count('href="mechanisms/qemu-virtio-blk.html"') == 1
     writing = render.render_mechanisms_html(Config(), "qemu-virtio-blk")
-    assert 'href="virtio-blk-read.html"' in writing
+    assert 'href="#walkthrough"' in writing
     spdk = render.render_mechanisms_html(Config(), "spdk-vhost-user-blk")
-    assert 'href="virtio-blk-read.html?backend=spdk-blk&amp;operation=write#walkthrough"' in spdk
+    assert 'href="qemu-virtio-blk.html?backend=spdk-blk&amp;operation=write#walkthrough"' in spdk
 
 
 def test_walkthrough_links_queue_basics_and_backend_sources():
-    page = render.render_mechanisms_html(Config(), "virtio-blk-read")
+    page = render.render_mechanisms_html(Config(), "qemu-virtio-blk")
     source_start = page.index('<section id="sources"')
     sources = page[source_start:page.index('</section>', source_start)]
-    for slug in ("virtio-device-initialization", "packed-virtqueue", "spdk-vhost-user-blk"):
-        assert f'href="{slug}.html"' in page
+    assert 'href="virtio-device-initialization.html"' in page
+    # Backend evidence is local to this article, not a generic reading-list link.
+    assert 'SPDK vhost_blk.c' in sources
+    assert 'href="packed-virtqueue.html#split-layout"' in page
     assert "缓存与持久化" in page
     assert "普通文件与写入的差异" not in page
     ids = {"local-scsi": "scsi-qemu-vq", "rbd-blk": "rbd-submit",
@@ -153,7 +154,7 @@ def test_walkthrough_links_queue_basics_and_backend_sources():
 
 
 def test_walkthrough_has_distinct_views_guest_domains_and_no_sharing_ui():
-    page = render.render_mechanisms_html(Config(), "virtio-blk-read")
+    page = render.render_mechanisms_html(Config(), "qemu-virtio-blk")
     for view, label in (("overview", "流程总览"), ("mechanism", "关键结构"), ("source", "源码路径")):
         assert re.search(rf'<button\b[^>]*data-vbr-view="{view}"[^>]*>{label}</button>', page)
     assert "data-vbr-callpaths" in page
@@ -173,7 +174,7 @@ def test_walkthrough_has_distinct_views_guest_domains_and_no_sharing_ui():
 
 
 def test_step_explanations_are_grouped_in_the_inspector_not_below_the_diagram():
-    page = render.render_mechanisms_html(Config(), "virtio-blk-read")
+    page = render.render_mechanisms_html(Config(), "qemu-virtio-blk")
     visual_start = page.index('<div class="vbr-visual">')
     inspector_start = page.index('<aside class="vbr-inspector walkthrough-inspector"')
     assert inspector_start < visual_start
@@ -189,7 +190,7 @@ def test_step_explanations_are_grouped_in_the_inspector_not_below_the_diagram():
 
 
 def test_backend_selection_is_part_of_the_playback_not_a_separate_comparison():
-    page = render.render_mechanisms_html(Config(), "virtio-blk-read")
+    page = render.render_mechanisms_html(Config(), "qemu-virtio-blk")
     assert 'id="backends"' not in page
     assert "接口与后端对照" not in page
     start = page.index('data-vbr-lab')
@@ -210,7 +211,7 @@ def test_backend_selection_is_part_of_the_playback_not_a_separate_comparison():
 
 
 def test_scenario_intro_is_one_paragraph_with_initialization_in_configuration():
-    page = render.render_mechanisms_html(Config(), "virtio-blk-read")
+    page = render.render_mechanisms_html(Config(), "qemu-virtio-blk")
     start = page.index('data-vbr-lab')
     toolbar = page.index('data-vbr-controls', start)
     intro = page[start:toolbar]
@@ -227,12 +228,12 @@ def test_scenario_intro_is_one_paragraph_with_initialization_in_configuration():
 
 
 def test_backend_catalog_is_safely_embedded_and_versioned(monkeypatch):
-    first = render.render_mechanisms_html(Config(), "virtio-blk-read")
+    first = render.render_mechanisms_html(Config(), "qemu-virtio-blk")
     catalog = copy.deepcopy(mechanisms.get_io_scenarios())
     catalog["routes"][1]["scenarios"]["read"]["summary"] = '</script><script>alert("catalog")</script>'
     monkeypatch.setattr(mechanisms, "get_io_scenarios", lambda: catalog)
     render._render_mechanism_page.cache_clear()
-    second = render.render_mechanisms_html(Config(), "virtio-blk-read")
+    second = render.render_mechanisms_html(Config(), "qemu-virtio-blk")
     assert '<script>alert("catalog")</script>' not in second
     match = re.search(r'<script id="block-io-scenarios-data" type="application/json">'
                       r'(.*?)</script>', second, re.S)
@@ -288,7 +289,7 @@ def test_embedded_flow_escapes_script_closing_tags(monkeypatch):
     flow = copy.deepcopy(mechanisms.get_flow("virtio-blk-read"))
     flow["summary"] = '</script><script>alert("injected")</script>'
     monkeypatch.setattr(mechanisms, "get_flow", lambda slug: flow)
-    page = render.render_mechanisms_html(Config(), "virtio-blk-read")
+    page = render.render_mechanisms_html(Config(), "qemu-virtio-blk")
     match = re.search(r'<script id="virtio-blk-read-data" type="application/json">'
                       r'(.*?)</script>', page, re.S)
     assert match is not None
@@ -297,7 +298,7 @@ def test_embedded_flow_escapes_script_closing_tags(monkeypatch):
 
 
 @pytest.mark.parametrize("path,marker", [
-    ("/mechanisms/virtio-blk-read.html", "磁盘 I/O 读写过程"),
+    ("/mechanisms/qemu-virtio-blk.html", "虚拟磁盘 I/O：请求处理、完成与持久化"),
     ("/assets/virtio-blk-read-model.js", "buildTrace"),
     ("/assets/virtio-blk-read.js", "VirtioBlkReadModel"),
     ("/assets/virtio-blk-read.css", "mechanism-article--walkthrough"),
@@ -319,12 +320,12 @@ def test_walkthrough_routes_work_without_database(monkeypatch, path, marker):
 
 
 def test_scene_content_changes_its_asset_version(monkeypatch):
-    first = render.render_mechanisms_html(Config(), "virtio-blk-read")
+    first = render.render_mechanisms_html(Config(), "qemu-virtio-blk")
     flow = copy.deepcopy(mechanisms.get_flow("virtio-blk-read"))
     flow["summary"] += " 更新解释。"
     monkeypatch.setattr(mechanisms, "get_flow", lambda slug: flow)
     render._render_mechanism_page.cache_clear()
-    second = render.render_mechanisms_html(Config(), "virtio-blk-read")
+    second = render.render_mechanisms_html(Config(), "qemu-virtio-blk")
     pattern = r'assets/virtio-blk-read\.js\?v=([0-9a-f]+)'
     assert re.search(pattern, first).group(1) != re.search(pattern, second).group(1)
 
@@ -335,7 +336,7 @@ def test_walkthrough_static_export_preserves_reports_and_embeds_scene(tmp_path):
     preserved.parent.mkdir()
     preserved.write_text("existing report", encoding="utf-8")
     exported = render.render_mechanisms(config)
-    target = tmp_path / "mechanisms" / "virtio-blk-read.html"
+    target = tmp_path / "mechanisms" / "qemu-virtio-blk.html"
     assert target in exported
     assert 'id="virtio-blk-read-data"' in target.read_text(encoding="utf-8")
     for name in ("virtio-blk-read.css", "virtio-blk-read-model.js", "virtio-blk-read.js"):

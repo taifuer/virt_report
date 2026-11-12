@@ -1,4 +1,4 @@
-/* Local-only checks: collapsible mobile article TOC and opt-in backend alignment. */
+/* Local-only checks: article contents and opt-in backend alignment. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -33,8 +33,6 @@ async function noOverflow(page) {
         await toggle.focus(); await page.keyboard.press('Enter');
         assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
         assert(await toc.isVisible());
-        await toc.locator('a[href="#faults"]').click();
-        assert.equal(new URL(page.url()).hash, '#faults');
         await toggle.focus(); await page.keyboard.press('Space');
         assert(await toc.isHidden());
         await page.setViewportSize({width: 1440, height: 900});
@@ -44,6 +42,10 @@ async function noOverflow(page) {
         await toc.waitFor({state: 'hidden'});
         assert(await toc.isHidden());
       }
+      if (width <= 960) { await toggle.focus(); await page.keyboard.press('Enter'); }
+      await toc.locator('a[href="#faults"]').click();
+      assert.equal(new URL(page.url()).hash, '#faults');
+      if (width <= 960) { await toggle.click(); assert(await toc.isHidden()); }
       await page.evaluate(() => scrollTo(0, 0));
       await noOverflow(page);
       await page.screenshot({path: path.join(shots, `article-toc-${width}.png`)});
@@ -89,8 +91,8 @@ async function noOverflow(page) {
     await plain.route('**/*', localOnly);
     const plainPage = await plain.newPage();
     await plainPage.goto(`${base}/mechanisms/linux-memory.html`);
+    assert(await plainPage.locator('#mechanism-toc-links').isVisible(), 'no-JS retains the article contents');
     assert(await plainPage.locator('[data-toc-toggle]').isHidden());
-    assert(await plainPage.locator('#mechanism-toc-links').isVisible(), 'no-JS retains usable navigation');
     await noOverflow(plainPage);
     await plain.close();
     console.log('PASS review improvements: mobile/desktop/no-JS TOC, keyboard access, backend phase alignment, direction reset and URL state');

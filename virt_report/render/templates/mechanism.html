@@ -5,35 +5,29 @@
 {% block nav_mechanisms %}on{% endblock %}
 {% block head_extra %}<link rel="stylesheet" href="{{ root }}assets/mechanisms.css?v={{ mechanism_asset_version }}">
 <link rel="stylesheet" href="{{ root }}assets/mechanism-viewer.css?v={{ mechanism_asset_version }}">
-{% if article.stylesheet %}<link rel="stylesheet" href="{{ root }}assets/{{ article.stylesheet }}?v={{ mechanism_asset_version }}">{% endif %}
-{% if article.execution_demo and article.stylesheet != 'execution-demo.css' %}<link rel="stylesheet" href="{{ root }}assets/execution-demo.css?v={{ mechanism_asset_version }}">{% endif %}
-{% if article.presentation == 'walkthrough' or article.execution_demo %}<link rel="stylesheet" href="{{ root }}assets/walkthrough.css?v={{ mechanism_asset_version }}">{% endif %}{% endblock %}
+{% for stylesheet in article_stylesheets %}<link rel="stylesheet" href="{{ root }}assets/{{ stylesheet }}?v={{ mechanism_asset_version }}">{% endfor %}
+{% endblock %}
 {% block content %}
-<article class="mechanism-article{% if article.presentation == 'walkthrough' %} mechanism-article--walkthrough{% endif %}">
+<article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="{{ root }}mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="{% if topic.overview_article and topic.overview != article.slug %}{{ topic.overview }}.html{% else %}{{ root }}mechanisms.html#{{ topic.slug }}{% endif %}">{% if article.presentation == 'walkthrough' %}交互演示{% else %}{{ topic.title }}{% endif %}</a></div>
+    <div class="mechanism-breadcrumb"><a href="{{ root }}mechanisms.html">原理</a><span aria-hidden="true">/</span><a href="{{ root }}mechanisms.html#{{ topic.slug }}">{{ topic.title }}</a></div>
     <h1>{{ article.title }}</h1>
-    <p class="mechanism-authorship">{% if article.presentation == 'walkthrough' %}本演示{% else %}本文{% endif %}由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
+    <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
-  {% if article.presentation == 'walkthrough' %}
-  <nav class="mechanism-walkthrough-nav" aria-label="文章目录">{% for section in article_outline %}<a href="#{{ section.id }}">{{ section.number }}{{ section.title }}</a>{% endfor %}</nav>
-  {% endif %}
-  <div class="mechanism-layout{% if article.presentation == 'walkthrough' %} mechanism-layout--walkthrough{% endif %}">
-    {% if article.presentation != 'walkthrough' %}
-    <nav class="mechanism-toc" aria-label="文章目录"><h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2><ol id="mechanism-toc-links">{% for section in article_outline %}<li><a href="#{{ section.id }}">{{ section.number }}{{ section.title }}</a>{% if section.children %}<ol>{% for child in section.children %}<li><a href="#{{ child.id }}">{{ child.number }}{{ child.title }}</a></li>{% endfor %}</ol>{% endif %}</li>{% endfor %}</ol></nav>
-    {% endif %}
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links">{% for section in article_outline %}<li><a href="#{{ section.id }}">{{ section.number }}{{ section.title }}</a>{% if section.children %}<ol>{% for child in section.children %}<li><a href="#{{ child.id }}">{{ child.number }}{{ child.title }}</a></li>{% endfor %}</ol>{% endif %}</li>{% endfor %}</ol>
+    </nav>
     <div class="mechanism-prose">{{ article_body }}</div>
   </div>
-  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="{{ root }}mechanisms.html#{{ topic.slug }}">{% if article.presentation == 'walkthrough' %}交互演示目录{% else %}{{ topic.title }}原理{% endif %}</a>{% for link in topic.related|default([]) %}<a href="{{ root }}{{ link.path }}">{{ link.label }}</a>{% endfor %}</nav>
-  {% if article.reviewed_on %}<p class="mechanism-review">技术复核：<time datetime="{{ article.reviewed_on }}">{{ article.reviewed_on }}</time> · {% if article.publications %}对应文中列明的论文与分享资料。{% else %}针对文中标注的源码与规范基线；不代表后续版本已验证。{% endif %}</p>{% endif %}
+  <nav class="mechanism-related" aria-label="相关内容"><a href="{{ root }}mechanisms.html#{{ topic.slug }}">{{ topic.title }}</a>{% for link in topic.related|default([]) %}<a href="{{ root }}{{ link.path }}">{{ link.label }}</a>{% endfor %}</nav>
+  {% if article.reviewed_on %}<p class="mechanism-review">技术复核：<time datetime="{{ article.reviewed_on }}">{{ article.reviewed_on }}</time> · {% if article.publications %}对应文中列明的论文与分享资料。{% else %}针对文中标注的源码与规范基线。{% endif %}</p>{% endif %}
 </article>
 {% endblock %}
 {% block scripts %}<script src="{{ root }}assets/mechanism-viewer.js?v={{ mechanism_asset_version }}" defer></script>
-{% if article.presentation == 'walkthrough' or article.execution_demo %}<script src="{{ root }}assets/walkthrough-fullscreen.js?v={{ mechanism_asset_version }}" defer></script>{% endif %}
-{% if article.execution_demo %}<script src="{{ root }}assets/walkthrough-routing.js?v={{ mechanism_asset_version }}" defer></script>{% endif %}
-{% if article.presentation == 'walkthrough' or article.execution_demo %}<script src="{{ root }}assets/walkthrough-components.js?v={{ mechanism_asset_version }}" defer></script><script src="{{ root }}assets/walkthrough-events.js?v={{ mechanism_asset_version }}" defer></script>{% endif %}
-{% if article.model_script %}<script src="{{ root }}assets/{{ article.model_script }}?v={{ mechanism_asset_version }}" defer></script>{% endif %}
-{% if article.flow == 'virtio-blk-read' %}<script src="{{ root }}assets/disk-completion-model.js?v={{ mechanism_asset_version }}" defer></script>{% endif %}
-{% if article.script %}<script src="{{ root }}assets/{{ article.script }}?v={{ mechanism_asset_version }}" defer></script>{% endif %}
-{% if article.execution_demo and article.model_script != 'execution-model.js' %}<script src="{{ root }}assets/execution-model.js?v={{ mechanism_asset_version }}" defer></script>{% endif %}
-{% if article.execution_demo and article.script != 'execution-demo.js' %}<script src="{{ root }}assets/execution-demo.js?v={{ mechanism_asset_version }}" defer></script>{% endif %}{% endblock %}
+{% if article.execution_demo %}
+<template id="mechanism-lab-assets">{% for script in article_scripts %}<script data-lab-name="{{ script }}" src="{{ root }}assets/{{ script }}?v={{ mechanism_asset_version }}"></script>{% endfor %}</template>
+<script src="{{ root }}assets/mechanism-labs.js?v={{ mechanism_asset_version }}" data-lab-loader data-asset-root="{{ root }}assets/" data-asset-version="{{ mechanism_asset_version }}" defer></script>
+{% else %}{% for script in article_scripts %}<script src="{{ root }}assets/{{ script }}?v={{ mechanism_asset_version }}" defer></script>{% endfor %}{% endif %}
+{% endblock %}

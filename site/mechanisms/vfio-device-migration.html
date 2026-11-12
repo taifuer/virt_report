@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=428e6e8b26d1">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=428e6e8b26d1">
-<link rel="stylesheet" href="../assets/vfio-migration-lab.css?v=428e6e8b26d1"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/vfio-migration-lab.css?v=e8d4285d5a39"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -43,17 +43,20 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="migration.html">热迁移</a></div>
+    <div class="mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true">/</span><a href="../mechanisms.html#migration">热迁移</a></div>
     <h1>VFIO 设备热迁移：设备状态与 DMA 交接</h1>
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2><ol id="mechanism-toc-links"><li><a href="#preface">一、直通网卡的状态交接</a></li><li><a href="#consistency">二、RAM、设备状态与运行权</a></li><li><a href="#states">三、VFIO 用状态机约束设备行为</a></li><li><a href="#precopy">四、运行阶段：同步 RAM 与预拷贝设备状态</a></li><li><a href="#handoff">五、停机阶段：停止 DMA 并形成恢复点</a></li><li><a href="#dma-dirty">六、DMA 脏页跟踪接入 RAM 迁移</a></li><li><a href="#failure">七、取消迁移与失败边界</a></li><li><a href="#evolution">八、从停机导出到运行中准备</a></li><li><a href="#sources">九、源码入口与参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、直通网卡的状态交接</a></li><li><a href="#consistency">二、RAM、设备状态与运行权</a></li><li><a href="#states">三、VFIO 用状态机约束设备行为</a></li><li><a href="#precopy">四、运行阶段：同步 RAM 与预拷贝设备状态</a></li><li><a href="#handoff">五、停机阶段：停止 DMA 并形成恢复点</a></li><li><a href="#dma-dirty">六、DMA 脏页跟踪接入 RAM 迁移</a></li><li><a href="#failure">七、取消迁移与失败边界</a></li><li><a href="#evolution">八、从停机导出到运行中准备</a></li><li><a href="#sources">九、源码入口与参考资料</a></li></ol>
+    </nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
 <h2><span class="mechanism-heading-number">一、</span>直通网卡的状态交接</h2>
 <p>一台虚拟机使用直通网卡 VF 接收数据包。网卡把报文写入客户机的接收缓冲区，推进接收队列，并产生完成通知。迁移这台虚拟机时，目的端既要拿到报文所在的 RAM，也要恢复网卡已经处理到哪一个请求。只恢复其中一部分，就可能把旧缓冲区当作新报文，或让已经完成的请求再次执行。</p>
 <p>本文以一块支持 VFIO 迁移的网卡 VF 为例，跟踪源端继续收包、状态预拷贝、暂停交接和目的端恢复。客户机使用普通 RAM，未启用 vIOMMU；目的端已有兼容的设备与网络配置。设备型号、固件、驱动和管理面的配套共同决定兼容性，普通 VFIO 直通能力不包含迁移保证。</p>
-<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p>
+<p class="mechanism-baselines">源码版本：QEMU 10.2.0、Linux 6.18。</p>
 </section>
 <section id="consistency" class="mechanism-section">
 <h2><span class="mechanism-heading-number">二、</span>RAM、设备状态与运行权</h2>
@@ -101,9 +104,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看一次收包涉及的三类变化" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="一次收包涉及的三类变化">
-    <img src="../assets/vfio-migration-consistency.svg?v=428e6e8b26d1" alt="CPU 与设备都能修改客户机 RAM；VFIO 导出的设备状态是另一条数据流。停止所有相关写入者后，目的端才能得到一致的恢复点。" loading="lazy">
+    <img src="../assets/vfio-migration-consistency.svg?v=e8d4285d5a39" alt="CPU 与设备都能修改客户机 RAM；VFIO 导出的设备状态是另一条数据流。停止所有相关写入者后，目的端才能得到一致的恢复点。" loading="lazy">
   </div>
-  <figcaption>CPU 与设备都能修改客户机 RAM；VFIO 导出的设备状态是另一条数据流。停止所有相关写入者后，目的端才能得到一致的恢复点。 <a href="../assets/vfio-migration-consistency.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>CPU 与设备都能修改客户机 RAM；VFIO 导出的设备状态是另一条数据流。停止所有相关写入者后，目的端才能得到一致的恢复点。 <a href="../assets/vfio-migration-consistency.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: VFIO 迁移中的 RAM 与设备状态
     accDescr: 客户机 CPU 和网卡 DMA 分别写入客户机 RAM，KVM 与设备或 IOMMU 脏页跟踪把变化交给 RAM 迁移。网卡内部状态通过另一条 VFIO 数据流迁移。源端停止所有相关写入后，目的端同时完成 RAM、CPU 和设备状态恢复，才可以运行。
@@ -169,14 +172,14 @@
 源端 data_fd --read--&gt; QEMU 迁移流 --write--&gt; 目的端 data_fd
                  保持设备状态字节顺序
 </code></pre>
-<p>状态切换成功返回，表示驱动已经完成该转换；失败时设备可能停在组合转换的中间状态。<code>ERROR</code> 需要设备复位，不能当作普通暂停处理。Linux UAPI 同时规定，中止目的端的 <code>RESUMING</code> 会话需要复位设备。复位回到初始 <code>RUNNING</code> 状态，会丢失正在恢复的上下文；需要保持停止时，还要继续请求 <code>STOP</code>。这里的初始 <code>RUNNING</code> 不代表客户机队列已经配置或目的端虚拟机已经启动。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/uapi/linux/vfio.h#L1011-L1255">状态与数据 fd 的定义</a></p>
+<p>状态切换成功返回，表示驱动已经完成该转换；失败时设备可能停在组合转换的中间状态。<code>ERROR</code> 需要设备复位，不能当作普通暂停处理。Linux UAPI 同时规定，中止目的端的 <code>RESUMING</code> 会话需要复位设备。复位回到初始 <code>RUNNING</code> 状态，会丢失正在恢复的上下文；需要保持停止时，还要继续请求 <code>STOP</code>。这里的初始 <code>RUNNING</code> 不代表客户机队列已经配置或目的端虚拟机已经启动。状态与数据 fd 的定义</p>
 </section>
 <section id="precopy" class="mechanism-section">
 <h2><span class="mechanism-heading-number">四、</span>运行阶段：同步 RAM 与预拷贝设备状态</h2>
 <p>迁移开始后，QEMU 为 RAM 开启脏页跟踪。支持设备预拷贝时，<code>vfio_save_setup()</code> 还把源端 VF 从 <code>RUNNING</code> 切到 <code>PRE_COPY</code>；目的端的 <code>vfio_load_setup()</code> 把对应设备放入 <code>RESUMING</code>。此时仍由源端处理业务，目的端只恢复数据。</p>
-<p>VFIO 的预拷贝查询把待传状态分为 <code>initial_bytes</code> 和 <code>dirty_bytes</code>。前者表示初始设备状态，后者表示此前导出后又发生的内部变化。驱动可按设备特点选择导出粒度，这两个估计值不保证等于最终 <code>STOP_COPY</code> 阶段的剩余量。QEMU 使用查询结果参与迁移进度判断，再由 <code>vfio_save_iterate()</code> 分块读取并发送。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/uapi/linux/vfio.h#L1257-L1305">预拷贝查询语义</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L589-L632">QEMU 迭代发送</a></p>
+<p>VFIO 的预拷贝查询把待传状态分为 <code>initial_bytes</code> 和 <code>dirty_bytes</code>。前者表示初始设备状态，后者表示此前导出后又发生的内部变化。驱动可按设备特点选择导出粒度，这两个估计值不保证等于最终 <code>STOP_COPY</code> 阶段的剩余量。QEMU 使用查询结果参与迁移进度判断，再由 <code>vfio_save_iterate()</code> 分块读取并发送。预拷贝查询语义、QEMU 迭代发送</p>
 <p>初始设备状态可能触发目的端较慢的资源分配。启用 <code>switchover-ack</code> 后，目的端加载初始数据并反馈确认，QEMU 再允许进入相应的停机切换。这可以把部分准备成本移到源端仍运行的阶段。<strong>该确认只说明初始加载满足切换条件，不表示全部状态已经恢复，也不授予目的端运行权。</strong></p>
-<p>设备不支持预拷贝时，RAM 仍可正常迭代；设备状态留到停机后导出。这条路径减少了运行中设备状态跟踪的要求，但停机窗口通常要承受更多设备状态的传输和加载工作。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L602-L631">初始数据标记及接收确认</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L726-L807">目的端确认处理</a></p>
+<p>设备不支持预拷贝时，RAM 仍可正常迭代；设备状态留到停机后导出。这条路径减少了运行中设备状态跟踪的要求，但停机窗口通常要承受更多设备状态的传输和加载工作。初始数据标记及接收确认、目的端确认处理</p>
 </section>
 <section id="handoff" class="mechanism-section">
 <h2><span class="mechanism-heading-number">五、</span>停机阶段：停止 DMA 并形成恢复点</h2>
@@ -188,9 +191,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看源端、迁移流与目的端的交接" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="源端、迁移流与目的端的交接">
-    <img src="../assets/vfio-migration-handoff.svg?v=428e6e8b26d1" alt="RAM 和设备状态在停机窗口内都要完成。图中的并列分支表示共同的完成条件，不要求它们按固定先后发送，也不表示两者必然使用并行通道。" loading="lazy">
+    <img src="../assets/vfio-migration-handoff.svg?v=e8d4285d5a39" alt="RAM 和设备状态在停机窗口内都要完成。图中的并列分支表示共同的完成条件，不要求它们按固定先后发送，也不表示两者必然使用并行通道。" loading="lazy">
   </div>
-  <figcaption>RAM 和设备状态在停机窗口内都要完成。图中的并列分支表示共同的完成条件，不要求它们按固定先后发送，也不表示两者必然使用并行通道。 <a href="../assets/vfio-migration-handoff.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>RAM 和设备状态在停机窗口内都要完成。图中的并列分支表示共同的完成条件，不要求它们按固定先后发送，也不表示两者必然使用并行通道。 <a href="../assets/vfio-migration-handoff.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 单块 VF 在源端与目的端之间的迁移交接
     accDescr: 源端继续运行时迭代 RAM，可选地预拷贝设备状态。目的端处于 RESUMING，并确认初始数据加载。源端暂停 vCPU 并停止设备 DMA 后，完成最终 RAM 和设备状态传输。目的端校验全部恢复状态后才能运行，源端不再执行。
@@ -227,8 +230,8 @@
     Note over S,V: 源端保持停止并清理迁移会话
 </code></pre></details>
 </figure>
-<p><code>vfio_vmstate_change()</code> 在虚拟机恢复运行时请求设备进入 <code>RUNNING</code>。这个请求可以由内核沿合法的组合转换到达目标状态，其中包含结束 <code>RESUMING</code> 的校验；设备恢复成功是完成切换的重要条件。源端的 <code>STOP_COPY</code> 清理则放在保存清理阶段，避免不必要地延长关键停机路径。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L851-L905">虚拟机状态回调</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L509-L538">源端最终保存与清理</a></p>
-<p>多设备间还可能存在 P2P DMA。支持 <code>VFIO_MIGRATION_P2P</code> 时，<code>RUNNING_P2P</code> / <code>PRE_COPY_P2P</code> 阶段先禁止新的 P2P 请求，并完成在途 P2P 事务，然后再把各设备彻底停下来。否则，一块设备已经停止，另一块却仍向它写入，会破坏一致性。QEMU 10.2 对多 VFIO 设备的迁移检查这项能力；单设备例子无需引入这组状态。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/uapi/linux/vfio.h#L1199-L1238">P2P 静止语义</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L1041-L1081">多设备能力检查</a></p>
+<p><code>vfio_vmstate_change()</code> 在虚拟机恢复运行时请求设备进入 <code>RUNNING</code>。这个请求可以由内核沿合法的组合转换到达目标状态，其中包含结束 <code>RESUMING</code> 的校验；设备恢复成功是完成切换的重要条件。源端的 <code>STOP_COPY</code> 清理则放在保存清理阶段，避免不必要地延长关键停机路径。虚拟机状态回调、源端最终保存与清理</p>
+<p>多设备间还可能存在 P2P DMA。支持 <code>VFIO_MIGRATION_P2P</code> 时，<code>RUNNING_P2P</code> / <code>PRE_COPY_P2P</code> 阶段先禁止新的 P2P 请求，并完成在途 P2P 事务，然后再把各设备彻底停下来。否则，一块设备已经停止，另一块却仍向它写入，会破坏一致性。QEMU 10.2 对多 VFIO 设备的迁移检查这项能力；单设备例子无需引入这组状态。P2P 静止语义、多设备能力检查</p>
 <section class="vfio-migration-lab" data-vfio-migration-lab data-mechanism-view="lab" aria-labelledby="vfio-migration-lab-title">
   <div class="mechanism-view-heading">
     <h3 id="vfio-migration-lab-title">源端与目的端的状态交接</h3>
@@ -315,8 +318,8 @@
 </tr>
 </tbody>
 </table>
-<p>QEMU 10.2 的 IOMMUFD 后端已查询 <code>IOMMU_HW_CAP_DIRTY_TRACKING</code>，在支持时分配带跟踪能力的 HWPT，并通过对应 ioctl 启停与读取位图。这条路径依赖宿主 IOMMU 与驱动提供跟踪能力，未提供该能力的平台不能使用该方式。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/iommufd.c#L348-L399">HWPT 能力查询与分配</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/backends/iommufd.c#L337-L387">IOMMUFD 脏页接口</a></p>
-<p>正常配置应在迁移前确认有效的 DMA 跟踪路径。在 QEMU 10.2 的自动选择模式下，设备和 IOMMU 均不支持可用跟踪时会添加迁移阻断条件。设备内部状态保存成功，仍不能弥补 RAM 中漏掉的 DMA 写入。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L1186-L1198">能力门控</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/listener.c#L1184-L1235">VFIO 脏页同步</a></p>
+<p>QEMU 10.2 的 IOMMUFD 后端已查询 <code>IOMMU_HW_CAP_DIRTY_TRACKING</code>，在支持时分配带跟踪能力的 HWPT，并通过对应 ioctl 启停与读取位图。这条路径依赖宿主 IOMMU 与驱动提供跟踪能力，未提供该能力的平台不能使用该方式。HWPT 能力查询与分配、IOMMUFD 脏页接口</p>
+<p>正常配置应在迁移前确认有效的 DMA 跟踪路径。在 QEMU 10.2 的自动选择模式下，设备和 IOMMU 均不支持可用跟踪时会添加迁移阻断条件。设备内部状态保存成功，仍不能弥补 RAM 中漏掉的 DMA 写入。能力门控、VFIO 脏页同步</p>
 </section>
 <section id="failure" class="mechanism-section">
 <h2><span class="mechanism-heading-number">七、</span>取消迁移与失败边界</h2>
@@ -352,7 +355,7 @@
 </tr>
 </tbody>
 </table>
-<p>QEMU 的 <code>MIG_EVENT_PRECOPY_FAILED</code> 处理会尝试把源设备恢复到 <code>RUNNING</code>；底层状态转换失败还可能触发复位。这是错误处理路径，不构成“任何失败都可无损回退”的保证。管理面需要结合迁移状态、设备错误和端点隔离决定下一步。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L908-L932">失败通知与状态恢复</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L124-L214">状态转换失败处理</a></p>
+<p>QEMU 的 <code>MIG_EVENT_PRECOPY_FAILED</code> 处理会尝试把源设备恢复到 <code>RUNNING</code>；底层状态转换失败还可能触发复位。这是错误处理路径，不构成“任何失败都可无损回退”的保证。管理面需要结合迁移状态、设备错误和端点隔离决定下一步。失败通知与状态恢复、状态转换失败处理</p>
 </section>
 <section id="evolution" class="mechanism-section">
 <h2><span class="mechanism-heading-number">八、</span>从停机导出到运行中准备</h2>
@@ -393,8 +396,8 @@
 </tr>
 </tbody>
 </table>
-<p>QEMU 从 10.0 起支持用 multifd 传输 VFIO 的 <code>STOP_COPY</code> 状态。它扩展可用传输并行度，不能消除源设备停止、目的端安装状态和网络重新可达的耗时。分析停机时间应分段观察：停止与同步、最终 RAM、设备状态发送、目的端加载及启动；有些工作可重叠，应看关键路径，不能把所有阶段时长简单相加。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/migration/vfio.rst">QEMU 10.2 VFIO 迁移与 multifd 说明</a></p>
-<p>QEMU 10.2 的 VFIO 迁移拒绝 RAM postcopy，且在启用客户机 vIOMMU 时添加阻断条件。<a href="qemu-viommu.html">vIOMMU 映射同步</a>与本篇的迁移路径在该版本中需要分开使用。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L419-L447">postcopy 检查</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L1200-L1210">vIOMMU 检查</a></p>
+<p>QEMU 从 10.0 起支持用 multifd 传输 VFIO 的 <code>STOP_COPY</code> 状态。它扩展可用传输并行度，不能消除源设备停止、目的端安装状态和网络重新可达的耗时。分析停机时间应分段观察：停止与同步、最终 RAM、设备状态发送、目的端加载及启动；有些工作可重叠，应看关键路径，不能把所有阶段时长简单相加。QEMU 10.2 VFIO 迁移与 multifd 说明</p>
+<p>QEMU 10.2 的 VFIO 迁移拒绝 RAM postcopy，且在启用客户机 vIOMMU 时添加阻断条件。<a href="qemu-viommu.html">vIOMMU 映射同步</a>与本篇的迁移路径在该版本中需要分开使用。postcopy 检查、vIOMMU 检查</p>
 </section>
 <section id="sources" class="mechanism-section">
 <h2><span class="mechanism-heading-number">九、</span>源码入口与参考资料</h2>
@@ -409,12 +412,12 @@
 </section>
 </div>
   </div>
-  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#migration">热迁移原理</a><a href="../topics/migration/index.html">热迁移动态</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-10-21">2026-10-21</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
+  <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#migration">热迁移</a><a href="../topics/migration/index.html">热迁移动态</a></nav>
+<p class="mechanism-review">技术复核：<time datetime="2026-10-21">2026-10-21</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=428e6e8b26d1" defer></script>
-<script src="../assets/vfio-migration-lab.js?v=428e6e8b26d1" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
+<script src="../assets/vfio-migration-lab.js?v=e8d4285d5a39" defer></script></body>
 </html>

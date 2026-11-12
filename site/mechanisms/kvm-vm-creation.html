@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>KVM 虚拟机创建：内存、vCPU 与中断初始化 - virt-report</title>
+  <meta name="description" content="从 /dev/kvm、VM fd 和内存槽，到 irqchip、vCPU 状态和第一次 KVM_RUN，解释内核执行环境的建立。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
+  <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=0ad6552bf0f5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true">/</span><a href="../mechanisms.html#kvm-internals">KVM 原理</a></div>
+    <h1>KVM 虚拟机创建：内存、vCPU 与中断初始化</h1>
+    <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、为一台虚拟机建立内核执行环境</a></li><li><a href="#handles">二、系统 fd、VM fd 与 vCPU fd</a></li><li><a href="#memory">三、内存：分配后备，再登记 GPA 范围</a></li><li><a href="#interrupts">四、中断：创建控制器，再连接事件源</a></li><li><a href="#vcpus">五、vCPU：对象、线程与启动状态</a></li><li><a href="#run">六、从整机复位到第一次执行</a></li><li><a href="#lifetime">七、失败清理与对象生命周期</a></li><li><a href="#sources">八、源码与接口依据</a></li></ol>
+    </nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">一、</span>为一台虚拟机建立内核执行环境</h2>
+  <p>QEMU 创建机器模型时，会调用 KVM 建立虚拟机容器、注册客户机内存、准备中断控制器并创建 vCPU。KVM 提供受硬件保护的执行环境；固件、磁盘、网卡与机器布局由用户态 VMM 组织。本文以 x86、普通共享 RAM、内核 irqchip 为例，跟踪这些对象如何在第一次 KVM_RUN 前准备好。</p>
+  <p>宿主的 kvm 与 kvm_intel / kvm_amd 模块加载、硬件虚拟化能力可用后，用户态通过 <code>/dev/kvm</code> 为每台虚拟机建立独立对象。创建流程从这个接口开始。</p>
+<p class="mechanism-baselines">源码版本：QEMU 10.2.0、Linux 6.18。</p>  <figure class="mechanism-diagram" data-diagram="kvm-creation-resources" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>第一次 KVM_RUN 前的资源依赖</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看第一次 KVM_RUN 前的资源依赖" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="第一次 KVM_RUN 前的资源依赖">
+    <img src="../assets/kvm-creation-resources.svg?v=e8d4285d5a39" alt="完整内核 irqchip 先于 vCPU 创建；RAM、固件、设备与启动状态在使用前就绪。分支表示资源依赖，各机器的具体创建顺序可以不同。" loading="lazy">
+  </div>
+  <figcaption>完整内核 irqchip 先于 vCPU 创建；RAM、固件、设备与启动状态在使用前就绪。分支表示资源依赖，各机器的具体创建顺序可以不同。 <a href="../assets/kvm-creation-resources.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
+  accTitle: 第一次 KVM_RUN 前的资源依赖
+  accDescr: 用户态打开 KVM 系统 fd 并查询能力后创建 VM。VM 下登记 RAM 内存槽、创建内核 irqchip 和 vCPU 对象；完整内核 irqchip 必须早于 vCPU 创建。QEMU 还要准备固件和设备，将启动状态同步到 KVM，确保依赖就绪后由 vCPU 线程调用 KVM_RUN。图中的分支表达资源依赖，不规定全部对象的唯一创建顺序。
+  S[&#34;/dev/kvm&lt;br/&gt;API 与能力检查&#34;] --&gt; V[&#34;KVM_CREATE_VM&lt;br/&gt;VM fd&#34;]
+  V --&gt; M[&#34;RAM 后备与 memslot&lt;br/&gt;GPA → QEMU 映射&#34;]
+  V --&gt; I[&#34;KVM_CREATE_IRQCHIP&lt;br/&gt;本例：完整内核 irqchip&#34;]
+  I --&gt; C[&#34;KVM_CREATE_VCPU&lt;br/&gt;vCPU fd 与 kvm_run&#34;]
+  C --&gt; R[&#34;CPUID、寄存器、MP 状态&#34;]
+  Q[&#34;QEMU 固件、设备与整机复位&#34;] --&gt; B[&#34;所需资源就绪&lt;br/&gt;放行 vCPU 线程&#34;]
+  M --&gt; B
+  R --&gt; B
+  B --&gt; K[&#34;KVM_RUN&lt;br/&gt;第一次进入 Guest&#34;]
+  classDef object fill:#e4f1ed,stroke:#78a399,color:#163c38;
+  classDef state fill:#edf3fa,stroke:#7897b3,color:#243d53;
+  classDef run fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class S,V,I,C object;
+  class M,R,Q state;
+  class B,K run;
+</code></pre></details>
+</figure>
+</section>
+<section id="handles" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">二、</span>系统 fd、VM fd 与 vCPU fd</h2>
+  <pre><code>open /dev/kvm → 系统 fd
+  ├─ KVM_GET_API_VERSION / KVM_CHECK_EXTENSION
+  ├─ KVM_GET_VCPU_MMAP_SIZE
+  └─ KVM_CREATE_VM → VM fd
+       ├─ 注册内存槽、创建 irqchip、配置路由
+       ├─ KVM_CREATE_VCPU → vCPU 0 fd → mmap kvm_run
+       └─ KVM_CREATE_VCPU → vCPU 1 fd → mmap kvm_run</code></pre>
+  <p>系统 fd 用于查询 KVM 能力并创建 VM；VM fd 用于操作整机资源；vCPU fd 用于设置寄存器和执行某个虚拟处理器。内核分别维护 <code>struct kvm</code> 和 <code>struct kvm_vcpu</code>。同一 VM 的 vCPU 共享内存布局，各自拥有体系结构状态、LAPIC 状态与执行控制。</p>
+  <p>用户态先验证 API 版本，再查询所需的 <code>KVM_CAP_*</code>。API 版本号并不枚举全部功能，部分能力还需要通过 <code>KVM_ENABLE_CAP</code> 显式启用。调用返回值必须逐项检查，不能在某项初始化失败后继续运行半成品机器。</p>
+</section>
+<section id="memory" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">三、</span>内存：分配后备，再登记 GPA 范围</h2>
+  <p>QEMU 先用匿名映射或文件映射取得 RAM 后备，构建客户机物理地址布局，再把可供 KVM 直接访问的区域登记成 memslot。<code>KVM_SET_USER_MEMORY_REGION</code> 的主要字段是槽号、起始 GPA、长度和 <code>userspace_addr</code>；新扩展接口还有额外的内存后备能力，本例使用普通用户态 RAM。</p>
+  <table><thead><tr><th>字段或对象</th><th>示例</th><th>含义</th></tr></thead><tbody>
+    <tr><td>slot</td><td>0</td><td>该 VM 内用于更新或删除这段区域的标识</td></tr>
+    <tr><td>guest_phys_addr</td><td>0x00000000</td><td>客户机看到的这段 RAM 的起点</td></tr>
+    <tr><td>memory_size</td><td>0x40000000（1 GiB）</td><td>本例一段连续 RAM 的长度</td></tr>
+    <tr><td>userspace_addr</td><td>HVA_base</td><td>QEMU 进程内对应后备映射的起点</td></tr>
+  </tbody></table>
+  <p>访问 GPA <code>0x2000</code> 时，KVM 可由槽定位到 <code>HVA_base + 0x2000</code>，再取得后备页建立 EPT/NPT。注册 memslot 不是一次性分配全部物理页，也不表示二级页表已经全部建好。实际 PC 还包含 RAM 空洞、ROM 与 MMIO，通常需要多个区域，不能把上表示例套成完整 Q35 地址布局。</p>
+  <p>普通设备模拟的 MMIO 区域由 QEMU 设备回调处理，通常不登记为普通 RAM 槽。未命中 RAM 的访问由 KVM 判定后可返回用户态模拟；受支持的直通映射则可能直接映射设备页。内存所有权、访问属性和生命周期必须与设备类型一致。</p>
+</section>
+<section id="interrupts" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">四、</span>中断：创建控制器，再连接事件源</h2>
+  <p>x86 的 <code>KVM_CREATE_IRQCHIP</code> 创建内核 PIC、I/O APIC，并使随后创建的 vCPU 拥有内核 LAPIC；这个调用须在创建 vCPU 之前完成。split irqchip 是另一种配置：传统引脚控制器由 QEMU 提供，LAPIC 仍在 KVM。这里固定完整内核 irqchip 路径。</p>
+  <p>控制器准备好后，VMM 按设备配置建立路由：引脚中断可通过 <code>KVM_IRQ_LINE</code> 改变电平；MSI 消息可用 <code>KVM_SIGNAL_MSI</code> 提交；独立后端可经 <code>KVM_SET_GSI_ROUTING</code> 与 <code>KVM_IRQFD</code> 将 eventfd 接到目标路由。创建 irqchip 只准备了控制器，设备路由和客户机驱动配置还会在后续阶段完善。</p>
+  <p>PC 还需要 PIT、RTC、HPET 或 LAPIC timer 等计时设施，具体模型由机器类型和配置决定。中断路由的目标是虚拟 APIC ID；目标 vCPU 线程实际运行在哪个宿主 CPU，由宿主调度器决定。</p>
+</section>
+<section id="vcpus" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">五、</span>vCPU：对象、线程与启动状态</h2>
+  <p><code>KVM_CREATE_VCPU</code> 返回 vCPU fd 并建立内核对象。宿主线程由 QEMU 创建，创建 vCPU 对象本身不会让 KVM 自动创建一个运行客户机的独立内核线程。常见 QEMU/KVM 配置中，每个 vCPU 对应一个 QEMU 线程，由该线程调用 KVM_RUN。</p>
+  <p>用户态用 <code>KVM_GET_VCPU_MMAP_SIZE</code> 查询共享区大小，再 mmap vCPU fd 得到 <code>struct kvm_run</code>。该区交换退出原因、MMIO 或 PIO 数据等信息；完整寄存器状态使用专门的 vCPU ioctl 维护，kvm_run 不是全部寄存器的共享副本。</p>
+  <p>初始配置包括 CPUID、通用与特殊寄存器、MSR、FPU/扩展状态和 MP 状态，具体接口随能力与机器配置选择。典型接口有 <code>KVM_SET_CPUID2</code>、<code>KVM_SET_REGS</code>、<code>KVM_SET_SREGS</code>、<code>KVM_SET_MSRS</code> 和 <code>KVM_SET_MP_STATE</code>。BSP 从配置的复位入口执行，AP 按启动状态等待 INIT/SIPI 等启动过程。</p>
+  <p>QEMU 可以较早创建 vCPU 线程，让它完成初始化握手后保持 stopped；主线程随后继续 RAM、固件和外设准备。初始化的约束是所需依赖在使用前就绪，不是每台机器都必须按“全部内存 → 全部设备 → 全部 vCPU”的固定顺序创建。</p>
+</section>
+<section id="run" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>从整机复位到第一次执行</h2>
+  <p>用户态将固件内容放进可取指的客户机地址范围，复位设备和 CPU，向 KVM 同步启动状态。放行后，vCPU 线程调用 <code>ioctl(vcpu_fd, KVM_RUN)</code>，KVM 加载体系结构状态并进入客户机，硬件从配置的指令地址开始执行。</p>
+  <p>物理 CPU 遇到受拦截操作可能先退出到 KVM。KVM 能处理的事件在内核完成，需要用户态设备模拟的访问才通过 KVM_RUN 返回，并在 kvm_run 中注明原因。用户态完成模拟后再次调用 KVM_RUN，客户机继续执行。这个循环承担运行期处理，创建流程为它准备对象与资源。</p>
+  <p>首次进入 Guest 只意味着 CPU 已开始执行，操作系统仍要经历固件、引导、驱动和服务初始化。内存槽登记成功、vCPU 创建成功与业务启动成功，应分别检查。</p>
+</section>
+<section id="lifetime" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">七、</span>失败清理与对象生命周期</h2>
+  <p>创建失败时，VMM 停止使用尚未完成的实例，按已获得的资源逆向清理：停止执行和异步设备活动，解除通知绑定，释放 vCPU 共享映射与 fd，释放 VM 及内存后备引用。正常退出也要先保证设备不会再 DMA 到准备释放的内存。</p>
+  <p>KVM 对象的存活依赖引用，关闭一个重复的 fd 不一定释放对象。KVM API 对 ioctl 调用进程和线程也有约束，不能把 fd 当作任意跨进程移交虚拟机状态的协议。QEMU 的常规迁移会在目标重新建立相应对象。</p>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">八、</span>源码与接口依据</h2>
+  <ul>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst">Linux 6.18：KVM API、内存槽、中断控制器与 vCPU 接口</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c">VM/vCPU 创建与生命周期</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c">x86 初始化与 ioctl 分发</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L2610">QEMU 10.2.0：kvm_init、kvm_init_vcpu 与内存监听器</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-accel-ops.c">QEMU vCPU 线程</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/target/i386/kvm/kvm.c">x86 寄存器与启动状态同步</a></li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#kvm-internals">KVM 原理</a></nav>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-12">2026-11-12</time> · 针对文中标注的源码与规范基线。</p></article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=0ad6552bf0f5"></script>
+<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
+</body>
+</html>

@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=428e6e8b26d1">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=428e6e8b26d1">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -43,25 +43,28 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="cpu-virtualization.html">CPU 虚拟化</a></div>
+    <div class="mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true">/</span><a href="../mechanisms.html#kvm-internals">KVM 原理</a></div>
     <h1>KVM 虚拟时钟与定时器</h1>
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2><ol id="mechanism-toc-links"><li><a href="#preface">一、虚拟机时间读取与定时中断</a></li><li><a href="#tsc">二、TSC 偏移与缩放建立客户机的计数坐标</a></li><li><a href="#example">三、从 5.002 秒安排一次 1 毫秒后的通知</a></li><li><a href="#pvclock">四、pvclock 用共享时间基准减少读取开销</a></li><li><a href="#timer">五、从定时截止时刻到客户机中断</a><ol><li><a href="#timer-part-1">运行中的硬件定时与阻塞后的切换</a></li></ol></li><li><a href="#state">六、时间与定时器的状态归属</a></li><li><a href="#migration">七、暂停与迁移中的时间衔接</a></li><li><a href="#evolution">八、从模拟计时设备到协作与硬件辅助</a></li><li><a href="#summary">九、总结：时间读数、到期事件与执行机会</a></li><li><a href="#sources">十、参考资料与延伸阅读</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、虚拟机时间读取与定时中断</a></li><li><a href="#tsc">二、TSC 偏移与缩放建立客户机的计数坐标</a></li><li><a href="#example">三、从 5.002 秒安排一次 1 毫秒后的通知</a></li><li><a href="#pvclock">四、pvclock 用共享时间基准减少读取开销</a></li><li><a href="#timer">五、从定时截止时刻到客户机中断</a><ol><li><a href="#timer-part-1">运行中的硬件定时与阻塞后的切换</a></li></ol></li><li><a href="#state">六、时间与定时器的状态归属</a></li><li><a href="#migration">七、暂停与迁移中的时间衔接</a></li><li><a href="#evolution">八、从模拟计时设备到协作与硬件辅助</a></li><li><a href="#summary">九、总结：时间读数、到期事件与执行机会</a></li><li><a href="#sources">十、参考资料</a></li></ol>
+    </nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>虚拟机时间读取与定时中断</h2>
   <p>客户机安排一个 1 ms 后执行的任务，需要先知道当前时间，再设置一个到期通知。虚拟化使这两步有了不同的困难：vCPU 可能被宿主抢占，恢复时应能读出已经经过的时间；定时事件即使已经到期，处理线程也可能还没有得到 CPU。迁移到另一台服务器后，物理计数器的起点和频率还可能改变。</p>
   <p>Linux 将提供时间读数的机制称为 <strong>clocksource</strong>，将产生定时中断的机制称为 <strong>clockevent</strong>。本文以 x86 客户机的 KVM pvclock 和 Intel TSC-deadline 定时器为例，沿“读出当前时间—设置截止时刻—接收到期中断”说明两条路径。示例使用内核虚拟 LAPIC。</p>
   <p>客户机 Linux 读取时钟、安排自己的任务，并处理虚拟定时中断；宿主 KVM 提供时间换算参数和虚拟 LAPIC 定时器，宿主 Linux 提供实际定时及线程调度。QEMU 主要在创建、暂停和迁移时协调这些状态，不参与客户机每一次 pvclock 读取。</p>
   <p>客户机在 5.002 s 安排一个 1 ms 后的任务，目标时刻为 5.003 s。如果 vCPU 到 5.004 s 才获得运行机会，恢复后应能读到经过的时间，此时定时任务已迟到约 1 ms。时钟读数的一致性与到期事件的交付时机需要分别处理。</p>
-<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
+<p class="mechanism-baselines">源码版本：QEMU 10.2.0、Linux 6.18。</p></section>
 <section id="tsc" class="mechanism-section">
   <h2><span class="mechanism-heading-number">二、</span>TSC 偏移与缩放建立客户机的计数坐标</h2>
   <p>TSC 是处理器提供的计数器，客户机可通过 RDTSC 等指令读取。具有 invariant TSC 能力的处理器使用稳定的计数频率；这个频率与程序当前执行指令的速度不同，不能用计数增量直接当作已执行的指令数。</p>
   <p>物理 TSC 的起点属于宿主。KVM 为客户机配置<strong>偏移</strong>来选择起点，在支持硬件 TSC scaling 时还可配置<strong>比例</strong>来选择计数频率。Intel VMX 的比例采用 48 位小数，概念上的变换为：</p>
   <pre><code>guest_tsc = ((host_tsc × tsc_multiplier) &gt;&gt; 48) + tsc_offset</code></pre>
-  <p>偏移可使迁移目的端从客户机原来的计数位置接续；比例可使不同物理 TSC 频率呈现同一个客户机频率。两者都不改变客户机获得多少 CPU 时间。常见的非嵌套 VMX 路径不拦截每次 RDTSC，处理器直接完成上述变换；配置更新才由 KVM 写入 VMCS。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L1908-L1915">VMCS 字段</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L4435-L4446">RDTSC 退出控制</a></p>
+  <p>偏移可使迁移目的端从客户机原来的计数位置接续；比例可使不同物理 TSC 频率呈现同一个客户机频率。两者都不改变客户机获得多少 CPU 时间。常见的非嵌套 VMX 路径不拦截每次 RDTSC，处理器直接完成上述变换；配置更新才由 KVM 写入 VMCS。VMCS 字段、RDTSC 退出控制</p>
 </section>
 <section id="example" class="mechanism-section">
   <h2><span class="mechanism-heading-number">三、</span>从 5.002 秒安排一次 1 毫秒后的通知</h2>
@@ -76,7 +79,7 @@ current_tsc       = 24,000,000 ticks
 delta_ns = ((24,000,000 - 20,000,000) × 2^31) &gt;&gt; 32
          = 2,000,000 ns
 now_ns   = 5,000,000,000 + 2,000,000 = 5.002 s</code></pre>
-  <p>一般情况下先按 <code>tsc_shift</code> 左移或右移 TSC 增量，再乘 <code>tsc_to_system_mul</code> 并右移 32 位。这里的定点运算和实际接口一致，不涉及浮点计算。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/x86/msr.rst#L59-L123">结构与换算公式</a></p>
+  <p>一般情况下先按 <code>tsc_shift</code> 左移或右移 TSC 增量，再乘 <code>tsc_to_system_mul</code> 并右移 32 位。这里的定点运算和实际接口一致，不涉及浮点计算。结构与换算公式</p>
   <p>若此时要安排 1 ms 后的事件，截止 TSC 为 <code>24,000,000 + 2,000,000 = 26,000,000</code>，对应同一时间轴上的 5.003 s。客户机将 LAPIC 定时器配置为 TSC-deadline 模式、指定中断向量，再向 <code>IA32_TSC_DEADLINE</code> 写入这个绝对计数。时钟读数回答“现在到哪里”，deadline 指定“何时通知”。</p>
 </section>
 <section id="pvclock" class="mechanism-section">
@@ -88,9 +91,9 @@ now_ns   = 5,000,000,000 + 2,000,000 = 5.002 s</code></pre>
     <button type="button" data-mechanism-expand aria-label="放大查看共享时间基准与客户机的纳秒读数" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="共享时间基准与客户机的纳秒读数">
-    <img src="../assets/kvm-clock-read.svg?v=428e6e8b26d1" alt="实线表示一次读时钟的数据依赖，虚线表示 KVM 发布基准。TSC 的宿主到客户机缩放与 pvclock 的计数到纳秒换算是两组独立参数，图中没有定时中断。" loading="lazy">
+    <img src="../assets/kvm-clock-read.svg?v=e8d4285d5a39" alt="实线表示一次读时钟的数据依赖，虚线表示 KVM 发布基准。TSC 的宿主到客户机缩放与 pvclock 的计数到纳秒换算是两组独立参数，图中没有定时中断。" loading="lazy">
   </div>
-  <figcaption>实线表示一次读时钟的数据依赖，虚线表示 KVM 发布基准。TSC 的宿主到客户机缩放与 pvclock 的计数到纳秒换算是两组独立参数，图中没有定时中断。 <a href="../assets/kvm-clock-read.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>实线表示一次读时钟的数据依赖，虚线表示 KVM 发布基准。TSC 的宿主到客户机缩放与 pvclock 的计数到纳秒换算是两组独立参数，图中没有定时中断。 <a href="../assets/kvm-clock-read.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: KVM pvclock 共享时间基准与客户机读时钟
     accDescr: 物理 TSC 经硬件比例与偏移得到客户机 TSC。KVM 将 version、tsc_timestamp、system_time、乘数、移位和 flags 发布到客户机共享结构。客户机验证版本，以当前 TSC 减去参考 TSC，换算纳秒并加参考时间。此图只有读取数据流，没有定时中断。
@@ -117,7 +120,7 @@ now_ns   = 5,000,000,000 + 2,000,000 = 5.002 s</code></pre>
     <tr><td><code>tsc_to_system_mul</code>、<code>tsc_shift</code></td><td>4 B、1 B</td><td>将 TSC 增量换成纳秒</td></tr>
     <tr><td><code>flags</code></td><td>1 B</td><td>稳定性、宿主暂停通知等标志</td></tr>
   </tbody></table>
-  <p>一致性问题出现在 KVM 正好更新参考点时。例如客户机读到旧 system_time，却用新 tsc_timestamp 计算增量，就会得到错误读数。版本号解决这一交错：写入方先发布奇数版本，更新字段后发布偶数版本；读取方在采样前后必须看到同一个偶数，否则重新读取。两侧内存屏障约束上述顺序。结构其余 6 字节为填充。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L3276-L3295">KVM 发布协议</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/include/asm/pvclock.h">客户机读取协议</a></p>
+  <p>一致性问题出现在 KVM 正好更新参考点时。例如客户机读到旧 system_time，却用新 tsc_timestamp 计算增量，就会得到错误读数。版本号解决这一交错：写入方先发布奇数版本，更新字段后发布偶数版本；读取方在采样前后必须看到同一个偶数，否则重新读取。两侧内存屏障约束上述顺序。结构其余 6 字节为填充。KVM 发布协议、客户机读取协议</p>
 </section>
 <section id="timer" class="mechanism-section">
   <h2><span class="mechanism-heading-number">五、</span>从定时截止时刻到客户机中断</h2>
@@ -128,9 +131,9 @@ now_ns   = 5,000,000,000 + 2,000,000 = 5.002 s</code></pre>
     <button type="button" data-mechanism-expand aria-label="放大查看软件定时分支：到期、唤醒与客户机处理" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="软件定时分支：到期、唤醒与客户机处理">
-    <img src="../assets/kvm-deadline-timer.svg?v=428e6e8b26d1" alt="图中省略注入提前量补偿。vCPU 设置截止时刻后进入空闲并阻塞；hrtimer 回调记录到期，唤醒使线程可运行，再由宿主调度、虚拟 LAPIC 投递及客户机处理依次衔接。" loading="lazy">
+    <img src="../assets/kvm-deadline-timer.svg?v=e8d4285d5a39" alt="图中省略注入提前量补偿。vCPU 设置截止时刻后进入空闲并阻塞；hrtimer 回调记录到期，唤醒使线程可运行，再由宿主调度、虚拟 LAPIC 投递及客户机处理依次衔接。" loading="lazy">
   </div>
-  <figcaption>图中省略注入提前量补偿。vCPU 设置截止时刻后进入空闲并阻塞；hrtimer 回调记录到期，唤醒使线程可运行，再由宿主调度、虚拟 LAPIC 投递及客户机处理依次衔接。 <a href="../assets/kvm-deadline-timer.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>图中省略注入提前量补偿。vCPU 设置截止时刻后进入空闲并阻塞；hrtimer 回调记录到期，唤醒使线程可运行，再由宿主调度、虚拟 LAPIC 投递及客户机处理依次衔接。 <a href="../assets/kvm-deadline-timer.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: KVM 软件 deadline 定时器到期与客户机唤醒
     accDescr: 在 2GHz 客户机 TSC 的示例中，客户机当前计数 24000000，写入截止计数 26000000。省略编程耗时与注入提前量，KVM 将剩余 1ms 换算为宿主 hrtimer 期限。客户机随后空闲，vCPU 宿主线程阻塞。hrtimer 到期后，KVM 记录 pending 和 UNBLOCK 并唤醒线程；得到宿主调度后投递虚拟 LAPIC 中断，客户机允许中断时执行处理，再由客户机调度任务。本图限定普通软件定时分支。
@@ -152,11 +155,11 @@ now_ns   = 5,000,000,000 + 2,000,000 = 5.002 s</code></pre>
     G-&gt;&gt;G: 定时处理 → 唤醒任务 → 客户机调度
 </code></pre></details>
 </figure>
-  <p>通用到期路径增加 <code>lapic_timer.pending</code>，设置 <code>KVM_REQ_UNBLOCK</code>，由定时器回调触发 kick。阻塞中的 vCPU 被唤醒；获得 CPU 后，KVM 将定时器向量交给虚拟 LAPIC。客户机允许中断、优先级满足条件时才接受它，随后执行定时处理并安排就绪任务。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L1976-L2044">到期与软件 deadline</a></p>
+  <p>通用到期路径增加 <code>lapic_timer.pending</code>，设置 <code>KVM_REQ_UNBLOCK</code>，由定时器回调触发 kick。阻塞中的 vCPU 被唤醒；获得 CPU 后，KVM 将定时器向量交给虚拟 LAPIC。客户机允许中断、优先级满足条件时才接受它，随后执行定时处理并安排就绪任务。到期与软件 deadline</p>
   <p>这条路径中有三个时间点：deadline、客户机进入中断处理程序、应用任务实际开始运行。它们之间可夹着宿主排队、客户机屏蔽中断以及客户机调度。时钟保持连续，只保证能够计量经过的时间；到期通知和任务执行仍可能迟到。</p>
   <h3 id="timer-part-1">运行中的硬件定时与阻塞后的切换</h3>
-  <p>支持且适用时，VMX 后端可用 <strong>VMX preemption timer</strong> 辅助实现虚拟 LAPIC 定时器。它按换算后的宿主计数安排 VM exit，再由 KVM 处理到期；客户机写入的 deadline 并非直接独占宿主物理 LAPIC 定时器。计数范围等条件不满足时会回退到 hrtimer。vCPU 将要阻塞时，KVM 把正在使用的硬件定时切换为软件定时，避免依赖只在 VMX non-root 环境中倒计时的机制。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L8187-L8224">VMX 换算</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11530-L11551">阻塞前后的切换</a></p>
-  <p>APICv 与 posted timer interrupt 还可减少部分事件交接。后者有配置、APICv 和 <code>IN_GUEST_MODE</code> 等条件，不能据此推断宿主已经阻塞的 vCPU 总能直接收到硬件投递。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L131-L146">投递条件</a></p>
+  <p>支持且适用时，VMX 后端可用 <strong>VMX preemption timer</strong> 辅助实现虚拟 LAPIC 定时器。它按换算后的宿主计数安排 VM exit，再由 KVM 处理到期；客户机写入的 deadline 并非直接独占宿主物理 LAPIC 定时器。计数范围等条件不满足时会回退到 hrtimer。vCPU 将要阻塞时，KVM 把正在使用的硬件定时切换为软件定时，避免依赖只在 VMX non-root 环境中倒计时的机制。VMX 换算、阻塞前后的切换</p>
+  <p>APICv 与 posted timer interrupt 还可减少部分事件交接。后者有配置、APICv 和 <code>IN_GUEST_MODE</code> 等条件，不能据此推断宿主已经阻塞的 vCPU 总能直接收到硬件投递。投递条件</p>
 </section>
 <section id="state" class="mechanism-section">
   <h2><span class="mechanism-heading-number">六、</span>时间与定时器的状态归属</h2>
@@ -166,14 +169,14 @@ now_ns   = 5,000,000,000 + 2,000,000 = 5.002 s</code></pre>
     <tr><td>deadline、pending、hv_timer_in_use</td><td>宿主 KVM 的 <code>kvm_lapic.lapic_timer</code></td><td>保存目标、待处理事件及定时方式</td></tr>
     <tr><td>kvmclock 的保存值</td><td>宿主用户态 QEMU 的 <code>KVMClockState</code></td><td>协调暂停、恢复和迁移</td></tr>
   </tbody></table>
-  <p><code>kvm_guest_time_update()</code> 从一组宿主计数与时间样本生成 pvclock 参考点；<code>kvm_set_lapic_tscdeadline_msr()</code> 更新事件目标。它们服务于不同对象，因此修改读时钟参数与重新安排定时器须按各自恢复路径处理。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L3303-L3401">更新时间基准</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.h#L49-L65">定时器状态</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L2651-L2660">deadline 写入</a></p>
+  <p><code>kvm_guest_time_update()</code> 从一组宿主计数与时间样本生成 pvclock 参考点；<code>kvm_set_lapic_tscdeadline_msr()</code> 更新事件目标。它们服务于不同对象，因此修改读时钟参数与重新安排定时器须按各自恢复路径处理。更新时间基准、定时器状态、deadline 写入</p>
 </section>
 <section id="migration" class="mechanism-section">
   <h2><span class="mechanism-heading-number">七、</span>暂停与迁移中的时间衔接</h2>
-  <p>从源端搬到目的端，不能直接沿用宿主 TSC 原值。QEMU 保存客户机 TSC、频率、deadline 等状态，在目的端恢复；KVM 根据新宿主建立偏移和可支持的比例。QEMU 通过 <code>KVM_GET_CLOCK</code> / <code>KVM_SET_CLOCK</code> 保存、重建 kvmclock 参考点，跨宿主频率不兼容时还需检查 TSC 控制能力。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/target/i386/kvm/kvm.c#L883-L941">客户机频率设置</a></p>
-  <p>具体停顿怎样计入取决于恢复策略。QEMU 10.2 的 kvmclock 设备在停止时保存读数，恢复时用保存值重新设置基准；迁移运行中的 VM 时，<code>pre_save</code> 会再取一次读数，把停止到保存之间的末批传输时间计入。已经显式暂停的 VM 则保留之前的基准。这能减少迁移丢失的时间，但不意味着所有停机区间都会自动补全。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/kvm/clock.c#L163-L218">状态变化</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/kvm/clock.c#L266-L299">迁移保存</a></p>
+  <p>从源端搬到目的端，不能直接沿用宿主 TSC 原值。QEMU 保存客户机 TSC、频率、deadline 等状态，在目的端恢复；KVM 根据新宿主建立偏移和可支持的比例。QEMU 通过 <code>KVM_GET_CLOCK</code> / <code>KVM_SET_CLOCK</code> 保存、重建 kvmclock 参考点，跨宿主频率不兼容时还需检查 TSC 控制能力。客户机频率设置</p>
+  <p>具体停顿怎样计入取决于恢复策略。QEMU 10.2 的 kvmclock 设备在停止时保存读数，恢复时用保存值重新设置基准；迁移运行中的 VM 时，<code>pre_save</code> 会再取一次读数，把停止到保存之间的末批传输时间计入。已经显式暂停的 VM 则保留之前的基准。这能减少迁移丢失的时间，但不意味着所有停机区间都会自动补全。状态变化、迁移保存</p>
   <p>还要区分经过时间与日期。pvclock 的纳秒读数配合 wallclock 基准可提供日期参考；客户机操作系统在其上维护 CLOCK_MONOTONIC、CLOCK_REALTIME 等接口，后者还受设置日期和 NTP 校时影响。MONOTONIC 不随手工设置日期直接跳变，也不等于 vCPU 累计执行时长。宿主暂停、客户机自行挂起和迁移是不同事件，不能仅凭某个时钟名称推断它们都采用同一种停顿语义。</p>
-  <p><code>PVCLOCK_GUEST_STOPPED</code> 用于告知客户机发生过宿主暂停，让看门狗避免据此误判锁死；这个标志本身不负责补齐墙钟。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst#L2957-L2978">暂停通知接口</a></p>
+  <p><code>PVCLOCK_GUEST_STOPPED</code> 用于告知客户机发生过宿主暂停，让看门狗避免据此误判锁死；这个标志本身不负责补齐墙钟。暂停通知接口</p>
 </section>
 <section id="evolution" class="mechanism-section">
   <h2><span class="mechanism-heading-number">八、</span>从模拟计时设备到协作与硬件辅助</h2>
@@ -183,29 +186,28 @@ now_ns   = 5,000,000,000 + 2,000,000 = 5.002 s</code></pre>
     <tr><td>客户机反复查询宿主时间成本高</td><td>pvclock 发布参考点，客户机本地换算</td><td>需要客户机支持、一致读取与更新协议</td></tr>
     <tr><td>定时到期后的退出、注入和调度增加迟延</td><td>VMX 定时辅助、APICv、按条件 posted 投递</td><td>阻塞目标仍需唤醒；调度和客户机屏蔽仍影响尾延迟</td></tr>
   </tbody></table>
-  <p>这些改进分别作用于计数、换算和通知，可以共同使用。KVM 还会按条件提前唤醒定时路径、在真正截止时刻前等待，以补偿注入开销；这以一定 CPU 消耗换取较低迟延。评价时应把时钟漂移、跨 vCPU 后退、定时迟到和应用调度延迟分开测量，避免只看平均值。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/lapic.c#L1881-L1959">提前量与等待处理</a></p>
+  <p>这些改进分别作用于计数、换算和通知，可以共同使用。KVM 还会按条件提前唤醒定时路径、在真正截止时刻前等待，以补偿注入开销；这以一定 CPU 消耗换取较低迟延。评价时应把时钟漂移、跨 vCPU 后退、定时迟到和应用调度延迟分开测量，避免只看平均值。提前量与等待处理</p>
 </section>
 <section id="summary" class="mechanism-section">
   <h2><span class="mechanism-heading-number">九、</span>总结：时间读数、到期事件与执行机会</h2>
   <p>回到 5.003 s 到期的任务，客户机内可记录设定的截止时刻与处理程序实际执行时刻，得到可见的迟到量；宿主侧再对应定时器到期、vCPU 唤醒和运行事件，定位迟到发生在哪段。两侧时间戳来自不同时间基准，跨端相减前需要建立对应关系。pvclock 读数连续、定时中断及时、应用按时运行是三个可以分别验证的结果。</p>
 </section>
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">十、</span>参考资料与延伸阅读</h2>
+  <h2><span class="mechanism-heading-number">十、</span>参考资料</h2>
   <ul>
     <li><a href="https://docs.kernel.org/timers/timekeeping.html">Linux：Clock sources 与 Clock events</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/x86/msr.rst">KVM pvclock 接口</a></li>
     <li><a href="https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html">Intel SDM</a>：TSC、TSC-deadline、VMX TSC 变换与 preemption timer。</li>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kernel/pvclock.c">Linux 客户机：pvclock 一致读取与单调性处理</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst#L1038-L1109">KVM 时钟保存与恢复接口</a></li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/kvm/clock.c">QEMU：kvmclock 状态与迁移</a></li>
-    <li><a href="kvm-vcpu-halt.html">KVM vCPU 阻塞与唤醒</a>、<a href="interrupt-virtualization.html">中断虚拟化</a>、<a href="cpu-virtualization.html">CPU 虚拟化</a></li>
   </ul>
 </section></div>
   </div>
-  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#cpu-virtualization">CPU 虚拟化原理</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-10-19">2026-10-19</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
+  <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#kvm-internals">KVM 原理</a></nav>
+<p class="mechanism-review">技术复核：<time datetime="2026-10-19">2026-10-19</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=428e6e8b26d1" defer></script>
+<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
 </body>
 </html>

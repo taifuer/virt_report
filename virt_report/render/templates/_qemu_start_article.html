@@ -4,7 +4,7 @@
 {% set seabios_source = 'https://github.com/coreboot/seabios/blob/b52ca86e094d19b58e2304417787e96b940e39c6/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>从创建进程到执行第一条指令</h2>
+  <h2>从 QEMU 进程到可运行的整机</h2>
   <p>QEMU 根据启动参数创建一台完整的虚拟计算机：CPU 与内存提供执行环境，磁盘提供系统镜像，网卡连接外部网络，芯片组、总线、中断控制器和固件把这些部件组织起来。硬件模型完成创建与复位后，客户机 CPU 开始执行固件，再由固件装载操作系统。</p>
   <p>以 x86 的 <code>pc-q35-10.2</code>、KVM 加速、SeaBIOS、BIOS 可引导的 Linux 系统盘与 virtio 设备为例，冷启动依次经过“QEMU 建立机器 → 映射固件 → 设置复位状态 → VM-entry → 固件 → 引导程序 → Guest 内核 → Guest 用户态”。</p>
   {% include '_mechanism_baselines.html' %}
@@ -52,6 +52,22 @@
   <p>按上述顺序，vCPU 线程在板级初始化中较早建立，内存布局与其他设备随后才完成。线程保持 stopped，仍可响应寄存器同步等内部工作。QEMU 用运行状态、线程条件变量和 BQL 协调初始化，使客户机在整机准备完成后才开始执行。下面展开 <code>x86_cpus_init()</code> 中的线程创建握手，再回到整机复位与放行执行的节点。</p>
 </section>
 
+<section id="devices" class="mechanism-section">
+  <h2>内存、磁盘、网卡与中断的整机连接</h2>
+  <p>CPU 执行固件前，机器需要提供可访问的地址布局、设备接口和事件来源。QEMU 负责把命令行中的资源连成这些关系；Guest 启动后再枚举硬件、分配资源并启用驱动。</p>
+  <table><thead><tr><th>部件</th><th>QEMU 启动时建立</th><th>Guest 随后完成</th></tr></thead><tbody>
+    <tr><td>RAM 与固件</td><td>RAM 后备、ROM、MMIO 和 AddressSpace，向 KVM 发布适用的内存槽</td><td>固件提供内存布局，内核建立页管理与进程页表</td></tr>
+    <tr><td>磁盘</td><td>文件/格式块图、BlockBackend、virtio-blk PCI 前端及队列状态</td><td>固件读取引导内容；内核驱动协商特性并配置自己的请求队列</td></tr>
+    <tr><td>网卡</td><td>user 或 TAP 后端、virtio-net 前端、MAC 与 PCI 配置空间</td><td>枚举、绑定驱动、分配 RX 缓冲区，用户空间配置地址与路由</td></tr>
+    <tr><td>中断与计时</td><td>PIC/I/O APIC、每 vCPU 的 LAPIC，以及机器需要的 PIT、RTC、HPET 等模型</td><td>建立 IDT 和 IRQ 处理函数，配置路由、MSI-X 与计时源</td></tr>
+    <tr><td>平台描述</td><td>ACPI、SMBIOS 与 fw_cfg 等固件可用信息</td><td>固件与内核据此识别 CPU 拓扑、设备和平台能力</td></tr>
+  </tbody></table>
+  <h3>中断初始化先建立容器，路由随配置完善</h3>
+  <p>默认 KVM irqchip 路径在创建 vCPU 前调用 <code>KVM_CREATE_IRQCHIP</code>，准备内核 PIC、I/O APIC 及后续 vCPU 的 LAPIC。QEMU 的板级设备将中断输出接到这些控制器；split irqchip 则把传统引脚控制器放在 QEMU，LAPIC 仍在 KVM。CPU 初始化时为处理器配置 APIC ID。</p>
+  <p>创建 virtio PCI 设备会准备 MSI-X 表和中断状态，但目标向量并非在 QEMU 启动时就永久确定。Guest 驱动启用 MSI-X 并配置队列表项后，QEMU/KVM 才据此建立或更新实际通知路由；使用 irqfd 的后端还要绑定相应 eventfd。RAM 中的缓冲区、设备队列与中断路由由这些阶段逐步连接。</p>
+  <h3>两次驱动接管</h3>
+  <p>从系统盘启动时，固件先用自己的磁盘驱动读取引导内容，Linux 随后加载自己的驱动重新配置设备。QEMU 一直维护同一个虚拟硬件实例，Guest 中执行的驱动却已经更换。网卡是否参与固件引导取决于启动方式；本例从磁盘启动，网络主要在内核和用户空间阶段启用。</p>
+</section>
 <section id="vcpu" class="mechanism-section">
   <h2>vCPU 线程与内核接口的建立</h2>
   <p><code>x86_cpus_init()</code> 按拓扑计算 APIC ID，为每个启动 CPU 创建 X86CPU 并 realize。<code>x86_cpu_realizefn()</code> 验证 CPU 特性，准备 APIC，进入 <code>qemu_init_vcpu()</code>。该函数先设 <code>cpu-&gt;stopped = true</code>，再通过 accelerator 的 create_vcpu_thread 回调创建线程。</p>
@@ -184,6 +200,7 @@ ROM 文件偏移           = 0xfffffff0 - 0xfffc0000 = 0x3fff0
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>
+    <li><a href="{{ qemu_source }}hw/i386/pc_q35.c">Q35：内存、芯片组与板级中断连接</a>、<a href="{{ qemu_source }}hw/virtio/virtio-pci.c">virtio PCI 与 MSI-X 初始化</a></li>
     <li><a href="{{ qemu_source }}docs/system/managed-startup.rst">QEMU 10.2.0：受控启动与 preconfig</a></li>
     <li><a href="{{ qemu_source }}hw/i386/x86-common.c#L57-L121">x86 CPU 对象创建与 APIC ID 分配</a></li>
     <li><a href="{{ qemu_source }}target/i386/kvm/kvm.c#L2420-L2431">KVM 的 BSP / AP 复位状态</a></li>

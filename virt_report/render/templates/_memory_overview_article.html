@@ -1,13 +1,16 @@
 {% from '_mechanism_diagram.html' import diagram with context %}
 {% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 {% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
+
 <section id="preface" class="mechanism-section">
   <h2>客户机地址空间与宿主内存</h2>
   <p>内存虚拟化为每台客户机提供独立的物理地址空间，并将它映射到宿主的后备内存。两台虚拟机都可以从物理地址零开始使用内存，而不读写彼此的数据。客户机应用还有自己的虚拟地址，客户机内核通过页表把它们映射到自己认识的物理页；宿主再决定每个客户机物理页实际由哪块宿主内存承载。</p>
   <p>内存虚拟化需要同时满足三个条件：客户机页表的含义保持不变，访问被限制在获准的宿主页内，宿主仍能分配、迁移和回收这些页面。本文以普通、可由宿主访问的 RAM 和 x86 KVM 为例，从一次读取推导影子页表与 EPT/NPT 的解决办法。</p>
   <p>客户机内核维护自己的页表，QEMU 在宿主用户态准备 RAM 后备范围，KVM 在宿主内核维护第二级映射，处理器完成实际遍历。下文沿同一条 load 比较影子页表和 EPT，再跟踪宿主后备页变化时的映射重建。</p>
+  <p>RAM 后备范围与内存槽的建立过程见<a href="qemu-memory-region.html">QEMU 内存初始化与地址空间管理</a>，包括机器地址布局、MemoryRegion、FlatView 与 KVM 注册的对应关系。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
+
 <section id="addresses" class="mechanism-section">
   <h2>GVA、GPA、HVA 与 HPA 的对应关系</h2>
   <p>设客户机执行 <code>load [0x400120]</code>，页大小为 4 KiB。客户机页表把虚拟页 <code>0x400000</code> 映射到客户机物理页 <code>0x20000</code>，偏移 <code>0x120</code> 保持不变，因此需要访问的客户机物理地址是 <code>0x20120</code>。</p>
@@ -20,6 +23,7 @@
   </tbody></table>
   <p>QEMU 用内存槽向 KVM 登记一段 GPA 与 HVA 的对应关系。这里假定槽从 GPA 0 开始，映射到 QEMU 的基址 B；对应宿主页基址为 <code>0x920000</code>。KVM 建图时先按槽内偏移找到 HVA，再向 Linux 内存管理取得当前宿主页。另一个虚拟机的同一 GPA 可以落到不同 HPA。隔离依赖宿主控制这份映射和访问权限，客户机不能通过修改自己的页表取得任意宿主页。<a href="{{ linux }}Documentation/virt/kvm/x86/mmu.rst#L70-L108">KVM 地址空间与后备内存</a></p>
 </section>
+
 <section id="evolution" class="mechanism-section">
   <h2>从软件合成映射到硬件两级转换</h2>
   <h3>影子页表把两次转换合成一次</h3>
@@ -32,6 +36,7 @@
   <p>两级转换的新增成本来自硬件遍历：客户机页表本身也在 GPA 空间中，读取每一级表项都要经过 EPT/NPT；最后的数据访问同样需要第二级转换。TLB 保存最终转换，页表遍历缓存复用中间结果，因此一次 load 的实际访存开销取决于缓存命中情况。</p>
   <p>这里有两类后续优化：大页让一个转换项覆盖更多地址，减少遍历与缓存压力；KVM 的并行页表管理则减少多个 vCPU 同时建图的锁争用。前者改变映射粒度，后者改变宿主的软件实现。它们都以地址和权限仍然正确为前提，具体条件放到大页与 EPT 专篇展开。</p>
 </section>
+
 <section id="access" class="mechanism-section">
   <h2>一次读取中的建图、访问与映射失效</h2>
   <h3>缺少 EPT 项时的映射建立</h3>
@@ -42,6 +47,59 @@
   <h3>MMIO 访问与脏页跟踪</h3>
   <p>GPA 若属于设备寄存器，就需要相应设备模型完成访问，不能照 RAM 路径随意分配页面。迁移期间还需记录客户机写过哪些 RAM 页：写保护可以让首次写入进入 KVM 处理，硬件也可提供辅助脏标记；bitmap 或 dirty ring 再把记录交给用户态。记录方式不同，目标都是让迁移器知道哪些内容需要重新发送。</p>
 </section>
+
+<section id="walkthrough" class="mechanism-section">
+  <h2>内存访问与异常处理演示</h2>
+  <p>RAM 场景沿 GVA 0x40203080 → GPA 0x00403080 → HPA 0x21000080，使用 4 KiB 页。后备内存槽起于 GPA 0x00400000、HVA 0x7f0000000000，目标页对应 HVA 0x7f0000003000。另可切换模拟 MMIO、内核处理和已建立映射的设备 BAR，比较处理路径。</p>
+  {% include '_execution_lab.html' %}
+</section>
+
+<section id="address-routing" class="mechanism-section">
+  <h2>地址空间与访问分派</h2>
+  <h3>Guest 资源语义与硬件地址转换</h3>
+  <p>Guest 内核从固件内存图获知 RAM 范围，通过 PCI 枚举和 BAR 资源获知设备窗口。驱动选择适当的映射、缓存属性与访问接口，例如 <code>ioremap()</code>、<code>readl()</code> / <code>writel()</code>；它通常知道自己在访问 RAM、设备寄存器还是设备暴露的内存，但无需知道宿主 HPA。普通应用也不必了解这些后备细节。<a href="https://docs.kernel.org/driver-api/device-io.html">Linux 设备访问接口</a></p>
+  <p>在本例 x86 环境中，RAM 与 MMIO 都由普通访存指令触达。CPU 按地址转换、权限和内存属性执行：Guest 页表得到 GPA，EPT 得到 HPA，物理地址译码再选择内存或设备窗口。缓存属性约束访问行为，资源类型由映射与平台地址布局共同确定。</p>
+  <h3>QEMU 配置地址空间，KVM 处理退出</h3>
+  <p>QEMU 用 <code>MemoryRegion</code> 建立客户机物理地址布局：普通 RAM、共享后备和需要设备回调的区间具有不同属性。MemoryListener 将可映射的 GPA 区间及 HVA 后备注册为 KVM memslot。VFIO 可映射设备区域也可使用 RAM-device 接口，因此“存在 memslot”不等于“物理落点必然是普通 RAM”。<a href="{{ demo.sources['qemu-slot-map'].url }}">memslot 注册</a>、<a href="{{ demo.sources['ram-device-map'].url }}">RAM-device 后备接口</a></p>
+  <p>EPT 缺项或权限问题使处理器退出到 KVM。普通 RAM 缺项由 KVM 取得后备 PFN 并补建 EPT，必要时由宿主内存管理先提供页面。需要模拟的访问先尝试内核 LAPIC / MMIO 总线；不能在内核完成的部分通过 <code>KVM_EXIT_MMIO</code> 返回 QEMU，由地址空间分派找到设备回调。EPT 由 KVM 管理，QEMU 负责相应设备操作；未分配的地址空洞也可能没有可处理的设备。<a href="{{ demo.sources['ept-map'].url }}">EPT 建图</a>、<a href="{{ demo.sources['mmio-emulate'].url }}">模拟访问分派</a>、<a href="{{ demo.sources['mmio-request'].url }}">用户态 MMIO 请求</a></p>
+  <h3>HPA 可以指向 RAM，也可以指向设备窗口</h3>
+  <table>
+    <thead><tr><th scope="col">访问对象</th><th scope="col">Guest GPA</th><th scope="col">EPT 输出的 HPA</th><th scope="col">实际落点</th></tr></thead>
+    <tbody>
+      <tr><td>普通 Guest RAM</td><td><code>0x00403080</code></td><td><code>0x21000080</code></td><td>宿主 RAM 页中的数据</td></tr>
+      <tr><td>VFIO 物理 BAR0</td><td><code>0xf0001000</code></td><td><code>0xd0001000</code></td><td>宿主 MMIO 窗口，经 PCIe 到 BAR0 + <code>0x1000</code></td></tr>
+      <tr><td>ivshmem 共享 BAR2</td><td><code>0xf0001000</code></td><td><code>0x21001000</code></td><td>宿主共享 RAM 页，不经过物理 PCIe 设备</td></tr>
+    </tbody>
+  </table>
+  <p>两个 BAR 示例使用相同 Guest 地址表示两种独立配置，便于对照。VFIO 的 HPA 指向宿主设备 MMIO 窗口。本例宿主 BAR0 的 CPU 物理资源基址为 <code>0xd0000000</code>，加上窗口内 offset <code>0x1000</code> 即为目标地址。示例宿主桥采用恒等窗口；其他平台可能还需换算 CPU 物理地址与 PCI 总线地址。<a href="https://docs.kernel.org/core-api/dma-api-howto.html#cpu-and-dma-addresses">CPU 物理地址、总线地址与宿主桥</a></p>
+  <p>ivshmem 的 BAR2 则将共享内存对象暴露给 Guest。它没有真实 PCIe 设备，不需要 VFIO，也不逐次执行 QEMU 寄存器回调；BAR0 控制寄存器是另一片区域，不能由 BAR2 推断整个设备都无退出。普通 Guest RAM 同样不会因为启用了 VFIO 就自动指向 BAR。设备主动 DMA 访问内存时，才涉及另一个方向的 IOMMU 地址链。<a href="{{ demo.sources['ivshmem-setup'].url }}">BAR0 与 BAR2 的注册</a>、<a href="{{ demo.sources['ivshmem-spec'].url }}">ivshmem 设备规范</a></p>
+</section>
+
+<section id="comparison" class="mechanism-section">
+  <h2>异常处理的分工</h2>
+  <p>判断一次访存的处理路径，可以先看阻塞位置，再看需要修改的结构。Guest 的页表缺项、KVM 的 EPT 缺项和宿主页未驻留，对应不同的处理者。</p>
+  <table>
+    <thead><tr><th scope="col">场景</th><th scope="col">处理者与结构变化</th><th scope="col">原指令如何继续</th></tr></thead>
+    <tbody>
+      <tr><td>转换缓存命中</td><td>CPU 使用有效的地址转换和权限</td><td>硬件读取 RAM；无访存引起的 VM-Exit</td></tr>
+      <tr><td>TLB 未命中、页表有效</td><td>CPU 遍历 Guest 页表与 EPT</td><td>得到有效转换后完成读取；无需软件缺页处理</td></tr>
+      <tr><td>Guest #PF</td><td>Guest Linux 检查 VMA，分配页面并填写 Guest PTE</td><td>异常返回后重试；本例不退出到 KVM</td></tr>
+      <tr><td>RAM 首次补建 EPT</td><td>本例后备页已驻留；KVM 查 memslot、取得 PFN、建立 EPT 叶子</td><td>VM-entry 后重试；无需返回 QEMU</td></tr>
+      <tr><td>取后备页时需要换入（进阶）</td><td>宿主内存管理先提供页面，KVM 再建立 EPT；是取页的慢路径</td><td>本例 vCPU 线程等待换入，再进入 Guest 重试</td></tr>
+      <tr><td>QEMU 模拟设备 MMIO</td><td>KVM 返回退出信息，QEMU 设备回调填入读值</td><td>再次 KVM_RUN，完成待决模拟后恢复 Guest</td></tr>
+      <tr><td>KVM 内核 LAPIC MMIO</td><td>限定关闭相关硬件加速，退出后由内核设备返回读值</td><td>内核完成原指令，不需要 KVM_RUN 返回 QEMU</td></tr>
+      <tr><td>匹配 ioeventfd 的门铃写</td><td>KVM 匹配地址、宽度及数据后触发 eventfd</td><td>vCPU 继续执行；已通知的后端仍可能在用户态异步处理</td></tr>
+      <tr><td>VFIO 可 mmap 的 BAR 区间</td><td>已有有效映射与权限，CPU 直接访问设备区间</td><td>稳态访问不因该指令退出，不经过逐次 QEMU 设备回调</td></tr>
+      <tr><td>ivshmem 共享 BAR2</td><td>已有有效映射与权限，CPU 访问共享后备页；不涉及 VFIO</td><td>稳态读取不退出，数据不是软件设备回调合成的</td></tr>
+      <tr><td>已有 EPT 的脏页写保护（进阶）</td><td>KVM 恢复 EPT 写权限并标记脏页；不需要另找一个页面</td><td>VM-entry 后重试写入；Guest PTE 保持不变</td></tr>
+    </tbody>
+  </table>
+  <p>普通 TLB miss 只说明转换缓存没有可用条目。Guest 页表和 EPT 都有效时，硬件能够自行完成遍历。CPU 数据缓存则保存数据或指令，其命中情况与转换缓存要分别观察。</p>
+  <p>Guest #PF 示例选用合法匿名映射的首次写入，由客户机内核处理；非法地址与权限错误可能终止应用。宿主缺页示例选用未启用 KVM 异步缺页协议的同步换入，由宿主内存管理提供后备页；在其他配置中，KVM 可以把等待转成异步处理。</p>
+  <p>只有交给用户态的 MMIO 读才需要这次往返：<code>kvm_run.mmio.data</code> 已填好时，Guest 寄存器仍可能保留旧值，用户态需重新进入 <code>KVM_RUN</code>，由内核先完成待决操作。KVM 在此之前会尝试内核 LAPIC 与 MMIO 总线；命中的 ioeventfd 写通知也可在内核完成。相关执行循环见<a href="kvm-vcpu-run.html">KVM vCPU 运行与退出</a>。</p>
+  <p>VFIO 直接访问只适用于允许映射的 BAR 区间，且本例从映射已建立的稳态开始。MSI-X 表、需模拟区域、首次映射缺失与权限变化不属于这条无退出路径。这里的 CPU 地址链是 Guest 页表与 EPT；设备自身发起 DMA 时使用的 IOMMU 地址链是另一个方向，不能串成一次 CPU 读取的必经环节。</p>
+</section>
+
 <section id="evaluation" class="mechanism-section">
   <h2>转换、后备与跟踪应分别评价</h2>
   <table><thead><tr><th>性能现象</th><th>可用改进</th><th>代价与边界</th></tr></thead><tbody>
@@ -52,6 +110,7 @@
   </tbody></table>
   <p>影子页表用软件维护合成关系，EPT/NPT 用额外硬件转换换取更清晰的分工；两者最终都依赖宿主后备页的生命周期。评价时把转换未命中、缺页建图、真实内存访问和脏页跟踪分开，再观察吞吐、尾延迟与内存占用，才能判断优化发生在哪一层。</p>
 </section>
+
 <section id="verification" class="mechanism-section">
   <h2>排查入口：内存容量与缺页的分层观察</h2>
   <p>分析内存占用或访问停顿时，先记录 VM 的内存后备、大页、NUMA 和 balloon 配置，再对齐同一段负载的统计窗口。下面两条命令在管理宿主执行，<code>VM</code> 替换为实际域名；只查询配置和现有统计，不调整容量或采集周期。</p>
@@ -64,6 +123,7 @@ virsh dommemstat VM</code></pre>
   </tbody></table>
   <p><code>dommemstat</code> 的 Guest 统计依赖驱动和已有采集配置。检查 <code>last-update</code> 是否更新；缺少字段应记为“未提供”，不能填零。命令与字段口径见 <a href="https://www.libvirt.org/manpages/virsh.html#dommemstat">libvirt 手册</a>。下节保留已完成实验的环境和原始计数，便于与自己的结果比较。</p>
 </section>
+
 <section id="experiment" class="mechanism-section">
   <h2>小实验：对照首次触碰与重复访问</h2>
   <p>在 Linux 客户机里运行下面的单线程程序。它申请 32 MiB 匿名内存，按基础页大小写两遍，并分别统计本进程的 minor fault。第一次写入需要客户机建立匿名页映射；第二遍通常可以复用。程序只调整自己的映射，不需要 root，也不修改系统的大页配置。</p>
@@ -118,24 +178,19 @@ int main(void)
   <p>宿主已经为这台 VM 预分配了 RAM 后备，Guest 中新进程的匿名页映射仍要按需建立：<code>32 MiB / 4 KiB = 8192</code>，第一遍逐页写入触发缺页，第二遍复用这些映射。这组结果把宿主的后备分配与 Guest 应用的缺页区分开；也说明 <code>mmap</code> 成功后，页面未必已经全部准备好。</p>
   <p>本次记录没有采集 NPT 缺页、VM-Exit 或 TLB 计数，也没有做吞吐或延迟比较，结论限于上述 Guest 缺页行为。自动测试仍只编译和运行普通 Linux 用户态示例，不会启动虚拟机；表中数字来自这次独立的 KVM 实验。<a href="virtio-balloon.html#balloon-measured">balloon 实测</a>进一步观察后备页被回收、重新访问时的 RSS 变化。</p>
 </section>
-<section id="reading" class="mechanism-section">
-  <h2>进一步阅读</h2>
-  <p><a href="virtio-balloon.html">virtio-balloon：内存回收、归还与空闲页报告</a>沿 Guest 页与宿主后备页的交接，补充容量调整、回收限制以及与 virtio-mem 的区别。</p>
-  <ul>
-    <li><a href="kvm-ept-fault.html">KVM 二级地址转换与缺页处理</a>：完整跟踪一页 RAM 的映射与失效。</li>
-    <li><a href="kvm-hugepages.html">KVM 大页映射</a>：建立、拆分和恢复条件。</li>
-    <li><a href="kvm-dirty-ring.html">KVM 脏页日志：位图与 Dirty Ring</a>：记录的发布、消费和重置。</li>
-    <li><a href="qemu-memory-region.html">QEMU 内存初始化与地址空间管理</a>：后备分配、Q35 RAM 布局与 KVM 注册。</li>
-    <li><a href="vcpu-numa-placement.html">vCPU 与 NUMA 内存放置</a>：客户机拓扑、线程亲和性与实际页位置。</li>
-    <li><a href="qemu-memory-migration.html">预拷贝内存迁移</a>、<a href="qemu-virtio-mem.html">virtio-mem</a>：把映射管理放回迁移与容量调整过程。</li>
-  </ul>
-</section>
+
 <section id="sources" class="mechanism-section">
-  <h2>参考资料</h2>
-  <ul>
+  <h2>版本与参考资料</h2>
+<ul>
     <li><a href="{{ linux }}Documentation/virt/kvm/x86/mmu.rst">Linux：MMU 目标、影子模式与两级映射</a></li>
     <li><a href="{{ linux }}Documentation/virt/kvm/api.rst">Linux：内存槽与 dirty ring API</a></li>
     <li><a href="{{ linux }}virt/kvm/kvm_main.c#L674-L797">KVM：宿主映射失效通知</a></li>
     <li><a href="{{ qemu }}docs/devel/memory.rst">QEMU：内存和设备地址空间</a></li>
+  </ul>
+<p>演示中的源码链接分别定位 Guest 缺页入口、VMX 退出、KVM 后备页解析、EPT 建图和用户态 MMIO 完成边界。源码视图只展开当前场景涉及的路径。</p>
+  <ul class="mechanism-sources">
+    {% for source_id in ['address-model', 'guest-fault', 'vmx-exceptions', 'ept-exit', 'ept-map', 'faultin-io', 'backing-page', 'dirty-fault', 'kvm-mmio-read', 'lapic-mmio-read', 'ioeventfd-write', 'vfio-region-map', 'qemu-slot-map', 'ram-device-map', 'ivshmem-setup', 'ivshmem-spec', 'mmio-qemu', 'mmio-completion'] %}
+    <li><a href="{{ demo.sources[source_id].url }}" target="_blank" rel="noopener noreferrer">{{ demo.sources[source_id].label }}</a></li>
+    {% endfor %}
   </ul>
 </section>

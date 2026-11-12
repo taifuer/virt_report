@@ -40,7 +40,7 @@
     <tr><td>DIMM 热插拔</td><td>以 DIMM 设备及其地址范围为管理单位</td><td>涉及设备增删、固件通知和 Guest 内存热插拔流程</td></tr>
   </tbody></table>
   <p>PAGE_REPORTING 的描述符直接指向可丢弃区域，和 inflateq 的 PFN 数组格式不同。QEMU 的属性名为 <code>free-page-reporting</code>，源码特性常量使用 <code>VIRTIO_BALLOON_F_REPORTING</code>。使用前要确认两端协商成功，不能仅根据设备名称假定这些扩展都已启用。</p>
-  <p>气球适合在已配置 RAM 内灵活回收空闲容量，部署相对直接；它依赖 Guest 配合，并可能挤压缓存与业务工作集。需要调整设备内存容量时，可结合 <a href="qemu-virtio-mem.html">virtio-mem 的内存添加与回收</a>比较。两者的统计口径、页面所有权与失败处理都应分开理解。</p>
+  <p>气球适合在已配置 RAM 内灵活回收空闲容量，部署相对直接；它依赖 Guest 配合，并可能挤压缓存与业务工作集。需要增加或移除内存设备时，可结合 <a href="hotplug.html#example">DIMM 内存热插拔</a>比较。两者的统计口径、页面所有权与失败处理都应分开理解。</p>
 </section>
 <section id="experiment" class="mechanism-section">
   <h2>小实验：同时观察目标、actual 与 RSS</h2>
@@ -88,5 +88,5 @@
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-balloon.c">QEMU virtio-balloon.c</a>：目标换算、队列处理、discard 限制和迁移提示。</li>
     <li><a href="https://www.qemu.org/docs/master/interop/virtio-balloon-stats.html">QEMU 内存统计接口</a>：轮询设置、统计值与更新时间。</li>
   </ul>
-  <p>地址布局见 <a href="qemu-memory-region.html">QEMU 内存初始化与 MemoryRegion</a>；驱动和设备共享队列的通用约定见 <a href="virtio-device-initialization.html">virtio 初始化</a>与 <a href="qemu-network-tx.html#virtqueue">split virtqueue 结构</a>。本篇沿用这些约定，重点放在页的交接及其内存效果。</p>
+  <p>地址布局见 <a href="qemu-memory-region.html">QEMU 内存初始化与 MemoryRegion</a>；驱动和设备共享队列的通用约定见 <a href="virtio-device-initialization.html">virtio 初始化</a>与 <a href="network-io.html#virtqueue">split virtqueue 结构</a>。本篇沿用这些约定，重点放在页的交接及其内存效果。</p>
 </section>

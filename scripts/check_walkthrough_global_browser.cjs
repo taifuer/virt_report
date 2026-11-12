@@ -8,8 +8,8 @@ const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
 assert(['localhost', '127.0.0.1'].includes(new URL(base).hostname));
 const shots = process.env.WALKTHROUGH_GLOBAL_SCREENSHOT_DIR || '/tmp/walkthrough-global-review';
 fs.mkdirSync(shots, {recursive: true});
-const pages = ['virtio-blk-read', 'network-io', 'cpu-execution', 'memory-access',
-  'interrupt-delivery', 'gpu-execution', 'virtio-gpu-execution', 'libvirt-domain-start'];
+const pages = ['qemu-virtio-blk', 'network-io', 'cpu-virtualization', 'memory-virtualization',
+  'interrupt-virtualization', 'gpu-execution', 'virtio-gpu', 'libvirt-domain-start'];
 
 function inspect() {
   const lab = document.querySelector('[data-walkthrough-lab]');
@@ -90,7 +90,8 @@ function check(result, tag) {
       await page.setViewportSize({width, height: width > 700 ? 900 : 844});
       for (const slug of pages) {
         await page.goto(`${base}/mechanisms/${slug}.html`);
-        const disk = slug === 'virtio-blk-read', prefix = disk ? 'vbr' : 'execution';
+        const disk = slug === 'qemu-virtio-blk', prefix = disk ? 'vbr' : 'execution';
+        await page.locator('[data-walkthrough-lab]').scrollIntoViewIfNeeded();
         await page.locator(`[data-${prefix}-next]`).waitFor({state: 'visible'});
         const variants = await page.evaluate(disk => disk
           ? JSON.parse(document.querySelector('#block-io-scenarios-data').textContent).routes
@@ -107,7 +108,7 @@ function check(result, tag) {
             await page.locator(`[data-${prefix}-view="${view}"]`).click();
             await page.locator(`[data-${prefix}-reset]`).click();
             check(await page.evaluate(inspect), `${tag}/${view}/initial`); layouts++;
-            if (slug === 'memory-access' && variant.scenario === 'mmio-read' && view === 'overview') {
+            if (slug === 'memory-virtualization' && variant.scenario === 'mmio-read' && view === 'overview') {
               await page.locator('.execution-canvas').screenshot({path: path.join(shots, `memory-mmio-${width}-initial.png`)});
             }
             // Every intermediate frame participates in the overflow audit, not

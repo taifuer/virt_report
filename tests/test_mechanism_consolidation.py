@@ -1,5 +1,6 @@
 """Merged articles retain old bookmarks without duplicating the catalogue."""
 import io
+import json
 import re
 import shutil
 import subprocess
@@ -9,7 +10,7 @@ from urllib.parse import unquote, urljoin, urlsplit
 
 import pytest
 
-from virt_report import mechanisms, server
+from virt_report import editorial_search, mechanisms, server
 from virt_report.config import Config, Render
 from virt_report.render import render
 
@@ -19,6 +20,14 @@ MERGES = {
     "vm-startup": "libvirt-domain-start",
     "live-upgrade": "qemu-cpr-transfer",
     "kvm-internals": "kvm-vcpu-run",
+    "cpu-execution": "cpu-virtualization",
+    "memory-access": "memory-virtualization",
+    "interrupt-delivery": "interrupt-virtualization",
+    "kvm-virtio-interrupt": "interrupt-virtualization",
+    "qemu-network-tx": "network-io",
+    "virtio-net-rx": "network-io",
+    "virtio-blk-read": "qemu-virtio-blk",
+    "virtio-gpu-execution": "virtio-gpu",
 }
 OLD_ANCHORS = {
     "virtio-gpu-rendering": {"preface", "transport", "render", "video-support",
@@ -29,6 +38,17 @@ OLD_ANCHORS = {
                      "evaluation", "reading", "sources"},
     "kvm-internals": {"preface", "objects", "execution", "resources",
                       "coordination", "evolution", "summary", "reading", "sources"},
+    "cpu-execution": {"preface", "walkthrough", "comparison", "evolution", "sources"},
+    "memory-access": {"preface", "walkthrough", "address-routing", "comparison", "evolution", "sources"},
+    "interrupt-delivery": {"preface", "walkthrough", "comparison", "evolution", "sources"},
+    "kvm-virtio-interrupt": {"preface", "notification", "msix", "delivery", "structures",
+                             "irqfd", "implementation", "evolution", "sources"},
+    "qemu-network-tx": {"preface", "interfaces", "virtqueue", "flow", "notification",
+                         "implementation", "evolution", "evaluation", "sources"},
+    "virtio-net-rx": {"preface", "ownership", "receive", "napi", "races", "implementation",
+                       "evolution", "sources"},
+    "virtio-blk-read": {"preface", "walkthrough", "comparison", "persistence", "verification", "sources"},
+    "virtio-gpu-execution": {"preface", "walkthrough", "completion", "sources"},
 }
 
 
@@ -80,7 +100,7 @@ def _request(path, method):
 
 def test_consolidated_catalogue_has_unique_canonical_articles():
     slugs = [article["slug"] for article in mechanisms.articles()]
-    assert len(slugs) == len(set(slugs)) == 69
+    assert len(slugs) == len(set(slugs)) == 58
     assert set(slugs).isdisjoint(MERGES)
     assert {entry["slug"]: entry["target"] for entry in mechanisms.redirects()} == MERGES
     catalogue = LinksAndIds(render.render_mechanisms_html(Config()))
@@ -89,6 +109,17 @@ def test_consolidated_catalogue_has_unique_canonical_articles():
                      if re.fullmatch(r"mechanisms/[a-z0-9-]+\.html", link)]
     assert Counter(article_links) == Counter(slugs)
     assert len(catalogue.ids) == len(set(catalogue.ids))
+
+
+def test_removed_articles_are_not_indexed_as_results_or_related_reading():
+    removed = {'cpu-model-migration', 'qemu-qcow2', 'qemu-virtio-mem',
+               'qemu-live-block-operations'}
+    assert all(mechanisms.get_article(slug) is None for slug in removed)
+    documents = editorial_search._editorial_documents()
+    assert removed.isdisjoint(document['slug'] for document in documents)
+    for article in mechanisms.articles():
+        page = render.render_mechanisms_html(Config(), article['slug'])
+        assert all(f'{slug}.html' not in page for slug in removed)
 
 
 def test_export_includes_legacy_redirects_without_touching_reports(tmp_path, no_database):
@@ -102,19 +133,32 @@ def test_export_includes_legacy_redirects_without_touching_reports(tmp_path, no_
         reports[path] = (path.read_bytes(), path.stat().st_mtime_ns)
     config = Config(render=Render(output_dir=output))
     paths = render.render_mechanisms(config)
-    assert len(paths) == len(set(paths)) == 1 + len(mechanisms.articles()) + len(MERGES)
+    assert len(paths) == len(set(paths)) == (
+        1 + len(mechanisms.articles()) + len(MERGES) + 1
+    )
     for old, target in MERGES.items():
         path = output / "mechanisms" / f"{old}.html"
         assert path in paths
         parsed = LinksAndIds(path.read_text(encoding="utf-8"))
         assert parsed.canonical == [f"{target}.html"]
         assert f"{target}.html" in parsed.links
-        assert parsed.scripts == [{
+        assert len(parsed.scripts) == 1
+        script = dict(parsed.scripts[0])
+        assert json.loads(script.pop('data-anchors')) == mechanisms.get_redirect(old)['anchors']
+        assert script == {
             "src": "../assets/mechanism-redirect.js",
             "data-target": f"{target}.html", "defer": None,
-        }]
+        }
         assert (output / "mechanisms" / f"{target}.html").is_file()
     assert (output / "assets" / "mechanism-redirect.js").is_file()
+    kvm_redirect = (output / 'kvm' / 'index.html').read_text(encoding='utf-8')
+    assert LinksAndIds(kvm_redirect).canonical == ['../mechanisms.html#kvm-internals']
+    assert 'http-equiv="refresh" content="0; url=../mechanisms.html#kvm-internals"' in kvm_redirect
+    assert 'mechanism-book-chapter' not in kvm_redirect
+    assert not (output / 'mechanisms' / 'cpu-model-migration.html').exists()
+    assert not (output / 'mechanisms' / 'qemu-qcow2.html').exists()
+    assert not (output / 'mechanisms' / 'qemu-virtio-mem.html').exists()
+    assert not (output / 'mechanisms' / 'qemu-live-block-operations.html').exists()
     for path, (body, modified) in reports.items():
         assert path.read_bytes() == body
         assert path.stat().st_mtime_ns == modified
@@ -130,7 +174,27 @@ def test_http_legacy_routes_use_308_without_database(old, target, method, no_dat
     assert body == b""
 
 
-@pytest.mark.parametrize("slug", ["unknown-article", "base", "qemu-cpr-transfer-old"])
+@pytest.mark.parametrize('method', ['GET', 'HEAD'])
+def test_http_redirect_retains_interactive_state(method, no_database):
+    status, headers, body = _request('/mechanisms/cpu-execution.html?scenario=mmio&step=exit', method)
+    assert status == 308
+    assert headers['Location'] == '/mechanisms/cpu-virtualization.html?scenario=mmio&step=exit'
+    assert body == b''
+
+
+@pytest.mark.parametrize('method', ['GET', 'HEAD'])
+@pytest.mark.parametrize('path', ['/kvm', '/kvm/', '/kvm/index.html', '/kvm.html'])
+def test_old_kvm_entry_redirects_to_the_shared_catalogue(path, method, no_database):
+    status, headers, body = _request(path, method)
+    assert status == 308
+    assert headers['Location'] == '/mechanisms.html#kvm-internals'
+    assert headers['Content-Length'] == '0'
+    assert body == b''
+
+
+@pytest.mark.parametrize("slug", ["unknown-article", "base", "qemu-cpr-transfer-old",
+                                 "cpu-model-migration", "qemu-qcow2", "qemu-virtio-mem",
+                                 "qemu-live-block-operations"])
 @pytest.mark.parametrize("method", ["GET", "HEAD"])
 def test_unregistered_articles_are_not_redirected(slug, method, no_database):
     assert mechanisms.get_redirect(slug) is None
@@ -179,7 +243,7 @@ def test_all_internal_article_links_and_fragments_resolve():
             if resolved.netloc != "example.test":
                 continue
             if not (resolved.path.startswith("/mechanisms/")
-                    or resolved.path == "/mechanisms.html"):
+                    or resolved.path == "/mechanisms.html" or resolved.path == '/kvm/'):
                 continue
             assert resolved.path in parsed, (source, link, resolved.path)
             target_path = resolved.path

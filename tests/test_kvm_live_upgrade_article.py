@@ -16,8 +16,8 @@ def _section(page: str, section: str) -> str:
 
 def test_upgrade_category_lists_qemu_and_kvm_without_using_cpr_as_an_overview():
     topic = mechanisms.get_topic("live-upgrade")
-    assert not topic.get("overview")
-    assert topic["overview_article"] is None
+    assert topic["overview"] == "live-upgrade-overview"
+    assert topic["overview_article"]["slug"] == "live-upgrade-overview"
     assert [article["slug"] for article in topic["detail_articles"]] == [
         "qemu-cpr-transfer", "kvm-live-upgrade",
     ]
@@ -26,8 +26,8 @@ def test_upgrade_category_lists_qemu_and_kvm_without_using_cpr_as_an_overview():
     directory = render.render_mechanisms_html(Config())
     category = _section(directory, "live-upgrade")
     heading = re.search(r"<h3[^>]*>(.*?)</h3>", category, re.S).group(1)
-    assert 'class="mechanism-topic-label"' in heading
-    assert "热升级" in heading and "<a " not in heading
+    assert 'href="mechanisms/live-upgrade-overview.html"' in heading
+    assert "热升级" in heading
     assert "KVM 热补丁与宿主内核交接" not in category
     for title, slug in (
         ("QEMU 热升级：CPR 的资源交接与状态恢复", "qemu-cpr-transfer"),
@@ -74,7 +74,8 @@ def test_orthus_follows_the_problem_design_example_results_reading_order():
 def test_orthus_explains_coexistence_grafting_and_device_handover():
     page = render.render_mechanisms_html(Config(), "kvm-live-upgrade")
     preface = _section(page, "preface")
-    assert "论文依据：" in preface and ORTHUS_DOI in preface
+    assert "论文依据：" in preface and "Orthus · ASPLOS 2019" in preface
+    assert ORTHUS_DOI in _section(page, 'sources')
     assert "源码版本：" not in page
     assert "4 vCPU、8 GiB" in preface
     assert "不代表论文的测试配置" in preface
@@ -111,7 +112,7 @@ def test_orthus_limits_metrics_and_compares_a_directly_related_followup():
     for phrase in ("KVM Forum 2020", "2022", "pi_desc", "PIR", "Interrupt Remapping Table",
                    "VT-d Posted Interrupt", "eventfd", "共享内存并发", "11–38 ms"):
         assert phrase in evolution
-    assert "gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2020/" in evolution
+    assert "gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2020/" in _section(page, 'sources')
     compatibility = _section(page, "compatibility")
     assert "薄 <code>kvm.ko</code>" in compatibility
     assert "不兼容的恢复失败" in compatibility
@@ -126,7 +127,7 @@ def test_upgrade_followups_distinguish_kvm_replacement_from_retained_layers():
     for phrase in ("DPDK", "SPDK", "共享文件描述符", "配置在暂停前预保存",
                    "后端崩溃", "内存地址", "补充 IRQ", "QEMU-only", "保留旧 KVM"):
         assert phrase in evolution
-    assert "kvm-forum-2022-Deep-Optimization-of-VMM-Live-Upgrade.pdf" in evolution
+    assert "kvm-forum-2022-Deep-Optimization-of-VMM-Live-Upgrade.pdf" in _section(page, 'sources')
     assert "../assets/kvm-upgrade-vhost-handover.svg" in evolution
     hyperfresh = _section(page, "hyperfresh")
     for phrase in ("L0 hyperplexor", "L1", "L2", "APSys 2017", "VEE 2019",
@@ -136,7 +137,7 @@ def test_upgrade_followups_distinguish_kvm_replacement_from_retained_layers():
     assert "../assets/hyperfresh-handoff.svg" in hyperfresh
     assert 'href="kvm-nested-vmx.html"' in hyperfresh
     for doi in ("10.1145/3124680.3124734", "10.1145/3313808.3313821"):
-        assert f'href="https://doi.org/{doi}"' in hyperfresh
+        assert f'href="https://doi.org/{doi}"' in _section(page, 'sources')
     compatibility = _section(page, "compatibility")
     for phrase in ("Orthus / Dual KVM", "字节跳动 VMM Live Upgrade", "HyperFresh",
                    "保留 L0", "vCPU 只在一端运行"):

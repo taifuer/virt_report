@@ -79,13 +79,12 @@
   <h2>只读观察与 virtio-net</h2>
   <p>可读取 <code>ip -s link</code>、<code>ss -u -a -m</code> 和 <code>/proc/net/softnet_stat</code>；驱动支持时，<code>ethtool -S 接口名</code> 可补充队列计数。各层 drops 的统计位置不同，定位丢包需要对照同一负载窗口中的设备、协议栈和 socket 计数。</p>
   <p>接收路径上，RX ring、协议栈处理能力和 socket 接收额度是不同的容量约束。应用消费不及时，可能使 socket 排队和丢包，即使网卡 ring 仍有空间；扩大 socket 缓冲区能吸收部分突发，但也可能延长排队，无法弥补持续的处理速率差。普通 UDP 没有接收窗口反馈，接收方本地缓冲区耗尽时不能依靠 UDP 自动让发送方减速。</p>
-  <p>虚机接收时，Guest 驱动也先发布可写 RX buffer；后端将外部到达的数据写入这些缓冲区并发布 Used，Guest 协议栈再交给 socket。应用无需先为每个包发 virtio 请求。结合 <a href="network-io.html">网络 I/O 演示</a> 和 <a href="virtio-net-rx.html">Virtio RX 路径</a>，可以把 Guest 与宿主的两套队列分开观察。</p>
+  <p>虚机接收时，Guest 驱动也先发布可写 RX buffer；后端将外部到达的数据写入这些缓冲区并发布 Used，Guest 协议栈再交给 socket。应用无需先为每个包发 virtio 请求。结合 <a href="network-io.html">网络 I/O 演示</a> 和 <a href="network-io.html">Virtio RX 路径</a>，可以把 Guest 与宿主的两套队列分开观察。</p>
 </section>
 <section id="sources" class="mechanism-section">
-  <h2>源码与延伸阅读</h2>
+  <h2>源码与参考资料</h2>
   <ul>
     <li><a href="{{ linux }}net/ipv4/udp.c#L1270">udp_sendmsg()</a>、<a href="{{ linux }}net/core/dev.c#L4670">__dev_queue_xmit()</a>、<a href="{{ linux }}net/ipv4/udp.c#L2053">udp_recvmsg()</a>。</li>
     <li><a href="{{ linux }}Documentation/networking/napi.rst">NAPI 轮询、预算和 TX completion</a>；<a href="https://man7.org/linux/man-pages/man2/send.2.html">send(2)</a> 的成功与交付边界。</li>
-    <li>继续阅读 <a href="linux-interrupts.html">中断与完成通知</a>、<a href="qemu-network-tx.html">QEMU 网络 TX</a>、<a href="dpdk-vhost-user-net.html">DPDK vhost-user 网络后端</a>。</li>
   </ul>
 </section>

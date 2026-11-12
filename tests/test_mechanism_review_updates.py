@@ -13,13 +13,13 @@ def test_cpu_overview_separates_vmx_mode_and_privilege():
     assert "其余通用寄存器等仍由 KVM 保存" in html
 
 
-def test_notification_race_has_static_explanation_and_three_scenarios():
-    html = render.render_mechanisms_html(Config(), "qemu-network-tx")
-    assert "data-notification-race" in html
-    for scenario in ("recheck", "broken", "late"):
-        assert f'value="{scenario}"' in html
-    assert "恢复通知 → 屏障 → 复查队列" in html
-    assert "hw/virtio/virtio.c#L515-L605" in html
+def test_notification_race_stays_in_the_network_explanation_without_a_second_player(article_source):
+    html = render.render_mechanisms_html(Config(), "network-io")
+    assert "data-notification-race" not in html
+    assert "先恢复通知，以必要的内存屏障约束顺序，再复查队列" in html
+    assert "第 8 项早到，复查会发现它" in html
+    assert "晚到，驱动按新的通知条件发出 kick" in html
+    assert "hw/virtio/virtio.c#L515-L605" in article_source('network-io')
 
 
 def test_halt_observation_keeps_existing_subsection_anchor():
@@ -98,7 +98,7 @@ def test_interrupt_guide_locates_controllers_and_separates_observation_sides():
 
 
 def test_interrupt_detail_identifies_shared_and_private_state():
-    html = render.render_mechanisms_html(Config(), "kvm-virtio-interrupt")
+    html = render.render_mechanisms_html(Config(), "interrupt-virtualization")
     assert "保存位置与访问方" in html
     for marker in ("客户机 RAM，由 QEMU 映射访问", "QEMU 的 MSI-X 模拟状态",
                    "宿主内核；QEMU 经 ioctl 配置", "KVM 的每 vCPU 状态"):
@@ -110,22 +110,35 @@ def test_resource_observation_uses_guest_state_and_not_just_qmp_success():
     for marker in ("cat /sys/devices/system/cpu/present",
                    "cat /sys/devices/system/cpu/online", "lscpu -e=CPU,ONLINE"):
         assert marker in cpu
-    memory = render.render_mechanisms_html(Config(), "qemu-virtio-mem")
+    memory = render.render_mechanisms_html(Config(), "hotplug")
     assert "query-memory-devices" in memory
     assert "lsmem" in memory
-    assert "SBM 允许一个 online 块只提供部分子块" in memory
+    assert "客户机已能分配这些页面" in memory
     pci = render.render_mechanisms_html(Config(), "qemu-pcie-hotplug")
     for marker in ("query-pci", "qdev_id = net1", "lspci -nnk", "ip -br link"):
         assert marker in pci
 
 
-def test_pcie_article_connects_registered_callbacks_to_async_removal():
+def test_memory_hotplug_covers_dimm_and_acpi_independently_of_virtio_mem(article_source):
+    html = render.render_mechanisms_html(Config(), 'hotplug')
+    example = html.split('<section id="example"', 1)[1].split('</section>', 1)[0]
+    for marker in ('pc-dimm', 'ACPI', 'online', 'offline', '_EJ0', 'DEVICE_DELETED',
+                   '不可迁移页', 'query-memory-devices', 'lsmem'):
+        assert marker in example
+    assert example.index('内存热添加') < example.index('内存热移除')
+    assert 'virtio-mem' not in example
+    assert 'virtio-mem 是另一种在线调整方式' in html
+    assert 'docs/specs/acpi_mem_hotplug.rst' in article_source('hotplug')
+    assert 'Documentation/admin-guide/mm/memory-hotplug.rst' in article_source('hotplug')
+
+
+def test_pcie_article_connects_registered_callbacks_to_async_removal(article_source):
     html = render.render_mechanisms_html(Config(), "qemu-pcie-hotplug")
     for marker in ("pcie_slot_class_init", "qbus_set_hotplug_handler",
                    "hc-&gt;unplug_request = pcie_cap_slot_unplug_request_cb;",
-                   "rp_write_config", "两段处理由插槽寄存器和设备的待删除状态连接",
-                   "hw/pci/pcie_port.c#L214-L225"):
+                   "rp_write_config", "两段处理由插槽寄存器和设备的待删除状态连接"):
         assert marker in html
+    assert "hw/pci/pcie_port.c#L214-L225" in article_source('qemu-pcie-hotplug')
 
 
 def test_vcpu_loop_distinguishes_exit_handling_from_blocking():
@@ -138,7 +151,7 @@ def test_vcpu_loop_distinguishes_exit_handling_from_blocking():
 
 
 def test_network_article_connects_private_queues_and_tap_host_receive():
-    html = render.render_mechanisms_html(Config(), "qemu-network-tx")
+    html = render.render_mechanisms_html(Config(), "network-io")
     for marker in ('data-diagram="virtqueue-private-shared"',
                    'id="virtqueue-private-state"', 'id="tap-host-rx"',
                    "struct vring_virtqueue", "split.avail_idx_shadow",

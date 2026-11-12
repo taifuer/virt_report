@@ -14,7 +14,7 @@ from virt_report.render.render import render_mechanisms_html
 
 
 SLUG = "virtio-gpu-rendering"
-PAGE = "virtio-gpu-execution"
+PAGE = "virtio-gpu"
 SCENE_IDS = ("virgl-render", "virgl-decode", "virgl-encode")
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -50,7 +50,7 @@ def test_gpu_rendering_is_an_interactive_demo_with_three_curated_paths(demo):
     validate_selector(demo["selector"], set(SCENE_IDS))
     article = get_article(PAGE)
     assert article["execution_demo"] == SLUG
-    assert article["presentation"] == "walkthrough"
+    assert article.get("presentation") != "walkthrough"
 
 
 @pytest.mark.parametrize("scene_id", SCENE_IDS)

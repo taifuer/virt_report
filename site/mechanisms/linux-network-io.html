@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=428e6e8b26d1">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=428e6e8b26d1">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -43,20 +43,23 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="linux-kernel-evolution.html">Linux 内核基础</a></div>
+    <div class="mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true">/</span><a href="../mechanisms.html#linux-foundations">Linux 内核</a></div>
     <h1>Linux 网络 I/O：收包、发包与缓冲区交接</h1>
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2><ol id="mechanism-toc-links"><li><a href="#preface">一、接收事件与发送请求</a></li><li><a href="#history">二、从逐包中断到批处理与多核收发</a></li><li><a href="#structures">三、缓冲区、队列与 socket</a></li><li><a href="#rx">四、外部数据到应用</a><ol><li><a href="#rx-part-1">1. UDP 分派与接收就绪</a></li><li><a href="#rx-part-2">2. epoll 与应用的读取循环</a></li></ol></li><li><a href="#tx">五、从 sendto 到缓冲区回收</a><ol><li><a href="#tx-part-1">发送缓冲区的所有权交接</a></li></ol></li><li><a href="#scaling">六、批处理、多核与缓冲区生命期</a></li><li><a href="#observe">七、只读观察与 virtio-net</a></li><li><a href="#sources">八、源码与延伸阅读</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、接收事件与发送请求</a></li><li><a href="#history">二、从逐包中断到批处理与多核收发</a></li><li><a href="#structures">三、缓冲区、队列与 socket</a></li><li><a href="#rx">四、外部数据到应用</a><ol><li><a href="#rx-part-1">1. UDP 分派与接收就绪</a></li><li><a href="#rx-part-2">2. epoll 与应用的读取循环</a></li></ol></li><li><a href="#tx">五、从 sendto 到缓冲区回收</a><ol><li><a href="#tx-part-1">发送缓冲区的所有权交接</a></li></ol></li><li><a href="#scaling">六、批处理、多核与缓冲区生命期</a></li><li><a href="#observe">七、只读观察与 virtio-net</a></li><li><a href="#sources">八、源码与参考资料</a></li></ol>
+    </nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>接收事件与发送请求</h2>
   <p>外部可随时发来报文。网卡接收后，内核按协议、地址和端口分派，匹配的数据进入 socket 队列。应用调用 <code>recvmsg()</code> 从队列读取数据，队列为空时可以等待后续报文。</p>
   <p>以普通 UDP、复制式缓冲区交接和网卡 NAPI 路径为例，下面跟踪接收、发送与资源回收。UDP 提供数据报传输，本身不提供逐包的远端收到确认。</p>
-<p class="mechanism-baselines">源码版本：<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
+<p class="mechanism-baselines">源码版本：Linux 6.18。</p></section>
 <section id="history" class="mechanism-section">
   <h2><span class="mechanism-heading-number">二、</span>从逐包中断到批处理与多核收发</h2>
-  <p>网络压力通常同时体现在带宽和包速率上：同样的字节速率，小包需要更多次收包、协议处理与队列操作。早期逐包触发并处理的方式，在高负载下可能让 CPU 忙于中断而没有足够时间让应用消费数据。2002 年的 <a href="https://github.com/torvalds/linux/blob/v2.6.12/Documentation/networking/NAPI_HOWTO.txt">NAPI 设计说明</a>已经把中断抑制、有预算的轮询和减少过载成本列为核心动机。</p>
+  <p>网络压力通常同时体现在带宽和包速率上：同样的字节速率，小包需要更多次收包、协议处理与队列操作。早期逐包触发并处理的方式，在高负载下可能让 CPU 忙于中断而没有足够时间让应用消费数据。2002 年的 NAPI 设计说明已经把中断抑制、有预算的轮询和减少过载成本列为核心动机。</p>
   <table><thead><tr><th>发展方向</th><th>解决什么</th><th>代价与边界</th></tr></thead><tbody>
     <tr><td>中断驱动接收 → NAPI</td><td>低负载靠通知启动，高负载按预算批量轮询</td><td>需要正确重新使能通知；预算和批量大小会影响延迟与其他任务获得 CPU 的机会</td></tr>
     <tr><td>单队列 → RSS、多队列与软件分流</td><td>让多个 CPU 分担不同流的处理</td><td>队列数、IRQ 亲和性与应用位置需要协调；跨核转交也有缓存和 IPI 开销</td></tr>
@@ -83,9 +86,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看外部到包与应用读取" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="外部到包与应用读取">
-    <img src="../assets/linux-network-handoffs.svg?v=428e6e8b26d1" alt="图示普通 UDP 成功接收的一次通知；NAPI 可批量轮询，不要求每个包触发一次中断，也不要求应用先调用 recvmsg。" loading="lazy">
+    <img src="../assets/linux-network-handoffs.svg?v=e8d4285d5a39" alt="图示普通 UDP 成功接收的一次通知；NAPI 可批量轮询，不要求每个包触发一次中断，也不要求应用先调用 recvmsg。" loading="lazy">
   </div>
-  <figcaption>图示普通 UDP 成功接收的一次通知；NAPI 可批量轮询，不要求每个包触发一次中断，也不要求应用先调用 recvmsg。 <a href="../assets/linux-network-handoffs.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>图示普通 UDP 成功接收的一次通知；NAPI 可批量轮询，不要求每个包触发一次中断，也不要求应用先调用 recvmsg。 <a href="../assets/linux-network-handoffs.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 外部报文到达与应用接收
     accDescr: 驱动预备接收缓冲区，外部报文可主动到达。网卡 DMA 后由 NAPI 和协议栈处理并进入匹配的 socket 队列；recvmsg 消费数据，未到达时等待，已到达时可直接读取。
@@ -110,12 +113,12 @@
     <li>应用被调度并读取 socket，内核将载荷复制到用户空间。数据先到时可直接取，应用先等待时则要等报文到达。</li>
   </ol>
   <h3 id="rx-part-1"><span class="mechanism-heading-number">1. </span>UDP 分派与接收就绪</h3>
-  <p>应用创建 socket 并绑定本地地址和端口后，内核即可分派报文。UDP 经过协议检查，再按目的地址、端口及 socket 的绑定／连接条件查找。匹配成功且接收内存额度允许时，skb 进入 socket 接收队列，数据就绪回调随后通知等待者；可对照 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/ipv4/udp.c#L1699">__udp_enqueue_schedule_skb()</a> 中入队与 <code>sk_data_ready</code> 的顺序。</p>
+  <p>应用创建 socket 并绑定本地地址和端口后，内核即可分派报文。UDP 经过协议检查，再按目的地址、端口及 socket 的绑定／连接条件查找。匹配成功且接收内存额度允许时，skb 进入 socket 接收队列，数据就绪回调随后通知等待者；可对照 __udp_enqueue_schedule_skb() 中入队与 <code>sk_data_ready</code> 的顺序。</p>
   <p>若应用已经阻塞在 recv，通知使它有机会重新运行；若应用尚未调用 recv，数据可以先排队，之后直接读取；若用 epoll，得到的是“此刻值得尝试读取”的就绪提示，真正取数据仍是 recv 一类调用。其他线程也可能抢先取走数据，因此就绪不保证下一次非阻塞读取一定成功。</p>
-  <p>无匹配 socket、接收额度不足和网卡缺少 RX buffer，分别发生在不同阶段。用户缓冲区过小则可能在读取时截断已经入队的 UDP 数据报。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/core/dev.c#L7745">net_rx_action()</a> 展示设备轮询预算，<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/ipv4/udp.c#L2053">udp_recvmsg()</a> 展示向应用交付的路径。</p>
+  <p>无匹配 socket、接收额度不足和网卡缺少 RX buffer，分别发生在不同阶段。用户缓冲区过小则可能在读取时截断已经入队的 UDP 数据报。net_rx_action() 展示设备轮询预算，udp_recvmsg() 展示向应用交付的路径。</p>
   <h3 id="rx-part-2"><span class="mechanism-heading-number">2. </span>epoll 与应用的读取循环</h3>
-  <p>默认水平触发模式下，只要描述符仍就绪，后续 epoll 等待可以继续返回它。使用边沿触发 <code>EPOLLET</code> 时，常见做法是配合非阻塞 socket，在得到读事件后持续接收，直到返回 <code>EAGAIN</code>。若为公平性提前停止，事件循环需要自行记住尚未处理完的描述符，避免留着数据却一直等待下一条边沿通知。见 <a href="https://man7.org/linux/man-pages/man7/epoll.7.html">epoll 的两种触发模式</a>。</p>
-  <p>UDP 保留数据报边界，一次接收最多取一条普通数据报，缓冲区不足时可能截断。长度为 0 的 UDP 数据报也合法，recv 返回 0 可以表示收到了空报文；TCP 流在非零接收长度下返回 0 则通常表示对端有序关闭。应用必须按 socket 类型解释返回结果，接口约定见 <a href="https://man7.org/linux/man-pages/man2/recv.2.html">recv(2)</a>。</p>
+  <p>默认水平触发模式下，只要描述符仍就绪，后续 epoll 等待可以继续返回它。使用边沿触发 <code>EPOLLET</code> 时，常见做法是配合非阻塞 socket，在得到读事件后持续接收，直到返回 <code>EAGAIN</code>。若为公平性提前停止，事件循环需要自行记住尚未处理完的描述符，避免留着数据却一直等待下一条边沿通知。见 epoll 的两种触发模式。</p>
+  <p>UDP 保留数据报边界，一次接收最多取一条普通数据报，缓冲区不足时可能截断。长度为 0 的 UDP 数据报也合法，recv 返回 0 可以表示收到了空报文；TCP 流在非零接收长度下返回 0 则通常表示对端有序关闭。应用必须按 socket 类型解释返回结果，接口约定见 recv(2)。</p>
 </section>
 <section id="tx" class="mechanism-section">
   <h2><span class="mechanism-heading-number">五、</span>从 sendto 到缓冲区回收</h2>
@@ -127,9 +130,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看先返回发送调用，再回收设备资源" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="先返回发送调用，再回收设备资源">
-    <img src="../assets/linux-network-tx-ownership.svg?v=428e6e8b26d1" alt="示意路由已就绪、驱动直接接受且设备稍后完成的一次 UDP 复制发送。图中的先后是一条允许的执行轨迹，不代表 sendto 必须等待物理发送。" loading="lazy">
+    <img src="../assets/linux-network-tx-ownership.svg?v=e8d4285d5a39" alt="示意路由已就绪、驱动直接接受且设备稍后完成的一次 UDP 复制发送。图中的先后是一条允许的执行轨迹，不代表 sendto 必须等待物理发送。" loading="lazy">
   </div>
-  <figcaption>示意路由已就绪、驱动直接接受且设备稍后完成的一次 UDP 复制发送。图中的先后是一条允许的执行轨迹，不代表 sendto 必须等待物理发送。 <a href="../assets/linux-network-tx-ownership.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>示意路由已就绪、驱动直接接受且设备稍后完成的一次 UDP 复制发送。图中的先后是一条允许的执行轨迹，不代表 sendto 必须等待物理发送。 <a href="../assets/linux-network-tx-ownership.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 普通 UDP 发送的缓冲区交接
     accDescr: 应用载荷复制为内核报文，协议栈将 skb 交给驱动，驱动接受后设置 DMA 和 TX 描述符。sendto 可先返回，设备完成之后驱动回收 DMA 映射和 skb。该完成不表示远端收到。
@@ -155,7 +158,7 @@
     <li><strong>设备到驱动：</strong>驱动观察到 TX completion，确认设备已结束相关访问，再解除或同步 DMA 映射、释放 skb 引用和描述符槽位。</li>
     <li><strong>恢复提交：</strong>如果此前因 TX ring 空间不足停止了队列，回收出空间后可唤醒队列，让上游继续发送。</li>
   </ol>
-  <p>驱动必须在资源用尽前适当停止队列，并协调检查与唤醒，避免“已经回收出空间，队列却永远停着”。如果返回 <code>NETDEV_TX_BUSY</code>，skb 所有权仍属于调用方，驱动不能保留或释放它。驱动约定见 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/networking/driver.rst">Softnet 驱动指南</a>。这条所有权链解释了：sendto 已返回，内核仍会在之后处理 TX completion。</p>
+  <p>驱动必须在资源用尽前适当停止队列，并协调检查与唤醒，避免“已经回收出空间，队列却永远停着”。如果返回 <code>NETDEV_TX_BUSY</code>，skb 所有权仍属于调用方，驱动不能保留或释放它。驱动约定见 Softnet 驱动指南。这条所有权链解释了：sendto 已返回，内核仍会在之后处理 TX completion。</p>
   <table><thead><tr><th>观察到的事件</th><th>确认的边界</th><th>不能推出</th></tr></thead><tbody>
     <tr><td>sendto 返回</td><td>本地发送调用的接受结果；普通复制路径不再依赖原用户 buffer</td><td>物理 NIC 已发完</td></tr>
     <tr><td>virtio-net TX Used</td><td>虚拟后端结束了对此 Guest 描述符链的访问</td><td>宿主物理 NIC 已完成，或远端已收到</td></tr>
@@ -173,9 +176,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看一次通知可以启动多轮轮询" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="一次通知可以启动多轮轮询">
-    <img src="../assets/linux-napi-budget.svg?v=428e6e8b26d1" alt="示例固定 100 个 RX 包、每轮预算 64、期间无新包。第二轮靠已保留的 NAPI 调度状态继续，不需要设备为剩下的 36 个包再发一次中断。" loading="lazy">
+    <img src="../assets/linux-napi-budget.svg?v=e8d4285d5a39" alt="示例固定 100 个 RX 包、每轮预算 64、期间无新包。第二轮靠已保留的 NAPI 调度状态继续，不需要设备为剩下的 36 个包再发一次中断。" loading="lazy">
   </div>
-  <figcaption>示例固定 100 个 RX 包、每轮预算 64、期间无新包。第二轮靠已保留的 NAPI 调度状态继续，不需要设备为剩下的 36 个包再发一次中断。 <a href="../assets/linux-napi-budget.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>示例固定 100 个 RX 包、每轮预算 64、期间无新包。第二轮靠已保留的 NAPI 调度状态继续，不需要设备为剩下的 36 个包再发一次中断。 <a href="../assets/linux-napi-budget.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: NAPI 接收预算为 64 时处理 100 个包
     accDescr: 示例固定已有 100 个接收包且没有新包到达。首次通知调度轮询，第一轮处理 64 个并保持调度，第二轮处理剩余 36 个；成功完成 NAPI 后按设备协议恢复通知，不需要为第二轮再发一个中断。
@@ -188,31 +191,30 @@
 </figure>
   <p>NAPI 一轮 poll 受到 RX 预算约束；仍有工作时可继续被调度，处理完成才恢复相应通知。这样可以摊薄每次中断和调度的成本，但一次取很多包也可能让先到的小请求多等一会儿。TX completion 也可在 poll 中回收，不能把 poll 返回的 RX 工作量直接当作所有完成操作的数量。</p>
   <p>例如 RX 预算为 64、队列已有 100 个包，期间无新到包：第一轮处理 64 个并返回预算值，保留后续轮询；下一轮处理剩余 36 个，调用 <code>napi_complete_done()</code> 成功结束本轮后，再按设备规则恢复通知。若处理数量恰好等于预算且队列已空，可继续保留轮询，也可完成后返回 <code>budget - 1</code>。预算为 0 的调用用于 TX 等处理，此时禁止调用 <code>napi_complete_done()</code>。</p>
-  <p>RSS 由网卡选择接收队列，RPS 在内核中选择后续协议处理 CPU，RFS 进一步考虑应用位置，XPS 影响发送队列选择。这些机制按流分工，兼顾并行与局部性。跨核转交会增加 IPI 和缓存迁移成本，已有合适硬件分流时，应测量软件分流的额外收益。见 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/networking/scaling.rst">Linux 网络扩展机制</a>。</p>
-  <p>GSO 在发送方向保留较大的逻辑报文，稍后由软件或支持卸载的设备分段；GRO 在接收方向合并符合条件的报文，减少后续重复处理。可否合并、如何分段取决于协议与特性协商，不能把任意 UDP 数据报都当作一个连续字节流。相关约束见 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/networking/segmentation-offloads.rst">分段卸载文档</a>。</p>
-  <p>AF_XDP 用 UMEM 和 FILL、RX、TX、COMPLETION rings 管理缓冲区；发送帧返回 completion 后，应用才能复用该帧。它支持 copy 模式，以及依赖驱动能力的 zero-copy 模式。两种模式都要求按环上的所有权约定交接内存，见 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/networking/af_xdp.rst">AF_XDP 的 rings 与模式</a>。</p>
+  <p>RSS 由网卡选择接收队列，RPS 在内核中选择后续协议处理 CPU，RFS 进一步考虑应用位置，XPS 影响发送队列选择。这些机制按流分工，兼顾并行与局部性。跨核转交会增加 IPI 和缓存迁移成本，已有合适硬件分流时，应测量软件分流的额外收益。见 Linux 网络扩展机制。</p>
+  <p>GSO 在发送方向保留较大的逻辑报文，稍后由软件或支持卸载的设备分段；GRO 在接收方向合并符合条件的报文，减少后续重复处理。可否合并、如何分段取决于协议与特性协商，不能把任意 UDP 数据报都当作一个连续字节流。相关约束见 分段卸载文档。</p>
+  <p>AF_XDP 用 UMEM 和 FILL、RX、TX、COMPLETION rings 管理缓冲区；发送帧返回 completion 后，应用才能复用该帧。它支持 copy 模式，以及依赖驱动能力的 zero-copy 模式。两种模式都要求按环上的所有权约定交接内存，见 AF_XDP 的 rings 与模式。</p>
 </section>
 <section id="observe" class="mechanism-section">
   <h2><span class="mechanism-heading-number">七、</span>只读观察与 virtio-net</h2>
   <p>可读取 <code>ip -s link</code>、<code>ss -u -a -m</code> 和 <code>/proc/net/softnet_stat</code>；驱动支持时，<code>ethtool -S 接口名</code> 可补充队列计数。各层 drops 的统计位置不同，定位丢包需要对照同一负载窗口中的设备、协议栈和 socket 计数。</p>
   <p>接收路径上，RX ring、协议栈处理能力和 socket 接收额度是不同的容量约束。应用消费不及时，可能使 socket 排队和丢包，即使网卡 ring 仍有空间；扩大 socket 缓冲区能吸收部分突发，但也可能延长排队，无法弥补持续的处理速率差。普通 UDP 没有接收窗口反馈，接收方本地缓冲区耗尽时不能依靠 UDP 自动让发送方减速。</p>
-  <p>虚机接收时，Guest 驱动也先发布可写 RX buffer；后端将外部到达的数据写入这些缓冲区并发布 Used，Guest 协议栈再交给 socket。应用无需先为每个包发 virtio 请求。结合 <a href="network-io.html">网络 I/O 演示</a> 和 <a href="virtio-net-rx.html">Virtio RX 路径</a>，可以把 Guest 与宿主的两套队列分开观察。</p>
+  <p>虚机接收时，Guest 驱动也先发布可写 RX buffer；后端将外部到达的数据写入这些缓冲区并发布 Used，Guest 协议栈再交给 socket。应用无需先为每个包发 virtio 请求。结合 <a href="network-io.html">网络 I/O 演示</a> 和 <a href="network-io.html">Virtio RX 路径</a>，可以把 Guest 与宿主的两套队列分开观察。</p>
 </section>
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">八、</span>源码与延伸阅读</h2>
+  <h2><span class="mechanism-heading-number">八、</span>源码与参考资料</h2>
   <ul>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/ipv4/udp.c#L1270">udp_sendmsg()</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/core/dev.c#L4670">__dev_queue_xmit()</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/ipv4/udp.c#L2053">udp_recvmsg()</a>。</li>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/networking/napi.rst">NAPI 轮询、预算和 TX completion</a>；<a href="https://man7.org/linux/man-pages/man2/send.2.html">send(2)</a> 的成功与交付边界。</li>
-    <li>继续阅读 <a href="linux-interrupts.html">中断与完成通知</a>、<a href="qemu-network-tx.html">QEMU 网络 TX</a>、<a href="dpdk-vhost-user-net.html">DPDK vhost-user 网络后端</a>。</li>
   </ul>
 </section></div>
   </div>
-  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#linux-foundations">Linux 内核基础原理</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-11-10">2026-11-10</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
+  <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#linux-foundations">Linux 内核</a></nav>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-10">2026-11-10</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=428e6e8b26d1" defer></script>
+<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
 </body>
 </html>

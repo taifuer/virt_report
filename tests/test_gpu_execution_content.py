@@ -187,7 +187,7 @@ def test_gpu_page_has_source_backed_demo_and_explicit_protocol_boundaries():
     assert "AMDGPU" in page and "GVT-g" in page
     assert "SR-IOV" in page and "virtio-gpu" in page
     assert "提交、数据与完成的边界" in page
-    assert 'href="interrupt-delivery.html"' in page
+    assert 'href="interrupt-virtualization.html"' in page
     assert 'href="qemu-vfio-dma.html"' in page
     assert "GPU 硬件执行则标注对应命令包" in page and "显示器" in page
 
@@ -274,13 +274,13 @@ def test_mdev_exposes_kvm_on_both_trapped_mmio_and_interrupt_paths():
     assert "宿主 i915/GVT-g 管理物理 GPU" in snapshot("mdev-copy", "initial")["hostDriver"]
 
 
-def test_gpu_article_explains_driver_ownership_and_nonserial_domains():
+def test_gpu_article_explains_driver_ownership_and_nonserial_domains(article_source):
     page = render_mechanisms_html(Config(), "gpu-execution")
     assert "宿主这块 PCI 设备绑定" in page and "vfio-pci" in page
     assert "Guest 内的 AMDGPU 驱动接收应用 CS ioctl" in page
     assert "提交、数据访问和完成通知各有自己的路径" in page
     assert "GVT-g 由宿主 i915/GVT-g 管理物理 GPU" in page
-    assert 'href="https://docs.kernel.org/driver-api/vfio.html"' in page
+    assert 'href="https://docs.kernel.org/driver-api/vfio.html"' in article_source('gpu-execution')
 
 
 def test_gvt_bar0_elsp_and_sparse_bar2_mappings_have_explicit_boundaries():

@@ -5,7 +5,7 @@
 <section id="preface" class="mechanism-section">
   <h2>保留 virtio 接口，改变队列处理位置</h2>
   <p>virtio-net 驱动通过 virtqueue 提交网络请求。同一套客户机接口，可以由 QEMU 处理，也可以连接宿主内核中的 vhost-net 或独立进程中的 vhost-user 后端。后端位置改变后，队列地址、内存访问权限和通知通道需要重新安排，设备初始化和报文处理也由不同组件承担。</p>
-  <p>本文沿用 <a href="qemu-network-tx.html">网卡模拟与 virtio-net 发包路径</a>中的 split virtqueue，分析 x86 / KVM 下单个发送请求。QEMU 和 vhost-net 路径使用 TAP；vhost-user 部分分析协议定义的共享内存和 eventfd 路径，网络出口由外部后端实现。示例不配置客户机 IOMMU，也不展开分段卸载、多队列和异常重试。</p>
+  <p>本文沿用 <a href="network-io.html">网卡模拟与 virtio-net 发包路径</a>中的 split virtqueue，分析 x86 / KVM 下单个发送请求。QEMU 和 vhost-net 路径使用 TAP；vhost-user 部分分析协议定义的共享内存和 eventfd 路径，网络出口由外部后端实现。示例不配置客户机 IOMMU，也不展开分段卸载、多队列和异常重试。</p>
   <p>三条路径都从 available 取出报文 P1 的描述符，读取缓冲区，在结束使用后发布 used。QEMU 和本例 vhost-net 复制路径把帧交给 TAP；DPDK 等外部后端可以先复制到自身缓冲区，再独立安排出口发送。主要差别是队列的处理位置、缓冲区归还条件和通知方式。下文依次介绍内存与队列访问配置、一次发包经过的执行上下文，以及减少中转带来的收益和管理成本。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
@@ -60,7 +60,7 @@
   <p>部分后端持续轮询队列，或通过通知抑制减少唤醒。协议也提供协商后使用的带内通知扩展。eventfd、轮询和带内通知改变了后端获知队列进度的方式，报文仍通过已建立的共享内存映射访问。<a href="{{ qemu_source }}docs/interop/vhost-user.rst#L1014-L1026">带内通知</a></p>
   <p>存储后端的具体实现见<a href="spdk-vhost-user-blk.html">SPDK vhost-user-blk 的请求处理路径</a>，其中继续跟踪共享队列、控制器线程、bdev 和 NVMe 完成回调。</p>
   <h3>完成记录先于完成通知</h3>
-  <p>后端先写 used 项，再更新 used 索引，最后判断是否需要通知。vhost-net 的 <code>vhost_add_used_n()</code>和 <code>vhost_signal()</code>分别承担发布和通知检查；call eventfd 可连接 KVM irqfd，形成宿主后端到客户机中断的路径。中断屏蔽、路由能力和回退配置会影响具体实现，详见<a href="kvm-virtio-interrupt.html#irqfd">irqfd 的通知路径</a>。</p>
+  <p>后端先写 used 项，再更新 used 索引，最后判断是否需要通知。vhost-net 的 <code>vhost_add_used_n()</code>和 <code>vhost_signal()</code>分别承担发布和通知检查；call eventfd 可连接 KVM irqfd，形成宿主后端到客户机中断的路径。中断屏蔽、路由能力和回退配置会影响具体实现，详见<a href="interrupt-virtualization.html#irqfd">irqfd 的通知路径</a>。</p>
   <p>kick 与 call 的方向相反：kick 面向后端，call 面向客户机。批量请求可合并通知，驱动也可主动检查 used ring，故报文数、kick 数和中断数应分别统计。ioeventfd 减少通知 MMIO 返回 QEMU 处理的往返，CPU 进入 KVM 的硬件 VM-exit 仍可能发生。<a href="{{ kernel_source }}Documentation/virt/kvm/api.rst">KVM_IOEVENTFD 与 KVM_IRQFD</a>、<a href="{{ kernel_source }}drivers/vhost/vhost.c#L2929-L3021">完成发布与条件通知</a></p>
 </section>
 
@@ -73,7 +73,7 @@
     <tr><td>消费进度</td><td><code>SET_VRING_BASE</code> 的队列 index 与消费位置</td><td>从正确的 available 项继续处理，停机交接时取回进度</td></tr>
     <tr><td>通知句柄</td><td>按队列配置的 kick FD 与 call FD</td><td>kick 唤醒消费者；call 在完成通知条件满足时通知客户机</td></tr>
   </tbody></table>
-  <p>vhost-user 消息头的 <code>request / flags / size</code>决定本次配置操作、消息状态和载荷长度；内存 FD 与 eventfd 通过 socket 附带传递。后端获得这些关系后，根据 available 定位描述符链，读取缓冲区，并把完成记录写回 used。队列的数据结构与索引变化见<a href="qemu-network-tx.html#virtqueue">virtqueue 的数据结构与操作</a>。<a href="{{ qemu_source }}hw/virtio/vhost-user.c#L121-L207">控制消息及内存区域结构</a>、<a href="{{ qemu_source }}include/standard-headers/linux/vhost_types.h">队列配置结构</a></p>
+  <p>vhost-user 消息头的 <code>request / flags / size</code>决定本次配置操作、消息状态和载荷长度；内存 FD 与 eventfd 通过 socket 附带传递。后端获得这些关系后，根据 available 定位描述符链，读取缓冲区，并把完成记录写回 used。队列的数据结构与索引变化见<a href="network-io.html#virtqueue">virtqueue 的数据结构与操作</a>。<a href="{{ qemu_source }}hw/virtio/vhost-user.c#L121-L207">控制消息及内存区域结构</a>、<a href="{{ qemu_source }}include/standard-headers/linux/vhost_types.h">队列配置结构</a></p>
   <h3 id="implementation-part-1">QEMU 建立后端关系</h3>
   <pre><code>vhost_net_start_one()
   vhost_dev_start()

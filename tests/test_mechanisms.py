@@ -90,7 +90,7 @@ def test_editorial_topics_group_published_articles_and_omit_empty_sections(monke
 
 
 @pytest.mark.parametrize("slug", [article["slug"] for article in mechanisms.articles()])
-def test_article_has_matching_toc_source_evidence_and_no_inline_scripts(slug):
+def test_article_has_matching_toc_source_evidence_and_no_inline_scripts(slug, article_source):
     config = Config()
     article = mechanisms.get_article(slug)
     page = render.render_mechanisms_html(config, article["slug"])
@@ -127,8 +127,7 @@ def test_article_has_matching_toc_source_evidence_and_no_inline_scripts(slug):
             f'assets/{article["script"]}?v=')
     assert f'../mechanisms.html#{article["topic"]}' in parsed.links
     topic = mechanisms.get_topic(article["topic"])
-    related = ('交互演示目录' if article.get('presentation') == 'walkthrough'
-               else f'{topic["title"]}原理')
+    related = topic['title']
     assert f'{related}</a>' in page
     for link in topic.get("related", []):
         assert f'../{link["path"]}' in parsed.links
@@ -141,7 +140,9 @@ def test_article_has_matching_toc_source_evidence_and_no_inline_scripts(slug):
     assert "在线文档持续更新，正文实现以固定版本为准" not in page
     assert "本文细节以固定源码为准" not in page
     if article["baselines"]:
-        assert "#L" in page
+        # Fine-grained source locations live in authored text or embedded model
+        # evidence; the public references list no longer repeats every link.
+        assert "#L" in article_source(slug) or "#L" in page
         assert any(f'/blob/{baseline["commit"]}/' in page for baseline in article["baselines"])
     if article.get("publications"):
         assert "论文依据：" in preface.group(1)
@@ -179,7 +180,7 @@ def test_device_article_related_navigation_does_not_reuse_migration_links(slug):
     navigation = re.search(
         r'<nav\b[^>]*\bclass="mechanism-related"[^>]*>(.*?)</nav>', page, re.DOTALL,
     ).group(0)
-    assert "设备与 I/O 虚拟化原理</a>" in navigation
+    assert "设备与 I/O 虚拟化</a>" in navigation
     assert "../mechanisms.html#device-virtualization" in navigation
     assert "热迁移动态" not in navigation
     assert "topics/migration" not in navigation
@@ -195,12 +196,12 @@ def test_multifd_article_connects_to_existing_migration_articles():
 
 def test_existing_articles_link_to_backend_and_dirty_log_explanations():
     memory = render.render_mechanisms_html(Config(), "qemu-memory-migration")
-    network = render.render_mechanisms_html(Config(), "qemu-network-tx")
+    network = render.render_mechanisms_html(Config(), "network-io")
     assert 'href="kvm-dirty-ring.html"' in memory
     assert 'href="qemu-vhost-net.html"' in network
-    assert 'href="qemu-postcopy.html"' in memory
+    assert 'href="qemu-postcopy.html"' not in memory
     vhost = render.render_mechanisms_html(Config(), "qemu-vhost-net")
-    assert 'href="qemu-network-tx.html#virtqueue"' in vhost
+    assert 'href="network-io.html#virtqueue"' in vhost
     assert 'href="qemu-vfio-dma.html"' in vhost
 
 
@@ -208,10 +209,9 @@ def test_memory_and_interrupt_articles_connect_to_existing_paths():
     for source, target in (
         ("kvm-dirty-ring", "kvm-ept-fault.html#structures"),
         ("qemu-vfio-dma", "kvm-ept-fault.html"),
-        ("qemu-network-tx", "kvm-virtio-interrupt.html"),
-        ("qemu-vhost-net", "kvm-virtio-interrupt.html#irqfd"),
-        ("kvm-virtio-interrupt", "qemu-network-tx.html#virtqueue"),
-        ("kvm-virtio-interrupt", "qemu-vhost-net.html#notification"),
+        ("network-io", "interrupt-virtualization.html"),
+        ("qemu-vhost-net", "interrupt-virtualization.html#irqfd"),
+        ("interrupt-virtualization", "qemu-vhost-net.html#notification"),
     ):
         assert f'href="{target}"' in render.render_mechanisms_html(Config(), source)
 
@@ -220,15 +220,14 @@ def test_memory_and_interrupt_articles_connect_to_existing_paths():
     ("qemu-memory-migration", ["RAMBlock.clear_bmap", "PageSearchStatus.block", "当前 bmap"]),
     ("qemu-migration-stream", ["SaveStateEntry", "VMStateField", "load_section_id"]),
     ("qemu-multifd", ["MultiFDSendData", "pending_job", "offset = [0x2000, 0x7000]"]),
-    ("qemu-network-tx", ["data-tx-split-layout", "data-tx-queue-start", "65535",
-                         "data-tx-desc-field=\"next\"", "last_avail_idx", "last_used_idx"]),
+    ("network-io", ["data-execution-lab", "packed-virtqueue.html#split-layout",
+                    "last_avail_idx", "used.idx", "NAPI", "e1000"]),
     ("qemu-vhost-net", ["desc_user_addr", "mmap_offset", "SET_VRING_BASE"]),
     ("kvm-dirty-ring", ["kvm_dirty_gfn", "offset: 3", "data-dirty-ring-pending"]),
     ("qemu-vfio-dma", ["IOMMU_IOAS_MAP", "HWPT", "IOVA", "data-vfio-lab"]),
-    ("qemu-postcopy", ["UFFDIO_COPY", "receivedmap", "data-postcopy-lab"]),
     ("kvm-ept-fault", ["kvm_userspace_memory_region2", "kvm_memory_slot", "0x00403080",
                        "0x21000080", "mmu_invalidate_seq", "is_page_fault_stale"]),
-    ("kvm-virtio-interrupt", ["used_event", "0xfee01000", "KVM_SIGNAL_MSI", "KVM_IRQFD",
+    ("interrupt-virtualization", ["used_event", "0xfee01000", "KVM_SIGNAL_MSI", "KVM_IRQFD",
                               "IRR[0x51]", "ISR[0x51]", "apic_ack_edge"]),
     ("qemu-qom-device", ["TypeInfo", "TypeImpl", "VirtIONetPCI", "Object.class",
                          "instance_finalize", "realized_set_allowed"]),
@@ -249,14 +248,10 @@ def test_memory_and_interrupt_articles_connect_to_existing_paths():
                          "len: 1", "BDRV_REQ_FUA", "cache.no-flush"]),
     ("qemu-aio-iothread", ["ThreadPoolAio", "THREAD_DONE", "completion_bh",
                            "has_returned", "vq_aio_context", "drain"]),
-    ("qemu-virtio-mem", ["virtio_mem_req", "usable_region_size", "sb_states",
-                         "alloc_contig_range", "data-virtio-mem-lab", "RamDiscardManager"]),
     ("kvm-vcpu-halt", ["kvm_vcpu_halt", "rcuwait", "TASK_INTERRUPTIBLE",
                        "KVM_CAP_HALT_POLL", "data-halt-poll-lab"]),
     ("kvm-hugepages", ["goal_level", "make_small_spte", "0x80003000",
                        "recover_huge_pages_range", "data-hugepage-lab"]),
-    ("qemu-qcow2", ["QCOW_OFLAG_COPIED", "refcount", "0x20031000",
-                    "QCowL2Meta", "data-qcow2-map-lab"]),
     ("spdk-vhost-user-blk", ["spdk_vhost_user_blk_task", "spdk_bdev_io_wait_entry",
                             "spdk_nvme_ns_cmd_write_with_md", "last_avail_idx",
                             "VIRTIO_RING_F_EVENT_IDX", "NLB = 0"]),
@@ -281,14 +276,14 @@ def test_article_related_content_keeps_only_two_migration_links(slug):
     navigation = matched.group(0)
     content = matched.group(1)
     assert 'aria-label="相关内容"' in navigation
-    assert re.match(r'\s*<span\b[^>]*>相关内容</span>\s*<a\b', content)
+    assert re.match(r'\s*<a\b', content)
     parsed = PageParser()
     parsed.feed(navigation)
     assert parsed.links == [
         "../mechanisms.html#migration",
         "../topics/migration/index.html",
     ]
-    assert re.findall(r'<a\b[^>]*>([^<]+)</a>', navigation) == ["热迁移原理", "热迁移动态"]
+    assert re.findall(r'<a\b[^>]*>([^<]+)</a>', navigation) == ["热迁移", "热迁移动态"]
     for removed in ("相关版本", "会议研究", "全部原理文章"):
         assert removed not in navigation
 
@@ -322,6 +317,7 @@ def test_catalogue_about_and_export_work_without_database_and_preserve_reports(t
         "mechanisms.html", *(f'mechanisms/{article["slug"]}.html'
                              for article in mechanisms.articles()),
         *(f'mechanisms/{entry["slug"]}.html' for entry in mechanisms.redirects()),
+        'kvm/index.html',
     }
     assert historical.read_text() == "historical report"
     for name in render.MECHANISM_ASSET_NAMES:
@@ -337,26 +333,28 @@ def test_catalogue_about_and_export_work_without_database_and_preserve_reports(t
     ("/mechanisms/qemu-memory-migration.html", 200, "QEMU 预拷贝迁移的内存迭代与停机控制"),
     ("/mechanisms/qemu-migration-stream.html", 200, "QEMU 迁移流格式与状态恢复"),
     ("/mechanisms/qemu-multifd.html", 200, "QEMU MultiFD 的任务分发与跨通道同步"),
-    ("/mechanisms/qemu-network-tx.html", 200, "QEMU 网卡模拟与 virtio-net 的发包路径"),
+    ("/mechanisms/network-io.html", 200, "虚拟网卡：收发路径、缓冲区与后端"),
     ("/mechanisms/qemu-vhost-net.html", 200, "virtio-net 的后端处理：vhost-net 与 vhost-user"),
     ("/mechanisms/kvm-dirty-ring.html", 200, "KVM 脏页日志：位图与 Dirty Ring"),
-    ("/mechanisms/qemu-postcopy.html", 200, "QEMU 后拷贝迁移的缺页处理与页面传输"),
+    ("/mechanisms/qemu-postcopy.html", 404, ""),
+    ("/mechanisms/vcpu-numa-placement.html", 404, ""),
     ("/mechanisms/qemu-vfio-dma.html", 200, "VFIO 设备直通的 DMA 地址转换与隔离"),
     ("/mechanisms/kvm-ept-fault.html", 200, "KVM 内存映射与 EPT 缺页处理"),
-    ("/mechanisms/kvm-virtio-interrupt.html", 200, "virtio 完成通知与 KVM 中断注入"),
+    ("/mechanisms/interrupt-virtualization.html", 200, "中断虚拟化"),
     ("/mechanisms/qemu-qom-device.html", 200, "QEMU 对象模型与设备初始化"),
-    ("/mechanisms/qemu-vm-startup.html", 200, "QEMU 虚拟机启动与 vCPU 初始化"),
+    ("/mechanisms/qemu-vm-startup.html", 200, "QEMU 虚拟机启动"),
+    ("/mechanisms/kvm-vm-creation.html", 200, "KVM 虚拟机创建"),
+    ("/mechanisms/linux-boot.html", 200, "Linux 系统启动"),
+    ("/mechanisms/live-upgrade-overview.html", 200, "虚拟机热升级"),
     ("/mechanisms/libvirt-rpc.html", 200, "Libvirt RPC 的编码与调用分发"),
     ("/mechanisms/libvirt-domain-start.html", 200, "虚拟机启动：从 Libvirt 到客户机引导"),
     ("/mechanisms/qemu-pcie-hotplug.html", 200, "QEMU PCIe 设备热插拔与异步移除"),
     ("/mechanisms/qemu-cpr-transfer.html", 200, "QEMU 热升级：CPR 的资源交接与状态恢复"),
     ("/mechanisms/qemu-memory-region.html", 200, "QEMU 内存初始化与地址空间管理"),
-    ("/mechanisms/qemu-virtio-blk.html", 200, "virtio-blk 的请求处理与写入完成"),
+    ("/mechanisms/qemu-virtio-blk.html", 200, "虚拟磁盘 I/O：请求处理、完成与持久化"),
     ("/mechanisms/qemu-aio-iothread.html", 200, "QEMU AioContext、协程与 IOThread"),
-    ("/mechanisms/qemu-virtio-mem.html", 200, "virtio-mem 的内存添加与回收"),
     ("/mechanisms/kvm-vcpu-halt.html", 200, "KVM vCPU 的阻塞、轮询与唤醒"),
     ("/mechanisms/kvm-hugepages.html", 200, "KVM 大页映射的建立、拆分与恢复"),
-    ("/mechanisms/qemu-qcow2.html", 200, "QEMU qcow2 的地址映射与写时复制"),
     ("/mechanisms/spdk-vhost-user-blk.html", 200, "SPDK vhost-user-blk 的请求处理路径"),
     ("/mechanisms/qemu-tcg.html", 200, "QEMU TCG 的翻译块与执行循环"),
     ("/mechanisms/unknown.html", 404, "Not found"),
@@ -374,16 +372,14 @@ def test_catalogue_about_and_export_work_without_database_and_preserve_reports(t
     ("/assets/vhost-path.js", 200, "function"),
     ("/assets/dirty-ring.css", 200, "dirty-"),
     ("/assets/dirty-ring.js", 200, "function"),
-    ("/assets/postcopy.css", 200, "postcopy-"),
-    ("/assets/postcopy.js", 200, "function"),
+    ("/assets/postcopy.css", 404, ""),
+    ("/assets/postcopy.js", 404, ""),
     ("/assets/vfio-dma.css", 200, "vfio-"),
     ("/assets/vfio-dma.js", 200, "function"),
     ("/assets/halt-poll.js", 200, "function"),
     ("/assets/halt-poll.css", 200, "halt-poll"),
     ("/assets/hugepage-map.js", 200, "function"),
     ("/assets/hugepage-map.css", 200, "hugepage"),
-    ("/assets/qcow2-map.js", 200, "function"),
-    ("/assets/qcow2-map.css", 200, "qcow2-map"),
     ("/assets/tcg-tb.js", 200, "function"),
     ("/assets/tcg-tb.css", 200, "tcg-tb"),
     ("/assets/mechanism-viewer.css", 200, "mechanism-"),
@@ -436,10 +432,10 @@ def test_diagrams_are_self_contained_svg_with_accessible_descriptions():
 @pytest.mark.parametrize("filename", ["test_migration_model.cjs", "test_migration_stream.cjs",
                                      "test_multifd.cjs", "test_device_tx.cjs",
                                      "test_vhost_path.cjs", "test_dirty_ring.cjs",
-                                     "test_postcopy.cjs", "test_vfio_dma.cjs",
-                                     "test_memory_map.cjs", "test_virtio_mem.cjs",
+                                     "test_vfio_dma.cjs",
+                                     "test_memory_map.cjs",
                                      "test_halt_poll.cjs", "test_hugepage_map.cjs",
-                                     "test_qcow2_map.cjs", "test_tcg_tb.cjs",
+                                     "test_tcg_tb.cjs",
                                      "test_notification_race.cjs", "test_packed_virtqueue.cjs"])
 def test_migration_model_state_invariants(filename):
     result = subprocess.run(

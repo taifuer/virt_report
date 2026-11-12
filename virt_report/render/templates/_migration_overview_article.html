@@ -40,36 +40,23 @@
   <p>内存迭代的轮次、位图与带宽计算集中在<a href="qemu-memory-migration.html#convergence">预拷贝专篇</a>；这里的完整性检查包括四项：最终 RAM、CPU 状态、设备状态和外部资源接管。</p>
 </section>
 <section id="evolution" class="mechanism-section">
-  <h2>收敛、并行传输与后拷贝的取舍</h2>
+  <h2>收敛、并行传输与业务开销</h2>
   <table><thead><tr><th>遇到的限制</th><th>方案与作用</th><th>新增成本</th></tr></thead><tbody>
     <tr><td>停机复制全部内存耗时过长</td><td>预拷贝：提前复制，大部分时间维持客户机运行</td><td>持续跟踪修改，部分页面反复发送</td></tr>
     <tr><td>单条传输路径无法利用可用带宽</td><td>MultiFD：并行处理和传输 RAM 批次</td><td>更多线程、缓冲与跨通道同步</td></tr>
-    <tr><td>写脏过快，剩余量长期不下降</td><td>限制写脏，或切换后拷贝结束源端修改</td><td>前者影响业务执行；后者引入远程缺页和双端故障依赖</td></tr>
+    <tr><td>写脏过快，剩余量长期不下降</td><td>限制写脏，或提高有效传输带宽</td><td>限速影响客户机业务执行，提高带宽会增加资源投入</td></tr>
   </tbody></table>
-  <p>这些方案针对不同瓶颈。传输线程不足时增加并行度可能有效；链路已经饱和时，更多线程未必提高吞吐。写脏率过高则需要降低写脏、提高带宽，或改变切换方式。普通预拷贝在目的端接管前通常还保留可继续运行的源端；后拷贝开始后，不能简单让源端恢复执行来回退。</p>
+  <p>这些方案针对不同瓶颈。传输线程不足时增加并行度可能有效；链路已经饱和时，更多线程未必提高吞吐。写脏率过高则需要降低写脏或提高带宽，并评估迁移期间的业务性能。目的端接管前，普通预拷贝通常仍保留可继续运行的源端；执行权交接需要由管理层确认。</p>
 </section>
 <section id="evaluation" class="mechanism-section">
   <h2>把迁移时间、停机和业务影响分开评价</h2>
   <p>迁移总时间包含运行中的复制阶段。客户机实际停顿指源端停止执行到目的端恢复执行的间隔；QMP 的 <code>downtime</code> 则由迁移实现计时，本例在源端记录，结束边界还受返回通道等因素影响，并非直接测量目的端恢复执行的时刻。业务不可用时间还可能包含网络收敛、客户端超时和服务恢复。这三种口径应分别记录，具体计时位置见<a href="qemu-memory-migration.html#downtime">停机时间与统计边界</a>。</p>
-  <p>首先看剩余内存是否下降，再检查停机阶段的设备保存、传输和加载耗时，最后观察客户机恢复后的尾延迟。预拷贝的关键收益是把大规模复制移出停机窗口；它的主要代价是重复传输和迁移期间的资源竞争。带宽、MultiFD、压缩和后拷贝分别影响传输能力、CPU 消耗与切换方式，应依据实际瓶颈选择。</p>
-</section>
-<section id="reading" class="mechanism-section">
-  <h2>按迁移阶段继续阅读</h2>
-  <ul>
-    <li><a href="qemu-memory-migration.html">预拷贝内存迭代与停机控制</a>：用交互模型观察带宽、写脏与收敛。</li>
-    <li><a href="qemu-migration-stream.html">迁移流格式与状态恢复</a>：流头、RAM 分段和 CPU、设备状态。</li>
-    <li><a href="vfio-device-migration.html">VFIO 设备热迁移：设备状态与 DMA 交接</a>：具备迁移能力的直通设备在源端停止、传输状态和目的端恢复的过程。</li>
-    <li><a href="qemu-multifd.html">MultiFD 任务分发与同步</a>：提高内存传输并行度。</li>
-    <li><a href="qemu-postcopy.html">后拷贝缺页与页面传输</a>：目的端先执行之后如何取得页面。</li>
-    <li><a href="cpu-model-migration.html">虚拟 CPU 模型与迁移兼容性</a>：迁移之前如何检查共同能力与状态约定。</li>
-    <li><a href="libvirt-live-migration.html">Libvirt 热迁移的阶段协调与失败恢复</a>：准备、接管与清理，以及断连后的判断。</li>
-  </ul>
+  <p>首先看剩余内存是否下降，再检查停机阶段的设备保存、传输和加载耗时，最后观察客户机恢复后的尾延迟。预拷贝的关键收益是把大规模复制移出停机窗口；它的主要代价是重复传输和迁移期间的资源竞争。带宽、MultiFD、压缩与写脏限制分别影响传输能力、CPU 消耗与业务执行，应依据实际瓶颈选择。</p>
 </section>
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>
     <li><a href="{{ qemu }}docs/devel/migration/main.rst">QEMU：迁移框架、VMState 与兼容性</a></li>
     <li><a href="{{ qemu }}migration/savevm.c#L1660-L1732">QEMU：最终内存、CPU 与设备状态保存</a></li>
-    <li><a href="{{ qemu }}docs/devel/migration/postcopy.rst">QEMU：后拷贝与故障恢复</a></li>
   </ul>
 </section>

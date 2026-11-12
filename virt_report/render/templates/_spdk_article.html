@@ -7,7 +7,7 @@
   <p>使用 QEMU virtio-blk 时，设备请求由 QEMU 解析，再交给块后端。换成 vhost-user-blk 后，客户机仍使用 virtio-blk 驱动，QEMU 负责 PCI 设备呈现与控制连接，独立的 SPDK 进程消费共享队列，并把请求提交给存储设备。</p>
   <p>本文跟踪一次 4 KiB 写入：x86 / KVM 客户机、现代 virtio PCI 接口、split virtqueue，以及 SPDK 轮询模式。SPDK 的块设备抽象 bdev 直接连接本地 PCIe NVMe namespace，其逻辑块为 4 KiB，不叠加加密、压缩或其他虚拟 bdev。协议初始化可结合<a href="qemu-vhost-net.html">vhost-user 的共享内存与通知机制</a>阅读；这里重点分析 SPDK 内部的请求、线程和完成路径。</p>
   <p>本例的控制器由一个 SPDK 线程推进：它轮询客户机队列提交写入，也通过关联的 NVMe 完成轮询处理返回结果。请求先沿 virtqueue → bdev → NVMe 逐层提交，再沿回调返回原来的描述符链。后面介绍多队列时，再展开这个线程同时管理哪些资源。</p>
-  <p>配套<a href="virtio-blk-read.html?backend=spdk-blk&amp;operation=write#walkthrough">交互演示</a>可逐步查看 SPDK 后端的写入过程，也可切换到队列机制视图观察请求发布与描述符回收。</p>
+  <p>配套<a href="qemu-virtio-blk.html?backend=spdk-blk&amp;operation=write#walkthrough">交互演示</a>可逐步查看 SPDK 后端的写入过程，也可切换到队列机制视图观察请求发布与描述符回收。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -72,7 +72,7 @@ NVMe:   SLBA = 256, NLB = 0（命令字段按块数减一编码）</code></pre>
 <section id="notifications" class="mechanism-section">
   <h2>轮询成本、通知策略与在途请求收尾</h2>
   <p>本例初始化 split 队列时设置 <code>VRING_USED_F_NO_NOTIFY</code>，请求客户机抑制提交 kick。SPDK 持续检查 avail ring，因此减少了依赖提交事件唤醒的次数。完成方向仍单独判断客户机的通知抑制和后端合并策略；需要通知时，经 rte_vhost 的 vring call 接口触发 call eventfd，QEMU 配置的 irqfd 路径可把事件交给 KVM。</p>
-  <p>本版本禁用了 <code>VIRTIO_RING_F_EVENT_IDX</code>；split 路径检查 avail.flags 中的 <code>VRING_AVAIL_F_NO_INTERRUPT</code>，不使用 used_event 阈值。两种通知抑制方式的区别见<a href="kvm-virtio-interrupt.html">virtio 完成通知与 KVM 中断注入</a>。<a href="{{ spdk_source }}lib/vhost/vhost_internal.h#L60-L69">禁用特性</a>、<a href="{{ spdk_source }}lib/vhost/rte_vhost_user.c#L383-L398">完成通知条件</a></p>
+  <p>本版本禁用了 <code>VIRTIO_RING_F_EVENT_IDX</code>；split 路径检查 avail.flags 中的 <code>VRING_AVAIL_F_NO_INTERRUPT</code>，不使用 used_event 阈值。两种通知抑制方式的区别见<a href="interrupt-virtualization.html">virtio 完成通知与 KVM 中断注入</a>。<a href="{{ spdk_source }}lib/vhost/vhost_internal.h#L60-L69">禁用特性</a>、<a href="{{ spdk_source }}lib/vhost/rte_vhost_user.c#L383-L398">完成通知条件</a></p>
   <p>25.09 的 vhost 代码还提供 interrupt mode 分支：启用提交通知，读取 kickfd，并在模式切换时补发事件以覆盖待处理工作。本文采用连续轮询，减少等待 kick 的机会，同时持续占用 CPU。事件模式与轮询模式的取舍取决于负载、尾延迟目标和可分配核心数。</p>
   <p>停止会话时，<code>vhost_blk_stop()</code> 先撤下新请求 poller 和中断处理器，再用 stop poller 等待 task_cnt 清零。已有硬件请求仍需完成；成功收尾后才释放 io_channel 与任务池。等待超时会报告失败，不应把 socket 断开直接解释为所有 DMA 和回调都已结束。</p>
   <table><thead><tr><th scope="col">观察到的现象</th><th scope="col">应检查的环节</th></tr></thead><tbody>

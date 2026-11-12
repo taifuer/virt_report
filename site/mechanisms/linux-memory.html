@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=428e6e8b26d1">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=428e6e8b26d1">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -43,16 +43,19 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="linux-kernel-evolution.html">Linux 内核基础</a></div>
+    <div class="mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true">/</span><a href="../mechanisms.html#linux-foundations">Linux 内核</a></div>
     <h1>Linux 内存：地址空间、缺页与页面回收</h1>
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2><ol id="mechanism-toc-links"><li><a href="#preface">一、映射与实际驻留</a></li><li><a href="#history">二、从按需分页到多核内存管理</a></li><li><a href="#structures">三、地址、页表与物理页</a><ol><li><a href="#structures-part-1">地址拆分与硬件查表</a></li></ol></li><li><a href="#mappings">四、分配、映射与解除映射</a><ol><li><a href="#mappings-part-1">1. 匿名、文件、私有与共享</a></li><li><a href="#mappings-part-2">2. 从地址范围到安全释放</a></li><li><a href="#mappings-part-3">3. 页表修改与 TLB shootdown</a></li></ol></li><li><a href="#faults">五、首次访问与写时复制</a><ol><li><a href="#faults-part-1">1. 合法写入与写保护异常</a></li><li><a href="#faults-part-2">2. 缺页的结果与统计</a></li></ol></li><li><a href="#reclaim">六、回收、换页与工作集</a></li><li><a href="#allocation">七、分配粒度、连续性与内存压力</a></li><li><a href="#pressure">八、内存额度、回收压力与 OOM</a></li><li><a href="#observe">九、只读观察与两级映射</a></li><li><a href="#sources">十、源码与延伸阅读</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、映射与实际驻留</a></li><li><a href="#history">二、从按需分页到多核内存管理</a></li><li><a href="#structures">三、地址、页表与物理页</a><ol><li><a href="#structures-part-1">地址拆分与硬件查表</a></li></ol></li><li><a href="#mappings">四、分配、映射与解除映射</a><ol><li><a href="#mappings-part-1">1. 匿名、文件、私有与共享</a></li><li><a href="#mappings-part-2">2. 从地址范围到安全释放</a></li><li><a href="#mappings-part-3">3. 页表修改与 TLB shootdown</a></li></ol></li><li><a href="#faults">五、首次访问与写时复制</a><ol><li><a href="#faults-part-1">1. 合法写入与写保护异常</a></li><li><a href="#faults-part-2">2. 缺页的结果与统计</a></li></ol></li><li><a href="#reclaim">六、回收、换页与工作集</a></li><li><a href="#allocation">七、分配粒度、连续性与内存压力</a></li><li><a href="#pressure">八、内存额度、回收压力与 OOM</a></li><li><a href="#observe">九、只读观察与两级映射</a></li><li><a href="#sources">十、源码与参考资料</a></li></ol>
+    </nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>映射与实际驻留</h2>
   <p>私有匿名 <code>mmap()</code> 在普通按需分页配置下先建立地址范围和访问权限，实际页面随首次访问分配或映射。进程的虚拟地址空间描述可用范围，RSS 统计已经驻留的页面；两者可以相差很大。</p>
-<p class="mechanism-baselines">源码版本：<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
+<p class="mechanism-baselines">源码版本：Linux 6.18。</p></section>
 <section id="history" class="mechanism-section">
   <h2><span class="mechanism-heading-number">二、</span>从按需分页到多核内存管理</h2>
   <p>地址空间管理、物理页分配、文件缓存与回收各有自己的数据结构。内存容量、CPU 数量和映射数量的增长，分别推动这些结构的演进。</p>
@@ -62,7 +65,7 @@
     <tr><td>大内存、SMP 与 NUMA</td><td>按节点与 zone 管理页面，配合每 CPU 缓存、大页和页面迁移</td><td>降低争用和地址转换成本，但需要处理远端访问、连续内存碎片和大页拆分</td></tr>
     <tr><td>近年的 5.x / 6.x</td><td>folio 表达一组页面，Maple Tree 管理 VMA 区间，可选 MGLRU 改进冷热页识别</td><td>分别优化页面管理粒度、映射查找与回收策略</td></tr>
   </tbody></table>
-  <p>可比较 <a href="https://github.com/torvalds/linux/blob/v2.6.12/include/linux/sched.h#L214">2.6.12 的 mm_struct</a> 中 <code>mmap</code> 与 <code>mm_rb</code>，和当前 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/core-api/maple_tree.rst">Maple Tree 的区间索引</a>。Maple Tree 供内核查找 VMA；CPU 硬件访存使用多级页表和 TLB。</p>
+  <p>可比较 2.6.12 的 mm_struct 中 <code>mmap</code> 与 <code>mm_rb</code>，和当前 Maple Tree 的区间索引。Maple Tree 供内核查找 VMA；CPU 硬件访存使用多级页表和 TLB。</p>
 </section>
 <section id="structures" class="mechanism-section">
   <h2><span class="mechanism-heading-number">三、</span>地址、页表与物理页</h2>
@@ -75,7 +78,7 @@
   <p>在 x86 等硬件查表架构上，TLB 未命中通常先由硬件遍历页表；映射有效时无需进入内核。缺页异常交给软件处理，可能建立按需映射、从存储读取页面，也可能因地址或权限非法而向进程报告错误。</p>
   <h3 id="structures-part-1">地址拆分与硬件查表</h3>
   <p>以 x86-64 的 4 KiB 基页为例，虚拟地址 <code>0x400123</code> 的页内偏移是 <code>0x123</code>。若页表把该虚拟页映射到物理页基址 <code>0x12a000</code>，最终物理地址就是 <code>0x12a123</code>。硬件利用页表根和各级索引找到映射，检查访问权限，再结合偏移访存。</p>
-  <p>多级页表按需建立底层结构，节省稀疏地址空间的页表内存。Linux 通用代码表达 PGD、P4D、PUD、PMD、PTE 五级，具体架构未使用的级会折叠。大页可在较高一级结束查表。见 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/mm/page_tables.rst">页表层级与硬件查表</a>。</p>
+  <p>多级页表按需建立底层结构，节省稀疏地址空间的页表内存。Linux 通用代码表达 PGD、P4D、PUD、PMD、PTE 五级，具体架构未使用的级会折叠。大页可在较高一级结束查表。见 页表层级与硬件查表。</p>
   <p>文件的 <code>address_space</code> 以文件偏移关联页缓存；进程页表则以虚拟地址关联页面。同一文件页可以被多个进程映射，匿名页也可因 fork 暂时共享。回收时需要反向映射检查或撤销相关 PTE，并处理 TLB 失效，不能只把物理页从一个列表删掉。</p>
 </section>
 <section id="mappings" class="mechanism-section">
@@ -96,10 +99,10 @@
     <li><code>mprotect()</code> 改变权限，可能拆分 VMA、修改已有页表，并使相关 TLB 缓存失效。<code>munmap()</code> 则移除相应地址范围及其映射。</li>
     <li>撤销映射后，物理页是否可释放还取决于其他映射、页缓存或固定引用。内核必须先完成需要的页表与 TLB 同步，再把可复用的页交回分配器。</li>
   </ol>
-  <p><code>free()</code> 通常先把对象交回用户态分配器，分配器可能保留内存供下次申请。即使对象已释放，RSS 也可能暂时不降。反过来，文件映射解除后，文件内容仍可能留在页缓存中。接口语义见 <a href="https://man7.org/linux/man-pages/man2/mmap.2.html">mmap(2)</a>；锁与 VMA 管理见 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/mm/process_addrs.rst">Process Addresses</a>。</p>
+  <p><code>free()</code> 通常先把对象交回用户态分配器，分配器可能保留内存供下次申请。即使对象已释放，RSS 也可能暂时不降。反过来，文件映射解除后，文件内容仍可能留在页缓存中。接口语义见 mmap(2)；锁与 VMA 管理见 Process Addresses。</p>
   <h3 id="mappings-part-3"><span class="mechanism-heading-number">3. </span>页表修改与 TLB shootdown</h3>
   <p>同一地址空间的线程可以同时在多个 CPU 上运行，各 CPU 都可能缓存旧转换。例如 A 解除映射并释放页，而 B 仍用旧 TLB 写入该页，就会破坏后来复用这块内存的对象。因此撤销或收紧映射时，内核按架构规则使相关 CPU 的缓存失效，并完成必要同步。地址空间标记和批量失效可以减少成本，远端失效仍可能涉及 CPU 间通知。</p>
-  <p>VMA 锁保护地址范围等元数据，页表锁保护相应页表项，TLB 同步处理硬件缓存中的旧转换；三者覆盖不同对象。相关约定见 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/core-api/cachetlb.rst">缓存与 TLB 刷新接口</a>及 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/mm/split_page_table_lock.rst">细粒度页表锁</a>。</p>
+  <p>VMA 锁保护地址范围等元数据，页表锁保护相应页表项，TLB 同步处理硬件缓存中的旧转换；三者覆盖不同对象。相关约定见 缓存与 TLB 刷新接口及 细粒度页表锁。</p>
 </section>
 <section id="faults" class="mechanism-section">
   <h2><span class="mechanism-heading-number">五、</span>首次访问与写时复制</h2>
@@ -109,9 +112,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看TLB 未命中不等于缺页" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="TLB 未命中不等于缺页">
-    <img src="../assets/linux-page-fault.svg?v=428e6e8b26d1" alt="图中软件路径固定为合法匿名映射首次写入且分配成功；非法访问、COW 和文件页缺页各有不同处理。" loading="lazy">
+    <img src="../assets/linux-page-fault.svg?v=e8d4285d5a39" alt="图中软件路径固定为合法匿名映射首次写入且分配成功；非法访问、COW 和文件页缺页各有不同处理。" loading="lazy">
   </div>
-  <figcaption>图中软件路径固定为合法匿名映射首次写入且分配成功；非法访问、COW 和文件页缺页各有不同处理。 <a href="../assets/linux-page-fault.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>图中软件路径固定为合法匿名映射首次写入且分配成功；非法访问、COW 和文件页缺页各有不同处理。 <a href="../assets/linux-page-fault.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TD
     accTitle: TLB 未命中与匿名页首次写入
     accDescr: TLB 未命中先由硬件查页表，页表有效时直接完成转换。对合法匿名映射首次写入但页表项尚未建立时，缺页处理分配页并建立映射，然后重试原指令。
@@ -124,8 +127,8 @@
     G --&gt; C
 </code></pre></details>
 </figure>
-  <p><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/mm/mmap.c#L278">do_mmap()</a> 建立映射约定；访问触发缺页后，内核检查地址与权限，并进入 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/mm/memory.c#L6470">handle_mm_fault()</a> 等路径。匿名页首次读取可以使用共享零页；首次写入通常需要分配可写的私有页，再安装页表项并重新执行导致异常的指令。</p>
-  <p><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/mm/memory.c#L5134">do_anonymous_page()</a> 展示零页与实际分配的区别。文件映射则需要找到文件对应的页缓存；若数据不在内存，可能发起 I/O 并等待。这就是部分缺页只消耗内存管理工作，另一些却会被存储延迟拖慢的原因。</p>
+  <p>do_mmap() 建立映射约定；访问触发缺页后，内核检查地址与权限，并进入 handle_mm_fault() 等路径。匿名页首次读取可以使用共享零页；首次写入通常需要分配可写的私有页，再安装页表项并重新执行导致异常的指令。</p>
+  <p>do_anonymous_page() 展示零页与实际分配的区别。文件映射则需要找到文件对应的页缓存；若数据不在内存，可能发起 I/O 并等待。这就是部分缺页只消耗内存管理工作，另一些却会被存储延迟拖慢的原因。</p>
   <h3 id="faults-part-1"><span class="mechanism-heading-number">1. </span>合法写入与写保护异常</h3>
   <p><code>fork()</code> 后，私有可写 VMA 的约定可以仍是“允许写”，但父子进程的 PTE 被设为只读，用来截住第一次修改。下面以一个普通匿名页 P、父子进程都继续持有映射为例：</p>
   <figure class="mechanism-diagram" data-diagram="linux-cow-mappings" data-mechanism-view="diagram">
@@ -134,9 +137,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看同一虚拟地址，写入后指向不同的物理页" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="同一虚拟地址，写入后指向不同的物理页">
-    <img src="../assets/linux-cow-mappings.svg?v=428e6e8b26d1" alt="左边父子共享只读映射，右边子进程经 COW 获得 Q；父进程页表仍指向 P。这里固定父进程继续持有旧页，不展开独占页复用。" loading="lazy">
+    <img src="../assets/linux-cow-mappings.svg?v=e8d4285d5a39" alt="左边父子共享只读映射，右边子进程经 COW 获得 Q；父进程页表仍指向 P。这里固定父进程继续持有旧页，不展开独占页复用。" loading="lazy">
   </div>
-  <figcaption>左边父子共享只读映射，右边子进程经 COW 获得 Q；父进程页表仍指向 P。这里固定父进程继续持有旧页，不展开独占页复用。 <a href="../assets/linux-cow-mappings.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>左边父子共享只读映射，右边子进程经 COW 获得 Q；父进程页表仍指向 P。这里固定父进程继续持有旧页，不展开独占页复用。 <a href="../assets/linux-cow-mappings.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart LR
     accTitle: fork 后共享页面与子进程写时复制
     accDescr: fork 后父子进程的页表都以只读权限指向物理页 P；本例父进程继续持有 P，子进程写入触发 COW 后获得新页 Q，父进程仍指向 P。允许写的 VMA 与暂时只读的 PTE 是不同层次。
@@ -154,7 +157,7 @@
 </code></pre></details>
 </figure>
   <p>子进程页表更新前，父子读取的都是 P。子进程写入触发保护异常后，内核分配 Q，复制旧内容、安装可写映射并重试原写指令。后续写入直接访问 Q，父进程继续访问 P；这次复制只涉及发生修改的页面。</p>
-  <p><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/mm/memory.c#L4049">do_wp_page()</a> 会判断页面是否已可独占复用；如果不再需要保留共享副本，可能只恢复写权限。相反，VMA 本身不允许写时，异常不能用 COW 掩盖。修改映射还必须同步相应 TLB 状态，否则 CPU 可能继续使用旧权限或旧地址。</p>
+  <p>do_wp_page() 会判断页面是否已可独占复用；如果不再需要保留共享副本，可能只恢复写权限。相反，VMA 本身不允许写时，异常不能用 COW 掩盖。修改映射还必须同步相应 TLB 状态，否则 CPU 可能继续使用旧权限或旧地址。</p>
   <p>1 MiB 私有匿名映射按 4 KiB 基页划分，覆盖 256 个虚拟页。按需分页时，首次写遍各页才逐步建立私有驻留页。实际缺页计数还受大页、提前分配和访问方式影响。</p>
   <h3 id="faults-part-2"><span class="mechanism-heading-number">2. </span>缺页的结果与统计</h3>
   <p>缺页入口先确定地址和访问方式是否有效，再处理后备页。映射合法且分配、读取成功时，内核修复页表，CPU 重试原指令；地址或权限非法时可产生 <code>SIGSEGV</code>。例如文件映射建立后文件被截短，访问完全超出新文件结尾的页面可产生 <code>SIGBUS</code>。缺页处理也可能遇到分配失败或底层 I/O 错误。</p>
@@ -166,7 +169,7 @@
   <p>工作集是任务在一段时间内持续需要的页面集合。回收需要在腾出空间与保留活跃数据之间取舍，同时满足数据保存、引用和映射的约束。</p>
   <p>内存紧张时，后台回收或分配路径中的直接回收会尝试释放可回收内容：干净的文件页通常可丢弃后重读，脏页需先写回；匿名页在允许且具备 swap 等条件时可换出。被固定、不可迁移或正在使用的页面会限制回收。回收不足可能导致分配失败或 OOM，而不是所有 <code>mmap()</code> 成功的空间都保证以后能写入。</p>
   <p>RSS 随驻留页变化；PSS 将共享页按映射它的进程分摊。判断内存用量时，还应区分应用对象、匿名驻留页和可回收文件缓存。</p>
-  <p>传统活跃／非活跃 LRU 用访问反馈估计冷热，MGLRU 按访问时间组织多代页面，并结合页表访问位等信息选择回收对象。冷热判断需要扫描和同步；MGLRU 的启用状态由内核配置及运行设置共同决定。见 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/admin-guide/mm/multigen_lru.rst">MGLRU 配置与工作集说明</a>。</p>
+  <p>传统活跃／非活跃 LRU 用访问反馈估计冷热，MGLRU 按访问时间组织多代页面，并结合页表访问位等信息选择回收对象。冷热判断需要扫描和同步；MGLRU 的启用状态由内核配置及运行设置共同决定。见 MGLRU 配置与工作集说明。</p>
   <p>刚淘汰的文件页若很快又被读入，会增加回收与存储访问成本，频繁发生时可能造成工作集抖动。内核结合访问位、页面所属代和重新访问反馈改进选择。选定候选页后，还须处理映射、写回和固定引用，才能安全释放。</p>
   <figure class="mechanism-diagram" data-diagram="linux-page-reclaim" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
@@ -174,9 +177,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看从候选页到真正可释放的页面" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="从候选页到真正可释放的页面">
-    <img src="../assets/linux-page-reclaim.svg?v=428e6e8b26d1" alt="找到较冷的页面只完成了选择；数据保存、引用、页表和 TLB 状态仍需满足安全释放条件。无法换出或被固定的页面不能直接丢弃。" loading="lazy">
+    <img src="../assets/linux-page-reclaim.svg?v=e8d4285d5a39" alt="找到较冷的页面只完成了选择；数据保存、引用、页表和 TLB 状态仍需满足安全释放条件。无法换出或被固定的页面不能直接丢弃。" loading="lazy">
   </div>
-  <figcaption>找到较冷的页面只完成了选择；数据保存、引用、页表和 TLB 状态仍需满足安全释放条件。无法换出或被固定的页面不能直接丢弃。 <a href="../assets/linux-page-reclaim.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>找到较冷的页面只完成了选择；数据保存、引用、页表和 TLB 状态仍需满足安全释放条件。无法换出或被固定的页面不能直接丢弃。 <a href="../assets/linux-page-reclaim.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 冷页面不一定能够立即回收
     accDescr: 回收先选择候选页，再检查是否能解除使用和映射。干净文件页可以丢弃，脏文件页需安排写回后再评估，匿名页需有可用换出路径。被固定等不可回收页面会跳过或延后，安全释放仍需引用和映射同步。
@@ -198,9 +201,9 @@
   <h2><span class="mechanism-heading-number">七、</span>分配粒度、连续性与内存压力</h2>
   <p>Buddy 页面分配器按 order 管理连续页块：order 为 k 的请求需要 2<sup>k</sup> 个连续基页。对象分配器在这些页之上复用小对象，减少每个对象直接申请整页的浪费。总空闲内存充足，也可能因为缺少合适的连续块而无法满足较高 order 的请求。</p>
   <p>例如 4 KiB 基页下，一个 2 MiB 页需要 order 9 的连续块。物理页按 NUMA node 和 zone 组织，zone 表达架构相关的可寻址或用途约束；分配标志还决定本次是否允许睡眠、回收或进入 I/O 路径。每 CPU 页缓存可降低常见分配的共享锁开销，SLUB 则在获得的页中切分和复用同类内核对象。</p>
-  <p><code>kmalloc()</code> 分配的区域在物理地址上连续；<code>vmalloc()</code> 提供连续的内核虚拟地址，后备物理页不必连续。两者都不能直接推出设备 DMA 地址：是否能 DMA、如何映射以及何时同步，要遵守 DMA API 和设备约束。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/core-api/memory-allocation.rst">内存分配指南</a>按对象大小和上下文区分这些选择。</p>
-  <p>内存压力还可能来自某个 NUMA 节点或 cgroup，而不是全机总量。后台 kswapd 尽早回收，直接回收可能把延迟记到正在申请内存的线程上；页面规整通过迁移可移动页拼出连续空间，不能移动的固定页会限制效果。THP 可减少页表与 TLB 开销，但不保证每次大页分配都划算，参见 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/admin-guide/mm/transhuge.rst">透明大页的工作方式</a>。</p>
-  <p>在常见默认 NUMA 策略下，实际分配通常倾向于执行首次触碰的 CPU 所在节点，仍受 cpuset、内存策略及可用空间约束。初始化线程把一大块内存写满后，工作线程即使迁到其他节点，页面也可能留在原处；远端访问、自动 NUMA 平衡和显式策略会进一步影响性能。机制见 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/admin-guide/mm/numa_memory_policy.rst">NUMA 内存策略</a>。</p>
+  <p><code>kmalloc()</code> 分配的区域在物理地址上连续；<code>vmalloc()</code> 提供连续的内核虚拟地址，后备物理页不必连续。两者都不能直接推出设备 DMA 地址：是否能 DMA、如何映射以及何时同步，要遵守 DMA API 和设备约束。内存分配指南按对象大小和上下文区分这些选择。</p>
+  <p>内存压力还可能来自某个 NUMA 节点或 cgroup，而不是全机总量。后台 kswapd 尽早回收，直接回收可能把延迟记到正在申请内存的线程上；页面规整通过迁移可移动页拼出连续空间，不能移动的固定页会限制效果。THP 可减少页表与 TLB 开销，但不保证每次大页分配都划算，参见 透明大页的工作方式。</p>
+  <p>在常见默认 NUMA 策略下，实际分配通常倾向于执行首次触碰的 CPU 所在节点，仍受 cpuset、内存策略及可用空间约束。初始化线程把一大块内存写满后，工作线程即使迁到其他节点，页面也可能留在原处；远端访问、自动 NUMA 平衡和显式策略会进一步影响性能。机制见 NUMA 内存策略。</p>
   <p>THP 与显式 hugetlb 分配有不同的管理方式。THP 尝试透明地使用较大页粒度，并可在条件变化时拆分；hugetlb 使用专门管理的大页资源与接口。Guest 和 Host 的页粒度分别选择，Guest 使用大页后，Host 后备仍可能碎片化。两级转换中的效果见 <a href="kvm-hugepages.html">KVM 大页</a>。</p>
 </section>
 <section id="pressure" class="mechanism-section">
@@ -213,7 +216,7 @@
     <tr><td>全局内存压力</td><td>由系统级分配与回收处理，必要时进入全局 OOM 路径</td><td>与某个 cgroup 超限分开确认，避免把局部问题归因于整机容量</td></tr>
   </tbody></table>
   <p><code>memory.current</code> 包含该组记账的多类内存，文件缓存和部分内核内存也在其中，具体分类可查 <code>memory.stat</code>。多个进程共享页时，cgroup 记账与逐进程 RSS/PSS 的口径不同；把 RSS 相加会重复计算共享页。父级 cgroup 的额度同样约束子组。</p>
-  <p>回收赶不上访问速度时，任务可能反复缺页、回收、再读回，表现为吞吐下降和延迟升高。<code>memory.pressure</code> 的 PSI 指标记录任务因内存压力停顿的情况；它可与 <code>memory.events</code>、缺页和换页增量一起分析。接口定义见 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/admin-guide/cgroup-v2.rst">cgroup v2 内存控制器</a>与 <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/accounting/psi.rst">PSI</a>。</p>
+  <p>回收赶不上访问速度时，任务可能反复缺页、回收、再读回，表现为吞吐下降和延迟升高。<code>memory.pressure</code> 的 PSI 指标记录任务因内存压力停顿的情况；它可与 <code>memory.events</code>、缺页和换页增量一起分析。接口定义见 cgroup v2 内存控制器与 PSI。</p>
   <p>OOM 的触发范围、候选任务和组级策略共同决定后续处理，部分分配还会直接失败。定位时应保留内核日志、限制值和事发窗口的计数，区分分配失败、被 OOM 终止，以及仅因直接回收而变慢。</p>
 </section>
 <section id="observe" class="mechanism-section">
@@ -224,23 +227,22 @@
   <p><a href="memory-virtualization.html#first-touch-measured">首次触碰实验</a>提供了对应的环境、步骤与测量结果，可用于对照缺页计数和驻留变化。</p>
 </section>
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">十、</span>源码与延伸阅读</h2>
+  <h2><span class="mechanism-heading-number">十、</span>源码与参考资料</h2>
   <ul>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/mm/mmap.c#L278">映射建立</a>；<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/mm/memory.c#L6470">缺页分派</a>；<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/mm/vmscan.c#L6612">直接回收入口</a>。</li>
-    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/admin-guide/mm/concepts.rst">Linux 内存概念</a>。再读 <a href="kvm-ept-fault.html">KVM EPT 缺页</a>、<a href="virtio-balloon.html">virtio-balloon</a> 与 <a href="kvm-hugepages.html">KVM 大页</a>。</li>
-    <li>原始研究对照：<a href="../conference-papers.html#paper-osdi02-esx-memory">ESX 内存管理</a>；缓存和 I/O 的连接见 <a href="linux-block-io.html">Linux 存储 I/O</a>。</li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/admin-guide/mm/concepts.rst">Linux 内存概念</a>。</li>
     <li><a href="../conference-papers.html#paper-osdi16-ingens">Ingens（OSDI 2016）</a>研究 Linux/KVM 大页分配的延迟、内存浪费与公平性，将连续内存供给、后台规整和页共享协调起来。论文采用 Linux 4.3，适合对照理解大页收益与管理成本。</li>
     <li><a href="../conference-papers.html#paper-asplos20-mitosis">Mitosis（ASPLOS 2020）</a>研究页表自身的 NUMA 局部性，通过副本同步和页表迁移减少远端遍历。原型基于 Linux 4.17；页表页与应用数据页分别放置。</li>
     <li><a href="../conference-papers.html#paper-eurosys13-radixvm">RadixVM（EuroSys 2013）</a>研究多线程并发 mmap/munmap 的元数据竞争、引用计数和远端 TLB 失效。它是研究内核中的地址空间设计，可用于理解可扩展性问题；Linux 6.18 的 VMA 和页表锁以对应源码为准。<a href="https://pdos.csail.mit.edu/papers/radixvm:eurosys13.pdf">作者 PDF</a>。</li>
   </ul>
 </section></div>
   </div>
-  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#linux-foundations">Linux 内核基础原理</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-11-10">2026-11-10</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
+  <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#linux-foundations">Linux 内核</a></nav>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-10">2026-11-10</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=428e6e8b26d1" defer></script>
+<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
 </body>
 </html>

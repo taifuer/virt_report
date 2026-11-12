@@ -11,13 +11,13 @@ from virt_report.source_paths import validate_call_path_metadata
 
 DEMO_PAGES = {
     "network-io": "network-io",
-    "memory-access": "memory-access",
-    "cpu-execution": "cpu-execution",
-    "interrupt-delivery": "interrupt-delivery",
-    "disk-persistence": "virtio-blk-read",
+    "memory-access": "memory-virtualization",
+    "cpu-execution": "cpu-virtualization",
+    "interrupt-delivery": "interrupt-virtualization",
+    "disk-persistence": "qemu-virtio-blk",
     "vm-lifecycle": "libvirt-domain-start",
     "gpu-execution": "gpu-execution",
-    "virtio-gpu-rendering": "virtio-gpu-execution",
+    "virtio-gpu-rendering": "virtio-gpu",
     "virtio-balloon": "virtio-balloon",
 }
 DEMO_IDS = tuple(DEMO_PAGES)

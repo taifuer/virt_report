@@ -10,15 +10,19 @@ from virt_report.render import render
 
 @pytest.mark.parametrize('slug,sequence', [
     ('virtualization-basics', ['preface', 'isolation', 'architecture', 'example', 'evolution', 'tradeoffs']),
-    ('cpu-virtualization', ['preface', 'paths', 'example', 'evolution', 'evaluation']),
-    ('memory-virtualization', ['preface', 'addresses', 'evolution', 'access', 'evaluation', 'verification', 'experiment']),
+    ('cpu-virtualization', ['preface', 'paths', 'walkthrough', 'comparison', 'evolution', 'evaluation']),
+    ('memory-virtualization', ['preface', 'addresses', 'evolution', 'access', 'walkthrough',
+                               'address-routing', 'comparison', 'evaluation', 'verification', 'experiment']),
     ('device-virtualization', ['preface', 'example', 'architecture', 'queue', 'backends', 'evolution', 'evaluation']),
-    ('interrupt-virtualization', ['preface', 'example', 'controllers', 'path', 'acceleration', 'evolution', 'evaluation']),
+    ('interrupt-virtualization', ['preface', 'example', 'controllers', 'notification',
+                                  'delivery', 'irqfd', 'acceleration', 'walkthrough',
+                                  'implementation', 'evolution', 'evaluation']),
 ])
 def test_foundation_guides_introduce_principles_before_examples_and_tradeoffs(slug, sequence):
     article = mechanisms.get_article(slug)
     section_ids = [section['id'] for section in article['sections']]
-    assert section_ids == [*sequence, 'reading', 'sources']
+    tail = ['sources']
+    assert section_ids == [*sequence, *tail]
     page = render.render_mechanisms_html(Config(), slug)
     positions = [page.index(f'<section id="{section}"') for section in sequence]
     assert positions == sorted(positions)
@@ -26,7 +30,7 @@ def test_foundation_guides_introduce_principles_before_examples_and_tradeoffs(sl
     assert '<table>' in page
 
 
-def test_interrupt_guide_compares_distinct_layers_and_preserves_previous_anchors():
+def test_interrupt_guide_compares_distinct_layers_and_preserves_previous_anchors(article_source):
     page = render.render_mechanisms_html(Config(), 'interrupt-virtualization')
     for name in ('interrupt-controller-paths', 'interrupt-acceleration-layers', 'interrupt-software-delivery',
                  'interrupt-delivery-overview'):
@@ -36,14 +40,13 @@ def test_interrupt_guide_compares_distinct_layers_and_preserves_previous_anchors
     for concept in ('PIC', 'I/O APIC', 'MSI-X', 'in-kernel irqchip', 'split irqchip',
                     'irqfd', 'APICv', 'AVIC', 'VT-d', 'IRR', 'EOI', 'NAPI'):
         assert concept in page
-    assert 'lwn.net/Articles/329837/' in page
+    assert 'lwn.net/Articles/329837/' in article_source('interrupt-virtualization')
 
 
 def test_interrupt_guide_traces_software_delivery_before_acceleration():
     page = render.render_mechanisms_html(Config(), 'interrupt-virtualization')
-    baseline = re.search(r'<section id="path".*?</section>', page, re.S).group()
-    stages = ('id="path-part-1"', 'id="path-software-delivery"',
-              'id="path-guest-accept"', 'id="path-part-2"')
+    baseline = page[page.index('<section id="notification"'):page.index('<section id="walkthrough"')]
+    stages = ('id="notification"', 'id="msix"', 'id="delivery"', 'id="irqfd"')
     assert [baseline.index(stage) for stage in stages] == sorted(
         baseline.index(stage) for stage in stages)
     for concept in ('KVM_SIGNAL_MSI', 'IRR[0x51]', 'ISR[0x51]', 'IDT', 'EOI'):
@@ -60,15 +63,13 @@ def test_interrupt_guide_traces_software_delivery_before_acceleration():
 
 @pytest.mark.parametrize('slug,sequence', [
     ('kvm-vcpu-run', ['paths', 'structures', 'completion', 'notifications']),
-    ('kvm-virtio-interrupt', ['notification', 'msix', 'delivery', 'structures', 'irqfd']),
+    ('interrupt-virtualization', ['notification', 'msix', 'delivery', 'structures', 'irqfd']),
     ('libvirt-rpc', ['layers', 'framing', 'dispatch', 'responses']),
 ])
 def test_request_walkthrough_finishes_baseline_before_comparisons(slug, sequence):
-    article = mechanisms.get_article(slug)
-    section_ids = [section['id'] for section in article['sections']]
-    assert [item for item in section_ids if item in sequence] == sequence
     page = render.render_mechanisms_html(Config(), slug)
-    offsets = [page.index(f'<section id="{section}"') for section in sequence]
+    # Related phases may be subsections while keeping stable deep links.
+    offsets = [page.index(f'id="{section}"') for section in sequence]
     assert offsets == sorted(offsets)
 
 
@@ -87,7 +88,7 @@ def test_directory_links_do_not_underline_but_keep_focus_feedback():
 def test_operation_guides_explain_state_before_handoff_and_evaluate_outcomes(slug):
     article = mechanisms.get_article(slug)
     assert [section['id'] for section in article['sections']] == [
-        'preface', 'state', 'process', 'example', 'evolution', 'evaluation', 'reading', 'sources',
+        'preface', 'state', 'process', 'example', 'evolution', 'evaluation', 'sources',
     ]
     page = render.render_mechanisms_html(Config(), slug)
     for section in ('state', 'example', 'evaluation'):

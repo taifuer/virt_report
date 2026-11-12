@@ -19,6 +19,7 @@ from virt_report.report_projects import reconcile_overview
 from virt_report.render.calendar import build_archive_index, build_archive_views
 from virt_report.render.article_outline import prepare_outline
 from virt_report.render.article_markdown import render_article_markdown
+from virt_report.render.article_links import canonicalize_article_links, compact_references
 from virt_report.summarize import periods, report as report_builder
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -29,6 +30,7 @@ STATIC_ASSET_NAMES = ("brand-mark.png", "site.css", "site.js")
 SEARCH_ASSET_NAMES = ("search.css", "editorial-search.js")
 FAVICON_ASSET_NAMES = ("favicon-32.png", "favicon.ico")
 MECHANISM_DIAGRAM_NAMES = (
+    "linux-boot-handoff", "kvm-creation-resources", "live-upgrade-handoff",
     "linux-kernel-architecture", "linux-kernel-milestones",
     "linux-isolation-layers", "linux-read-cooperation",
     "linux-scheduler-evolution", "linux-eevdf-choice",
@@ -39,7 +41,7 @@ MECHANISM_DIAGRAM_NAMES = (
     "linux-task-wakeup", "linux-page-fault", "linux-interrupt-completion",
     "linux-block-completion", "linux-network-handoffs",
     "migration-architecture", "migration-precopy-sequence", "migration-load-dispatch",
-    "multifd-synchronization", "dirty-ring-handoff", "postcopy-page-fault",
+    "multifd-synchronization", "dirty-ring-handoff",
     "virtqueue-tx-layout", "virtqueue-private-shared", "vhost-user-control-data", "vfio-address-paths",
     "kvm-run-objects", "kvm-run-exits",
     "ept-address-mapping", "ept-fault-invalidation",
@@ -56,9 +58,8 @@ MECHANISM_DIAGRAM_NAMES = (
     "memory-region-publication", "qemu-memory-initialization", "q35-memory-layout",
     "virtio-blk-request", "virtio-blk-completion",
     "virtio-blk-request-cycle",
-    "aio-request-lifecycle", "aio-queue-thread-mapping", "virtio-mem-resize",
+    "aio-request-lifecycle", "aio-queue-thread-mapping",
     "spdk-vhost-ownership", "spdk-vhost-completion",
-    "qcow2-mapping-cow",
     "kvm-halt-wakeup", "kvm-hugepage-lifecycle",
     "tcg-translation-pipeline", "tcg-tb-lifecycle",
     "virtualization-system-overview", "cpu-execution-overview", "memory-address-overview",
@@ -74,11 +75,10 @@ MECHANISM_DIAGRAM_NAMES = (
     "cpu-foundation-methods", "memory-foundation-paging", "virtualization-isolation-example",
     "kvm-clock-read", "kvm-deadline-timer",
     "virtio-init-handshake", "virtio-init-queue-layout",
-    "cpu-vmx-state-controls", "cpu-model-migration-contract",
-    "cpu-hotplug-acpi-handoff", "numa-placement-layers",
+    "cpu-vmx-state-controls",
+    "cpu-hotplug-acpi-handoff",
     "virtio-rx-ownership", "virtio-rx-napi-sequence", "packed-virtqueue-layout",
     "libvirt-migration-phases",
-    "block-live-operations", "block-job-pivot",
     "vdpa-control-data", "vdpa-shadow-sequence",
     "iommu-address-path", "iommu-buffer-lifetime",
     "iommufd-objects", "iommufd-lifecycle",
@@ -93,6 +93,7 @@ MECHANISM_DIAGRAM_NAMES = (
 MECHANISM_LAYOUT_NAMES = ("migration-wire-layout",)
 MECHANISM_ASSET_NAMES = ("mechanisms.css", "mechanisms.js", "precopy-lab.css",
                          "mechanism-directory.js",
+                         "mechanism-labs.js",
                          "mechanism-redirect.js",
                          "mechanism-viewer.css", "mechanism-viewer.js",
                          "migration-stream.css", "migration-stream.js",
@@ -106,9 +107,9 @@ MECHANISM_ASSET_NAMES = ("mechanisms.css", "mechanisms.js", "precopy-lab.css",
                          "disk-completion-model.js",
                          "packed-virtqueue.css", "packed-virtqueue.js",
                          "vhost-path.css", "vhost-path.js", "dirty-ring.css", "dirty-ring.js",
-                         "postcopy.css", "postcopy.js", "vfio-dma.css", "vfio-dma.js",
-                         "memory-map.css", "memory-map.js", "virtio-mem.css", "virtio-mem.js",
-                         "qcow2-map.css", "qcow2-map.js", "halt-poll.css", "halt-poll.js",
+                         "vfio-dma.css", "vfio-dma.js",
+                         "memory-map.css", "memory-map.js",
+                         "halt-poll.css", "halt-poll.js",
                          "iommu-lab.css", "iommu-lab.js",
                          "iommufd-lab.css", "iommufd-lab.js",
                          "virtio-gpu-lab.css", "virtio-gpu-lab.js",
@@ -348,6 +349,10 @@ def render_search(config: Config, result: dict, filename: str = "search.html") -
     out = Path(config.output_dir) / filename
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")
+    assets = Path(config.output_dir) / "assets"
+    assets.mkdir(parents=True, exist_ok=True)
+    for name in SEARCH_ASSET_NAMES:
+        shutil.copyfile(ASSETS_DIR / name, assets / name)
     return out
 
 
@@ -411,6 +416,7 @@ def _render_mechanism_page(site_name: str, slug: str | None) -> str | None:
         if redirect:
             return _env().get_template("mechanism_redirect.html").render(
                 target=mechanisms.get_article(redirect["target"]),
+                redirect=redirect,
             )
         return None
     digest = hashlib.sha256()
@@ -443,6 +449,25 @@ def _render_mechanism_page(site_name: str, slug: str | None) -> str | None:
         ).read_text(encoding="utf-8")} for name in MECHANISM_DIAGRAM_NAMES} if article else {},
     )
     if article:
+        stylesheets = [article.get("stylesheet"), *article.get("extra_stylesheets", ())]
+        if article.get("execution_demo"):
+            stylesheets.extend(("execution-demo.css", "walkthrough.css"))
+        scripts = []
+        if article.get("execution_demo") or article.get("flow"):
+            scripts.extend(("walkthrough-fullscreen.js", "walkthrough-routing.js",
+                            "walkthrough-components.js", "walkthrough-events.js"))
+        scripts.append(article.get("model_script"))
+        if article.get("flow") == "virtio-blk-read":
+            scripts.append("disk-completion-model.js")
+        scripts.append(article.get("script"))
+        if article.get("execution_demo") and not article.get("flow"):
+            scripts.extend(("execution-model.js", "execution-demo.js"))
+        scripts.extend(article.get("extra_scripts", ()))
+        context["article_stylesheets"] = list(dict.fromkeys(filter(None, stylesheets)))
+        context["article_scripts"] = list(dict.fromkeys(filter(None, scripts)))
+        if any(name not in MECHANISM_ASSET_NAMES
+               for name in context["article_stylesheets"] + context["article_scripts"]):
+            raise ValueError("Article assets must be registered local files")
         if article.get("source"):
             source = article["source"]
             if not re.fullmatch(r"[a-z0-9-]+\.md", source) or article.get("template"):
@@ -465,15 +490,20 @@ def _render_mechanism_page(site_name: str, slug: str | None) -> str | None:
             body = _env().get_template(article["template"]).render(**context)
         # URL fragments never reach the HTTP server. Preserve legacy anchors in
         # the destination so both HTTP and static redirects retain their meaning.
+        aliases = [(article.get("anchor_aliases", {}))]
         for redirect in mechanisms.redirects():
             if redirect["target"] != slug:
                 continue
-            for old, new in redirect.get("anchors", {}).items():
+            aliases.append(redirect.get("anchors", {}))
+        for mapping in aliases:
+            for old, new in mapping.items():
                 if f'id="{old}"' not in body:
                     marker = f'<section id="{new}"'
                     alias = (f'<span id="{old}" class="mechanism-topic-alias" '
                              'aria-hidden="true"></span>\n')
                     body = body.replace(marker, alias + marker, 1)
+        body = canonicalize_article_links(body, mechanisms.redirects())
+        body = compact_references(body)
         context["article_body"], context["article_outline"] = prepare_outline(body, article["sections"])
     return _env().get_template("mechanism.html" if article else "mechanisms.html").render(**context)
 
@@ -498,6 +528,13 @@ def render_mechanisms(config: Config) -> list[Path]:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(render_mechanisms_html(config, slug), encoding="utf-8")
         paths.append(path)
+    # Keep old bookmarks working without a separate KVM catalogue.
+    path = config.output_dir / "kvm" / "index.html"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_env().get_template("mechanism_category_redirect.html").render(
+        target="../mechanisms.html#kvm-internals", title="KVM 原理",
+    ), encoding="utf-8")
+    paths.append(path)
     return paths
 
 

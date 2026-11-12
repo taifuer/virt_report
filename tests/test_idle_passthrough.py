@@ -141,25 +141,29 @@ def test_exitless_wakeup_has_explicit_hardware_and_scheduling_preconditions():
     assert "普通 IRQ、宿主定时器或抢占仍可能导致退出" in detail
 
 
-@pytest.mark.parametrize("slug", ["cpu-execution", "kvm-vcpu-halt"])
-def test_rendered_articles_explain_scope_and_share_the_new_preset(slug):
+@pytest.mark.parametrize("slug", ["cpu-virtualization", "kvm-vcpu-halt"])
+def test_rendered_articles_explain_scope_and_share_the_new_preset(slug, article_source):
     page = render_mechanisms_html(Config(), slug)
     for term in ("Idle Passthrough", "HLT exiting", "cpu-pm=on", "默认关闭",
-                 "RUNNABLE", "MONITOR/MWAIT", "独占逻辑 CPU",
-                 "kvm-cap-x86-disable-exits"):
+                 "RUNNABLE", "MONITOR/MWAIT", "独占逻辑 CPU"):
         assert term in page
-    if slug == "cpu-execution":
+    assert "kvm-cap-x86-disable-exits" in article_source(slug)
+    if slug == "cpu-virtualization":
         assert 'data-execution-scenario' in page
         assert '"id": "hlt-passthrough"' in page
         assert "HLT · KVM 阻塞等待" in page
     else:
-        assert "cpu-execution.html?scenario=hlt-passthrough#walkthrough" in page
+        assert "cpu-virtualization.html?scenario=hlt-passthrough#walkthrough" in page
         assert "本文的轮询实验仍固定在截获路径" in page
 
 
 @pytest.mark.parametrize("slug", ["cpu-virtualization", "kvm-vcpu-run"])
 def test_related_overviews_qualify_hlt_interception_and_link_the_comparison(slug):
     page = render_mechanisms_html(Config(), slug)
-    assert "启用 HLT 截获" in page
-    assert "cpu-execution.html?scenario=hlt-passthrough#walkthrough" in page
+    if slug == 'cpu-virtualization':
+        assert '在 HLT 截获场景中' in page
+        assert '"id": "hlt-passthrough"' in page
+    else:
+        assert "启用 HLT 截获" in page
+        assert "cpu-virtualization.html?scenario=hlt-passthrough#walkthrough" in page
     assert "Idle Passthrough" in page

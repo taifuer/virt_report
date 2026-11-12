@@ -1,0 +1,26 @@
+flowchart LR
+  accTitle: Linux 从固件到用户空间的启动交接
+  accDescr: 固件和引导程序准备内核、参数与可选的 initramfs。内核早期入口进入 start_kernel，再由 PID 1 的 kernel_init 路径完成后续初始化。有早期用户空间时，PID 1 执行 initramfs 的 /init，准备并切换真实根，最后执行用户态 init 并组织服务与应用。没有早期 /init 时，内核尝试直接挂载根并执行 init。
+  subgraph BOOT["加载与交接"]
+    direction TB
+    F["BIOS / UEFI 固件"] --> L["引导程序或 EFI stub<br/>内核、参数、可选 initramfs"]
+  end
+  subgraph KERNEL["内核初始化"]
+    direction TB
+    E["早期入口<br/>页表、栈、解压与重定位"] --> S["start_kernel → rest_init"]
+    S --> P["PID 1：kernel_init<br/>SMP、驱动、initcall"]
+  end
+  subgraph USER["根与用户空间"]
+    direction TB
+    N{"早期 /init 可用"} -->|是| I
+    I["PID 1 执行 /init<br/>准备真实根、switch_root"] --> R["真实根中的 init<br/>例如 systemd"]
+    N -->|否：内核挂载根| R
+    R --> A["服务与应用"]
+  end
+  BOOT --> KERNEL --> USER
+  classDef prep fill:#e4f1ed,stroke:#78a399,color:#163c38;
+  classDef kernel fill:#edf3fa,stroke:#7897b3,color:#243d53;
+  classDef user fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class F,L prep;
+  class E,S,P kernel;
+  class N,I,R,A user;

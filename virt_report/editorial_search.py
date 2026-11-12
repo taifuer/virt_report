@@ -21,7 +21,7 @@ def _editorial_documents() -> list[dict]:
         documents.append({
             "slug": article["slug"], "title": article["title"],
             "summary": article["summary"],
-            "kind": "demos" if article.get("presentation") == "walkthrough" else "articles",
+            "kind": "articles",
             "href": f'mechanisms/{article["slug"]}.html',
             "headings": list(dict.fromkeys(headings)),
             "keywords": " ".join([

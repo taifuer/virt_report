@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>Libvirt 热迁移的阶段协调与失败恢复 - virt-report</title>
-  <meta name="description" content="沿 Begin、Prepare、Perform、Finish、Confirm 追踪双端交接，比较客户端与 p2p 协调，解释断线确认、存储归属与 postcopy 恢复边界。">
+  <title>Libvirt 热迁移流程 - virt-report</title>
+  <meta name="description" content="结合 virsh migrate 常用参数，解释双端资源准备、预拷贝、执行切换、结果确认与源端清理。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=428e6e8b26d1">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=428e6e8b26d1">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -43,43 +43,71 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="migration.html">热迁移</a></div>
-    <h1>Libvirt 热迁移的阶段协调与失败恢复</h1>
+    <div class="mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true">/</span><a href="../mechanisms.html#migration">热迁移</a></div>
+    <h1>Libvirt 热迁移流程</h1>
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2><ol id="mechanism-toc-links"><li><a href="#preface">一、Libvirt 热迁移的协调职责</a></li><li><a href="#paths">二、控制连接与迁移数据通道</a></li><li><a href="#phases">三、五阶段协议中的资源与执行权交接</a></li><li><a href="#failure">四、连接失败后的双端状态核对</a></li><li><a href="#postcopy">五、postcopy 切换后的失败处理</a></li><li><a href="#implementation">六、迁移阶段记录与结果传递的源码</a></li><li><a href="#evaluation">七、从阶段记录判断成功与恢复边界</a></li><li><a href="#sources">八、参考资料</a></li></ol></nav>
-    <div class="mechanism-prose">
-<section id="preface" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">一、</span>Libvirt 热迁移的协调职责</h2>
-  <p>Libvirt 在热迁移中协调两端的资源准备、QEMU 状态传输、目的端接管和源端清理。例如将运行中的 <code>demo</code> 从主机 A 迁到 B，B 需要先准备接收资源，QEMU 随后传输执行状态，管理层最后确认接管结果。确认前的源实例用于保留恢复机会，确认后的清理则避免遗留旧进程与资源。</p>
-  <p>A、B 各自运行 Libvirt 管理守护进程，迁移期间还各有一个承载 <code>demo</code> 的 QEMU 进程。Libvirt 的“QEMU 驱动”运行在 <code>virtqemud</code> 或单体 <code>libvirtd</code> 内，负责域定义、作业和 QMP 控制；RAM、vCPU 及设备状态属于被它管理的 QEMU / KVM 实例。后面的 Begin、Finish 等函数执行在管理路径，页面传输则由两个 QEMU 完成。</p>
-  <p>Libvirt 的版本 3 迁移协议将这个过程拆成 Begin、Prepare、Perform、Finish、Confirm 五个阶段。本文沿一台使用共享存储的预拷贝虚拟机追踪成功路径，再讨论客户端断线、完成确认丢失及 postcopy 的恢复边界。内存迭代见<a href="qemu-memory-migration.html">QEMU 预拷贝内存迁移与停机时间</a>，这里重点说明各阶段的发起方、执行权归属和失败后的状态核对。</p>
-<p class="mechanism-baselines">源码版本：<a href="https://github.com/libvirt/libvirt/tree/4d937284669ecf180abea087d0b3ad67d9476349" target="_blank" rel="noopener noreferrer" title="commit 4d937284669ecf180abea087d0b3ad67d9476349">Libvirt 12.0.0</a>、<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p></section>
-
-<section id="paths" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">二、</span>控制连接与迁移数据通道</h2>
-  <p>控制面携带域 XML、准备请求、阶段结果与迁移 cookie；数据面携带 RAM、CPU 和设备状态。使用原生传输时，两个 QEMU 之间传递状态，Libvirt 负责配置、驱动和观察迁移。控制连接使用 SSH，不代表 QEMU 的数据连接也经过 SSH；迁移数据包含客户机内存，生产环境需另外配置数据通道的 TLS 或受控网络。</p>
-  <table><thead><tr><th scope="col">协调方式</th><th scope="col">谁推进五个阶段</th><th scope="col">客户端断开后的影响</th></tr></thead><tbody>
-    <tr><td>Managed direct</td><td>客户端同时连接源端与目的端 Libvirt，交替调用阶段接口</td><td>协调者消失；依据当前阶段尝试取消、清理，结果不确定时可能保留暂停实例</td></tr>
-    <tr><td>Managed peer-to-peer（<code>--p2p</code>）</td><td>客户端向源端提交任务，源端 Libvirt 连接目的端并协调全过程</td><td>客户端退出不会中止已接管的迁移；源端守护进程及其到目的端的连接仍是依赖</td></tr>
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、把运行中的虚拟机从 A 交给 B</a></li><li><a href="#preparation">二、迁移前准备：计算、存储与网络</a></li><li><a href="#command">三、命令示例与常用参数</a></li><li><a href="#paths">四、控制连接与状态传输走不同通道</a></li><li><a href="#phases">五、从准备目标到清理源端</a></li><li><a href="#evaluation">六、查看进度与迁移结果</a></li><li><a href="#failure">七、失败时先确认执行位置</a></li><li><a href="#implementation">八、源码中的管理流程</a></li><li><a href="#sources">九、参考资料</a></li></ol>
+    </nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">一、</span>把运行中的虚拟机从 A 交给 B</h2>
+  <p>Libvirt 热迁移协调两端资源，让客户机在保留内存、CPU 和设备状态的情况下更换宿主。QEMU 负责传输与恢复运行状态，Libvirt 负责准备、推进迁移、确认接管和清理源实例。客户机在大部分内存复制期间继续运行，最后短暂停止，再从目的端继续执行。</p>
+  <p>本文用共享存储上的虚拟机 <code>demo</code> 演示预拷贝迁移。A、B 分别运行 Libvirt 守护进程和 QEMU；操作者连接 A 发起任务。先说明命令与前提，再跟踪任务在两端的执行过程。</p>
+<p class="mechanism-baselines">源码版本：Libvirt 12.0.0、QEMU 10.2.0。</p></section>
+<section id="preparation" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">二、</span>迁移前准备：计算、存储与网络</h2>
+  <table><thead><tr><th>资源</th><th>需要满足的条件</th></tr></thead><tbody>
+    <tr><td>计算与虚拟硬件</td><td>B 支持客户机正在使用的 CPU 特性、机器类型和设备状态版本，并有足够的内存与配额。host CPU 模型尤其需要核对双端能力。</td></tr>
+    <tr><td>磁盘</td><td>本例两端以相容路径、权限访问同一份共享存储，锁管理配置允许安全交接。非共享磁盘需要另外配置数据复制。</td></tr>
+    <tr><td>网络</td><td>B 提供对应的虚拟网络或桥，迁移后的 MAC、IP 和连接有可接管的网络路径。</td></tr>
+    <tr><td>管理与传输</td><td>A 的 Libvirt 能认证并连接 B；QEMU 迁移网络、防火墙与 TLS 配置就绪。</td></tr>
+    <tr><td>直通设备与后端</td><td>支持所需的状态迁移，并能在 B 配置等价资源；普通整卡直通不自动获得迁移能力。</td></tr>
   </tbody></table>
-  <p>p2p 改变协调责任，<code>--tunnelled</code> 改变状态数据的传输路线，两者应分别理解。隧道模式通过 Libvirt 连接承载数据，减少额外网络入口，也增加拷贝与守护进程参与；并行迁移、postcopy 等能力还受隧道支持限制。p2p 使用源端守护进程的凭据访问 B，客户端能连 B 并不能证明这条连接也能成功。</p>
-  <p>例如运维电脑通过 SSH 登录 A、B，采用 managed direct；同一迁移改为 p2p 后，后续 Prepare 与 Finish 请求从 A 发往 B。QEMU 的原生状态连接在两种情况下都可以直接从 A 到 B。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/docs/migration.rst">控制模式与数据传输说明</a></p>
+  <p>预拷贝会消耗 CPU、内存带宽和链路容量。正式操作前，应在相同软件、CPU 和设备配置的测试环境验证兼容性、停机目标与迁移期间的业务延迟。</p>
 </section>
-
+<section id="command" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">三、</span>命令示例与常用参数</h2>
+  <p>在 A 上执行以下命令。<code>demo</code> 是源虚拟机名称，<code>host-b</code> 是目的宿主名。SSH 权限与非交互认证须提前配置给执行迁移的源端守护进程。</p>
+  <pre><code>virsh -c qemu:///system migrate \
+  --live --p2p --persistent --verbose \
+  demo qemu+ssh://host-b/system</code></pre>
+  <p><code>-c qemu:///system</code> 选择源端系统级 Libvirt。末尾的 URI 选择目的端管理服务，前面的 <code>demo</code> 指定迁移对象。</p>
+  <table><thead><tr><th>参数</th><th>作用与条件</th></tr></thead><tbody>
+    <tr><td><code>--live</code></td><td>客户机在预拷贝期间继续执行，最终交接仍有短暂停顿。</td></tr>
+    <tr><td><code>--p2p</code></td><td>源端 Libvirt 连接目标并协调迁移，任务不依赖 virsh 持续在线。</td></tr>
+    <tr><td><code>--persistent</code></td><td>在 B 保留持久域定义，客户机关机后仍可管理和再次启动。</td></tr>
+    <tr><td><code>--undefinesource</code></td><td>成功后删除 A 的持久定义；本例默认保留。此选项不删除磁盘数据。</td></tr>
+    <tr><td><code>--verbose</code></td><td>显示迁移进度。</td></tr>
+    <tr><td><code>--bandwidth 256</code></td><td>设置迁移带宽上限，单位 MiB/s；影响传输时间与收敛。</td></tr>
+    <tr><td><code>--tls</code></td><td>要求原生 QEMU 迁移传输使用 TLS，需预先配置双端证书。</td></tr>
+    <tr><td><code>--tunnelled</code></td><td>配合 p2p，让状态流经 Libvirt 连接传输；增加软件参与，并有功能组合限制。</td></tr>
+    <tr><td><code>--copy-storage-all</code></td><td>完整复制非共享磁盘数据；预先准备目标镜像、容量与权限。</td></tr>
+    <tr><td><code>--copy-storage-inc</code></td><td>增量复制顶层，要求两端存在一致的基础镜像。</td></tr>
+  </tbody></table>
+  <p>若 B 已配置 TCP 管理监听和认证，也可使用 <code>virsh -c qemu:///system migrate --live --p2p --persistent demo qemu+tcp://host-b/system</code>。TCP URI 本身不承诺加密，仅用于已有安全控制的环境，勿暴露未认证的管理端口。</p>
+  <p>非共享存储增加磁盘复制路径。是否复制、目标如何准备、哪些磁盘参与，应在执行前确定；存储复制选项不会自动建立任意布局的目标存储。</p>
+</section>
+<section id="paths" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">四、</span>控制连接与状态传输走不同通道</h2>
+  <p>p2p 的控制路径是 <code>virsh → A 的 Libvirt → B 的 Libvirt</code>，两端通过 QMP 控制各自 QEMU。原生数据路径是 <code>A 的 QEMU → B 的 QEMU</code>，承载 RAM、CPU 和设备状态；域 XML、迁移 cookie 和阶段结果走管理连接。</p>
+  <p>SSH 保护 Libvirt 控制连接，原生迁移流需单独配置 TLS 或隔离网络。tunnelled 模式才让状态流经 Libvirt 隧道传输。<code>--p2p</code> 决定协调者，<code>--tunnelled</code> 决定数据路线。</p>
+  <p>省略 p2p 时，常用的 managed direct 由客户端同时连接 A、B，交替推进阶段。p2p 使用 A 的守护进程凭据访问 B，因此运维电脑能登录 B，不能代替 A 到 B 的认证检查。</p>
+</section>
 <section id="phases" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">三、</span>五阶段协议中的资源与执行权交接</h2>
-  <p>以下是普通运行中虚拟机的预拷贝成功路径，未设置迁移后保持暂停的选项。源端在迁移末尾停止 vCPU，传出最后状态；目的端 Finish 验证接收和资源准备结果，再恢复客户机。源端收到 Confirm 成功后才清理原实例。</p>
+  <h2><span class="mechanism-heading-number">五、</span>从准备目标到清理源端</h2>
+  <p>Libvirt 的版本 3 迁移协议用五个阶段衔接成功路径。本例由源端守护进程协调，两端 QEMU 传输状态。</p>
   <figure class="mechanism-diagram" data-diagram="libvirt-migration-phases" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
-    <span data-mechanism-title>Libvirt 预拷贝迁移的五阶段协调</span>
-    <button type="button" data-mechanism-expand aria-label="放大查看Libvirt 预拷贝迁移的五阶段协调" hidden>放大查看</button>
+    <span data-mechanism-title>迁移准备、状态传输与执行权交接</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看迁移准备、状态传输与执行权交接" hidden>放大查看</button>
   </div>
-  <div class="mechanism-diagram-scroll" role="region" aria-label="Libvirt 预拷贝迁移的五阶段协调">
-    <img src="../assets/libvirt-migration-phases.svg?v=428e6e8b26d1" alt="客户端调用源端 Begin、目的端 Prepare、源端 Perform、目的端 Finish、源端 Confirm。QEMU 状态流走独立的数据通道。目的端恢复客户机后，源端旧实例保持暂停，直到成功确认后被清理。" loading="lazy">
+  <div class="mechanism-diagram-scroll" role="region" aria-label="迁移准备、状态传输与执行权交接">
+    <img src="../assets/libvirt-migration-phases.svg?v=e8d4285d5a39" alt="图示五阶段逻辑顺序和独立数据通道。managed direct 由客户端协调；本文 p2p 则由源端守护进程推进相同阶段。" loading="lazy">
   </div>
-  <figcaption>客户端调用源端 Begin、目的端 Prepare、源端 Perform、目的端 Finish、源端 Confirm。QEMU 状态流走独立的数据通道。目的端恢复客户机后，源端旧实例保持暂停，直到成功确认后被清理。 <a href="../assets/libvirt-migration-phases.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>图示五阶段逻辑顺序和独立数据通道。managed direct 由客户端协调；本文 p2p 则由源端守护进程推进相同阶段。 <a href="../assets/libvirt-migration-phases.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
   accTitle: Libvirt 预拷贝迁移的五阶段协调
   accDescr: Managed direct 模式下，客户端先向源端请求 Begin，再向目的端 Prepare，然后调用源端 Perform。状态数据由两个 QEMU 直接传输。目的端 Finish 确认接收并恢复客户机后，客户端通知源端 Confirm，清理暂停的旧实例。仅描绘普通预拷贝成功路径。
@@ -111,80 +139,52 @@
   S--&gt;&gt;C: 迁移协调完成
 </code></pre></details>
 </figure>
-  <table><thead><tr><th scope="col">阶段</th><th scope="col">主要工作</th><th scope="col">完成后掌握的信息</th></tr></thead><tbody>
-    <tr><td>Begin · 源端</td><td>校验迁移条件，生成可迁移 XML 与 cookie，建立必要的变更保护</td><td>得到供目的端创建兼容机器的定义；源客户机继续运行</td></tr>
-    <tr><td>Prepare · 目的端</td><td>准备存储、网络、权限与 QEMU，配置 incoming 监听</td><td>返回可连接的迁移地址及能力信息；有接收实例，客户机尚未接管执行</td></tr>
-    <tr><td>Perform · 源端</td><td>配置 QEMU 迁移参数并发起传输，等待源侧阶段完成</td><td>普通预拷贝成功时源客户机已停；源 QEMU 进程仍保留，等待目的端结果</td></tr>
-    <tr><td>Finish · 目的端</td><td>核对迁入结果、刷新设备状态，按 flags 处理持久定义和 CPU 恢复</td><td>返回目标域句柄或失败；成功后 B 已接管，或按要求保持暂停</td></tr>
-    <tr><td>Confirm · 源端</td><td>根据 Finish 结果结束源端作业</td><td>成功则清理旧实例；失败走恢复分支，postcopy 另行处理</td></tr>
+  <table><thead><tr><th>阶段</th><th>A 与 B 的工作</th></tr></thead><tbody>
+    <tr><td>Begin · A</td><td>检查配置，生成迁移 XML 与 cookie，建立作业保护；客户机继续运行。</td></tr>
+    <tr><td>Prepare · B</td><td>准备存储、网络、安全标签和 incoming QEMU，返回接收地址。</td></tr>
+    <tr><td>Perform · A</td><td>预拷贝 RAM、重传脏页，最终暂停 vCPU、收尾设备，传出余页及 CPU、设备状态。</td></tr>
+    <tr><td>Finish · B</td><td>验证接收完成，处理持久定义，恢复客户机并返回结果；A 保持停止。</td></tr>
+    <tr><td>Confirm · A</td><td>成功则清理旧 QEMU 与资源；按参数保留或删除源持久定义。</td></tr>
   </tbody></table>
-  <p>这里有两个不同的“完成”：QEMU 完成状态传输，以及 Libvirt 完成运行位置与资源的交接。Prepare 成功只说明目标能够接收，Perform 成功仍要等待 Finish。类似地，目标客户机已运行也不等于源端清理已结束。</p>
-  <p>目标持久定义由 <code>--persistent</code> 控制；迁移成功后删除源持久定义由 <code>--undefinesource</code> 控制。默认行为允许源端保留一个已关闭的持久定义。这与源 QEMU 是否仍在执行是两件事，用“源端还能查到名字”判断迁移失败会产生误判。</p>
+  <p>预拷贝时 Guest 写入会让已发送页面再次变脏。切换时要让最后的 RAM、寄存器、定时器和设备队列对应同一个执行点；能修改 RAM 的设备与异步后端也需收尾。QEMU 传完状态、B 恢复执行、A 清理结束是相互关联的三个完成点。</p>
 </section>
-
-<section id="failure" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">四、</span>连接失败后的双端状态核对</h2>
-  <p>考虑同一台 <code>demo</code>：B 已加载状态并恢复客户机，但 Finish 的 RPC 响应在网络中丢失。协调者看到的是“调用失败”，B 上实际发生的却是“已开始执行”。若此时直接恢复 A，两个执行流可能同时更新共享磁盘。</p>
-  <p>固定版本源码在 <code>ddomain == NULL</code> 的分支中明确讨论了这种歧义，并依赖锁管理插件提供安全保护。集群还需要与存储和隔离策略配合：一个只能约束本机进程的锁，无法天然承担跨主机仲裁；网络不通也不能证明对方已停止。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/libvirt-domain.c#L3520-L3564">Finish 结果丢失的处理与限制</a></p>
-  <table><thead><tr><th scope="col">失败位置</th><th scope="col">实例可能处于什么状态</th><th scope="col">恢复前需要确认</th></tr></thead><tbody>
-    <tr><td>Prepare 失败</td><td>A 通常仍执行，B 只有部分准备资源</td><td>目标准备清理完成，源端迁移作业已经结束</td></tr>
-    <tr><td>预拷贝传输失败，目标尚未执行</td><td>A 可能仍运行，也可能刚进入暂停；B 未完成接收</td><td>目标未接管，源端状态与后端访问权可以恢复</td></tr>
-    <tr><td>Perform 完成后协调连接丢失</td><td>A 已暂停；B 是否已经完成 Finish 可能未知</td><td>查询 B 的真实运行状态、源端阶段与存储锁，消除双端执行风险</td></tr>
-    <tr><td>Finish 成功，Confirm 失败</td><td>B 已接管；A 可能遗留暂停的 QEMU</td><td>按成功迁移清理源残留；保留暂停不等于应恢复 A</td></tr>
-  </tbody></table>
-  <p><code>qemuMigrationAnyConnectionClosed()</code> 处理等待下一阶段时的控制连接关闭。遇到 <code>PERFORM3_DONE</code>，它记录“无法确定目标是否启动”的情况，收束相应作业，并不凭断线就恢复旧 vCPU。正常 API 失败、阶段间客户端消失、守护进程重启分别有自己的路径，不能概括成“断线必回滚”。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_migration.c#L2489-L2578">阶段间断连处理</a></p>
-  <p>p2p 消除了客户端作为长期协调者的依赖，但无法消除源端守护进程故障、主机故障和两端网络分区。它改善的是任务的归属与存活范围，资源归属判断仍然需要双端证据。</p>
-</section>
-
-<section id="postcopy" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">五、</span>postcopy 切换后的失败处理</h2>
-  <p>预拷贝在交接前保留源端完整执行状态，目的端尚未运行时有条件退回源端。postcopy 提前把执行权移到 B，缺失 RAM 页继续从 A 获取；B 的内存和设备状态随后持续变化，A 保留的旧执行点已不再代表最新虚拟机。</p>
-  <p>因此，postcopy 网络中断后的首选恢复方向是保留两端、恢复迁移连接并继续补页。Libvirt 使用 <code>VIR_MIGRATE_POSTCOPY_RESUME</code> 区分恢复请求，重新协调 Begin Resume、Prepare Resume 等阶段。目标或源端所需内存已经丢失时，这条恢复路径也无法凭空重建状态。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_migration.c#L2957-L3009">恢复入口</a></p>
-  <p>源码中的 Confirm 会识别失败的 postcopy，保留迁移状态而跳过普通源端恢复；目标 Finish 的失败分支同样区分清理目标与保留失败的 postcopy。完成交接后，把旧端手工 <code>cont</code> 等同于回滚，会丢弃目标已执行的变化并带来存储一致性风险。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_migration.c#L6982-L7004">目标错误分支</a></p>
-</section>
-
-<section id="implementation" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">六、</span>迁移阶段记录与结果传递的源码</h2>
-  <p>managed direct 的主线位于 <code>virDomainMigrateVersion3Full()</code>。它先调用 Begin，再用返回的 XML 与 cookie 调用 Prepare，将目标地址传给 Perform，最后依次调用 Finish 和 Confirm。Prepare 失败时，若 Begin 已建立变更保护，也要调用取消性质的 Confirm 结束源端作业。Perform 失败则通知 Finish 清理目标，保留最初错误以免被后续清理覆盖。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/libvirt-domain.c#L3277-L3564">客户端五阶段控制</a></p>
-  <table><thead><tr><th scope="col">结构或变量</th><th scope="col">记录什么</th><th scope="col">解决的问题</th></tr></thead><tbody>
-    <tr><td><code>vm-&gt;job</code> 的 <code>asyncJob</code> 与 <code>phase</code></td><td>迁入或迁出作业，以及 Begin、Perform 完成等阶段</td><td>约束并发操作，断连后按最后阶段选择处理路径</td></tr>
-    <tr><td><code>qemuMigrationCookie</code></td><td>身份、锁、能力、网络、块迁移及统计等可选信息</td><td>在阶段之间交换管理元数据；RAM 与寄存器仍由 QEMU 状态流传输</td></tr>
-    <tr><td><code>cancelled</code>、<code>retcode</code> 与目标域句柄</td><td>本阶段结果及后续清理意图</td><td>将 Perform 结果交给 Finish，再将 Finish 结果交给 Confirm</td></tr>
-  </tbody></table>
-  <p>cookie 由调用方转交，QEMU 驱动解析所需字段。它记录两端已交换的信息；前面 Finish 响应丢失的例子仍需要额外核对实际运行状态与锁。<code>qemuMigrationSrcPerformPeer2Peer3()</code> 在源端守护进程内执行协调逻辑，使阶段推进不再依赖客户端持续在线。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_migration_cookie.h#L132-L175">cookie 结构</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_migration.c#L5700-L5759">p2p 入口</a></p>
-  <p>执行切换集中在两处。<code>qemuMigrationDstFinishFresh()</code> 等待迁入完成、刷新设备状态，再调用 <code>qemuProcessStartCPUs()</code>；<code>qemuMigrationSrcConfirmPhase()</code> 成功时调用源端完成清理，失败时检查 postcopy 状态，再决定是否恢复原运行状态。这两处把“加载成功”与“允许谁继续执行”联系起来。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_migration.c#L6823-L6873">目标放行 CPU</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_migration.c#L4134-L4234">源端确认与恢复</a></p>
-</section>
-
 <section id="evaluation" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">七、</span>从阶段记录判断成功与恢复边界</h2>
-  <p>测试时至少保存同一 UUID 的双端状态、迁移作业统计与事件时间。下面的只读命令在具备 A、B 访问权限的管理机上执行，连接 URI 明确选择被查询的宿主；示例假定两端域名均为 <code>demo</code>。活动作业查询和已完成统计应结合双端运行状态解读：</p>
-  <pre><code>virsh -c qemu+ssh://host-a/system domstate demo --reason
-virsh -c qemu+ssh://host-b/system domstate demo --reason
-virsh -c qemu+ssh://host-a/system domjobinfo demo
+  <h2><span class="mechanism-heading-number">六、</span>查看进度与迁移结果</h2>
+  <p>以下命令只查询状态，在有双端权限的管理机执行：</p>
+  <pre><code>virsh -c qemu+ssh://host-a/system domjobinfo demo
 virsh -c qemu+ssh://host-a/system domjobinfo demo --completed --keep-completed
-virsh -c qemu+ssh://host-b/system domjobinfo demo --completed --keep-completed</code></pre>
-  <p><code>domjobinfo</code> 查询不到作业时，可能是任务尚未建立、已经结束或统计已被消费；<code>--completed</code> 查询保留的完成信息，<code>--keep-completed</code> 避免本次读取后删除统计。默认只显示活动与成功完成的作业，检查失败任务时还可加 <code>--anystats</code>。应把结果与同一 UUID、迁移阶段和时间对应，查询失败本身不足以判定迁移成功或目标已停止。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/docs/manpages/virsh.rst#L2340-L2365">domjobinfo 查询语义</a></p>
-  <p>成功路径应能串起“源传输结束 → 目标恢复 → 源进程清理”；保留源持久定义时，A 上的域可以继续显示为关闭。业务探测还需确认网络与应用恢复，迁移作业完成时间、客户机停止执行时间和业务不可用时间要分别记录。</p>
-  <p>机制演变的重点是扩大可确认的边界：早期较少阶段的协议更早放弃源实例，版本 3 增加 Begin 与 Confirm，把配置检查和最终清理分开；可扩展参数 API 又让新能力在原有阶段中协商；p2p 将协调责任移入守护进程。它们减少特定失败窗口，也增加阶段状态和恢复分支。可靠性应以“在哪个阶段失败，谁还持有可用状态，如何排除双端执行”来评价。</p>
+virsh -c qemu+ssh://host-a/system domstate demo --reason
+virsh -c qemu+ssh://host-b/system domstate demo --reason
+virsh -c qemu+ssh://host-b/system dominfo demo</code></pre>
+  <p><code>--completed</code> 读取保留的完成统计，<code>--keep-completed</code> 保留本次读取后的记录；失败统计可结合 <code>--anystats</code> 查询。活动作业消失后，还要核对同一 UUID 的双端状态。未使用 <code>--undefinesource</code> 时，A 留下关闭的持久定义属于正常结果。</p>
+  <p>验收同时检查 B 正在运行、A 已停止、网络与应用恢复，并分别记录迁移总时间、客户机停顿和业务不可用时间。</p>
 </section>
-
+<section id="failure" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">七、</span>失败时先确认执行位置</h2>
+  <p>目标准备失败通常还未影响源客户机执行；传输出错时，Libvirt 根据阶段取消作业并清理未完成的目标。切换附近的连接错误需要核对两端：B 可能已恢复客户机，但 Finish 的成功响应没有返回 A。</p>
+  <p>先检查运行状态、迁移日志和共享存储锁。保留的暂停源进程可能只是在等确认，直接恢复会造成双端写同一磁盘。网络分区时遵循已有集群隔离与存储仲裁流程。p2p 让任务脱离客户端生命周期，源端守护进程、网络和存储仍是迁移依赖。</p>
+</section>
+<section id="implementation" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">八、</span>源码中的管理流程</h2>
+  <p>managed direct 的入口为 <code>virDomainMigrateVersion3Full()</code>；p2p 在源端驱动的 <code>qemuMigrationSrcPerformPeer2Peer3()</code> 中组织调用。<code>vm-&gt;job</code> 保存作业与阶段，<code>qemuMigrationCookie</code> 交换身份、锁、能力和统计等管理信息。</p>
+  <p>目的端 <code>qemuMigrationDstFinishFresh()</code> 核对接收结果并推进 CPU 恢复，源端 <code>qemuMigrationSrcConfirmPhase()</code> 根据目标结果结束作业。管理信息帮助协调，RAM 和寄存器仍通过 QEMU 状态流传输。</p>
+</section>
+<span id="postcopy" class="mechanism-topic-alias" aria-hidden="true"></span>
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">八、</span>参考资料</h2>
+  <h2><span class="mechanism-heading-number">九、</span>参考资料</h2>
   <ul>
-    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/docs/kbase/internals/migration.rst">Libvirt 12.0.0：迁移内部协议、API 与驱动入口</a></li>
-    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/docs/migration.rst">Libvirt 12.0.0：控制方式、数据传输与持久定义</a></li>
-    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/libvirt-domain.c#L3277-L3564">managed direct 五阶段流程</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_migration.c#L5700-L6061">p2p 协调实现</a></li>
-    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_migration.c#L6777-L7010">目的端完成与失败处理</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_migration.c#L4134-L4234">源端最终确认</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/migration/postcopy.rst">QEMU 10.2.0：postcopy 状态与恢复机制</a></li>
+    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/docs/manpages/virsh.rst">Libvirt 12.0.0：virsh migrate 与 domjobinfo</a></li>
+    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/docs/migration.rst">连接模式、传输、安全与存储</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/docs/kbase/internals/migration.rst">迁移内部协议</a></li>
+    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/libvirt-domain.c">客户端协调</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_migration.c#L5700">QEMU 驱动阶段处理</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_migration_cookie.h">cookie</a></li>
   </ul>
 </section></div>
   </div>
-  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#migration">热迁移原理</a><a href="../topics/migration/index.html">热迁移动态</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-10-19">2026-10-19</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
+  <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#migration">热迁移</a><a href="../topics/migration/index.html">热迁移动态</a></nav>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-12">2026-11-12</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=428e6e8b26d1" defer></script>
+<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
 </body>
 </html>

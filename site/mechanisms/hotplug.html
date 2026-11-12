@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=428e6e8b26d1">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=428e6e8b26d1">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -43,18 +43,21 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#hotplug">热插拔</a></div>
+    <div class="mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true">/</span><a href="../mechanisms.html#hotplug">热插拔</a></div>
     <h1>热插拔：资源上线、客户机协作与安全回收</h1>
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2><ol id="mechanism-toc-links"><li><a href="#preface">一、热插拔的资源范围与协作过程</a></li><li><a href="#state">二、配置变更、硬件通知与客户机资源状态</a></li><li><a href="#process">三、增加与移除的交接顺序</a><ol><li><a href="#process-part-1">1. 热增：准备空间，再通知客户机</a></li><li><a href="#process-part-2">2. 热移除：先停止使用，再归还资源</a></li></ol></li><li><a href="#example">四、移除 net1，缩减一段内存</a></li><li><a href="#evolution">五、从整设备增删到细粒度资源调整</a></li><li><a href="#evaluation">六、用完成状态和业务影响判断操作结果</a></li><li><a href="#reading">七、按资源类型继续阅读</a></li><li><a href="#sources">八、参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、热插拔的资源范围与协作过程</a></li><li><a href="#state">二、配置变更、硬件通知与客户机资源状态</a></li><li><a href="#process">三、增加与移除的交接顺序</a><ol><li><a href="#process-part-1">1. 热增：准备空间，再通知客户机</a></li><li><a href="#process-part-2">2. 热移除：先停止使用，再归还资源</a></li></ol></li><li><a href="#example">四、设备、CPU 与内存的热插拔流程</a><ol><li><a href="#example-part-1">1. 设备：停止驱动，再拆除网卡</a></li><li><a href="#example-part-2">2. CPU：预留拓扑、通知上线与异步拔出</a></li><li><a href="#example-part-3">3. 内存热添加：建立 DIMM，再由客户机上线</a></li><li><a href="#example-part-4">4. 内存热移除：下线页面，再完成设备拔出</a></li></ol></li><li><a href="#evolution">五、从整设备增删到细粒度资源调整</a></li><li><a href="#evaluation">六、用完成状态和业务影响判断操作结果</a></li><li><a href="#sources">七、参考资料</a></li></ol>
+    </nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>热插拔的资源范围与协作过程</h2>
   <p>热插拔允许虚拟机运行期间增加或移除设备、CPU 与内存。管理程序表达变更目标，QEMU 修改虚拟硬件，客户机驱动完成发现、上线或停用。资源是否已经可用或可以回收，取决于这些阶段是否全部完成。</p>
   <p>客户机操作系统维护着自己的设备清单、驱动绑定与资源分配。在线变更需要通过它能识别的硬件协议通知变化：增加时发现并配置新资源，移除时先停止使用并交还资源。由此，热插拔同时改变虚拟硬件和客户机的软件状态，需要双方完成交接。</p>
-  <p>下面以 Q35 虚拟机在线添加、移除网卡为主线，再比较 vCPU 与内存调整。热添加先准备资源，再交给客户机使用；热移除先让客户机停止使用，再回收资源。两条流程都需要管理程序、虚拟硬件和客户机协调，通知协议与完成条件随资源类型而变。</p>
-<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p></section>
+  <p>下面依次说明设备、CPU 和内存三类资源。热添加先准备资源，再交给客户机使用；热移除先让客户机停止使用，再回收资源。通知协议与完成条件随资源类型而变。</p>
+<p class="mechanism-baselines">源码版本：QEMU 10.2.0、Linux 6.18。</p></section>
 <section id="state" class="mechanism-section">
   <h2><span class="mechanism-heading-number">二、</span>配置变更、硬件通知与客户机资源状态</h2>
   <p>冷启动时，客户机可以从头枚举所有硬件。运行中增加网卡，操作系统却不会因管理程序改了一个配置字段就自动发现它。QEMU 要模拟插槽状态变化并发出通知，客户机的总线驱动重新枚举设备，分配地址与中断，再把设备交给具体驱动。</p>
@@ -74,9 +77,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看资源热增与热移除的完成边界" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="资源热增与热移除的完成边界">
-    <img src="../assets/hotplug-overview-lifecycle.svg?v=428e6e8b26d1" alt="热增先准备宿主资源与虚拟设备，再由客户机识别并使用；热移除需先通知客户机停用，确认完成后回收相应设备资源。QMP 接受请求与客户机完成操作处于不同阶段。" loading="lazy">
+    <img src="../assets/hotplug-overview-lifecycle.svg?v=e8d4285d5a39" alt="热增先准备宿主资源与虚拟设备，再由客户机识别并使用；热移除需先通知客户机停用，确认完成后回收相应设备资源。QMP 接受请求与客户机完成操作处于不同阶段。" loading="lazy">
   </div>
-  <figcaption>热增先准备宿主资源与虚拟设备，再由客户机识别并使用；热移除需先通知客户机停用，确认完成后回收相应设备资源。QMP 接受请求与客户机完成操作处于不同阶段。 <a href="../assets/hotplug-overview-lifecycle.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>热增先准备宿主资源与虚拟设备，再由客户机识别并使用；热移除需先通知客户机停用，确认完成后回收相应设备资源。QMP 接受请求与客户机完成操作处于不同阶段。 <a href="../assets/hotplug-overview-lifecycle.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: 资源热增与热移除的完成边界
   accDescr: 增加资源先准备后端与虚拟设备，再通知客户机识别使用；移除资源先通知客户机停止访问，再确认移除并回收资源。
@@ -104,22 +107,34 @@
   <p>移除同一块 net1 时，管理程序发起请求，QEMU 通过插槽通知客户机。客户机停止网卡队列和驱动访问，交还设备后，QEMU 才完成虚拟网卡的拆除。独立创建的网络后端还要等网卡不再引用它时清理。客户机可能延迟响应或无法完成，因此从请求受理到资源回收之间需要保留待处理状态。</p>
 </section>
 <section id="example" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">四、</span>移除 net1，缩减一段内存</h2>
+  <h2><span class="mechanism-heading-number">四、</span>设备、CPU 与内存的热插拔流程</h2>
+  <h3 id="example-part-1"><span class="mechanism-heading-number">1. </span>设备：停止驱动，再拆除网卡</h3>
   <p>向 QMP 发送 <code>{"execute":"device_del","arguments":{"id":"net1"}}</code> 后，成功响应只表示删除请求已受理。对于需要客户机配合的设备，管理程序继续等待对应 <code>DEVICE_DELETED</code>，再清理已无引用的网络后端。未收到完成事件时，要查看客户机驱动、插槽状态与错误事件，不能直接复用设备 ID。</p>
   <p><code>DEVICE_DELETED</code> 标识 QEMU 设备已移除；它并不证明应用已把流量切换到另一块网卡。若 net1 承载管理连接，应先让业务转用另一条通路，再发起移除，否则热插拔协议即使正确完成，业务仍会断连。</p>
-  <p>内存缩容沿用“先停止使用，再交还资源”的原则，交还对象变成了内存块。以 virtio-mem 为例，目标容量 <code>requested-size</code> 从 4 GiB 改为 2 GiB 后，实际已提供的 <code>size</code> 可能暂时仍为 4 GiB。客户机需要迁走被回收块中的页面，再发送 UNPLUG 请求；长期固定的页面可能阻止回收。这里等待的是内存块交还，前面网卡例子等待的是设备删除，不能用同一种完成事件判断两者。</p>
+  <p>PCIe 端口预留、插槽事件与具体命令见 <a href="qemu-pcie-hotplug.html">PCIe 热插拔专篇</a>。</p>
+  <h3 id="example-part-2"><span class="mechanism-heading-number">2. </span>CPU：预留拓扑、通知上线与异步拔出</h3>
+  <p>CPU 热添加同样需要启动时的规划。例如为 x86 虚拟机配置 2 个启动 vCPU、最大 4 个槽位，拓扑须能容纳最大数量。管理程序通过 <code>query-hotpluggable-cpus</code> 查询可用位置，再用 <code>device_add</code> 创建相应 CPU；支持的型号、属性和拔出粒度由机器与体系结构决定。</p>
+  <p>QEMU 建立 CPU 对象、宿主 vCPU 线程和 KVM vCPU，通过 ACPI CPU 热插拔事件通知 Guest。Guest 发现处理器后建立每 CPU 数据、调度与中断状态，执行启动流程并将其置为 online，才会把普通任务调度给它。QEMU 中多了一个 vCPU 对象，不等于客户机已经在使用它。</p>
+  <p>热移除先请求客户机停用目标 CPU。Guest 迁走可迁移的任务、定时器与中断处理，将 CPU offline，再按 ACPI <code>_EJ0</code> 交还资源。QEMU 完成虚拟 CPU 拔出后发出 <code>DEVICE_DELETED</code>；线程和内核资源的释放由实现管理。本文的 x86 PC 路径不支持拔出启动处理器 BSP，客户机和拓扑也可能限制可移除对象。</p>
+  <p>只在 Guest 中把 CPU offline，是调度与处理器在线状态的变更，QEMU 仍可能保留该 CPU 对象。检查时分别比较 QMP <code>query-cpus-fast</code>、Guest 的 <code>/sys/devices/system/cpu/online</code> 以及持久配置。命令、ACPI 寄存器和完成条件见 <a href="x86-vcpu-hotplug.html">x86 vCPU 热插拔专篇</a>。</p>
+  <h3 id="example-part-3"><span class="mechanism-heading-number">3. </span>内存热添加：建立 DIMM，再由客户机上线</h3>
+  <p>以支持 ACPI 内存热插拔的 x86 虚拟机为例，启动时预留内存插槽和可扩展的地址空间。运行中增加一条 2 GiB 虚拟 DIMM，管理程序先准备宿主内存后备，再添加 QEMU 的 <code>pc-dimm</code> 设备；QEMU 通过 ACPI 通知客户机出现新的内存区域。</p>
+  <p>Guest Linux 分两步接纳这段内存：先添加内存块及其管理元数据，再将内存块置为 <code>online</code>，交给页分配器使用。上线可由配置的策略自动完成，也可由客户机用户空间触发。QEMU 中设备已存在和客户机已能分配这些页面，是两个需要分别观察的状态。</p>
+  <h3 id="example-part-4"><span class="mechanism-heading-number">4. </span>内存热移除：下线页面，再完成设备拔出</h3>
+  <p>移除同一条 DIMM 时，管理程序发起 <code>device_del</code>，QEMU 通过 ACPI 请求客户机 eject。Guest Linux 先将对应内存块置为 <code>offline</code>：迁移仍被使用的页面，并从页分配器撤下该范围。不可迁移页或长期固定的页面可能使下线失败，此时内存设备应继续保留。</p>
+  <p>客户机成功停用该区域后，通过 ACPI <code>_EJ0</code> 完成拔出交接，QEMU 随后移除 DIMM 并发布 <code>DEVICE_DELETED</code>。独立的内存后备对象要等引用解除后再清理。检查时，用 QMP <code>query-memory-devices</code> 观察设备，用 Guest 中的 <code>lsmem</code> 观察内存块及其在线状态，再核对客户机可用内存与宿主 RSS；这些指标描述的是不同层次。</p>
   <p>下表把网卡、vCPU 与内存放回相同的交接顺序。各类资源都先通知客户机，但客户机的停用工作和管理层应核对的结果不同；内存还应分别观察设备提供容量、客户机在线容量和宿主 RSS。</p>
   <table><thead><tr><th>资源</th><th>通知与交接机制</th><th>移除前客户机的工作</th><th>需要分别确认的结果</th></tr></thead><tbody>
     <tr><td>PCIe 网卡</td><td>端口原生热插拔或 ACPI 通知，取决于机器配置</td><td>停用驱动、停止队列和设备访问</td><td>QEMU 设备删除、独立后端清理、业务通路切换</td></tr>
     <tr><td>x86 vCPU</td><td>ACPI CPU 通知与 eject</td><td>迁移任务、中断和定时器，再下线处理器</td><td>客户机 offline、QEMU 对象移除；仅 offline 不等于拔出</td></tr>
-    <tr><td>virtio-mem 容量</td><td>配置通知与队列中的 PLUG/UNPLUG 请求</td><td>迁走页面并停止使用选定块</td><td>requested-size、实际 size 和客户机在线容量逐步收敛</td></tr>
+    <tr><td>DIMM 内存</td><td>ACPI 内存通知与 eject</td><td>迁移页面、下线全部相关内存块，再交还区域</td><td>Guest offline、QEMU 设备移除、后备对象清理</td></tr>
   </tbody></table>
 </section>
 <section id="evolution" class="mechanism-section">
   <h2><span class="mechanism-heading-number">五、</span>从整设备增删到细粒度资源调整</h2>
   <p>设备与内存沿着各自的协议发展。前者侧重插槽发现、地址空间与驱动生命周期，后者侧重可调整容量、页面迁移与回收粒度。</p>
   <p>传统 PCI 热插拔可以借助 ACPI 事件通知操作系统；PCIe 原生热插拔使用 Root Port 等端口的插槽寄存器与事件机制，客户机在获得相应控制权后由 PCIe 热插拔驱动处理。两者对应不同的机器配置与控制方式，不能假定所有虚拟机都走相同通知路径。资源预留帮助新增设备获得地址空间，但端口、总线号和 BAR 窗口仍有边界。</p>
-  <p>virtio-mem 用较小粒度的块调整容量，减少反复添加大块 DIMM 的需要，同时引入块状态与回收协议。更细粒度不保证任意页面都可迁移。评价热插拔要记录操作完成时间、客户机停顿与失败原因，而非只看管理命令是否成功返回。</p>
+  <p>DIMM 方式按内存设备增删；virtio-mem 是另一种在线调整方式，在设备区域内按较小的块提供或收回容量。两者都需要与客户机内存管理协作，调整粒度和通知协议各有不同。评价热插拔要记录操作完成时间、客户机停顿与失败原因，并检查页面能否迁移。</p>
   <table><thead><tr><th>内存调整方式</th><th>宿主资源回收方式</th><th>主要限制</th></tr></thead><tbody>
     <tr><td>DIMM 热插拔</td><td>按内存设备增删，由客户机上线或下线相应区域</td><td>插槽、地址空间、移除范围及可迁移页面</td></tr>
     <tr><td>传统 virtio-balloon</td><td>驱动占用客户机页面并通知宿主回收后备存储</td><td>改变可用资源，不等同于移除一条 DIMM；需要客户机合作</td></tr>
@@ -131,32 +146,25 @@
   <p>热插拔的收益是避免为资源调整重启客户机，代价是引入拓扑预留、驱动协作和异步失败处理。增加设备时分别检查命令、枚举、驱动与业务；移除设备时分别检查请求、客户机停用、设备删除与资源回收。超时后先查询实际状态，避免重复创建或删除已经变化的对象。</p>
   <p>内存缩容还应观察页面迁移耗时、不可迁移页和客户机延迟。更细的回收粒度能避开部分忙页，代价是维护更多块状态；更大的地址空间预留方便后续扩容，也会占用有限的桥窗口或拓扑资源。方案选择应结合实际扩容上限和可接受的回收等待。</p>
 </section>
-<section id="reading" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">七、</span>按资源类型继续阅读</h2>
-  <ul>
-    <li><a href="qemu-pcie-hotplug.html">PCIe 热插拔与异步设备移除</a>：端口、插槽事件和 DEVICE_DELETED。</li>
-    <li><a href="x86-vcpu-hotplug.html">x86 vCPU 热插拔</a>：最大拓扑、ACPI 通知、客户机上线与异步移除。</li>
-    <li><a href="qemu-virtio-mem.html">virtio-mem 容量调整与内存回收</a>：目标容量、块位图及客户机协作。</li>
-    <li><a href="qemu-qom-device.html">QEMU 对象模型与设备初始化</a>：设备创建和 realize 的失败边界。</li>
-    <li><a href="qemu-vfio-dma.html">VFIO 地址转换与隔离</a>：直通设备涉及的 DMA 映射与宿主资源。</li>
-  </ul>
-</section>
+<span id="reading" class="mechanism-topic-alias" aria-hidden="true"></span>
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">八、</span>参考资料</h2>
+  <h2><span class="mechanism-heading-number">七、</span>参考资料</h2>
   <ul>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/specs/acpi_cpu_hotplug.rst">QEMU：ACPI CPU 热插拔通知与 eject</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/core-api/cpu_hotplug.rst">Linux：CPU online/offline</a></li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qapi/qdev.json#L86-L144">QEMU：device_del 与设备移除事件</a></li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/pci/pcie.c">QEMU：PCIe 插槽状态与通知</a></li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/specs/acpi_pci_hotplug.rst">QEMU：ACPI PCI 热插拔通知</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/admin-guide/mm/memory-hotplug.rst">Linux：内存上线、下线与回收限制</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/specs/acpi_mem_hotplug.rst">QEMU：ACPI 内存热插拔与拔出交接</a>、<a href="https://libvirt.org/kbase/memorydevices.html">Libvirt：DIMM 与 virtio-mem 内存设备</a></li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-mem.c">QEMU：virtio-mem 请求处理</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_mem.c">Linux：客户机内存上线与回收</a></li>
   </ul>
 </section></div>
   </div>
-  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#hotplug">热插拔原理</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-10-19">2026-10-19</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
+  <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#hotplug">热插拔</a></nav>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-12">2026-11-12</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=428e6e8b26d1" defer></script>
+<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
 </body>
 </html>

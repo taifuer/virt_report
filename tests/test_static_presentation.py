@@ -103,7 +103,16 @@ def test_all_static_footers_group_copyright_and_note_with_relative_status_link()
                  for entry in mechanisms.redirects()}
     for path in sorted(site.rglob("*.html")):
         html = path.read_text(encoding="utf-8")
-        target = redirects.get(path.relative_to(site).as_posix())
+        relative = path.relative_to(site).as_posix()
+        if relative == "kvm/index.html":
+            # The old standalone catalogue is now a category redirect.
+            target = "../mechanisms.html#kvm-internals"
+            assert f'<link rel="canonical" href="{target}">' in html
+            assert f'<meta http-equiv="refresh" content="0; url={target}">' in html
+            assert '<meta name="robots" content="noindex, follow">' in html
+            assert f'<a href="{target}">KVM 原理</a>' in html
+            continue
+        target = redirects.get(relative)
         if target:
             # Merged URLs are small redirect documents, not content pages.
             assert f'<link rel="canonical" href="{target}.html">' in html

@@ -74,14 +74,13 @@
     container.replaceChildren(...columns);
   }
   function sourceLink(source) {
-    const link = element('a', undefined, 'walkthrough-source-link');
-    link.href = source.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+    const link = element('span', undefined, 'walkthrough-source-link');
     const name = source.symbol || source.label;
     const location = [source.project, source.path].filter(Boolean).join(' · ');
     link.append(element('strong', name));
-    // Keep exact commit/line anchors in href, not in the reading surface.
+    // Upstream links are collected once in the article's references.
     link.title = location || source.label || name;
-    link.setAttribute('aria-label', `${name}${location ? '，' + location : ''}，查看来源`);
+    link.setAttribute('aria-label', `${name}${location ? '，' + location : ''}`);
     return link;
   }
   const relationLabels = {sequence:'先后操作',call:'调用',via:'经省略调用',return:'返回'};
@@ -92,7 +91,7 @@
   }
   function sourcePaths(container, paths, sources, steps = []) {
     container.replaceChildren();
-    container.append(element('p', '箭头表示关键执行顺序；跨线程通知、回调与返回路径按上下文分别说明。点击函数查看固定版本源码。'));
+    container.append(element('p', '箭头表示关键执行顺序；跨线程通知、回调与返回路径按上下文分别说明。版本与上游出处集中列在文末。'));
     if (steps.length) {
       const section = element('section', undefined, 'walkthrough-instruction-path');
       section.append(element('h4', '指令与执行顺序'));

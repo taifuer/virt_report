@@ -102,7 +102,7 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
 </section>
 
 <section id="optimization" class="mechanism-section">
-  <h2>并行、限速与后拷贝的取舍</h2>
+  <h2>并行、限速与收尾成本</h2>
   <p>预拷贝的主要开销来自内存传输、脏页跟踪与重传，以及暂停阶段的状态保存和恢复。不同优化机制针对其中的不同环节，也各自需要额外的计算、内存或同步资源。</p>
   <h3>传输能力不足：并行化</h3>
   <p>当单一路径的页面处理或传输成为瓶颈时，MultiFD 使用多个工作线程和通道处理内存；QAPI 的 <code>multifd</code>能力自 QEMU 4.0 提供。它有机会提高有效 B，但会增加线程、缓冲区和同步开销；若已受网络总带宽或内存带宽限制，增加通道不会按比例提速。<a href="{{ qemu_source }}migration/multifd.c">MultiFD 实现</a>、<a href="{{ qemu_source }}qapi/migration.json#L476">能力版本</a></p>
@@ -113,8 +113,6 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
   <p>获取脏页、清除日志与重新写保护本身也有成本。手动 dirty-log 保护允许更接近读页时清除相应范围，减少过早重新保护带来的重复工作；仍须满足本篇介绍的“先恢复跟踪，再读取页面”顺序。dirty ring 进一步改变记录的收集方式，其回收、满环与内存顺序集中在<a href="kvm-dirty-ring.html">脏页日志专篇</a>。<a href="{{ kernel_source }}Documentation/virt/kvm/api.rst#L7997-L8031">KVM 手动保护的设计说明</a></p>
   <h3>减少流量与控制收尾成本</h3>
   <p>零页识别避免发送整页零值；XBZRLE 在适合的重传场景中编码与已缓存页面的差异；压缩以 CPU 工作换取链路字节减少。实际收益取决于页面内容、缓存命中和处理能力。内存剩余量已经很小而停机仍长时，需要进一步分析设备保存、目的端装载和 I/O 交接的耗时。放宽停机目标可以更早切换，也会把更多工作留在暂停阶段。</p>
-  <p>后拷贝允许目的端在内存尚未传完时开始执行，剩余页面由后台传输，并在访问缺失页时优先请求。它减少了预拷贝阶段的重复传输，同时引入远程缺页延迟和两端状态依赖。预拷贝与后拷贝的选择还需结合业务延迟要求、网络稳定性和故障恢复条件。<a href="{{ qemu_source }}docs/devel/migration/postcopy.rst">后拷贝设计</a></p>
-  <p>缺页请求、页面安装与恢复执行的过程见<a href="qemu-postcopy.html">《QEMU 后拷贝迁移的缺页处理与页面传输》</a>。</p>
 </section>
 
 <section id="sources" class="mechanism-section">

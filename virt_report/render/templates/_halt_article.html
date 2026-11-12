@@ -6,7 +6,7 @@
   <h2>空闲 vCPU 的轮询与阻塞</h2>
   <p>客户机没有工作可做时，空闲循环可以执行 HLT，等待中断。在开启 HLT 截获的常规配置下，KVM 处理退出，可以短暂轮询即将到来的事件，也可以让承载 vCPU 的宿主线程阻塞。轮询消耗 CPU 时间，但可能减少睡眠与重新调度的延迟；阻塞释放 CPU，唤醒后则需等待调度。halt polling 通过有限的轮询预算在两者之间调整。</p>
   <p>可以先比较两个极端：立即睡眠能尽快归还 CPU，但很快到来的事件也要付出唤醒与调度成本；一直轮询能及时发现事件，却会在长时间空闲时占着 CPU。KVM 在两者之间设置有限预算，并按此前等待的耗时调整下一轮。下文沿一次完成事件跟踪轮询、阻塞和重新运行，最后比较实际收益。</p>
-  <p>本文用一次网络请求等待完成事件为例，跟踪 x86、内核 LAPIC、HLT 被截获后的路径。客户机 HLT、宿主线程睡眠和整台虚拟机暂停是不同状态。Idle Passthrough 可以不截获 HLT，直接进入硬件等待；可在<a href="cpu-execution.html?scenario=hlt-passthrough#walkthrough">CPU 指令演示</a>中与 KVM 阻塞等待切换对照，本文的轮询实验仍固定在截获路径。</p>
+  <p>本文用一次网络请求等待完成事件为例，跟踪 x86、内核 LAPIC、HLT 被截获后的路径。客户机 HLT、宿主线程睡眠和整台虚拟机暂停是不同状态。Idle Passthrough 可以不截获 HLT，直接进入硬件等待；可在<a href="cpu-virtualization.html?scenario=hlt-passthrough#walkthrough">CPU 指令演示</a>中与 KVM 阻塞等待切换对照，本文的轮询实验仍固定在截获路径。</p>
   <p>HLT 由客户机内核的空闲代码执行；本文的轮询与阻塞代码运行在宿主 KVM 中，承载它的仍是该 QEMU vCPU 线程。线程进入休眠后，唤醒和 CPU 分配由宿主 Linux 调度器处理。客户机应用不直接调用这些 KVM 等待函数。</p>
   {% include '_mechanism_baselines.html' %}
 </section>

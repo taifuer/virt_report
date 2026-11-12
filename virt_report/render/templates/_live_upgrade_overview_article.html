@@ -1,0 +1,58 @@
+{% from '_mechanism_diagram.html' import diagram with context %}
+{% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
+<section id="preface" class="mechanism-section">
+  <h2>更新承载软件，保留客户机的运行状态</h2>
+  <p>虚拟机运行期间，QEMU、KVM 或设备支持代码可能需要修复和升级。热升级的目标是让新实现接管同一台客户机，保留内存内容、执行位置与设备状态，避免客户机重新启动。交接通常仍有暂停窗口，业务连接是否连续还取决于停顿、设备和外部网络。</p>
+  <p>以一台正在处理网络请求的虚拟机为例：升级后它应继续处理原来的请求，RAM 中的队列不能丢失，已经完成的 I/O 不能重复执行，待处理中断要能送到接管后的 vCPU。替换文件只是准备步骤，运行实例的状态与资源交接才是关键。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+<section id="scope" class="mechanism-section">
+  <h2>QEMU、KVM 与 VFIO 的升级范围</h2>
+  <table><thead><tr><th>关注对象</th><th>替换或保留的内容</th><th>典型路径</th></tr></thead><tbody>
+    <tr><td>QEMU 热升级</td><td>替换用户态机器模型与设备后端；恢复 CPU、设备和队列状态</td><td>CPR-transfer 在同机新旧进程之间交接共享 RAM、资源 fd 和迁移状态</td></tr>
+    <tr><td>KVM 热升级</td><td>替换承载客户机执行的 KVM 实现，处理 VM/vCPU 对象与内核状态的接管</td><td>Orthus / Dual KVM 允许新旧 KVM 共存，逐台交接；需要专门实现支持</td></tr>
+    <tr><td>VFIO 设备连续性</td><td>在 VMM 升级期间保留直通设备及 DMA、IOMMU、中断关联</td><td>设备 fd 和映射保留、通知解绑与重绑，或设备支持的停止与恢复协议</td></tr>
+  </tbody></table>
+  <p>VFIO 是把设备访问、DMA 隔离和中断交给用户态 VMM 的接口。这里讨论的“VFIO 热升级”是升级过程中的直通设备交接：它不等于可以在线替换任意 vfio-pci 驱动、厂商内核模块或设备固件。升级这些组件需要另行验证厂商能力、设备复位行为和资源保留条件。</p>
+</section>
+<section id="handoff" class="mechanism-section">
+  <h2>准备、冻结、接管与清理</h2>
+  {{ diagram('live-upgrade-handoff', '执行权与资源的交接', '切换时旧实例停止执行，新实例接管客户机状态及必要资源；确认成功后再释放旧对象。资源保留和失败恢复能力由具体方案决定。') }}
+  <ol>
+    <li><strong>准备新实现：</strong>核对机器与状态格式兼容性，准备内存映射和后端资源；可提前完成的工作放在暂停窗口之前。</li>
+    <li><strong>冻结旧实例：</strong>停止 vCPU，并按各后端协议收尾在途 I/O，建立可恢复的一致状态。</li>
+    <li><strong>交接状态与资源：</strong>保留或转交 RAM、资源句柄，恢复 CPU 寄存器、设备状态、路由和定时器。</li>
+    <li><strong>新实例继续执行：</strong>确认数据与通知路径可用后放行客户机；旧实例保持停止。</li>
+    <li><strong>清理旧资源：</strong>新实例接管成功后释放旧对象，核对没有泄漏或残留的设备访问权。</li>
+  </ol>
+  <p>跨主机迁移通常要搬运 RAM；同机升级有机会保留原内存后备，显著减少复制工作。用户态地址、对象指针及内核对象可能变化，所以仍需把持久的客户机状态与临时实现状态分开处理。</p>
+</section>
+<section id="qemu" class="mechanism-section">
+  <h2>QEMU：共享 RAM 与状态恢复</h2>
+  <p>QEMU 10.2 的 CPR-transfer 让旧、新进程短暂共存。已登记的资源 fd 通过 Unix socket 交接，目标映射共享 RAM，再经主迁移流恢复 CPU 和设备状态。目标重新建立 QEMU 对象及 KVM VM/vCPU，宿主 KVM 实现本身继续运行。</p>
+  <p>RAM 无需完整复制，但设备、寄存器、时钟和中断仍要一致恢复；每个后端是否支持资源保留也需核对。两端同时能访问 RAM，并不意味着可以同时执行客户机。具体交接顺序见 <a href="qemu-cpr-transfer.html">QEMU 热升级：CPR 的资源交接与状态恢复</a>。</p>
+</section>
+<section id="kvm" class="mechanism-section">
+  <h2>KVM：新旧实现共存与逐台接管</h2>
+  <p>替换 KVM 涉及宿主内核中的 VM、vCPU、内存映射和中断状态。Orthus 的 Dual KVM 为新旧实现提供共存条件，再把虚拟机交给新实现，保留客户机运行所依赖的内存与设备资源。升级对象从用户态扩展到内核，状态兼容和资源所有权也需要相应协议。</p>
+  <p>这类能力需要论文或工程方案中的专门改造，不能通过卸载正在承载虚拟机的 kvm 模块实现。Orthus、HyperFresh 与字节跳动方案的具体机制和适用范围集中在 <a href="kvm-live-upgrade.html">KVM 热升级专篇</a>。</p>
+</section>
+<section id="vfio" class="mechanism-section">
+  <h2>VFIO：保持 DMA 与完成通知连续</h2>
+  <p>直通网卡可以在 vCPU 停止后继续 DMA 或产生中断。升级时需要核对三组关系：设备仍访问哪份 RAM；IOVA 经 IOMMU 映射到哪些后备页；完成通知接入旧 KVM 还是新 KVM。某一组提前失效，可能造成 DMA 故障、状态丢失或通知送错实例。</p>
+  <p>支持相应路径的 QEMU CPR 可以保留设备与 IOMMUFD 资源，并交接中断连接。已进入旧虚拟 LAPIC 的 pending 与设备尚未发出的通知处于不同位置，都要随状态或连接一起处理。Orthus 的直通设备交接也要解决执行切换期间的 DMA 和通知连续性。</p>
+  <p>跨机器的 VFIO 设备迁移还需要可导出、恢复的设备状态及兼容目标设备；同机保留原设备是另一组条件。具备其中一种能力，不能据此推断另一种也成立。实际支持以具体设备、驱动、后端和升级组合的验证结果为准。</p>
+</section>
+<section id="evaluation" class="mechanism-section">
+  <h2>验证兼容性、停顿与失败处理</h2>
+  <p>验证应覆盖机器配置、内存内容、执行位置、设备队列、待处理中断和业务请求。分别测量新实例准备时间、客户机暂停时间与恢复后的尾延迟，并测试目标准备失败和切换期间失败。</p>
+  <p>新实例尚未执行时，方案可能允许继续使用旧实例；新实例已修改共享 RAM 或磁盘后，旧状态就不能直接恢复。上线前需要明确每个阶段谁拥有执行权、哪些资源仍可用、失败后怎样确认状态。论文中的停顿数据只代表其测试条件。</p>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="{{ qemu }}docs/devel/migration/CPR.rst">QEMU 10.2.0：CPR 模式与限制</a></li>
+    <li><a href="{{ qemu }}hw/vfio/cpr.c#L260">VFIO CPR 交接</a>、<a href="{{ qemu }}hw/vfio/cpr-iommufd.c">IOMMUFD 资源保留</a></li>
+    <li><a href="https://doi.org/10.1145/3297858.3304034">Orthus（ASPLOS 2019）原论文</a></li>
+  </ul>
+</section>

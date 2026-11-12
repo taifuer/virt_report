@@ -1,0 +1,14 @@
+flowchart LR
+  accTitle: 热升级中的执行权与资源交接
+  accDescr: 旧实例运行时准备新实现。切换窗口内停止旧 vCPU，按后端协议处理在途 I/O，交接 CPU、设备和通知状态，并保留或转交 RAM 与设备资源。新实例完成接管后恢复客户机，确认成功后清理旧对象。具体资源保留和失败恢复能力由升级方案决定。
+  A["准备新实现<br/>旧实例继续运行"] --> B["冻结旧实例<br/>停止 vCPU、收尾 I/O"]
+  B --> C["交接状态<br/>转交或保留资源"]
+  C --> D["新实例接管并运行<br/>旧实例保持停止"]
+  D --> E["确认成功<br/>清理旧对象"]
+  R["保留或转交的资源<br/>RAM、设备句柄、DMA 映射"] -.-> C
+  classDef prep fill:#e4f1ed,stroke:#78a399,color:#163c38;
+  classDef switch fill:#edf3fa,stroke:#7897b3,color:#243d53;
+  classDef run fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class A,R prep;
+  class B,C switch;
+  class D,E run;

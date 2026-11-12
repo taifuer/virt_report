@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=428e6e8b26d1">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=428e6e8b26d1">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -43,18 +43,21 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="hotplug.html">热插拔</a></div>
+    <div class="mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true">/</span><a href="../mechanisms.html#hotplug">热插拔</a></div>
     <h1>x86 vCPU 热插拔：拓扑、上线与异步移除</h1>
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2><ol id="mechanism-toc-links"><li><a href="#preface">一、vCPU 热插拔与客户机状态</a></li><li><a href="#states">二、最大数量、设备存在与客户机在线</a></li><li><a href="#example">三、从 2 个 vCPU 扩到 3 个</a></li><li><a href="#handoff">四、ACPI 通知与客户机上线、下线</a></li><li><a href="#removal">五、移除完成事件与状态核对</a></li><li><a href="#implementation">六、源码：拓扑位置、通知和拆除</a></li><li><a href="#evolution">七、从调整数量到管理完整生命周期</a></li><li><a href="#sources">八、参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、vCPU 热插拔与客户机状态</a></li><li><a href="#states">二、最大数量、设备存在与客户机在线</a></li><li><a href="#example">三、从 2 个 vCPU 扩到 3 个</a></li><li><a href="#handoff">四、ACPI 通知与客户机上线、下线</a></li><li><a href="#removal">五、移除完成事件与状态核对</a></li><li><a href="#implementation">六、源码：拓扑位置、通知和拆除</a></li><li><a href="#evolution">七、从调整数量到管理完整生命周期</a></li><li><a href="#sources">八、参考资料</a></li></ol>
+    </nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>vCPU 热插拔与客户机状态</h2>
   <p>vCPU 热插拔用于在虚拟机运行期间调整虚拟处理器数量。热添加由 QEMU 创建 CPU 对象和执行线程，经 ACPI 通知后，客户机发现处理器、初始化每 CPU 状态，并将其上线供调度器使用。热移除则先由客户机迁移任务、中断和定时器，完成下线后，再由 QEMU 撤销相应设备与执行上下文。</p>
   <p>这条路径属于<a href="hotplug.html">虚拟机热插拔</a>的 CPU 资源调整。与 PCIe 设备的插槽枚举不同，x86 PC 机器通过 ACPI CPU 热插拔接口表达处理器的存在与移除请求；新增处理器还受到启动时最大拓扑的约束。</p>
   <p>本文以最大允许 4 个 vCPU、启动时使用 2 个的虚拟机为例，跟踪第三个 vCPU 的添加与移除。先区分预留位置、QEMU CPU 对象与客户机在线状态，再说明 QMP 操作、ACPI 通知、完成事件及源码实现。客户机采用支持 ACPI CPU 热插拔的 Linux，自动上线行为取决于客户机配置。</p>
-<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>、<a href="https://github.com/libvirt/libvirt/tree/4d937284669ecf180abea087d0b3ad67d9476349" target="_blank" rel="noopener noreferrer" title="commit 4d937284669ecf180abea087d0b3ad67d9476349">Libvirt 12.0.0</a>。</p></section>
+<p class="mechanism-baselines">源码版本：QEMU 10.2.0、Linux 6.18、Libvirt 12.0.0。</p></section>
 <section id="states" class="mechanism-section">
   <h2><span class="mechanism-heading-number">二、</span>最大数量、设备存在与客户机在线</h2>
   <table><thead><tr><th>状态</th><th>含义</th><th>检查方式</th></tr></thead><tbody>
@@ -96,9 +99,9 @@ lscpu -e=CPU,ONLINE</code></pre>
     <button type="button" data-mechanism-expand aria-label="放大查看创建、上线与异步移除" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="创建、上线与异步移除">
-    <img src="../assets/cpu-hotplug-acpi-handoff.svg?v=428e6e8b26d1" alt="QEMU 创建 CPU 后发出 ACPI 通知，客户机再完成发现和上线；删除请求需要客户机迁走工作并回应 eject，QEMU 才拆除设备并报告完成。" loading="lazy">
+    <img src="../assets/cpu-hotplug-acpi-handoff.svg?v=e8d4285d5a39" alt="QEMU 创建 CPU 后发出 ACPI 通知，客户机再完成发现和上线；删除请求需要客户机迁走工作并回应 eject，QEMU 才拆除设备并报告完成。" loading="lazy">
   </div>
-  <figcaption>QEMU 创建 CPU 后发出 ACPI 通知，客户机再完成发现和上线；删除请求需要客户机迁走工作并回应 eject，QEMU 才拆除设备并报告完成。 <a href="../assets/cpu-hotplug-acpi-handoff.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>QEMU 创建 CPU 后发出 ACPI 通知，客户机再完成发现和上线；删除请求需要客户机迁走工作并回应 eject，QEMU 才拆除设备并报告完成。 <a href="../assets/cpu-hotplug-acpi-handoff.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
   accTitle: x86 vCPU 创建、上线与异步移除
   accDescr: 管理程序创建 vCPU 后，QEMU 通知客户机发现并上线。移除时管理程序先得到受理响应，客户机迁走工作并回应 ACPI eject 后，QEMU 才真正拆除并发送完成事件。
@@ -120,7 +123,7 @@ lscpu -e=CPU,ONLINE</code></pre>
 </code></pre></details>
 </figure>
   <p>机器模型维护可用 CPU 位置，ACPI 热插拔控制器保存每个位置的 CPU 指针、插入和移除标志。<code>acpi_cpu_plug_cb()</code> 将新 CPU 关联到位置，设置插入标记并发出 ACPI 事件。客户机处理 SCI 后执行固件提供的方法，确认 CPU 存在，进入自身 CPU 注册和上线流程。</p>
-  <p>移除时，管理程序发送 <code>device_del</code>，QEMU 设置移除标记并通知客户机。Linux 的 CPU hotplug 状态机按顺序执行下线回调，把任务、中断和定时器移到其他可用 CPU，并处理每 CPU 资源。客户机随后通过 ACPI eject 交还设备，QEMU 才能清理该 CPU 对象。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/acpi/cpu.c#L250-L293">CPU 插入与移除通知</a></p>
+  <p>移除时，管理程序发送 <code>device_del</code>，QEMU 设置移除标记并通知客户机。Linux 的 CPU hotplug 状态机按顺序执行下线回调，把任务、中断和定时器移到其他可用 CPU，并处理每 CPU 资源。客户机随后通过 ACPI eject 交还设备，QEMU 才能清理该 CPU 对象。CPU 插入与移除通知</p>
   <p>如果客户机卡死、热插拔被禁用，或者下线流程无法完成，删除可能停在等待阶段。直接终止对应宿主线程会破坏虚拟机的执行模型，不能作为 CPU 热拔出的替代方案。x86 PC 路径还明确拒绝拔出启动 CPU，因此例子只移除后来添加的 cpu-extra。</p>
 </section>
 <section id="removal" class="mechanism-section">
@@ -133,17 +136,17 @@ lscpu -e=CPU,ONLINE</code></pre>
   "device":"cpu-extra","path":"/machine/peripheral/cpu-extra"
 }}</code></pre>
   <p>命令成功表示移除请求已受理。管理程序需要持续接收并关联完成事件，也要能处理事件与响应的不同先后顺序。完成后再次查询可插拔 CPU 列表，该位置应不再包含 qom-path，运行实例列表中也不再包含被删除对象。客户机的 online 列表可能更早变化，不能单独用它证明宿主资源已经释放。</p>
-  <p>Libvirt 的 <code>qemuDomainHotplugDelVcpu()</code> 会标记待移除的别名、发送删除请求并等待设备移除；超时错误明确要求重新检查实际结果。事件可能在等待超时后才到达，因此重连后应重新查询状态，再决定是否重试或复用标识。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_hotplug.c#L6709-L6758">Libvirt 的移除等待</a></p>
+  <p>Libvirt 的 <code>qemuDomainHotplugDelVcpu()</code> 会标记待移除的别名、发送删除请求并等待设备移除；超时错误明确要求重新检查实际结果。事件可能在等待超时后才到达，因此重连后应重新查询状态，再决定是否重试或复用标识。Libvirt 的移除等待</p>
   <p>使用 Libvirt 管理的虚拟机，应通过其 vCPU 管理接口操作，使运行状态与持久配置保持一致。<code>--live</code>、<code>--config</code> 和客户机内部 online 控制各有不同对象；不要用旁路 QMP 操作后再假定 Libvirt XML 会自动成为预期配置。</p>
 </section>
 <section id="implementation" class="mechanism-section">
   <h2><span class="mechanism-heading-number">六、</span>源码：拓扑位置、通知和拆除</h2>
   <table><thead><tr><th>入口或结构</th><th>阅读重点</th></tr></thead><tbody>
-    <tr><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/x86.c#L101-L150">x86_possible_cpu_arch_ids()</a></td><td>按 maxcpus 建立位置列表，把 APIC ID 与拓扑属性联系起来</td></tr>
-    <tr><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/x86-common.c#L257-L430">x86_cpu_pre_plug()</a></td><td>检查型号、拓扑和可用位置，阻止重复占用或不匹配的 CPU</td></tr>
-    <tr><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/acpi/cpu.c#L250-L293">AcpiCpuStatus 与通知回调</a></td><td>维护插入、移除标记，并发出 SCI 对应的 ACPI 热插拔事件</td></tr>
-    <tr><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/acpi/cpu.c#L104-L153">cpu_hotplug_wr()</a></td><td>客户机写入 eject 标志后调用真正的 unplug，再解除对象关系</td></tr>
-    <tr><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/x86-common.c#L203-L254">x86_cpu_unplug_request_cb() / unplug_cb()</a></td><td>拒绝启动 CPU、清空位置、unrealize 并更新机器计数</td></tr>
+    <tr><td>x86_possible_cpu_arch_ids()</td><td>按 maxcpus 建立位置列表，把 APIC ID 与拓扑属性联系起来</td></tr>
+    <tr><td>x86_cpu_pre_plug()</td><td>检查型号、拓扑和可用位置，阻止重复占用或不匹配的 CPU</td></tr>
+    <tr><td>AcpiCpuStatus 与通知回调</td><td>维护插入、移除标记，并发出 SCI 对应的 ACPI 热插拔事件</td></tr>
+    <tr><td>cpu_hotplug_wr()</td><td>客户机写入 eject 标志后调用真正的 unplug，再解除对象关系</td></tr>
+    <tr><td>x86_cpu_unplug_request_cb() / unplug_cb()</td><td>拒绝启动 CPU、清空位置、unrealize 并更新机器计数</td></tr>
   </tbody></table>
   <p>上层的通用设备接口把 CPU 与其他可插拔设备放在一致的生命周期框架中，具体协调由机器和 ACPI 实现。PCIe 设备通过端口插槽寄存器表达变化，CPU 则使用 ACPI CPU 热插拔寄存器与客户机 CPU hotplug 状态机。</p>
 </section>
@@ -163,12 +166,12 @@ lscpu -e=CPU,ONLINE</code></pre>
   </ul>
 </section></div>
   </div>
-  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#hotplug">热插拔原理</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-10-19">2026-10-19</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
+  <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#hotplug">热插拔</a></nav>
+<p class="mechanism-review">技术复核：<time datetime="2026-10-19">2026-10-19</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=428e6e8b26d1" defer></script>
+<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
 </body>
 </html>

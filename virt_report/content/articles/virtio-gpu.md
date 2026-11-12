@@ -2,7 +2,7 @@
 
 virtio-gpu 为客户机提供图形设备接口。基础二维后端接收客户机已经画好的像素；VirGL 路径接收图形命令，由宿主渲染库和驱动完成绘制；视频扩展进一步传递码流、帧参数和图像资源。它们共用资源与队列机制，但执行位置、所需能力和完成条件各有区别。
 
-本文以 Linux 客户机和 x86/KVM 为背景，从一幅二维画面的局部更新开始，再跟踪 OpenGL 绘制、H.264 解码和 NV12 编码。资源、队列和同步关系贯穿这四个例子；二维更新的小演示放在第三节，三维与视频的逐步演示保留在独立页面[virtio-gpu 渲染与编解码](virtio-gpu-execution.html)。
+本文以 Linux 客户机和 x86/KVM 为背景，从一幅二维画面的局部更新开始，再跟踪 OpenGL 绘制、H.264 解码和 NV12 编码。资源、队列和同步关系贯穿这四个例子，二维资源更新与三维、视频命令的交互演示分别嵌入对应章节。
 
 ```baselines
 ```
@@ -202,6 +202,15 @@ Guest 驱动经 `virtio_gpu_dequeue_ctrl_func()` 消费响应，调用 `virtio_g
 
 下面两节分析 **VirGL video 已正确接入、能力查询成功后的实现流程**。在不具备条件的环境中，应用需要使用软件 codec，或选择另一种明确提供视频加速能力的设备方案；应用是否自动回退取决于自身行为。
 
+## 渲染与编解码演示 {#walkthrough}
+
+沿 Guest 应用、DRM 驱动、controlq、QEMU、virglrenderer 与物理 GPU，观察绘制三角形、解码一帧和编码一帧的命令与资源交接。视频场景沿用上一节的额外接入条件；QEMU 10.2.0 默认未启用 VirGL 视频扩展。
+
+```component _execution_lab.html
+```
+
+演示分别标记提交返回、GPU 完成、Guest 确认 fence 和应用消费。播放间隔与示例地址用于解释顺序，不代表实测耗时或硬件布局。
+
 ## 一帧 H.264 的解码与显示 {#decode}
 
 ### 准备码流、参数与目标表面
@@ -320,7 +329,7 @@ Venus 为 Vulkan 定义另一套序列化协议，使用不同的 capset 和上�
 
 - [Virtio 1.2，第 5.7 节 GPU Device](https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html)：二维资源、输出、队列及控制命令；VirGL 命令格式由其渲染协议另外定义。
 - [QEMU 10.2：virtio-gpu.h](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/hw/virtio/virtio-gpu.h#L45)：设备内部资源与 scanout 结构。
-- [virtio-gpu 渲染与编解码](virtio-gpu-execution.html)：独立交互演示，可切换绘制、解码与编码，对照本文逐步观察命令和资源。
+- [渲染与编解码演示](#walkthrough)：切换绘制、解码与编码，观察命令和资源的逐步变化。
 - [GPU 命令执行：直通与共享虚拟化](gpu-execution.html)：对照整卡直通、GVT-g、SR-IOV 与组合方案，附设备归属和 libvirt XML；DMA 映射细节见 [VFIO 设备直通与 DMA](qemu-vfio-dma.html)。
 - [virtio 设备初始化与特性协商](virtio-device-initialization.html)：队列、特性和设备状态。
-- [中断传递](interrupt-delivery.html)：完成通知到客户机处理，以及通知抑制和中断加速。
+- [中断传递](interrupt-virtualization.html)：完成通知到客户机处理，以及通知抑制和中断加速。

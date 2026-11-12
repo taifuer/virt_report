@@ -1,0 +1,18 @@
+flowchart TB
+  accTitle: 第一次 KVM_RUN 前的资源依赖
+  accDescr: 用户态打开 KVM 系统 fd 并查询能力后创建 VM。VM 下登记 RAM 内存槽、创建内核 irqchip 和 vCPU 对象；完整内核 irqchip 必须早于 vCPU 创建。QEMU 还要准备固件和设备，将启动状态同步到 KVM，确保依赖就绪后由 vCPU 线程调用 KVM_RUN。图中的分支表达资源依赖，不规定全部对象的唯一创建顺序。
+  S["/dev/kvm<br/>API 与能力检查"] --> V["KVM_CREATE_VM<br/>VM fd"]
+  V --> M["RAM 后备与 memslot<br/>GPA → QEMU 映射"]
+  V --> I["KVM_CREATE_IRQCHIP<br/>本例：完整内核 irqchip"]
+  I --> C["KVM_CREATE_VCPU<br/>vCPU fd 与 kvm_run"]
+  C --> R["CPUID、寄存器、MP 状态"]
+  Q["QEMU 固件、设备与整机复位"] --> B["所需资源就绪<br/>放行 vCPU 线程"]
+  M --> B
+  R --> B
+  B --> K["KVM_RUN<br/>第一次进入 Guest"]
+  classDef object fill:#e4f1ed,stroke:#78a399,color:#163c38;
+  classDef state fill:#edf3fa,stroke:#7897b3,color:#243d53;
+  classDef run fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class S,V,I,C object;
+  class M,R,Q state;
+  class B,K run;

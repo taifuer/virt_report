@@ -3,15 +3,16 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {launchBrowser} = require('./browser_runtime.cjs');
 const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
 const origin = new URL(base).origin;
 const shots = process.env.GPU_SCREENSHOT_DIR;
 if (shots) fs.mkdirSync(shots, {recursive: true});
 const title = 'virtio-gpu：资源、渲染与编解码';
+const oldRendering = require('../virt_report/content/mechanisms.json').redirects['virtio-gpu-rendering'];
 
 (async () => {
-  const browser = await chromium.launch({args: ['--no-sandbox']});
+  const browser = await launchBrowser({headless: true});
   const context = await browser.newContext({reducedMotion: 'reduce'});
   // The check only visits the supplied preview or deployment, never source links.
   await context.route('**/*', route => new URL(route.request().url()).origin === origin
@@ -26,8 +27,9 @@ const title = 'virtio-gpu：资源、渲染与编解码';
       assert.equal(response.status(), 200);
       assert.equal(await page.locator('h1').textContent(), title);
       assert.equal(await page.locator('[data-mechanism-view="diagram"]').count(), 6);
-      assert.equal(await page.locator('[data-execution-lab]').count(), 0);
+      assert.equal(await page.locator('[data-execution-lab]').count(), 1);
       const lab = page.locator('[data-virtio-gpu-lab]');
+      await lab.scrollIntoViewIfNeeded();
       await lab.locator('[data-gpu-controls]').waitFor({state: 'visible'});
       assert(await lab.locator('[data-gpu-back]').isDisabled());
       for (let step = 1; step <= 10; step++) {
@@ -63,8 +65,10 @@ const title = 'virtio-gpu：资源、渲染与编解码';
     for (const anchor of ['preface', 'transport', 'render', 'video-support', 'decode',
       'encode', 'completion', 'evolution', 'sources', 'transport-part-1', 'render-part-4']) {
       await page.goto(`${base}/mechanisms/virtio-gpu-rendering.html#${anchor}`);
-      await page.waitForURL(`${base}/mechanisms/virtio-gpu.html#${anchor}`);
+      const canonicalAnchor = oldRendering.anchors[anchor] || anchor;
+      await page.waitForURL(`${base}/mechanisms/virtio-gpu.html#${canonicalAnchor}`);
       assert.equal(await page.locator(`[id="${anchor}"]`).count(), 1);
+      assert.equal(await page.locator(`[id="${canonicalAnchor}"]`).count(), 1);
     }
     for (const anchor of ['commands', 'interactive', 'summary', 'references']) {
       await page.goto(`${base}/mechanisms/virtio-gpu.html#${anchor}`);
@@ -73,7 +77,7 @@ const title = 'virtio-gpu：资源、渲染与编解码';
     await page.goto(`${base}/mechanisms.html#device-virtualization`);
     assert.equal(await page.locator('a[href="mechanisms/virtio-gpu.html"]').count(), 1);
     assert.equal(await page.locator('a[href="mechanisms/virtio-gpu-rendering.html"]').count(), 0);
-    assert.equal(await page.locator('a[href="mechanisms/virtio-gpu-execution.html"]').count(), 1);
+    assert.equal(await page.locator('a[href="mechanisms/virtio-gpu-execution.html"]').count(), 0);
     assert.equal(await page.locator('a[href="mechanisms/gpu-execution.html"]').count(), 1);
     if (shots) await page.locator('#device-virtualization').screenshot({
       path: path.join(shots, 'article-directory.png')

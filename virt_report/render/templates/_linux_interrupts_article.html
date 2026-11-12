@@ -76,13 +76,12 @@
   <h2>只读观察与客户机中断</h2>
   <p>在实验机读取 <code>/proc/interrupts</code> 可看 IRQ 在各 CPU 的累计计数，读取 <code>/proc/softirqs</code> 可看 softirq 类别计数；两者都不能直接当作包数或 I/O 请求数。应比较同一负载窗口前后的变化，并结合驱动队列统计。读取权限和可见字段依赖系统配置。</p>
   <p>虚拟化增加了路由与交付环节：后端发布 Guest 队列完成，通过 QEMU 设备通知或 eventfd/irqfd 进入 KVM；KVM 建立待处理中断状态，再由软件注入或硬件辅助路径交付 Guest。Guest 驱动随后按自己的 IRQ/NAPI 路径处理。同一完成事件由各层接力递送。</p>
-  <p>直通设备的 MSI-X 消息可经宿主转发，也可在具备相应条件时使用 VT-d posted interrupt 递送，见 <a href="interrupt-delivery.html">中断传递演示</a>。</p>
+  <p>直通设备的 MSI-X 消息可经宿主转发，也可在具备相应条件时使用 VT-d posted interrupt 递送，见 <a href="interrupt-virtualization.html">中断传递演示</a>。</p>
 </section>
 <section id="sources" class="mechanism-section">
-  <h2>源码与延伸阅读</h2>
+  <h2>源码与参考资料</h2>
   <ul>
     <li><a href="{{ linux }}kernel/irq/handle.c#L177">IRQ action 与线程唤醒</a>、<a href="{{ linux }}kernel/softirq.c#L654">softirq 入口</a>、<a href="{{ linux }}net/core/dev.c#L7745">NET_RX softirq</a>。</li>
     <li><a href="{{ linux }}Documentation/core-api/genericirq.rst">通用 IRQ 框架</a>、<a href="{{ linux }}Documentation/networking/napi.rst">NAPI 的预算与执行方式</a>。</li>
-    <li>继续阅读 <a href="linux-execution-scheduling.html">线程阻塞与唤醒</a>、<a href="linux-network-io.html">网络收发</a>、<a href="kvm-virtio-interrupt.html">Virtio 完成中断路径</a>。</li>
   </ul>
 </section>

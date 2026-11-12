@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=428e6e8b26d1">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=428e6e8b26d1">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -43,12 +43,15 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#kvm-internals">KVM 内部机制</a></div>
+    <div class="mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true">/</span><a href="../mechanisms.html#kvm-internals">KVM 原理</a></div>
     <h1>KVM 的对象管理与 vCPU 执行</h1>
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2><ol id="mechanism-toc-links"><li><a href="#preface">一、KVM 的对象、执行环境与设备交接</a></li><li><a href="#objects">二、从 /dev/kvm 建立 VM 与 vCPU</a></li><li><a href="#principle">三、VM Entry、内核处理与用户态返回</a></li><li><a href="#paths">四、跟踪实例：CPUID 后读取一个设备寄存器</a><ol><li><a href="#paths-part-1">1. 在内核中处理 CPUID</a></li><li><a href="#paths-part-2">2. 返回 QEMU 读取设备寄存器</a></li></ol></li><li><a href="#structures">五、交接载体：kvm_run 的 I/O 字段</a></li><li><a href="#completion">六、暂停边界：完成当前 I/O 后停止执行</a><ol><li><a href="#completion-part-1">设备已经返回数据，管理线程同时请求暂停</a></li></ol></li><li><a href="#notifications">七、通知优化：ioeventfd 与 irqfd 的处理路径</a><ol><li><a href="#notifications-part-1">1. 客户机 → 后端：ioeventfd 匹配队列通知</a></li><li><a href="#notifications-part-2">2. 后端 → 客户机：irqfd 通知完成</a></li></ol></li><li><a href="#implementation">八、源码调用链：运行、分派与继续执行</a></li><li><a href="#evolution">九、演进与取舍：减少往返，保留正确交接</a></li><li><a href="#sources">十、参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、KVM 的对象、执行环境与设备交接</a></li><li><a href="#objects">二、从 /dev/kvm 建立 VM 与 vCPU</a></li><li><a href="#principle">三、VM Entry、内核处理与用户态返回</a></li><li><a href="#paths">四、跟踪实例：CPUID 后读取一个设备寄存器</a><ol><li><a href="#paths-part-1">1. 在内核中处理 CPUID</a></li><li><a href="#paths-part-2">2. 返回 QEMU 读取设备寄存器</a></li></ol></li><li><a href="#structures">五、交接载体：kvm_run 的 I/O 字段</a></li><li><a href="#completion">六、暂停边界：完成当前 I/O 后停止执行</a><ol><li><a href="#completion-part-1">设备已经返回数据，管理线程同时请求暂停</a></li></ol></li><li><a href="#notifications">七、通知优化：ioeventfd 与 irqfd 的处理路径</a><ol><li><a href="#notifications-part-1">1. 客户机 → 后端：ioeventfd 匹配队列通知</a></li><li><a href="#notifications-part-2">2. 后端 → 客户机：irqfd 通知完成</a></li></ol></li><li><a href="#implementation">八、源码调用链：运行、分派与继续执行</a></li><li><a href="#evolution">九、演进与取舍：减少往返，保留正确交接</a></li><li><a href="#sources">十、参考资料</a></li></ol>
+    </nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>KVM 的对象、执行环境与设备交接</h2>
@@ -56,7 +59,7 @@
   <p>本文跟踪“执行 CPUID → 读取 32 位设备寄存器 → 继续执行”这条路径，再比较 virtio 队列通知中的 ioeventfd 和 irqfd。一次 KVM_RUN 可以在内核里完成多次 VM Entry / VM Exit；只有需要用户态处理时才返回 QEMU。宿主调度器另外决定这个线程何时占用物理 CPU。</p>
   <p>硬件入口以 Intel VMX 为例；AMD SVM 使用不同的底层指令和控制结构，KVM 的用户态接口保持相同。</p>
   <p>QEMU 使用 TCG 时，执行路径转为指令翻译与宿主代码缓存，见<a href="qemu-tcg.html">QEMU TCG 的翻译块与执行循环</a>。</p>
-<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>、<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>。</p>  <p><a href="cpu-execution.html">CPU 指令执行演示</a>分别展示普通指令、系统调用、CPUID、MMIO 和 HLT；相关的地址转换与事件递送可继续查看<a href="memory-access.html">内存访问</a>、<a href="interrupt-delivery.html">中断传递</a>演示。</p>
+<p class="mechanism-baselines">源码版本：QEMU 10.2.0、Linux 6.18。</p>  <p><a href="cpu-virtualization.html">CPU 指令执行演示</a>分别展示普通指令、系统调用、CPUID、MMIO 和 HLT；相关的地址转换与事件递送可继续查看<a href="memory-virtualization.html">内存访问</a>、<a href="interrupt-virtualization.html">中断传递</a>演示。</p>
 </section>
 
 <section id="objects" class="mechanism-section">
@@ -68,9 +71,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看从用户态接口到客户机执行" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="从用户态接口到客户机执行">
-    <img src="../assets/kvm-internal-objects.svg?v=428e6e8b26d1" alt="VM 描述符用于配置共享资源，vCPU 描述符用于配置并运行某个处理器。调用 KVM_RUN 的宿主线程进入内核，再进入硬件客户机环境；共享 kvm_run 负责必要的用户态交接。" loading="lazy">
+    <img src="../assets/kvm-internal-objects.svg?v=e8d4285d5a39" alt="VM 描述符用于配置共享资源，vCPU 描述符用于配置并运行某个处理器。调用 KVM_RUN 的宿主线程进入内核，再进入硬件客户机环境；共享 kvm_run 负责必要的用户态交接。" loading="lazy">
   </div>
-  <figcaption>VM 描述符用于配置共享资源，vCPU 描述符用于配置并运行某个处理器。调用 KVM_RUN 的宿主线程进入内核，再进入硬件客户机环境；共享 kvm_run 负责必要的用户态交接。 <a href="../assets/kvm-internal-objects.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>VM 描述符用于配置共享资源，vCPU 描述符用于配置并运行某个处理器。调用 KVM_RUN 的宿主线程进入内核，再进入硬件客户机环境；共享 kvm_run 负责必要的用户态交接。 <a href="../assets/kvm-internal-objects.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 通过 KVM 文件描述符建立并运行虚拟机
     accDescr: 用户态打开 dev kvm，创建 VM 描述符后登记内存并创建 vCPU。调用线程通过 vCPU 描述符执行 KVM_RUN，经过内核准备进入客户机。共享 kvm_run 在需要用户态处理时交接退出原因与结果。
@@ -102,7 +105,7 @@
     <tr><td>VM 描述符</td><td>这一台虚拟机的共享资源</td><td>登记内存槽、配置中断、创建 vCPU</td></tr>
     <tr><td>vCPU 描述符</td><td>一个客户机处理器的执行状态</td><td>设置寄存器、映射交接区、调用 KVM_RUN</td></tr>
   </tbody></table>
-  <p>创建 VM 得到的是待配置对象，内存槽描述 GPA 与用户态 RAM 后备范围的关系，vCPU 创建也不会自行启动客户机。准备完毕后，QEMU 的对应宿主线程调用 KVM_RUN，才开始执行这个 vCPU。线程进入内核、进入客户机、再返回用户态时，仍是同一个可被 Linux 调度的任务；它不必独占一个物理核。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst#L149-L161">VM 创建接口</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/linux/kvm_host.h#L326-L350">vCPU 对象</a></p>
+  <p>创建 VM 得到的是待配置对象，内存槽描述 GPA 与用户态 RAM 后备范围的关系，vCPU 创建也不会自行启动客户机。准备完毕后，QEMU 的对应宿主线程调用 KVM_RUN，才开始执行这个 vCPU。线程进入内核、进入客户机、再返回用户态时，仍是同一个可被 Linux 调度的任务；它不必独占一个物理核。VM 创建接口、vCPU 对象</p>
   <p>在 QEMU 中，这条准备路径从一个 <code>CPUState</code> 对象衔接到一个宿主线程：<code>kvm_start_vcpu_thread()</code> 创建线程，入口 <code>kvm_vcpu_thread_fn()</code> 接收同一个 CPUState。线程先执行 <code>kvm_init_vcpu()</code>，取得 vCPU 描述符并映射 <code>kvm_run</code>，再进入下面的循环。机器模型、RAM 和设备的建立过程见<a href="qemu-vm-startup.html">QEMU 虚拟机启动过程</a>；Guest 发现并启动多个 CPU、安排应用线程的过程见<a href="multi-vcpu-coordination.html">多 vCPU 协同</a>。</p>
   <pre><code>do {
     qemu_process_cpu_events(cpu);
@@ -114,7 +117,7 @@
         }
     }
 } while (!cpu-&gt;unplug || cpu_can_run(cpu));</code></pre>
-  <p>这段<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-accel-ops.c#L30-L74">线程循环</a>把“对象已创建”和“允许执行”分开：事件处理先协调线程状态，满足运行条件后才进入 <code>kvm_cpu_exec()</code>。该函数调用 KVM_RUN；返回后，线程仍可处理暂停、调试或继续执行。本例后续的 CPUID 和设备读取，都由这个已经完成初始化的 vCPU 发起。</p>
+  <p>这段线程循环把“对象已创建”和“允许执行”分开：事件处理先协调线程状态，满足运行条件后才进入 <code>kvm_cpu_exec()</code>。该函数调用 KVM_RUN；返回后，线程仍可处理暂停、调试或继续执行。本例后续的 CPUID 和设备读取，都由这个已经完成初始化的 vCPU 发起。</p>
 </section>
 
 <section id="principle" class="mechanism-section">
@@ -127,7 +130,7 @@
     <tr><td>宿主任务之间切换</td><td>Linux 调度器保存、恢复宿主线程上下文</td><td>同一个 vCPU 线程再次获得 CPU 后，接着执行其用户态、内核态或客户机路径</td></tr>
   </tbody></table>
   <p>因此，硬件退出次数、KVM_RUN 返回次数、宿主线程调度切换次数是三种统计。优化其中一项，未必会等比例减少另外两项。</p>
-  <p>KVM_RUN 内部还有一层执行循环。下面是 Linux <code>vcpu_run()</code> 中连续的判断代码：<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11610-L11617">运行或等待分支</a>。</p>
+  <p>KVM_RUN 内部还有一层执行循环。下面是 Linux <code>vcpu_run()</code> 中连续的判断代码：运行或等待分支。</p>
   <pre><code>if (kvm_vcpu_running(vcpu)) {
     r = vcpu_enter_guest(vcpu);
 } else {
@@ -143,7 +146,7 @@ if (r &lt;= 0)
 <section id="paths" class="mechanism-section">
   <h2><span class="mechanism-heading-number">四、</span>跟踪实例：CPUID 后读取一个设备寄存器</h2>
   <h3 id="paths-part-1"><span class="mechanism-heading-number">1. </span>在内核中处理 CPUID</h3>
-  <p>客户机执行 CPUID 时，VMX 后端按硬件退出原因找到 <code>kvm_emulate_cpuid()</code>。该函数读取客户机 EAX、ECX，按照虚拟 CPU 配置计算结果，写回 EAX、EBX、ECX、EDX，并推进被模拟的指令。普通执行路径返回“已处理”，<code>vcpu_run()</code> 继续循环，QEMU 的那次 KVM_RUN 仍未返回。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/cpuid.c#L2090-L2105">CPUID 模拟</a></p>
+  <p>客户机执行 CPUID 时，VMX 后端按硬件退出原因找到 <code>kvm_emulate_cpuid()</code>。该函数读取客户机 EAX、ECX，按照虚拟 CPU 配置计算结果，写回 EAX、EBX、ECX、EDX，并推进被模拟的指令。普通执行路径返回“已处理”，<code>vcpu_run()</code> 继续循环，QEMU 的那次 KVM_RUN 仍未返回。CPUID 模拟</p>
   <p>查询结果来自客户机可见的 CPU 配置。QEMU 在启动时参与设置虚拟 CPU 能力，后续常规 CPUID 查询由 KVM 使用已保存的配置处理。</p>
   <h3 id="paths-part-2"><span class="mechanism-heading-number">2. </span>返回 QEMU 读取设备寄存器</h3>
   <p>假设客户机读取一个由 QEMU 模拟的 32 位设备寄存器，地址为 <code>0xf0001000</code>。该设备访问不能由 KVM 内核设备处理，进入用户态 MMIO 路径。KVM 记录待完成的读操作，写入请求后返回：</p>
@@ -155,7 +158,7 @@ mmio.data[0..3]   = 等待 QEMU 填入
 
 设备返回 0x12345678 后，x86 字节序下：
 mmio.data[0..3]   = 78 56 34 12</code></pre>
-  <p>QEMU 从 KVM_RUN 返回后，按 <code>exit_reason</code> 进入下面的实际分支。<code>address_space_rw()</code> 使用客户机物理地址查找 MemoryRegion，长度、方向和数据缓冲区都直接来自同一份共享请求：<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L3246-L3254">MMIO 分支</a>。</p>
+  <p>QEMU 从 KVM_RUN 返回后，按 <code>exit_reason</code> 进入下面的实际分支。<code>address_space_rw()</code> 使用客户机物理地址查找 MemoryRegion，长度、方向和数据缓冲区都直接来自同一份共享请求：MMIO 分支。</p>
   <pre><code>case KVM_EXIT_MMIO:
     /* Called outside BQL */
     address_space_rw(&amp;address_space_memory,
@@ -172,9 +175,9 @@ mmio.data[0..3]   = 78 56 34 12</code></pre>
     <button type="button" data-mechanism-expand aria-label="放大查看一次 KVM_RUN 内的处理与用户态交接" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="一次 KVM_RUN 内的处理与用户态交接">
-    <img src="../assets/kvm-run-exits.svg?v=428e6e8b26d1" alt="CPUID 在 KVM 中完成；需要 QEMU 的设备读取经过共享区往返，并在下一次 KVM_RUN 中完成指令。" loading="lazy">
+    <img src="../assets/kvm-run-exits.svg?v=e8d4285d5a39" alt="CPUID 在 KVM 中完成；需要 QEMU 的设备读取经过共享区往返，并在下一次 KVM_RUN 中完成指令。" loading="lazy">
   </div>
-  <figcaption>CPUID 在 KVM 中完成；需要 QEMU 的设备读取经过共享区往返，并在下一次 KVM_RUN 中完成指令。 <a href="../assets/kvm-run-exits.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>CPUID 在 KVM 中完成；需要 QEMU 的设备读取经过共享区往返，并在下一次 KVM_RUN 中完成指令。 <a href="../assets/kvm-run-exits.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: CPUID 内核处理与 MMIO 用户态交接
     accDescr: 一次 KVM_RUN 内可处理 CPUID 并继续客户机执行。需要 QEMU 处理的 MMIO 读返回到用户态，设备结果写回共享区，再次 KVM_RUN 完成此前指令。
@@ -203,7 +206,7 @@ mmio.data[0..3]   = 78 56 34 12</code></pre>
 
 <section id="structures" class="mechanism-section">
   <h2><span class="mechanism-heading-number">五、</span>交接载体：kvm_run 的 I/O 字段</h2>
-  <p>QEMU 通过 <code>KVM_CREATE_VCPU</code> 获得 vCPU 文件描述符，查询 <code>KVM_GET_VCPU_MMAP_SIZE</code> 后，以该描述符映射共享区。<code>CPUState.kvm_run</code> 指向起始位置的 <code>struct kvm_run</code>。共享区包含请求字段及部分附加数据，不是所有客户机寄存器和设备状态的完整副本。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L573-L597">创建与映射</a></p>
+  <p>QEMU 通过 <code>KVM_CREATE_VCPU</code> 获得 vCPU 文件描述符，查询 <code>KVM_GET_VCPU_MMAP_SIZE</code> 后，以该描述符映射共享区。<code>CPUState.kvm_run</code> 指向起始位置的 <code>struct kvm_run</code>。共享区包含请求字段及部分附加数据，不是所有客户机寄存器和设备状态的完整副本。创建与映射</p>
   <table><thead><tr><th scope="col">字段</th><th scope="col">格式</th><th scope="col">写入方与使用方</th></tr></thead><tbody>
     <tr><td><code>exit_reason</code></td><td>32 位枚举值</td><td>KVM 写入；QEMU 在正常返回后选择对应联合体成员</td></tr>
     <tr><td><code>io.direction / size / port / count</code></td><td>8 / 8 / 16 / 32 位</td><td>KVM 描述端口 I/O 的方向、单项字节数、端口和项数</td></tr>
@@ -212,8 +215,8 @@ mmio.data[0..3]   = 78 56 34 12</code></pre>
     <tr><td><code>mmio.data[8]</code></td><td>最多 8 字节</td><td>写请求由 KVM 填入；读请求由 QEMU 写回读取结果</td></tr>
     <tr><td><code>immediate_exit</code></td><td>8 位输入</td><td>用户态设置，KVM_RUN 入口读取，用于完成必要收尾后尽快返回</td></tr>
   </tbody></table>
-  <p><code>io.data_offset</code> 是共享区偏移，<code>mmio.phys_addr</code> 是客户机物理地址，两者都不能当作 QEMU 宿主指针直接解引用。MMIO 单片段的 8 字节限制也不意味着客户机指令只允许访问 8 字节：内核可以拆分访问，连续返回多个请求。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/uapi/linux/kvm.h#L209-L266">ABI 字段定义</a></p>
-  <p>内核的 <code>struct kvm_vcpu</code> 则保存 vCPU ID、待处理请求、执行模式及架构状态，<code>run</code> 指向共享区。<code>mmio_needed</code>、<code>mmio_fragments</code> 和 <code>mmio_cur_fragment</code> 跟踪尚待完成的 MMIO；<code>arch.complete_userspace_io</code> 保存重新进入内核后的继续处理函数。这些属于内核内部状态，不能用共享区中的一个 exit_reason 代替。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/linux/kvm_host.h#L330-L389">内核 vCPU 对象</a></p>
+  <p><code>io.data_offset</code> 是共享区偏移，<code>mmio.phys_addr</code> 是客户机物理地址，两者都不能当作 QEMU 宿主指针直接解引用。MMIO 单片段的 8 字节限制也不意味着客户机指令只允许访问 8 字节：内核可以拆分访问，连续返回多个请求。ABI 字段定义</p>
+  <p>内核的 <code>struct kvm_vcpu</code> 则保存 vCPU ID、待处理请求、执行模式及架构状态，<code>run</code> 指向共享区。<code>mmio_needed</code>、<code>mmio_fragments</code> 和 <code>mmio_cur_fragment</code> 跟踪尚待完成的 MMIO；<code>arch.complete_userspace_io</code> 保存重新进入内核后的继续处理函数。这些属于内核内部状态，不能用共享区中的一个 exit_reason 代替。内核 vCPU 对象</p>
 </section>
 
 <section id="completion" class="mechanism-section">
@@ -227,8 +230,8 @@ mmio.data[0..3]   = 78 56 34 12</code></pre>
   </tbody></table>
   <h3 id="completion-part-1">设备已经返回数据，管理线程同时请求暂停</h3>
   <p>假设 QEMU 已把上例的 <code>78 56 34 12</code> 写入共享区，此时收到暂停请求。若直接保存 CPU 状态，内核中的 MMIO 指令仍未完成；若直接恢复正常运行，客户机又可能执行更多指令。需要的动作是：重新进入 KVM，消费这次读取结果，随后停在下一条客户机指令执行之前。</p>
-  <p><code>immediate_exit = 1</code> 提供这个“完成待处理操作后立即返回”的入口。Linux 6.18 在 KVM_RUN 入口采样该字段，记录 <code>wants_to_run = false</code>；x86 路径先调用 <code>arch.complete_userspace_io</code> 指向的继续处理函数，再检查 wants_to_run。单片段读取完成后，KVM 以 <code>-EINTR</code> 返回，期间不执行新的客户机指令。多片段 I/O 若还需用户态提供数据，会先发布下一片段；调用方要继续交接，直到整个操作完成。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L4475-L4478">入口采样</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11936-L11952">完成与退出的顺序</a></p>
-  <p>这个字段在入口读取一次。单独改写它不会使一个已经在客户机中运行的 vCPU 立即退出；QEMU 结合信号 kick 让线程离开运行路径，并在必要的重新进入中完成 I/O。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L3179-L3198">QEMU 的重新进入与 kick</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst#L6693-L6707">I/O 完成约定</a></p>
+  <p><code>immediate_exit = 1</code> 提供这个“完成待处理操作后立即返回”的入口。Linux 6.18 在 KVM_RUN 入口采样该字段，记录 <code>wants_to_run = false</code>；x86 路径先调用 <code>arch.complete_userspace_io</code> 指向的继续处理函数，再检查 wants_to_run。单片段读取完成后，KVM 以 <code>-EINTR</code> 返回，期间不执行新的客户机指令。多片段 I/O 若还需用户态提供数据，会先发布下一片段；调用方要继续交接，直到整个操作完成。入口采样、完成与退出的顺序</p>
+  <p>这个字段在入口读取一次。单独改写它不会使一个已经在客户机中运行的 vCPU 立即退出；QEMU 结合信号 kick 让线程离开运行路径，并在必要的重新进入中完成 I/O。QEMU 的重新进入与 kick、I/O 完成约定</p>
   <p>调用方要先检查 KVM_RUN 的返回值。常规返回值为 0 时才按 exit_reason 分派请求；信号等错误返回要走对应处理分支，不能重复消费共享区里上一次的 MMIO 数据。</p>
 </section>
 
@@ -241,9 +244,9 @@ mmio.data[0..3]   = 78 56 34 12</code></pre>
     <button type="button" data-mechanism-expand aria-label="放大查看提交方向：普通 MMIO 回调与 ioeventfd" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="提交方向：普通 MMIO 回调与 ioeventfd">
-    <img src="../assets/kvm-eventfd-comparison.svg?v=428e6e8b26d1" alt="同一个队列 doorbell，可以经过 QEMU 通用回调，也可以由 KVM 命中 ioeventfd 后直接通知后端。虚线表示共享内存访问；eventfd 本身只携带事件计数。" loading="lazy">
+    <img src="../assets/kvm-eventfd-comparison.svg?v=e8d4285d5a39" alt="同一个队列 doorbell，可以经过 QEMU 通用回调，也可以由 KVM 命中 ioeventfd 后直接通知后端。虚线表示共享内存访问；eventfd 本身只携带事件计数。" loading="lazy">
   </div>
-  <figcaption>同一个队列 doorbell，可以经过 QEMU 通用回调，也可以由 KVM 命中 ioeventfd 后直接通知后端。虚线表示共享内存访问；eventfd 本身只携带事件计数。 <a href="../assets/kvm-eventfd-comparison.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>同一个队列 doorbell，可以经过 QEMU 通用回调，也可以由 KVM 命中 ioeventfd 后直接通知后端。虚线表示共享内存访问；eventfd 本身只携带事件计数。 <a href="../assets/kvm-eventfd-comparison.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 客户机提交方向的普通 MMIO 与 ioeventfd 对比
     accDescr: 客户机先在共享内存发布队列内容。普通 MMIO 使 KVM_RUN 返回 QEMU 设备模型；匹配 ioeventfd 的 doorbell 写在 KVM 内发布事件并继续客户机。后端从共享队列取请求，eventfd 只通知，不传输数据。
@@ -272,19 +275,19 @@ mmio.data[0..3]   = 78 56 34 12</code></pre>
 </code></pre></details>
 </figure>
   <h3 id="notifications-part-1"><span class="mechanism-heading-number">1. </span>客户机 → 后端：ioeventfd 匹配队列通知</h3>
-  <p>QEMU 通过 <code>KVM_IOEVENTFD</code> 注册 PIO / MMIO 地址、访问长度及可选的匹配值。客户机写入 doorbell 后，KVM 在内核 I/O 总线上命中注册项，调用 <code>eventfd_signal()</code> 通知监听者，完成这次写入并继续客户机。监听者可以是 QEMU 的专用后端、内核 vhost worker 或其他后端；同一 vCPU 线程无需返回 QEMU 执行通用 MMIO 回调。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/eventfd.c#L758-L814">地址匹配与写入处理</a></p>
+  <p>QEMU 通过 <code>KVM_IOEVENTFD</code> 注册 PIO / MMIO 地址、访问长度及可选的匹配值。客户机写入 doorbell 后，KVM 在内核 I/O 总线上命中注册项，调用 <code>eventfd_signal()</code> 通知监听者，完成这次写入并继续客户机。监听者可以是 QEMU 的专用后端、内核 vhost worker 或其他后端；同一 vCPU 线程无需返回 QEMU 执行通用 MMIO 回调。地址匹配与写入处理</p>
   <p>此处省去的是特定通知导致的 <strong>KVM_RUN 用户态往返</strong>。常见 x86 路径仍需先 VM Exit 到 KVM；后端线程也仍可能被唤醒和调度。设备配置读取、不匹配的寄存器访问与异常处理继续使用各自的原路径。</p>
   <h3 id="notifications-part-2"><span class="mechanism-heading-number">2. </span>后端 → 客户机：irqfd 通知完成</h3>
-  <p>后端处理缓冲区并发布 used 记录后，可以触发与 <code>KVM_IRQFD</code> 绑定的 eventfd。KVM 根据已配置的 GSI / MSI 路由设置客户机待处理中断，按 vCPU 状态及中断允许条件交付。内核后端由此省去“通知 QEMU，再由 QEMU 调用中断注入接口”的接力；用户态后端触发 eventfd 本身仍可能需要系统调用。电平触发还涉及 resample 与撤销语义，不能简单视为无条件投递一个向量。<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst#L3177-L3204">IRQFD 接口</a></p>
+  <p>后端处理缓冲区并发布 used 记录后，可以触发与 <code>KVM_IRQFD</code> 绑定的 eventfd。KVM 根据已配置的 GSI / MSI 路由设置客户机待处理中断，按 vCPU 状态及中断允许条件交付。内核后端由此省去“通知 QEMU，再由 QEMU 调用中断注入接口”的接力；用户态后端触发 eventfd 本身仍可能需要系统调用。电平触发还涉及 resample 与撤销语义，不能简单视为无条件投递一个向量。IRQFD 接口</p>
   <figure class="mechanism-diagram" data-diagram="kvm-irqfd-comparison" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
     <span data-mechanism-title>完成方向：QEMU 中转与 irqfd</span>
     <button type="button" data-mechanism-expand aria-label="放大查看完成方向：QEMU 中转与 irqfd" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="完成方向：QEMU 中转与 irqfd">
-    <img src="../assets/kvm-irqfd-comparison.svg?v=428e6e8b26d1" alt="后端先发布 used，再通知客户机。irqfd 将 callfd 事件接入 KVM 中断路由，省去 QEMU 中转；callfd 与提交方向的 kickfd 是独立事件，完成数据仍在共享队列中。" loading="lazy">
+    <img src="../assets/kvm-irqfd-comparison.svg?v=e8d4285d5a39" alt="后端先发布 used，再通知客户机。irqfd 将 callfd 事件接入 KVM 中断路由，省去 QEMU 中转；callfd 与提交方向的 kickfd 是独立事件，完成数据仍在共享队列中。" loading="lazy">
   </div>
-  <figcaption>后端先发布 used，再通知客户机。irqfd 将 callfd 事件接入 KVM 中断路由，省去 QEMU 中转；callfd 与提交方向的 kickfd 是独立事件，完成数据仍在共享队列中。 <a href="../assets/kvm-irqfd-comparison.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>后端先发布 used，再通知客户机。irqfd 将 callfd 事件接入 KVM 中断路由，省去 QEMU 中转；callfd 与提交方向的 kickfd 是独立事件，完成数据仍在共享队列中。 <a href="../assets/kvm-irqfd-comparison.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 后端完成方向的 QEMU 中转与 irqfd 对比
     accDescr: 后端先在共享队列中发布 used。没有 irqfd 时可通知 QEMU，再调用中断注入接口；绑定 irqfd 后触发 callfd，由 KVM 中断路由处理，不必由 QEMU 中转。callfd 与提交方向的 kickfd 是两个独立事件；客户机收到中断后从 used 消费完成信息。
@@ -312,18 +315,18 @@ mmio.data[0..3]   = 78 56 34 12</code></pre>
     <tr><td>ioeventfd</td><td>客户机写 doorbell → 后端事件</td><td>匹配写入的 vCPU 用户态回调与重新进入</td><td>通常仍有 VM Exit；后端读取队列、处理请求</td></tr>
     <tr><td>irqfd</td><td>后端完成事件 → KVM 中断路由 → 客户机</td><td>经 QEMU 中转完成通知与显式注入的步骤</td><td>发布完成、路由、注入资格判断及可能的唤醒</td></tr>
   </tbody></table>
-  <p>eventfd 中不传网包、磁盘数据或描述符链。提交方向由后端读取 avail 和描述符，完成方向由客户机读取 used；双方还须遵守队列的内存顺序。通知次数可以因批处理或通知抑制而少于请求数。队列的具体布局见<a href="qemu-network-tx.html#virtqueue">virtqueue 数据结构与发包过程</a>。</p>
+  <p>eventfd 中不传网包、磁盘数据或描述符链。提交方向由后端读取 avail 和描述符，完成方向由客户机读取 used；双方还须遵守队列的内存顺序。通知次数可以因批处理或通知抑制而少于请求数。队列的具体布局见<a href="network-io.html#virtqueue">virtqueue 数据结构与发包过程</a>。</p>
 </section>
 
 <section id="implementation" class="mechanism-section">
   <h2><span class="mechanism-heading-number">八、</span>源码调用链：运行、分派与继续执行</h2>
   <table><thead><tr><th scope="col">执行层</th><th scope="col">入口与关键操作</th></tr></thead><tbody>
-    <tr><td>QEMU 外层循环</td><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L3154-L3254"><code>kvm_cpu_exec()</code></a> 调用 KVM_RUN，按 IO / MMIO 等原因分派，处理完成后继续循环。</td></tr>
-    <tr><td>KVM 入口与收尾</td><td><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11936-L11956"><code>kvm_arch_vcpu_ioctl_run()</code></a> 先调用 complete_userspace_io，再检查是否继续执行，进入 vcpu_run。</td></tr>
-    <tr><td>内核执行循环</td><td><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11596-L11643"><code>vcpu_run()</code></a> 调用 vcpu_enter_guest；处理结果大于 0 时继续，等于 0 时返回请求，小于 0 时返回错误。</td></tr>
-    <tr><td>硬件退出分派</td><td><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmx.c#L6108-L6128"><code>kvm_vmx_exit_handlers</code></a> 将 VMX 原因对应到 CPUID、端口 I/O、控制寄存器等处理函数。</td></tr>
-    <tr><td>MMIO 继续处理</td><td><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c#L11743-L11803"><code>complete_emulated_mmio()</code></a> 消费本片段读结果，推进剩余片段，全部完成后继续指令模拟。</td></tr>
-    <tr><td>端口 I/O</td><td><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L2844-L2855"><code>kvm_handle_io()</code></a> 以 size 和 count 遍历紧凑数据数组，访问 QEMU 的 I/O 地址空间。</td></tr>
+    <tr><td>QEMU 外层循环</td><td><code>kvm_cpu_exec()</code> 调用 KVM_RUN，按 IO / MMIO 等原因分派，处理完成后继续循环。</td></tr>
+    <tr><td>KVM 入口与收尾</td><td><code>kvm_arch_vcpu_ioctl_run()</code> 先调用 complete_userspace_io，再检查是否继续执行，进入 vcpu_run。</td></tr>
+    <tr><td>内核执行循环</td><td><code>vcpu_run()</code> 调用 vcpu_enter_guest；处理结果大于 0 时继续，等于 0 时返回请求，小于 0 时返回错误。</td></tr>
+    <tr><td>硬件退出分派</td><td><code>kvm_vmx_exit_handlers</code> 将 VMX 原因对应到 CPUID、端口 I/O、控制寄存器等处理函数。</td></tr>
+    <tr><td>MMIO 继续处理</td><td><code>complete_emulated_mmio()</code> 消费本片段读结果，推进剩余片段，全部完成后继续指令模拟。</td></tr>
+    <tr><td>端口 I/O</td><td><code>kvm_handle_io()</code> 以 size 和 count 遍历紧凑数据数组，访问 QEMU 的 I/O 地址空间。</td></tr>
   </tbody></table>
   <p>内核处理函数返回的“继续执行”与 KVM_RUN 对用户态返回的 0 含义不同。前者让内核循环继续，后者表示 ioctl 正常结束、用户态应检查退出原因。读调用链时需要保留这两个层次。</p>
 </section>
@@ -334,9 +337,9 @@ mmio.data[0..3]   = 78 56 34 12</code></pre>
 <section id="evolution" class="mechanism-section">
   <h2><span class="mechanism-heading-number">九、</span>演进与取舍：减少往返，保留正确交接</h2>
   <p>用户态设备模拟便于实现多种设备，但高频寄存器访问会反复经过 KVM_RUN 返回、地址空间分派和重新进入。virtio 将大量工作描述放进共享队列，把寄存器访问集中到配置与通知；队列记录和实际数据留在客户机内存中。这降低了每个请求必须经过用户态寄存器处理的需求。</p>
-  <p>2009 年，Linux 引入 <a href="https://github.com/torvalds/linux/commit/d34e6b175e61821026893ec5298cc8e7558df43a">ioeventfd</a> 和 <a href="https://github.com/torvalds/linux/commit/721eecbf4fe995ca94a9edec0c9843b1cc0eaaf3">irqfd</a>。ioeventfd 的原始设计抓住了两类访问的区别：设备寄存器读取需要同步返回数据，而队列 doorbell 写入只负责通知后端有新工作，可以在发布事件后继续执行客户机。这为通知路径提供了比完整设备模拟更短的交接方式。</p>
+  <p>2009 年，Linux 引入 ioeventfd 和 irqfd。ioeventfd 的原始设计抓住了两类访问的区别：设备寄存器读取需要同步返回数据，而队列 doorbell 写入只负责通知后端有新工作，可以在发布事件后继续执行客户机。这为通知路径提供了比完整设备模拟更短的交接方式。</p>
   <p>ioeventfd / irqfd 缩短通知交接，<a href="qemu-vhost-net.html">vhost 与 vhost-user</a>再调整由谁执行队列的数据处理。两项优化可以组合，但收益来源不同：前者减少控制通知往返，后者改变数据面的执行上下文。配置变更、异常处理及不匹配访问仍需完整设备语义。</p>
-  <p>在启用 HLT 截获的配置下，客户机执行 HLT 后，KVM 决定是否短暂轮询或阻塞宿主线程，具体过程见<a href="kvm-vcpu-halt.html">KVM vCPU 的阻塞、轮询与唤醒</a>。Idle Passthrough 则可让 HLT 直接进入硬件等待，不经过这条阻塞路径；<a href="cpu-execution.html?scenario=hlt-passthrough#walkthrough">对照演示</a>同时说明 posted 唤醒的额外条件，不能由 HLT 直通推断所有事件都免退出。</p>
+  <p>在启用 HLT 截获的配置下，客户机执行 HLT 后，KVM 决定是否短暂轮询或阻塞宿主线程，具体过程见<a href="kvm-vcpu-halt.html">KVM vCPU 的阻塞、轮询与唤醒</a>。Idle Passthrough 则可让 HLT 直接进入硬件等待，不经过这条阻塞路径；<a href="cpu-virtualization.html?scenario=hlt-passthrough#walkthrough">对照演示</a>同时说明 posted 唤醒的额外条件，不能由 HLT 直通推断所有事件都免退出。</p>
   <table><thead><tr><th scope="col">机制</th><th scope="col">减少的工作</th><th scope="col">增加的约束或代价</th></tr></thead><tbody>
     <tr><td>共享 virtqueue</td><td>逐项寄存器交接，允许批量提交与完成</td><td>描述符所有权、内存顺序及通知抑制需要双方配合</td></tr>
     <tr><td>ioeventfd</td><td>特定队列通知返回 vCPU 用户态线程的往返</td><td>需要建立地址匹配与事件生命周期</td></tr>
@@ -361,12 +364,12 @@ mmio.data[0..3]   = 78 56 34 12</code></pre>
   </ul>
 </section></div>
   </div>
-  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#kvm-internals">KVM 内部机制原理</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-10-19">2026-10-19</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
+  <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#kvm-internals">KVM 原理</a></nav>
+<p class="mechanism-review">技术复核：<time datetime="2026-10-19">2026-10-19</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=428e6e8b26d1" defer></script>
+<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
 </body>
 </html>

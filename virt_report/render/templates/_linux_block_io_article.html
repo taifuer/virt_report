@@ -81,13 +81,12 @@
   <h2>只读观察与虚拟磁盘</h2>
   <p><code>/proc/PID/io</code> 区分部分进程级 I/O 计数，<code>/proc/diskstats</code> 提供块设备统计。它们的统计层次不同，预读、缓存、合并和文件系统元数据都会影响对应关系；应看同一时间窗口的增量，而不是直接拿累计字节相除得出命中率。</p>
   <p>还可只读查看 <code>/sys/block/设备名/queue/</code> 下存在的 <code>scheduler</code>、<code>nr_requests</code>、<code>logical_block_size</code> 等属性。它们分别描述调度选择、部分请求分配限制与块大小，不能用一个字段代替所有层的队列深度；不同设备驱动暴露的属性也不完全相同。</p>
-  <p>虚机应分别观察 Guest、QEMU 和宿主设备：Guest 页缓存命中时没有新的 virtio 请求，宿主页缓存命中时也可能没有物理读。通过 <a href="virtio-blk-read.html">磁盘 I/O 演示</a> 可继续观察 Descriptor Table、Buffer、Available Ring、Used Ring 和完成通知。</p>
+  <p>虚机应分别观察 Guest、QEMU 和宿主设备：Guest 页缓存命中时没有新的 virtio 请求，宿主页缓存命中时也可能没有物理读。通过 <a href="qemu-virtio-blk.html">磁盘 I/O 演示</a> 可继续观察 Descriptor Table、Buffer、Available Ring、Used Ring 和完成通知。</p>
 </section>
 <section id="sources" class="mechanism-section">
-  <h2>源码与延伸阅读</h2>
+  <h2>源码与参考资料</h2>
   <ul>
     <li><a href="{{ linux }}Documentation/block/blk-mq.rst">blk-mq 结构与完成路径</a>、<a href="{{ linux }}Documentation/block/writeback_cache_control.rst">块设备写缓存、FLUSH 与 FUA</a>。</li>
     <li><a href="{{ linux }}block/blk-core.c#L911">submit_bio()</a>、<a href="{{ linux }}block/blk-mq.c#L1158">请求完成</a>；接口语义可对照 <a href="https://man7.org/linux/man-pages/man2/fsync.2.html">fsync(2)</a>。</li>
-    <li>继续阅读 <a href="linux-memory.html">页缓存与内存回收背景</a>、<a href="qemu-virtio-blk.html">QEMU virtio-blk 后端</a>、<a href="qemu-aio-iothread.html">异步 I/O 与 IOThread</a>。</li>
   </ul>
 </section>

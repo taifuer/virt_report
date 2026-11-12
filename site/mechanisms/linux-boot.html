@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Linux 系统启动：从固件到用户空间 - virt-report</title>
+  <meta name="description" content="沿固件、引导程序、内核初始化、initramfs 与 PID 1，追踪设备、根文件系统和应用如何依次就绪。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
+  <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=0ad6552bf0f5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true">/</span><a href="../mechanisms.html#linux-foundations">Linux 内核</a></div>
+    <h1>Linux 系统启动：从固件到用户空间</h1>
+    <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、从固件交接到应用运行</a></li><li><a href="#firmware">二、固件与引导程序的资源准备</a></li><li><a href="#early">三、内核早期入口：让内核代码能够运行</a></li><li><a href="#kernel">四、start_kernel：建立通用内核环境</a></li><li><a href="#devices">五、驱动发现设备，准备访问根文件系统</a></li><li><a href="#root">六、initramfs、真实根与首个用户程序</a></li><li><a href="#services">七、PID 1 与服务、应用的启动</a></li><li><a href="#observation">八、按阶段定位启动问题</a></li><li><a href="#sources">九、源码与参考资料</a></li></ol>
+    </nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">一、</span>从固件交接到应用运行</h2>
+  <p>Linux 启动逐步建立可供应用使用的执行环境：固件提供最初的机器初始化，引导程序准备内核映像和参数，内核接管 CPU、内存与设备，首个用户进程组织系统服务，最后启动登录程序与业务应用。每一阶段给下一阶段留下明确的代码入口和资源信息。</p>
+  <p>本文以 x86-64 Linux 和使用 systemd 的常见发行版为例。BIOS、UEFI 影响前面的引导方式，发行版决定 initramfs 和服务组织；内核的核心职责保持一致。虚拟机中，固件与 Linux 在 vCPU 上执行，磁盘、网卡和中断控制器由虚拟平台提供。</p>
+<p class="mechanism-baselines">源码版本：Linux 6.18。</p>  <figure class="mechanism-diagram" data-diagram="linux-boot-handoff" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>从固件到用户空间的启动交接</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看从固件到用户空间的启动交接" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="从固件到用户空间的启动交接">
+    <img src="../assets/linux-boot-handoff.svg?v=e8d4285d5a39" alt="内核初始化完成后，PID 1 执行用户程序。带 initramfs 的常见启动路径先运行 /init，准备真实根，再执行系统 init。" loading="lazy">
+  </div>
+  <figcaption>内核初始化完成后，PID 1 执行用户程序。带 initramfs 的常见启动路径先运行 /init，准备真实根，再执行系统 init。 <a href="../assets/linux-boot-handoff.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart LR
+  accTitle: Linux 从固件到用户空间的启动交接
+  accDescr: 固件和引导程序准备内核、参数与可选的 initramfs。内核早期入口进入 start_kernel，再由 PID 1 的 kernel_init 路径完成后续初始化。有早期用户空间时，PID 1 执行 initramfs 的 /init，准备并切换真实根，最后执行用户态 init 并组织服务与应用。没有早期 /init 时，内核尝试直接挂载根并执行 init。
+  subgraph BOOT[&#34;加载与交接&#34;]
+    direction TB
+    F[&#34;BIOS / UEFI 固件&#34;] --&gt; L[&#34;引导程序或 EFI stub&lt;br/&gt;内核、参数、可选 initramfs&#34;]
+  end
+  subgraph KERNEL[&#34;内核初始化&#34;]
+    direction TB
+    E[&#34;早期入口&lt;br/&gt;页表、栈、解压与重定位&#34;] --&gt; S[&#34;start_kernel → rest_init&#34;]
+    S --&gt; P[&#34;PID 1：kernel_init&lt;br/&gt;SMP、驱动、initcall&#34;]
+  end
+  subgraph USER[&#34;根与用户空间&#34;]
+    direction TB
+    N{&#34;早期 /init 可用&#34;} --&gt;|是| I
+    I[&#34;PID 1 执行 /init&lt;br/&gt;准备真实根、switch_root&#34;] --&gt; R[&#34;真实根中的 init&lt;br/&gt;例如 systemd&#34;]
+    N --&gt;|否：内核挂载根| R
+    R --&gt; A[&#34;服务与应用&#34;]
+  end
+  BOOT --&gt; KERNEL --&gt; USER
+  classDef prep fill:#e4f1ed,stroke:#78a399,color:#163c38;
+  classDef kernel fill:#edf3fa,stroke:#7897b3,color:#243d53;
+  classDef user fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class F,L prep;
+  class E,S,P kernel;
+  class N,I,R,A user;
+</code></pre></details>
+</figure>
+</section>
+<section id="firmware" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">二、</span>固件与引导程序的资源准备</h2>
+  <p>CPU 从平台定义的复位入口执行固件。固件准备基础硬件，提供内存布局和 ACPI 等平台信息，并按启动配置选择设备或可执行映像。传统 BIOS 硬盘引导从启动扇区转入后续引导程序；UEFI 可加载 EFI System Partition 中的 EFI 程序。</p>
+  <p>GRUB 等引导程序读取 Linux 内核映像、可选的 initramfs 和内核命令行，再按启动协议交接。UEFI 也可加载带 EFI stub 的 Linux 映像，或使用封装内核及其他启动资源的统一内核映像，具体取决于系统配置。</p>
+  <table><thead><tr><th>交接内容</th><th>用途</th></tr></thead><tbody>
+    <tr><td>内核映像与入口</td><td>提供启动代码；磁盘上的文件偏移、加载地址和最终内核虚拟地址是不同的坐标。</td></tr>
+    <tr><td>内存布局、启动参数</td><td>告诉内核哪些范围可用、哪些需保留，以及平台和引导信息。</td></tr>
+    <tr><td>命令行</td><td>例如 root=、console=，控制根设备选择、日志输出及其他初始化行为。</td></tr>
+    <tr><td>initramfs</td><td>提供早期用户空间、驱动模块和挂载真实根所需的工具。</td></tr>
+  </tbody></table>
+</section>
+<section id="early" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">三、</span>内核早期入口：让内核代码能够运行</h2>
+  <p>x86 bzImage 的启动入口取决于引导程序采用的协议。压缩映像的启动代码准备栈和临时页表，建立所需执行模式，解压并重定位内核，再跳入解压后内核的架构入口。支持的 64 位入口已有相应模式前提，不必重复所有 32 位入口步骤。</p>
+  <p><code>arch/x86/boot/compressed/head_64.S</code> 和 <code>arch/x86/kernel/head_64.S</code> 分属压缩映像与最终内核。后者继续建立早期映射和 CPU 状态，逐步进入通用 C 初始化流程。此时还没有完整的文件系统、普通用户进程或全功能驱动环境；初始化代码依赖事先保留的空间和早期分配机制。</p>
+  <p>接收平台内存图后，内核用 memblock 等早期管理手段预留自身、initramfs 和其他保留区，再建立正式页管理。启动参数中的物理地址需要按对应阶段的映射访问。</p>
+</section>
+<section id="kernel" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">四、</span>start_kernel：建立通用内核环境</h2>
+  <p><code>start_kernel()</code> 串起架构设置、命令行处理、内存管理、调度、中断、时钟、RCU 与 VFS 等基础初始化。许多步骤有先后依赖：可以创建任务前要有调度基础，可以接收常规事件前要准备相应中断与计时状态。</p>
+  <p>主启动路径最初由引导 CPU 执行。其他 CPU 在后续 SMP 初始化中启动，并建立各自的内核栈、每 CPU 数据、调度和中断状态。它们随后共同承担内核工作和用户线程；增加在线 CPU 是建立并行执行条件，具体任务仍由调度器分配。</p>
+  <p><code>rest_init()</code> 创建执行 <code>kernel_init()</code> 的 PID 1 任务及 <code>kthreadd</code>。原始启动任务转入 boot CPU 的 idle 路径；PID 1 此时仍执行内核代码，继续 SMP、驱动和 initcall 等初始化，之后才装载第一个用户程序。</p>
+</section>
+<section id="devices" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">五、</span>驱动发现设备，准备访问根文件系统</h2>
+  <p>平台信息与总线枚举提供设备描述，驱动匹配设备并执行 probe，建立寄存器映射、队列、DMA 和中断连接。内建驱动可在内核初始化期间工作；模块驱动需要后续用户空间加载。probe 可能异步执行或因依赖未就绪而推迟，某个初始化函数返回不意味着所有设备已经可用。</p>
+  <p>例如根文件系统在 virtio-blk 磁盘上，系统必须能使用 virtio 总线、块驱动和对应文件系统。驱动若编成模块且只存在于尚未挂载的根目录，就形成依赖闭环；initramfs 把这些早期必需的模块和工具提前带入内存。</p>
+  <p>网卡驱动加载完成后，接口的 IP、路由与业务配置通常仍由用户空间完成。本地磁盘启动一般无需等待网卡联网；网络根文件系统则需要在挂载根之前准备相应网络条件。</p>
+</section>
+<section id="root" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>initramfs、真实根与首个用户程序</h2>
+  <p>initramfs 是可解包到 rootfs 的文件归档，可随内核内建或由引导程序提供。存在可执行的早期 <code>/init</code> 时，内核通过 <code>run_init_process() → kernel_execve()</code> 让 PID 1 执行它，进入用户态。这个程序可以加载模块、激活 LVM、解锁加密卷或准备网络根。</p>
+  <p>真实根就绪后，早期用户空间挂载它，再通过 switch_root 等流程切换根并执行真实根内的 init。通常是同一个 PID 1 换入新的程序映像，进程号保持不变；switch_root 操作由早期用户空间组织。</p>
+  <p>没有可用的早期 /init 时，内核走自身的根挂载流程，并按配置执行指定 init 或尝试 <code>/sbin/init</code> 等路径。这要求必需驱动和文件系统已经可用。真实根也不一定是磁盘分区，嵌入式系统可以继续使用内存中的根文件系统。</p>
+  <p>exec 装入代码、数据、用户栈和入口；动态链接程序还要先运行解释器。CPU 从内核态返回用户态后，才执行新用户程序的指令。PID 1 的创建、进入用户态、启动服务分别发生在不同阶段。</p>
+</section>
+<section id="services" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">七、</span>PID 1 与服务、应用的启动</h2>
+  <p>在本例发行版中，systemd 作为 PID 1 读取 unit 配置，按依赖与顺序关系组织挂载、设备、socket 和服务。可并行的任务共同推进；某个服务可能要等待文件系统、设备或其他服务。系统并不是从头到尾串行执行一张固定脚本表。</p>
+  <p>启动目标通常由 default.target 指向多用户或图形环境。到达目标表示其组织的启动工作达到相应状态，但业务还应有自己的健康检查。网卡存在、地址配置完成、远端服务可访问，也各有独立的完成条件。</p>
+  <p>普通应用随后由服务管理器或登录 Shell 启动，获得进程、地址空间和文件描述符，再通过系统调用使用内核资源。启动阶段建立的调度器、页管理和驱动由此转入长期运行。</p>
+</section>
+<section id="observation" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">八、</span>按阶段定位启动问题</h2>
+  <p>下面是只读观察命令。日志访问可能需要权限；systemd 命令只适用于使用该服务管理器的系统。</p>
+  <pre><code>cat /proc/cmdline
+dmesg
+findmnt /
+ps -p 1 -o pid,comm,args
+systemd-analyze time
+systemd-analyze critical-chain
+journalctl -b -k</code></pre>
+  <table><thead><tr><th>现象</th><th>优先核对</th></tr></thead><tbody>
+    <tr><td>固件找不到引导项</td><td>启动设备、EFI/BIOS 模式、引导程序和磁盘内容。</td></tr>
+    <tr><td>看不到内核日志</td><td>入口和映像兼容性、console= 及实际显示/串口配置；日志不可见本身不足以证明内核未运行。</td></tr>
+    <tr><td>无法挂载根或停在早期 Shell</td><td>root=、UUID、必需驱动、initramfs、解密或卷激活。</td></tr>
+    <tr><td>内核启动后等待很久</td><td>驱动探测、挂载、unit 依赖与服务自身的初始化。</td></tr>
+  </tbody></table>
+  <p>启动耗时应分为固件、引导、内核、早期用户空间和服务阶段。systemd-analyze 的可见范围取决于平台提供的时间信息；critical-chain 也不是所有后台工作和业务延迟的完整记录。</p>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">九、</span>源码与参考资料</h2>
+  <ul>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/arch/x86/boot.rst">Linux 6.18：x86 启动协议</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/admin-guide/efi-stub.rst">EFI stub</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/boot/compressed/head_64.S">压缩映像入口</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kernel/head_64.S">内核架构入口</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/init/main.c#L711">start_kernel、rest_init 与 kernel_init</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/init/do_mounts.c">根文件系统准备</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/filesystems/ramfs-rootfs-initramfs.rst">rootfs 与 initramfs</a></li>
+    <li><a href="https://www.freedesktop.org/software/systemd/man/latest/bootup.html">systemd 启动流程</a>、<a href="https://www.freedesktop.org/software/systemd/man/latest/systemd-analyze.html">systemd-analyze</a></li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#linux-foundations">Linux 内核</a></nav>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-12">2026-11-12</time> · 针对文中标注的源码与规范基线。</p></article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=0ad6552bf0f5"></script>
+<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
+</body>
+</html>

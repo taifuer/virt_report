@@ -172,7 +172,7 @@ def test_eoi_does_not_consume_shared_queue(scene_id):
 
 
 def test_interrupt_article_diagram_preserves_its_rx_completion_byte_count():
-    article = (TEMPLATES / "_interrupt_article.html").read_text()
+    article = (TEMPLATES / "_interrupt_overview_article.html").read_text()
     diagram = (CONTENT / "diagrams/interrupt-completion.mmd").read_text()
     exported = (CONTENT.parent / "render/assets/interrupt-completion.svg").read_text()
     assert "1500 字节帧与 12 字节网络头，共 1512 字节" in article
@@ -333,13 +333,18 @@ def test_posted_interrupt_distinguishes_pir_virr_and_visr():
     assert {state["exit"] for state in trace.values()} == {"0"}
 
 
-@pytest.mark.parametrize("stem", ["cpu_execution", "interrupt_delivery"])
-def test_articles_have_main_line_shared_player_and_existing_local_links(stem):
+@pytest.mark.parametrize("stem,sections", [
+    ("cpu_overview", ["preface", "paths", "walkthrough", "comparison",
+                      "evolution", "evaluation", "sources"]),
+    ("interrupt_overview", ["preface", "example", "controllers", "notification",
+                            "delivery", "irqfd", "acceleration", "walkthrough",
+                            "implementation", "evolution",
+                            "evaluation", "sources"]),
+])
+def test_articles_have_main_line_shared_player_and_existing_local_links(stem, sections):
     article = (TEMPLATES / f"_{stem}_article.html").read_text()
     assert "{% include '_execution_lab.html' %}" in article
-    assert re.findall(r'<section id="([^"]+)"', article) == [
-        "preface", "walkthrough", "comparison", "evolution", "sources",
-    ]
+    assert re.findall(r'<section id="([^"]+)"', article) == sections
     known = {item["slug"] for item in
              json.loads((CONTENT / "mechanisms.json").read_text())["articles"]}
     for target in re.findall(r'href="([a-z0-9-]+)\.html(?:#[^"]*)?"', article):

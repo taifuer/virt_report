@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=428e6e8b26d1">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=428e6e8b26d1">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -43,17 +43,20 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#qemu-internals">QEMU 内部机制</a></div>
+    <div class="mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true">/</span><a href="../mechanisms.html#qemu-internals">QEMU 原理</a></div>
     <h1>QEMU 内部机制：机器模型、请求处理与状态协调</h1>
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2><ol id="mechanism-toc-links"><li><a href="#preface">一、QEMU 系统模拟器的职责</a></li><li><a href="#architecture">二、机器接口、执行引擎与后端的分工</a></li><li><a href="#example">三、一次 4 KiB 读取的请求与完成路径</a></li><li><a href="#objects">四、类型、对象与资源连接关系</a></li><li><a href="#execution">五、线程分工、执行上下文与状态同步</a></li><li><a href="#lifecycle">六、暂停、设备移除与异步请求收尾</a></li><li><a href="#evolution">七、从集中模拟到多线程与独立后端</a></li><li><a href="#evaluation">八、按请求经过的边界定位问题</a></li><li><a href="#reading">九、沿请求路径深入阅读</a></li><li><a href="#sources">十、参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、QEMU 系统模拟器的职责</a></li><li><a href="#architecture">二、机器接口、执行引擎与后端的分工</a></li><li><a href="#example">三、一次 4 KiB 读取的请求与完成路径</a></li><li><a href="#objects">四、类型、对象与资源连接关系</a></li><li><a href="#execution">五、线程分工、执行上下文与状态同步</a></li><li><a href="#lifecycle">六、暂停、设备移除与异步请求收尾</a></li><li><a href="#evolution">七、从集中模拟到多线程与独立后端</a></li><li><a href="#evaluation">八、按请求经过的边界定位问题</a></li><li><a href="#sources">九、参考资料</a></li></ol>
+    </nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>QEMU 系统模拟器的职责</h2>
   <p>QEMU 系统模拟器建立客户机可见的机器，包括 CPU、内存、总线、设备和固件，并将它们连接到执行引擎及实际 I/O 后端。操作系统除了执行指令，还要发现设备、访问磁盘并接收中断；这些操作依赖确定的地址布局、设备寄存器和复位状态。采用 KVM 加速时，兼容架构的客户机指令可以在硬件上执行，QEMU 继续维护机器模型并处理需要用户态参与的设备操作。</p>
   <p>本文以 KVM 加速、现代 virtio PCI 接口、split virtqueue 和配置了 IOThread 的 virtio-blk 为例，通过一次 4 KiB 读取介绍对象组织、设备请求、执行上下文与生命周期管理。</p>
-<p class="mechanism-baselines">源码版本：<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p></section>
+<p class="mechanism-baselines">源码版本：QEMU 10.2.0。</p></section>
 
 <section id="architecture" class="mechanism-section">
   <h2><span class="mechanism-heading-number">二、</span>机器接口、执行引擎与后端的分工</h2>
@@ -70,9 +73,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看客户机接口、执行路径与实际资源" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="客户机接口、执行路径与实际资源">
-    <img src="../assets/qemu-internals-overview.svg?v=428e6e8b26d1" alt="设备模型维持客户机可见的协议，CPU 执行和 I/O 后端各自推进工作。QMP 位于管理路径；客户机数据请求无需逐次经过管理命令。" loading="lazy">
+    <img src="../assets/qemu-internals-overview.svg?v=e8d4285d5a39" alt="设备模型维持客户机可见的协议，CPU 执行和 I/O 后端各自推进工作。QMP 位于管理路径；客户机数据请求无需逐次经过管理命令。" loading="lazy">
   </div>
-  <figcaption>设备模型维持客户机可见的协议，CPU 执行和 I/O 后端各自推进工作。QMP 位于管理路径；客户机数据请求无需逐次经过管理命令。 <a href="../assets/qemu-internals-overview.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>设备模型维持客户机可见的协议，CPU 执行和 I/O 后端各自推进工作。QMP 位于管理路径；客户机数据请求无需逐次经过管理命令。 <a href="../assets/qemu-internals-overview.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: QEMU 的机器接口、执行引擎与 I/O 后端
     accDescr: QEMU 用机器与设备模型组织客户机接口，通过 KVM 或 TCG 运行客户机代码，通过块或网络后端访问实际资源。QMP 是单独的管理路径，数据请求无需逐次经过管理命令。
@@ -111,9 +114,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看从请求发布到缓冲区归还" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="从请求发布到缓冲区归还">
-    <img src="../assets/qemu-overview-read-lifecycle.svg?v=428e6e8b26d1" alt="本例配置 ioeventfd 与 IOThread。共享队列交接请求及完成，块层向存储后端提交操作；等待 I/O 的协程让出执行，完成后继续发布结果。" loading="lazy">
+    <img src="../assets/qemu-overview-read-lifecycle.svg?v=e8d4285d5a39" alt="本例配置 ioeventfd 与 IOThread。共享队列交接请求及完成，块层向存储后端提交操作；等待 I/O 的协程让出执行，完成后继续发布结果。" loading="lazy">
   </div>
-  <figcaption>本例配置 ioeventfd 与 IOThread。共享队列交接请求及完成，块层向存储后端提交操作；等待 I/O 的协程让出执行，完成后继续发布结果。 <a href="../assets/qemu-overview-read-lifecycle.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>本例配置 ioeventfd 与 IOThread。共享队列交接请求及完成，块层向存储后端提交操作；等待 I/O 的协程让出执行，完成后继续发布结果。 <a href="../assets/qemu-overview-read-lifecycle.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 从 4 KiB 读取请求到缓冲区归还
     accDescr: 客户机发布头、数据和状态组成的描述符链，经 ioeventfd 通知 IOThread。QEMU 解析请求后提交块后端，等待数据完成，写回状态和 used，再按需通知客户机回收。
@@ -140,7 +143,7 @@
     <li><strong>等待实际数据。</strong>块层可异步执行或挂起协程，存储完成后恢复。等待期间事件循环可以处理其他工作；客户机其他 vCPU 也可继续执行。</li>
     <li><strong>归还结果。</strong>成功后数据缓冲区已填入 4 KiB，状态写为 OK，设备在 used ring 发布完成记录，并按需通知客户机。驱动据此找到原请求、使用数据并回收缓冲区。</li>
   </ol>
-  <p>这条路径串起了 QEMU 的四项工作：解释设备协议、访问客户机内存、调用实际后端、发布完成状态。一次通知可以对应多个完成，后端也可能返回错误。描述符字段与完成长度的计算放在<a href="qemu-virtio-blk.html">virtio-blk 专篇</a>；源码入口分别是<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c#L787-L868">请求解析</a>与<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c#L54-L66">完成发布</a>。</p>
+  <p>这条路径串起了 QEMU 的四项工作：解释设备协议、访问客户机内存、调用实际后端、发布完成状态。一次通知可以对应多个完成，后端也可能返回错误。描述符字段与完成长度的计算放在<a href="qemu-virtio-blk.html">virtio-blk 专篇</a>；源码入口分别是请求解析与完成发布。</p>
 </section>
 
 <section id="objects" class="mechanism-section">
@@ -148,14 +151,14 @@
   <p>前面的读取发生时，设备队列、BlockBackend 和镜像节点已经连好。创建阶段把磁盘后端关联到 virtio-blk 实例，运行阶段的处理函数再通过该实例找到后端。于是磁盘偏移 1 MiB 的读取始终落到这块磁盘自己的块图，即使另一块磁盘使用相同的设备代码，也会走它自己的资源连接。</p>
   <p>同一台机器可以有两块 virtio 磁盘。它们共享寄存器与请求格式的实现，却各有容量、队列、后端和未完成请求。QEMU 用“类型”保存共同的方法与属性规则，用“对象实例”保存各自状态；类型继承还能复用通用设备能力。这套机制称为 QOM，设备框架 qdev 在其上管理设备与总线生命周期。</p>
   <p>对象创建后先有默认状态，再设置属性、关联后端，通过 <code>realize</code> 检查配置并建立可工作的设备。因此“分配对象”和“设备准备完成”是两个阶段，错误必须在合适阶段回收已取得的资源。</p>
-  <p>连接关系也不止一类：QOM 对象树表达组成和引用，PCI 总线表达客户机拓扑；MemoryRegion 描述 RAM 或设备地址区域，AddressSpace 提供访问视图；块设备图则表达格式节点、文件或协议节点之间的数据关系。一次设备访问会跨过这些关系，单看对象树无法还原完整 I/O 路径。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/qom.rst#L9-L76">QOM 类型与设备生命周期</a></p>
+  <p>连接关系也不止一类：QOM 对象树表达组成和引用，PCI 总线表达客户机拓扑；MemoryRegion 描述 RAM 或设备地址区域，AddressSpace 提供访问视图；块设备图则表达格式节点、文件或协议节点之间的数据关系。一次设备访问会跨过这些关系，单看对象树无法还原完整 I/O 路径。QOM 类型与设备生命周期</p>
 </section>
 
 <section id="execution" class="mechanism-section">
   <h2><span class="mechanism-heading-number">五、</span>线程分工、执行上下文与状态同步</h2>
   <p>常见 KVM 配置中，每个 vCPU 由对应线程运行；主循环处理 QMP 和许多设备事件；IOThread 为支持的设备队列提供独立事件循环。多个设备可以共享一个 IOThread，同一设备的多个队列也可以分给不同 IOThread。设备配置与数据请求由此可能在不同线程访问，需要各自的同步规则。</p>
   <p>AioContext 记录某个事件循环要关注的文件描述符、定时器和延迟回调。前面的 4 KiB 读取等待存储时，请求对象保留设备、队列与缓冲区的关联，协程保留尚未执行完的调用栈。完成后沿保存的关联找回原请求，再把结果写入原来的客户机缓冲区。协程让出所在宿主线程后，该线程可以推进别的请求；跨线程完成则通过事件通知、调度回调及相应同步交接。</p>
-  <p>历史设备代码常由主循环与 BQL（全局互斥锁）保护；具备 IOThread 支持的数据路径采用自己的线程约束和同步方式。增加 IOThread 不会自动使任意设备回调线程安全。配置变更尤其需要防止主线程释放对象时，另一线程仍在使用请求缓冲区或块节点。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/multiple-iothreads.rst#L51-L139">执行上下文与同步约定</a></p>
+  <p>历史设备代码常由主循环与 BQL（全局互斥锁）保护；具备 IOThread 支持的数据路径采用自己的线程约束和同步方式。增加 IOThread 不会自动使任意设备回调线程安全。配置变更尤其需要防止主线程释放对象时，另一线程仍在使用请求缓冲区或块节点。执行上下文与同步约定</p>
 </section>
 
 <section id="lifecycle" class="mechanism-section">
@@ -177,20 +180,10 @@
   <p>QEMU 的组织方式可以概括为：设备模型维持接口语义，对象与连接关系组织资源，执行上下文推进工作，生命周期规则保证变更安全。性能改进可以改变工作的位置，但请求与状态交接仍要完整。</p>
 </section>
 
-<section id="reading" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">九、</span>沿请求路径深入阅读</h2>
-  <ul>
-    <li><a href="qemu-vm-startup.html">QEMU 虚拟机启动</a> → <a href="qemu-qom-device.html">QOM 与设备生命周期</a>：机器如何建立。</li>
-    <li><a href="qemu-memory-region.html">MemoryRegion 与地址空间</a>：地址如何找到 RAM 或设备。</li>
-    <li><a href="qemu-virtio-blk.html">virtio-blk 请求处理</a> → <a href="qemu-qcow2.html">qcow2 地址映射</a>：读写、完成与持久化边界。</li>
-    <li><a href="qemu-live-block-operations.html">外部快照与在线块操作</a>：backing 链、stream/commit 方向与 mirror 切换。</li>
-    <li><a href="qemu-aio-iothread.html">AioContext 与 IOThread</a>：线程、协程和完成回调。</li>
-    <li><a href="qemu-network-tx.html#virtqueue">virtqueue 数据结构与交互图</a>：描述符、环槽和缓冲区的关系。</li>
-  </ul>
-</section>
 
+<span id="reading" class="mechanism-topic-alias" aria-hidden="true"></span>
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">十、</span>参考资料</h2>
+  <h2><span class="mechanism-heading-number">九、</span>参考资料</h2>
   <ul>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/system/introduction.rst">QEMU：系统模拟与执行加速器</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/qom.rst">QOM 设计</a>。</li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c#L787-L868">virtio-blk 请求解析</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c#L54-L66">完成与通知</a>。</li>
@@ -199,12 +192,12 @@
   </ul>
 </section></div>
   </div>
-  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#qemu-internals">QEMU 内部机制原理</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-10-19">2026-10-19</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
+  <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#qemu-internals">QEMU 原理</a></nav>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-12">2026-11-12</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=428e6e8b26d1" defer></script>
+<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
 </body>
 </html>

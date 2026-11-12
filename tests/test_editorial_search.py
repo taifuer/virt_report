@@ -5,7 +5,7 @@ import subprocess
 import pytest
 
 from virt_report import conferences, db, editorial_search, mechanisms, search, versions
-from virt_report.config import Config
+from virt_report.config import Config, Render
 from virt_report.render import render
 
 
@@ -13,19 +13,19 @@ def test_catalogue_covers_published_pages_without_redirect_duplicates():
     documents = editorial_search.catalogue()["documents"]
     assert len([item for item in documents if item["kind"] in {"articles", "demos"}]) == len(mechanisms.articles())
     assert len([item for item in documents if item["kind"] == "papers"]) == conferences.load_content()["paper_count"]
-    assert {item["kind"] for item in documents} == {"articles", "demos", "papers", "versions"}
+    assert {item["kind"] for item in documents} == {"articles", "papers", "versions"}
     assert len({item["href"] for item in documents}) == len(documents)
     assert not ({item["slug"] for item in documents} & {item["slug"] for item in mechanisms.redirects()})
-    assert len([item for item in documents if item["kind"] == "demos"]) == 7
+    assert not [item for item in documents if item["kind"] == "demos"]
 
 
 def test_editorial_matches_titles_sections_scenarios_and_multiple_terms():
     result = editorial_search.find("irqfd")
     assert "kvm-vcpu-run" in {item["slug"] for item in result["articles"]}
-    assert "interrupt-delivery" in {item["slug"] for item in result["demos"]}
+    assert "interrupt-virtualization" in {item["slug"] for item in result["articles"]}
     for query in ("virtqueue", "ioeventfd", "irqfd"):
-        assert {"virtio-blk-read", "network-io"} <= {
-            item["slug"] for item in editorial_search.find(query)["demos"]}
+        assert {"qemu-virtio-blk", "network-io"} <= {
+            item["slug"] for item in editorial_search.find(query)["articles"]}
     result = editorial_search.find("balloon")
     assert result["articles"][0]["slug"] == "virtio-balloon"
     assert not result["demos"]  # Embedded demos stay with their parent article.
@@ -37,7 +37,7 @@ def test_editorial_matches_titles_sections_scenarios_and_multiple_terms():
 @pytest.mark.parametrize("query", ["SR-IOV", "mdev", "doorbell", "ELSP", "libvirt XML"])
 def test_gpu_sharing_demo_is_discoverable_by_assignment_and_access_terms(query):
     result = editorial_search.find(query)
-    gpu = next(item for item in result["demos"] if item["slug"] == "gpu-execution")
+    gpu = next(item for item in result["articles"] if item["slug"] == "gpu-execution")
     assert gpu["title"] == "GPU 命令执行：直通与共享虚拟化"
     assert "SR-IOV + mdev · 实例与作业边界" in gpu["headings"]
 
@@ -66,7 +66,7 @@ def test_editorial_results_work_without_community_index_and_ignore_community_fil
         result = search.search(conn, "irqfd", project="libvirt", architecture_key="Arm")
     html = render.render_search_html(Config(), result)
     assert 'href="mechanisms/kvm-vcpu-run.html"' in html
-    assert 'href="mechanisms/interrupt-delivery.html"' in html
+    assert 'href="mechanisms/interrupt-virtualization.html"' in html
     assert "搜索索引正在准备" in html
     assert "不影响原理讲解与交互演示" in html
     assert 'data-editorial-results data-static="false">' in html
@@ -83,6 +83,17 @@ def test_paper_and_specification_results_link_to_real_page_anchors():
     assert 'data-editorial-kind="papers"' in html
     assert 'data-editorial-kind="versions"' in html
     assert editorial_search.find("OSR 2008")["papers"][0]["slug"] == "osr08-virtio"
+
+
+def test_search_export_refreshes_its_browser_assets(tmp_path):
+    config = Config(render=Render(output_dir=tmp_path))
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / "editorial-search.js").write_text("old browser code")
+    out = render.render_search(config, {"query": ""})
+    assert 'data-editorial-kind="demos"' not in out.read_text()
+    for name in render.SEARCH_ASSET_NAMES:
+        assert (assets / name).read_bytes() == (render.ASSETS_DIR / name).read_bytes()
 
 
 def test_runtime_release_snapshot_is_not_frozen_in_editorial_cache():
@@ -105,6 +116,6 @@ def test_review_date_displays_existing_metadata_without_refreshing_it():
     article = mechanisms.get_article("qemu-memory-region")
     html = render.render_mechanisms_html(Config(), article["slug"])
     assert f'技术复核：<time datetime="{article["reviewed_on"]}">' in html
-    assert "不代表后续版本已验证" in html
+    assert "针对文中标注的源码与规范基线" in html
     paper = render.render_mechanisms_html(Config(), "kvm-live-upgrade")
     assert "对应文中列明的论文与分享资料" in paper

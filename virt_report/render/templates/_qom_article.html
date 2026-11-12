@@ -46,7 +46,7 @@ virsh -c qemu:///system qemu-monitor-command demo --hmp 'info qtree'</code></pre
         VirtioPCIClass.realize → virtio_net_pci_realize()
           qdev_realize(内部 VirtIONet, virtio 总线)
             virtio 设备框架 → virtio_net_device_realize()</code></pre>
-  <p>这条调用链经过三种不同的类回调，最终又创建了一次内部设备的 realize 过程。<code>VirtIONetPCI</code> 的 class-init 设置的是 <code>VirtioPCIClass.realize</code>；PCI 公共逻辑与 virtio 网络功能由不同层负责。网络功能初始化队列及后端连接后，客户机仍需枚举设备、协商特性并建立队列，才会开始正常收发数据。<a href="{{ qemu_source }}hw/virtio/virtio-pci.c#L2348-L2351">传输层调用功能层</a>、<a href="{{ qemu_source }}hw/virtio/virtio-net-pci.c#L48-L80">网络封装层</a>、<a href="qemu-network-tx.html">virtio 请求路径</a></p>
+  <p>这条调用链经过三种不同的类回调，最终又创建了一次内部设备的 realize 过程。<code>VirtIONetPCI</code> 的 class-init 设置的是 <code>VirtioPCIClass.realize</code>；PCI 公共逻辑与 virtio 网络功能由不同层负责。网络功能初始化队列及后端连接后，客户机仍需枚举设备、协商特性并建立队列，才会开始正常收发数据。<a href="{{ qemu_source }}hw/virtio/virtio-pci.c#L2348-L2351">传输层调用功能层</a>、<a href="{{ qemu_source }}hw/virtio/virtio-net-pci.c#L48-L80">网络封装层</a>、<a href="network-io.html">virtio 请求路径</a></p>
 </section>
 
 <section id="structures" class="mechanism-section">

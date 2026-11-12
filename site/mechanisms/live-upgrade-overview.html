@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>虚拟机热升级：QEMU、KVM 与直通设备交接 - virt-report</title>
+  <meta name="description" content="概述 QEMU 进程替换、KVM 实现接管与 VFIO 设备连续性，说明资源保留、暂停窗口和兼容条件。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
+  <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=0ad6552bf0f5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="mechanism-article">
+  <header class="mechanism-header">
+    <div class="mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true">/</span><a href="../mechanisms.html#live-upgrade">热升级</a></div>
+    <h1>虚拟机热升级：QEMU、KVM 与直通设备交接</h1>
+    <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、更新承载软件，保留客户机的运行状态</a></li><li><a href="#scope">二、QEMU、KVM 与 VFIO 的升级范围</a></li><li><a href="#handoff">三、准备、冻结、接管与清理</a></li><li><a href="#qemu">四、QEMU：共享 RAM 与状态恢复</a></li><li><a href="#kvm">五、KVM：新旧实现共存与逐台接管</a></li><li><a href="#vfio">六、VFIO：保持 DMA 与完成通知连续</a></li><li><a href="#evaluation">七、验证兼容性、停顿与失败处理</a></li><li><a href="#sources">八、参考资料</a></li></ol>
+    </nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">一、</span>更新承载软件，保留客户机的运行状态</h2>
+  <p>虚拟机运行期间，QEMU、KVM 或设备支持代码可能需要修复和升级。热升级的目标是让新实现接管同一台客户机，保留内存内容、执行位置与设备状态，避免客户机重新启动。交接通常仍有暂停窗口，业务连接是否连续还取决于停顿、设备和外部网络。</p>
+  <p>以一台正在处理网络请求的虚拟机为例：升级后它应继续处理原来的请求，RAM 中的队列不能丢失，已经完成的 I/O 不能重复执行，待处理中断要能送到接管后的 vCPU。替换文件只是准备步骤，运行实例的状态与资源交接才是关键。</p>
+<p class="mechanism-baselines">源码版本：QEMU 10.2.0。</p></section>
+<section id="scope" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">二、</span>QEMU、KVM 与 VFIO 的升级范围</h2>
+  <table><thead><tr><th>关注对象</th><th>替换或保留的内容</th><th>典型路径</th></tr></thead><tbody>
+    <tr><td>QEMU 热升级</td><td>替换用户态机器模型与设备后端；恢复 CPU、设备和队列状态</td><td>CPR-transfer 在同机新旧进程之间交接共享 RAM、资源 fd 和迁移状态</td></tr>
+    <tr><td>KVM 热升级</td><td>替换承载客户机执行的 KVM 实现，处理 VM/vCPU 对象与内核状态的接管</td><td>Orthus / Dual KVM 允许新旧 KVM 共存，逐台交接；需要专门实现支持</td></tr>
+    <tr><td>VFIO 设备连续性</td><td>在 VMM 升级期间保留直通设备及 DMA、IOMMU、中断关联</td><td>设备 fd 和映射保留、通知解绑与重绑，或设备支持的停止与恢复协议</td></tr>
+  </tbody></table>
+  <p>VFIO 是把设备访问、DMA 隔离和中断交给用户态 VMM 的接口。这里讨论的“VFIO 热升级”是升级过程中的直通设备交接：它不等于可以在线替换任意 vfio-pci 驱动、厂商内核模块或设备固件。升级这些组件需要另行验证厂商能力、设备复位行为和资源保留条件。</p>
+</section>
+<section id="handoff" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">三、</span>准备、冻结、接管与清理</h2>
+  <figure class="mechanism-diagram" data-diagram="live-upgrade-handoff" data-mechanism-view="diagram">
+  <div class="mechanism-view-heading">
+    <span data-mechanism-title>执行权与资源的交接</span>
+    <button type="button" data-mechanism-expand aria-label="放大查看执行权与资源的交接" hidden>放大查看</button>
+  </div>
+  <div class="mechanism-diagram-scroll" role="region" aria-label="执行权与资源的交接">
+    <img src="../assets/live-upgrade-handoff.svg?v=e8d4285d5a39" alt="切换时旧实例停止执行，新实例接管客户机状态及必要资源；确认成功后再释放旧对象。资源保留和失败恢复能力由具体方案决定。" loading="lazy">
+  </div>
+  <figcaption>切换时旧实例停止执行，新实例接管客户机状态及必要资源；确认成功后再释放旧对象。资源保留和失败恢复能力由具体方案决定。 <a href="../assets/live-upgrade-handoff.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart LR
+  accTitle: 热升级中的执行权与资源交接
+  accDescr: 旧实例运行时准备新实现。切换窗口内停止旧 vCPU，按后端协议处理在途 I/O，交接 CPU、设备和通知状态，并保留或转交 RAM 与设备资源。新实例完成接管后恢复客户机，确认成功后清理旧对象。具体资源保留和失败恢复能力由升级方案决定。
+  A[&#34;准备新实现&lt;br/&gt;旧实例继续运行&#34;] --&gt; B[&#34;冻结旧实例&lt;br/&gt;停止 vCPU、收尾 I/O&#34;]
+  B --&gt; C[&#34;交接状态&lt;br/&gt;转交或保留资源&#34;]
+  C --&gt; D[&#34;新实例接管并运行&lt;br/&gt;旧实例保持停止&#34;]
+  D --&gt; E[&#34;确认成功&lt;br/&gt;清理旧对象&#34;]
+  R[&#34;保留或转交的资源&lt;br/&gt;RAM、设备句柄、DMA 映射&#34;] -.-&gt; C
+  classDef prep fill:#e4f1ed,stroke:#78a399,color:#163c38;
+  classDef switch fill:#edf3fa,stroke:#7897b3,color:#243d53;
+  classDef run fill:#fff4db,stroke:#b89a55,color:#59491e;
+  class A,R prep;
+  class B,C switch;
+  class D,E run;
+</code></pre></details>
+</figure>
+  <ol>
+    <li><strong>准备新实现：</strong>核对机器与状态格式兼容性，准备内存映射和后端资源；可提前完成的工作放在暂停窗口之前。</li>
+    <li><strong>冻结旧实例：</strong>停止 vCPU，并按各后端协议收尾在途 I/O，建立可恢复的一致状态。</li>
+    <li><strong>交接状态与资源：</strong>保留或转交 RAM、资源句柄，恢复 CPU 寄存器、设备状态、路由和定时器。</li>
+    <li><strong>新实例继续执行：</strong>确认数据与通知路径可用后放行客户机；旧实例保持停止。</li>
+    <li><strong>清理旧资源：</strong>新实例接管成功后释放旧对象，核对没有泄漏或残留的设备访问权。</li>
+  </ol>
+  <p>跨主机迁移通常要搬运 RAM；同机升级有机会保留原内存后备，显著减少复制工作。用户态地址、对象指针及内核对象可能变化，所以仍需把持久的客户机状态与临时实现状态分开处理。</p>
+</section>
+<section id="qemu" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">四、</span>QEMU：共享 RAM 与状态恢复</h2>
+  <p>QEMU 10.2 的 CPR-transfer 让旧、新进程短暂共存。已登记的资源 fd 通过 Unix socket 交接，目标映射共享 RAM，再经主迁移流恢复 CPU 和设备状态。目标重新建立 QEMU 对象及 KVM VM/vCPU，宿主 KVM 实现本身继续运行。</p>
+  <p>RAM 无需完整复制，但设备、寄存器、时钟和中断仍要一致恢复；每个后端是否支持资源保留也需核对。两端同时能访问 RAM，并不意味着可以同时执行客户机。具体交接顺序见 <a href="qemu-cpr-transfer.html">QEMU 热升级：CPR 的资源交接与状态恢复</a>。</p>
+</section>
+<section id="kvm" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">五、</span>KVM：新旧实现共存与逐台接管</h2>
+  <p>替换 KVM 涉及宿主内核中的 VM、vCPU、内存映射和中断状态。Orthus 的 Dual KVM 为新旧实现提供共存条件，再把虚拟机交给新实现，保留客户机运行所依赖的内存与设备资源。升级对象从用户态扩展到内核，状态兼容和资源所有权也需要相应协议。</p>
+  <p>这类能力需要论文或工程方案中的专门改造，不能通过卸载正在承载虚拟机的 kvm 模块实现。Orthus、HyperFresh 与字节跳动方案的具体机制和适用范围集中在 <a href="kvm-live-upgrade.html">KVM 热升级专篇</a>。</p>
+</section>
+<section id="vfio" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">六、</span>VFIO：保持 DMA 与完成通知连续</h2>
+  <p>直通网卡可以在 vCPU 停止后继续 DMA 或产生中断。升级时需要核对三组关系：设备仍访问哪份 RAM；IOVA 经 IOMMU 映射到哪些后备页；完成通知接入旧 KVM 还是新 KVM。某一组提前失效，可能造成 DMA 故障、状态丢失或通知送错实例。</p>
+  <p>支持相应路径的 QEMU CPR 可以保留设备与 IOMMUFD 资源，并交接中断连接。已进入旧虚拟 LAPIC 的 pending 与设备尚未发出的通知处于不同位置，都要随状态或连接一起处理。Orthus 的直通设备交接也要解决执行切换期间的 DMA 和通知连续性。</p>
+  <p>跨机器的 VFIO 设备迁移还需要可导出、恢复的设备状态及兼容目标设备；同机保留原设备是另一组条件。具备其中一种能力，不能据此推断另一种也成立。实际支持以具体设备、驱动、后端和升级组合的验证结果为准。</p>
+</section>
+<section id="evaluation" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">七、</span>验证兼容性、停顿与失败处理</h2>
+  <p>验证应覆盖机器配置、内存内容、执行位置、设备队列、待处理中断和业务请求。分别测量新实例准备时间、客户机暂停时间与恢复后的尾延迟，并测试目标准备失败和切换期间失败。</p>
+  <p>新实例尚未执行时，方案可能允许继续使用旧实例；新实例已修改共享 RAM 或磁盘后，旧状态就不能直接恢复。上线前需要明确每个阶段谁拥有执行权、哪些资源仍可用、失败后怎样确认状态。论文中的停顿数据只代表其测试条件。</p>
+</section>
+<section id="sources" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">八、</span>参考资料</h2>
+  <ul>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/migration/CPR.rst">QEMU 10.2.0：CPR 模式与限制</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/cpr.c#L260">VFIO CPR 交接</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/cpr-iommufd.c">IOMMUFD 资源保留</a></li>
+    <li><a href="https://doi.org/10.1145/3297858.3304034">Orthus（ASPLOS 2019）原论文</a></li>
+  </ul>
+</section></div>
+  </div>
+  <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#live-upgrade">热升级</a></nav>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-12">2026-11-12</time> · 针对文中标注的源码与规范基线。</p></article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=0ad6552bf0f5"></script>
+<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-"""Editorial boundaries for CPU compatibility, hotplug and NUMA placement."""
+"""Editorial boundaries for CPU hotplug."""
 import pytest
 
 from virt_report import mechanisms
@@ -7,9 +7,7 @@ from virt_report.render import render
 
 
 @pytest.mark.parametrize("slug, topic, diagram", [
-    ("cpu-model-migration", "cpu-virtualization", "cpu-model-migration-contract"),
     ("x86-vcpu-hotplug", "hotplug", "cpu-hotplug-acpi-handoff"),
-    ("vcpu-numa-placement", "memory-virtualization", "numa-placement-layers"),
 ])
 def test_cpu_capacity_articles_have_fixed_sources_and_offline_diagrams(slug, topic, diagram):
     article = mechanisms.get_article(slug)
@@ -22,16 +20,6 @@ def test_cpu_capacity_articles_have_fixed_sources_and_offline_diagrams(slug, top
     assert "这里将补充" not in page
 
 
-def test_cpu_model_expansion_is_not_presented_as_host_compatibility_validation():
-    page = render.render_mechanisms_html(Config(), "cpu-model-migration")
-    for marker in (
-        "query-cpu-definitions", "query-cpu-model-expansion", "unavailable-features",
-        "展开和可运行性检查是两个步骤", "realize", "enforce", "运行状态", "冷启动",
-        "不能在迁移中途删掉它", "TSC", "migratable",
-    ):
-        assert marker in page
-
-
 def test_cpu_hotplug_keeps_host_existence_guest_online_and_removal_separate():
     page = render.render_mechanisms_html(Config(), "x86-vcpu-hotplug")
     for marker in (
@@ -42,11 +30,6 @@ def test_cpu_hotplug_keeps_host_existence_guest_online_and_removal_separate():
         assert marker in page
 
 
-def test_numa_article_distinguishes_guest_topology_and_physical_placement():
-    page = render.render_mechanisms_html(Config(), "vcpu-numa-placement")
-    for marker in (
-        "nodeid=0", "host-nodes=1", "先通过", "mbind()", "再执行预分配",
-        "调整线程亲和性仅改变运行位置", "已有页面的迁移需要另行处理", "IOThread",
-        "Cpus_allowed_list", "numa_maps", "numastat -p", "迁移后应重新验证",
-    ):
-        assert marker in page
+def test_numa_placement_article_is_retired():
+    assert mechanisms.get_article("vcpu-numa-placement") is None
+    assert render.render_mechanisms_html(Config(), "vcpu-numa-placement") is None

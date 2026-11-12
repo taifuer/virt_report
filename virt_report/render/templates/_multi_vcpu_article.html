@@ -103,7 +103,7 @@
   <h3>等待、抢占与并行效率</h3>
   <p>假设 vCPU 0 上的线程持有 Guest 自旋锁，此时宿主抢占了 vCPU 0；vCPU 1 上的等待者即使正在运行，也要等持锁者重新获得执行时间。这就是锁持有者被抢占带来的放大效应。PV spinlock、steal time 和半虚拟化调度提示可帮助 Guest 识别或减少部分无效等待，效果取决于功能是否暴露、Guest 是否采用以及实际竞争情况。<a href="{{ qemu }}docs/system/i386/kvm-pv.rst">KVM 半虚拟化能力</a></p>
   <p>Guest 空闲 CPU 可以进入 idle / HLT，宿主据此进行有限轮询或阻塞；中断和新工作到达后再唤醒。事件已挂起、宿主线程已可运行、Guest 已执行中断处理，是不同的时刻。等待与唤醒细节见<a href="kvm-vcpu-halt.html">KVM vCPU 阻塞、轮询与唤醒</a>。</p>
-  <p>应用的并行工作量、串行区和锁竞争决定可扩展性；宿主 CPU 时间、CPU 配额与内存局部性决定能获得的资源。Guest affinity 约束应用线程可用的 vCPU，宿主 affinity 约束 vCPU 线程可用的物理逻辑 CPU，两者需要分别观察。NUMA 放置见<a href="vcpu-numa-placement.html">vCPU 与 NUMA 内存放置</a>，Linux 任务选择与状态转换见<a href="linux-execution-scheduling.html">Linux 进程：执行与调度</a>。</p>
+  <p>应用的并行工作量、串行区和锁竞争决定可扩展性；宿主 CPU 时间、CPU 配额与内存局部性决定能获得的资源。Guest affinity 约束应用线程可用的 vCPU，宿主 affinity 约束 vCPU 线程可用的物理逻辑 CPU，两者需要分别观察。</p>
 </section>
 
 <section id="application" class="mechanism-section">

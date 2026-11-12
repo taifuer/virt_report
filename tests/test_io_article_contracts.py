@@ -11,7 +11,7 @@ TEMPLATES = Path(__file__).resolve().parents[1] / "virt_report/render/templates"
 
 
 @pytest.mark.parametrize("slug,template", [
-    ("virtio-net-rx", "_virtio_rx_article.html"),
+    ("network-io", "_network_io_article.html"),
     ("packed-virtqueue", "_packed_virtqueue_article.html"),
     ("vhost-vdpa", "_vdpa_article.html"),
 ])
@@ -30,9 +30,9 @@ def test_io_articles_have_complete_outline_and_fixed_source_baselines(slug, temp
 
 
 def test_rx_distinguishes_capacity_actual_length_and_replenishment():
-    source = (TEMPLATES / "_virtio_rx_article.html").read_text()
-    for term in ("2048", "1514", "1526", "try_fill_recv", "virtqueue_napi_complete",
-                 "budget = 0", "MRG_RXBUF", "DMA 映射", "只有旧引用释放后"):
+    source = (TEMPLATES / "_network_io_article.html").read_text()
+    for term in ("1530 B", "72 B", "128 B", "try_fill_recv", "virtqueue_napi_complete",
+                 "budget = 0", "MRG_RXBUF", "DMA 映射", "旧数据页可能仍被 skb 引用"):
         assert term in source
 
 

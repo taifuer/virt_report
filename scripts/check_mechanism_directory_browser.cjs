@@ -67,26 +67,46 @@ async function responsive(page, width) {
 async function check(page,width) {
   await page.setViewportSize({width,height:900});
   await page.goto(url); await ready(page);
-  const foundationOrder = ['virtualization-basics', 'cpu-virtualization', 'memory-virtualization',
-    'device-virtualization', 'interrupt-virtualization', 'linux-foundations'];
+  const architectureOrder = ['virtualization-basics', 'libvirt-internals', 'qemu-internals', 'kvm-internals'];
   assert.deepEqual(await page.locator('.mechanism-directory-row').first().locator('a').evaluateAll(nodes =>
-    nodes.map(node => node.hash.slice(1))), foundationOrder, 'Linux foundations end the foundations navigation');
+    nodes.map(node => node.getAttribute('href'))),
+    ['#virtualization-basics', '#libvirt-internals', '#qemu-internals', '#kvm-internals'],
+    'all component entries navigate within the same catalogue');
   assert.deepEqual(await page.locator('.mechanism-group').first().locator('.mechanism-topic').evaluateAll(nodes =>
-    nodes.map(node => node.id)), foundationOrder, 'body and navigation keep the same reading order');
+    nodes.map(node => node.id)), architectureOrder, 'body and navigation keep the same reading order');
+  assert.deepEqual(await page.locator('.mechanism-group').last().locator('.mechanism-topic').evaluateAll(nodes =>
+    nodes.map(node => node.id)), ['linux-foundations'], 'Linux foundations remain last');
+  const chipCounts = await page.locator('.mechanism-directory a').evaluateAll(nodes =>
+    Object.fromEntries(nodes.map(node => [node.getAttribute('href').slice(1),
+      Number.parseInt(node.querySelector('.mechanism-directory-count')?.textContent,10)])));
+  assert.deepEqual(chipCounts, Object.fromEntries(published.map(item => [item.slug,
+    catalogue.articles.filter(article => article.topic===item.slug).length])),
+    'directory counts include each published article once, including the overview');
+  assert.equal(await page.locator('a[href="#block-operations"],a[href="mechanisms/qemu-virtio-mem.html"],a[href="mechanisms/qemu-live-block-operations.html"]').count(),0);
+  assert.equal(chipCounts['kvm-internals'],9);
+  assert.equal(chipCounts['cpu-virtualization'],2);
+  assert.equal(chipCounts['memory-virtualization'],2);
   const buttons=page.locator('[data-mechanism-toggle]');
   assert.equal(await buttons.count(),published.filter(topic => topic.details.length).length,
     'only topics with detail articles get a toggle');
   assert.equal(await page.locator('.mechanism-topic h3 a').count(),published.filter(item=>item.overview).length,
-    'only actual overview articles are linked from topic headings');
-  assert.equal(await topic(page,'live-upgrade').locator('h3 a').count(),0,
-    'live upgrade is a category, not an alias for the QEMU article');
+    'topic headings link to their overview articles');
+  assert.equal(await page.locator('a[href="kvm/"],a[href="mechanisms/cpu-model-migration.html"],a[href="mechanisms/qemu-qcow2.html"]').count(),0);
+  assert.equal(await topic(page,'qemu-internals').locator('a[href="mechanisms/qemu-tcg.html"]').count(),1);
+  assert.equal(await topic(page,'cpu-virtualization').locator('a[href="mechanisms/qemu-tcg.html"]').count(),0);
+  assert.equal(await topic(page,'live-upgrade').locator('h3 a').getAttribute('href'),
+    'mechanisms/live-upgrade-overview.html', 'live upgrade has a cross-layer overview');
   assert.equal(await page.locator('.mechanism-list-item:visible').count(),0,'detail lists initially collapsed');
   assert.equal(await page.locator('.mechanism-topic-header p:visible').count(),published.length,'topic summaries remain visible');
-  for(const id of ['virtualization-basics','block-io-walkthrough','network-io-walkthrough',
-    'cpu-execution-walkthrough','memory-access-walkthrough','interrupt-delivery-walkthrough','gpu-execution-walkthrough',
-    'virtio-gpu-walkthrough']) {
+  for(const id of ['virtualization-basics', 'interrupt-virtualization']) {
     assert.equal(await toggle(page,id).count(),0,`${id}: no empty or demo disclosure`);
     assert(await topic(page,id).locator('h3 a').isVisible());
+  }
+  for(const id of ['block-io-walkthrough', 'network-io-walkthrough', 'cpu-execution-walkthrough',
+    'memory-access-walkthrough', 'interrupt-delivery-walkthrough', 'gpu-execution-walkthrough',
+    'virtio-gpu-walkthrough']) {
+    assert.equal(await topic(page,id).count(),0,`${id}: demos are part of their subject`);
+    assert.equal(await page.locator(`.mechanism-topic-alias[id="${id}"]`).count(),1,`${id}: old bookmarks survive`);
   }
   for(const item of await buttons.evaluateAll(nodes=>nodes.map(button=>({
     expanded:button.getAttribute('aria-expanded'),controls:button.getAttribute('aria-controls'),
@@ -98,20 +118,37 @@ async function check(page,width) {
     const probe=document.createElement('i');document.body.append(probe);
     const resolve=value=>{probe.style.color=value;return getComputedStyle(probe).color;};
     const brand=resolve('var(--brand)'), ink=resolve('var(--ink)'), muted=resolve('var(--muted)');probe.remove();
-    return {brand,ink,muted,category:getComputedStyle(document.querySelector('#live-upgrade .mechanism-topic-label')).color,
+    return {brand,ink,muted,
       headings:[...document.querySelectorAll('.mechanism-topic h3 a,.mechanism-list-item :is(h4,h5) a')]
       .map(a=>getComputedStyle(a).color),chip:getComputedStyle(document.querySelector('.mechanism-directory a')).color};
   });
   assert(colors.headings.every(color=>color===colors.brand),'article/overview titles use the site link color');
   assert.equal(colors.chip,colors.ink,'directory chips retain their neutral style');
-  assert.equal(colors.category,colors.muted,'non-linked category heading is gray');
   await responsive(page,width);
   await page.screenshot({path:path.join(shots,`directory-${width}-collapsed.png`)});
+
+  await nav(page,'kvm-internals').click(); await expanded(page,'kvm-internals');
+  const kvmTopic=topic(page,'kvm-internals');
+  assert.deepEqual(await kvmTopic.locator('.mechanism-cluster > h4').allTextContents(),
+    ['执行与协作','内存管理'], 'KVM implementation articles are grouped within the shared catalogue');
+  assert.deepEqual(await kvmTopic.locator('.mechanism-list-item a').evaluateAll(nodes =>
+    nodes.map(node => node.getAttribute('href'))), [
+    'mechanisms/kvm-vm-creation.html','mechanisms/kvm-vcpu-requests.html','mechanisms/kvm-vcpu-halt.html',
+    'mechanisms/kvm-virtual-time.html','mechanisms/kvm-nested-vmx.html',
+    'mechanisms/kvm-ept-fault.html','mechanisms/kvm-hugepages.html','mechanisms/kvm-dirty-ring.html',
+  ]);
+  await kvmTopic.screenshot({path:path.join(shots,`directory-${width}-kvm.png`)});
+  await toggle(page,'kvm-internals').click(); await expanded(page,'kvm-internals',false);
 
   await toggle(page,'linux-foundations').click(); await expanded(page,'linux-foundations');
   assert.equal(await topic(page,'linux-foundations').locator('h3 a').getAttribute('href'),
     'mechanisms/linux-kernel-evolution.html', 'Linux foundations has a real overview');
-  assert.equal(await list(page,'linux-foundations').locator('.mechanism-list-item').count(), 5);
+  assert.equal(await list(page,'linux-foundations').locator('.mechanism-list-item').count(), 6);
+  assert(await topic(page,'linux-foundations').evaluate(node => {
+    const left=node.closest('.mechanism-group').querySelector('h2').getBoundingClientRect().left;
+    return [...node.querySelectorAll('h3,h4,p')].every(el =>
+      Math.abs(el.getBoundingClientRect().left-left)<1);
+  }), 'Linux category, article titles and summaries share the group’s left edge');
   const summaries = await list(page,'linux-foundations').locator('.mechanism-list-item > p').evaluateAll(nodes =>
     nodes.map(node => ({height:node.getBoundingClientRect().height, line:parseFloat(getComputedStyle(node).lineHeight),
       width:node.getBoundingClientRect().width, available:node.parentElement.getBoundingClientRect().width})));
@@ -131,7 +168,28 @@ async function check(page,width) {
     'clustered h5 titles and ordinary h4 titles share font, weight, size, line height and spacing');
   const cluster = topic(page,'device-virtualization').locator('.mechanism-cluster').first();
   assert.equal(await cluster.locator('h5').count(), 2, 'both Virtio and Virtqueue titles are covered');
+  const hierarchy = await cluster.evaluate(node => {
+    const heading = node.querySelector('h4');
+    const article = node.querySelector('h5');
+    const topic = node.closest('.mechanism-topic').querySelector('h3');
+    const group = node.closest('.mechanism-group').querySelector('h2');
+    return {
+      sizes: [group,topic,heading,article].map(el => parseFloat(getComputedStyle(el).fontSize)),
+      lefts: [group,topic,heading,article].map(el => el.getBoundingClientRect().left),
+      decorations: [group,topic,node,heading,article].map(el => ({
+        border: parseFloat(getComputedStyle(el).borderLeftWidth), shadow: getComputedStyle(el).boxShadow,
+      })),
+    };
+  });
+  assert(hierarchy.sizes.every((size,index,array) => index === 0 || size < array[index-1]),
+    'group, topic, cluster and article titles have a descending visual hierarchy');
+  assert(hierarchy.lefts.every(left => Math.abs(left-hierarchy.lefts[0])<1),
+    'group, topic, cluster and article titles align without indentation');
+  assert(hierarchy.decorations.every(style => style.border===0 && style.shadow==='none'),
+    'heading hierarchy does not add vertical bars or shadows');
   await cluster.screenshot({path:path.join(shots,`directory-${width}-virtio-fonts.png`)});
+  await topic(page,'device-virtualization').locator('h3').scrollIntoViewIfNeeded();
+  await page.screenshot({path:path.join(shots,`directory-${width}-hierarchy.png`)});
   await responsive(page,width);
   await toggle(page,'device-virtualization').click(); await expanded(page,'device-virtualization',false);
   await toggle(page,'memory-virtualization').click(); await expanded(page,'memory-virtualization',false);
@@ -177,7 +235,7 @@ async function check(page,width) {
   await topic(page,'cpu-virtualization').locator('h3 a').click();
   await page.waitForURL(`${base}/mechanisms/cpu-virtualization.html`);
   await page.goto(`${url}#block-io-walkthrough`); await ready(page);
-  await positioned(page,'block-io-walkthrough');
+  await expanded(page,'device-virtualization'); await positioned(page,'device-virtualization');
   await page.screenshot({path:path.join(shots,`directory-${width}-walkthroughs.png`)});
   await page.goto(`${url}#%E0%A4%A`); await ready(page);
   await responsive(page,width);

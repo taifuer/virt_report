@@ -425,13 +425,19 @@ def make_handler(config: Config, *, _database_initialized: bool = False):
                 self._send(200, render.render_about_html(config), head_only)
                 return
             mechanism_match = _MECHANISM_ROUTE.fullmatch(path)
+            if path in ("/kvm", "/kvm/", "/kvm/index.html", "/kvm.html"):
+                self._send(308, "", head_only, extra_headers={
+                    "Location": "/mechanisms.html#kvm-internals",
+                })
+                return
             if path == "/mechanisms.html" or mechanism_match:
                 slug = mechanism_match.group(1) if mechanism_match else None
                 from virt_report.mechanisms import get_redirect
                 redirect = get_redirect(slug) if slug else None
                 if redirect:
+                    query = urlsplit(self.path).query
                     self._send(308, "", head_only, extra_headers={
-                        "Location": f"/mechanisms/{redirect['target']}.html",
+                        "Location": f"/mechanisms/{redirect['target']}.html" + (f"?{query}" if query else ""),
                     })
                     return
                 html = render.render_mechanisms_html(config, slug)

@@ -22,7 +22,7 @@ const slugs = ['linux-kernel-evolution', 'linux-execution-scheduling', 'linux-me
         const response = await page.goto(`${base}/mechanisms/${slug}.html`);
         assert.equal(response.status(), 200);
         assert.equal(await page.locator('.mechanism-section').count(),
-          ['linux-execution-scheduling', 'linux-memory'].includes(slug) ? 10 : 8);
+          ['linux-kernel-evolution', 'linux-execution-scheduling', 'linux-memory'].includes(slug) ? 10 : 8);
         if (slug === 'linux-execution-scheduling') {
           assert.equal(await page.locator('h1').innerText(), 'Linux 进程：执行与调度');
         }

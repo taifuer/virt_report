@@ -85,9 +85,7 @@ def test_explicit_heading_ids_cannot_collide(first, second):
 @pytest.mark.parametrize("article", mechanisms.articles(), ids=lambda article: article["slug"])
 def test_published_outline_matches_section_and_subsection_numbers_without_js(article):
     page = render.render_mechanisms_html(Config(), article["slug"])
-    toc_class = ("mechanism-walkthrough-nav" if article.get("presentation") == "walkthrough"
-                 else "mechanism-toc")
-    toc = re.search(rf'<nav class="{toc_class}".*?</nav>', page, re.S).group()
+    toc = re.search(r'<nav class="mechanism-toc" aria-label="文章目录".*?</nav>', page, re.S).group()
     for number, section in enumerate(article["sections"], 1):
         label = chinese_number(number) + "、"
         assert f'href="#{section["id"]}">{label}{section["title"]}</a>' in toc
@@ -109,15 +107,18 @@ def test_topic_overviews_are_complete_and_categories_list_all_articles():
         assert overview and overview["slug"] == topic["overview"]
         assert f'<a href="mechanisms/{overview["slug"]}.html">{topic["title"]}</a>' in index
         page = render.render_mechanisms_html(Config(), overview["slug"])
-        comparison = ("completion" if overview["slug"] in
-                      {"network-io", "virtio-gpu-execution"} else "comparison")
-        sections = (("walkthrough", comparison, "sources")
-                    if overview.get("presentation") == "walkthrough"
-                    else ("evolution", "reading", "sources"))
-        for section in sections:
-            assert f'id="{section}"' in page
-        for article in topic["detail_articles"]:
-            assert f'href="{article["slug"]}.html"' in page
+        # The overview is self-contained; it need not repeat the index as a
+        # reading-list section. Every authored section still has a TOC entry.
+        assert len(overview['sections']) >= 6
+        for section in overview['sections']:
+            assert f'id="{section["id"]}"' in page
+        assert 'id="sources"' in page or 'id="implementation"' in page
+        assert 'class="mechanism-toc"' in page
+        assert 'mechanism-chapters' not in page
+        # The subject index lists the articles; an article's contents lists
+        # only sections within that article.
+        for article in topic['detail_articles']:
+            assert f'href="mechanisms/{article["slug"]}.html"' in index
 
 
 def test_cross_article_reading_links_resolve_to_published_pages_and_anchors():

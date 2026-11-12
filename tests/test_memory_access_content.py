@@ -238,16 +238,14 @@ def test_ivshmem_bar2_reads_existing_shared_ram_without_vfio_or_device_callbacks
     assert demo["sources"]["ivshmem-spec"]["path"] == "docs/specs/ivshmem-spec.rst"
 
 
-def test_memory_article_explains_resource_dispatch_and_separates_postcopy_from_mmio():
-    page = render_mechanisms_html(Config(), "memory-access")
+def test_memory_article_explains_resource_dispatch_without_retired_postcopy_article():
+    page = render_mechanisms_html(Config(), "memory-virtualization")
     routing = page.split('<section id="address-routing"', 1)[1].split('</section>', 1)[0]
     assert all(text in routing for text in (
         "PCI 枚举", "readl()", "MemoryRegion", "memslot", "KVM_EXIT_MMIO",
         "普通 Guest RAM", "VFIO 物理 BAR0", "ivshmem 共享 BAR2", "CPU 物理地址与 PCI 总线地址",
     ))
-    assert 'href="qemu-postcopy.html"' in page and "userfaultfd" in page
-    assert "通知 QEMU 缺页处理线程" in page and "向源端请求尚未到达的页面" in page
-    assert "补齐后 KVM 继续建立映射" in page and "QEMU 在此负责提供数据页，KVM 负责 EPT" in page
+    assert 'href="qemu-postcopy.html"' not in page
     assert not any("QEMU 建 EPT" == item["label"] for item in get_demo("memory-access")["scenarios"])
 
 

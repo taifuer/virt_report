@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=428e6e8b26d1">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=428e6e8b26d1">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -43,18 +43,21 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="device-virtualization.html">设备与 I/O 虚拟化</a></div>
+    <div class="mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true">/</span><a href="../mechanisms.html#device-virtualization">设备与 I/O 虚拟化</a></div>
     <h1>DPDK vhost-user 的报文转发与缓冲区管理</h1>
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2><ol id="mechanism-toc-links"><li><a href="#preface">一、DPDK vhost-user 的网络转发路径</a></li><li><a href="#architecture">二、整体路径：控制连接、共享队列与 PMD</a><ol><li><a href="#architecture-part-1">初始化中的内存、队列与通知配置</a></li></ol></li><li><a href="#transmit">三、发送实例：从链 0 → 2 到物理出口</a><ol><li><a href="#transmit-part-1">1. 消费与复制</a></li><li><a href="#transmit-part-2">2. 客户机队列完成与物理网卡发送</a></li></ol></li><li><a href="#structures">四、请求经过的结构与缓冲区归属</a></li><li><a href="#completion">五、完成与背压：报文缓冲区的所有权</a><ol><li><a href="#completion-part-1">1. 发送环满时，used 完成无法撤销</a></li><li><a href="#completion-part-2">2. 反向收包有另一组所有权</a></li></ol></li><li><a href="#evaluation">六、性能收益与资源成本</a></li><li><a href="#evolution">七、从用户态后端到队列与复制优化</a></li><li><a href="#sources">八、参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、DPDK vhost-user 的网络转发路径</a></li><li><a href="#architecture">二、整体路径：控制连接、共享队列与 PMD</a><ol><li><a href="#architecture-part-1">初始化中的内存、队列与通知配置</a></li></ol></li><li><a href="#transmit">三、发送实例：从链 0 → 2 到物理出口</a><ol><li><a href="#transmit-part-1">1. 消费与复制</a></li><li><a href="#transmit-part-2">2. 客户机队列完成与物理网卡发送</a></li></ol></li><li><a href="#structures">四、请求经过的结构与缓冲区归属</a></li><li><a href="#completion">五、完成与背压：报文缓冲区的所有权</a><ol><li><a href="#completion-part-1">1. 发送环满时，used 完成无法撤销</a></li><li><a href="#completion-part-2">2. 反向收包有另一组所有权</a></li></ol></li><li><a href="#evaluation">六、性能收益与资源成本</a></li><li><a href="#evolution">七、从用户态后端到队列与复制优化</a></li><li><a href="#sources">八、参考资料</a></li></ol>
+    </nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>DPDK vhost-user 的网络转发路径</h2>
   <p>virtio-net 定义客户机与虚拟设备之间的请求格式，报文的处理线程和物理出口则由后端实现。DPDK vhost-user 后端在独立用户态进程中消费客户机 virtqueue，将报文组织为 rte_mbuf，再交给网卡的轮询模式驱动（PMD）。QEMU 保留设备呈现和控制连接，通常不参与这条路径上的逐包处理。</p>
   <p>本文跟踪一个 60 B 以太网帧 P1：客户机 TX 队列 → DPDK vhost → rte_mbuf → 物理网卡 TX 队列。分析采用 DPDK 24.11 的同步 split-ring 路径、单个队列对、普通复制模式，不启用分段和校验和卸载。客户机使用 modern virtio-net，12 B 网络头与帧分别放在两个只读描述符中。关键在于两次所有权交接：客户机缓冲区何时可以复用，以及交给 PMD 的 mbuf 何时可以释放。</p>
-<p class="mechanism-baselines">源码版本：<a href="https://github.com/DPDK/dpdk/tree/1b3bf1128d9bda5595861814792f74b8f57160c8" target="_blank" rel="noopener noreferrer" title="commit 1b3bf1128d9bda5595861814792f74b8f57160c8">DPDK 24.11</a>、<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p></section>
+<p class="mechanism-baselines">源码版本：DPDK 24.11、QEMU 10.2.0。</p></section>
 
 <section id="architecture" class="mechanism-section">
   <h2><span class="mechanism-heading-number">二、</span>整体路径：控制连接、共享队列与 PMD</h2>
@@ -65,9 +68,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看从客户机 TX virtqueue 到物理网卡" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="从客户机 TX virtqueue 到物理网卡">
-    <img src="../assets/dpdk-vhost-data-path.svg?v=428e6e8b26d1" alt="虚线为初始化和通知，实线为报文访问及交接。vhost-user socket 传递控制消息和文件描述符；数据通过共享内存进入 vhost，再复制到本例的 mbuf。" loading="lazy">
+    <img src="../assets/dpdk-vhost-data-path.svg?v=e8d4285d5a39" alt="虚线为初始化和通知，实线为报文访问及交接。vhost-user socket 传递控制消息和文件描述符；数据通过共享内存进入 vhost，再复制到本例的 mbuf。" loading="lazy">
   </div>
-  <figcaption>虚线为初始化和通知，实线为报文访问及交接。vhost-user socket 传递控制消息和文件描述符；数据通过共享内存进入 vhost，再复制到本例的 mbuf。 <a href="../assets/dpdk-vhost-data-path.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>虚线为初始化和通知，实线为报文访问及交接。vhost-user socket 传递控制消息和文件描述符；数据通过共享内存进入 vhost，再复制到本例的 mbuf。 <a href="../assets/dpdk-vhost-data-path.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: DPDK vhost-user 控制连接与报文路径
     accDescr: QEMU 用 vhost-user 控制消息把客户机内存和队列映射到 DPDK 进程；客户机发送队列经 vhost 复制到 mbuf，再由应用提交 PMD 和物理网卡。通知不携带报文。
@@ -99,8 +102,8 @@
     <li>QEMU 传递共享 RAM 的文件描述符及内存区域信息；后端建立自己的虚拟地址映射。随后配置 virtqueue 大小、描述符和环地址、消费位置，以及 kick/call eventfd。</li>
     <li>设备和队列就绪后，应用才将该队列加入数据线程的轮询集合。停止或断开时先退出这个集合，再处理在途访问与映射释放。</li>
   </ol>
-  <p>共享的物理页可以映射在 QEMU 和 DPDK 进程的不同虚拟地址。描述符中的设备地址需要经过已协商的内存映射或 IOTLB 转换，不能直接作为后端 C 指针使用。<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/vhost-user.rst">vhost-user 协议</a>和<a href="https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/vhost/vhost_user.c">DPDK 控制消息处理</a>分别定义和实现这些关系。</p>
-  <p>轮询数据线程可以按协议请求客户机抑制 kick，直接检查 avail 索引；后端完成请求后仍须单独判断客户机是否需要中断。需要通知时触发 call eventfd，QEMU 配置的 KVM irqfd 路径可把它转换为客户机中断。eventfd 传递的是事件计数，描述符和帧内容仍保存在各自的内存缓冲区。<a href="https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/vhost/vhost.h#L989-L1015">split 完成通知判断</a></p>
+  <p>共享的物理页可以映射在 QEMU 和 DPDK 进程的不同虚拟地址。描述符中的设备地址需要经过已协商的内存映射或 IOTLB 转换，不能直接作为后端 C 指针使用。vhost-user 协议和DPDK 控制消息处理分别定义和实现这些关系。</p>
+  <p>轮询数据线程可以按协议请求客户机抑制 kick，直接检查 avail 索引；后端完成请求后仍须单独判断客户机是否需要中断。需要通知时触发 call eventfd，QEMU 配置的 KVM irqfd 路径可把它转换为客户机中断。eventfd 传递的是事件计数，描述符和帧内容仍保存在各自的内存缓冲区。split 完成通知判断</p>
 </section>
 
 
@@ -122,11 +125,11 @@ rte_eth_tx_burst(port, txq, pkts, 1)
     → 返回 0：M 仍由应用负责</code></pre>
   <h3 id="transmit-part-1"><span class="mechanism-heading-number">1. </span>消费与复制</h3>
   <p><code>rte_vhost_dequeue_burst()</code> 检查设备、队列和协商状态，split 分支进入 <code>virtio_dev_tx_split()</code>。后者通过 acquire 读取 avail.idx，以与 last_avail_idx 的差计算新增请求数，再限定本批处理数量并从 mempool 分配 mbuf。</p>
-  <p><code>fill_vec_buf_split()</code> 从 available 项取得头索引，验证链和缓冲区地址，整理客户机内存片段。<code>desc_to_mbuf()</code> 处理 virtio-net 头，将帧内容复制到 mbuf，并按协商的卸载语义填入元数据。本例 P1 为 60 B，因此 mbuf 中保存 60 B 帧；12 B virtio-net 头不作为以太网数据发送。<a href="https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/vhost/virtio_net.c#L2883-L3010">描述符到 mbuf</a></p>
+  <p><code>fill_vec_buf_split()</code> 从 available 项取得头索引，验证链和缓冲区地址，整理客户机内存片段。<code>desc_to_mbuf()</code> 处理 virtio-net 头，将帧内容复制到 mbuf，并按协商的卸载语义填入元数据。本例 P1 为 60 B，因此 mbuf 中保存 60 B 帧；12 B virtio-net 头不作为以太网数据发送。描述符到 mbuf</p>
   <h3 id="transmit-part-2"><span class="mechanism-heading-number">2. </span>客户机队列完成与物理网卡发送</h3>
-  <p>vhost 先暂存 shadow used 项，在完成延后执行的复制操作后，批量写入共享 used ring，再以规定的内存顺序发布 used.idx。必要时触发完成通知。本例 <code>used.len=0</code>，表示后端没有向 TX 描述符缓冲区写入数据；完成的含义是客户机原缓冲区已用完。<a href="https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/vhost/virtio_net.c#L3092-L3185">同步 split TX 路径</a></p>
-  <p>dequeue 返回后，应用持有内容独立的 M，可以执行转发规则，然后调用 <code>rte_eth_tx_burst()</code>。返回 1 表示 PMD 接受 M 并把报文放入发送描述符；网卡结束对 M 的使用、PMD 确认完成后，才可回收相应引用。客户机则根据已发布的 used 安排中断或轮询并回收原链。PMD 处理与客户机实际回收之间没有固定先后关系，远端接收仍需另行确认。<a href="https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/ethdev/rte_ethdev.h#L6535-L6605">ethdev TX 接口与缓冲区回收</a></p>
-  <p>DPDK 的 vhost 示例在 <code>drain_virtio_tx()</code> 取包，交给 <code>virtio_tx_route()</code>，再由 <code>do_drain_mbuf_table()</code> 批量提交物理端口。真实交换机可以增加查表、隧道、限速等步骤，这些工作与 virtqueue 消费本身应分别计量。<a href="https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/examples/vhost/main.c#L1234-L1246">物理发送</a>、<a href="https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/examples/vhost/main.c#L1436-L1464">客户机 TX 消费</a></p>
+  <p>vhost 先暂存 shadow used 项，在完成延后执行的复制操作后，批量写入共享 used ring，再以规定的内存顺序发布 used.idx。必要时触发完成通知。本例 <code>used.len=0</code>，表示后端没有向 TX 描述符缓冲区写入数据；完成的含义是客户机原缓冲区已用完。同步 split TX 路径</p>
+  <p>dequeue 返回后，应用持有内容独立的 M，可以执行转发规则，然后调用 <code>rte_eth_tx_burst()</code>。返回 1 表示 PMD 接受 M 并把报文放入发送描述符；网卡结束对 M 的使用、PMD 确认完成后，才可回收相应引用。客户机则根据已发布的 used 安排中断或轮询并回收原链。PMD 处理与客户机实际回收之间没有固定先后关系，远端接收仍需另行确认。ethdev TX 接口与缓冲区回收</p>
+  <p>DPDK 的 vhost 示例在 <code>drain_virtio_tx()</code> 取包，交给 <code>virtio_tx_route()</code>，再由 <code>do_drain_mbuf_table()</code> 批量提交物理端口。真实交换机可以增加查表、隧道、限速等步骤，这些工作与 virtqueue 消费本身应分别计量。物理发送、客户机 TX 消费</p>
 </section>
 
 <section id="structures" class="mechanism-section">
@@ -137,9 +140,9 @@ rte_eth_tx_burst(port, txq, pkts, 1)
     <button type="button" data-mechanism-expand aria-label="放大查看P1 的三个表示与两次缓冲区交接" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="P1 的三个表示与两次缓冲区交接">
-    <img src="../assets/dpdk-buffer-ownership.svg?v=428e6e8b26d1" alt="客户机链 0 → 2、DPDK mbuf M 和物理网卡 TX 描述符属于三个不同对象。本例复制完成后可以归还客户机链；M 必须保留到 PMD 确认硬件用完。" loading="lazy">
+    <img src="../assets/dpdk-buffer-ownership.svg?v=e8d4285d5a39" alt="客户机链 0 → 2、DPDK mbuf M 和物理网卡 TX 描述符属于三个不同对象。本例复制完成后可以归还客户机链；M 必须保留到 PMD 确认硬件用完。" loading="lazy">
   </div>
-  <figcaption>客户机链 0 → 2、DPDK mbuf M 和物理网卡 TX 描述符属于三个不同对象。本例复制完成后可以归还客户机链；M 必须保留到 PMD 确认硬件用完。 <a href="../assets/dpdk-buffer-ownership.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>客户机链 0 → 2、DPDK mbuf M 和物理网卡 TX 描述符属于三个不同对象。本例复制完成后可以归还客户机链；M 必须保留到 PMD 确认硬件用完。 <a href="../assets/dpdk-buffer-ownership.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 客户机链、DPDK mbuf 与物理发送环
     accDescr: 客户机链和 mbuf 之间有复制边界；mbuf 数据被物理网卡 DMA 读取。客户机链在复制结束后可以归还；mbuf 保留到硬件结束对它的使用，再由 PMD 清理。缓冲区回收不代表远端收到报文。
@@ -168,7 +171,7 @@ rte_eth_tx_burst(port, txq, pkts, 1)
     <tr><td><code>rte_mbuf</code></td><td>buf_addr、data_off、data_len、pkt_len、nb_segs、next、ol_flags、pool</td><td>未提交的由应用处理；PMD 接受后，由 PMD 在硬件完成时释放所持引用</td></tr>
     <tr><td>物理网卡 TX 环</td><td>PMD 按网卡格式填写 DMA 地址、长度和控制位</td><td>硬件完成条件满足、PMD 清理该发送项后重新使用</td></tr>
   </tbody></table>
-  <p><code>buf_addr + data_off</code> 定位 mbuf 当前数据起点；<code>data_len</code> 是本段长度，<code>pkt_len</code> 是整个报文长度。一个大报文可以由多个 mbuf 用 next 串起来，此时 nb_segs 大于 1。mbuf 的 next 与 virtio 描述符的 next 分属两个对象层次，不共享编号或所有权。<a href="https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/mbuf/rte_mbuf_core.h">mbuf 定义</a>、<a href="https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/vhost/vhost.h">vhost 队列定义</a></p>
+  <p><code>buf_addr + data_off</code> 定位 mbuf 当前数据起点；<code>data_len</code> 是本段长度，<code>pkt_len</code> 是整个报文长度。一个大报文可以由多个 mbuf 用 next 串起来，此时 nb_segs 大于 1。mbuf 的 next 与 virtio 描述符的 next 分属两个对象层次，不共享编号或所有权。mbuf 定义、vhost 队列定义</p>
 </section>
 <section id="completion" class="mechanism-section">
   <h2><span class="mechanism-heading-number">五、</span>完成与背压：报文缓冲区的所有权</h2>
@@ -178,9 +181,9 @@ rte_eth_tx_burst(port, txq, pkts, 1)
     <button type="button" data-mechanism-expand aria-label="放大查看客户机完成、PMD 接受和硬件完成的先后关系" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="客户机完成、PMD 接受和硬件完成的先后关系">
-    <img src="../assets/dpdk-vhost-completion.svg?v=428e6e8b26d1" alt="本例的同步复制使客户机链可以提前归还。PMD 只接受返回数量对应的 mbuf；未接受部分仍由应用重试或释放。" loading="lazy">
+    <img src="../assets/dpdk-vhost-completion.svg?v=e8d4285d5a39" alt="本例的同步复制使客户机链可以提前归还。PMD 只接受返回数量对应的 mbuf；未接受部分仍由应用重试或释放。" loading="lazy">
   </div>
-  <figcaption>本例的同步复制使客户机链可以提前归还。PMD 只接受返回数量对应的 mbuf；未接受部分仍由应用重试或释放。 <a href="../assets/dpdk-vhost-completion.svg?v=428e6e8b26d1" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>本例的同步复制使客户机链可以提前归还。PMD 只接受返回数量对应的 mbuf；未接受部分仍由应用重试或释放。 <a href="../assets/dpdk-vhost-completion.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 客户机缓冲区与 DPDK mbuf 的回收时刻
     accDescr: DPDK 复制客户机数据到 mbuf 后归还客户机链，物理 PMD 接受 mbuf 后还要等待硬件完成。短发送时剩余 mbuf 仍由应用管理。
@@ -210,7 +213,7 @@ rte_eth_tx_burst(port, txq, pkts, 1)
   <p>普通同步 vhost 路径已经归还了这批客户机描述符，因此物理端口拥塞不会自动撤销客户机完成。若要把背压向前传播，需要应用控制下一批 dequeue 的速度或数量，并安排有界队列。增大缓冲只能吸收短期突发，不能修复持续的入口速率高于出口速率。</p>
   <h3 id="completion-part-2"><span class="mechanism-heading-number">2. </span>反向收包有另一组所有权</h3>
   <p>物理网卡收到报文后，<code>rte_eth_rx_burst()</code> 把 mbuf 交给应用。应用对客户机 RX 队列调用 <code>rte_vhost_enqueue_burst()</code>，后端把数据复制到客户机预先提供的可写缓冲区，发布 used 项。同步调用返回后，已接受报文的复制已经完成，应用可以释放对应原 mbuf；客户机中断、NAPI 和 socket 处理独立推进，无需等客户机消费才释放宿主副本。enqueue 没有接管这个 mbuf 的生命周期。</p>
-  <p>客户机 RX 缓冲区不足时，enqueue 返回值会小于请求数，应用决定重试或丢弃。异步 DMA copy 使用独立 API 和完成检查，提交后不能按同步路径立即释放原数据，必须等相应复制完成。<a href="https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/examples/vhost/main.c#L1380-L1424">接收、重试与释放</a>、<a href="https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/vhost/rte_vhost_async.h">异步接口约定</a></p>
+  <p>客户机 RX 缓冲区不足时，enqueue 返回值会小于请求数，应用决定重试或丢弃。异步 DMA copy 使用独立 API 和完成检查，提交后不能按同步路径立即释放原数据，必须等相应复制完成。接收、重试与释放、异步接口约定</p>
 </section>
 
 <section id="evaluation" class="mechanism-section">
@@ -228,9 +231,9 @@ rte_eth_tx_burst(port, txq, pkts, 1)
 
 <section id="evolution" class="mechanism-section">
   <h2><span class="mechanism-heading-number">七、</span>从用户态后端到队列与复制优化</h2>
-  <p>把 virtio 后端移到独立用户态进程，使交换机可以统一调度多个虚拟机和物理端口，代价是必须管理共享内存、队列状态与进程生命周期。DPDK 16.07 加入 vhost-user 客户端模式，重连能力进一步减少了固定启动顺序的约束；重连后仍需恢复一致的特性和队列状态，socket 恢复不等于在途报文自动恢复。<a href="https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/doc/guides/prog_guide/vhost_lib.rst">vhost-user 连接模式</a></p>
-  <p>split 到 packed 的队列演进把发布与完成标记集中到一张描述符环，改善元数据访问局部性，同时引入 wrap counter 和不同的所有权判断。双方在初始化时选定格式，后端据此进入各自的数据处理分支；本文使用 split 的 desc、avail、used 三个共享区域。<a href="https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/vhost/virtio_net.c#L3586-L3684">split / packed 数据路径选择</a></p>
-  <p>当复制成为瓶颈，可以考虑 DMA copy 卸载。复制仍然存在，只是执行者从 CPU 转为 DMA 设备；提交、完成轮询、缓冲区存活和 DMA 通道资源变得更重要。DPDK 18.11 已提供 vDPA 示例，利用硬件实现兼容 virtio 的数据面，减少专门的 vhost 轮询工作；可迁移状态、特性组合和硬件支持随之成为约束。<a href="https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/doc/guides/rel_notes/release_18_11.rst#L284-L293">18.11 的 vDPA 示例</a></p>
+  <p>把 virtio 后端移到独立用户态进程，使交换机可以统一调度多个虚拟机和物理端口，代价是必须管理共享内存、队列状态与进程生命周期。DPDK 16.07 加入 vhost-user 客户端模式，重连能力进一步减少了固定启动顺序的约束；重连后仍需恢复一致的特性和队列状态，socket 恢复不等于在途报文自动恢复。vhost-user 连接模式</p>
+  <p>split 到 packed 的队列演进把发布与完成标记集中到一张描述符环，改善元数据访问局部性，同时引入 wrap counter 和不同的所有权判断。双方在初始化时选定格式，后端据此进入各自的数据处理分支；本文使用 split 的 desc、avail、used 三个共享区域。split / packed 数据路径选择</p>
+  <p>当复制成为瓶颈，可以考虑 DMA copy 卸载。复制仍然存在，只是执行者从 CPU 转为 DMA 设备；提交、完成轮询、缓冲区存活和 DMA 通道资源变得更重要。DPDK 18.11 已提供 vDPA 示例，利用硬件实现兼容 virtio 的数据面，减少专门的 vhost 轮询工作；可迁移状态、特性组合和硬件支持随之成为约束。18.11 的 vDPA 示例</p>
   <p>这些演进分别针对进程调度、元数据访问、内存复制和数据面执行位置。先用 P1 的路径确认时间和 CPU 花在哪里，再选择改变哪一个环节。块设备的 SPDK vhost 后端采用不同的请求格式和存储完成语义，可结合<a href="spdk-vhost-user-blk.html">SPDK vhost-blk 的请求与完成路径</a>对照。</p>
 </section>
 
@@ -245,12 +248,12 @@ rte_eth_tx_burst(port, txq, pkts, 1)
   </ul>
 </section></div>
   </div>
-  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#device-virtualization">设备与 I/O 虚拟化原理</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-10-19">2026-10-19</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
+  <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#device-virtualization">设备与 I/O 虚拟化</a></nav>
+<p class="mechanism-review">技术复核：<time datetime="2026-10-19">2026-10-19</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=428e6e8b26d1" defer></script>
+<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
 </body>
 </html>

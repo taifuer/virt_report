@@ -10,8 +10,8 @@ from virt_report.render.render import render_mechanisms_html
 
 
 @pytest.mark.parametrize("slug", [
-    "virtio-blk-read", "network-io", "cpu-execution", "memory-access",
-    "interrupt-delivery", "gpu-execution", "virtio-gpu-execution", "libvirt-domain-start",
+    "qemu-virtio-blk", "network-io", "cpu-virtualization", "memory-virtualization",
+    "interrupt-virtualization", "gpu-execution", "virtio-gpu", "libvirt-domain-start",
 ])
 def test_inspector_contains_explanations_not_duplicate_source_lists(slug):
     page = render_mechanisms_html(Config(), slug)
@@ -26,14 +26,14 @@ def test_inspector_contains_explanations_not_duplicate_source_lists(slug):
 
 
 @pytest.mark.parametrize("slug", [
-    "virtio-blk-read", "network-io", "cpu-execution", "memory-access",
-    "interrupt-delivery", "gpu-execution", "virtio-gpu-execution", "libvirt-domain-start",
+    "qemu-virtio-blk", "network-io", "cpu-virtualization", "memory-virtualization",
+    "interrupt-virtualization", "gpu-execution", "virtio-gpu", "libvirt-domain-start",
 ])
 def test_step_explanation_precedes_full_width_visual_in_reading_order(slug):
     page = render_mechanisms_html(Config(), slug)
     workspace = page.index("walkthrough-workspace")
     explanation = page.index("walkthrough-inspector", workspace)
-    visual_class = "vbr-visual" if slug == "virtio-blk-read" else "execution-canvas"
+    visual_class = "vbr-visual" if slug == "qemu-virtio-blk" else "execution-canvas"
     visual = page.index(f'class="{visual_class}"', workspace)
     assert explanation < visual
     inspector_end = page.index("</aside>", explanation)
@@ -51,7 +51,7 @@ def test_step_explanation_precedes_full_width_visual_in_reading_order(slug):
 
 
 def test_disk_uses_one_queue_component_in_both_views():
-    page = render_mechanisms_html(Config(), "virtio-blk-read")
+    page = render_mechanisms_html(Config(), "qemu-virtio-blk")
     assert page.count("data-vbr-queue-overview") == 1
     assert page.count("data-vbr-queue-detail") == 1
     assert "data-vbr-descriptor-address" not in page
@@ -63,7 +63,7 @@ def test_disk_uses_one_queue_component_in_both_views():
 
 
 def test_disk_interrupt_path_is_part_of_kvm_not_a_separate_caption():
-    page = render_mechanisms_html(Config(), "virtio-blk-read")
+    page = render_mechanisms_html(Config(), "qemu-virtio-blk")
     domain = re.search(r'<section[^>]*data-vbr-domain="kvm".*?</section>', page, re.S).group()
     assert "data-vbr-interrupt-path" in domain
     assert domain.count("data-vbr-irq-stage=") == 4
@@ -71,7 +71,7 @@ def test_disk_interrupt_path_is_part_of_kvm_not_a_separate_caption():
 
 
 def test_guest_mode_labels_follow_the_title_in_a_shared_heading_row():
-    page = render_mechanisms_html(Config(), "virtio-blk-read")
+    page = render_mechanisms_html(Config(), "qemu-virtio-blk")
     headings = re.findall(r'<strong class="vbr-node-heading">(.*?)</strong>', page, re.S)
     assert len(headings) == 2
     for heading, selector, label in zip(headings, ("app", "driver"), ("用户态", "内核态")):

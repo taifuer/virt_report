@@ -6,10 +6,10 @@ const {launchBrowser} = require('./browser_runtime.cjs');
 const model = require('../virt_report/render/assets/execution-model.js');
 const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
 const routes = {
-  'network-io': 'network-io', 'memory-access': 'memory-access',
-  'cpu-execution': 'cpu-execution', 'interrupt-delivery': 'interrupt-delivery',
+  'network-io': 'network-io', 'memory-access': 'memory-virtualization',
+  'cpu-execution': 'cpu-virtualization', 'interrupt-delivery': 'interrupt-virtualization',
   'gpu-execution': 'gpu-execution', 'vm-lifecycle': 'libvirt-domain-start',
-  'virtio-gpu-rendering': 'virtio-gpu-execution',
+  'virtio-gpu-rendering': 'virtio-gpu',
 };
 const ids = process.env.EXECUTION_DEMO_IDS?.split(',') || Object.keys(routes);
 assert(ids.length && ids.every(id => Object.hasOwn(routes, id)), 'known demo IDs are required');
@@ -217,6 +217,8 @@ async function assertFrame(page, frame) {
     for (const id of ids) {
       const route = `${base}/mechanisms/${routes[id]}.html`;
       await page.goto(route);
+      await page.locator('[data-execution-lab]').scrollIntoViewIfNeeded();
+      await button(page, 'controls').waitFor({state: 'visible'});
       assert(await button(page, 'controls').isVisible(), `${id}: controls`);
       assert(await button(page, 'fallback').isHidden());
       const demo = JSON.parse(await page.locator('#execution-demo-data').textContent());

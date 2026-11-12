@@ -96,46 +96,30 @@ cp .env.example .env
 
 | 分组 | 专题顺序 |
 | --- | --- |
-| 基础机制 | 虚拟化基础 → CPU 虚拟化 → 内存虚拟化 → 设备与 I/O 虚拟化 → 中断虚拟化 |
-| 关键操作 | 虚拟机启动 → 热迁移 → 热插拔 → 热升级 |
-| 内部机制 | QEMU 内部机制 → KVM 内部机制 → Libvirt 内部机制 |
-| 交互演示 | 磁盘 I/O 读写过程 → 网络 I/O 收发过程 → CPU 指令执行 → 内存访问过程 → 中断传递 → GPU 命令执行：直通与共享虚拟化 → virtio-gpu 渲染与编解码 |
+| 架构与组件 | 虚拟化基础 → Libvirt 原理 → QEMU 原理 → KVM 原理 |
+| 虚拟化机制 | CPU 虚拟化 → 内存虚拟化 → 设备与 I/O 虚拟化 → 中断虚拟化 |
+| 运行与管理 | 虚拟机启动 → 热迁移 → 热插拔 → 热升级 |
+| Linux 基础 | Linux 内核 |
 
-目录只显示已有正文的专题及其主归属篇数，未发布的专题和分组不对读者展示。普通主题保留标题、简介和导读入口，细分文章默认收起，通过紧邻标题的独立箭头按钮展开；按钮不重复显示篇数，无障碍说明保留动作与主题名称。只有一篇的主题及交互演示不增加折叠。顶部目录、直接访问锚点和前进后退会展开对应主题，旧锚点继续可用。关闭 JavaScript 时仍显示完整文章列表。各文章 URL 保持稳定，交叉阅读放在导读正文，不在目录增加附加行或重复计数。
+目录只显示已有正文的专题及其主归属篇数，未发布的专题和分组不对读者展示。主题保留标题、简介和概要入口，细分文章默认收起，通过紧邻标题的独立箭头按钮展开；按钮不重复显示篇数，无障碍说明保留动作与主题名称。只有一篇的主题不增加折叠。顶部目录、直接访问锚点和前进后退会展开对应主题。关闭 JavaScript 时仍显示完整文章列表。标题层级用字号和间距区分，同一分组内左侧对齐，不增加颜色条或逐级缩进。
 
-所有专题标题直接链接对应导读或覆盖该专题的主文章，介绍基本分工、具体例子、演进与取舍，再指向深入机制文章；列表不重复展示入口文章。基础部分为 `virtualization-basics.html`、`cpu-virtualization.html`、`memory-virtualization.html`、`device-virtualization.html`、`interrupt-virtualization.html`；操作部分为 `libvirt-domain-start.html`、`migration.html`、`hotplug.html`、`qemu-cpr-transfer.html`；内部机制为 `qemu-internals.html`、`kvm-vcpu-run.html`、`libvirt-internals.html`。
+专题标题链接概要或覆盖该专题的主文章，列表不重复展示入口文章。每篇文章独立成页，桌面端右侧显示本文目录，不增加左侧跨文章导航。文章正文应独立解释主要机制，仅在强关联的位置链接具体细节；不添加通用延伸阅读清单。源码、规范和论文依据保留在参考资料中。
 
 重复导读已整合到对应主文章：`vm-startup.html` → `libvirt-domain-start.html`，`live-upgrade.html` → `qemu-cpr-transfer.html`，`kvm-internals.html` → `kvm-vcpu-run.html`。动态服务返回 308，静态导出保留跳转页面和无脚本入口；旧章节锚点在目标文章中保留，不重复计入文章数量。
 
-当前文章都位于 `mechanisms/`：
+文章位于 `mechanisms/`，完整清单、顺序和篇数统一以 `virt_report/content/mechanisms.json` 为准，跳转页不计入。分类按文章主要解释的对象确定：KVM 创建、执行、跨 CPU 协作、时间、嵌套和 MMU 实现归 KVM 原理；QOM、地址空间、AIO 和 TCG 归 QEMU 原理。CPU、内存虚拟化保留跨组件机制说明，设备接口、后端和 DMA 归设备与 I/O。
 
-- CPU（`#cpu-virtualization`）：`kvm-vcpu-halt.html`、`kvm-virtual-time.html`、`qemu-tcg.html`、`cpu-model-migration.html`，等待与唤醒、虚拟时间、TCG，以及 CPU 模型的能力与迁移约束；KVM 执行循环归入内部机制专题。
-- 内存（`#memory-virtualization`）：`kvm-ept-fault.html`、`kvm-hugepages.html`、`kvm-dirty-ring.html`、`vcpu-numa-placement.html`，地址映射、大页、脏页记录，以及客户机拓扑、线程与 RAM 的物理放置。
-- 设备与 I/O（`#device-virtualization`）：`virtio-device-initialization.html`、`qemu-network-tx.html`、`virtio-net-rx.html`、`packed-virtqueue.html`、`qemu-vhost-net.html`、`dpdk-vhost-user-net.html`、`spdk-vhost-user-blk.html`、`vhost-vdpa.html`、`qemu-vfio-dma.html`、`qemu-virtio-blk.html`，从特性协商、队列与双向收发进入软件/硬件后端，解释 DMA、缓冲区所有权、迁移限制与持久化边界。
-- 中断（`#interrupt-virtualization`）：`kvm-virtio-interrupt.html`，队列完成、通知判定、MSI-X 路由与 KVM 中断注入。
-- 启动（`#vm-startup`）：`libvirt-domain-start.html`、`qemu-vm-startup.html`，从管理请求、进程握手到 QEMU 机器初始化和 vCPU 执行。
-- 热迁移（`#migration`）：`qemu-memory-migration.html`、`qemu-migration-stream.html`、`qemu-multifd.html`、`qemu-postcopy.html`、`libvirt-live-migration.html`，内存迭代、流格式、多通道、后拷贝，以及管理层五阶段协调与失败恢复。
-- 热插拔（`#hotplug`）：`qemu-pcie-hotplug.html`、`qemu-virtio-mem.html`、`x86-vcpu-hotplug.html`，分别跟踪 PCIe、内存和 vCPU 的添加、客户机协作及移除完成。
-- 热升级（`#live-upgrade`）：目录中使用不跳转的灰色专题标题，下面并列展示 QEMU CPR 与 KVM Orthus 两篇文章的完整标题。`qemu-cpr-transfer.html` 解释 QEMU 进程替换；`kvm-live-upgrade.html` 用一台数据库虚机贯穿 Orthus 的新旧 KVM 共存、状态接管、DMA 与中断交接，再对照字节跳动在 KVM Forum 2020／2022 的设备连续性优化，以及 HyperFresh 在 APSys 2017／VEE 2019 的嵌套接管路线。正文区分可替换层、保留层、暂停开销与日常运行成本，不展开宿主内核重启方案。论文型文章使用正式 DOI 标注依据，不标记无关的源码版本。
-- QEMU 内部机制（`#qemu-internals`）：`qemu-qom-device.html`、`qemu-memory-region.html`、`qemu-aio-iothread.html`、`qemu-qcow2.html`、`qemu-live-block-operations.html`，对象生命周期、内存初始化与地址空间、异步 I/O、镜像映射，以及外部快照与在线块图变更。
-- KVM 内部机制（`#kvm-internals`）：`kvm-vcpu-run.html`、`kvm-vcpu-requests.html`，执行循环与 I/O 退出，以及 request 位图、vCPU 模式与 kick 协作；区分内核请求、宿主 IPI、客户机中断及 QEMU 信号。
-- Libvirt 内部机制（`#libvirt-internals`）：`libvirt-rpc.html`，XDR 报文、服务端分发、响应匹配与守护进程边界。
+启动专题从 Libvirt 管理流程进入 QEMU 整机启动；`kvm-vm-creation.html` 在 KVM 原理中说明 VM fd、memslot、irqchip 与 vCPU 的创建。Linux 基础从用户空间、内核空间与资源机制展开，`linux-boot.html` 跟踪固件、内核、initramfs 和 PID 1，再分篇介绍进程、内存、中断和 I/O。
 
-设备接口、后端和 DMA 属于同一条 I/O 路径，合并在一个专题内阅读。原 `#io-virtualization` 锚点仍定位到合并后的专题，文章 URL 不变。
+热迁移概要讲预拷贝和状态交接，Libvirt 专篇讲常用命令、控制与数据通道及迁移流程。热插拔概要同时覆盖设备、CPU 和 DIMM，细分文章解释 PCIe 与 x86 vCPU。热升级入口为 `live-upgrade-overview.html`，说明 QEMU、KVM 和直通设备交接的范围；CPR 与 Orthus 专篇保留具体实现与论文证据。
 
-内存初始化文章以 QEMU 10.2 / Q35 / 8 GiB RAM 为主线，串起宿主后备、RAMBlock、高低端别名、FlatView 与 KVM 注册，配有初始化时序图和地址布局图。64 KiB 交互后置为独立的局部映射示例，支持别名偏移、优先级、窗口启停和地址查询，不代表实际机器布局。virtio-mem 交互用 512 MiB 聚合格子展示目标、实际提供与客户机管理容量，支持回收阻塞、BUSY、回退与重置。两者均保留无 JavaScript 说明，全屏时移动原 DOM，退出后状态保持。
-
-新增交互：halt 时间线可调整事件、轮询预算和调度等待；大页模型展示 2 MiB EPT 叶子与 512 个小页叶子的转换；qcow2 模型比较 L1/L2 查找、两类引用计数、backing 回退和局部写入。SPDK 文章按 25.09 固定提交跟踪本地 NVMe 路径，采用离线架构图与时序图，不需要读者安装 SPDK 或访问外部图表服务。
-
-TCG 交互跟踪翻译块的生成、命中、跳转链接与代码改写后的失效；与 KVM 文章对照 CPU 执行路径。公共 Mermaid 图默认不超过原始尺寸，长图等比缩小；细节可在全屏查看器中缩放。
-
-专题与篇数以 `virt_report/content/mechanisms.json` 的已发布目录为准，旧链接跳转页不计入。内容覆盖 CPU 模型与迁移兼容性、嵌套 VMX、vCPU 热插拔、NUMA 放置、Libvirt 迁移协调、VFIO 设备迁移、virtio-net 接收与 NAPI、Split / Packed virtqueue、vhost-vDPA、IOMMU 与 IOMMUFD、vIOMMU、virtio-gpu、virtio-balloon，以及外部快照与在线块操作；GPU 演示对照整卡直通、历史 GVT-g mdev、SR-IOV VF 直通及 SR-IOV + mdev 组合。
+交互演示嵌入对应文章，在解释机制的位置展示，不再单独占一组目录或维护重复正文。QEMU 内存映射、KVM halt、大页、TCG 及各 I/O 模型保留原有交互与无脚本说明。公共 Mermaid 图在构建时转为本地 SVG，支持全屏缩放；文章和演示不依赖外部图表服务。
 
 文章页脚显示元数据的 `reviewed_on`，表示针对文中源码、规范或论文依据的技术复核日期。仅调整排版、措辞、搜索索引或导出快照时，不自动刷新该日期；首次发布与产品更新记录应从实际 Git 历史核验，不能用技术复核日期替代。新增实验须说明执行位置、前提、观察口径和恢复方法，区分“代码可运行”“接口已核验”与“虚拟机上已测量”。内存虚拟化文章中的首次触碰程序由测试编译运行；balloon 实验只自动检查命令与单位，不在测试中操作真实 VM。
 
-`virtio-gpu-execution.html` 独立归入交互演示，提供 OpenGL 绘制、H.264 解码和 NV12 编码三个离线场景，可播放、单步、回退、重置与全屏演示。命令包和图像资源随步骤变化，流程总览、关键结构、源码路径共用状态；详细原理与四张流程图保留在 `virtio-gpu.html`，两篇文章互相链接。固定 QEMU 10.2、Linux 6.18、Mesa 25.0、virglrenderer 1.2，明确区分已接通的渲染主线与需要额外初始化的 VirGL video 扩展；不把普通 QEMU GL 配置当成视频加速支持，也不把 DMA-BUF、fence 与最终显示混为一谈。
+`virtio-gpu.html` 嵌入 OpenGL 绘制、H.264 解码和 NV12 编码三个离线场景，可播放、单步、回退、重置与全屏演示；原 `virtio-gpu-execution.html` 跳转到该文章。命令包和图像资源随步骤变化，流程总览、关键结构、源码路径共用状态。固定 QEMU 10.2、Linux 6.18、Mesa 25.0、virglrenderer 1.2，区分已接通的渲染主线与需要额外初始化的 VirGL video 扩展；普通 QEMU GL 配置不自动提供视频加速支持。
 
-`mechanisms/virtio-blk-read.html` 保留原 URL，页面名为“磁盘 I/O 读写过程”，独立归入交互演示，不再计入设备基础文章。读取与写入分别从 Guest 的 `pread()` / `pwrite()` 出发，固定一次 4 KiB 直接 I/O。流程总览显示系统调用、共享队列、后端处理、中断递送与应用返回；源码路径展示关键函数及异步边界。队列机制单独保留 8 个步骤：准备描述符、发布请求、设备取链、读写缓冲区、写回响应、填写完成项、发布完成、回收描述符。该视图以描述符回收为终点，不再逐步展开系统调用与中断注入；阶段导航和计数采用队列自己的进度。三种视图共用完整状态轨迹，队列视图按里程碑取快照，不修改底层因果顺序。支持单步、播放和回退，URL 保留步骤、视图和 `operation=write`。
+`mechanisms/qemu-virtio-blk.html` 嵌入磁盘 I/O 演示，原 `virtio-blk-read.html` 跳转到该文章。读取与写入分别从 Guest 的 `pread()` / `pwrite()` 出发，固定一次 4 KiB 直接 I/O。流程总览显示系统调用、共享队列、后端处理、中断递送与应用返回；源码路径展示关键函数及异步边界。队列机制单独保留 8 个步骤：准备描述符、发布请求、设备取链、读写缓冲区、写回响应、填写完成项、发布完成、回收描述符。该视图以描述符回收为终点；阶段导航和计数采用队列自己的进度。三种视图共用完整状态轨迹，队列视图按里程碑取快照，不修改底层因果顺序。支持单步、播放和回退，URL 保留步骤、视图和 `operation=write`。
 
 队列视图初始显示“准备前”，三个描述符未填写、索引为零，不计入 8 个操作步骤。请求占用使用中性背景，仅本步操作高亮；回收后的旧环项仍保留并淡化，避免误解为回收必须清空内存。
 
@@ -160,7 +144,6 @@ node scripts/check_execution_demos_browser.cjs http://127.0.0.1:8090
 node scripts/check_memory_mapping_browser.cjs http://127.0.0.1:8090
 node scripts/check_walkthrough_interaction_browser.cjs http://127.0.0.1:8090
 node scripts/check_completion_boundaries_browser.cjs http://127.0.0.1:8090
-node scripts/check_postcopy_browser.cjs http://127.0.0.1:8090
 node scripts/check_virtio_gpu_rendering_browser.cjs http://127.0.0.1:8090
 node scripts/check_walkthrough_style_browser.cjs http://127.0.0.1:8090
 node scripts/check_walkthrough_density_browser.cjs http://127.0.0.1:8090
@@ -173,10 +156,10 @@ node scripts/check_back_top_and_badge_browser.cjs http://127.0.0.1:8090
 # 非默认安装位置可通过 PLAYWRIGHT_MODULE 指定；VBR_SCREENSHOT_DIR 可保存检查截图。
 ```
 
-其余六个演示与原理文章互链，均使用独立、可回退的离线场景：
+以下按历史演示入口说明场景，CPU、内存、中断和 virtio-gpu 的旧 URL 会跳转到承载演示的原理文章；各场景使用独立、可回退的离线状态：
 
 - `network-io.html`：QEMU+TAP、内核 vhost-net+TAP、DPDK vhost-user+PMD、硬件 vDPA 各自收发，以及 QEMU RX 缓冲区不足和 TX 背压。Guest RAM 拆分描述符表、available ring、used ring 和报文缓冲区；字段视图显示 `addr/len/flags/next`、索引和访问权限，并将填写环项与发布索引分开。
-- `memory-access.html`：RAM 主菜单保留缓存命中、页表遍历、Guest #PF 和首次补建 EPT；后备页换入、已有映射的脏页写保护归入仅在 RAM 分类显示的折叠进阶入口。设备分类对照 QEMU 回调、KVM 内核处理、VFIO 物理 BAR 和 ivshmem 共享 BAR2。两个直接访问场景共用 GPA / HPA / offset / 落点摘要，明确 HPA 既可以指向设备窗口也可以指向 RAM；没有逐次 QEMU 回调不等于物理设备直通。正文区分 Guest 资源发现、QEMU MemoryRegion 配置与 KVM 退出分派，并将后拷贝 userfaultfd 补页留在独立文章；不虚构“QEMU 建 EPT”。CPU BAR 访问不能与设备 DMA 的 IOMMU 路径混为一谈。
+- `memory-access.html`：RAM 主菜单保留缓存命中、页表遍历、Guest #PF 和首次补建 EPT；后备页换入、已有映射的脏页写保护归入仅在 RAM 分类显示的折叠进阶入口。设备分类对照 QEMU 回调、KVM 内核处理、VFIO 物理 BAR 和 ivshmem 共享 BAR2。两个直接访问场景共用 GPA / HPA / offset / 落点摘要，明确 HPA 既可以指向设备窗口也可以指向 RAM；没有逐次 QEMU 回调不等于物理设备直通。正文区分 Guest 资源发现、QEMU MemoryRegion 配置与 KVM 退出分派。CPU BAR 访问与设备 DMA 的 IOMMU 路径分别解释。
 - `cpu-execution.html`：普通 ADD、Guest 系统调用、内核处理 CPUID 和返回 QEMU 的 MMIO 使用同一 vCPU 执行时间线，持续显示指令、寄存器、CPL、VMX 状态与 `KVM_RUN` 交接。普通指令不画成“物理 CPU 把请求交给 Guest”。“等待与唤醒”组并列 HLT 截获后阻塞与 Idle Passthrough 两个固定预设：后者关闭 HLT exiting，硬件等待不改变 KVM 的 RUNNABLE / 宿主 TASK_RUNNING；另固定跨 CPU 的 APICv posted 唤醒，不宣称任何事件都免退出，也不混入 MONITOR/MWAIT。两者共用执行状态、VM-exit 次数、宿主线程与 KVM_RUN 摘要。源码视图区分事先配置、另一 CPU 的中断提交和目标 CPU 的硬件执行；两个定时休眠场景继续区分 Guest 任务、vCPU 和宿主调度状态。`kvm-vcpu-halt.html` 同步解释区别，原轮询实验仍限定在 HLT 被截获的路径。
 - `interrupt-delivery.html`：主菜单分软件后端与直通设备。QEMU 直接提交 MSI；DPDK vhost-user 直接写 callfd，经 KVM irqfd 分别走软件注入和 APICv posted 交付。直通设备的“MSI-X · 宿主转发”与“MSI-X · VT-d posted”都使用 MSI-X，由平台能力、配置和路由决定后续递送，不按设备类型或逐次 I/O 选择。普通宿主转发进入 KVM 后仍可使用 CPU 侧 posted；vCPU 暂时未运行时维护 PID、pending 与唤醒，不等于自动切回普通 IRTE。明确谁写 PID.PIR，QEMU 配置面不进入 DPDK 逐次通知链。通知抑制、IF 等待、MSI-X PBA 保留在默认收起的进阶入口，旧场景 URL 自动展开对应入口。通知、pending、注入准备、Guest 接受与队列消费分别推进，不表示多次独立完成通知。
 - `gpu-execution.html`（《GPU 命令执行：直通与共享虚拟化》）：五个场景——VFIO PCI 直通 AMD Vega10 / SDMA 4.0 的上传与读回、旧代 Skylake GVT-g mdev 的 BLT 复制、AMD MI300X / SDMA 4.4.2 的 VF 上传，以及 NVIDIA SR-IOV + mdev 的实例创建与作业完成。前三类跟踪命令、映射、数据、fence 与应用等待；GVT-g 额外展示 BAR0 / ELSP 捕获、审核、影子上下文、宿主调度及 BAR2 的部分直映。SR-IOV 将 PF 管理与 VF 快路径分开。NVIDIA 组合只展开公开接口，内部寄存器与调度保留为未展开区域；可选通知明确限定为软件 eventfd / irqfd 分支，不把一次 CUDA event 等同于一次中断。正文附方案对比和五份独立 libvirt XML 示例，区分 PCI BDF、mdev UUID、托管与厂商驱动绑定。演示未经对应 GPU 实测，代码基线与厂商部署支持矩阵分开说明。

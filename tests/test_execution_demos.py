@@ -53,12 +53,12 @@ def test_demo_registry_points_to_existing_articles_without_duplicate_directory_e
     for demo_id, page_id in execution_demos.DEMO_PAGES.items():
         article = next(article for article in articles if article['slug'] == page_id)
         assert article['execution_demo'] == demo_id
-    assert sum(article.get('presentation') == 'walkthrough' for article in articles) == 7
+    assert not any(article.get('presentation') == 'walkthrough' for article in articles)
     assert not {'disk-persistence', 'vm-lifecycle'} & {article['slug'] for article in articles}
 
 
 def test_embedded_labs_share_assets_without_overwriting_primary_disk_controls():
-    page = render_mechanisms_html(Config(), "virtio-blk-read")
+    page = render_mechanisms_html(Config(), "qemu-virtio-blk")
     assert 'data-vbr-lab' in page and 'data-execution-lab' not in page
     assert 'data-vbr-completion' in page
     assert '../assets/virtio-blk-read.js?v=' in page

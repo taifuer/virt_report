@@ -4,7 +4,7 @@
 <section id="preface" class="mechanism-section">
   <h2>PCIe 设备热插拔的处理范围</h2>
   <p>PCIe 设备热插拔允许在虚拟机运行期间添加或移除网卡、存储控制器等设备。QEMU 通过端口的插槽状态与事件通知客户机，客户机操作系统再完成设备枚举、驱动绑定或停用。管理程序负责发起变更，并在设备移除后回收独立的宿主后端。</p>
-  <p>这是<a href="hotplug.html">虚拟机热插拔</a>中的设备操作路径。<a href="x86-vcpu-hotplug.html">CPU 热插拔</a>、<a href="qemu-virtio-mem.html">内存容量调整</a>与 PCIe 设备增删都涉及资源准备、客户机状态更新和资源回收，但使用的通知协议与资源约束不同。本文以 q35 上预先创建的 PCIe Root Port 和一块现代 virtio-net-pci 网卡为例，分析 PCIe 原生热插拔；ACPI PCI 热插拔则使用另一套通知和应答路径。</p>
+  <p>这是<a href="hotplug.html">虚拟机热插拔</a>中的设备操作路径。<a href="x86-vcpu-hotplug.html">CPU 热插拔</a>、<a href="hotplug.html#example">DIMM 内存热插拔</a>与 PCIe 设备增删都涉及资源准备、客户机状态更新和资源回收，使用的通知协议与资源约束各有不同。本文以 q35 上预先创建的 PCIe Root Port 和一块现代 virtio-net-pci 网卡为例，分析 PCIe 原生热插拔；ACPI PCI 热插拔则使用另一套通知和应答路径。</p>
   <p>例子中的端口是 <code>rp1</code>，网卡是 <code>net1</code>，宿主网络后端是 <code>n1</code>。添加流程依次为预留插槽、创建后端与网卡、发布插槽事件、客户机枚举并绑定驱动。删除流程先通知客户机停用设备，再拆除网卡，最后清理独立后端。下文沿这两条流程说明拓扑、寄存器、源码回调和完成事件。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
@@ -30,7 +30,7 @@
 {"execute":"device_add","arguments":{"driver":"virtio-net-pci","id":"net1",
  "bus":"rp1","netdev":"n1","disable-legacy":true},"id":"nic-add"}
 {"return":{},"id":"nic-add"}</code></pre>
-  <p><code>user</code> 后端需要相应构建支持，示例选它以集中观察设备生命周期。实际发包的队列与后端处理见<a href="qemu-network-tx.html">网卡模拟与 virtio-net 发包路径</a>。</p>
+  <p><code>user</code> 后端需要相应构建支持，示例选它以集中观察设备生命周期。实际发包的队列与后端处理见<a href="network-io.html">网卡模拟与 virtio-net 发包路径</a>。</p>
   <p>下面流程中的 PDS 表示插槽当前有设备，PDC 表示存在状态发生过变化，ABP 表示注意按钮事件。客户机读取这些状态并处理通知；完整寄存器和回调表放在添加、移除流程之后。</p>
   <ol class="mechanism-flow">
     <li><strong>查类型和总线</strong><span>qdev_device_add_from_qdict() 查找设备类和 rp1 总线，检查类型、可用位置与迁移状态。</span></li>

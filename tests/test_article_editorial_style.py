@@ -26,7 +26,7 @@ def test_articles_omit_redundant_scope_commentary(article):
         assert phrase not in page
 
 
-def test_wait_queue_explanation_sets_state_before_rechecking_condition():
+def test_wait_queue_explanation_sets_state_before_rechecking_condition(article_source):
     page = render.render_mechanisms_html(Config(), "linux-execution-scheduling")
     path = page.split('<section id="path"', 1)[1].split("</section>", 1)[0]
     text = re.sub(r"<[^>]*>", "", path)
@@ -34,7 +34,8 @@ def test_wait_queue_explanation_sets_state_before_rechecking_condition():
     assert "条件仍未满足才调用调度器" in text
     assert "prepare_to_wait_event()" in text and "finish_wait()" in text
     assert "完成侧须先更新条件再唤醒" in text
-    assert "include/linux/wait.h#L300-L329" in path
+    assert "include/linux/wait.h#L300-L329" not in path
+    assert "include/linux/wait.h#L300-L329" in article_source('linux-execution-scheduling')
 
 
 def test_napi_example_keeps_full_and_zero_budget_rules():

@@ -103,7 +103,7 @@ def test_directory_eyebrows_are_removed_but_context_is_retained():
         template = render._env().loader.get_source(render._env(), filename)[0]
         assert 'class="kicker"' in template, filename
     mechanism = render._env().loader.get_source(render._env(), "mechanism.html")[0]
-    assert 'class="kicker mechanism-breadcrumb"' in mechanism
+    assert 'class="mechanism-breadcrumb"' in mechanism
 
 
 def test_conference_pages_express_parent_child_navigation():

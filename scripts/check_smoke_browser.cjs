@@ -75,14 +75,24 @@ async function search(page) {
 async function article(page, width) {
   const toc = page.locator('#mechanism-toc-links');
   const toggle = page.locator('[data-toc-toggle]');
-  if (width < 960) {
+  assert.equal(await page.locator('.mechanism-chapters,.mechanism-adjacent,.mechanism-page-outline').count(), 0);
+  assert(await toc.locator('a').evaluateAll(links => links.every(a => a.getAttribute('href').startsWith('#'))));
+  if (width <= 960) {
     assert(await toc.isHidden());
     await toggle.focus();
     await page.keyboard.press('Enter');
     assert(await toc.isVisible());
     await toggle.click();
     assert(await toc.isHidden());
-  } else assert(await toc.isVisible());
+  } else {
+    assert(await toc.isVisible());
+    const contentBox = await page.locator('.mechanism-prose').boundingBox();
+    const tocBox = await page.locator('.mechanism-toc').boundingBox();
+    assert(tocBox.x >= contentBox.x + contentBox.width, 'article contents stay on the right');
+    assert(await toc.locator('a').evaluateAll(links => links.every(a =>
+      getComputedStyle(a).borderLeftWidth === '0px' && getComputedStyle(a).boxShadow === 'none')),
+    'no decorative color bars on contents links');
+  }
   const expand = page.locator('.mechanism-diagram [data-mechanism-expand]').first();
   await expand.click();
   const dialog = page.locator('.mechanism-viewer[open]');
@@ -94,6 +104,7 @@ async function article(page, width) {
 
 async function network(page) {
   const lab = page.locator('[data-execution-lab]');
+  await lab.scrollIntoViewIfNeeded();
   await page.locator('[data-execution-phase="publish"]').click();
   assert.equal(await lab.getAttribute('data-step'), 'publish');
   await page.locator('[data-execution-next]').click();
@@ -110,6 +121,7 @@ async function network(page) {
 
 async function disk(page) {
   const lab = page.locator('[data-vbr-lab]');
+  await lab.scrollIntoViewIfNeeded();
   const next = page.locator('[data-vbr-next]');
   await next.waitFor({state: 'visible'});
   const start = await lab.getAttribute('data-step');
@@ -133,6 +145,24 @@ async function queue(page) {
   await action('reclaim').click();
   await action('reset').click();
   assert.equal(await lab.locator('.is-available,.is-completed').count(), 0);
+}
+
+async function categories(page) {
+  assert.equal(await page.locator('h1').innerText(), '原理');
+  assert.equal(await page.locator('a[href="kvm/"],.mechanism-book-chapter').count(), 0);
+  await page.locator('.mechanism-directory a[href="#kvm-internals"]').click();
+  await page.locator('#kvm-internals h3 a[href="mechanisms/kvm-vcpu-run.html"]').click();
+  assert.equal(await page.locator('.mechanism-toc').count(), 1);
+  assert.equal(await page.locator('.mechanism-chapters,a[rel="next"]').count(), 0);
+  await page.goto(`${base}/mechanisms/virtualization-basics.html`);
+  assert.match(await page.locator('.mechanism-breadcrumb').innerText(), /虚拟化基础/);
+  assert.doesNotMatch(await page.locator('.mechanism-breadcrumb').innerText(), /KVM/);
+  assert.equal(await page.locator('#sources details').count(), 0);
+  assert.equal(await page.locator('#sources li').count(), 3);
+  await page.goto(`${base}/kvm/`);
+  await page.waitForURL(`${base}/mechanisms.html#kvm-internals`);
+  assert.equal(await page.locator('h1').innerText(), '原理');
+  assert(await page.locator('#kvm-internals .mechanism-list').isVisible());
 }
 
 (async () => {
@@ -161,7 +191,8 @@ async function queue(page) {
       for (const [url, check] of [
         ['/conference-papers.html', papers], ['/versions.html', versions], ['/search.html', search],
         ['/mechanisms/linux-memory.html', article], ['/mechanisms/network-io.html', network],
-        ['/mechanisms/virtio-blk-read.html', disk], ['/mechanisms/packed-virtqueue.html', queue],
+        ['/mechanisms/qemu-virtio-blk.html', disk], ['/mechanisms/packed-virtqueue.html', queue],
+        ['/mechanisms.html', categories],
       ]) {
         checking = `${url} at ${width}px`;
         const started = performance.now();
@@ -182,7 +213,7 @@ async function queue(page) {
     await noOverflow(reader);
     await plain.close();
     await context.tracing.stop();
-    console.log('PASS seven essential journeys, desktop/mobile, keyboard, URL state and no-JS; no success screenshots');
+    console.log('PASS eight essential journeys, desktop/mobile, keyboard, URL state and no-JS; no success screenshots');
   } catch (error) {
     console.error(`FAIL ${checking}`);
     await page.screenshot({path: path.join(artifacts, 'failure.png'), timeout: 5000}).catch(() => {});

@@ -73,7 +73,7 @@ def test_memory_object_selector_keeps_ram_conditions_together():
 
 
 def test_memory_advanced_presets_are_scoped_to_ram_and_keep_old_scene_ids():
-    page = render_mechanisms_html(Config(), "memory-access")
+    page = render_mechanisms_html(Config(), "memory-virtualization")
     assert 'data-execution-advanced-category="ram" hidden' in page
     assert page.count('data-execution-advanced-scenario="') == 2
     for scene_id in ("host-page-fault", "dirty-write-protect"):
@@ -102,7 +102,7 @@ def test_interrupt_main_menu_separates_sender_from_advanced_conditions():
     assert [item["id"] for item in advanced[0]["scenarios"]] == [
         "notify-suppressed", "msix-masked", "if-masked",
     ]
-    page = render_mechanisms_html(Config(), "interrupt-delivery")
+    page = render_mechanisms_html(Config(), "interrupt-virtualization")
     assert '<details class="walkthrough-advanced" data-execution-advanced>' in page
     assert page.count('data-execution-advanced-scenario="') == 3
 

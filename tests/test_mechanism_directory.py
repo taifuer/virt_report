@@ -8,18 +8,18 @@ from virt_report.execution_demos import get_demo
 from virt_report.render import render
 
 
-def test_short_demo_titles_match_directory_article_and_player():
-    for slug, title in (
-        ("gpu-execution", "GPU 命令执行：直通与共享虚拟化"),
-        ("virtio-gpu-execution", "virtio-gpu 渲染与编解码"),
-        ("interrupt-delivery", "中断传递"),
+def test_embedded_demos_belong_to_canonical_articles():
+    for slug, demo in (
+        ("gpu-execution", "gpu-execution"),
+        ("virtio-gpu", "virtio-gpu-rendering"),
+        ("interrupt-virtualization", "interrupt-delivery"),
     ):
         article = mechanisms.get_article(slug)
-        assert article["title"] == title
-        assert mechanisms.get_topic(article["topic"])["title"] == title
-        assert get_demo(article["execution_demo"])["title"] == title
+        assert article["execution_demo"] == demo
+        assert get_demo(demo)
+        assert article.get("presentation") != "walkthrough"
         page = render.render_mechanisms_html(Config(), slug)
-        assert f"<title>{title} - virt-report</title>" in page
+        assert f"<title>{article['title']} - virt-report</title>" in page
         assert 'id="execution-demo-data"' in page
 
 
@@ -45,49 +45,35 @@ def test_directory_has_reading_order_and_real_anchors_only():
     page = render.render_mechanisms_html(Config())
     directory = re.search(r'<nav class="mechanism-directory".*?</nav>', page, re.S).group()
     assert page.index('结合源码与图解') < page.index('class="mechanism-directory"')
-    assert re.findall(r'href="#([^"]+)"', directory) == [
-        'virtualization-basics',
+    topics = [
+        'virtualization-basics', 'libvirt-internals', 'qemu-internals', 'kvm-internals',
         'cpu-virtualization', 'memory-virtualization', 'device-virtualization',
-        'interrupt-virtualization', 'linux-foundations', 'vm-startup', 'migration', 'hotplug',
-        'live-upgrade', 'qemu-internals', 'kvm-internals', 'libvirt-internals',
-        'block-io-walkthrough',
-        'network-io-walkthrough', 'cpu-execution-walkthrough',
-        'memory-access-walkthrough', 'interrupt-delivery-walkthrough',
-        'gpu-execution-walkthrough', 'virtio-gpu-walkthrough',
+        'interrupt-virtualization', 'vm-startup', 'migration', 'hotplug',
+        'live-upgrade', 'linux-foundations',
     ]
-    assert re.findall(r'<section class="mechanism-topic" id="([^"]+)"', page) == [
-        'virtualization-basics',
-        'cpu-virtualization', 'memory-virtualization', 'device-virtualization',
-        'interrupt-virtualization', 'linux-foundations', 'vm-startup', 'migration', 'hotplug',
-        'live-upgrade', 'qemu-internals', 'kvm-internals', 'libvirt-internals',
-        'block-io-walkthrough',
-        'network-io-walkthrough', 'cpu-execution-walkthrough',
-        'memory-access-walkthrough', 'interrupt-delivery-walkthrough',
-        'gpu-execution-walkthrough', 'virtio-gpu-walkthrough',
-    ]
+    assert re.findall(r'href="([^"]+)"', directory) == ['#' + slug for slug in topics]
+    assert re.findall(r'<section class="mechanism-topic" id="([^"]+)"', page) == topics
     for slug in re.findall(r'href="#([^"]+)"', directory):
         assert f'id="{slug}"' in page
     assert '待补充' not in page
     assert 'mechanism-directory-planned' not in page
-    assert 'id="group-internals"' in page
+    assert [group['slug'] for group in mechanisms.topic_groups()] == [
+        'architecture', 'mechanisms', 'operations', 'linux',
+    ]
     assert 'disabled' not in directory
 
 
 def test_directory_counts_primary_articles_without_extra_related_rows():
     counts = {topic['slug']: len(topic['articles']) for topic in mechanisms.topics()}
-    assert counts == {'linux-foundations': 6, 'virtualization-basics': 1,
-                      'cpu-virtualization': 7, 'memory-virtualization': 6,
-                      'device-virtualization': 15, 'interrupt-virtualization': 2,
-                      'vm-startup': 2, 'migration': 7, 'hotplug': 4,
-                      'live-upgrade': 2, 'qemu-internals': 6, 'libvirt-internals': 2,
-                      'kvm-internals': 2, 'block-io-walkthrough': 1,
-                      'network-io-walkthrough': 1, 'cpu-execution-walkthrough': 1,
-                      'memory-access-walkthrough': 1, 'interrupt-delivery-walkthrough': 1,
-                      'gpu-execution-walkthrough': 1, 'virtio-gpu-walkthrough': 1}
+    assert counts == {'linux-foundations': 7, 'virtualization-basics': 1,
+                      'cpu-virtualization': 2, 'memory-virtualization': 2,
+                      'device-virtualization': 15, 'interrupt-virtualization': 1,
+                      'vm-startup': 2, 'migration': 6, 'hotplug': 3,
+                      'live-upgrade': 3, 'qemu-internals': 5, 'libvirt-internals': 2,
+                      'kvm-internals': 9}
     assert [article['slug'] for article in
             mechanisms.get_topic('memory-virtualization')['articles']] == [
-                'memory-virtualization', 'kvm-ept-fault', 'kvm-hugepages', 'kvm-dirty-ring',
-                'vcpu-numa-placement', 'virtio-balloon',
+                'memory-virtualization', 'virtio-balloon',
             ]
     page = render.render_mechanisms_html(Config())
     migration = re.search(r'<section class="mechanism-topic" id="migration".*?</section>',
@@ -96,7 +82,7 @@ def test_directory_counts_primary_articles_without_extra_related_rows():
     assert 'mechanism-topic-related' not in page
     assert 'href="mechanisms/kvm-dirty-ring.html"' not in migration
     assert page.count('href="mechanisms/kvm-dirty-ring.html"') == 1
-    assert '内存虚拟化</a>' in render.render_mechanisms_html(Config(), 'kvm-dirty-ring')
+    assert 'href="../mechanisms.html#kvm-internals">KVM 原理</a>' in render.render_mechanisms_html(Config(), 'kvm-dirty-ring')
     assert '设备与 I/O 虚拟化</a>' in render.render_mechanisms_html(Config(), 'qemu-vhost-net')
 
 
@@ -106,9 +92,9 @@ def test_merged_io_topic_keeps_legacy_anchor_without_duplicate_articles():
     assert [article['slug'] for article in canonical['articles']] == [
         'device-virtualization',
         'virtio-device-initialization',
-        'qemu-network-tx', 'qemu-vhost-net', 'dpdk-vhost-user-net', 'spdk-vhost-user-blk', 'qemu-vfio-dma',
+        'qemu-vhost-net', 'dpdk-vhost-user-net', 'spdk-vhost-user-blk', 'qemu-vfio-dma',
         'iommu-dma', 'iommufd', 'qemu-viommu', 'virtio-gpu',
-        'qemu-virtio-blk', 'virtio-net-rx', 'packed-virtqueue', 'vhost-vdpa',
+        'network-io', 'gpu-execution', 'qemu-virtio-blk', 'packed-virtqueue', 'vhost-vdpa',
     ]
     page = render.render_mechanisms_html(Config())
     assert page.count('id="io-virtualization"') == 1
@@ -116,14 +102,43 @@ def test_merged_io_topic_keeps_legacy_anchor_without_duplicate_articles():
     assert page.index('id="device-virtualization"') < page.index('id="io-virtualization"')
 
 
-def test_walkthroughs_have_their_own_group_without_duplicating_mechanism_articles():
-    topic = mechanisms.get_topic('block-io-walkthrough')
-    assert topic['group'] == 'walkthroughs'
-    assert topic['overview'] == 'virtio-blk-read'
-    assert topic['overview_article']['presentation'] == 'walkthrough'
+def test_directory_chip_counts_include_overviews_and_exclude_redirects():
     page = render.render_mechanisms_html(Config())
-    assert page.count('href="mechanisms/virtio-blk-read.html"') == 1
-    assert 'id="group-walkthroughs"' in page
+    directory = re.search(r'<nav class="mechanism-directory".*?</nav>', page, re.S).group()
+    counts = dict(re.findall(r'<a href="#([^"]+)"><span>[^<]+</span>'
+                             r'<span class="mechanism-directory-count">(\d+)'
+                             r'<span class="sr-only"> 篇文章</span></span></a>', directory))
+    assert counts == {topic['slug']: str(len(topic['articles'])) for topic in mechanisms.topics()}
+    assert sum(int(count) for count in counts.values()) == len(mechanisms.articles())
+    assert 'block-operations' not in page
+    assert '快照与备份' not in page
+
+
+def test_kvm_implementation_articles_have_one_component_home():
+    cpu = {'kvm-vm-creation', 'kvm-vcpu-requests', 'kvm-vcpu-halt', 'kvm-virtual-time', 'kvm-nested-vmx'}
+    memory = {'kvm-ept-fault', 'kvm-hugepages', 'kvm-dirty-ring'}
+    topic = mechanisms.get_topic('kvm-internals')
+    assert topic['overview_article']['slug'] == 'kvm-vcpu-run'
+    assert [(cluster['title'], {article['slug'] for article in cluster['articles']})
+            for cluster in topic['article_clusters']] == [('执行与协作', cpu), ('内存管理', memory)]
+    for slug in cpu | memory:
+        assert mechanisms.get_article(slug)['topic'] == 'kvm-internals'
+        page = render.render_mechanisms_html(Config(), slug)
+        assert 'href="../mechanisms.html#kvm-internals">KVM 原理</a>' in page
+    assert [a['slug'] for a in mechanisms.get_topic('cpu-virtualization')['articles']] == [
+        'cpu-virtualization', 'multi-vcpu-coordination',
+    ]
+
+
+def test_walkthrough_category_bookmarks_resolve_to_the_parent_mechanism():
+    topic = mechanisms.get_topic('block-io-walkthrough')
+    assert topic['slug'] == 'device-virtualization'
+    assert topic['group'] == 'mechanisms'
+    assert all(article.get('presentation') != 'walkthrough' for article in mechanisms.articles())
+    page = render.render_mechanisms_html(Config())
+    assert page.count('href="mechanisms/qemu-virtio-blk.html"') == 1
+    assert 'id="group-walkthroughs"' not in page
+    assert page.count('id="block-io-walkthrough"') == 1
     device = re.search(r'<section class="mechanism-topic" id="device-virtualization".*?</section>',
                        page, re.S).group()
     assert 'virtio-blk-read.html' not in device
@@ -194,5 +209,18 @@ def test_article_lists_are_progressively_collapsible_without_hiding_links_from_n
 
 
 def test_directory_script_is_not_loaded_on_article_pages():
-    page = render.render_mechanisms_html(Config(), 'cpu-execution')
+    page = render.render_mechanisms_html(Config(), 'cpu-virtualization')
     assert 'src="../assets/mechanism-directory.js' not in page
+
+
+def test_tcg_is_classified_under_qemu_in_both_catalogue_and_article():
+    assert mechanisms.get_article('qemu-tcg')['topic'] == 'qemu-internals'
+    page = render.render_mechanisms_html(Config())
+    qemu = re.search(r'<section class="mechanism-topic" id="qemu-internals".*?</section>',
+                     page, re.S).group()
+    cpu = re.search(r'<section class="mechanism-topic" id="cpu-virtualization".*?</section>',
+                    page, re.S).group()
+    assert 'href="mechanisms/qemu-tcg.html"' in qemu
+    assert 'qemu-tcg.html' not in cpu
+    article = render.render_mechanisms_html(Config(), 'qemu-tcg')
+    assert 'href="../mechanisms.html#qemu-internals">QEMU 原理</a>' in article

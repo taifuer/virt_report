@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=22a21048e448">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=22a21048e448">
-<link rel="stylesheet" href="../assets/execution-demo.css?v=22a21048e448"><link rel="stylesheet" href="../assets/walkthrough.css?v=22a21048e448"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=ffecf85ced85">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=ffecf85ced85">
+<link rel="stylesheet" href="../assets/execution-demo.css?v=ffecf85ced85"><link rel="stylesheet" href="../assets/walkthrough.css?v=ffecf85ced85"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -43,26 +43,29 @@
   </div></header>
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
-    <div class="kicker mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true"> / </span><a href="../mechanisms.html#vm-startup">虚拟机启动</a></div>
+    <div class="mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true">/</span><a href="../mechanisms.html#vm-startup">虚拟机启动</a></div>
     <h1>虚拟机启动：从 Libvirt 到客户机引导</h1>
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
-    <nav class="mechanism-toc" aria-label="文章目录"><h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2><ol id="mechanism-toc-links"><li><a href="#preface">一、虚拟机冷启动的三个阶段</a></li><li><a href="#lifecycle">二、生命周期交互总览</a></li><li><a href="#example">三、暂停启动 demo，观察执行前后的区别</a></li><li><a href="#preparation">四、启动前的资源准备</a><ol><li><a href="#preparation-part-1">系统盘与网络资源的具体准备</a></li></ol></li><li><a href="#launch">五、fork、exec 与两道启动屏障</a></li><li><a href="#state">六、cont、运行状态与生命周期事件</a></li><li><a href="#objects">七、用运行定义与启动作业管理状态</a></li><li><a href="#failure">八、失败清理与管理连接恢复</a></li><li><a href="#evolution">九、QMP 状态协调的收益与启动成本</a></li><li><a href="#sources">十、参考资料</a></li></ol></nav>
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、虚拟机冷启动的三个阶段</a></li><li><a href="#lifecycle">二、生命周期交互总览</a></li><li><a href="#example">三、暂停启动 demo，观察执行前后的区别</a></li><li><a href="#preparation">四、启动前的资源准备</a><ol><li><a href="#preparation-part-1">系统盘与网络资源的具体准备</a></li></ol></li><li><a href="#launch">五、fork、exec 与两道启动屏障</a></li><li><a href="#state">六、cont、运行状态与生命周期事件</a></li><li><a href="#objects">七、用运行定义与启动作业管理状态</a></li><li><a href="#failure">八、失败清理与管理连接恢复</a></li><li><a href="#evolution">九、QMP 状态协调的收益与启动成本</a></li><li><a href="#sources">十、参考资料</a></li></ol>
+    </nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>虚拟机冷启动的三个阶段</h2>
   <p><code>virsh start demo</code> 将已保存的虚拟机定义转换为一个运行实例。Libvirt 根据 XML 准备磁盘、网络和进程隔离，启动 QEMU，再通过 QMP 设置运行参数并启动客户机 CPU。QEMU 负责创建虚拟硬件；客户机随后执行固件、从启动盘装载操作系统，并初始化自己的设备驱动与服务。</p>
   <p>本文跟踪 <code>qemu:///system</code> 下一个没有 managed save 的持久虚拟机：4 个 vCPU、8 GiB 内存、一块 qcow2 系统盘和一张连接宿主桥的 virtio 网卡。主线是定义解析、资源准备、进程创建、QMP 配置和客户机引导。调用端通信见<a href="libvirt-rpc.html">Libvirt RPC 的编码与调用分发</a>；QEMU 内部的机器创建见<a href="qemu-vm-startup.html">QEMU 虚拟机启动流程</a>。</p>
-<p class="mechanism-baselines">源码版本：<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>、<a href="https://github.com/libvirt/libvirt/tree/4d937284669ecf180abea087d0b3ad67d9476349" target="_blank" rel="noopener noreferrer" title="commit 4d937284669ecf180abea087d0b3ad67d9476349">Libvirt 12.0.0</a>、<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p>  <figure class="mechanism-diagram" data-diagram="startup-overview-handoff" data-mechanism-view="diagram">
+<p class="mechanism-baselines">源码版本：Linux 6.18、Libvirt 12.0.0、QEMU 10.2.0。</p>  <figure class="mechanism-diagram" data-diagram="startup-overview-handoff" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
     <span data-mechanism-title>资源准备、虚拟硬件建立与客户机引导</span>
     <button type="button" data-mechanism-expand aria-label="放大查看资源准备、虚拟硬件建立与客户机引导" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="资源准备、虚拟硬件建立与客户机引导">
-    <img src="../assets/startup-overview-handoff.svg?v=22a21048e448" alt="Libvirt 准备宿主资源并启动 QEMU；QEMU 创建 CPU、内存与设备；放行后，客户机执行固件、操作系统和服务。" loading="lazy">
+    <img src="../assets/startup-overview-handoff.svg?v=ffecf85ced85" alt="Libvirt 准备宿主资源并启动 QEMU；QEMU 创建 CPU、内存与设备；放行后，客户机执行固件、操作系统和服务。" loading="lazy">
   </div>
-  <figcaption>Libvirt 准备宿主资源并启动 QEMU；QEMU 创建 CPU、内存与设备；放行后，客户机执行固件、操作系统和服务。 <a href="../assets/startup-overview-handoff.svg?v=22a21048e448" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>Libvirt 准备宿主资源并启动 QEMU；QEMU 创建 CPU、内存与设备；放行后，客户机执行固件、操作系统和服务。 <a href="../assets/startup-overview-handoff.svg?v=ffecf85ced85" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: 虚拟机启动的分工与放行顺序
   accDescr: 启动请求进入 Libvirt，完成资源准备和进程隔离，QEMU 创建暂停的机器与 KVM 对象；Libvirt 配置 QMP 后放行 vCPU，客户机依次执行固件、内核与服务。
@@ -138,7 +141,7 @@
         <p class="execution-key">实线：数据 · 虚线：通知 · 点线：控制切换 · 双色映射：地址转换。高亮表示本步操作后的状态，动画不表示真实耗时。</p>
       </div>
     </div>
-    <details class="walkthrough-configuration"><summary>当前场景配置与源码版本</summary><ul data-execution-assumptions></ul><p class="mechanism-baselines">源码版本：<a href="https://github.com/torvalds/linux/tree/7d0a66e4bb9081d75c82ec4957c50034cb0ea449" target="_blank" rel="noopener noreferrer" title="commit 7d0a66e4bb9081d75c82ec4957c50034cb0ea449">Linux 6.18</a>、<a href="https://github.com/libvirt/libvirt/tree/4d937284669ecf180abea087d0b3ad67d9476349" target="_blank" rel="noopener noreferrer" title="commit 4d937284669ecf180abea087d0b3ad67d9476349">Libvirt 12.0.0</a>、<a href="https://github.com/qemu/qemu/tree/698104725efad4b29079d857dfdebbd804e34c99" target="_blank" rel="noopener noreferrer" title="commit 698104725efad4b29079d857dfdebbd804e34c99">QEMU 10.2.0</a>。</p></details>
+    <details class="walkthrough-configuration"><summary>当前场景配置与源码版本</summary><ul data-execution-assumptions></ul><p class="mechanism-baselines">源码版本：Linux 6.18、Libvirt 12.0.0、QEMU 10.2.0。</p></details>
     <p class="sr-only" role="status" aria-live="polite" data-execution-status></p>
   </div>
   <div class="execution-fallback" data-execution-fallback>
@@ -148,61 +151,61 @@
       <p>从 virsh start 到客户机应用就绪，观察宿主资源、QEMU 进程、KVM 对象和 Guest 引导依次建立。</p>
       <ul><li>x86-64 / KVM，Q35，Libvirt 12.0.0、QEMU 10.2.0、Linux 6.18；4 vCPU、8 GiB、virtio 系统盘与桥接 virtio 网卡</li><li>持久虚拟机 demo 已定义且关闭，没有 managed save；普通启动，Libvirt 先用 -S 暂停客户机，再发送 cont</li><li>磁盘与网络配置有效；RAM 按需后备；示例客户机成功引导，应用就绪由独立健康检查确认</li></ul>
       <ol><li><strong>启动前</strong> · 持久虚拟机 demo<p>XML 与系统盘已存在，本次 QEMU 进程和运行资源尚未创建。 这里展示关闭状态下的持久虚拟机；重新启动会创建新的运行实例。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L6327-L6453" target="_blank" rel="noopener noreferrer">Libvirt 12.0：启动 API 与启动作业</a></li><li><strong>建立启动作业</strong> · Libvirt QEMU 驱动<p>收到 start 请求后，检查权限与配置，建立启动作业并生成本次运行定义。 qemuProcessInit 可先把管理状态设为 PAUSED / STARTING_UP。这个状态出现时，QEMU 进程还未必存在。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L6327-L6453" target="_blank" rel="noopener noreferrer">Libvirt 12.0：启动 API 与启动作业</a> · <a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8602-L8707" target="_blank" rel="noopener noreferrer">Libvirt 12.0：冷启动的准备、启动与失败处理</a></li><li><strong>准备宿主资源</strong> · Libvirt QEMU 驱动<p>检查系统盘及访问权限，准备网络、运行目录、安全标签和进程隔离条件。 桥接网卡的 TAP 连接在命令构造阶段完成，所需 FD 随进程启动传给 QEMU；块后端还要由 QEMU 建立。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8602-L8707" target="_blank" rel="noopener noreferrer">Libvirt 12.0：冷启动的准备、启动与失败处理</a> · <a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8248-L8384" target="_blank" rel="noopener noreferrer">Libvirt 12.0：fork/exec 握手与 monitor 连接</a></li><li><strong>启动 QEMU 进程</strong> · Libvirt → QEMU<p>子进程完成 exec 前握手，父进程设置隔离后放行，随后执行 QEMU。 QEMU 参数中的 -S 保持客户机 CPU 暂停。此时宿主进程开始初始化，客户机内核尚未执行。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8248-L8384" target="_blank" rel="noopener noreferrer">Libvirt 12.0：fork/exec 握手与 monitor 连接</a></li><li><strong>创建 KVM 虚拟机</strong> · QEMU → KVM<p>QEMU 打开 /dev/kvm，通过 KVM_CREATE_VM 取得 VM FD。 VM FD 关联本次内核虚拟机对象；客户机 RAM、vCPU 与设备状态还需要分别建立。</p>
-<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L2510-L2536" target="_blank" rel="noopener noreferrer">QEMU 10.2：KVM_CREATE_VM</a></li><li><strong>准备 RAM 后备映射</strong> · QEMU 机器初始化<p>进入 Q35 板级初始化前，QEMU 先准备 8 GiB RAM 的后备对象和宿主地址映射。 默认 RAM 后备由 machine_run_board_init 创建；显式 memory-backend 对象可以更早建立。此时后备内存尚未按 Q35 的低端、高端地址布局挂入 Guest 物理空间，也未因此完成 KVM 内存槽注册。</p>
-<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/core/machine.c#L1658-L1745" target="_blank" rel="noopener noreferrer">QEMU 10.2：板级初始化前准备 RAM 后备</a></li><li><strong>创建 vCPU 对象与线程</strong> · QEMU vCPU 线程 → KVM<p>Q35 初始化 CPU 对象；执行线程为各 vCPU 创建 FD，并映射共享 kvm_run。 KVM_CREATE_VCPU 建立可运行的内核对象。-S 仍然生效，vCPU 线程不会因此开始执行客户机代码。</p>
-<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/pc_q35.c#L131-L336" target="_blank" rel="noopener noreferrer">QEMU 10.2：Q35 的 CPU、内存与芯片组创建</a> · <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L560-L627" target="_blank" rel="noopener noreferrer">QEMU 10.2：创建 vCPU FD 与映射 kvm_run</a></li><li><strong>布置 Guest RAM 并注册内存槽</strong> · QEMU 内存系统 → KVM<p>Q35 把已经准备好的 RAM 后备挂入低端、高端客户机物理地址空间，内存监听器随后向 KVM 注册对应内存槽。 pc_q35_init 先创建 CPU，再通过 pc_memory_init 布置 RAM 地址；后备分配发生在更早的机器初始化阶段。内存槽关联 GPA 范围与 QEMU 用户态地址，建立映射不代表 8 GiB 宿主页已经全部驻留。</p>
-<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/pc_q35.c#L131-L336" target="_blank" rel="noopener noreferrer">QEMU 10.2：Q35 的 CPU、内存与芯片组创建</a> · <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L1505-L1687" target="_blank" rel="noopener noreferrer">QEMU 10.2：RAM 更新与 KVM 内存槽</a></li><li><strong>建立磁盘与网卡</strong> · QEMU 机器与设备模型<p>QEMU 完成芯片组及命令行设备创建，把 virtio 磁盘接到块后端，把网卡接到 TAP 后端。 设备模型和后端已经存在；Guest 自己的 virtio 驱动、队列与网络地址仍需等客户机引导后初始化。</p>
-<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/pc_q35.c#L131-L336" target="_blank" rel="noopener noreferrer">QEMU 10.2：Q35 的 CPU、内存与芯片组创建</a> · <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/vl.c#L2736-L2814" target="_blank" rel="noopener noreferrer">QEMU 10.2：板级初始化后创建命令行设备</a></li><li><strong>完成运行前配置</strong> · Libvirt ↔ QEMU<p>Libvirt 连接 QMP 并完成能力协商，查询实际线程与设备，再设置亲和性、链路和运行参数。 进程与虚拟硬件已可管理。显式 start --paused 会在完成配置后保留暂停状态，等待另一次 resume。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8248-L8384" target="_blank" rel="noopener noreferrer">Libvirt 12.0：fork/exec 握手与 monitor 连接</a> · <a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8566-L8597" target="_blank" rel="noopener noreferrer">Libvirt 12.0：放行 CPU 与完成启动</a></li><li><strong>允许客户机执行</strong> · Libvirt → QEMU → KVM<p>普通启动发送 cont，QEMU 放行 vCPU；RESUME 事件使 Libvirt 更新运行状态。 QEMU 在实际放行 vCPU 前发送 RESUME，Libvirt 接收事件与 Guest 获得执行机会可交错。start API 等待宿主侧启动操作完成，不等待客户机服务；辅助 CPU 仍按客户机启动协议被唤醒。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8566-L8597" target="_blank" rel="noopener noreferrer">Libvirt 12.0：放行 CPU 与完成启动</a> · <a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L817-L918" target="_blank" rel="noopener noreferrer">Libvirt 12.0：QMP STOP / RESUME 事件处理</a></li><li><strong>执行固件与引导程序</strong> · 客户机固件<p>引导 CPU 从复位状态执行固件，枚举虚拟硬件，并按启动顺序读取系统盘。 固件和引导程序在客户机上下文中运行。磁盘后端已连接后，启动项、固件驱动与引导文件仍会影响能否进入内核。</p>
-<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/pc_q35.c#L131-L336" target="_blank" rel="noopener noreferrer">QEMU 10.2：Q35 的 CPU、内存与芯片组创建</a> · <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/system/bootindex.rst" target="_blank" rel="noopener noreferrer">QEMU 10.2：固件使用的 bootindex 启动顺序</a></li><li><strong>进入客户机内核</strong> · 固件 / 引导程序 → Guest Linux<p>引导程序交出控制权，客户机内核初始化自己的内存管理、中断、调度与设备总线。 Guest Linux 在自己的地址空间和权限体系内运行。宿主 KVM 提供执行条件，Guest 内核负责自己的驱动与用户态。</p>
-<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/init/main.c#L1474-L1546" target="_blank" rel="noopener noreferrer">Linux 6.18：内核初始化与首个用户态进程</a></li><li><strong>初始化客户机设备驱动</strong> · Guest Linux → virtio 设备<p>客户机 virtio 驱动协商特性、建立队列并设置 DRIVER_OK，接管系统盘与网卡。 驱动可内建在内核或由 initramfs 加载。系统盘可访问后才能继续根文件系统启动；网卡就绪后还需要配置网络。</p>
-<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio.c#L270-L366" target="_blank" rel="noopener noreferrer">Linux 6.18：virtio 特性协商、驱动 probe 与 DRIVER_OK</a> · <a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/init/main.c#L1474-L1546" target="_blank" rel="noopener noreferrer">Linux 6.18：内核初始化与首个用户态进程</a></li><li><strong>确认应用就绪</strong> · 客户机用户态服务<p>客户机启动所需服务，网络配置完成，应用健康检查成功。 这是业务可用的观察点。Libvirt 的 RUNNING 状态在前面已经成立，应用失败或启动缓慢不会自动改变这个管理状态。</p>
-<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/init/main.c#L1474-L1546" target="_blank" rel="noopener noreferrer">Linux 6.18：内核初始化与首个用户态进程</a> · <a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8566-L8597" target="_blank" rel="noopener noreferrer">Libvirt 12.0：放行 CPU 与完成启动</a></li></ol>
+Libvirt 12.0：启动 API 与启动作业</li><li><strong>建立启动作业</strong> · Libvirt QEMU 驱动<p>收到 start 请求后，检查权限与配置，建立启动作业并生成本次运行定义。 qemuProcessInit 可先把管理状态设为 PAUSED / STARTING_UP。这个状态出现时，QEMU 进程还未必存在。</p>
+Libvirt 12.0：启动 API 与启动作业 · Libvirt 12.0：冷启动的准备、启动与失败处理</li><li><strong>准备宿主资源</strong> · Libvirt QEMU 驱动<p>检查系统盘及访问权限，准备网络、运行目录、安全标签和进程隔离条件。 桥接网卡的 TAP 连接在命令构造阶段完成，所需 FD 随进程启动传给 QEMU；块后端还要由 QEMU 建立。</p>
+Libvirt 12.0：冷启动的准备、启动与失败处理 · Libvirt 12.0：fork/exec 握手与 monitor 连接</li><li><strong>启动 QEMU 进程</strong> · Libvirt → QEMU<p>子进程完成 exec 前握手，父进程设置隔离后放行，随后执行 QEMU。 QEMU 参数中的 -S 保持客户机 CPU 暂停。此时宿主进程开始初始化，客户机内核尚未执行。</p>
+Libvirt 12.0：fork/exec 握手与 monitor 连接</li><li><strong>创建 KVM 虚拟机</strong> · QEMU → KVM<p>QEMU 打开 /dev/kvm，通过 KVM_CREATE_VM 取得 VM FD。 VM FD 关联本次内核虚拟机对象；客户机 RAM、vCPU 与设备状态还需要分别建立。</p>
+QEMU 10.2：KVM_CREATE_VM</li><li><strong>准备 RAM 后备映射</strong> · QEMU 机器初始化<p>进入 Q35 板级初始化前，QEMU 先准备 8 GiB RAM 的后备对象和宿主地址映射。 默认 RAM 后备由 machine_run_board_init 创建；显式 memory-backend 对象可以更早建立。此时后备内存尚未按 Q35 的低端、高端地址布局挂入 Guest 物理空间，也未因此完成 KVM 内存槽注册。</p>
+QEMU 10.2：板级初始化前准备 RAM 后备</li><li><strong>创建 vCPU 对象与线程</strong> · QEMU vCPU 线程 → KVM<p>Q35 初始化 CPU 对象；执行线程为各 vCPU 创建 FD，并映射共享 kvm_run。 KVM_CREATE_VCPU 建立可运行的内核对象。-S 仍然生效，vCPU 线程不会因此开始执行客户机代码。</p>
+QEMU 10.2：Q35 的 CPU、内存与芯片组创建 · QEMU 10.2：创建 vCPU FD 与映射 kvm_run</li><li><strong>布置 Guest RAM 并注册内存槽</strong> · QEMU 内存系统 → KVM<p>Q35 把已经准备好的 RAM 后备挂入低端、高端客户机物理地址空间，内存监听器随后向 KVM 注册对应内存槽。 pc_q35_init 先创建 CPU，再通过 pc_memory_init 布置 RAM 地址；后备分配发生在更早的机器初始化阶段。内存槽关联 GPA 范围与 QEMU 用户态地址，建立映射不代表 8 GiB 宿主页已经全部驻留。</p>
+QEMU 10.2：Q35 的 CPU、内存与芯片组创建 · QEMU 10.2：RAM 更新与 KVM 内存槽</li><li><strong>建立磁盘与网卡</strong> · QEMU 机器与设备模型<p>QEMU 完成芯片组及命令行设备创建，把 virtio 磁盘接到块后端，把网卡接到 TAP 后端。 设备模型和后端已经存在；Guest 自己的 virtio 驱动、队列与网络地址仍需等客户机引导后初始化。</p>
+QEMU 10.2：Q35 的 CPU、内存与芯片组创建 · QEMU 10.2：板级初始化后创建命令行设备</li><li><strong>完成运行前配置</strong> · Libvirt ↔ QEMU<p>Libvirt 连接 QMP 并完成能力协商，查询实际线程与设备，再设置亲和性、链路和运行参数。 进程与虚拟硬件已可管理。显式 start --paused 会在完成配置后保留暂停状态，等待另一次 resume。</p>
+Libvirt 12.0：fork/exec 握手与 monitor 连接 · Libvirt 12.0：放行 CPU 与完成启动</li><li><strong>允许客户机执行</strong> · Libvirt → QEMU → KVM<p>普通启动发送 cont，QEMU 放行 vCPU；RESUME 事件使 Libvirt 更新运行状态。 QEMU 在实际放行 vCPU 前发送 RESUME，Libvirt 接收事件与 Guest 获得执行机会可交错。start API 等待宿主侧启动操作完成，不等待客户机服务；辅助 CPU 仍按客户机启动协议被唤醒。</p>
+Libvirt 12.0：放行 CPU 与完成启动 · Libvirt 12.0：QMP STOP / RESUME 事件处理</li><li><strong>执行固件与引导程序</strong> · 客户机固件<p>引导 CPU 从复位状态执行固件，枚举虚拟硬件，并按启动顺序读取系统盘。 固件和引导程序在客户机上下文中运行。磁盘后端已连接后，启动项、固件驱动与引导文件仍会影响能否进入内核。</p>
+QEMU 10.2：Q35 的 CPU、内存与芯片组创建 · QEMU 10.2：固件使用的 bootindex 启动顺序</li><li><strong>进入客户机内核</strong> · 固件 / 引导程序 → Guest Linux<p>引导程序交出控制权，客户机内核初始化自己的内存管理、中断、调度与设备总线。 Guest Linux 在自己的地址空间和权限体系内运行。宿主 KVM 提供执行条件，Guest 内核负责自己的驱动与用户态。</p>
+Linux 6.18：内核初始化与首个用户态进程</li><li><strong>初始化客户机设备驱动</strong> · Guest Linux → virtio 设备<p>客户机 virtio 驱动协商特性、建立队列并设置 DRIVER_OK，接管系统盘与网卡。 驱动可内建在内核或由 initramfs 加载。系统盘可访问后才能继续根文件系统启动；网卡就绪后还需要配置网络。</p>
+Linux 6.18：virtio 特性协商、驱动 probe 与 DRIVER_OK · Linux 6.18：内核初始化与首个用户态进程</li><li><strong>确认应用就绪</strong> · 客户机用户态服务<p>客户机启动所需服务，网络配置完成，应用健康检查成功。 这是业务可用的观察点。Libvirt 的 RUNNING 状态在前面已经成立，应用失败或启动缓慢不会自动改变这个管理状态。</p>
+Linux 6.18：内核初始化与首个用户态进程 · Libvirt 12.0：放行 CPU 与完成启动</li></ol>
     </details>
     <details>
       <summary>正常关机 · ACPI</summary>
       <p>发出电源按钮请求后，等待客户机完成关机，再观察 QEMU 进程与宿主资源的回收。</p>
       <ul><li>x86-64 / KVM，Q35，Libvirt 12.0.0、QEMU 10.2.0、Linux 6.18；4 vCPU、8 GiB、virtio 系统盘与桥接 virtio 网卡</li><li>virsh shutdown demo --mode acpi；持久虚拟机，on_poweroff=destroy，无需要保留 QEMU 的备份作业</li><li>本例 Guest 的电源按钮策略执行关机，服务正常退出；QEMU 响应终止请求。实际 Guest 可忽略请求或停在关机阶段</li></ul>
       <ol><li><strong>运行中</strong> · 虚拟机 demo<p>客户机内核与应用正在运行，QEMU、KVM 对象和宿主资源均存在。 正常关机需要 Guest 配合；管理侧请求成功和客户机已经关闭是两个观察点。</p>
-<a href="https://www.libvirt.org/html/libvirt-libvirt-domain.html#virDomainShutdown" target="_blank" rel="noopener noreferrer">Libvirt API：shutdown 的异步完成语义</a></li><li><strong>提交关机请求</strong> · Libvirt → QEMU<p>指定 ACPI 模式后，Libvirt 通过 QMP 发送 system_powerdown。 命令成功表示电源按钮请求已被接受。shutdown API 随后可返回，客户机仍需按自己的策略响应。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L1760-L1844" target="_blank" rel="noopener noreferrer">Libvirt 12.0：ACPI 关机请求</a> · <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/core/machine-qmp-cmds.c#L303-L311" target="_blank" rel="noopener noreferrer">QEMU 10.2：system_powerdown 只提出电源按钮请求</a> · <a href="https://www.libvirt.org/html/libvirt-libvirt-domain.html#virDomainShutdown" target="_blank" rel="noopener noreferrer">Libvirt API：shutdown 的异步完成语义</a></li><li><strong>递送电源按钮事件</strong> · QEMU ICH9 ACPI → Guest<p>QEMU 设置 ACPI 电源按钮状态，并通过 SCI 通知客户机。 客户机电源管理程序决定如何响应。若策略忽略按钮、系统失去响应或服务停止失败，虚拟机可能继续运行。</p>
-<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/acpi/ich9.c#L282-L289" target="_blank" rel="noopener noreferrer">QEMU 10.2：ICH9 电源按钮与 SCI 通知</a> · <a href="https://www.libvirt.org/html/libvirt-libvirt-domain.html#virDomainShutdown" target="_blank" rel="noopener noreferrer">Libvirt API：shutdown 的异步完成语义</a></li><li><strong>客户机停止服务</strong> · Guest 操作系统与应用<p>本例客户机接受请求，停止服务并执行文件系统与设备的关机收尾。 这是本例的 Guest 策略边界，不展开特定 init 系统、服务与设备关机调用链。Libvirt 的 shutdown 只是请求，客户机可忽略；此处假定服务正常退出并同步数据，应用事务和持久化保证仍由客户机与后端决定。</p>
-<a href="https://www.libvirt.org/html/libvirt-libvirt-domain.html#virDomainShutdown" target="_blank" rel="noopener noreferrer">Libvirt API：shutdown 的异步完成语义</a></li><li><strong>客户机请求断电</strong> · Guest → QEMU ACPI<p>客户机向 ACPI 控制寄存器写入 S5 关机值，QEMU 记录 Guest shutdown 请求。 至此才出现客户机实际关机的信号。此前电源按钮请求被接受，并不意味着已经到达这里。</p>
-<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/acpi/core.c#L582-L609" target="_blank" rel="noopener noreferrer">QEMU 10.2：ACPI 关机写入转成 shutdown 请求</a></li><li><strong>确认 Guest 关机</strong> · QEMU → Libvirt<p>QEMU 发送 SHUTDOWN；-no-shutdown 路径保留进程并停止客户机执行。Libvirt 记录 SHUTDOWN 状态。 Libvirt 用生命周期事件确定后续动作。本例 on_poweroff=destroy，随后终止运行实例；SHUTDOWN 仍不同于最终 SHUTOFF。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_command.c#L6144-L6161" target="_blank" rel="noopener noreferrer">Libvirt 12.0：启动时使用 -no-shutdown</a> · <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/runstate.c#L772-L896" target="_blank" rel="noopener noreferrer">QEMU 10.2：信号、关机事件与主循环退出</a> · <a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L646-L810" target="_blank" rel="noopener noreferrer">Libvirt 12.0：SHUTDOWN 事件与终止策略</a></li><li><strong>终止 QEMU 并清理后端</strong> · Libvirt → QEMU<p>Libvirt 请求终止 QEMU。QEMU 的正常退出路径停止执行，排空块层操作并关闭后端。 Guest 已经完成关机；这一阶段处理的是宿主 VMM 与后端资源。信号触发的 QEMU 清理与 Guest 应用停机属于不同层次。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L646-L810" target="_blank" rel="noopener noreferrer">Libvirt 12.0：SHUTDOWN 事件与终止策略</a> · <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/runstate.c#L772-L896" target="_blank" rel="noopener noreferrer">QEMU 10.2：信号、关机事件与主循环退出</a> · <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/runstate.c#L959-L1007" target="_blank" rel="noopener noreferrer">QEMU 10.2：停止执行、排空块请求与后端清理</a></li><li><strong>释放运行实例</strong> · 宿主内核<p>QEMU 退出后，所属 FD 与映射解除；KVM 对象在最后的相关引用释放后销毁。 VM、vCPU FD 和相关映射共同影响引用生命周期。宿主 RAM 后备被释放不代表删除系统盘；Libvirt 还需清理自己的运行资源。</p>
-<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L1272-L1378" target="_blank" rel="noopener noreferrer">Linux 6.18：VM 引用释放与最终销毁</a> · <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/runstate.c#L959-L1007" target="_blank" rel="noopener noreferrer">QEMU 10.2：停止执行、排空块请求与后端清理</a></li><li><strong>完成宿主清理</strong> · Libvirt QEMU 驱动<p>Libvirt 关闭管理连接，清理 TAP、隔离与运行文件，并把实例标记为 SHUTOFF。 demo 是持久虚拟机，XML 和系统盘保留，可以再次冷启动。停止事件和实际状态查询用来确认关机完成。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L9056-L9374" target="_blank" rel="noopener noreferrer">Libvirt 12.0：进程退出后的宿主资源清理</a> · <a href="https://www.libvirt.org/html/libvirt-libvirt-domain.html#virDomainShutdown" target="_blank" rel="noopener noreferrer">Libvirt API：shutdown 的异步完成语义</a></li></ol>
+Libvirt API：shutdown 的异步完成语义</li><li><strong>提交关机请求</strong> · Libvirt → QEMU<p>指定 ACPI 模式后，Libvirt 通过 QMP 发送 system_powerdown。 命令成功表示电源按钮请求已被接受。shutdown API 随后可返回，客户机仍需按自己的策略响应。</p>
+Libvirt 12.0：ACPI 关机请求 · QEMU 10.2：system_powerdown 只提出电源按钮请求 · Libvirt API：shutdown 的异步完成语义</li><li><strong>递送电源按钮事件</strong> · QEMU ICH9 ACPI → Guest<p>QEMU 设置 ACPI 电源按钮状态，并通过 SCI 通知客户机。 客户机电源管理程序决定如何响应。若策略忽略按钮、系统失去响应或服务停止失败，虚拟机可能继续运行。</p>
+QEMU 10.2：ICH9 电源按钮与 SCI 通知 · Libvirt API：shutdown 的异步完成语义</li><li><strong>客户机停止服务</strong> · Guest 操作系统与应用<p>本例客户机接受请求，停止服务并执行文件系统与设备的关机收尾。 这是本例的 Guest 策略边界，不展开特定 init 系统、服务与设备关机调用链。Libvirt 的 shutdown 只是请求，客户机可忽略；此处假定服务正常退出并同步数据，应用事务和持久化保证仍由客户机与后端决定。</p>
+Libvirt API：shutdown 的异步完成语义</li><li><strong>客户机请求断电</strong> · Guest → QEMU ACPI<p>客户机向 ACPI 控制寄存器写入 S5 关机值，QEMU 记录 Guest shutdown 请求。 至此才出现客户机实际关机的信号。此前电源按钮请求被接受，并不意味着已经到达这里。</p>
+QEMU 10.2：ACPI 关机写入转成 shutdown 请求</li><li><strong>确认 Guest 关机</strong> · QEMU → Libvirt<p>QEMU 发送 SHUTDOWN；-no-shutdown 路径保留进程并停止客户机执行。Libvirt 记录 SHUTDOWN 状态。 Libvirt 用生命周期事件确定后续动作。本例 on_poweroff=destroy，随后终止运行实例；SHUTDOWN 仍不同于最终 SHUTOFF。</p>
+Libvirt 12.0：启动时使用 -no-shutdown · QEMU 10.2：信号、关机事件与主循环退出 · Libvirt 12.0：SHUTDOWN 事件与终止策略</li><li><strong>终止 QEMU 并清理后端</strong> · Libvirt → QEMU<p>Libvirt 请求终止 QEMU。QEMU 的正常退出路径停止执行，排空块层操作并关闭后端。 Guest 已经完成关机；这一阶段处理的是宿主 VMM 与后端资源。信号触发的 QEMU 清理与 Guest 应用停机属于不同层次。</p>
+Libvirt 12.0：SHUTDOWN 事件与终止策略 · QEMU 10.2：信号、关机事件与主循环退出 · QEMU 10.2：停止执行、排空块请求与后端清理</li><li><strong>释放运行实例</strong> · 宿主内核<p>QEMU 退出后，所属 FD 与映射解除；KVM 对象在最后的相关引用释放后销毁。 VM、vCPU FD 和相关映射共同影响引用生命周期。宿主 RAM 后备被释放不代表删除系统盘；Libvirt 还需清理自己的运行资源。</p>
+Linux 6.18：VM 引用释放与最终销毁 · QEMU 10.2：停止执行、排空块请求与后端清理</li><li><strong>完成宿主清理</strong> · Libvirt QEMU 驱动<p>Libvirt 关闭管理连接，清理 TAP、隔离与运行文件，并把实例标记为 SHUTOFF。 demo 是持久虚拟机，XML 和系统盘保留，可以再次冷启动。停止事件和实际状态查询用来确认关机完成。</p>
+Libvirt 12.0：进程退出后的宿主资源清理 · Libvirt API：shutdown 的异步完成语义</li></ol>
     </details>
     <details>
       <summary>强制停止 · destroy</summary>
       <p>直接终止运行实例，区分 QEMU 的退出清理、Guest 的正常关机与尚未持久化的应用数据。</p>
       <ul><li>x86-64 / KVM，Q35，Libvirt 12.0.0、QEMU 10.2.0、Linux 6.18；4 vCPU、8 GiB、virtio 系统盘与桥接 virtio 网卡</li><li>virsh destroy demo；持久虚拟机。示例 QEMU 能响应 SIGTERM 并走正常进程清理路径</li><li>Guest 不执行正常关机流程；不包含宿主崩溃、不可中断内核等待或终止失败场景</li></ul>
       <ol><li><strong>运行中</strong> · 虚拟机 demo<p>客户机系统和应用仍在运行，可能存在只保存在应用或 Guest 内存中的数据。 本场景停止整个运行实例，不发送客户机电源按钮请求。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L2016-L2094" target="_blank" rel="noopener noreferrer">Libvirt 12.0：destroy 的停止作业与事件</a></li><li><strong>建立销毁作业</strong> · Libvirt QEMU 驱动<p>destroy 路径检查活动实例并建立停止作业，协调正在处理的管理操作。 管理侧记录 beingDestroyed，避免 monitor EOF 与主动销毁路径重复清理或产生混淆事件。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L2016-L2094" target="_blank" rel="noopener noreferrer">Libvirt 12.0：destroy 的停止作业与事件</a> · <a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8962-L9046" target="_blank" rel="noopener noreferrer">Libvirt 12.0：停止作业终止 QEMU 进程</a></li><li><strong>请求终止 VMM</strong> · Libvirt → QEMU<p>Libvirt 默认先向 QEMU 发送 SIGTERM，并等待进程退出。 QEMU 不退出时，默认 destroy 可在等待后升级 SIGKILL；--graceful 禁止这种升级。这里的 graceful 指 VMM 终止方式，Guest 并未获得正常关机机会。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8962-L9046" target="_blank" rel="noopener noreferrer">Libvirt 12.0：停止作业终止 QEMU 进程</a> · <a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/util/virprocess.c#L374-L432" target="_blank" rel="noopener noreferrer">Libvirt 12.0：先 SIGTERM、超时后可升级 SIGKILL</a> · <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/runstate.c#L772-L896" target="_blank" rel="noopener noreferrer">QEMU 10.2：信号、关机事件与主循环退出</a></li><li><strong>停止执行并清理后端</strong> · QEMU<p>响应信号的 QEMU 结束主循环，停止 vCPU，排空并关闭已经交给块后端的请求。 QEMU 可以处理自己已经收到的 I/O，无法替客户机提交仍留在 Guest 页缓存或应用缓冲区中的数据。SIGKILL 路径也不会执行这些用户态清理。</p>
-<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/runstate.c#L772-L896" target="_blank" rel="noopener noreferrer">QEMU 10.2：信号、关机事件与主循环退出</a> · <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/runstate.c#L959-L1007" target="_blank" rel="noopener noreferrer">QEMU 10.2：停止执行、排空块请求与后端清理</a></li><li><strong>释放进程与内核对象</strong> · 宿主内核<p>QEMU 退出，进程 FD 与 RAM 映射释放；最后的相关引用归还后，KVM 销毁本次 VM。 这里丢弃客户机 RAM 中的运行状态。系统盘保留已有写入，之后再次启动可能需要文件系统或应用恢复。</p>
-<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c#L1272-L1378" target="_blank" rel="noopener noreferrer">Linux 6.18：VM 引用释放与最终销毁</a></li><li><strong>完成销毁操作</strong> · Libvirt QEMU 驱动<p>Libvirt 完成宿主资源清理，记录 SHUTOFF / DESTROYED，并返回 destroy 成功。 destroy 终止运行实例，不删除这个持久虚拟机的 XML 或系统盘。是否可以直接恢复业务，需要另外检查客户机和应用的数据状态。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L2016-L2094" target="_blank" rel="noopener noreferrer">Libvirt 12.0：destroy 的停止作业与事件</a> · <a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L9056-L9374" target="_blank" rel="noopener noreferrer">Libvirt 12.0：进程退出后的宿主资源清理</a></li></ol>
+Libvirt 12.0：destroy 的停止作业与事件</li><li><strong>建立销毁作业</strong> · Libvirt QEMU 驱动<p>destroy 路径检查活动实例并建立停止作业，协调正在处理的管理操作。 管理侧记录 beingDestroyed，避免 monitor EOF 与主动销毁路径重复清理或产生混淆事件。</p>
+Libvirt 12.0：destroy 的停止作业与事件 · Libvirt 12.0：停止作业终止 QEMU 进程</li><li><strong>请求终止 VMM</strong> · Libvirt → QEMU<p>Libvirt 默认先向 QEMU 发送 SIGTERM，并等待进程退出。 QEMU 不退出时，默认 destroy 可在等待后升级 SIGKILL；--graceful 禁止这种升级。这里的 graceful 指 VMM 终止方式，Guest 并未获得正常关机机会。</p>
+Libvirt 12.0：停止作业终止 QEMU 进程 · Libvirt 12.0：先 SIGTERM、超时后可升级 SIGKILL · QEMU 10.2：信号、关机事件与主循环退出</li><li><strong>停止执行并清理后端</strong> · QEMU<p>响应信号的 QEMU 结束主循环，停止 vCPU，排空并关闭已经交给块后端的请求。 QEMU 可以处理自己已经收到的 I/O，无法替客户机提交仍留在 Guest 页缓存或应用缓冲区中的数据。SIGKILL 路径也不会执行这些用户态清理。</p>
+QEMU 10.2：信号、关机事件与主循环退出 · QEMU 10.2：停止执行、排空块请求与后端清理</li><li><strong>释放进程与内核对象</strong> · 宿主内核<p>QEMU 退出，进程 FD 与 RAM 映射释放；最后的相关引用归还后，KVM 销毁本次 VM。 这里丢弃客户机 RAM 中的运行状态。系统盘保留已有写入，之后再次启动可能需要文件系统或应用恢复。</p>
+Linux 6.18：VM 引用释放与最终销毁</li><li><strong>完成销毁操作</strong> · Libvirt QEMU 驱动<p>Libvirt 完成宿主资源清理，记录 SHUTOFF / DESTROYED，并返回 destroy 成功。 destroy 终止运行实例，不删除这个持久虚拟机的 XML 或系统盘。是否可以直接恢复业务，需要另外检查客户机和应用的数据状态。</p>
+Libvirt 12.0：destroy 的停止作业与事件 · Libvirt 12.0：进程退出后的宿主资源清理</li></ol>
     </details>
     <details>
       <summary>暂停与恢复</summary>
       <p>停止和恢复客户机执行，同时观察 QEMU 进程、RAM 与 KVM 对象如何继续保留。</p>
       <ul><li>x86-64 / KVM，Q35，Libvirt 12.0.0、QEMU 10.2.0、Linux 6.18；4 vCPU、8 GiB、virtio 系统盘与桥接 virtio 网卡</li><li>virsh suspend demo，随后 virsh resume demo；普通运行实例，无迁移、转储或暂停失败</li><li>演示管理侧暂停，未调用 Guest S3/S4 睡眠、save 或 managedsave；保留的运行状态仍位于当前宿主</li></ul>
       <ol><li><strong>运行中</strong> · 虚拟机 demo<p>QEMU 进程与客户机应用正在运行，RAM 和 KVM 对象已经建立。 暂停操作会改变执行状态；本例继续使用同一进程、同一份客户机内存和同一组 KVM 对象。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L1621-L1722" target="_blank" rel="noopener noreferrer">Libvirt 12.0：suspend 与 resume API</a></li><li><strong>提交暂停请求</strong> · Libvirt → QEMU<p>Libvirt 的 suspend 路径通过 monitor 发送 stop。 QMP stop 针对虚拟机执行状态，不会让 QEMU 管理进程整体停止；管理通道仍可处理后续命令。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L1621-L1722" target="_blank" rel="noopener noreferrer">Libvirt 12.0：suspend 与 resume API</a> · <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/monitor/qmp-cmds.c#L50-L114" target="_blank" rel="noopener noreferrer">QEMU 10.2：QMP stop / cont</a></li><li><strong>暂停 vCPU 并收束 I/O</strong> · QEMU<p>QEMU 请求所有 vCPU 停止执行，等待它们到达暂停点，再排空并刷新已提交的块请求。 已停下的 vCPU 保留寄存器与内存状态。块层刷新覆盖已交给 QEMU 的请求，应用和 Guest 自己的缓存仍保存在客户机内存中。</p>
-<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/cpus.c#L294-L329" target="_blank" rel="noopener noreferrer">QEMU 10.2：暂停 CPU、排空并刷新已提交的块请求</a> · <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/cpus.c#L642-L675" target="_blank" rel="noopener noreferrer">QEMU 10.2：等待全部 vCPU 暂停</a></li><li><strong>确认暂停状态</strong> · QEMU → Libvirt<p>STOP 事件使 Libvirt 记录 PAUSED / USER；管理命令完成后，suspend 返回成功。 STOP 可先于块层排空和刷新发送；成功的 stop 命令响应才说明这段处理已经返回。QEMU、KVM 对象和 RAM 继续保留；此状态没有生成持久化保存文件，宿主故障仍会丢失内存中的运行状态。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L817-L918" target="_blank" rel="noopener noreferrer">Libvirt 12.0：QMP STOP / RESUME 事件处理</a> · <a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L3398-L3490" target="_blank" rel="noopener noreferrer">Libvirt 12.0：CPU 停止、恢复及网络/锁管理</a></li><li><strong>提交恢复请求</strong> · Libvirt → QEMU<p>resume 路径准备网络和锁管理状态，再通过 QMP 发送 cont。 沿用已有虚拟机状态。这个操作不会重新创建 QEMU，也不会从固件或内核入口重新引导。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L3398-L3490" target="_blank" rel="noopener noreferrer">Libvirt 12.0：CPU 停止、恢复及网络/锁管理</a> · <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/monitor/qmp-cmds.c#L50-L114" target="_blank" rel="noopener noreferrer">QEMU 10.2：QMP stop / cont</a></li><li><strong>恢复客户机执行</strong> · QEMU → KVM → Guest<p>QEMU 重新放行 vCPU，客户机从保留的执行状态继续；RESUME 事件使 Libvirt 更新为 RUNNING。 QEMU 先发送 RESUME，再放行 vCPU；管理端接收事件和 vCPU 实际执行可交错。vCPU 获准运行后仍受宿主调度影响，寄存器、RAM 和设备状态沿用暂停前的实例。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L1621-L1722" target="_blank" rel="noopener noreferrer">Libvirt 12.0：suspend 与 resume API</a> · <a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L817-L918" target="_blank" rel="noopener noreferrer">Libvirt 12.0：QMP STOP / RESUME 事件处理</a> · <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/monitor/qmp-cmds.c#L50-L114" target="_blank" rel="noopener noreferrer">QEMU 10.2：QMP stop / cont</a></li><li><strong>检查业务恢复</strong> · 客户机应用<p>应用继续处理任务，并检查连接、超时与外部依赖。 暂停期间外部系统仍在运行，连接可能超时。恢复 CPU 执行与业务重新可用需要分别确认。</p>
-<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L1621-L1722" target="_blank" rel="noopener noreferrer">Libvirt 12.0：suspend 与 resume API</a> · <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/monitor/qmp-cmds.c#L50-L114" target="_blank" rel="noopener noreferrer">QEMU 10.2：QMP stop / cont</a></li></ol>
+Libvirt 12.0：suspend 与 resume API</li><li><strong>提交暂停请求</strong> · Libvirt → QEMU<p>Libvirt 的 suspend 路径通过 monitor 发送 stop。 QMP stop 针对虚拟机执行状态，不会让 QEMU 管理进程整体停止；管理通道仍可处理后续命令。</p>
+Libvirt 12.0：suspend 与 resume API · QEMU 10.2：QMP stop / cont</li><li><strong>暂停 vCPU 并收束 I/O</strong> · QEMU<p>QEMU 请求所有 vCPU 停止执行，等待它们到达暂停点，再排空并刷新已提交的块请求。 已停下的 vCPU 保留寄存器与内存状态。块层刷新覆盖已交给 QEMU 的请求，应用和 Guest 自己的缓存仍保存在客户机内存中。</p>
+QEMU 10.2：暂停 CPU、排空并刷新已提交的块请求 · QEMU 10.2：等待全部 vCPU 暂停</li><li><strong>确认暂停状态</strong> · QEMU → Libvirt<p>STOP 事件使 Libvirt 记录 PAUSED / USER；管理命令完成后，suspend 返回成功。 STOP 可先于块层排空和刷新发送；成功的 stop 命令响应才说明这段处理已经返回。QEMU、KVM 对象和 RAM 继续保留；此状态没有生成持久化保存文件，宿主故障仍会丢失内存中的运行状态。</p>
+Libvirt 12.0：QMP STOP / RESUME 事件处理 · Libvirt 12.0：CPU 停止、恢复及网络/锁管理</li><li><strong>提交恢复请求</strong> · Libvirt → QEMU<p>resume 路径准备网络和锁管理状态，再通过 QMP 发送 cont。 沿用已有虚拟机状态。这个操作不会重新创建 QEMU，也不会从固件或内核入口重新引导。</p>
+Libvirt 12.0：CPU 停止、恢复及网络/锁管理 · QEMU 10.2：QMP stop / cont</li><li><strong>恢复客户机执行</strong> · QEMU → KVM → Guest<p>QEMU 重新放行 vCPU，客户机从保留的执行状态继续；RESUME 事件使 Libvirt 更新为 RUNNING。 QEMU 先发送 RESUME，再放行 vCPU；管理端接收事件和 vCPU 实际执行可交错。vCPU 获准运行后仍受宿主调度影响，寄存器、RAM 和设备状态沿用暂停前的实例。</p>
+Libvirt 12.0：suspend 与 resume API · Libvirt 12.0：QMP STOP / RESUME 事件处理 · QEMU 10.2：QMP stop / cont</li><li><strong>检查业务恢复</strong> · 客户机应用<p>应用继续处理任务，并检查连接、超时与外部依赖。 暂停期间外部系统仍在运行，连接可能超时。恢复 CPU 执行与业务重新可用需要分别确认。</p>
+Libvirt 12.0：suspend 与 resume API · QEMU 10.2：QMP stop / cont</li></ol>
     </details>
   </div>
 </div>  <table>
@@ -233,18 +236,18 @@ virsh -c qemu:///system resume demo</code></pre>
 
 <section id="preparation" class="mechanism-section">
   <h2><span class="mechanism-heading-number">四、</span>启动前的资源准备</h2>
-  <p><code>qemuDomainObjStart()</code> 先检查 managed save。存在保存状态时，默认恢复该状态；<code>--force-boot</code> 才要求放弃它并重新引导。本例没有保存状态，进入 <code>qemuProcessStart()</code> 的冷启动路径。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L6327-L6390">冷启动与恢复分支</a></p>
+  <p><code>qemuDomainObjStart()</code> 先检查 managed save。存在保存状态时，默认恢复该状态；<code>--force-boot</code> 才要求放弃它并重新引导。本例没有保存状态，进入 <code>qemuProcessStart()</code> 的冷启动路径。冷启动与恢复分支</p>
   <table><thead><tr><th scope="col">阶段</th><th scope="col">主要操作</th><th scope="col">此时尚未发生的事</th></tr></thead><tbody>
     <tr><td><code>qemuProcessInit()</code></td><td>取得 QEMU 能力、校验配置，分离运行定义与持久定义，分配运行时 ID，设为 PAUSED / STARTING_UP</td><td>尚未创建 QEMU 进程</td></tr>
     <tr><td><code>qemuProcessPrepareDomain()</code></td><td>补全设备地址与别名，解析存储、网络、固件，生成 monitor 配置与运行路径</td><td>这些定义仍需转成 QEMU 参数和宿主资源</td></tr>
     <tr><td><code>qemuProcessPrepareHost()</code></td><td>创建目录、准备 NVRAM 与字符设备，检查存储链，准备所需外部后端和 hostdev</td><td>桥接网络的 TAP 连接等操作还会在命令构造阶段继续完成</td></tr>
     <tr><td><code>qemuProcessLaunch()</code></td><td>构造命令并连接网络资源、启动子进程、设置隔离与权限、连接 QMP、完成设备与线程配置</td><td>QEMU 已运行时，客户机 CPU 仍可保持暂停</td></tr>
   </tbody></table>
-  <p>到 Launch 阶段，定义中的磁盘路径、设备类型和网络选择逐步转成可访问的存储、打开的文件描述符和 QEMU 参数。Libvirt 结合 QEMU capabilities、宿主条件和启动模式决定具体配置；前一步留下的设备地址、别名与资源句柄，供后面的命令构造和进程创建使用。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L5919-L5999">初始化</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L7014-L7157">定义准备</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L7688-L7781">宿主准备</a></p>
+  <p>到 Launch 阶段，定义中的磁盘路径、设备类型和网络选择逐步转成可访问的存储、打开的文件描述符和 QEMU 参数。Libvirt 结合 QEMU capabilities、宿主条件和启动模式决定具体配置；前一步留下的设备地址、别名与资源句柄，供后面的命令构造和进程创建使用。初始化、定义准备、宿主准备</p>
   <p>例如 8 GiB、4 vCPU 的虚拟机，持久 XML 只声明所需配置；运行时还会有设备别名、monitor socket、进程 PID 和线程 ID。将这些临时值直接写回持久定义，会让下次启动受上次实例的资源分配影响。<code>virDomainObjSetDefTransient()</code> 保留定义边界，关闭后再移除本次运行定义。</p>
   <h3 id="preparation-part-1">系统盘与网络资源的具体准备</h3>
-  <p>本例系统盘的准备分为两层。Libvirt 检查镜像及 backing chain、存储访问条件和锁管理要求，生成块后端与 virtio-blk 前端参数；QEMU 启动后才据此建立块图、打开后端并创建客户机可见的磁盘设备。文件存在并不等于 QEMU 可读写：安全标签、进程身份和锁状态也必须满足要求。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L7361-L7404">宿主存储准备</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_command.c#L2240-L2349">块后端与磁盘设备参数</a></p>
-  <p>桥接网卡同样需要宿主和客户机两部分。Libvirt 在构造网络命令时通过 <code>qemuBuildInterfaceConnect()</code> 连接 TAP 与宿主桥，并将需要继承的 TAP FD 纳入启动参数；QEMU 使用这些 FD 创建网络后端，再把 virtio-net 前端连接到后端。配置启用 vhost-net 时还要准备相应的 vhost FD。此时已建立数据通路，但客户机尚未加载网卡驱动或配置 IP。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_command.c#L8805-L8955">桥接网络连接与命令构造</a></p>
+  <p>本例系统盘的准备分为两层。Libvirt 检查镜像及 backing chain、存储访问条件和锁管理要求，生成块后端与 virtio-blk 前端参数；QEMU 启动后才据此建立块图、打开后端并创建客户机可见的磁盘设备。文件存在并不等于 QEMU 可读写：安全标签、进程身份和锁状态也必须满足要求。宿主存储准备、块后端与磁盘设备参数</p>
+  <p>桥接网卡同样需要宿主和客户机两部分。Libvirt 在构造网络命令时通过 <code>qemuBuildInterfaceConnect()</code> 连接 TAP 与宿主桥，并将需要继承的 TAP FD 纳入启动参数；QEMU 使用这些 FD 创建网络后端，再把 virtio-net 前端连接到后端。配置启用 vhost-net 时还要准备相应的 vhost FD。此时已建立数据通路，但客户机尚未加载网卡驱动或配置 IP。桥接网络连接与命令构造</p>
   <p>存储检查、TAP 连接和隔离设置分布在上述不同阶段。失败清理据实际进度关闭 FD、移除本次创建的接口并归还存储与隔离资源；尚未创建的资源无需回收。</p>
 </section>
 
@@ -257,9 +260,9 @@ virsh -c qemu:///system resume demo</code></pre>
     <button type="button" data-mechanism-expand aria-label="放大查看从 virsh start 到客户机引导的完整时序" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="从 virsh start 到客户机引导的完整时序">
-    <img src="../assets/libvirt-domain-start.svg?v=22a21048e448" alt="Libvirt 准备定义、磁盘和网络，在 exec 前完成宿主隔离；QEMU 创建虚拟硬件并保持 CPU 暂停。QMP 配置完成后 cont 启动客户机，后续操作系统引导与 API 返回分别进行。" loading="lazy">
+    <img src="../assets/libvirt-domain-start.svg?v=ffecf85ced85" alt="Libvirt 准备定义、磁盘和网络，在 exec 前完成宿主隔离；QEMU 创建虚拟硬件并保持 CPU 暂停。QMP 配置完成后 cont 启动客户机，后续操作系统引导与 API 返回分别进行。" loading="lazy">
   </div>
-  <figcaption>Libvirt 准备定义、磁盘和网络，在 exec 前完成宿主隔离；QEMU 创建虚拟硬件并保持 CPU 暂停。QMP 配置完成后 cont 启动客户机，后续操作系统引导与 API 返回分别进行。 <a href="../assets/libvirt-domain-start.svg?v=22a21048e448" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>Libvirt 准备定义、磁盘和网络，在 exec 前完成宿主隔离；QEMU 创建虚拟硬件并保持 CPU 暂停。QMP 配置完成后 cont 启动客户机，后续操作系统引导与 API 返回分别进行。 <a href="../assets/libvirt-domain-start.svg?v=ffecf85ced85" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
   accTitle: 从 virsh start 到客户机引导的完整时序
   accDescr: virsh 经 RPC 请求 Libvirt 启动虚拟机。Libvirt 读取定义，准备存储与桥接网络，构造命令并创建子进程，在 exec 前完成宿主隔离。QEMU 创建机器、CPU、内存、磁盘和网卡，QMP 配置完成后 cont 允许客户机执行；API 返回与固件、操作系统、业务就绪分别进行。
@@ -305,25 +308,25 @@ virsh -c qemu:///system resume demo</code></pre>
   Note over A,G: Libvirt API 不等待客户机操作系统或业务就绪
 </code></pre></details>
 </figure>
-  <p><code>qemuBuildCommandLine()</code> 构造 argv，其中包含 <code>-S</code>，要求 QEMU 完成初始化后先暂停客户机 CPU。Libvirt 还为进程创建设置执行前钩子、PID 文件、输出日志和握手管道。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_command.c#L10755-L10783">命令行构造</a></p>
-  <p>执行 <code>virCommandRun()</code> 后，子进程完成自己的 pre-exec 初始化，通知父进程，然后等待确认。父进程读到 PID，保存早期状态，等待握手，再设置 mount namespace、cgroup、CPU 亲和性及资源权限等。<code>virCommandHandshakeNotify()</code> 发出确认后，子进程才被允许 exec QEMU。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8248-L8358">父进程顺序</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/util/vircommand.c#L387-L432">子进程握手</a></p>
+  <p><code>qemuBuildCommandLine()</code> 构造 argv，其中包含 <code>-S</code>，要求 QEMU 完成初始化后先暂停客户机 CPU。Libvirt 还为进程创建设置执行前钩子、PID 文件、输出日志和握手管道。命令行构造</p>
+  <p>执行 <code>virCommandRun()</code> 后，子进程完成自己的 pre-exec 初始化，通知父进程，然后等待确认。父进程读到 PID，保存早期状态，等待握手，再设置 mount namespace、cgroup、CPU 亲和性及资源权限等。<code>virCommandHandshakeNotify()</code> 发出确认后，子进程才被允许 exec QEMU。父进程顺序、子进程握手</p>
   <p>这个顺序让宿主约束在 QEMU 使用资源前生效。例如进程应先进入目标 cgroup，再开始分配大块内存或创建工作线程。拿到 PID 只证明子进程已出现，exec 仍可能失败；后面还需要确认 monitor 可连接、能力协商与查询成功。</p>
-  <p>QEMU exec 成功后创建机器、内存、设备和 vCPU 线程，<code>-S</code> 使客户机 CPU 暂不执行。Libvirt 连接 monitor，接收 greeting，再发送 <code>qmp_capabilities</code> 进入命令模式，随后刷新 vCPU / IOThread 信息并设置调度、网络链路、内存气球和磁盘限速等。这些设置有些依赖 QEMU 实际创建的线程和设备，因此必须在进程创建之后完成。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L2064-L2131">monitor 初始化</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8363-L8447">运行前配置</a></p>
+  <p>QEMU exec 成功后创建机器、内存、设备和 vCPU 线程，<code>-S</code> 使客户机 CPU 暂不执行。Libvirt 连接 monitor，接收 greeting，再发送 <code>qmp_capabilities</code> 进入命令模式，随后刷新 vCPU / IOThread 信息并设置调度、网络链路、内存气球和磁盘限速等。这些设置有些依赖 QEMU 实际创建的线程和设备，因此必须在进程创建之后完成。monitor 初始化、运行前配置</p>
   <p>两道屏障解决不同问题：pre-exec 握手保护宿主资源准备顺序，<code>-S</code> 保护客户机开始执行的时机。QMP 连接属于 Libvirt 与 QEMU 之间的管理通道，也不同于前面的 Libvirt RPC。</p>
 </section>
 
 <section id="state" class="mechanism-section">
   <h2><span class="mechanism-heading-number">六、</span>cont、运行状态与生命周期事件</h2>
-  <p><code>qemuProcessFinishStartup()</code> 决定是否启动 CPU。普通启动调用 <code>qemuProcessStartCPUs()</code>，先启用网络设备并恢复锁管理状态，保存 <code>VIR_DOMAIN_RUNNING_BOOTED</code> 原因，再通过 monitor 发送 <code>cont</code>。<code>--paused</code> 路径保留暂停状态，将暂停原因改为用户要求，跳过 cont。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L3398-L3444">启动 CPU</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8566-L8597">完成启动</a></p>
+  <p><code>qemuProcessFinishStartup()</code> 决定是否启动 CPU。普通启动调用 <code>qemuProcessStartCPUs()</code>，先启用网络设备并恢复锁管理状态，保存 <code>VIR_DOMAIN_RUNNING_BOOTED</code> 原因，再通过 monitor 发送 <code>cont</code>。<code>--paused</code> 路径保留暂停状态，将暂停原因改为用户要求，跳过 cont。启动 CPU、完成启动</p>
   <figure class="mechanism-diagram" data-diagram="libvirt-domain-state" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
     <span data-mechanism-title>进程状态与客户机运行状态</span>
     <button type="button" data-mechanism-expand aria-label="放大查看进程状态与客户机运行状态" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="进程状态与客户机运行状态">
-    <img src="../assets/libvirt-domain-state.svg?v=22a21048e448" alt="PAUSED / STARTING_UP 在创建进程之前就可能出现。当前版本由 QMP RESUME 事件处理器写入 RUNNING 状态；API 返回与客户机操作系统就绪是不同阶段。" loading="lazy">
+    <img src="../assets/libvirt-domain-state.svg?v=ffecf85ced85" alt="PAUSED / STARTING_UP 在创建进程之前就可能出现。当前版本由 QMP RESUME 事件处理器写入 RUNNING 状态；API 返回与客户机操作系统就绪是不同阶段。" loading="lazy">
   </div>
-  <figcaption>PAUSED / STARTING_UP 在创建进程之前就可能出现。当前版本由 QMP RESUME 事件处理器写入 RUNNING 状态；API 返回与客户机操作系统就绪是不同阶段。 <a href="../assets/libvirt-domain-state.svg?v=22a21048e448" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>PAUSED / STARTING_UP 在创建进程之前就可能出现。当前版本由 QMP RESUME 事件处理器写入 RUNNING 状态；API 返回与客户机操作系统就绪是不同阶段。 <a href="../assets/libvirt-domain-state.svg?v=ffecf85ced85" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: 进程状态与客户机运行状态
   accDescr: 关闭的持久虚拟机先进入启动准备并取得运行时 ID，随后创建 QEMU 进程。普通启动经 cont 和 RESUME 事件进入运行状态，暂停启动保持 PAUSED。准备或运行前配置失败则清理进程和资源，回到关闭失败状态。
@@ -348,7 +351,7 @@ virsh -c qemu:///system resume demo</code></pre>
   class F failure;
 </code></pre></details>
 </figure>
-  <p>在本文版本中，<code>qemuProcessStartCPUs()</code> 不直接设置 RUNNING；QMP <code>RESUME</code> 事件进入 <code>qemuProcessHandleResume()</code> 后，处理器使用保存的运行原因更新 <code>virDomainObj</code>，保存状态并排队生命周期事件。命令响应与异步事件经过不同处理路径，不能依赖“先收到 cont 响应，再收到 RESUME”这种固定顺序。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L873-L918">RESUME 处理器</a></p>
+  <p>在本文版本中，<code>qemuProcessStartCPUs()</code> 不直接设置 RUNNING；QMP <code>RESUME</code> 事件进入 <code>qemuProcessHandleResume()</code> 后，处理器使用保存的运行原因更新 <code>virDomainObj</code>，保存状态并排队生命周期事件。命令响应与异步事件经过不同处理路径，不能依赖“先收到 cont 响应，再收到 RESUME”这种固定顺序。RESUME 处理器</p>
   <p>冷启动成功后，<code>qemuDomainObjStart()</code> 另行排队 <code>STARTED / BOOTED</code> 事件；显式暂停启动还会排队 <code>SUSPENDED / PAUSED</code>。启动作业结束，API 返回成功。运行状态、原因和事件分别描述当前状态及其变化，不能把收到某个事件简单等同于客户机服务已经可用。</p>
   <table><thead><tr><th scope="col">观察到的信号</th><th scope="col">已确认状态</th><th scope="col">后续检查</th></tr></thead><tbody>
     <tr><td>运行时 ID 已分配</td><td>Libvirt 已进入启动准备</td><td>QEMU 是否成功 exec</td></tr>
@@ -361,30 +364,30 @@ virsh -c qemu:///system resume demo</code></pre>
 
 <section id="objects" class="mechanism-section">
   <h2><span class="mechanism-heading-number">七、</span>用运行定义与启动作业管理状态</h2>
-  <p>持久虚拟机关闭后仍保留定义。启动时，<code>virsh</code> 先按名称或 UUID 查找句柄，再发起创建调用。没有额外标志时使用 <code>virDomainCreate()</code>；携带 <code>--paused</code> 等标志时使用 <code>virDomainCreateWithFlags()</code>。服务端 QEMU 驱动最终进入同一套带 flags 的启动逻辑。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/tools/virsh-domain.c#L4409-L4465">命令入口</a></p>
+  <p>持久虚拟机关闭后仍保留定义。启动时，<code>virsh</code> 先按名称或 UUID 查找句柄，再发起创建调用。没有额外标志时使用 <code>virDomainCreate()</code>；携带 <code>--paused</code> 等标志时使用 <code>virDomainCreateWithFlags()</code>。服务端 QEMU 驱动最终进入同一套带 flags 的启动逻辑。命令入口</p>
   <table><thead><tr><th scope="col">数据结构</th><th scope="col">关键字段</th><th scope="col">启动中的作用</th></tr></thead><tbody>
     <tr><td><code>virDomainObj</code></td><td><code>def</code>、<code>newDef</code>、<code>pid</code>、<code>state</code>、<code>persistent</code>、<code>job</code></td><td>关联定义、进程与生命周期；<code>newDef</code> 保存需要在关闭后使用的定义</td></tr>
     <tr><td><code>virDomainDef</code></td><td><code>uuid</code>、<code>name</code>、<code>id</code>、CPU、内存和设备配置</td><td>启动中的 <code>def</code> 可补入设备地址、别名、监听路径等运行信息</td></tr>
     <tr><td><code>qemuDomainObjPrivate</code></td><td><code>qemuCaps</code>、<code>mon</code>、<code>monConfig</code>、<code>pidfile</code>、<code>cgroup</code>、<code>runningReason</code></td><td>保存 QEMU 能力、monitor 通道、宿主资源及状态转换原因</td></tr>
     <tr><td><code>virCommand</code></td><td>argv、环境变量、继承 FD、执行前钩子、握手管道</td><td>组织新进程的启动条件，协调 fork 与 exec 之间的准备</td></tr>
   </tbody></table>
-  <p>这些结构保存在 Libvirt 服务端进程中：<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/conf/domain_conf.h#L3389-L3437">通用对象</a>记录生命周期，<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_domain.h#L107-L179">QEMU 驱动私有对象</a>记录管理连接和宿主资源。它们通过 PID、monitor 与外部 QEMU 进程关联。<code>pid</code> 是宿主进程号，<code>def-&gt;id</code> 是 Libvirt 分配的运行时 ID，两者由不同分配器生成。</p>
+  <p>这些结构保存在 Libvirt 服务端进程中：通用对象记录生命周期，QEMU 驱动私有对象记录管理连接和宿主资源。它们通过 PID、monitor 与外部 QEMU 进程关联。<code>pid</code> 是宿主进程号，<code>def-&gt;id</code> 是 Libvirt 分配的运行时 ID，两者由不同分配器生成。</p>
   <p><code>qemuDomainCreateWithFlags()</code> 取得对象、检查 ACL，再通过 <code>qemuProcessBeginJob()</code> 建立 <code>VIR_ASYNC_JOB_START</code> 作业，取得作业后重新检查虚拟机是否已经 active。这里的 async job 是内部并发管理机制，调用 API 仍会等待启动操作返回。</p>
-  <p>对象锁保护字段的一致性，作业则保护跨多次等待与 QMP 调用的操作。等待 monitor 响应时会释放对象锁，使事件线程能够更新状态；仅靠一把全程持有的对象锁，反而可能把完成这次操作所需的事件阻塞住。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L6410-L6455">启动入口</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/docs/kbase/internals/qemu-threads.rst">QEMU 驱动锁与作业规则</a></p>
+  <p>对象锁保护字段的一致性，作业则保护跨多次等待与 QMP 调用的操作。等待 monitor 响应时会释放对象锁，使事件线程能够更新状态；仅靠一把全程持有的对象锁，反而可能把完成这次操作所需的事件阻塞住。启动入口、QEMU 驱动锁与作业规则</p>
 </section>
 
 <section id="failure" class="mechanism-section">
   <h2><span class="mechanism-heading-number">八、</span>失败清理与管理连接恢复</h2>
-  <p>资源准备、exec、monitor 连接、设备设置或最终状态保存都可能失败。<code>qemuProcessStart()</code> 的失败分支调用 <code>qemuProcessStop(..., VIR_DOMAIN_SHUTOFF_FAILED, ...)</code>，依据安全标签是否已设置等信息选择清理标志。尚未开始资源准备的校验失败则直接返回，不会销毁一个并不存在的进程。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L8640-L8707">失败分支</a></p>
-  <p>停止路径保留最初错误，终止 QEMU，收束事件线程，关闭 monitor 和 agent，停止外部设备，清理网络、cgroup、标签与运行文件，最后复原定义。其间将 <code>def-&gt;id</code> 设为 -1、<code>pid</code> 清零，写入 SHUTOFF 状态。清理顺序需要配合对象锁与事件线程，防止其他线程把正在销毁的虚拟机再次视为可操作对象。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L9056-L9165">进程与事件收束</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L9300-L9374">状态复原</a></p>
-  <p>持久定义通常仍保留，便于修正配置后再次启动；运行状态文件另用于守护进程恢复。<code>qemuProcessReconnect()</code> 重新连接已有 QEMU 的 monitor，恢复资源管理关系并查询真实状态，不必重新创建客户机。重连发现实例仍停留在 STARTING_UP 等未完成状态时会进入清理分支，因此“守护进程可以重启”也不意味着任意启动中断都能无条件续接。<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_process.c#L9667-L9767">重连与状态核对</a></p>
+  <p>资源准备、exec、monitor 连接、设备设置或最终状态保存都可能失败。<code>qemuProcessStart()</code> 的失败分支调用 <code>qemuProcessStop(..., VIR_DOMAIN_SHUTOFF_FAILED, ...)</code>，依据安全标签是否已设置等信息选择清理标志。尚未开始资源准备的校验失败则直接返回，不会销毁一个并不存在的进程。失败分支</p>
+  <p>停止路径保留最初错误，终止 QEMU，收束事件线程，关闭 monitor 和 agent，停止外部设备，清理网络、cgroup、标签与运行文件，最后复原定义。其间将 <code>def-&gt;id</code> 设为 -1、<code>pid</code> 清零，写入 SHUTOFF 状态。清理顺序需要配合对象锁与事件线程，防止其他线程把正在销毁的虚拟机再次视为可操作对象。进程与事件收束、状态复原</p>
+  <p>持久定义通常仍保留，便于修正配置后再次启动；运行状态文件另用于守护进程恢复。<code>qemuProcessReconnect()</code> 重新连接已有 QEMU 的 monitor，恢复资源管理关系并查询真实状态，不必重新创建客户机。重连发现实例仍停留在 STARTING_UP 等未完成状态时会进入清理分支，因此“守护进程可以重启”也不意味着任意启动中断都能无条件续接。重连与状态核对</p>
 </section>
 
 <span id="evaluation" class="mechanism-topic-alias" aria-hidden="true"></span>
 <section id="evolution" class="mechanism-section">
   <h2><span class="mechanism-heading-number">九、</span>QMP 状态协调的收益与启动成本</h2>
-  <p>早期人类可读的 monitor 适合人工交互，自动管理需要解析文本输出。QMP 提供结构化 JSON 命令、错误和异步事件，减少命令输出格式变化带来的歧义。Libvirt 在 2010 年加入<a href="https://github.com/libvirt/libvirt/commit/5d72a8944264bef63f490d1bd602fca1aea4be2c">连接时的 qmp_capabilities 协商</a>；如今启动路径依赖 QMP 查询线程、设置运行参数和同步生命周期。</p>
-  <p>同年，QEMU 驱动<a href="https://github.com/libvirt/libvirt/commit/12317957ecd6c37a2fb16275dcdeeacfe25c517e">接入锁管理基础设施</a>，把磁盘锁、标签修改和 fork / exec 时序联系起来。随着直通设备、外部后端、NUMA 和 cgroup 等能力增加，创建进程逐渐成为更大资源事务中的一步。</p>
+  <p>早期人类可读的 monitor 适合人工交互，自动管理需要解析文本输出。QMP 提供结构化 JSON 命令、错误和异步事件，减少命令输出格式变化带来的歧义。Libvirt 在 2010 年加入连接时的 qmp_capabilities 协商；如今启动路径依赖 QMP 查询线程、设置运行参数和同步生命周期。</p>
+  <p>同年，QEMU 驱动接入锁管理基础设施，把磁盘锁、标签修改和 fork / exec 时序联系起来。随着直通设备、外部后端、NUMA 和 cgroup 等能力增加，创建进程逐渐成为更大资源事务中的一步。</p>
   <p>收益是资源隔离、并发控制与故障恢复可以统一处理，成本则是更多阶段、状态和失败出口。排查启动慢或启动失败，最有效的起点是定位最后一个完成的阶段：配置校验、宿主资源准备、exec、QMP 协商、运行前设置，还是客户机自己的引导。将这些耗时全部归入“QEMU 启动”会掩盖实际瓶颈。</p>
   <table><thead><tr><th>优化方向</th><th>减少的等待</th><th>需要承担的代价</th></tr></thead><tbody>
     <tr><td>提前准备网络和存储</td><td>请求中的宿主准备</td><td>资源提前占用，还需处理失效与清理</td></tr>
@@ -406,12 +409,14 @@ virsh -c qemu:///system resume demo</code></pre>
   </ul>
 </section></div>
   </div>
-  <nav class="mechanism-related" aria-label="相关内容"><span>相关内容</span><a href="../mechanisms.html#vm-startup">虚拟机启动原理</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-11-01">2026-11-01</time> · 针对文中标注的源码与规范基线；不代表后续版本已验证。</p></article>
+  <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#vm-startup">虚拟机启动</a></nav>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-01">2026-11-01</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=22a21048e448" defer></script>
-<script src="../assets/walkthrough-fullscreen.js?v=22a21048e448" defer></script><script src="../assets/walkthrough-routing.js?v=22a21048e448" defer></script><script src="../assets/walkthrough-components.js?v=22a21048e448" defer></script><script src="../assets/walkthrough-events.js?v=22a21048e448" defer></script><script src="../assets/execution-model.js?v=22a21048e448" defer></script><script src="../assets/execution-demo.js?v=22a21048e448" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=ffecf85ced85" defer></script>
+<template id="mechanism-lab-assets"><script data-lab-name="walkthrough-fullscreen.js" src="../assets/walkthrough-fullscreen.js?v=ffecf85ced85"></script><script data-lab-name="walkthrough-routing.js" src="../assets/walkthrough-routing.js?v=ffecf85ced85"></script><script data-lab-name="walkthrough-components.js" src="../assets/walkthrough-components.js?v=ffecf85ced85"></script><script data-lab-name="walkthrough-events.js" src="../assets/walkthrough-events.js?v=ffecf85ced85"></script><script data-lab-name="execution-model.js" src="../assets/execution-model.js?v=ffecf85ced85"></script><script data-lab-name="execution-demo.js" src="../assets/execution-demo.js?v=ffecf85ced85"></script></template>
+<script src="../assets/mechanism-labs.js?v=ffecf85ced85" data-lab-loader data-asset-root="../assets/" data-asset-version="ffecf85ced85" defer></script>
+</body>
 </html>

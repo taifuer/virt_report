@@ -65,7 +65,7 @@
   <h3>SR-IOV + mdev：VF 之上再建立实例</h3>
   <p>NVIDIA 的一类部署先启用 VF，再在 VF 的 <code>mdev_supported_types</code> 下创建实例，最后把实例 UUID 交给虚拟机。关系是 PF → VF → mdev UUID → VM；所引文档限定每个 VF 创建一个 mdev。VFIO 提供设备访问接口，SR-IOV 提供硬件功能，mdev 提供实例管理，三者可以组合。这里沿公开配置与完成接口展示，厂商内部命令格式、寄存器捕获范围和调度细节保留为未展开区域。<a href="{{ demo.sources['nvidia-vgpu-doc'].url }}">NVIDIA 配置文档</a>。</p>
   <p>同一文档还区分了厂商 VFIO 路径：某些宿主版本直接通过 VF 的 PCI 地址接入已配置的 vGPU，不再创建 mdev。两种部署不能混用 XML，也不能把承载实例的同一个 VF 再当作独立设备重复直通。另一类“混合使用”是多块 GPU 分别采用不同方案，或一个 VM 分配多个互不冲突的设备；是否支持仍需核对 IOMMU 分组、复位范围与厂商矩阵。</p>
-  <p>virtio-gpu 使用另一套前后端协议，继续在<a href="virtio-gpu-execution.html">渲染与编解码演示</a>中说明。以上对比集中于 Guest 使用厂商 GPU 驱动的路径。</p>
+  <p>virtio-gpu 使用另一套前后端协议，继续在<a href="virtio-gpu.html">渲染与编解码演示</a>中说明。以上对比集中于 Guest 使用厂商 GPU 驱动的路径。</p>
 </section>
 
 <section id="configuration" class="mechanism-section">
@@ -118,7 +118,7 @@
     <li><a href="{{ demo.sources['gvt-elsp'].url }}">GVT-g ELSP 提交</a>、<a href="{{ demo.sources['gvt-dispatch'].url }}">命令审核与调度</a>、<a href="{{ demo.sources['gvt-complete'].url }}">完成交接</a>与<a href="{{ demo.sources['gvt-event'].url }}">虚拟事件</a>。</li>
     <li><a href="{{ demo.sources['vf-doorbell'].url }}">SDMA 4.4.2 的 VF 门铃路径</a>、<a href="{{ demo.sources['vf-copy-packet'].url }}">复制包格式</a>及<a href="{{ demo.sources['amd-vf-doc'].url }}">AMD VF 部署</a>。源码版本用于核对执行机制，不替代厂商部署支持矩阵。</li>
     <li><a href="{{ demo.sources['nvidia-vgpu-doc'].url }}">NVIDIA SR-IOV、mdev 与厂商 VFIO 接入</a>及<a href="{{ demo.sources['cuda-events'].url }}">CUDA event 完成接口</a>。厂商在线文档核对日期：2026-11-08；图中的内部未展开区域不提供虚构的函数调用链。</li>
-    <li><a href="qemu-vfio-dma.html">VFIO 直通与 DMA 映射</a>、<a href="memory-access.html">内存访问与 MMIO</a>、<a href="interrupt-delivery.html">中断传递</a>及<a href="virtio-gpu.html">virtio-gpu 的二维资源路径</a>。</li>
-    <li><a href="virtio-gpu-execution.html">virtio-gpu 渲染与编解码</a>：另一组独立交互演示；资源、协议与同步分析见<a href="virtio-gpu.html">原理文章</a>。</li>
+    <li><a href="qemu-vfio-dma.html">VFIO 直通与 DMA 映射</a>、<a href="memory-virtualization.html">内存访问与 MMIO</a>、<a href="interrupt-virtualization.html">中断传递</a>及<a href="virtio-gpu.html">virtio-gpu 的二维资源路径</a>。</li>
+    <li><a href="virtio-gpu.html">virtio-gpu：资源、渲染与编解码</a>：结合二维更新与三维渲染演示，分析客户机资源、协议和同步。</li>
   </ul>
 </section>
