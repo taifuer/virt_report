@@ -409,7 +409,7 @@ DPDK、SPDK 按各自官方发布记录跟踪软件版本；vhost-user 不作为
 
 公开条目保留内容与点评，PDF 和代码链接放在标题旁；不展示入选说明、阅读指南折叠区、逐篇核对页脚或证据等级标记。完整阅读记录仍保存在 `paper_readings.json` 供编辑复核，有限原文获取的实质性限制仍应如实披露。
 
-阅读组织参考 [Amanda Stent 的论文阅读指南](https://www.cs.cmu.edu/~15712/papers/howtoreadacspaper.pdf)：问题、方法、证据和结论分开；中文点评须独立撰写，不复刻其他项目的文章。更新后运行论文测试、浏览器检查并重新导出 `site/`。`npm run test:browser` 包含经典筛选切换、默认全部与 URL 恢复、紧凑间距、旧链接定位、无脚本阅读，以及六篇 Linux 文章的桌面／移动布局和每张图的查看器检查。
+阅读组织参考 [Amanda Stent 的论文阅读指南](https://www.cs.cmu.edu/~15712/papers/howtoreadacspaper.pdf)：问题、方法、证据和结论分开；中文点评须独立撰写，不复刻其他项目的文章。更新后运行论文测试、浏览器检查并重新导出 `site/`。`npm run test:browser` 快速检查经典／综述筛选、URL 恢复与文章交互；`npm run test:browser:review` 额外检查紧凑间距、旧链接定位、无脚本阅读，以及六篇 Linux 文章的多尺寸布局和每张图的查看器。
 
 Linux 基础文章收录于原理目录的“Linux 内核基础”，位于“虚拟化基础”之后。主题标题链接 `linux-kernel-evolution.html`：介绍早期 PC、SMP、2.6 系列、多核与高速 I/O、容器/KVM、发布与维护，并用一次文件读取串起各子系统。五篇细分文章按线程调度、内存、中断、存储和网络 I/O 展开，复用现有文章组件。目录采用简短简介和完整可用宽度，小屏允许自然换行。六篇共 19 张 Mermaid 图，源文件与离线 SVG 一起维护，统一支持放大、键盘操作和图源查看；图解解释 EEVDF 资格、COW 映射、回收条件、IRQ 编号、通知竞态、数据缓冲区、持久化及 NAPI 预算等关键关系。历史依据链接对应旧版文档，当前机制链接固定 Linux 提交。示意数值和只读观察建议不是已执行的性能实验。
 
@@ -438,17 +438,25 @@ Linux 基础文章收录于原理目录的“Linux 内核基础”，位于“�
 .venv/bin/python -m pyflakes virt_report tests
 ```
 
-浏览器回归使用锁定的 Playwright 版本；首次安装需要下载 npm 包和 Chromium。运行检查只访问本机静态站点，不采集社区数据，不调用模型，也不读取真实数据库或 `.env`。
+模型测试直接使用 Node 内置测试运行器，无须安装 npm 依赖或浏览器。浏览器检查使用锁定的 Playwright 版本，只访问本机静态站点，不采集社区数据，不调用模型，也不读取真实数据库或 `.env`。
 
 ```bash
-npm ci
-npx playwright install --with-deps chromium
 npm run test:models
+# 本地首次使用浏览器检查时安装；仅下载无头浏览器
+npm ci
+npx playwright install --with-deps --only-shell chromium
+# 日常快速检查，桌面与手机两个宽度；成功时不生成截图
 npm run test:browser
-# 额外运行所有场景、视图与宽度的全局布局检查
+# 按需运行原有 11 组多尺寸审查
+npm run test:browser:review
+# 全场景、视图与宽度审查，额外包含全局布局检查（较慢）
 npm run test:browser:full
 ```
 
-入口脚本自动选择本机端口、启动静态预览并在结束时关闭自己的服务。默认覆盖搜索、目录与更新记录、版本联动筛选、Split / Packed 队列对照、磁盘/网络交互，以及 CPU、内存、中断、GPU 和启动演示；检查分页、URL 恢复、键盘操作、布局溢出与场景状态。`BROWSER_ARTIFACT_DIR` 可指定日志和截图目录（默认 `/tmp/virt-report-browser`）；搜索检查失败还保存 Playwright trace。已有 Python 环境可用 `VIRT_REPORT_PYTHON` 指定，Playwright 安装位置可用 `PLAYWRIGHT_MODULE` 指定。
+入口脚本自动选择本机端口、启动静态预览并在结束时关闭自己的服务。默认快速检查论文快捷筛选与分页、版本联动筛选、搜索与直达链接、文章目录与图形查看器、磁盘/网络单步操作，以及 Split / Packed 队列切换；只用 1440px 和 390px 两种尺寸，并保留无脚本阅读检查。各场景逐步状态由模型测试验证，多尺寸穷举与成功截图留给 `review` / `full`。快速检查的子进程上限为 3 分钟，失败保留截图、trace 和错误信息，不自动重试掩盖断言失败。
 
-GitHub Actions 在 push 和 pull request 时运行相同的模型与浏览器检查，截图、失败日志保留 7 天。这里的浏览器结果验证演示实现，不能替代 QEMU/KVM 实机测试。
+`BROWSER_ARTIFACT_DIR` 可指定日志目录（默认 `/tmp/virt-report-browser`），不同模式分别写入 `smoke/`、`review/`、`full/`，并记录各组耗时 `timings.json`。`VIRT_REPORT_PYTHON` 可指定 Python 解释器，`PLAYWRIGHT_MODULE` 可指定 Playwright 安装位置。已安装 Chrome 的环境可使用 `PLAYWRIGHT_CHANNEL=chrome npm run test:browser`，免去额外下载 Chromium；不设置时使用 Playwright 自带的无头 Chromium。
+
+GitHub Actions 的常规 `CI` 独立运行 Python 测试、容器构建与纯 Node 模型测试。`Browser checks` 只在页面、静态资源、内容目录或浏览器脚本相关改动时自动运行快速检查；文档、采集和摘要代码的单独修改不触发浏览器。它固定使用 `ubuntu-24.04` 与 runner 预装 Chrome，无须每次执行 apt、下载浏览器或安装 Python 项目依赖。日常 job 上限为 6 分钟，仅失败时上传诊断文件。需要完整审查时，在 Actions 的 `Browser checks` 中手动运行并勾选 `full`，上限为 25 分钟，保留截图 7 天。新提交会取消同分支过时的检查。
+
+浏览器检查验证的是网站交互；演示机制仍以源码、规范与模型测试为依据，实机行为需单独进行 QEMU/KVM 实验。

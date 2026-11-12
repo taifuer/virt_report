@@ -3,13 +3,13 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {launchBrowser} = require('./browser_runtime.cjs');
 const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
 const shots = process.env.LINUX_SCREENSHOT_DIR || '/tmp/virt-linux-browser';
 const slugs = ['linux-kernel-evolution', 'linux-execution-scheduling', 'linux-memory', 'linux-interrupts', 'linux-block-io', 'linux-network-io'];
 (async () => {
   fs.mkdirSync(shots, {recursive: true});
-  const browser = await chromium.launch({headless: true});
+  const browser = await launchBrowser({headless: true});
   try {
     const context = await browser.newContext();
     await context.route('**/*', route => new URL(route.request().url()).origin === new URL(base).origin

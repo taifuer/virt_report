@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {launchBrowser} = require('./browser_runtime.cjs');
 const model = require('../virt_report/render/assets/execution-model.js');
 const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
 const routes = {
@@ -205,7 +205,7 @@ async function assertFrame(page, frame) {
 }
 
 (async () => {
-  const browser = await chromium.launch({headless: true, args: ['--no-sandbox']});
+  const browser = await launchBrowser({headless: true, args: ['--no-sandbox']});
   const context = await browser.newContext({viewport: {width: 1440, height: 1000}, reducedMotion: 'reduce'});
   const page = await context.newPage();
   const errors = [];

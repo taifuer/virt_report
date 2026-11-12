@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {launchBrowser} = require('./browser_runtime.cjs');
 const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
 const url = `${base}/mechanisms.html`;
 const shots = process.env.MECHANISM_DIRECTORY_SCREENSHOT_DIR || '/tmp/mechanism-directory-review';
@@ -186,7 +186,7 @@ async function check(page,width) {
 
 (async()=>{
   fs.mkdirSync(shots,{recursive:true});
-  const browser=await chromium.launch({args:['--no-sandbox']});
+  const browser=await launchBrowser({args:['--no-sandbox']});
   const errors=[];
   try {
     const context=await browser.newContext({reducedMotion:'reduce'});

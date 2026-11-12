@@ -3,13 +3,13 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {launchBrowser} = require('./browser_runtime.cjs');
 const base = process.argv[2] || 'http://127.0.0.1:8091/versions.html';
 const shots = process.env.VERSIONS_SCREENSHOT_DIR || '/tmp';
 fs.mkdirSync(shots, {recursive: true});
 
 (async () => {
-  const browser = await chromium.launch({headless: true, args: ['--no-sandbox']});
+  const browser = await launchBrowser({headless: true, args: ['--no-sandbox']});
   try {
     const page = await browser.newPage({viewport: {width: 1366, height: 900}});
     const errors = [];

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {execFileSync} = require('node:child_process');
-const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {launchBrowser} = require('./browser_runtime.cjs');
 const root = path.resolve(__dirname, '..');
 const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
 assert(['127.0.0.1', 'localhost'].includes(new URL(base).hostname));
@@ -38,7 +38,7 @@ print(json.dumps(pages))
 `], {cwd: root, encoding: 'utf8', maxBuffer: 2 * 1024 * 1024}));
 
 (async () => {
-  const browser = await chromium.launch({args: ['--no-sandbox']});
+  const browser = await launchBrowser({args: ['--no-sandbox']});
   const context = await browser.newContext({reducedMotion: 'reduce'});
   await context.route('**/*', route => {
     const url = new URL(route.request().url());

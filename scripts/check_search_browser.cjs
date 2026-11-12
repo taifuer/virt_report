@@ -2,13 +2,13 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {launchBrowser} = require('./browser_runtime.cjs');
 const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
 assert(['127.0.0.1', 'localhost'].includes(new URL(base).hostname));
 const shots = process.env.SEARCH_SCREENSHOT_DIR || '/tmp/virt-report-search';
 fs.mkdirSync(shots, {recursive: true});
 (async () => {
-  const browser = await chromium.launch({args: ['--no-sandbox']});
+  const browser = await launchBrowser({args: ['--no-sandbox']});
   const context = await browser.newContext();
   await context.route('**/*', route => new URL(route.request().url()).origin === base ? route.continue() : route.abort());
   await context.tracing.start({screenshots: true, snapshots: true});

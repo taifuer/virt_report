@@ -1,0 +1,82 @@
+name: Browser checks
+
+on:
+  push:
+    paths:
+      - '.github/workflows/browser.yml'
+      - 'package*.json'
+      - 'scripts/*browser*.cjs'
+      - 'scripts/preview_site.py'
+      - 'virt_report/render/**'
+      - 'virt_report/content/**'
+      - 'virt_report/conferences.py'
+      - 'virt_report/mechanisms.py'
+      - 'virt_report/versions.py'
+      - 'virt_report/editorial_search.py'
+      - 'site/**'
+      - 'tests/*.cjs'
+  pull_request:
+    paths:
+      - '.github/workflows/browser.yml'
+      - 'package*.json'
+      - 'scripts/*browser*.cjs'
+      - 'scripts/preview_site.py'
+      - 'virt_report/render/**'
+      - 'virt_report/content/**'
+      - 'virt_report/conferences.py'
+      - 'virt_report/mechanisms.py'
+      - 'virt_report/versions.py'
+      - 'virt_report/editorial_search.py'
+      - 'site/**'
+      - 'tests/*.cjs'
+  workflow_dispatch:
+    inputs:
+      full:
+        description: 'Run all scenarios, layouts and screenshots (slow)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.full && 25 || 6 }}
+    env:
+      BROWSER_ARTIFACT_DIR: artifacts/browser
+      # The static preview only needs Python's standard library.
+      VIRT_REPORT_PYTHON: python3
+      # Use the runner's installed Chrome; no apt or browser download on each run.
+      PLAYWRIGHT_CHANNEL: chrome
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+        timeout-minutes: 2
+      - name: Check preinstalled browser
+        run: google-chrome --version
+      - name: Run essential interactions
+        if: ${{ !inputs.full }}
+        run: npm run test:browser
+        timeout-minutes: 4
+      - name: Run full browser audit
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.full }}
+        run: npm run test:browser:full
+        timeout-minutes: 22
+      - name: Preserve failure diagnostics or requested audit screenshots
+        if: ${{ failure() || (github.event_name == 'workflow_dispatch' && inputs.full) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-checks
+          path: artifacts/browser
+          retention-days: 7
+          if-no-files-found: ignore

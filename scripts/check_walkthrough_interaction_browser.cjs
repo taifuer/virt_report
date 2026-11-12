@@ -2,7 +2,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {launchBrowser} = require('./browser_runtime.cjs');
 const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
 assert(['localhost', '127.0.0.1'].includes(new URL(base).hostname));
 const shots = process.env.WALKTHROUGH_INTERACTION_SCREENSHOT_DIR || '/tmp/walkthrough-interaction-review';
@@ -49,7 +49,7 @@ async function buffers(page, prefix) {
 }
 
 (async () => {
-  const browser = await chromium.launch({args: ['--no-sandbox']});
+  const browser = await launchBrowser({args: ['--no-sandbox']});
   const context = await browser.newContext({reducedMotion: 'reduce'});
   await context.route('**/*', route => route.request().url().startsWith(base + '/') ? route.continue() : route.abort());
   const page = await context.newPage(), errors = [];

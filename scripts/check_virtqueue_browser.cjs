@@ -3,12 +3,12 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {launchBrowser} = require('./browser_runtime.cjs');
 const base = (process.argv[2] || 'http://127.0.0.1:8091').replace(/\/$/, '');
 const shots = process.env.VIRTQUEUE_SCREENSHOT_DIR || '/tmp/virtqueue-review';
 (async () => {
   fs.mkdirSync(shots, {recursive: true});
-  const browser = await chromium.launch({headless: true, args: ['--no-sandbox']});
+  const browser = await launchBrowser({headless: true, args: ['--no-sandbox']});
   try {
     const context = await browser.newContext({reducedMotion: 'reduce'});
     await context.route('**/*', route => route.request().url().startsWith(base + '/') ? route.continue() : route.abort());

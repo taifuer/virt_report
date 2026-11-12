@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -35,31 +39,13 @@ jobs:
             --build-arg PIP_INDEX_URL=https://pypi.org/simple \
             -t virt-report:test .
 
-  browser:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    env:
-      BROWSER_ARTIFACT_DIR: artifacts/browser
+  models:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: npm
-      - run: python -m venv .venv
-      - run: .venv/bin/python -m pip install -e .
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      # Pure Node tests need neither npm dependencies nor a browser.
       - run: npm run test:models
-      - run: npm run test:browser
-      - name: Preserve browser screenshots and failure logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: browser-checks
-          path: artifacts/browser
-          retention-days: 7
-          if-no-files-found: ignore
