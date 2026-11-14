@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>KVM 虚拟机创建：内存、vCPU 与中断初始化 - virt-report</title>
-  <meta name="description" content="从 /dev/kvm、VM fd 和内存槽，到 irqchip、vCPU 状态和第一次 KVM_RUN，解释内核执行环境的建立。">
+  <meta name="description" content="用一个最小 x86 KVM 程序串起 VM 创建、内存槽、中断控制器、vCPU 初始化、首次执行和失败清理。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=1934a7814284">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1934a7814284">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -50,11 +50,11 @@
   <div class="mechanism-layout">
     <nav class="mechanism-toc" aria-label="文章目录">
       <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
-      <ol id="mechanism-toc-links"><li><a href="#preface">一、为一台虚拟机建立内核执行环境</a></li><li><a href="#handles">二、系统 fd、VM fd 与 vCPU fd</a></li><li><a href="#memory">三、内存：分配后备，再登记 GPA 范围</a></li><li><a href="#interrupts">四、中断：创建控制器，再连接事件源</a></li><li><a href="#vcpus">五、vCPU：对象、线程与启动状态</a></li><li><a href="#run">六、从整机复位到第一次执行</a></li><li><a href="#lifetime">七、失败清理与对象生命周期</a></li><li><a href="#sources">八、源码与接口依据</a></li></ol>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、为一台虚拟机建立内核执行环境</a></li><li><a href="#handles">二、系统 fd、VM fd 与 vCPU fd</a></li><li><a href="#memory">三、内存：分配后备，再登记 GPA 范围</a></li><li><a href="#interrupts">四、中断：创建控制器，再连接事件源</a></li><li><a href="#vcpus">五、vCPU：对象、线程与启动状态</a></li><li><a href="#run">六、从整机复位到第一次执行</a></li><li><a href="#example">七、最小实例：创建并执行一个 vCPU</a><ol><li><a href="#example-part-1">1. 先确定地址与执行结果</a></li><li><a href="#example-part-2">2. 完整程序</a></li><li><a href="#example-part-3">3. 编译、运行与结果核对</a></li></ol></li><li><a href="#lifetime">八、失败清理与对象生命周期</a></li><li><a href="#sources">九、源码与接口依据</a></li></ol>
     </nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>为一台虚拟机建立内核执行环境</h2>
-  <p>QEMU 创建机器模型时，会调用 KVM 建立虚拟机容器、注册客户机内存、准备中断控制器并创建 vCPU。KVM 提供受硬件保护的执行环境；固件、磁盘、网卡与机器布局由用户态 VMM 组织。本文以 x86、普通共享 RAM、内核 irqchip 为例，跟踪这些对象如何在第一次 KVM_RUN 前准备好。</p>
+  <p>用户态 VMM 通过 KVM API 建立虚拟机、注册内存、配置中断控制器并创建 vCPU。本文先解释这些对象的依赖，再用一个最小 x86 程序完成整条调用链：创建 2 MiB RAM 和一个 vCPU，让客户机写入数值 42，通过端口 I/O 返回用户态，最后释放资源。</p>
   <p>宿主的 kvm 与 kvm_intel / kvm_amd 模块加载、硬件虚拟化能力可用后，用户态通过 <code>/dev/kvm</code> 为每台虚拟机建立独立对象。创建流程从这个接口开始。</p>
 <p class="mechanism-baselines">源码版本：QEMU 10.2.0、Linux 6.18。</p>  <figure class="mechanism-diagram" data-diagram="kvm-creation-resources" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
@@ -62,9 +62,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看第一次 KVM_RUN 前的资源依赖" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="第一次 KVM_RUN 前的资源依赖">
-    <img src="../assets/kvm-creation-resources.svg?v=e8d4285d5a39" alt="完整内核 irqchip 先于 vCPU 创建；RAM、固件、设备与启动状态在使用前就绪。分支表示资源依赖，各机器的具体创建顺序可以不同。" loading="lazy">
+    <img src="../assets/kvm-creation-resources.svg?v=1934a7814284" alt="完整内核 irqchip 先于 vCPU 创建；RAM、固件、设备与启动状态在使用前就绪。分支表示资源依赖，各机器的具体创建顺序可以不同。" loading="lazy">
   </div>
-  <figcaption>完整内核 irqchip 先于 vCPU 创建；RAM、固件、设备与启动状态在使用前就绪。分支表示资源依赖，各机器的具体创建顺序可以不同。 <a href="../assets/kvm-creation-resources.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>完整内核 irqchip 先于 vCPU 创建；RAM、固件、设备与启动状态在使用前就绪。分支表示资源依赖，各机器的具体创建顺序可以不同。 <a href="../assets/kvm-creation-resources.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: 第一次 KVM_RUN 前的资源依赖
   accDescr: 用户态打开 KVM 系统 fd 并查询能力后创建 VM。VM 下登记 RAM 内存槽、创建内核 irqchip 和 vCPU 对象；完整内核 irqchip 必须早于 vCPU 创建。QEMU 还要准备固件和设备，将启动状态同步到 KVM，确保依赖就绪后由 vCPU 线程调用 KVM_RUN。图中的分支表达资源依赖，不规定全部对象的唯一创建顺序。
@@ -104,8 +104,8 @@
   <table><thead><tr><th>字段或对象</th><th>示例</th><th>含义</th></tr></thead><tbody>
     <tr><td>slot</td><td>0</td><td>该 VM 内用于更新或删除这段区域的标识</td></tr>
     <tr><td>guest_phys_addr</td><td>0x00000000</td><td>客户机看到的这段 RAM 的起点</td></tr>
-    <tr><td>memory_size</td><td>0x40000000（1 GiB）</td><td>本例一段连续 RAM 的长度</td></tr>
-    <tr><td>userspace_addr</td><td>HVA_base</td><td>QEMU 进程内对应后备映射的起点</td></tr>
+    <tr><td>memory_size</td><td>0x200000（2 MiB）</td><td>后文最小实例使用的连续 RAM 长度</td></tr>
+    <tr><td>userspace_addr</td><td>HVA_base</td><td>用户态 VMM 中对应后备映射的起点</td></tr>
   </tbody></table>
   <p>访问 GPA <code>0x2000</code> 时，KVM 可由槽定位到 <code>HVA_base + 0x2000</code>，再取得后备页建立 EPT/NPT。注册 memslot 不是一次性分配全部物理页，也不表示二级页表已经全部建好。实际 PC 还包含 RAM 空洞、ROM 与 MMIO，通常需要多个区域，不能把上表示例套成完整 Q35 地址布局。</p>
   <p>普通设备模拟的 MMIO 区域由 QEMU 设备回调处理，通常不登记为普通 RAM 槽。未命中 RAM 的访问由 KVM 判定后可返回用户态模拟；受支持的直通映射则可能直接映射设备页。内存所有权、访问属性和生命周期必须与设备类型一致。</p>
@@ -129,13 +129,174 @@
   <p>物理 CPU 遇到受拦截操作可能先退出到 KVM。KVM 能处理的事件在内核完成，需要用户态设备模拟的访问才通过 KVM_RUN 返回，并在 kvm_run 中注明原因。用户态完成模拟后再次调用 KVM_RUN，客户机继续执行。这个循环承担运行期处理，创建流程为它准备对象与资源。</p>
   <p>首次进入 Guest 只意味着 CPU 已开始执行，操作系统仍要经历固件、引导、驱动和服务初始化。内存槽登记成功、vCPU 创建成功与业务启动成功，应分别检查。</p>
 </section>
+<section id="example" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">七、</span>最小实例：创建并执行一个 vCPU</h2>
+  <p>下面的程序在 x86 Linux 上直接使用 KVM API，只创建自己的临时虚拟机。它不接磁盘或网络，也不加载固件与操作系统；Guest 代码直接放在 GPA <code>0x1000</code>，以 16 位实模式运行。宿主需提供可读写的 <code>/dev/kvm</code> 和示例检查的 KVM 能力。</p>
+  <h3 id="example-part-1"><span class="mechanism-heading-number">1. </span>先确定地址与执行结果</h3>
+  <table><thead><tr><th>配置</th><th>值</th><th>作用</th></tr></thead><tbody>
+    <tr><td>RAM 槽 0</td><td>GPA [0, 0x200000)</td><td>对应用户态 mmap 得到的 2 MiB；Guest 写入 GPA 0x2000 后，宿主读取 ram[0x2000]。</td></tr>
+    <tr><td>CS 与 RIP</td><td>CS.base=0，RIP=0x1000</td><td>首次取指直接到示例代码，不经过 BIOS 复位入口。</td></tr>
+    <tr><td>DS 与数据地址</td><td>DS.base=0，偏移 0x2000</td><td>实模式下直接访问该槽中的数据，Guest 尚未启用分页。</td></tr>
+    <tr><td>端口 0xe9</td><td>由示例用户态程序处理</td><td>Guest 执行 OUT 后得到 KVM_EXIT_IO；该写入不会发往宿主的真实 I/O 端口。</td></tr>
+    <tr><td>irqchip</td><td>先于 vCPU 创建</td><td>建立内核 PIC、I/O APIC 和后续的 LAPIC；本例没有中断源，RFLAGS.IF 保持清零。</td></tr>
+  </tbody></table>
+  <p>创建 vCPU 0 后，程序读取初始特殊寄存器，仅修改本例需要的段基址和通用寄存器。Guest 不执行 CPUID、浮点或操作系统启动代码，因此没有展开完整机器的 CPUID/MSR 配置。QEMU 的 CPU 模型和固件启动仍需前文列出的相应初始化。</p>
+  <h3 id="example-part-2"><span class="mechanism-heading-number">2. </span>完整程序</h3>
+  <p>将代码保存为 <code>kvm-minimal.c</code>。<code>CHECK</code> 会检查每次系统调用，失败时统一进入清理路径；使用负值 fd 与 <code>MAP_FAILED</code> 标记尚未获得的资源。</p>
+  <pre><code>#define _GNU_SOURCE
+#include &lt;errno.h&gt;
+#include &lt;fcntl.h&gt;
+#include &lt;linux/kvm.h&gt;
+#include &lt;stdint.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;string.h&gt;
+#include &lt;sys/ioctl.h&gt;
+#include &lt;sys/mman.h&gt;
+#include &lt;unistd.h&gt;
+
+#if !defined(__x86_64__) &amp;&amp; !defined(__i386__)
+#error &#34;This example requires an x86 Linux host&#34;
+#endif
+
+int main(void)
+{
+    const size_t ram_size = 2 * 1024 * 1024;
+    int kvm = -1, vm = -1, vcpu = -1, result = 1;
+    int run_size = 0, rc;
+    unsigned char *ram = MAP_FAILED;
+    struct kvm_run *run = MAP_FAILED;
+    const char *operation = &#34;open /dev/kvm&#34;;
+
+#define CHECK(call) do { \
+    operation = #call; \
+    if ((call) &lt; 0) goto fail; \
+} while (0)
+
+    CHECK(kvm = open(&#34;/dev/kvm&#34;, O_RDWR | O_CLOEXEC));
+    CHECK(rc = ioctl(kvm, KVM_GET_API_VERSION, 0));
+    if (rc != KVM_API_VERSION) {
+        fprintf(stderr, &#34;Unsupported KVM API: %d\n&#34;, rc);
+        goto cleanup;
+    }
+    const int capabilities[] = {
+        KVM_CAP_USER_MEMORY, KVM_CAP_IRQCHIP,
+        KVM_CAP_SET_TSS_ADDR, KVM_CAP_IMMEDIATE_EXIT
+    };
+    for (size_t i = 0; i &lt; sizeof(capabilities) / sizeof(capabilities[0]); i++) {
+        CHECK(rc = ioctl(kvm, KVM_CHECK_EXTENSION, capabilities[i]));
+        if (rc == 0) {
+            fprintf(stderr, &#34;Required KVM capability missing: %d\n&#34;, capabilities[i]);
+            goto cleanup;
+        }
+    }
+    CHECK(vm = ioctl(kvm, KVM_CREATE_VM, 0));
+    /* Reserve three GPA pages for Intel&#39;s real-mode TSS, outside guest RAM. */
+    CHECK(ioctl(vm, KVM_SET_TSS_ADDR, 0xfffbd000UL));
+    CHECK(ioctl(vm, KVM_CREATE_IRQCHIP, 0));
+
+    operation = &#34;mmap guest RAM&#34;;
+    ram = mmap(NULL, ram_size, PROT_READ | PROT_WRITE,
+               MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (ram == MAP_FAILED) goto fail;
+    struct kvm_userspace_memory_region region = {
+        .slot = 0, .guest_phys_addr = 0, .memory_size = ram_size,
+        .userspace_addr = (uintptr_t)ram
+    };
+    CHECK(ioctl(vm, KVM_SET_USER_MEMORY_REGION, &amp;region));
+    /* 16-bit real mode: store 42 at 0x2000, then OUT 42 to port 0xe9. */
+    const unsigned char guest[] = {
+        0xc6, 0x06, 0x00, 0x20, 0x2a, /* mov byte [0x2000], 42 */
+        0xb0, 0x2a,                   /* mov al, 42 */
+        0xe6, 0xe9,                   /* out 0xe9, al */
+        0xf4                          /* hlt: not executed in this example */
+    };
+    memcpy(ram + 0x1000, guest, sizeof(guest));
+
+    CHECK(vcpu = ioctl(vm, KVM_CREATE_VCPU, 0));
+    CHECK(run_size = ioctl(kvm, KVM_GET_VCPU_MMAP_SIZE, 0));
+    if ((size_t)run_size &lt; sizeof(*run)) {
+        fprintf(stderr, &#34;KVM run mapping is too small\n&#34;);
+        goto cleanup;
+    }
+    operation = &#34;mmap kvm_run&#34;;
+    run = mmap(NULL, (size_t)run_size, PROT_READ | PROT_WRITE,
+               MAP_SHARED, vcpu, 0);
+    if (run == MAP_FAILED) goto fail;
+    struct kvm_sregs sregs;
+    CHECK(ioctl(vcpu, KVM_GET_SREGS, &amp;sregs));
+    sregs.cs.base = sregs.cs.selector = 0;
+    sregs.ds.base = sregs.ds.selector = 0;
+    struct kvm_regs regs = { .rip = 0x1000, .rsp = 0x8000, .rflags = 2 };
+    CHECK(ioctl(vcpu, KVM_SET_SREGS, &amp;sregs));
+    CHECK(ioctl(vcpu, KVM_SET_REGS, &amp;regs));
+    struct kvm_mp_state mp = { .mp_state = KVM_MP_STATE_RUNNABLE };
+    CHECK(ioctl(vcpu, KVM_SET_MP_STATE, &amp;mp));
+
+    operation = &#34;KVM_RUN&#34;;
+    do {
+        rc = ioctl(vcpu, KVM_RUN, 0);
+    } while (rc &lt; 0 &amp;&amp; errno == EINTR);
+    if (rc &lt; 0) goto fail;
+    if (run-&gt;exit_reason != KVM_EXIT_IO ||
+        run-&gt;io.direction != KVM_EXIT_IO_OUT || run-&gt;io.port != 0xe9 ||
+        run-&gt;io.size != 1 || run-&gt;io.count != 1 ||
+        run-&gt;io.data_offset &gt;= (uint64_t)run_size) {
+        fprintf(stderr, &#34;Unexpected KVM exit: %u\n&#34;, run-&gt;exit_reason);
+        goto cleanup;
+    }
+    unsigned char value = *((unsigned char *)run + run-&gt;io.data_offset);
+    if (value != 42 || ram[0x2000] != 42) {
+        fprintf(stderr, &#34;Guest result mismatch\n&#34;);
+        goto cleanup;
+    }
+    /* Complete the pending OUT, but do not execute the following HLT. */
+    run-&gt;immediate_exit = 1;
+    rc = ioctl(vcpu, KVM_RUN, 0);
+    if (rc != -1 || errno != EINTR) {
+        fprintf(stderr, &#34;Expected EINTR after completing the OUT\n&#34;);
+        goto cleanup;
+    }
+    CHECK(ioctl(vcpu, KVM_GET_REGS, &amp;regs));
+    if (regs.rip != 0x1009) {
+        fprintf(stderr, &#34;Unexpected RIP: 0x%llx\n&#34;, (unsigned long long)regs.rip);
+        goto cleanup;
+    }
+    printf(&#34;RAM[0x2000]=42, OUT(0xe9)=42, RIP=0x%llx\n&#34;,
+           (unsigned long long)regs.rip);
+    result = 0;
+    goto cleanup;
+
+fail:
+    fprintf(stderr, &#34;%s: %s\n&#34;, operation, strerror(errno));
+cleanup:
+    if (run != MAP_FAILED) munmap(run, (size_t)run_size);
+    if (vcpu &gt;= 0) close(vcpu);
+    if (vm &gt;= 0) close(vm);
+    if (ram != MAP_FAILED) munmap(ram, ram_size);
+    if (kvm &gt;= 0) close(kvm);
+    return result;
+}</code></pre>
+  <h3 id="example-part-3"><span class="mechanism-heading-number">3. </span>编译、运行与结果核对</h3>
+  <pre><code>cc -std=c11 -Wall -Wextra -Werror -O2 kvm-minimal.c -o kvm-minimal
+timeout 5s ./kvm-minimal</code></pre>
+  <p>需要 C 编译器与 Linux 用户态开发头文件。具备相应 KVM 环境时，预期输出为：</p>
+  <pre><code>RAM[0x2000]=42, OUT(0xe9)=42, RIP=0x1009</code></pre>
+  <p>这三个值分别确认共享 RAM 写入、用户态收到端口请求，以及该指令已经完成。第一次 <code>KVM_RUN</code> 返回 I/O 请求时，内核还保留待完成操作；程序设置 <code>immediate_exit=1</code> 后重新进入，完成 OUT，再以 <code>EINTR</code> 返回，不执行末尾的 HLT。启用内核 irqchip 后，HLT 可能让 vCPU 阻塞，所以本例用 I/O 请求作为结束信号。</p>
+  <p>验证范围：此代码接受编译和模拟系统调用测试；当前检查环境没有 <code>/dev/kvm</code>，上述输出是预期值，尚未在真实 KVM 上验证。程序失败时会打印具体调用；权限不足应先核对设备访问权限，缺少能力则使用满足条件的测试宿主。</p>
+</section>
 <section id="lifetime" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">七、</span>失败清理与对象生命周期</h2>
+  <h2><span class="mechanism-heading-number">八、</span>失败清理与对象生命周期</h2>
   <p>创建失败时，VMM 停止使用尚未完成的实例，按已获得的资源逆向清理：停止执行和异步设备活动，解除通知绑定，释放 vCPU 共享映射与 fd，释放 VM 及内存后备引用。正常退出也要先保证设备不会再 DMA 到准备释放的内存。</p>
   <p>KVM 对象的存活依赖引用，关闭一个重复的 fd 不一定释放对象。KVM API 对 ioctl 调用进程和线程也有约束，不能把 fd 当作任意跨进程移交虚拟机状态的协议。QEMU 的常规迁移会在目标重新建立相应对象。</p>
+  <table><thead><tr><th>失败位置</th><th>本例已获得的资源</th><th>清理顺序</th></tr></thead><tbody>
+    <tr><td>VM 创建前</td><td>系统 fd</td><td>关闭系统 fd。</td></tr>
+    <tr><td>内存槽注册或 vCPU 创建失败</td><td>VM fd，可能已有 RAM 映射</td><td>关闭 VM，再解除 RAM 映射，最后关闭系统 fd。</td></tr>
+    <tr><td>寄存器设置或运行失败</td><td>VM、RAM、vCPU fd 与 kvm_run 映射</td><td>解除 kvm_run，关闭 vCPU 与 VM，再解除 RAM，关闭系统 fd。</td></tr>
+  </tbody></table>
+  <p>本例没有后台工作线程、异步 I/O 或设备 DMA，返回用户态后即可按上述顺序销毁。完整 VMM 则要先停止相关线程和设备活动，才能释放它们仍可能访问的内存。</p>
 </section>
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">八、</span>源码与接口依据</h2>
+  <h2><span class="mechanism-heading-number">九、</span>源码与接口依据</h2>
   <ul>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst">Linux 6.18：KVM API、内存槽、中断控制器与 vCPU 接口</a></li>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c">VM/vCPU 创建与生命周期</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c">x86 初始化与 ioctl 分发</a></li>
@@ -145,11 +306,11 @@
 </section></div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#kvm-internals">KVM 原理</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-11-12">2026-11-12</time> · 针对文中标注的源码与规范基线。</p></article>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-14">2026-11-14</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
+<script src="../assets/mechanism-viewer.js?v=1934a7814284" defer></script>
 </body>
 </html>

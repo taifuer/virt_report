@@ -28,6 +28,8 @@ MERGES = {
     "virtio-net-rx": "network-io",
     "virtio-blk-read": "qemu-virtio-blk",
     "virtio-gpu-execution": "virtio-gpu",
+    "migration": "qemu-memory-migration",
+    "device-virtualization": "virtualization-basics",
 }
 OLD_ANCHORS = {
     "virtio-gpu-rendering": {"preface", "transport", "render", "video-support",
@@ -49,6 +51,11 @@ OLD_ANCHORS = {
                        "evolution", "sources"},
     "virtio-blk-read": {"preface", "walkthrough", "comparison", "persistence", "verification", "sources"},
     "virtio-gpu-execution": {"preface", "walkthrough", "completion", "sources"},
+    "migration": {"preface", "state", "process", "example", "evolution",
+                  "evaluation", "reading", "sources", "process-part-1", "process-part-2"},
+    "device-virtualization": {"preface", "example", "architecture", "queue",
+                              "queue-part-1", "backends", "evolution",
+                              "evaluation", "reading", "sources"},
 }
 
 
@@ -100,7 +107,7 @@ def _request(path, method):
 
 def test_consolidated_catalogue_has_unique_canonical_articles():
     slugs = [article["slug"] for article in mechanisms.articles()]
-    assert len(slugs) == len(set(slugs)) == 58
+    assert len(slugs) == len(set(slugs)) == 56
     assert set(slugs).isdisjoint(MERGES)
     assert {entry["slug"]: entry["target"] for entry in mechanisms.redirects()} == MERGES
     catalogue = LinksAndIds(render.render_mechanisms_html(Config()))

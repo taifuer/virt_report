@@ -4,15 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>QEMU MultiFD 的任务分发与跨通道同步 - virt-report</title>
+  <title>QEMU MultiFD 并行迁移 - virt-report</title>
   <meta name="description" content="内存页批次的并行发送、主通道与数据通道的同步，以及慢通道对接收进度的影响。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
-<link rel="stylesheet" href="../assets/multifd.css?v=e8d4285d5a39"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=1934a7814284">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1934a7814284">
+<link rel="stylesheet" href="../assets/multifd.css?v=1934a7814284"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -44,7 +44,7 @@
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
     <div class="mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true">/</span><a href="../mechanisms.html#migration">热迁移</a></div>
-    <h1>QEMU MultiFD 的任务分发与跨通道同步</h1>
+    <h1>QEMU MultiFD 并行迁移</h1>
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
@@ -56,7 +56,7 @@
   <h2><span class="mechanism-heading-number">一、</span>并行传输带来的顺序问题</h2>
   <p>MultiFD 将迁移数据分派给多个工作线程，通过独立通道并行发送和接收。当单线程的页面处理速度限制吞吐时，这种拆分可以利用更多 CPU；主流继续负责迁移阶段与同步。并行之后，各通道的到达顺序不再统一，需要在同一页可能再次发送之前建立同步边界，防止旧内容晚到而覆盖新内容。</p>
   <p>本文分析普通 socket 迁移中未压缩 RAM 数据的分发与同步。示例采用默认同步方式：在 RAM 扫描轮次边界通过主流的 <code>RAM_SAVE_FLAG_MULTIFD_FLUSH</code> 协调数据通道。旧机器兼容模式、文件迁移及压缩路径在后文分别说明。</p>
-<p class="mechanism-baselines">源码版本：QEMU 10.2.0。</p>  <p>内存迭代与停机切换见<a href="qemu-memory-migration.html">《QEMU 预拷贝迁移的内存迭代与停机控制》</a>；主迁移流的记录格式见<a href="qemu-migration-stream.html">《QEMU 迁移流格式与状态恢复》</a>。</p>
+<p class="mechanism-baselines">源码版本：QEMU 10.2.0。</p>  <p>内存迭代与停机切换见<a href="qemu-memory-migration.html">《QEMU 热迁移流程》</a>；主迁移流的记录格式见<a href="qemu-migration-stream.html">《QEMU 迁移流格式与状态恢复》</a>。</p>
 </section>
 
 <section id="principle" class="mechanism-section">
@@ -147,9 +147,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看MultiFD 主流与数据通道的同步时序" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="MultiFD 主流与数据通道的同步时序">
-    <img src="../assets/multifd-synchronization.svg?v=e8d4285d5a39" alt="以 FLUSH 先到目的端为例。发送端等待本地写入，接收端等待所有通道的 SYNC；两端等待的条件不同。" loading="lazy">
+    <img src="../assets/multifd-synchronization.svg?v=1934a7814284" alt="以 FLUSH 先到目的端为例。发送端等待本地写入，接收端等待所有通道的 SYNC；两端等待的条件不同。" loading="lazy">
   </div>
-  <figcaption>以 FLUSH 先到目的端为例。发送端等待本地写入，接收端等待所有通道的 SYNC；两端等待的条件不同。 <a href="../assets/multifd-synchronization.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>以 FLUSH 先到目的端为例。发送端等待本地写入，接收端等待所有通道的 SYNC；两端等待的条件不同。 <a href="../assets/multifd-synchronization.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: MultiFD 主流与数据通道的同步时序
     accDescr: 源端主线程提交剩余批次，各发送线程完成页面写入并排入 SYNC 后报告本地完成。主线程发送 FLUSH；目的端等待所有通道装载前序页面并读到 SYNC，然后放行接收线程。示例选择 FLUSH 先到的时序。
@@ -225,6 +225,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
-<script src="../assets/multifd.js?v=e8d4285d5a39" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=1934a7814284" defer></script>
+<script src="../assets/multifd.js?v=1934a7814284" defer></script></body>
 </html>

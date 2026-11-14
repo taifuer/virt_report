@@ -33,9 +33,9 @@ def test_halt_observation_keeps_existing_subsection_anchor():
 
 
 def test_migration_downtime_and_qemu_doc_range_are_corrected():
-    migration = (render.TEMPLATES_DIR / "_migration_overview_article.html").read_text()
+    migration = (render.TEMPLATES_DIR / "_migration_article.html").read_text()
     qemu = (render.TEMPLATES_DIR / "_qemu_overview_article.html").read_text()
-    assert "QMP" in migration and "业务不可用" in migration
+    assert "QMP" in migration and "业务侧" in migration and "跨主机计时" in migration
     assert "#L51-L146" not in qemu
     assert "#L51-L139" in qemu
 

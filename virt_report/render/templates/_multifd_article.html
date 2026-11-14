@@ -5,7 +5,7 @@
   <p>MultiFD 将迁移数据分派给多个工作线程，通过独立通道并行发送和接收。当单线程的页面处理速度限制吞吐时，这种拆分可以利用更多 CPU；主流继续负责迁移阶段与同步。并行之后，各通道的到达顺序不再统一，需要在同一页可能再次发送之前建立同步边界，防止旧内容晚到而覆盖新内容。</p>
   <p>本文分析普通 socket 迁移中未压缩 RAM 数据的分发与同步。示例采用默认同步方式：在 RAM 扫描轮次边界通过主流的 <code>RAM_SAVE_FLAG_MULTIFD_FLUSH</code> 协调数据通道。旧机器兼容模式、文件迁移及压缩路径在后文分别说明。</p>
   {% include '_mechanism_baselines.html' %}
-  <p>内存迭代与停机切换见<a href="qemu-memory-migration.html">《QEMU 预拷贝迁移的内存迭代与停机控制》</a>；主迁移流的记录格式见<a href="qemu-migration-stream.html">《QEMU 迁移流格式与状态恢复》</a>。</p>
+  <p>内存迭代与停机切换见<a href="qemu-memory-migration.html">《QEMU 热迁移流程》</a>；主迁移流的记录格式见<a href="qemu-migration-stream.html">《QEMU 迁移流格式与状态恢复》</a>。</p>
 </section>
 
 <section id="principle" class="mechanism-section">

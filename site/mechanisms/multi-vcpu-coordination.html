@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=1934a7814284">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1934a7814284">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -106,9 +106,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看BSP 与 AP 的两阶段启动" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="BSP 与 AP 的两阶段启动">
-    <img src="../assets/multi-vcpu-boot.svg?v=e8d4285d5a39" alt="SeaBIOS 先使用 AP 完成固件初始化，Linux 随后用自己的跳板和每 CPU 环境完成 SMP 上线。图中 AP 一栏代表 vCPU 1、2、3；运行阶段每个 CPU 都有独立的执行流。" loading="lazy">
+    <img src="../assets/multi-vcpu-boot.svg?v=1934a7814284" alt="SeaBIOS 先使用 AP 完成固件初始化，Linux 随后用自己的跳板和每 CPU 环境完成 SMP 上线。图中 AP 一栏代表 vCPU 1、2、3；运行阶段每个 CPU 都有独立的执行流。" loading="lazy">
   </div>
-  <figcaption>SeaBIOS 先使用 AP 完成固件初始化，Linux 随后用自己的跳板和每 CPU 环境完成 SMP 上线。图中 AP 一栏代表 vCPU 1、2、3；运行阶段每个 CPU 都有独立的执行流。 <a href="../assets/multi-vcpu-boot.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>SeaBIOS 先使用 AP 完成固件初始化，Linux 随后用自己的跳板和每 CPU 环境完成 SMP 上线。图中 AP 一栏代表 vCPU 1、2、3；运行阶段每个 CPU 都有独立的执行流。 <a href="../assets/multi-vcpu-boot.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>%%{init: {&#34;sequence&#34;: {&#34;width&#34;: 220, &#34;actorMargin&#34;: 110, &#34;messageMargin&#34;: 20, &#34;wrap&#34;: false}}}%%
 sequenceDiagram
   accTitle: 四个 vCPU 从固件初始化到 Linux SMP 上线
@@ -178,9 +178,9 @@ sequenceDiagram
     <button type="button" data-mechanism-expand aria-label="放大查看四个 vCPU 与两个可用宿主逻辑 CPU 的示意" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="四个 vCPU 与两个可用宿主逻辑 CPU 的示意">
-    <img src="../assets/multi-vcpu-scheduling.svg?v=e8d4285d5a39" alt="示例时刻 T0、T1 获得宿主执行时间，T2、T3 等待后续时间片。实线表示当前执行关系，虚线表示后续运行机会；任务到 vCPU、线程到宿主 CPU 的映射均可随调度变化。" loading="lazy">
+    <img src="../assets/multi-vcpu-scheduling.svg?v=1934a7814284" alt="示例时刻 T0、T1 获得宿主执行时间，T2、T3 等待后续时间片。实线表示当前执行关系，虚线表示后续运行机会；任务到 vCPU、线程到宿主 CPU 的映射均可随调度变化。" loading="lazy">
   </div>
-  <figcaption>示例时刻 T0、T1 获得宿主执行时间，T2、T3 等待后续时间片。实线表示当前执行关系，虚线表示后续运行机会；任务到 vCPU、线程到宿主 CPU 的映射均可随调度变化。 <a href="../assets/multi-vcpu-scheduling.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>示例时刻 T0、T1 获得宿主执行时间，T2、T3 等待后续时间片。实线表示当前执行关系，虚线表示后续运行机会；任务到 vCPU、线程到宿主 CPU 的映射均可随调度变化。 <a href="../assets/multi-vcpu-scheduling.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: Guest 任务与宿主 vCPU 线程的双层调度
   accDescr: 示例时刻，4 个 Guest 工作线程分别由 vCPU 0 至 3 承载，对应 4 个 QEMU 宿主线程。假设此刻可提供 2 个宿主逻辑 CPU，T0 与 T1 正在运行，T2 与 T3 等待后续时间片。Guest 任务可以迁移到其他 vCPU，宿主线程也可以在亲和性允许的 CPU 间迁移；图中箭头不表示永久绑定。
@@ -340,6 +340,6 @@ cat /proc/interrupts</code></pre>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
+<script src="../assets/mechanism-viewer.js?v=1934a7814284" defer></script>
 </body>
 </html>

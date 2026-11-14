@@ -11,7 +11,7 @@ from virt_report.render import render
 
 
 @pytest.mark.parametrize('slug,title', [
-    ('network-io', '虚拟网卡：收发路径、缓冲区与后端'),
+    ('network-io', '虚拟网卡收发流程'),
     ('qemu-vm-startup', 'QEMU 虚拟机启动'),
     ('libvirt-live-migration', 'Libvirt 热迁移流程'),
 ])
@@ -91,7 +91,7 @@ def test_linux_boot_follows_firmware_kernel_and_userspace_handoffs():
 
 def test_overviews_do_not_repeat_directory_as_reading_lists():
     for slug in ('virtualization-basics', 'libvirt-internals', 'qemu-internals',
-                 'device-virtualization', 'migration', 'hotplug'):
+                 'qemu-memory-migration', 'hotplug', 'live-upgrade-overview'):
         page = render.render_mechanisms_html(Config(), slug)
         assert '<section id="reading"' not in page
         assert 'id="sources"' in page

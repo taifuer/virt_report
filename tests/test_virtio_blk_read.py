@@ -31,7 +31,7 @@ def test_flow_is_allowlisted_and_matches_article_source_baselines():
     flow = mechanisms.get_flow(article["flow"])
     assert article.get("presentation") != "walkthrough"
     assert article["topic"] == "device-virtualization"
-    assert article["title"] == "虚拟磁盘 I/O：请求处理、完成与持久化"
+    assert article["title"] == "虚拟磁盘读写流程"
     assert article["baselines"] == flow["baselines"]
     assert flow["request"]["bytes"] == 4096
     assert flow["request"]["queueSize"] == 8
@@ -104,7 +104,7 @@ def test_walkthrough_embeds_safe_data_and_loads_model_before_ui_without_network(
     monkeypatch.setattr(socket, "create_connection", unexpected_io)
     monkeypatch.setattr(sqlite3, "connect", unexpected_io)
     page = render.render_mechanisms_html(Config(), "qemu-virtio-blk")
-    assert "虚拟磁盘 I/O：请求处理、完成与持久化 - virt-report" in page
+    assert "虚拟磁盘读写流程 - virt-report" in page
     assert 'class="mechanism-layout"' in page
     assert 'class="mechanism-toc"' in page
     assert '<template id="mechanism-lab-assets">' in page
@@ -298,7 +298,7 @@ def test_embedded_flow_escapes_script_closing_tags(monkeypatch):
 
 
 @pytest.mark.parametrize("path,marker", [
-    ("/mechanisms/qemu-virtio-blk.html", "虚拟磁盘 I/O：请求处理、完成与持久化"),
+    ("/mechanisms/qemu-virtio-blk.html", "虚拟磁盘读写流程"),
     ("/assets/virtio-blk-read-model.js", "buildTrace"),
     ("/assets/virtio-blk-read.js", "VirtioBlkReadModel"),
     ("/assets/virtio-blk-read.css", "mechanism-article--walkthrough"),

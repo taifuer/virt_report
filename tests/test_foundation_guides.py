@@ -9,11 +9,10 @@ from virt_report.render import render
 
 
 @pytest.mark.parametrize('slug,sequence', [
-    ('virtualization-basics', ['preface', 'isolation', 'architecture', 'example', 'evolution', 'tradeoffs']),
+    ('virtualization-basics', ['preface', 'isolation', 'devices', 'architecture', 'example', 'evolution', 'tradeoffs']),
     ('cpu-virtualization', ['preface', 'paths', 'walkthrough', 'comparison', 'evolution', 'evaluation']),
     ('memory-virtualization', ['preface', 'addresses', 'evolution', 'access', 'walkthrough',
                                'address-routing', 'comparison', 'evaluation', 'verification', 'experiment']),
-    ('device-virtualization', ['preface', 'example', 'architecture', 'queue', 'backends', 'evolution', 'evaluation']),
     ('interrupt-virtualization', ['preface', 'example', 'controllers', 'notification',
                                   'delivery', 'irqfd', 'acceleration', 'walkthrough',
                                   'implementation', 'evolution', 'evaluation']),
@@ -84,7 +83,7 @@ def test_directory_links_do_not_underline_but_keep_focus_feedback():
     assert '.mechanisms-index a:focus-visible{outline:2px solid var(--brand)' in css
 
 
-@pytest.mark.parametrize('slug', ['migration', 'hotplug'])
+@pytest.mark.parametrize('slug', ['hotplug'])
 def test_operation_guides_explain_state_before_handoff_and_evaluate_outcomes(slug):
     article = mechanisms.get_article(slug)
     assert [section['id'] for section in article['sections']] == [
@@ -113,13 +112,12 @@ def test_component_guides_have_local_example_diagrams_and_state_handoffs(slug, d
     assert 'id="evolution"' in page
 
 
-def test_device_overview_keeps_negotiation_readable_and_links_to_protocol_detail():
-    page = render.render_mechanisms_html(Config(), 'device-virtualization')
-    start = page.index('id="queue"')
-    end = page.index('id="backends"')
-    initialization = page[start:end]
-    assert '先确认共同支持的特性和队列格式' in initialization
-    assert 'virtio-device-initialization.html' in initialization
+def test_device_comparison_retains_negotiation_without_repeating_protocol_detail():
+    page = render.render_mechanisms_html(Config(), 'virtualization-basics')
+    initialization = page.split('<section id="devices"', 1)[1].split('</section>', 1)[0]
+    assert '先协商特性、配置队列' in initialization
+    for interface in ('e1000', 'virtio-net', 'vhost-user', 'VFIO', 'SR-IOV', 'vDPA'):
+        assert interface in initialization
     assert 'FEATURES_OK' not in initialization
     detail = render.render_mechanisms_html(Config(), 'virtio-device-initialization')
     assert detail.index('FEATURES_OK') < detail.index('DRIVER_OK')
@@ -146,5 +144,4 @@ def test_virtio_initialization_article_keeps_layout_and_reset_boundaries():
     for field in ('0x100000', '0x101000', '0x102000', '0x0b', '0x0f',
                   'FEATURES_OK', 'DRIVER_OK', 'queue_enable', 'queue_reset'):
         assert field in page
-    assert 'virtio-device-initialization.html' in render.render_mechanisms_html(
-        Config(), 'device-virtualization')
+    assert 'virtio-device-initialization.html' in render.render_mechanisms_html(Config())

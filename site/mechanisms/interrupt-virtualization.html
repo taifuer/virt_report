@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=16edae27d19d">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=16edae27d19d">
-<link rel="stylesheet" href="../assets/execution-demo.css?v=16edae27d19d"><link rel="stylesheet" href="../assets/walkthrough.css?v=16edae27d19d"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=fc940ce49e27">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=fc940ce49e27">
+<link rel="stylesheet" href="../assets/execution-demo.css?v=fc940ce49e27"><link rel="stylesheet" href="../assets/walkthrough.css?v=fc940ce49e27"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -78,9 +78,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看同一个报文的数据路径与通知路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="同一个报文的数据路径与通知路径">
-    <img src="../assets/interrupt-delivery-overview.svg?v=16edae27d19d" alt="缓冲区和 used 保存结果；中断通知驱动检查队列。数据就绪、通知等待、vCPU 执行与驱动消费是不同阶段。下面先说明通知怎样确定目标，再展开宿主的交付过程。" loading="lazy">
+    <img src="../assets/interrupt-delivery-overview.svg?v=fc940ce49e27" alt="缓冲区和 used 保存结果；中断通知驱动检查队列。数据就绪、通知等待、vCPU 执行与驱动消费是不同阶段。下面先说明通知怎样确定目标，再展开宿主的交付过程。" loading="lazy">
   </div>
-  <figcaption>缓冲区和 used 保存结果；中断通知驱动检查队列。数据就绪、通知等待、vCPU 执行与驱动消费是不同阶段。下面先说明通知怎样确定目标，再展开宿主的交付过程。 <a href="../assets/interrupt-delivery-overview.svg?v=16edae27d19d" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>缓冲区和 used 保存结果；中断通知驱动检查队列。数据就绪、通知等待、vCPU 执行与驱动消费是不同阶段。下面先说明通知怎样确定目标，再展开宿主的交付过程。 <a href="../assets/interrupt-delivery-overview.svg?v=fc940ce49e27" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 从设备完成到客户机驱动处理
     accDescr: 完成记录先于通知发布，通知按路由进入虚拟 LAPIC 并等待客户机接受。vCPU 阻塞时需要先唤醒宿主线程；客户机驱动最终读取 used 队列确定完成项。
@@ -113,9 +113,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看引脚路由与 MSI-X 消息到达 LAPIC" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="引脚路由与 MSI-X 消息到达 LAPIC">
-    <img src="../assets/interrupt-controller-paths.svg?v=16edae27d19d" alt="INTx 经过 I/O APIC，MSI-X 用消息指定目标；两条路径都需要由目标 LAPIC 记录并交付中断。" loading="lazy">
+    <img src="../assets/interrupt-controller-paths.svg?v=fc940ce49e27" alt="INTx 经过 I/O APIC，MSI-X 用消息指定目标；两条路径都需要由目标 LAPIC 记录并交付中断。" loading="lazy">
   </div>
-  <figcaption>INTx 经过 I/O APIC，MSI-X 用消息指定目标；两条路径都需要由目标 LAPIC 记录并交付中断。 <a href="../assets/interrupt-controller-paths.svg?v=16edae27d19d" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>INTx 经过 I/O APIC，MSI-X 用消息指定目标；两条路径都需要由目标 LAPIC 记录并交付中断。 <a href="../assets/interrupt-controller-paths.svg?v=fc940ce49e27" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart LR
   accTitle: 设备、平台与 CPU 中的中断路径
   accDescr: 按物理组件分组。设备的 INTx 引脚经平台 I/O APIC 路由，MSI-X 消息直接指向目标 LAPIC；CPU 接受中断后按 IDT 进入操作系统处理入口。图中省略总线和可能存在的中断重映射。
@@ -193,9 +193,9 @@ old = 7, new = 8, event = 8 → 65535 &lt; 1 为假，暂不通知</code></pre>
     <button type="button" data-mechanism-expand aria-label="放大查看QEMU 经 KVM 软件注入到驱动消费" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="QEMU 经 KVM 软件注入到驱动消费">
-    <img src="../assets/interrupt-software-delivery.svg?v=16edae27d19d" alt="沿队列 0、APIC ID 1 和向量 0x51 跟踪完成记录、KVM_SIGNAL_MSI、LAPIC 状态和客户机处理。Linux 边沿应答可以先 EOI，再执行设备回调与 NAPI。" loading="lazy">
+    <img src="../assets/interrupt-software-delivery.svg?v=fc940ce49e27" alt="沿队列 0、APIC ID 1 和向量 0x51 跟踪完成记录、KVM_SIGNAL_MSI、LAPIC 状态和客户机处理。Linux 边沿应答可以先 EOI，再执行设备回调与 NAPI。" loading="lazy">
   </div>
-  <figcaption>沿队列 0、APIC ID 1 和向量 0x51 跟踪完成记录、KVM_SIGNAL_MSI、LAPIC 状态和客户机处理。Linux 边沿应答可以先 EOI，再执行设备回调与 NAPI。 <a href="../assets/interrupt-software-delivery.svg?v=16edae27d19d" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>沿队列 0、APIC ID 1 和向量 0x51 跟踪完成记录、KVM_SIGNAL_MSI、LAPIC 状态和客户机处理。Linux 边沿应答可以先 EOI，再执行设备回调与 NAPI。 <a href="../assets/interrupt-software-delivery.svg?v=fc940ce49e27" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: QEMU virtio-net 经 KVM 软件注入向量 0x51
     accDescr: QEMU 先写报文和 used 记录，再提交 MSI 消息。KVM 按 APIC ID 找到 vCPU 1，设置 IRR 并请求事件处理；条件满足后经 VM Entry 注入，客户机按 IDT 进入处理程序。驱动消费和 EOI 分别推进队列与 APIC 状态。
@@ -234,9 +234,9 @@ old = 7, new = 8, event = 8 → 65535 &lt; 1 为假，暂不通知</code></pre>
     <button type="button" data-mechanism-expand aria-label="放大查看队列、MSI-X 消息与 KVM 路由" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="队列、MSI-X 消息与 KVM 路由">
-    <img src="../assets/interrupt-routing.svg?v=16edae27d19d" alt="实线为本文的直接注入路径；虚线为事先建立路由后的 irqfd 替代路径。队列号、表项索引、GSI 和 APIC 向量属于不同编号空间。" loading="lazy">
+    <img src="../assets/interrupt-routing.svg?v=fc940ce49e27" alt="实线为本文的直接注入路径；虚线为事先建立路由后的 irqfd 替代路径。队列号、表项索引、GSI 和 APIC 向量属于不同编号空间。" loading="lazy">
   </div>
-  <figcaption>实线为本文的直接注入路径；虚线为事先建立路由后的 irqfd 替代路径。队列号、表项索引、GSI 和 APIC 向量属于不同编号空间。 <a href="../assets/interrupt-routing.svg?v=16edae27d19d" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>实线为本文的直接注入路径；虚线为事先建立路由后的 irqfd 替代路径。队列号、表项索引、GSI 和 APIC 向量属于不同编号空间。 <a href="../assets/interrupt-routing.svg?v=fc940ce49e27" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: virtqueue 完成通知的编号与路由
     accDescr: 队列 0 选择 MSI-X 表项 2，表项保存目的 APIC ID 1 与中断向量 0x51。直接通知提交 MSI 消息；irqfd 替代路径使用 GSI 37 关联同一消息，各种编号互不等同。
@@ -296,9 +296,9 @@ old = 7, new = 8, event = 8 → 65535 &lt; 1 为假，暂不通知</code></pre>
     <button type="button" data-mechanism-expand aria-label="放大查看事件接入与 vCPU 交付的两层优化" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="事件接入与 vCPU 交付的两层优化">
-    <img src="../assets/interrupt-acceleration-layers.svg?v=16edae27d19d" alt="直通设备两条路径都从 MSI-X 消息开始，由预先配置的普通或 posted IRTE 决定后续递送。普通路径经 VFIO / irqfd 进入 KVM，仍可使用 CPU 侧 posted；VT-d posted 则由 IOMMU 直接写 PIR。分支表示配置差异，不是逐次 I/O 的应用选项。" loading="lazy">
+    <img src="../assets/interrupt-acceleration-layers.svg?v=fc940ce49e27" alt="直通设备两条路径都从 MSI-X 消息开始，由预先配置的普通或 posted IRTE 决定后续递送。普通路径经 VFIO / irqfd 进入 KVM，仍可使用 CPU 侧 posted；VT-d posted 则由 IOMMU 直接写 PIR。分支表示配置差异，不是逐次 I/O 的应用选项。" loading="lazy">
   </div>
-  <figcaption>直通设备两条路径都从 MSI-X 消息开始，由预先配置的普通或 posted IRTE 决定后续递送。普通路径经 VFIO / irqfd 进入 KVM，仍可使用 CPU 侧 posted；VT-d posted 则由 IOMMU 直接写 PIR。分支表示配置差异，不是逐次 I/O 的应用选项。 <a href="../assets/interrupt-acceleration-layers.svg?v=16edae27d19d" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>直通设备两条路径都从 MSI-X 消息开始，由预先配置的普通或 posted IRTE 决定后续递送。普通路径经 VFIO / irqfd 进入 KVM，仍可使用 CPU 侧 posted；VT-d posted 则由 IOMMU 直接写 PIR。分支表示配置差异，不是逐次 I/O 的应用选项。 <a href="../assets/interrupt-acceleration-layers.svg?v=fc940ce49e27" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>%%{init: {&#34;flowchart&#34;: {&#34;rankSpacing&#34;: 24, &#34;nodeSpacing&#34;: 32, &#34;padding&#34;: 10}}}%%
 flowchart TB
   accTitle: irqfd、APICv 与直通设备 interrupt posting 的不同位置
@@ -647,8 +647,8 @@ cat /proc/interrupts</code></pre>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=16edae27d19d" defer></script>
-<template id="mechanism-lab-assets"><script data-lab-name="walkthrough-fullscreen.js" src="../assets/walkthrough-fullscreen.js?v=16edae27d19d"></script><script data-lab-name="walkthrough-routing.js" src="../assets/walkthrough-routing.js?v=16edae27d19d"></script><script data-lab-name="walkthrough-components.js" src="../assets/walkthrough-components.js?v=16edae27d19d"></script><script data-lab-name="walkthrough-events.js" src="../assets/walkthrough-events.js?v=16edae27d19d"></script><script data-lab-name="execution-model.js" src="../assets/execution-model.js?v=16edae27d19d"></script><script data-lab-name="execution-demo.js" src="../assets/execution-demo.js?v=16edae27d19d"></script></template>
-<script src="../assets/mechanism-labs.js?v=16edae27d19d" data-lab-loader data-asset-root="../assets/" data-asset-version="16edae27d19d" defer></script>
+<script src="../assets/mechanism-viewer.js?v=fc940ce49e27" defer></script>
+<template id="mechanism-lab-assets"><script data-lab-name="walkthrough-fullscreen.js" src="../assets/walkthrough-fullscreen.js?v=fc940ce49e27"></script><script data-lab-name="walkthrough-routing.js" src="../assets/walkthrough-routing.js?v=fc940ce49e27"></script><script data-lab-name="walkthrough-components.js" src="../assets/walkthrough-components.js?v=fc940ce49e27"></script><script data-lab-name="walkthrough-events.js" src="../assets/walkthrough-events.js?v=fc940ce49e27"></script><script data-lab-name="execution-model.js" src="../assets/execution-model.js?v=fc940ce49e27"></script><script data-lab-name="execution-demo.js" src="../assets/execution-demo.js?v=fc940ce49e27"></script></template>
+<script src="../assets/mechanism-labs.js?v=fc940ce49e27" data-lab-loader data-asset-root="../assets/" data-asset-version="fc940ce49e27" defer></script>
 </body>
 </html>

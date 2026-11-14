@@ -3,19 +3,49 @@
 {% set kernel_source = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>预拷贝迁移与停机控制</h2>
-  <p>预拷贝迁移在虚拟机运行期间复制内存，最后暂停虚拟机，传输剩余脏页及处理器、设备状态。复制期间客户机仍会写入内存，已经传过的页可能需要重传。QEMU 通过脏页跟踪记录这些修改，并根据剩余数据量和传输速率决定切换时机。本文分析这两个过程及其对停机时间的影响。</p>
+  <h2>迁移一台运行中的虚拟机</h2>
+  <p>QEMU 热迁移把虚拟机的运行状态从源端交给目的端，使客户机在另一台宿主上继续执行。本文沿目标准备、预拷贝、停机保存和恢复执行讲解完整流程，再展开脏页迭代与停机判断。</p>
   <p>以 8 GiB 内存、1000 MiB/s 的有效传输速率为例，停机后复制全部内存，仅传输就约需 8.2 秒。预拷贝在运行期间完成大部分复制，并重传期间写脏的页面，使停机阶段只需传输剩余内存与设备状态。</p>
-  <p>以下分析以 x86 / KVM、普通 RAM 的预拷贝路径为例，假定两端机器配置兼容、存储已就绪，不涉及磁盘复制、VFIO 或机密虚拟机。</p>
+  <p>示例采用 x86 / KVM、普通 RAM、virtio-blk 和共享存储。两端使用兼容的机器、CPU 和设备配置，目的端已具备磁盘访问与网络接管条件。客户机在预拷贝期间继续运行，写过的页可能需要重传；最终暂停后再补齐内存、处理器与设备状态。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
+<section id="state" class="mechanism-section">
+  <h2>需要迁移的状态与外部资源</h2>
+  <p>恢复执行需要一台状态一致的机器。例如，内存中的磁盘请求已经完成，设备却仍把它记为待处理，就可能重复提交 I/O。最后保存的 RAM、CPU 和设备状态必须描述同一个可继续执行的时刻。</p>
+  <table><thead><tr><th scope="col">对象</th><th scope="col">目的端需要恢复或准备的内容</th></tr></thead><tbody>
+    <tr><th scope="row">RAM</th><td>客户机物理地址布局和最终页面内容，包括驱动队列、缓冲区及内核数据。</td></tr>
+    <tr><th scope="row">CPU 与中断</th><td>寄存器、执行位置、中断控制器和定时器状态，与停机时的 RAM 和设备状态对应。</td></tr>
+    <tr><th scope="row">设备</th><td>寄存器、队列处理进度及可迁移的内部状态；在途操作按设备协议收尾或保存。</td></tr>
+    <tr><th scope="row">外部资源</th><td>相同的磁盘内容、可用的网络和后端连接。本例采用共享存储；RAM 迁移流不负责复制镜像文件。</td></tr>
+  </tbody></table>
+  <p>两端 QEMU 分别创建本地对象和内存映射。迁移传递客户机可见的状态，目的端按本机的对象关系装载；源端的进程地址、指针和文件描述符不能直接作为跨主机恢复结果。</p>
+</section>
+
 <section id="principle" class="mechanism-section">
-  <h2>运行中复制与停机交接</h2>
-  <p>暂停虚拟机后复制全部内存，可以在停止修改的条件下传送一致状态，停机时间也会包含整个内存传输过程。预拷贝将大部分复制工作移到运行阶段：先建立目的端内存副本，再重复传输发生修改的页，最后暂停客户机并完成状态交接。重复传输增加了流量，同时减少了暂停期间需要处理的数据量。</p>
+  <h2>从目标准备到恢复执行</h2>
+  <table><thead><tr><th scope="col">阶段</th><th scope="col">源端</th><th scope="col">目的端</th></tr></thead><tbody>
+    <tr><th scope="row">准备</th><td>确认兼容性、迁移参数和传输地址，客户机继续运行。</td><td>创建相容机器和后端，以 incoming 状态等待迁移流，暂不执行客户机。</td></tr>
+    <tr><th scope="row">预拷贝</th><td>开启脏页跟踪，发送 RAM，并重复发送运行期间修改的页。</td><td>识别内存块和偏移，将页面写入本机 RAM。</td></tr>
+    <tr><th scope="row">停机保存</th><td>达到切换条件后暂停 vCPU，收尾相关 I/O，发送最后的脏页及 CPU、设备状态。</td><td>补齐 RAM，加载寄存器、队列、定时器和中断状态。</td></tr>
+    <tr><th scope="row">恢复</th><td>保持停止，防止两端同时执行并写入共享资源。</td><td>完成装载并具备接管条件后恢复客户机；管理层核对实际运行结果。</td></tr>
+    <tr><th scope="row">清理</th><td>管理层确认迁移成功后释放旧实例及其宿主资源。</td><td>继续承载客户机，检查网络和业务恢复情况。</td></tr>
+  </tbody></table>
   {{ diagram('migration-precopy-sequence', '预拷贝迁移与最终状态交接', '运行期间传送内存；暂停后同步余页与处理器、设备状态，目的端完成恢复后继续执行。') }}
   <p>Libvirt 协调目的端准备和迁移任务；QEMU 保存、传送和恢复状态；KVM 提供客户机执行及脏页记录能力。目的端 QEMU 边接收边填充内存，但客户机尚未运行。运行阶段得到的副本不要求任意时刻都一致，最终一致性依靠停止修改、最后一次脏页同步和状态交接建立。</p>
-  <p>暂停后不仅要补齐 RAM，还要保存寄存器、中断控制器、设备队列处理位置等状态。普通预拷贝路径先完成 RAM 等可迭代状态，再同步 vCPU 并保存非迭代状态；目的端恢复完成且允许启动后才执行。字节流的组织方式另见<a href="{{ root }}mechanisms/qemu-migration-stream.html">《QEMU 迁移流格式与状态恢复》</a>。</p>
+  <p>只停止 vCPU 仍可能留下异步设备活动。普通预拷贝在相关 I/O 静止后完成 RAM 等可迭代状态，再同步 vCPU 并保存非迭代状态。迁移成功也不会自动退出源端 QEMU；实例与资源清理由管理层完成。管理端的命令和双端确认见<a href="libvirt-live-migration.html">Libvirt 热迁移流程</a>。</p>
+</section>
+
+<section id="example" class="mechanism-section">
+  <h2>在途磁盘请求的衔接</h2>
+  <p>假设客户机已经把一次 4 KiB 写请求放进 virtio-blk 队列，源端 QEMU 正等待共享存储完成写入。预拷贝曾经传过队列所在页面，随后请求完成又更新了状态字节、used ring 和待处理中断。这些后续变化需要进入最终保存。</p>
+  <ol>
+    <li><strong>运行中：</strong>源端继续处理 I/O，设备写回客户机 RAM 的修改也需要进入相应脏页记录。目的端接收页面，但不会同时消费同一条队列。</li>
+    <li><strong>停止与收尾：</strong>源端停止客户机提交新请求，并由设备及块层迁移流程处理在途 I/O。本例正常完成的写请求在 drain 后已得到结果，最终 RAM 包含完成记录。</li>
+    <li><strong>保存：</strong>同步最后的脏页，并保存设备处理位置和中断状态。遇到错误而暂存的请求由对应设备的迁移逻辑处理，不能仅凭队列里还有描述符就重新提交。</li>
+    <li><strong>恢复：</strong>目的端在同一份磁盘内容上恢复设备和客户机。Guest 驱动检查恢复后的 used ring，收割已完成请求；后续新请求由目的端继续处理。</li>
+  </ol>
+  <p>共享存储提供磁盘内容，状态迁移衔接队列和执行进度，两者缺一不可。设备状态的流内编码与装载顺序见<a href="qemu-migration-stream.html">QEMU 迁移流格式与状态恢复</a>。</p>
 </section>
 
 <section id="iteration" class="mechanism-section">
@@ -106,7 +136,7 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
   <p>预拷贝的主要开销来自内存传输、脏页跟踪与重传，以及暂停阶段的状态保存和恢复。不同优化机制针对其中的不同环节，也各自需要额外的计算、内存或同步资源。</p>
   <h3>传输能力不足：并行化</h3>
   <p>当单一路径的页面处理或传输成为瓶颈时，MultiFD 使用多个工作线程和通道处理内存；QAPI 的 <code>multifd</code>能力自 QEMU 4.0 提供。它有机会提高有效 B，但会增加线程、缓冲区和同步开销；若已受网络总带宽或内存带宽限制，增加通道不会按比例提速。<a href="{{ qemu_source }}migration/multifd.c">MultiFD 实现</a>、<a href="{{ qemu_source }}qapi/migration.json#L476">能力版本</a></p>
-  <p>多通道的任务分发和同步过程见<a href="qemu-multifd.html">《QEMU MultiFD 的任务分发与跨通道同步》</a>。</p>
+  <p>多通道的任务分发和同步过程见<a href="qemu-multifd.html">《QEMU MultiFD 并行迁移》</a>。</p>
   <h3>写脏速度过高：从统一限速到按 vCPU 限制</h3>
   <p>QEMU 1.6 的 <code>auto-converge</code>通过限制客户机 CPU 执行降低写脏速度。这会降低迁移期间的业务性能，也会影响写内存较少的 vCPU。QEMU 8.1 的 <code>dirty-limit</code>利用 KVM dirty ring 观察各 vCPU 的写脏活动，对超过配额的 vCPU 施加等待。它依赖相应 KVM 能力，并以受限 vCPU 的执行时间换取较低的写脏速率；设备写入仍需由相应路径处理。<a href="{{ qemu_source }}qapi/migration.json#L452-L453">自动收敛</a>、<a href="{{ qemu_source }}docs/devel/migration/dirty-limit.rst">Dirty limit 设计</a></p>
   <h3>跟踪本身有开销：缩短清除与读页的间隔</h3>
@@ -119,6 +149,7 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
   <h2>参考资料</h2>
   <ul class="mechanism-sources">
     <li>QEMU 10.2.0：<a href="{{ qemu_source }}migration/migration.c">migration.c</a>负责迁移决策与时间统计；<a href="{{ qemu_source }}migration/ram.c">ram.c</a>负责脏位图、页扫描与发送；<a href="{{ qemu_source }}migration/savevm.c">savevm.c</a>负责状态处理器调度。</li>
+    <li><a href="{{ qemu_source }}hw/block/virtio-blk.c">virtio-blk 的请求完成、设备状态及暂存请求保存</a>、<a href="{{ qemu_source }}block/io.c">块层 drain 与在途 I/O</a>。</li>
     <li><a href="{{ qemu_source }}qapi/migration.json">QEMU 10.2.0 QAPI 定义</a>：参数、能力与统计口径；<a href="{{ qemu_source }}migration/trace-events">迁移 trace 事件</a>：阶段与处理开销观察。</li>
     <li><a href="{{ kernel_source }}Documentation/virt/kvm/api.rst">Linux 6.18 KVM API</a>：dirty bitmap、手动脏页保护与 dirty ring。</li>
     <li>QEMU 社区文档：<a href="https://www.qemu.org/docs/master/devel/migration/main.html">迁移框架</a>、<a href="https://www.qemu.org/docs/master/devel/migration/dirty-limit.html">Dirty limit</a>。</li>

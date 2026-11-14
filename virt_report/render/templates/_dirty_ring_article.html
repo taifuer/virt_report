@@ -6,7 +6,7 @@
   <p>预拷贝迁移需要反复收集客户机修改过的内存页。KVM 负责记录客户机执行期间产生的脏页，QEMU 将这些记录汇入迁移位图，随后读取和传输相应页面。记录的交接顺序决定了并发写入能否在下一轮被发现。</p>
   <p>本文分析 KVM 位图接口和 Dirty Ring 的记录、收割与重新保护过程，始终跟踪 P3 这一页：客户机把内容从 v1 改为 v2，迁移器必须发出 v2，或者留下再次发送 P3 的记录。硬件缓冲以 x86 PML 为例，接口演进部分再说明跨架构内存顺序与补充位图。</p>
   {% include '_mechanism_baselines.html' %}
-  <p>内存迭代和停机切换见<a href="qemu-memory-migration.html">《QEMU 预拷贝迁移的内存迭代与停机控制》</a>。</p>
+  <p>内存迭代和停机切换见<a href="qemu-memory-migration.html">《QEMU 热迁移流程》</a>。</p>
 </section>
 
 <section id="principle" class="mechanism-section">

@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=1934a7814284">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1934a7814284">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -112,9 +112,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看TLB 未命中不等于缺页" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="TLB 未命中不等于缺页">
-    <img src="../assets/linux-page-fault.svg?v=e8d4285d5a39" alt="图中软件路径固定为合法匿名映射首次写入且分配成功；非法访问、COW 和文件页缺页各有不同处理。" loading="lazy">
+    <img src="../assets/linux-page-fault.svg?v=1934a7814284" alt="图中软件路径固定为合法匿名映射首次写入且分配成功；非法访问、COW 和文件页缺页各有不同处理。" loading="lazy">
   </div>
-  <figcaption>图中软件路径固定为合法匿名映射首次写入且分配成功；非法访问、COW 和文件页缺页各有不同处理。 <a href="../assets/linux-page-fault.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>图中软件路径固定为合法匿名映射首次写入且分配成功；非法访问、COW 和文件页缺页各有不同处理。 <a href="../assets/linux-page-fault.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TD
     accTitle: TLB 未命中与匿名页首次写入
     accDescr: TLB 未命中先由硬件查页表，页表有效时直接完成转换。对合法匿名映射首次写入但页表项尚未建立时，缺页处理分配页并建立映射，然后重试原指令。
@@ -137,9 +137,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看同一虚拟地址，写入后指向不同的物理页" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="同一虚拟地址，写入后指向不同的物理页">
-    <img src="../assets/linux-cow-mappings.svg?v=e8d4285d5a39" alt="左边父子共享只读映射，右边子进程经 COW 获得 Q；父进程页表仍指向 P。这里固定父进程继续持有旧页，不展开独占页复用。" loading="lazy">
+    <img src="../assets/linux-cow-mappings.svg?v=1934a7814284" alt="左边父子共享只读映射，右边子进程经 COW 获得 Q；父进程页表仍指向 P。这里固定父进程继续持有旧页，不展开独占页复用。" loading="lazy">
   </div>
-  <figcaption>左边父子共享只读映射，右边子进程经 COW 获得 Q；父进程页表仍指向 P。这里固定父进程继续持有旧页，不展开独占页复用。 <a href="../assets/linux-cow-mappings.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>左边父子共享只读映射，右边子进程经 COW 获得 Q；父进程页表仍指向 P。这里固定父进程继续持有旧页，不展开独占页复用。 <a href="../assets/linux-cow-mappings.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart LR
     accTitle: fork 后共享页面与子进程写时复制
     accDescr: fork 后父子进程的页表都以只读权限指向物理页 P；本例父进程继续持有 P，子进程写入触发 COW 后获得新页 Q，父进程仍指向 P。允许写的 VMA 与暂时只读的 PTE 是不同层次。
@@ -177,9 +177,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看从候选页到真正可释放的页面" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="从候选页到真正可释放的页面">
-    <img src="../assets/linux-page-reclaim.svg?v=e8d4285d5a39" alt="找到较冷的页面只完成了选择；数据保存、引用、页表和 TLB 状态仍需满足安全释放条件。无法换出或被固定的页面不能直接丢弃。" loading="lazy">
+    <img src="../assets/linux-page-reclaim.svg?v=1934a7814284" alt="找到较冷的页面只完成了选择；数据保存、引用、页表和 TLB 状态仍需满足安全释放条件。无法换出或被固定的页面不能直接丢弃。" loading="lazy">
   </div>
-  <figcaption>找到较冷的页面只完成了选择；数据保存、引用、页表和 TLB 状态仍需满足安全释放条件。无法换出或被固定的页面不能直接丢弃。 <a href="../assets/linux-page-reclaim.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>找到较冷的页面只完成了选择；数据保存、引用、页表和 TLB 状态仍需满足安全释放条件。无法换出或被固定的页面不能直接丢弃。 <a href="../assets/linux-page-reclaim.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 冷页面不一定能够立即回收
     accDescr: 回收先选择候选页，再检查是否能解除使用和映射。干净文件页可以丢弃，脏文件页需安排写回后再评估，匿名页需有可用换出路径。被固定等不可回收页面会跳过或延后，安全释放仍需引用和映射同步。
@@ -243,6 +243,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
+<script src="../assets/mechanism-viewer.js?v=1934a7814284" defer></script>
 </body>
 </html>

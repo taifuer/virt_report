@@ -44,7 +44,8 @@ def test_basics_article_is_not_presented_as_kvm_and_has_plain_curated_sources():
     assert '虚拟化基础' in breadcrumb and 'KVM 原理' not in breadcrumb
     sources = html.split('<section id="sources"', 1)[1].split('</section>', 1)[0]
     assert '<details' not in sources
-    assert sources.count('<li>') == 3
+    assert sources.count('<li>') == 4
+    assert 'Virtio 1.2' in sources and 'vhost-user 控制协议' in sources
     assert 'KVM 对象接口' not in sources
     assert '>QEMU 10.2.0</a>' not in sources
     assert '>Linux 6.18</a>' not in sources

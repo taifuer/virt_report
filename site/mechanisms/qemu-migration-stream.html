@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
-<link rel="stylesheet" href="../assets/migration-stream.css?v=e8d4285d5a39"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=1934a7814284">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1934a7814284">
+<link rel="stylesheet" href="../assets/migration-stream.css?v=1934a7814284"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -56,7 +56,7 @@
   <h2><span class="mechanism-heading-number">一、</span>迁移流的组成与状态恢复</h2>
   <p>QEMU 迁移流承载 RAM、CPU 和设备的运行状态。目的端先创建兼容的机器与设备模型，再根据流中的记录恢复源端状态：识别流格式和机器配置，解析 RAM 布局并更新页面，装载源端暂停后保存的 CPU 与设备状态，最后完成恢复执行前的检查。</p>
   <p>这条路径由两层格式配合完成：外层 section 选择处理器并校验边界，内层载荷描述页面或设备字段。以下用同一组四个内存页贯穿完整流示例，再逐层展开头部、RAM 编码、VMState 和接收流程。</p>
-<p class="mechanism-baselines">源码版本：QEMU 10.2.0。</p>  <p>以下以 x86 / KVM、普通 RAM 的单流预拷贝为例，机器与设备已在目的端创建，存储另行准备。内存重传和停机切换条件见<a href="qemu-memory-migration.html">《QEMU 预拷贝迁移的内存迭代与停机控制》</a>。</p>
+<p class="mechanism-baselines">源码版本：QEMU 10.2.0。</p>  <p>以下以 x86 / KVM、普通 RAM 的单流预拷贝为例，机器与设备已在目的端创建，存储另行准备。内存重传和停机切换条件见<a href="qemu-memory-migration.html">《QEMU 热迁移流程》</a>。</p>
 </section>
 
 <section id="structure" class="mechanism-section">
@@ -78,9 +78,9 @@
       <button type="button" data-mechanism-expand aria-label="放大查看 QEMU 迁移流与字段布局" hidden>放大查看</button>
     </div>
     <div class="mechanism-wire-scroll" role="region" aria-label="迁移流与字段布局全景图">
-      <img src="../assets/migration-wire-layout.svg?v=e8d4285d5a39" alt="QEMU 迁移流全景：左侧从流头到 EOF 的连续记录，连线指向右侧配置、RAM、CPU 与设备状态的字段布局；RAM EOS 和 section footer 分层标注。" loading="lazy">
+      <img src="../assets/migration-wire-layout.svg?v=1934a7814284" alt="QEMU 迁移流全景：左侧从流头到 EOF 的连续记录，连线指向右侧配置、RAM、CPU 与设备状态的字段布局；RAM EOS 和 section footer 分层标注。" loading="lazy">
     </div>
-    <figcaption>点击放大查看字段细节。字段宽度不按字节数等比绘制。<a href="../assets/migration-wire-layout.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
+    <figcaption>点击放大查看字段细节。字段宽度不按字节数等比绘制。<a href="../assets/migration-wire-layout.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
   </figure>
   <p>下面把 <code>pc.ram</code> 的四页例子逐条展开。先跟随左侧记录识别当前阶段，再看字段条如何编码。A2 重传时，目的端通过块名和偏移覆盖原位置；流中的 section ID 则用于找到处理这些页的 RAM 处理器。</p>
 <section class="stream-lab" data-stream-lab data-mechanism-view="lab" aria-labelledby="stream-lab-title">
@@ -326,9 +326,9 @@ VMSTATE_UINTTL(env.eflags, X86CPU),</code></pre>
     <button type="button" data-mechanism-expand aria-label="放大查看接收端的处理器分发与恢复边界" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="接收端的处理器分发与恢复边界">
-    <img src="../assets/migration-load-dispatch.svg?v=e8d4285d5a39" alt="普通预拷贝主路径：处理器按自己的格式消费载荷，返回后检查外层 footer；错误会中断装载。EOF 结束记录循环，后续仍需完成状态同步与运行条件检查。" loading="lazy">
+    <img src="../assets/migration-load-dispatch.svg?v=1934a7814284" alt="普通预拷贝主路径：处理器按自己的格式消费载荷，返回后检查外层 footer；错误会中断装载。EOF 结束记录循环，后续仍需完成状态同步与运行条件检查。" loading="lazy">
   </div>
-  <figcaption>普通预拷贝主路径：处理器按自己的格式消费载荷，返回后检查外层 footer；错误会中断装载。EOF 结束记录循环，后续仍需完成状态同步与运行条件检查。 <a href="../assets/migration-load-dispatch.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>普通预拷贝主路径：处理器按自己的格式消费载荷，返回后检查外层 footer；错误会中断装载。EOF 结束记录循环，后续仍需完成状态同步与运行条件检查。 <a href="../assets/migration-load-dispatch.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TD
     accTitle: 迁移流的处理器分发与恢复边界
     accDescr: 接收端按外层记录匹配处理器，由处理器消费载荷，再校验 section footer。EOF 结束主记录循环，装载收尾与运行条件检查之后才允许客户机执行。
@@ -374,6 +374,6 @@ VMSTATE_UINTTL(env.eflags, X86CPU),</code></pre>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
-<script src="../assets/migration-stream.js?v=e8d4285d5a39" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=1934a7814284" defer></script>
+<script src="../assets/migration-stream.js?v=1934a7814284" defer></script></body>
 </html>

@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=1934a7814284">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1934a7814284">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -70,9 +70,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看CPR-transfer 的资源与状态交接" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="CPR-transfer 的资源与状态交接">
-    <img src="../assets/cpr-state-ownership.svg?v=e8d4285d5a39" alt="两个进程映射同一共享 RAM 后端，分别拥有自己的 QEMU 对象和 KVM 虚拟机。CPR 通道传送已登记资源的描述符，主通道传送执行状态；客户机执行权只交给一端。" loading="lazy">
+    <img src="../assets/cpr-state-ownership.svg?v=1934a7814284" alt="两个进程映射同一共享 RAM 后端，分别拥有自己的 QEMU 对象和 KVM 虚拟机。CPR 通道传送已登记资源的描述符，主通道传送执行状态；客户机执行权只交给一端。" loading="lazy">
   </div>
-  <figcaption>两个进程映射同一共享 RAM 后端，分别拥有自己的 QEMU 对象和 KVM 虚拟机。CPR 通道传送已登记资源的描述符，主通道传送执行状态；客户机执行权只交给一端。 <a href="../assets/cpr-state-ownership.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>两个进程映射同一共享 RAM 后端，分别拥有自己的 QEMU 对象和 KVM 虚拟机。CPR 通道传送已登记资源的描述符，主通道传送执行状态；客户机执行权只交给一端。 <a href="../assets/cpr-state-ownership.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: CPR-transfer 的资源与状态交接
   accDescr: 旧进程和新进程分别创建 QEMU 对象、KVM VM 和 vCPU。CPR 通道把 name 与 id 对应的 fd 交给新进程，两个不同的 fd 和 HVA 可以引用同一共享 RAM。主迁移通道恢复 CPU 和设备状态，客户机执行不能同时在两端进行。
@@ -139,9 +139,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看CPR-transfer 的准备、停机与恢复" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="CPR-transfer 的准备、停机与恢复">
-    <img src="../assets/cpr-transfer-sequence.svg?v=e8d4285d5a39" alt="源端先发送 fd 清单，目标据此准备资源；目标监听 main 后关闭 CPR 通道。源端随后建立 main 并停止客户机，发送执行状态，目标恢复完成后才运行客户机。" loading="lazy">
+    <img src="../assets/cpr-transfer-sequence.svg?v=1934a7814284" alt="源端先发送 fd 清单，目标据此准备资源；目标监听 main 后关闭 CPR 通道。源端随后建立 main 并停止客户机，发送执行状态，目标恢复完成后才运行客户机。" loading="lazy">
   </div>
-  <figcaption>源端先发送 fd 清单，目标据此准备资源；目标监听 main 后关闭 CPR 通道。源端随后建立 main 并停止客户机，发送执行状态，目标恢复完成后才运行客户机。 <a href="../assets/cpr-transfer-sequence.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>源端先发送 fd 清单，目标据此准备资源；目标监听 main 后关闭 CPR 通道。源端随后建立 main 并停止客户机，发送执行状态，目标恢复完成后才运行客户机。 <a href="../assets/cpr-transfer-sequence.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
   accTitle: CPR-transfer 的准备、停机与恢复
   accDescr: 新 QEMU 在创建设备和打开 monitor 前等待 CPR 通道。旧 QEMU 先发送描述符清单，目标准备资源并监听主通道后关闭 CPR 通道。旧端收到 HUP 才连接主通道，再停止客户机、发送状态。目标恢复完成后接管执行，旧端保持 postmigrate。
@@ -300,6 +300,6 @@ TARGET_PID=$!</code></pre>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
+<script src="../assets/mechanism-viewer.js?v=1934a7814284" defer></script>
 </body>
 </html>

@@ -67,8 +67,8 @@ def test_directory_counts_primary_articles_without_extra_related_rows():
     counts = {topic['slug']: len(topic['articles']) for topic in mechanisms.topics()}
     assert counts == {'linux-foundations': 7, 'virtualization-basics': 1,
                       'cpu-virtualization': 2, 'memory-virtualization': 2,
-                      'device-virtualization': 15, 'interrupt-virtualization': 1,
-                      'vm-startup': 2, 'migration': 6, 'hotplug': 3,
+                      'device-virtualization': 14, 'interrupt-virtualization': 1,
+                      'vm-startup': 2, 'migration': 5, 'hotplug': 3,
                       'live-upgrade': 3, 'qemu-internals': 5, 'libvirt-internals': 2,
                       'kvm-internals': 9}
     assert [article['slug'] for article in
@@ -90,7 +90,6 @@ def test_merged_io_topic_keeps_legacy_anchor_without_duplicate_articles():
     canonical = mechanisms.get_topic('device-virtualization')
     assert mechanisms.get_topic('io-virtualization') is canonical
     assert [article['slug'] for article in canonical['articles']] == [
-        'device-virtualization',
         'virtio-device-initialization',
         'qemu-vhost-net', 'dpdk-vhost-user-net', 'spdk-vhost-user-blk', 'qemu-vfio-dma',
         'iommu-dma', 'iommufd', 'qemu-viommu', 'virtio-gpu',

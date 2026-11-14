@@ -301,9 +301,9 @@ def test_catalogue_has_one_title_link_per_article_without_redundant_cta():
         assert page.count(f'{prefix}<a href="mechanisms/{article["slug"]}.html">') == 1
     assert 'id="migration" aria-labelledby="mechanism-topic-migration"' in page
     assert ('<h3 id="mechanism-topic-migration"><a href="mechanisms/'
-            'migration.html">热迁移</a></h3>') in page
-    assert ('<h3 id="mechanism-topic-device-virtualization"><a href="mechanisms/'
-            'device-virtualization.html">设备与 I/O 虚拟化</a></h3>') in page
+            'qemu-memory-migration.html">热迁移</a></h3>') in page
+    assert ('<h3 id="mechanism-topic-device-virtualization">'
+            '<span class="mechanism-topic-label">设备与 I/O 虚拟化</span></h3>') in page
     assert page.count('class="mechanism-topic"') == len(mechanisms.topics())
 
 
@@ -330,10 +330,10 @@ def test_catalogue_about_and_export_work_without_database_and_preserve_reports(t
 
 @pytest.mark.parametrize("path,status,marker", [
     ("/mechanisms.html", 200, "<h1>原理</h1>"),
-    ("/mechanisms/qemu-memory-migration.html", 200, "QEMU 预拷贝迁移的内存迭代与停机控制"),
+    ("/mechanisms/qemu-memory-migration.html", 200, "QEMU 热迁移流程"),
     ("/mechanisms/qemu-migration-stream.html", 200, "QEMU 迁移流格式与状态恢复"),
-    ("/mechanisms/qemu-multifd.html", 200, "QEMU MultiFD 的任务分发与跨通道同步"),
-    ("/mechanisms/network-io.html", 200, "虚拟网卡：收发路径、缓冲区与后端"),
+    ("/mechanisms/qemu-multifd.html", 200, "QEMU MultiFD 并行迁移"),
+    ("/mechanisms/network-io.html", 200, "虚拟网卡收发流程"),
     ("/mechanisms/qemu-vhost-net.html", 200, "virtio-net 的后端处理：vhost-net 与 vhost-user"),
     ("/mechanisms/kvm-dirty-ring.html", 200, "KVM 脏页日志：位图与 Dirty Ring"),
     ("/mechanisms/qemu-postcopy.html", 404, ""),
@@ -351,7 +351,7 @@ def test_catalogue_about_and_export_work_without_database_and_preserve_reports(t
     ("/mechanisms/qemu-pcie-hotplug.html", 200, "QEMU PCIe 设备热插拔与异步移除"),
     ("/mechanisms/qemu-cpr-transfer.html", 200, "QEMU 热升级：CPR 的资源交接与状态恢复"),
     ("/mechanisms/qemu-memory-region.html", 200, "QEMU 内存初始化与地址空间管理"),
-    ("/mechanisms/qemu-virtio-blk.html", 200, "虚拟磁盘 I/O：请求处理、完成与持久化"),
+    ("/mechanisms/qemu-virtio-blk.html", 200, "虚拟磁盘读写流程"),
     ("/mechanisms/qemu-aio-iothread.html", 200, "QEMU AioContext、协程与 IOThread"),
     ("/mechanisms/kvm-vcpu-halt.html", 200, "KVM vCPU 的阻塞、轮询与唤醒"),
     ("/mechanisms/kvm-hugepages.html", 200, "KVM 大页映射的建立、拆分与恢复"),

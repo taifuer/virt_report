@@ -4,15 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>QEMU 预拷贝迁移的内存迭代与停机控制 - virt-report</title>
-  <meta name="description" content="脏页跟踪、内存重传与切换条件，以及带宽、写入负载和停机时间之间的关系。">
+  <title>QEMU 热迁移流程 - virt-report</title>
+  <meta name="description" content="从准备目的端、预拷贝内存到停机恢复，解释脏页迭代、CPU 与设备状态保存，以及停机时间的判断与观察。">
   <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
   <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
   <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=e8d4285d5a39">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e8d4285d5a39">
-<link rel="stylesheet" href="../assets/precopy-lab.css?v=e8d4285d5a39"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=1934a7814284">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1934a7814284">
+<link rel="stylesheet" href="../assets/precopy-lab.css?v=1934a7814284"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -44,34 +44,55 @@
   <main id="main"><div class="wrap"><article class="mechanism-article">
   <header class="mechanism-header">
     <div class="mechanism-breadcrumb"><a href="../mechanisms.html">原理</a><span aria-hidden="true">/</span><a href="../mechanisms.html#migration">热迁移</a></div>
-    <h1>QEMU 预拷贝迁移的内存迭代与停机控制</h1>
+    <h1>QEMU 热迁移流程</h1>
     <p class="mechanism-authorship">本文由 OpenAI Codex (GPT-6-Astra) 辅助编写。</p>
   </header>
   <div class="mechanism-layout">
     <nav class="mechanism-toc" aria-label="文章目录">
       <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
-      <ol id="mechanism-toc-links"><li><a href="#preface">一、预拷贝迁移与停机控制</a></li><li><a href="#principle">二、运行中复制与停机交接</a></li><li><a href="#iteration">三、脏页位图与页面重传</a><ol><li><a href="#iteration-part-1">1. 迁移位图与脏页记录</a></li><li><a href="#iteration-part-2">2. 页面重传与跟踪顺序</a></li><li><a href="#iteration-part-3">3. 扫描轮次与发送批次</a></li></ol></li><li><a href="#convergence">四、带宽与写脏速率决定收敛</a></li><li><a href="#downtime">五、从剩余量估算停机时间</a><ol><li><a href="#downtime-part-1">1. 从时间目标换算剩余量阈值</a></li><li><a href="#downtime-part-2">2. 停机目标与实际停机时间</a></li></ol></li><li><a href="#implementation">六、源码：迭代与最终状态保存</a></li><li><a href="#optimization">七、并行、限速与收尾成本</a><ol><li><a href="#optimization-part-1">1. 传输能力不足：并行化</a></li><li><a href="#optimization-part-2">2. 写脏速度过高：从统一限速到按 vCPU 限制</a></li><li><a href="#optimization-part-3">3. 跟踪本身有开销：缩短清除与读页的间隔</a></li><li><a href="#optimization-part-4">4. 减少流量与控制收尾成本</a></li></ol></li><li><a href="#sources">八、参考资料</a></li></ol>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、迁移一台运行中的虚拟机</a></li><li><a href="#state">二、需要迁移的状态与外部资源</a></li><li><a href="#principle">三、从目标准备到恢复执行</a></li><li><a href="#example">四、在途磁盘请求的衔接</a></li><li><a href="#iteration">五、脏页位图与页面重传</a><ol><li><a href="#iteration-part-1">1. 迁移位图与脏页记录</a></li><li><a href="#iteration-part-2">2. 页面重传与跟踪顺序</a></li><li><a href="#iteration-part-3">3. 扫描轮次与发送批次</a></li></ol></li><li><a href="#convergence">六、带宽与写脏速率决定收敛</a></li><li><a href="#downtime">七、从剩余量估算停机时间</a><ol><li><a href="#downtime-part-1">1. 从时间目标换算剩余量阈值</a></li><li><a href="#downtime-part-2">2. 停机目标与实际停机时间</a></li></ol></li><li><a href="#implementation">八、源码：迭代与最终状态保存</a></li><li><a href="#optimization">九、并行、限速与收尾成本</a><ol><li><a href="#optimization-part-1">1. 传输能力不足：并行化</a></li><li><a href="#optimization-part-2">2. 写脏速度过高：从统一限速到按 vCPU 限制</a></li><li><a href="#optimization-part-3">3. 跟踪本身有开销：缩短清除与读页的间隔</a></li><li><a href="#optimization-part-4">4. 减少流量与控制收尾成本</a></li></ol></li><li><a href="#sources">十、参考资料</a></li></ol>
     </nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">一、</span>预拷贝迁移与停机控制</h2>
-  <p>预拷贝迁移在虚拟机运行期间复制内存，最后暂停虚拟机，传输剩余脏页及处理器、设备状态。复制期间客户机仍会写入内存，已经传过的页可能需要重传。QEMU 通过脏页跟踪记录这些修改，并根据剩余数据量和传输速率决定切换时机。本文分析这两个过程及其对停机时间的影响。</p>
+  <h2><span class="mechanism-heading-number">一、</span>迁移一台运行中的虚拟机</h2>
+  <p>QEMU 热迁移把虚拟机的运行状态从源端交给目的端，使客户机在另一台宿主上继续执行。本文沿目标准备、预拷贝、停机保存和恢复执行讲解完整流程，再展开脏页迭代与停机判断。</p>
   <p>以 8 GiB 内存、1000 MiB/s 的有效传输速率为例，停机后复制全部内存，仅传输就约需 8.2 秒。预拷贝在运行期间完成大部分复制，并重传期间写脏的页面，使停机阶段只需传输剩余内存与设备状态。</p>
-  <p>以下分析以 x86 / KVM、普通 RAM 的预拷贝路径为例，假定两端机器配置兼容、存储已就绪，不涉及磁盘复制、VFIO 或机密虚拟机。</p>
+  <p>示例采用 x86 / KVM、普通 RAM、virtio-blk 和共享存储。两端使用兼容的机器、CPU 和设备配置，目的端已具备磁盘访问与网络接管条件。客户机在预拷贝期间继续运行，写过的页可能需要重传；最终暂停后再补齐内存、处理器与设备状态。</p>
 <p class="mechanism-baselines">源码版本：QEMU 10.2.0、Linux 6.18。</p></section>
 
+<section id="state" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">二、</span>需要迁移的状态与外部资源</h2>
+  <p>恢复执行需要一台状态一致的机器。例如，内存中的磁盘请求已经完成，设备却仍把它记为待处理，就可能重复提交 I/O。最后保存的 RAM、CPU 和设备状态必须描述同一个可继续执行的时刻。</p>
+  <table><thead><tr><th scope="col">对象</th><th scope="col">目的端需要恢复或准备的内容</th></tr></thead><tbody>
+    <tr><th scope="row">RAM</th><td>客户机物理地址布局和最终页面内容，包括驱动队列、缓冲区及内核数据。</td></tr>
+    <tr><th scope="row">CPU 与中断</th><td>寄存器、执行位置、中断控制器和定时器状态，与停机时的 RAM 和设备状态对应。</td></tr>
+    <tr><th scope="row">设备</th><td>寄存器、队列处理进度及可迁移的内部状态；在途操作按设备协议收尾或保存。</td></tr>
+    <tr><th scope="row">外部资源</th><td>相同的磁盘内容、可用的网络和后端连接。本例采用共享存储；RAM 迁移流不负责复制镜像文件。</td></tr>
+  </tbody></table>
+  <p>两端 QEMU 分别创建本地对象和内存映射。迁移传递客户机可见的状态，目的端按本机的对象关系装载；源端的进程地址、指针和文件描述符不能直接作为跨主机恢复结果。</p>
+</section>
+
+<span id="process" class="mechanism-topic-alias" aria-hidden="true"></span>
+<span id="process-part-1" class="mechanism-topic-alias" aria-hidden="true"></span>
+<span id="process-part-2" class="mechanism-topic-alias" aria-hidden="true"></span>
 <section id="principle" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">二、</span>运行中复制与停机交接</h2>
-  <p>暂停虚拟机后复制全部内存，可以在停止修改的条件下传送一致状态，停机时间也会包含整个内存传输过程。预拷贝将大部分复制工作移到运行阶段：先建立目的端内存副本，再重复传输发生修改的页，最后暂停客户机并完成状态交接。重复传输增加了流量，同时减少了暂停期间需要处理的数据量。</p>
+  <h2><span class="mechanism-heading-number">三、</span>从目标准备到恢复执行</h2>
+  <table><thead><tr><th scope="col">阶段</th><th scope="col">源端</th><th scope="col">目的端</th></tr></thead><tbody>
+    <tr><th scope="row">准备</th><td>确认兼容性、迁移参数和传输地址，客户机继续运行。</td><td>创建相容机器和后端，以 incoming 状态等待迁移流，暂不执行客户机。</td></tr>
+    <tr><th scope="row">预拷贝</th><td>开启脏页跟踪，发送 RAM，并重复发送运行期间修改的页。</td><td>识别内存块和偏移，将页面写入本机 RAM。</td></tr>
+    <tr><th scope="row">停机保存</th><td>达到切换条件后暂停 vCPU，收尾相关 I/O，发送最后的脏页及 CPU、设备状态。</td><td>补齐 RAM，加载寄存器、队列、定时器和中断状态。</td></tr>
+    <tr><th scope="row">恢复</th><td>保持停止，防止两端同时执行并写入共享资源。</td><td>完成装载并具备接管条件后恢复客户机；管理层核对实际运行结果。</td></tr>
+    <tr><th scope="row">清理</th><td>管理层确认迁移成功后释放旧实例及其宿主资源。</td><td>继续承载客户机，检查网络和业务恢复情况。</td></tr>
+  </tbody></table>
   <figure class="mechanism-diagram" data-diagram="migration-precopy-sequence" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
     <span data-mechanism-title>预拷贝迁移与最终状态交接</span>
     <button type="button" data-mechanism-expand aria-label="放大查看预拷贝迁移与最终状态交接" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="预拷贝迁移与最终状态交接">
-    <img src="../assets/migration-precopy-sequence.svg?v=e8d4285d5a39" alt="运行期间传送内存；暂停后同步余页与处理器、设备状态，目的端完成恢复后继续执行。" loading="lazy">
+    <img src="../assets/migration-precopy-sequence.svg?v=1934a7814284" alt="运行期间传送内存；暂停后同步余页与处理器、设备状态，目的端完成恢复后继续执行。" loading="lazy">
   </div>
-  <figcaption>运行期间传送内存；暂停后同步余页与处理器、设备状态，目的端完成恢复后继续执行。 <a href="../assets/migration-precopy-sequence.svg?v=e8d4285d5a39" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>运行期间传送内存；暂停后同步余页与处理器、设备状态，目的端完成恢复后继续执行。 <a href="../assets/migration-precopy-sequence.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: QEMU 预拷贝迁移的主要时序
     accDescr: 先发送流头及 RAM 布局，再在源端运行时迭代传页；暂停后传最后脏页和 CPU、设备状态。目标端加载完成后才启动。
@@ -103,11 +124,23 @@
 </code></pre></details>
 </figure>
   <p>Libvirt 协调目的端准备和迁移任务；QEMU 保存、传送和恢复状态；KVM 提供客户机执行及脏页记录能力。目的端 QEMU 边接收边填充内存，但客户机尚未运行。运行阶段得到的副本不要求任意时刻都一致，最终一致性依靠停止修改、最后一次脏页同步和状态交接建立。</p>
-  <p>暂停后不仅要补齐 RAM，还要保存寄存器、中断控制器、设备队列处理位置等状态。普通预拷贝路径先完成 RAM 等可迭代状态，再同步 vCPU 并保存非迭代状态；目的端恢复完成且允许启动后才执行。字节流的组织方式另见<a href="../mechanisms/qemu-migration-stream.html">《QEMU 迁移流格式与状态恢复》</a>。</p>
+  <p>只停止 vCPU 仍可能留下异步设备活动。普通预拷贝在相关 I/O 静止后完成 RAM 等可迭代状态，再同步 vCPU 并保存非迭代状态。迁移成功也不会自动退出源端 QEMU；实例与资源清理由管理层完成。管理端的命令和双端确认见<a href="libvirt-live-migration.html">Libvirt 热迁移流程</a>。</p>
+</section>
+
+<section id="example" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">四、</span>在途磁盘请求的衔接</h2>
+  <p>假设客户机已经把一次 4 KiB 写请求放进 virtio-blk 队列，源端 QEMU 正等待共享存储完成写入。预拷贝曾经传过队列所在页面，随后请求完成又更新了状态字节、used ring 和待处理中断。这些后续变化需要进入最终保存。</p>
+  <ol>
+    <li><strong>运行中：</strong>源端继续处理 I/O，设备写回客户机 RAM 的修改也需要进入相应脏页记录。目的端接收页面，但不会同时消费同一条队列。</li>
+    <li><strong>停止与收尾：</strong>源端停止客户机提交新请求，并由设备及块层迁移流程处理在途 I/O。本例正常完成的写请求在 drain 后已得到结果，最终 RAM 包含完成记录。</li>
+    <li><strong>保存：</strong>同步最后的脏页，并保存设备处理位置和中断状态。遇到错误而暂存的请求由对应设备的迁移逻辑处理，不能仅凭队列里还有描述符就重新提交。</li>
+    <li><strong>恢复：</strong>目的端在同一份磁盘内容上恢复设备和客户机。Guest 驱动检查恢复后的 used ring，收割已完成请求；后续新请求由目的端继续处理。</li>
+  </ol>
+  <p>共享存储提供磁盘内容，状态迁移衔接队列和执行进度，两者缺一不可。设备状态的流内编码与装载顺序见<a href="qemu-migration-stream.html">QEMU 迁移流格式与状态恢复</a>。</p>
 </section>
 
 <section id="iteration" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">三、</span>脏页位图与页面重传</h2>
+  <h2><span class="mechanism-heading-number">五、</span>脏页位图与页面重传</h2>
   <h3 id="iteration-part-1"><span class="mechanism-heading-number">1. </span>迁移位图与脏页记录</h3>
   <p>源端 QEMU 在自己的进程内为各个 <code>RAMBlock</code>维护迁移位图 <code>bmap</code>，表示哪些页还需要发送。初始化时将相应位设为 1，使首次扫描覆盖需要迁移的内存；与此同时开启脏页跟踪，记录运行期间的新修改。初始化代码还会排除符合条件的丢弃页，缩小首次扫描的待传集合。</p>
   <p>源端宿主内核中的 KVM 通过 dirty bitmap 或 dirty ring 向 QEMU 提供客户机写脏记录；QEMU 内存子系统汇总记录，再由 <code>migration_bitmap_sync()</code>合入自己的迁移位图。原来为 0、此次变为 1 的页增加待传数量，已经为 1 的页不会重复计数。同一页在两次发送之间反复写入，合入位图后仍只需安排一次重传。目的端接收页面内容并更新本机 RAM，源端这份待发位图只用于安排传输。位图合并、同步入口</p>
@@ -133,7 +166,7 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
 </section>
 
 <section id="convergence" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">四、</span>带宽与写脏速率决定收敛</h2>
+  <h2><span class="mechanism-heading-number">六、</span>带宽与写脏速率决定收敛</h2>
   <p>用一个简化的轮次模型可以说明重传的代价。设内存量为 M，第 n 轮待传量为 R<sub>n</sub>，有效内存传输速率为 B，按脏页粒度去重后的新增数据速率为 D。在速率稳定、没有压缩和其他开销的近似下：</p>
   <pre><code>本轮耗时      Tₙ ≈ Rₙ / B
 下一轮待传量  Rₙ₊₁ ≈ min(M, D × Tₙ)
@@ -238,8 +271,9 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
   <p>增加迭代通常能减少暂停后的剩余工作，但也会延长迁移、消耗网络与主机资源。QEMU 根据预计暂停期间的工作量判断切换时机，剩余量达到阈值后即可进入完成阶段，无需等待脏页归零。</p>
 </section>
 
+<span id="evaluation" class="mechanism-topic-alias" aria-hidden="true"></span>
 <section id="downtime" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">五、</span>从剩余量估算停机时间</h2>
+  <h2><span class="mechanism-heading-number">七、</span>从剩余量估算停机时间</h2>
   <h3 id="downtime-part-1"><span class="mechanism-heading-number">1. </span>从时间目标换算剩余量阈值</h3>
   <p><code>migration_update_counters()</code>使用近期观测带宽，或配置的 <code>avail-switchover-bandwidth</code>，计算切换阈值。固定版本中的关键表达式为：</p>
   <pre><code>s-&gt;threshold_size = expected_bw_per_ms * migrate_downtime_limit();</code></pre>
@@ -259,7 +293,7 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
 </section>
 
 <section id="implementation" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">六、</span>源码：迭代与最终状态保存</h2>
+  <h2><span class="mechanism-heading-number">八、</span>源码：迭代与最终状态保存</h2>
   <p>迁移线程负责判断是否继续迭代，RAM 处理器负责维护待传集合，两者通过状态保存回调连接。初始化、迭代和最终保存的主要调用关系如下：</p>
   <pre><code>migration_thread
   qemu_savevm_state_setup
@@ -282,12 +316,13 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
   <p>需要进一步区分“剩余量降不下来”和“暂停后的处理太慢”时，可结合 <code>migration_bitmap_sync_end</code>、<code>migrate_pending_exact</code> 和 <code>vmstate_downtime_checkpoint</code> 等 trace 事件。前者对应运行中的收敛过程，后者还需要观察停机后的设备保存和传输收尾。</p>
 </section>
 
+<span id="evolution" class="mechanism-topic-alias" aria-hidden="true"></span>
 <section id="optimization" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">七、</span>并行、限速与收尾成本</h2>
+  <h2><span class="mechanism-heading-number">九、</span>并行、限速与收尾成本</h2>
   <p>预拷贝的主要开销来自内存传输、脏页跟踪与重传，以及暂停阶段的状态保存和恢复。不同优化机制针对其中的不同环节，也各自需要额外的计算、内存或同步资源。</p>
   <h3 id="optimization-part-1"><span class="mechanism-heading-number">1. </span>传输能力不足：并行化</h3>
   <p>当单一路径的页面处理或传输成为瓶颈时，MultiFD 使用多个工作线程和通道处理内存；QAPI 的 <code>multifd</code>能力自 QEMU 4.0 提供。它有机会提高有效 B，但会增加线程、缓冲区和同步开销；若已受网络总带宽或内存带宽限制，增加通道不会按比例提速。MultiFD 实现、能力版本</p>
-  <p>多通道的任务分发和同步过程见<a href="qemu-multifd.html">《QEMU MultiFD 的任务分发与跨通道同步》</a>。</p>
+  <p>多通道的任务分发和同步过程见<a href="qemu-multifd.html">《QEMU MultiFD 并行迁移》</a>。</p>
   <h3 id="optimization-part-2"><span class="mechanism-heading-number">2. </span>写脏速度过高：从统一限速到按 vCPU 限制</h3>
   <p>QEMU 1.6 的 <code>auto-converge</code>通过限制客户机 CPU 执行降低写脏速度。这会降低迁移期间的业务性能，也会影响写内存较少的 vCPU。QEMU 8.1 的 <code>dirty-limit</code>利用 KVM dirty ring 观察各 vCPU 的写脏活动，对超过配额的 vCPU 施加等待。它依赖相应 KVM 能力，并以受限 vCPU 的执行时间换取较低的写脏速率；设备写入仍需由相应路径处理。自动收敛、Dirty limit 设计</p>
   <h3 id="optimization-part-3"><span class="mechanism-heading-number">3. </span>跟踪本身有开销：缩短清除与读页的间隔</h3>
@@ -296,10 +331,12 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
   <p>零页识别避免发送整页零值；XBZRLE 在适合的重传场景中编码与已缓存页面的差异；压缩以 CPU 工作换取链路字节减少。实际收益取决于页面内容、缓存命中和处理能力。内存剩余量已经很小而停机仍长时，需要进一步分析设备保存、目的端装载和 I/O 交接的耗时。放宽停机目标可以更早切换，也会把更多工作留在暂停阶段。</p>
 </section>
 
+<span id="reading" class="mechanism-topic-alias" aria-hidden="true"></span>
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">八、</span>参考资料</h2>
+  <h2><span class="mechanism-heading-number">十、</span>参考资料</h2>
   <ul class="mechanism-sources">
     <li>QEMU 10.2.0：<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/migration.c">migration.c</a>负责迁移决策与时间统计；<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c">ram.c</a>负责脏位图、页扫描与发送；<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.c">savevm.c</a>负责状态处理器调度。</li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c">virtio-blk 的请求完成、设备状态及暂存请求保存</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/block/io.c">块层 drain 与在途 I/O</a>。</li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qapi/migration.json">QEMU 10.2.0 QAPI 定义</a>：参数、能力与统计口径；<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/trace-events">迁移 trace 事件</a>：阶段与处理开销观察。</li>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst">Linux 6.18 KVM API</a>：dirty bitmap、手动脏页保护与 dirty ring。</li>
     <li>QEMU 社区文档：<a href="https://www.qemu.org/docs/master/devel/migration/main.html">迁移框架</a>、<a href="https://www.qemu.org/docs/master/devel/migration/dirty-limit.html">Dirty limit</a>。</li>
@@ -307,11 +344,11 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
 </section></div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#migration">热迁移</a><a href="../topics/migration/index.html">热迁移动态</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-11-12">2026-11-12</time> · 针对文中标注的源码与规范基线。</p></article>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-14">2026-11-14</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=0ad6552bf0f5"></script>
-<script src="../assets/mechanism-viewer.js?v=e8d4285d5a39" defer></script>
-<script src="../assets/mechanisms.js?v=e8d4285d5a39" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=1934a7814284" defer></script>
+<script src="../assets/mechanisms.js?v=1934a7814284" defer></script></body>
 </html>

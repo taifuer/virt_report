@@ -20,6 +20,18 @@
   <h3>设备：客户机接口与宿主后端</h3>
   <p>客户机需要磁盘、网卡和时钟，但无需每项资源都独占一块硬件。虚拟磁盘可以连接一个宿主文件，虚拟网卡可以连接宿主网络；客户机驱动按约定提交请求，后端完成真实 I/O。兼容旧驱动时可模拟已有网卡，使用专门驱动时可采用 virtio 共享队列，也可以把可隔离的设备功能直接分配给客户机。</p>
 </section>
+<section id="devices" class="mechanism-section">
+  <h2>设备模拟、半虚拟化与直通</h2>
+  <p>客户机使用什么驱动、谁处理请求、设备能访问哪些内存，是设备虚拟化中的三个问题。设备接口与后端可以分别选择：使用 virtio-net 驱动时，队列既可由 QEMU 处理，也可交给 vhost 或支持相应接口的硬件。</p>
+  <table><thead><tr><th scope="col">方式</th><th scope="col">客户机看到的接口</th><th scope="col">处理位置与主要条件</th></tr></thead><tbody>
+    <tr><th scope="row">设备模拟</th><td>例如 e1000，使用已有硬件驱动。</td><td>QEMU 实现寄存器、描述符和中断行为，连接 TAP 等宿主后端；需要维护完整的硬件接口语义。</td></tr>
+    <tr><th scope="row">半虚拟化设备</th><td>例如 virtio-net、virtio-blk，使用 virtio 驱动和共享队列。</td><td>QEMU、内核 vhost 或独立 vhost-user 后端消费队列。双方先协商特性、配置队列，再按发布与完成记录交还缓冲区。</td></tr>
+    <tr><th scope="row">设备直通</th><td>物理设备或 SR-IOV VF 的硬件接口。</td><td>宿主通过 VFIO 分配设备功能，用 IOMMU 约束 DMA 范围；设备复位、中断和迁移能力仍需支持。</td></tr>
+    <tr><th scope="row">vDPA 卸载</th><td>保持 virtio 兼容的设备接口。</td><td>由适配后的硬件或软件处理队列，控制侧仍配置地址映射和通知；状态迁移能力按实现核对。</td></tr>
+  </tbody></table>
+  <p>vhost-user 的 Unix socket 用于协商内存、队列和通知资源，报文与磁盘数据通常通过共享内存交接。SR-IOV 则把一个物理功能划分出多个 VF，常与 VFIO 分配组合使用；它和 virtio、vhost-user 分属不同层次。</p>
+</section>
+
 <section id="architecture" class="mechanism-section">
   <h2>QEMU、KVM 与 Libvirt 的分工</h2>
   <p>这些能力分布在多个组件中。QEMU 负责组装客户机可见的机器，KVM 把硬件辅助执行与内存映射能力接入 Linux，Libvirt 则负责把配置转成可管理的运行实例。宿主调度器和内存管理器仍参与实际资源分配。</p>
@@ -49,11 +61,11 @@
 <section id="tradeoffs" class="mechanism-section">
   <h2>资源利用、隔离与可管理性的取舍</h2>
   <p>虚拟机让多套系统共享服务器，也增加客户机内核、虚拟设备和管理状态的开销。超分 vCPU 可以利用负载错峰，宿主繁忙时却会增加调度等待；直通可缩短 I/O 路径，但能否迁移，还取决于设备状态能否导出、恢复及停止 DMA。</p>
-  <p>评价一个方案，应先固定业务和资源预算，再同时看吞吐、尾延迟、宿主 CPU 与内存消耗，并检查启动、迁移和故障恢复是否满足要求。退出少不必然更快，分配的 vCPU 多也不必然吞吐更高。虚拟化需要持续维护客户机可见的资源、访问权限和运行状态，并控制这部分管理开销。</p>
 </section>
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>
+    <li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/cs01/virtio-v1.2-cs01.html">Virtio 1.2：设备接口与共享队列</a>；<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/vhost-user.rst">QEMU 10.2：vhost-user 控制协议</a>。</li>
     <li><a href="{{ qemu }}docs/system/introduction.rst">QEMU：系统模拟、加速器和管理接口</a></li>
     <li><a href="{{ linux }}Documentation/virt/kvm/api.rst">Linux：KVM API</a>、<a href="{{ linux }}Documentation/virt/kvm/x86/mmu.rst">x86 地址转换与隔离目标</a></li>
     <li><a href="{{ qemu }}docs/devel/memory.rst">QEMU：客户机内存与地址空间</a></li>

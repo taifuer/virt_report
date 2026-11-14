@@ -6,7 +6,7 @@ from virt_report.render.render import render_mechanisms_html
 
 def test_queue_article_combines_split_and_packed_at_the_existing_url():
     article = mechanisms.get_article("packed-virtqueue")
-    assert article["title"] == "Virtqueue：Split 与 Packed 的请求与完成"
+    assert article["title"] == "Virtqueue：Split 与 Packed"
     page = render_mechanisms_html(Config(), "packed-virtqueue")
     root = versions.Document(page).root
     ids = {node.attrs.get("id") for node in root.find("section")}
