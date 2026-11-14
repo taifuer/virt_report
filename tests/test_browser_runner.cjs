@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {getPlan} = require('../scripts/run_browser_checks.cjs');
 const {browserOptions} = require('../scripts/browser_runtime.cjs');
+const {assertReferenceEntries} = require('../scripts/check_smoke_browser.cjs');
 
 test('default browser checks are bounded smoke journeys, not screenshot sweeps', () => {
   assert.deepEqual(getPlan(), {mode: 'smoke', suites: ['smoke'], timeoutMs: 180000});
@@ -40,4 +41,29 @@ test('CI reuses installed Chrome and local checks retain the bundled browser', (
   assert.deepEqual(browserOptions(options, {}), options);
   assert.deepEqual(browserOptions(options, {PLAYWRIGHT_CHANNEL: 'chrome'}), {...options, channel: 'chrome'});
   assert.equal(options.channel, undefined, 'caller options are not mutated');
+});
+
+const referenceLink = {text: 'KVM API', href: 'https://docs.kernel.org/virt/kvm/api.html', visible: true};
+
+test('reference smoke checks allow editorial counts and multiple links per entry to change', () => {
+  for (const count of [1, 3, 4, 5]) {
+    const entries = Array.from({length: count}, () => [{...referenceLink}]);
+    entries[0].push({...referenceLink, text: 'QEMU', href: 'https://www.qemu.org/docs/master/'});
+    assert.doesNotThrow(() => assertReferenceEntries(entries));
+  }
+});
+
+test('reference smoke checks still reject missing entries, missing links and hidden links', () => {
+  assert.throws(() => assertReferenceEntries([]), /must not be empty/);
+  assert.throws(() => assertReferenceEntries([[]]), /must include a source link/);
+  assert.throws(() => assertReferenceEntries([[referenceLink], []]), /must include a source link/);
+  assert.throws(() => assertReferenceEntries([[{...referenceLink, visible: false}]]), /must be visible/);
+});
+
+test('reference smoke checks require labels and absolute web links without fetching upstream sites', () => {
+  assert.throws(() => assertReferenceEntries([[{...referenceLink, text: '  '}]]), /readable labels/);
+  for (const href of ['', '#sources', '/relative', 'https://', 'javascript:void(0)', 'file:///tmp/source']) {
+    assert.throws(() => assertReferenceEntries([[{...referenceLink, href}]]), href);
+  }
+  assert.doesNotThrow(() => assertReferenceEntries([[{...referenceLink, href: 'http://example.org/paper'}]]));
 });

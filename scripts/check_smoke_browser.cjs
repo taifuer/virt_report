@@ -147,6 +147,18 @@ async function queue(page) {
   assert.equal(await lab.locator('.is-available,.is-completed').count(), 0);
 }
 
+function assertReferenceEntries(entries) {
+  assert(entries.length > 0, 'the reference section must not be empty');
+  for (const links of entries) {
+    assert(links.length > 0, 'each reference entry must include a source link');
+    for (const link of links) {
+      assert(link.visible, 'source links must be visible without expansion');
+      assert(link.text.trim(), 'source links must have readable labels');
+      assert.match(new URL(link.href).protocol, /^https?:$/, 'source links must use absolute web URLs');
+    }
+  }
+}
+
 async function categories(page) {
   assert.equal(await page.locator('h1').innerText(), '原理');
   assert.equal(await page.locator('a[href="kvm/"],.mechanism-book-chapter').count(), 0);
@@ -158,14 +170,21 @@ async function categories(page) {
   assert.match(await page.locator('.mechanism-breadcrumb').innerText(), /虚拟化基础/);
   assert.doesNotMatch(await page.locator('.mechanism-breadcrumb').innerText(), /KVM/);
   assert.equal(await page.locator('#sources details').count(), 0);
-  assert.equal(await page.locator('#sources li').count(), 3);
+  assert(await page.locator('#sources').isVisible(), 'the reference section stays visible');
+  // Editorial reference counts can change; smoke checks cover their presentation.
+  const references = await page.locator('#sources li').evaluateAll(items => items.map(item =>
+    [...item.querySelectorAll('a')].map(link => ({
+      text: link.textContent, href: link.getAttribute('href'),
+      visible: link.getClientRects().length > 0 && getComputedStyle(link).visibility === 'visible',
+    }))));
+  assertReferenceEntries(references);
   await page.goto(`${base}/kvm/`);
   await page.waitForURL(`${base}/mechanisms.html#kvm-internals`);
   assert.equal(await page.locator('h1').innerText(), '原理');
   assert(await page.locator('#kvm-internals .mechanism-list').isVisible());
 }
 
-(async () => {
+async function run() {
   fs.mkdirSync(artifacts, {recursive: true});
   for (const name of ['failure.png', 'failure-trace.zip', 'failure.json']) {
     fs.rmSync(path.join(artifacts, name), {force: true});
@@ -221,4 +240,6 @@ async function categories(page) {
     fs.writeFileSync(path.join(artifacts, 'failure.json'), JSON.stringify({checking, errors, error: String(error)}, null, 2));
     throw error;
   } finally { await browser.close(); }
-})().catch(error => { console.error(error); process.exitCode = 1; });
+}
+if (require.main === module) run().catch(error => { console.error(error); process.exitCode = 1; });
+module.exports = {assertReferenceEntries};
