@@ -103,6 +103,47 @@ def test_editorial_trends_survive_title_analysis_refresh(tmp_path, monkeypatch):
         assert editions[-1]['analysis']['headline'] != 'Must not replace editorial review'
 
 
+def test_trends_group_recent_years_and_cover_more_than_selected_talks():
+    editions, analysis = kvm_forum.load_content()
+    assert analysis['headline'] == 'KVM Forum 的技术演进'
+    assert [era['years'] for era in analysis['eras']] == [
+        '2010—2013', '2014—2017', '2018—2021', '2022—2026',
+    ]
+    assert '长期并行发展' in analysis['overview']
+    recent = analysis['eras'][-1]['summary']
+    for topic in ('guest_memfd', 'KVM planes', 'CXL', 'vGPU 上游化',
+                  'ARM64', 'CPU 与内存超分', '迁移', '热更新'):
+        assert topic in recent
+    assert '降低迁移后的缺页代价' not in recent
+    assert editions[-1]['analysis']['summary'].startswith('这组六场精选')
+    html = render.render_kvm_forum_html(Config(), editions, analysis)
+    assert html.count('class="era-years"') == 4
+    assert html.index('2022—2026') < html.index('2018—2021')
+
+
+def test_cpu_review_separates_deployment_scenarios_and_evidence():
+    html = render.render_kvm_forum_review_html(Config(), kvm_forum.get_review(2026))
+    section = html.split('<section id="cpu-overcommit"', 1)[1].split('</section>', 1)[0]
+    tables = re.findall(r'<table\b.*?</table>', section, flags=re.S)
+    assert len(tables) == 2  # Scenario comparison and separately scoped measurements.
+    rows = re.findall(r'<tr\b.*?</tr>', tables[0], flags=re.S)[1:]
+    assert len(rows) == 3
+    for row, terms in zip(rows, (
+        ('专用实例', '1:1', 'MWAIT', '阻塞'),
+        ('共享实例', '宿主线程调度', '轻量 vCPU 上下文'),
+        ('1:1', '宿主任务', 'sched_ext'),
+    )):
+        assert all(term in unescape(row) for term in terms)
+    for explanation in (
+        '宿主可调度的逻辑 CPU', '没有配置 vCPU 数量超分也会遇到',
+        '标志', '4 KiB', '64 字节', 'Linux 调度器仍负责承载线程',
+        '函数调用式分派', '13 ms 不能用作已经消除的延迟收益',
+    ):
+        assert explanation in unescape(section)
+    assert section.index('</table>') < section.index('实现挑战')
+    assert section.index('同一承载线程内') < section.index('验证结果')
+
+
 def test_published_reviews_have_original_sources_stable_anchors_and_no_duplicates():
     editions, _ = kvm_forum.load_content()
     for edition in editions:
