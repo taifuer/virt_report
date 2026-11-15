@@ -352,11 +352,9 @@ async function stableControls(page, baseline, state) {
       assert.equal(await page.getByRole('link', {name: '查看相关论文', exact: true}).getAttribute('href'), 'conference-papers.html');
       await page.screenshot({path: path.join(shots, `conference-directory-${width}.png`)});
       await page.locator('a[href="kvm-forum.html"]').click();
-      const crumbs = page.getByRole('navigation', {name: '面包屑'});
-      assert.deepEqual(await crumbs.locator('a').evaluateAll(nodes => nodes.map(node => node.getAttribute('href'))),
-        ['conferences.html']);
+      assert.equal(await page.locator('.forum-page>header nav,.forum-page>header .kicker').count(), 0);
       await noOverflow(page);
-      await crumbs.getByRole('link', {name: '会议', exact: true}).click();
+      await page.goto(`${base}/conferences.html`);
       assert.equal(new URL(page.url()).pathname, '/conferences.html');
       await page.getByRole('link', {name: '查看相关论文', exact: true}).click(); await ready(page);
       await page.goto(`${base}/versions.html`);

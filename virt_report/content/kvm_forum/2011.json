@@ -1,0 +1,78 @@
+{
+  "year": 2011,
+  "url": "https://kvm-forum.qemu.org/2011/",
+  "analysis": {
+    "headline": "设备分配、存储接口与延迟控制",
+    "themes": [
+      "VFIO",
+      "virtio-scsi",
+      "qcow2",
+      "实时虚拟机",
+      "I/O 限速"
+    ],
+    "summary": "2011 年精选把设备与存储能力推进到可管理、可隔离的接口层。VFIO 重新划分设备分配职责，virtio-scsi 扩展存储模型；qcow2 与块层限速分别处理一致性和资源控制。实时虚拟机实验则直接暴露用户态设备路径的长尾，说明吞吐之外还需要观察响应时间和调度影响。"
+  },
+  "review": {
+    "source": "2011.md",
+    "title": "KVM Forum 2011 精选解读",
+    "reviewed_on": "2026-11-15",
+    "summary": "2011 年精选把设备与存储能力推进到可管理、可隔离的接口层。VFIO 重新划分设备分配职责，virtio-scsi 扩展存储模型；qcow2 与块层限速分别处理一致性和资源控制。实时虚拟机实验则直接暴露用户态设备路径的长尾，说明吞吐之外还需要观察响应时间和调度影响。",
+    "talks": [
+      {
+        "id": "vfio",
+        "title": "VFIO：把设备分配从 KVM 中拆出来",
+        "original_title": "VFIO: PCI Device Assignment Breaks Free of KVM",
+        "speakers": "Alex Williamson · Red Hat",
+        "url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2011/2011-forum-VFIO.pdf",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2011/2011-forum-VFIO.pdf",
+        "slides_format": "PDF",
+        "pages": "1—23",
+        "summary": "早期设备分配依赖 KVM、PCI sysfs 与零散权限规则。VFIO 提案用设备驱动统一配置、区域访问、IOMMU 和事件通知，既服务虚拟机也服务用户态驱动；讲稿同时暴露隔离组和跨架构支持仍待定的问题。"
+      },
+      {
+        "id": "qcow2",
+        "title": "qcow2：元数据一致性与异步 I/O 的改造",
+        "original_title": "The Reinvention of qcow2",
+        "speakers": "Kevin Wolf · Red Hat",
+        "url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2011/2011-forum-qcow2.pdf",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2011/2011-forum-qcow2.pdf",
+        "slides_format": "PDF",
+        "pages": "1—22",
+        "summary": "映射和引用计数更新必须保持崩溃一致性，逐次同步却会拖慢分配并阻塞 vCPU。讲稿解释写回元数据缓存与协程如何分别改善吞吐和响应，并区分当时发布能力与 qcow2 v3 的后续设想。"
+      },
+      {
+        "id": "virtio-scsi",
+        "title": "virtio-scsi：把存储功能放回 SCSI 协议",
+        "original_title": "Virtio SCSI: An Alternative Virtualized Storage Stack for KVM",
+        "speakers": "Stefan Hajnoczi · IBM；Paolo Bonzini · Red Hat",
+        "url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2011/2011-forum-virtio-scsi.pdf",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2011/2011-forum-virtio-scsi.pdf",
+        "slides_format": "PDF",
+        "pages": "1—17",
+        "summary": "一盘一 PCI 设备和有限 SCSI 透传制约了早期 virtio-blk 的扩展。virtio-scsi 用命令、控制和事件队列承载 SCSI 语义，允许一个控制器管理更多设备，并比较 QEMU 与内核 target 两条后端路径。"
+      },
+      {
+        "id": "realtime",
+        "title": "实时虚拟机：定位用户态设备模拟的长尾",
+        "original_title": "Using KVM as a Real-Time Hypervisor",
+        "speakers": "Jan Kiszka · Siemens",
+        "url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2011/KVM-Forum-2011-RT-KVM.pdf",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2011/KVM-Forum-2011-RT-KVM.pdf",
+        "slides_format": "PDF",
+        "pages": "1—29",
+        "summary": "客户机定时唤醒和外部设备响应需要分别测量。原稿通过直通与模拟网卡实验定位 QEMU 全局锁和同步操作的影响，再提出 CPU 状态局部化、独立设备上下文及中断快速路径。"
+      },
+      {
+        "id": "io-throttle",
+        "title": "QEMU I/O 限速：统一后端控制与执行成本",
+        "original_title": "Keep a Limit on It — IO Throttling in QEMU",
+        "speakers": "Ryan Harper · IBM",
+        "url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2011/2011-forum-keep-a-limit-on-it-io-throttling-in-qemu.pdf",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2011/2011-forum-keep-a-limit-on-it-io-throttling-in-qemu.pdf",
+        "slides_format": "PDF",
+        "pages": "1—22",
+        "summary": "宿主块设备限速难以统一覆盖 NFS 等后端。QEMU 在块层排队并延迟提交，可以按客户机请求控制 IOPS 或带宽；实验同时比较缓存模式、限额偏差和 CPU 成本，展示统一控制接口的代价。"
+      }
+    ]
+  }
+}

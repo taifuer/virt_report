@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ review.title }} - virt-report{% endblock %}
+{% block description %}{{ review.summary }}{% endblock %}
+{% block nav_home %}{% endblock %}
+{% block nav_conferences %}on{% endblock %}
+{% block head_extra %}
+<link rel="stylesheet" href="{{ root }}assets/mechanisms.css?v={{ forum_asset_version }}">
+<link rel="stylesheet" href="{{ root }}assets/mechanism-viewer.css?v={{ forum_asset_version }}">
+<link rel="stylesheet" href="{{ root }}assets/forum.css?v={{ forum_asset_version }}">
+{% endblock %}
+{% block content %}
+<article class="forum-review mechanism-article">
+  <header class="mechanism-header">
+    <nav class="mechanism-breadcrumb" aria-label="面包屑"><a href="{{ root }}conferences.html">会议</a><span aria-hidden="true">/</span><a href="{{ root }}kvm-forum.html#year-{{ edition.year }}">KVM Forum</a></nav>
+    <h1>{{ review.title }}</h1>
+    <p>{{ review.summary }}</p>
+    <p class="forum-event">{% if edition.starts_on and edition.ends_on %}<time datetime="{{ edition.starts_on }}">{{ edition.starts_on }}</time>—<time datetime="{{ edition.ends_on }}">{{ edition.ends_on }}</time> · {% endif %}{% if edition.location %}{{ edition.location }} · {% endif %}{{ review.talks|length }} 篇精选</p>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links">{% for section in article_outline %}<li><a href="#{{ section.id }}">{{ section.number }}{{ section.title }}</a></li>{% endfor %}</ol>
+    </nav>
+    <div class="mechanism-prose">{{ article_body }}</div>
+  </div>
+  <nav class="mechanism-related" aria-label="会议资料"><a href="{{ root }}kvm-forum.html#year-{{ edition.year }}">返回年度总览</a><a href="{{ edition.url }}" target="_blank" rel="noopener noreferrer">原始议程</a>{% if edition.official_url and edition.official_url != edition.url %}<a href="{{ edition.official_url }}" target="_blank" rel="noopener noreferrer">会议资料</a>{% endif %}</nav>
+</article>
+{% endblock %}
+{% block scripts %}<script src="{{ root }}assets/mechanism-viewer.js?v={{ forum_asset_version }}" defer></script>{% endblock %}

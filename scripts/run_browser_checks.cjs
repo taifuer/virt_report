@@ -7,7 +7,7 @@ const http = require('node:http');
 const {spawn} = require('node:child_process');
 const {once} = require('node:events');
 const root = path.resolve(__dirname, '..');
-const reviewSuites = ['conference_papers', 'review_improvements', 'linux_foundations', 'mechanism_directory', 'search', 'report_sources', 'inline_disclosures', 'versions', 'virtqueue', 'walkthrough_interaction', 'execution_demos'];
+const reviewSuites = ['conference_papers', 'kvm_forum', 'review_improvements', 'linux_foundations', 'mechanism_directory', 'search', 'report_sources', 'inline_disclosures', 'versions', 'virtqueue', 'walkthrough_interaction', 'execution_demos'];
 function getPlan(args = []) {
   if (args.length > 1 || args.some(arg => !['--smoke', '--review', '--full'].includes(arg))) {
     throw Error('Usage: node scripts/run_browser_checks.cjs [--smoke | --review | --full]');

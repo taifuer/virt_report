@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>KVM Forum 2025 精选解读 - virt-report</title>
+  <meta name="description" content="从 guest_memfd 的内存管理边界，到设备保留、事件通知和 Arm 多核启动，解读六项影响虚拟机运行与维护的工程设计。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
+  <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/forum.css?v=02b518d59aa4">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=0ad6552bf0f5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="on" aria-current="page">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="forum-review mechanism-article">
+  <header class="mechanism-header">
+    <nav class="mechanism-breadcrumb" aria-label="面包屑"><a href="../conferences.html">会议</a><span aria-hidden="true">/</span><a href="../kvm-forum.html#year-2025">KVM Forum</a></nav>
+    <h1>KVM Forum 2025 精选解读</h1>
+    <p>从 guest_memfd 的内存管理边界，到设备保留、事件通知和 Arm 多核启动，解读六项影响虚拟机运行与维护的工程设计。</p>
+    <p class="forum-event"><time datetime="2025-09-04">2025-09-04</time>—<time datetime="2025-09-05">2025-09-05</time> · 意大利米兰 · 6 篇精选</p>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、本届观察</a></li><li><a href="#device-preservation">二、内核热更新：保留 VFIO 设备与 DMA</a></li><li><a href="#guest-memfd">三、guest_memfd：共享转换与大页的统一管理</a></li><li><a href="#secret-free">四、普通虚机的内存隔离：移除宿主直接映射</a></li><li><a href="#io-uring">五、io_uring：让 QEMU 事件循环统一提交异步操作</a></li><li><a href="#shadow-ioeventfd">六、Shadow ioeventfd：在 KVM 内传递门铃值</a></li><li><a href="#arm-onlining">七、Arm 多核启动：并行初始化与独立启动上下文</a></li></ol>
+    </nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+<h2><span class="mechanism-heading-number">一、</span>本届观察</h2>
+<p>2025 年的六场精选围绕虚拟机的运行基础展开：内存如何被拥有和访问，宿主更新时如何保住设备状态，通知路径怎样减少往返，以及多个 vCPU 怎样可靠地进入内核。它们触及 KVM、QEMU、Linux 内存管理与设备后端之间的接口，改进往往需要多个组件共同完成。</p>
+<p>两场 guest_memfd 分享具有连续性：一场讨论共享转换和大页管理，一场讨论普通虚机的推测执行防护。其余四场分别落在内核热更新、io_uring、NVMe 门铃和 Arm 多核启动。以下实现状态与数据均对应演讲当时；对部署条件的判断结合讲稿给出的证据展开。</p>
+</section>
+<section id="device-preservation" class="mechanism-section">
+<h2><span class="mechanism-heading-number">二、</span>内核热更新：保留 VFIO 设备与 DMA</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=XVVIOhOguu0" target="_blank" rel="noopener noreferrer">Preserving VFIO PCI Devices During Kernel Live Updates</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2025/VFIO_device_DiiwG94.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Vipin Sharma · Google</p>
+</div>
+<h3 id="device-preservation-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>大内存、GPU 和机器学习虚机的跨机迁移成本很高，部分设备还缺少迁移能力。宿主内核却需要持续修复和升级。仅替换 VMM 进程无法更新内核，内核热补丁又受可修改代码和数据结构的限制。保留原机器上的内存与设备，通过 kexec 切换内核，为这类实例提供了另一种维护路径。</p>
+<h3 id="device-preservation-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>正常的驱动退出与探测会重置设备、关闭总线主控或重配中断，正在执行的 DMA 可能因此中断。新内核也不能直接使用旧内核的指针和对象：需要保留可恢复的数据，并重新建立驱动、用户态设备文件和中断路由之间的关系。虚机暂停期间到来的中断还必须处理，否则恢复后客户机可能一直等不到完成通知。</p>
+<h3 id="device-preservation-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>讲稿以 Live Update Orchestrator 协调 PCI、IOMMU、VFIO 等子系统，通过 Kexec Handover 保留内存。VMM 标记需保留的设备，旧内核保存虚拟与原始 PCI 配置等无法自动重建的数据，限制修改设备状态的操作。kexec 期间保留 DMA 和设备运行状态，新内核探测设备时取回保存的数据，重建软件对象并跳过硬件重置。</p>
+<p>中断处理采用 x86 路径：保留中断重映射表及设备到表项的关系，在切换期间把相关 IRTE 标记为不存在，阻止通知送往旧内核。恢复时重新配置路由，并向客户机补发各个已配置中断，让驱动重新检查设备完成状态。补发通知依赖设备与驱动的完成队列语义。</p>
+<h3 id="device-preservation-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>作者已让 Intel DSA 在宿主内核更新期间持续执行 DMA，并验证了 IOMMU 侧丢弃中断、kexec 后重新配置的路径。这证明了特定设备上的保留机制可行。讲稿没有给出通用停机时间、GPU 负载恢复时间或跨设备成功率，因此目前能够据此评价的是状态交接设计与原型覆盖范围。</p>
+<h3 id="device-preservation-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>当时实现基于 VFIO container/group 模型，VFIO cdev、iommufd 和通过 LUO 接收设备文件描述符仍待补齐。Arm GIC 的中断状态保存在内存中，不能直接照搬 x86 路径；posted interrupt 也需要进一步处理描述符保留。工程验证还应覆盖 DMA 在途访问、恢复失败、设备异常和重复升级，确认客户机内存始终受到正确的 IOMMU 隔离。</p>
+</section>
+<section id="guest-memfd" class="mechanism-section">
+<h2><span class="mechanism-heading-number">三、</span>guest_memfd：共享转换与大页的统一管理</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=mB57TYNO8aY" target="_blank" rel="noopener noreferrer">guest_memfd: Unmapped Potential</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2025/guest_memfd_YOIjBul.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Fuad Tabba、Ackerley Tng · Google</p>
+</div>
+<h3 id="guest-memfd-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>guest_memfd 用文件描述符和偏移标识客户机内存，使 KVM 能管理宿主用户空间不可映射的页面。这满足了机密虚机的隔离需求，也为普通虚机提供新的内存管理入口。随着设备通信、NUMA 放置和大页需求增加，接口需要支持同一页在共享与私有状态之间转换，并保留较好的内存效率。</p>
+<h3 id="guest-memfd-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>讲稿以 Linux 6.16 为起点：共享页来自普通用户态内存，私有页来自 guest_memfd，由内存属性选择访问来源。对依靠页表权限保护内存的 pKVM、Gunyah，原地转换要求共享页能够被宿主映射，而私有页在任何瞬间都不能留下有效的宿主用户态映射。</p>
+<p>大页使问题更复杂。客户机可能只共享一个 4 KiB 页面，而其余部分保持私有。如果改用另一份共享内存，大页内部可能留下无法单独释放的空洞；如果允许过大的宿主映射，又会把相邻私有数据暴露出去。</p>
+<h3 id="guest-memfd-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>第一步工作为普通虚机增加可选的 guest_memfd <code>mmap()</code> 能力，默认仍不可映射。进一步的原地转换方案由 guest_memfd 跟踪共享状态，按范围决定能否建立宿主映射。这样，页面的拥有关系和允许的访问方式可以由同一处检查。</p>
+<p>大页方案使用 HugeTLB 池与子池，为二级页表提供最高到 1 GiB 的映射，同时允许进程页表按 4 KiB 建立共享映射。共享转换时拆分 HugeTLB folio，以跟踪各子页的用户并限制核心内存管理层的映射范围；转回私有时尝试合并，最终释放时合并并归还 HugeTLB。这里同时涉及内存对象的生命周期和页表映射粒度，两者需要分别维护。</p>
+<h3 id="guest-memfd-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>演讲时，普通虚机的 <code>mmap()</code> 系列已进入 kvm-next，目标版本是 6.18；该系列尚不支持大页与迁移。原地转换和 HugeTLB 配套属于后续工作。讲稿以 HugeTLB vmemmap 优化约节省 1.6% 内存说明动机，未提供这套 guest_memfd 大页实现的完整性能测试，不能把该比例当成新方案的实测收益。</p>
+<h3 id="guest-memfd-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>真正的难点在转换与并发访问之间：撤销映射、设备页固定、二级页表更新和页面引用计数都必须遵守同一状态。NUMA 策略也需要脱离依赖用户态 VMA 的旧控制方式。后续评测应同时观察共享频率、大页拆合成本、内存占用与业务延迟，才能判断哪些负载适合长期维持大页。</p>
+</section>
+<section id="secret-free" class="mechanism-section">
+<h2><span class="mechanism-heading-number">四、</span>普通虚机的内存隔离：移除宿主直接映射</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=Xd0LlxSKk1M" target="_blank" rel="noopener noreferrer">guest_memfd for Non-Confidential VMs and Spectre Protection</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2025/KVM-Forum_2_OPKjzR8.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Patrick Roy · AWS</p>
+</div>
+<h3 id="secret-free-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>普通虚机的内存通常也出现在宿主内核直接映射中。推测执行漏洞可能让本不应读取这些数据的代码通过缓存等侧信道获得信息。Patrick Roy 的方案减少客户机内存在宿主地址空间中的暴露：保留二级页表与 VMM 用户态需要的映射，移除内核直接映射。这是一项访问面收缩措施，仍然信任能够正常映射内存的 VMM。</p>
+<h3 id="secret-free-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>传统 KVM 缺页处理依赖 GUP 获取用户页，而移除直接映射后的 folio 不能继续沿用这条路径。KVM 内部也有不同访问方式：很多模拟操作使用用户态拷贝接口，kvm-clock 等路径却可能缓存 PFN 并通过直接映射访问页面。只改变页面分配方式，会让这些旧假设失效。</p>
+<h3 id="secret-free-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>guest_memfd 的缺页接口已经能够通过文件描述符和偏移取得页面，适合承担这类内存。原型结合普通虚机的可映射模式，增加移除直接映射的创建标志，并把 VMM 映射地址回填给 memslot，供 KVM 的用户态拷贝路径使用。地址空间标志同时禁止不适用的 GUP 操作，避免后续访问绕回旧路径。</p>
+<p>快照按需恢复也需要调整。guest_memfd 的客户机缺页不必经过 VMA，原有基于该 VMA 的 userfaultfd 处理不能覆盖所有访问。讲稿分别讨论 KVM 缺页退出、未分配区域的预填充，以及宿主用户态访问的 minor fault 支持，把客户机访问与 VMM 访问分开处理。</p>
+<h3 id="secret-free-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>作者展示了约十个补丁及 Firecracker 功能分支，约一半补丁涉及测试。性能上，一个重要观察是操作直接映射后立即执行 TLB 刷新，会造成约 80% 的性能退化；讲稿没有提供足以推广该数字的完整负载条件。原型选择省略这类刷新，但作者也把残留 TLB 项与 Arm break-before-make 的正确性列为需要进一步论证的问题。</p>
+<h3 id="secret-free-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>这个方案不能表述为已经解决所有 Spectre 风险。缺少刷新时的安全边界、架构差异和内核隐含访问都需要验证。kvm-clock 的 PFN 缓存、大页、预缺页和异步缺页仍有配套工作。对采用者而言，最关键的是列清仍保留映射的组件与访问方式，再验证快照、时间服务和内存回收在新约束下能够正常工作。</p>
+</section>
+<section id="io-uring" class="mechanism-section">
+<h2><span class="mechanism-heading-number">五、</span>io_uring：让 QEMU 事件循环统一提交异步操作</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=gSB5sn3ZN3w" target="_blank" rel="noopener noreferrer">Making io_uring pervasive in QEMU</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2025/stefanha-kvm-forum-2025.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Stefan Hajnoczi · Red Hat</p>
+</div>
+<h3 id="io-uring-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>QEMU 已通过 <code>aio=io_uring</code> 处理磁盘文件 I/O，但其他子系统仍可能独立管理文件描述符和系统调用。随着 io_uring 支持网络、超时、取消与自定义命令，把它接入公共事件循环可以减少重复实现，也能让高频通知复用批量提交和完成处理。</p>
+<h3 id="io-uring-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>公共接口必须兼容已有的 AioContext、IOThread 与文件描述符监控方式。Linux 主机也可能通过安全策略或容器配置禁用 io_uring，因此编译成功不等于运行时可用。请求完成与取消还涉及对象寿命：回调处理结束前，请求数据不能被提前释放。</p>
+<h3 id="io-uring-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p><code>aio_add_sqe()</code> 让调用方提供请求数据、SQE 构建函数和 CQE 完成处理器，由公共层负责提交与调度。新的 fdmon 实现同时承接旧的文件描述符监控和自定义 SQE；AioContext 自适应轮询时检查完成环，有完成项即可进入处理。调用方通过运行时检查决定使用 io_uring 或原有路径。</p>
+<p>一个具体应用是直接提交 eventfd 的 READ 操作。旧路径在可读通知后还要执行 <code>read()</code>；新路径把读取交给 io_uring，再由完成项触发处理。完成中断通知则继续谨慎处理：irqfd 写入的响应时间很重要，盲目等待批次凑齐可能增加客户机延迟。讲稿没有采用 SQPOLL 和 IOPOLL，避免把其适用限制带入这套事件循环。</p>
+<h3 id="io-uring-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>重写磁盘 io_uring 后端的示例减少了重复代码：十个文件合计增加 140 行、删除 493 行。eventfd 微基准让另一线程持续写入，IOThread 统计完成读取次数，结果从约 96.6 万次/秒增至 126.2 万次/秒，约提升 30%。这是通知路径的测试；作者明确表示 virtio-blk 的宏观性能结果当时尚不确定。</p>
+<h3 id="io-uring-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>演讲时公共 API 补丁仍在邮件列表评审，目标为 QEMU 10.2。统一取消接口、FUSE-over-io_uring 和迁移网络路径都是后续方向。工程价值在于公共异步机制可复用；实际是否提速，要看系统调用在总开销中的比例，以及批处理对尾延迟的影响。应以完整虚机负载验证收益，并检查禁用 io_uring 时的回退行为。</p>
+</section>
+<section id="shadow-ioeventfd" class="mechanism-section">
+<h2><span class="mechanism-heading-number">六、</span>Shadow ioeventfd：在 KVM 内传递门铃值</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=dBllBwdAlL8" target="_blank" rel="noopener noreferrer">Shadow ioeventfd: Accelerating MMIO in vfio-user with Kernel-Assisted Dispatch</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2025/Shadow_ioev_qdOrApF.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Thanos Makatos、John Levon · Nutanix</p>
+</div>
+<h3 id="shadow-ioeventfd-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>vfio-user 把设备模拟放到独立进程。NVMe 客户机更新门铃时，需要把新的队列尾指针传给后端；普通 ioeventfd 只传递事件计数，无法携带这次 MMIO 写入值。经 QEMU 和进程间协议转发每次写入，会把设备请求的提交路径拉长。Windows 当时缺少相应 shadow doorbell 支持，问题更突出。</p>
+<h3 id="shadow-ioeventfd-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>加速路径必须同时解决数值传递与唤醒，还要保证设备看到正确的队列位置。NVMe 门铃允许后来的尾指针覆盖较早的值，后端据最新位置处理队列；任意设备寄存器却未必具有这种语义。涉及读后写顺序或每次写入独立触发操作的寄存器，不能直接使用同一设计。</p>
+<h3 id="shadow-ioeventfd-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>设备后端通过 libvfio-user 提供事件文件描述符和设备区域，QEMU 查询这些资源并向 KVM 注册 Shadow ioeventfd。客户机写门铃仍然产生硬件 VM-exit，KVM 在内核中保存 MMIO 值并通知后端，随后恢复客户机，省去 <code>KVM_EXIT_MMIO</code> 返回 QEMU 后再走 socket 请求与响应的过程。</p>
+<p>该通知是异步的，只要求后端能读到最新门铃值。讲稿中的实现仅支持 BAR 区域，利用 PCI 配置获取 GPA。这个例子说明，减少用户态往返可以带来收益，即使硬件退出本身仍然存在。</p>
+<h3 id="shadow-ioeventfd-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>实验使用 Windows Server 2025 Datacenter、8 vCPU、32 GB 内存、SPDK vNVMe 和 Optane NVMe，运行 fio 的八任务、4 KiB 随机读。在队列深度 16 时，无 Shadow ioeventfd 约为 5.6 万 IOPS，新路径约为 54.8 万 IOPS；裸机约为 58.6 万 IOPS。作者也报告 Linux 侧约 3% 的提升。</p>
+<p>比较中旧路径是同步请求，新路径是异步通知，因此“超过九倍”包含语义和等待方式变化的共同收益。它适合说明该 Windows 路径的瓶颈，不能作为所有 vfio-user 设备的通用加速比例。</p>
+<h3 id="shadow-ioeventfd-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>当时 libvfio-user 相关支持已合入，KVM、QEMU 与 SPDK 仍有配套补丁需要上游化。后续考虑抑制重复唤醒、动态注册和非 BAR 区域支持。唤醒抑制需要可靠的重新使能机制，否则后端刚退出处理循环时可能丢失通知。推广到其他寄存器前，还应逐项检查覆盖写、访问顺序与完成确认的语义。</p>
+</section>
+<section id="arm-onlining" class="mechanism-section">
+<h2><span class="mechanism-heading-number">七、</span>Arm 多核启动：并行初始化与独立启动上下文</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=Q6kOshnnQuE" target="_blank" rel="noopener noreferrer">PPaPaarraraallllelelelll vCPU onlining for arm64</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2025/KVM_Forum_2_LIGkHtZ.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Will Deacon · Google</p>
+</div>
+<h3 id="arm-onlining-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>客户机内核逐个启动辅助 CPU，会累计固件调用、CPU 特性寄存器读取和同步等待的耗时。Arm 虚机读取部分 ID 寄存器还会陷入 KVM。并行完成各 CPU 的本地准备，可缩短多核启动与恢复时间。Will Deacon 同时指出，这项改造还能消除机密客户机依赖“辅助 CPU 一定按时启动”的不安全假设。</p>
+<h3 id="arm-onlining-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>旧路径通过全局 <code>secondary_data</code> 传递待启动 CPU 的 idle task 和状态。若多个 CPU 同时进入启动代码，可能读取同一任务与内核栈。即使客户机按顺序发起启动，不可信宿主也可延迟第一个 vCPU，等客户机超时并启动第二个后，再让两者一起运行。</p>
+<p>CPU 特性检测也有本地与全局之分。读取自身寄存器可以并行，更新全局启动 CPU 特性集合却需要同步；错误状态若仍共用一个可覆盖变量，并行失败时就难以诊断。</p>
+<h3 id="arm-onlining-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>方案使用 PSCI <code>CPU_ON</code> 的上下文参数传入各 CPU 的 idle task，入口从 X0 获取自己的启动上下文。公共 CPU hotplug 框架把发起启动、确认存活和正式上线分开：辅助 CPU 并行完成早期准备，在 <code>cpuhp_ap_sync_alive()</code> 等待释放，再执行涉及全局状态的步骤。</p>
+<p>ID 寄存器读取移到同步点前，特性合并放到同步点后。错误记录也调整为能够保留不同失败原因的形式。旧 PSCI 实现或关闭并行选项时，仍走顺序路径。这个拆分的核心是明确哪些数据归单个 CPU 所有，哪些状态需要受控更新。</p>
+<h3 id="arm-onlining-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>讲稿展示四核启动日志从约 25.8 ms 缩短到 19.9 ms，以及八核系统从约 134 ms 到 120 ms 的示例，并提供不兼容页大小、虚拟地址宽度和延迟调度导致故障的诊断过程。这些是局部启动时间与正确性示例，没有构成大规模服务器的完整性能评测。</p>
+<h3 id="arm-onlining-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>作者仍在征集大系统、不同固件、VMM 和 SMT 配置的验证。早期打印、尚未上线 CPU 导致的 RCU 等待、Arm 上忙等循环的行为也需要处理。独立上下文可以避免这类共享栈破坏，机密虚拟化仍无法迫使恶意宿主及时调度 vCPU；完整性保护与可用性保障应分别评价。</p>
+</section>
+</div>
+  </div>
+  <nav class="mechanism-related" aria-label="会议资料"><a href="../kvm-forum.html#year-2025">返回年度总览</a><a href="https://kvm-forum.qemu.org/2025/" target="_blank" rel="noopener noreferrer">原始议程</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=0ad6552bf0f5"></script>
+<script src="../assets/mechanism-viewer.js?v=02b518d59aa4" defer></script></body>
+</html>

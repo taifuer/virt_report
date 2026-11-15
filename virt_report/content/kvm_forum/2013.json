@@ -1,0 +1,78 @@
+{
+  "year": 2013,
+  "url": "https://www.linux-kvm.org/page/KVM_Forum_2013",
+  "analysis": {
+    "headline": "嵌套映射、并发执行与新设备路径",
+    "themes": [
+      "Nested EPT",
+      "QEMU 多线程",
+      "Virgil3D",
+      "COLO",
+      "vCPU 等待"
+    ],
+    "summary": "2013 年精选关注执行路径中的结构性开销。Nested EPT 调整嵌套地址映射的合成位置，QEMU 多线程改造处理共享内存视图和对象寿命，短时空闲研究定位 vCPU 状态切换成本。Virgil3D 与 COLO 分别探索图形命令转发和响应驱动的容错，其中原型与预测结果均按原稿说明。"
+  },
+  "review": {
+    "source": "2013.md",
+    "title": "KVM Forum 2013 精选解读",
+    "reviewed_on": "2026-11-15",
+    "summary": "2013 年精选关注执行路径中的结构性开销。Nested EPT 调整嵌套地址映射的合成位置，QEMU 多线程改造处理共享内存视图和对象寿命，短时空闲研究定位 vCPU 状态切换成本。Virgil3D 与 COLO 分别探索图形命令转发和响应驱动的容错，其中原型与预测结果均按原稿说明。",
+    "talks": [
+      {
+        "id": "nested-ept",
+        "title": "Nested EPT：合成两层物理地址转换",
+        "original_title": "Nested EPT to Make Nested VMX Faster",
+        "speakers": "Gleb Natapov · Red Hat",
+        "url": "https://www.linux-kvm.org/images/8/8c/Kvm-forum-2013-nested-ept.pdf",
+        "slides_url": "https://www.linux-kvm.org/images/8/8c/Kvm-forum-2013-nested-ept.pdf",
+        "slides_format": "PDF",
+        "pages": "1—45",
+        "summary": "嵌套客户机引入第三层地址关系，硬件却不能直接遍历所有层次。方案合成 L2 物理地址到宿主物理地址的映射，让 L2 自行管理进程页表；讲稿还解释指令模拟为何需要另一套软件翻译上下文。"
+      },
+      {
+        "id": "memory-concurrency",
+        "title": "QEMU 多线程：内存视图、对象寿命与无锁访问",
+        "original_title": "Effective Multi-threading in QEMU",
+        "speakers": "Paolo Bonzini · Red Hat",
+        "url": "https://www.linux-kvm.org/images/1/17/Kvm-forum-2013-Effective-multithreading-in-QEMU.pdf",
+        "slides_url": "https://www.linux-kvm.org/images/1/17/Kvm-forum-2013-Effective-multithreading-in-QEMU.pdf",
+        "slides_format": "PDF",
+        "pages": "1—48",
+        "summary": "设备数据面绕开全局锁后，地址映射与对象回收需要明确同步。讲稿沿 FlatView、引用计数和 RCU 解释热拔除安全，并通过动态 BAR 的反例说明“回调线程安全”仍不足以保证整个 MMIO 访问正确。"
+      },
+      {
+        "id": "virgil",
+        "title": "Virgil3D：通过 Virtio 提交图形命令",
+        "original_title": "Virgil3D: A Virtio Based 3D GPU",
+        "speakers": "Dave Airlie · Red Hat",
+        "url": "https://www.linux-kvm.org/images/3/36/Kvm-forum-2013-virgilpres.pdf",
+        "slides_url": "https://www.linux-kvm.org/images/3/36/Kvm-forum-2013-virgilpres.pdf",
+        "slides_format": "PDF",
+        "pages": "1—14",
+        "summary": "客户机 Mesa 将图形状态和绘制命令送到宿主渲染器，再转换为宿主 OpenGL 调用。讲稿展示 virtio-gpu 与 3D 渲染的分工，以及资源、着色器、完成通知和宿主驱动安全边界的早期设计。"
+      },
+      {
+        "id": "colo",
+        "title": "COLO：以对外响应校验虚拟机副本",
+        "original_title": "COLO: COarse-grain LOck-stepping Virtual Machine for Non-stop Service",
+        "speakers": "Eddie Dong、Tao Hong、Xiaowei Yang",
+        "url": "https://www.linux-kvm.org/images/1/1d/Kvm-forum-2013-COLO.pdf",
+        "slides_url": "https://www.linux-kvm.org/images/1/1d/Kvm-forum-2013-COLO.pdf",
+        "slides_format": "PDF",
+        "pages": "1—24",
+        "summary": "主备虚拟机接收相同输入，输出匹配时对外放行，发生差异再同步检查点。方案减少逐指令确定性执行的要求，但网络比较、磁盘缓存和故障切换必须共同维持一致性；性能图在原稿中标为预测。"
+      },
+      {
+        "id": "idle-latency",
+        "title": "短时空闲：消息负载中的 vCPU 切换成本",
+        "original_title": "KVM vs. Message Passing Throughput — Reducing Context Switching Overhead",
+        "speakers": "Rik van Riel · Red Hat",
+        "url": "https://www.linux-kvm.org/images/2/27/Kvm-forum-2013-idle-latency.pdf",
+        "slides_url": "https://www.linux-kvm.org/images/2/27/Kvm-forum-2013-idle-latency.pdf",
+        "slides_format": "PDF",
+        "pages": "1—28",
+        "summary": "短消息处理频繁进入等待，完整保存状态与调度可能比实际空闲更昂贵。讲稿用逐步简化路径的实验定位开销，再比较客户机轮询、延迟 FPU 保存与延迟上下文切换的方案，保留饥饿和功耗风险。"
+      }
+    ]
+  }
+}

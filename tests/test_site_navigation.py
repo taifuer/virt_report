@@ -124,16 +124,15 @@ def test_conference_pages_express_parent_child_navigation():
     assert any(node.text() == "查看相关论文" and node.attrs["href"] == "conference-papers.html"
                for node in directory_article.find("a"))
     editions, analysis = kvm_forum.load_content()
-    children = (
-        render.render_academic_conferences_html(config, content),
-        render.render_kvm_forum_html(config, editions, analysis),
-    )
-    for page in children:
-        doc = Document(page).root
-        breadcrumb = next(node for node in doc.find("nav")
-                          if node.attrs.get("aria-label") == "面包屑")
-        assert [node.attrs["href"] for node in breadcrumb.find("a")] == ["conferences.html"]
-    for page in (directory_page, papers, *children):
+    academic = render.render_academic_conferences_html(config, content)
+    forum = render.render_kvm_forum_html(config, editions, analysis)
+    academic_doc = Document(academic).root
+    breadcrumb = next(node for node in academic_doc.find("nav")
+                      if node.attrs.get("aria-label") == "面包屑")
+    assert [node.attrs["href"] for node in breadcrumb.find("a")] == ["conferences.html"]
+    forum_doc = Document(forum).root
+    assert not any(node.attrs.get("aria-label") == "面包屑" for node in forum_doc.find("nav"))
+    for page in (directory_page, papers, academic, forum):
         current = [link for link in navigation(page).find("a")
                    if link.attrs.get("aria-current") == "page"]
         assert len(current) == 1

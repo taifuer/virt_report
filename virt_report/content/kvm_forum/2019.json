@@ -1,0 +1,89 @@
+{
+  "year": 2019,
+  "url": "https://kvm-forum.qemu.org/2019/",
+  "analysis": {
+    "headline": "大虚机扩展性与轻量、安全的运行环境",
+    "themes": [
+      "TDP MMU",
+      "SMT 隔离",
+      "virtio-fs",
+      "Firecracker",
+      "rust-vmm"
+    ],
+    "summary": "2019 年同时关注大型虚机和轻量运行环境：前者需要解决数百 vCPU 下的页表锁竞争，后者希望缩小设备模型并复用安全组件。SMT 隔离、SEV 和文件共享进一步说明，安全边界会改变调度、内存与 I/O 的设计。六篇精选既包含内核扩展性改造，也包含生产故障复盘；评估重点放在具体约束和负面结果，避免仅凭架构名称判断优劣。"
+  },
+  "review": {
+    "source": "2019.md",
+    "title": "KVM Forum 2019 精选解读",
+    "reviewed_on": "2026-11-15",
+    "summary": "六场分享覆盖 TDP MMU、core scheduling、virtio-fs、Firecracker、rust-vmm 和 SEV 运维。",
+    "talks": [
+      {
+        "id": "tdp-mmu",
+        "title": "TDP MMU：让大虚机并行处理缺页",
+        "original_title": "Improving MMU Scalability in x86 KVM",
+        "speakers": "Ben Gardon",
+        "url": "https://www.youtube.com/watch?v=iQwO2PudbNY",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2019/MMU%20improvements%20KVM%20Forum%20Presentation%20-%20short.pdf",
+        "slides_format": "PDF",
+        "pages": "1—43",
+        "summary": "数百 vCPU 同时缺页时，MMU 大锁会使内存管理成为串行瓶颈。方案用直接页表遍历、RCU 和原子更新支持并发，结合 416 vCPU 压力测试解释锁竞争转移与元数据节省。"
+      },
+      {
+        "id": "core-scheduling",
+        "title": "Core scheduling：SMT 隔离与调度成本",
+        "original_title": "Core-Scheduling for Virtualization: Where are We? (If We Want It!)",
+        "speakers": "Dario Faggioli",
+        "url": "https://www.youtube.com/watch?v=6KZOjz3LmGc",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2019/Core-Scheduling-Virtualization_KVMForum19_Faggioli.pdf",
+        "slides_format": "PDF",
+        "pages": "1—63",
+        "summary": "不同租户共享同一物理核的 SMT 线程，会带来部分侧信道风险和性能相互影响。比较固定成组与标签调度，结合多种虚机负载讨论强制空闲、公平性，以及相对关闭 SMT 的收益边界。"
+      },
+      {
+        "id": "virtio-fs",
+        "title": "virtio-fs：共享宿主文件与缓存的设计取舍",
+        "original_title": "virtio-fs: A Shared File System for Virtual Machines",
+        "speakers": "David A. Gilbert, Stefan Hajnoczi, Miklos Szeredi, Vivek Goyal",
+        "url": "https://www.youtube.com/watch?v=969sXbNX01U",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2019/virtio-fs_%20A%20Shared%20File%20System%20for%20Virtual%20Machines.pdf",
+        "slides_format": "PDF",
+        "pages": "1—21",
+        "summary": "轻量虚机希望直接使用宿主目录，减少镜像复制和重复缓存。virtio-fs 通过 FUSE 请求与 vhost-user 后端提供文件访问，DAX 共享窗口进一步减少拷贝，但缓存一致性、安全边界和负载差异仍需单独处理。"
+      },
+      {
+        "id": "firecracker",
+        "title": "Firecracker 生产复盘：安全边界与测试遗漏",
+        "original_title": "Firecracker: Lessons from the Trenches",
+        "speakers": "Andreea Florescu, Alexandra Iordache",
+        "url": "https://www.youtube.com/watch?v=yULy6IFy49o",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2019/Firecracker_%20Lessons%20from%20the%20Trenches%282%29.pdf",
+        "slides_format": "PDF",
+        "pages": "1—49",
+        "summary": "Rust、小设备模型和 seccomp 降低部分风险，仍不能替代运行时与输入边界测试。两次真实缺陷揭示系统调用白名单、整数运算和构建模式之间的联系，说明可观测性与生产负载测试为何重要。"
+      },
+      {
+        "id": "rust-vmm",
+        "title": "rust-vmm：把 VMM 拆成可复用组件",
+        "original_title": "Playing Lego with Virtualization Components",
+        "speakers": "Andreea Florescu, Samuel Ortiz",
+        "url": "https://www.youtube.com/watch?v=cKMvcGTK2c0",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2019/Playing%20Lego%20with%20Virtualization%20Components.pdf",
+        "slides_format": "PDF",
+        "pages": "1—56",
+        "summary": "多个 Rust VMM 重复实现内存模型、KVM 接口和设备基础设施。rust-vmm 用公共 crate 与 trait 接口提取共性，借 Firecracker 和 Cloud Hypervisor 的集成经历说明复用收益与仍然存在的大量连接代码。"
+      },
+      {
+        "id": "sev-evolution",
+        "title": "SEV 运维配套：迁移加密内存与减少启动开销",
+        "original_title": "Improving and Expanding SEV Support",
+        "speakers": "Thomas Lendacky",
+        "url": "https://www.youtube.com/watch?v=rh02gJyKxDo",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2019/KVM_Forum_2019_SEV.pdf",
+        "slides_format": "PDF",
+        "pages": "1—15",
+        "summary": "私有内存与密钥绑定后，普通页面复制和回收流程不再直接适用。演讲介绍安全迁移、可信迁移助手和 ASID 批量回收，分析加密保护对虚机启动、内存移动和版本配套的影响。"
+      }
+    ]
+  }
+}

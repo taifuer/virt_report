@@ -1,0 +1,93 @@
+{
+  "year": 2025,
+  "url": "https://kvm-forum.qemu.org/2025/",
+  "starts_on": "2025-09-04",
+  "ends_on": "2025-09-05",
+  "timezone": "Europe/Rome",
+  "location": "意大利米兰",
+  "analysis": {
+    "headline": "内存接口、内核热更新与 I/O 快路径",
+    "themes": [
+      "guest_memfd",
+      "内核热更新",
+      "io_uring",
+      "Arm 多核",
+      "vfio-user"
+    ],
+    "summary": "这一年的精选呈现了几项基础接口的变化：guest_memfd 开始面向普通虚机，并探索共享转换、大页和移除宿主直接映射；VFIO 设备保留让内核更新不必重置正在工作的设备；io_uring 与 Shadow ioeventfd 分别缩短 QEMU 事件循环和进程外设备的通知路径。Arm 并行启动还揭示了一个容易忽略的问题：宿主控制 vCPU 运行时机，客户机早期启动中的共享变量也必须经得住并发与延迟。六篇解读分别说明设计收益、验证范围与尚未完成的配套。"
+  },
+  "review": {
+    "source": "2025.md",
+    "title": "KVM Forum 2025 精选解读",
+    "reviewed_on": "2026-11-15",
+    "summary": "从 guest_memfd 的内存管理边界，到设备保留、事件通知和 Arm 多核启动，解读六项影响虚拟机运行与维护的工程设计。",
+    "talks": [
+      {
+        "id": "device-preservation",
+        "title": "内核热更新：保留 VFIO 设备与 DMA",
+        "original_title": "Preserving VFIO PCI Devices During Kernel Live Updates",
+        "speakers": "Vipin Sharma · Google",
+        "url": "https://www.youtube.com/watch?v=XVVIOhOguu0",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2025/VFIO_device_DiiwG94.pdf",
+        "slides_format": "PDF",
+        "pages": "1—45",
+        "summary": "大内存与 GPU 虚机难以频繁搬迁。方案在 kexec 期间保留设备、DMA 映射与内存，重建软件状态后恢复客户机；讲稿用 Intel DSA 验证持续 DMA，并交代中断与新 VFIO 接口的未完成部分。"
+      },
+      {
+        "id": "guest-memfd",
+        "title": "guest_memfd：共享转换与大页的统一管理",
+        "original_title": "guest_memfd: Unmapped Potential",
+        "speakers": "Fuad Tabba、Ackerley Tng · Google",
+        "url": "https://www.youtube.com/watch?v=mB57TYNO8aY",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2025/guest_memfd_YOIjBul.pdf",
+        "slides_format": "PDF",
+        "pages": "1—21",
+        "summary": "以文件描述符管理客户机内存后，普通虚机、机密虚机的共享页和大页开始面对同一套接口问题。重点分析原地转换为什么需要严格的映射约束，以及局部共享怎样影响大页的生命周期。"
+      },
+      {
+        "id": "secret-free",
+        "title": "普通虚机的内存隔离：移除宿主直接映射",
+        "original_title": "guest_memfd for Non-Confidential VMs and Spectre Protection",
+        "speakers": "Patrick Roy · AWS",
+        "url": "https://www.youtube.com/watch?v=Xd0LlxSKk1M",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2025/KVM-Forum_2_OPKjzR8.pdf",
+        "slides_format": "PDF",
+        "pages": "1—17",
+        "summary": "客户机内存可从宿主内核直接映射中移除，同时保留 VMM 需要的用户态访问。解读 guest_memfd 如何绕开传统 GUP 路径，以及 TLB 刷新、快照恢复和 kvm-clock 给该方案带来的约束。"
+      },
+      {
+        "id": "io-uring",
+        "title": "io_uring：让 QEMU 事件循环统一提交异步操作",
+        "original_title": "Making io_uring pervasive in QEMU",
+        "speakers": "Stefan Hajnoczi · Red Hat",
+        "url": "https://www.youtube.com/watch?v=gSB5sn3ZN3w",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2025/stefanha-kvm-forum-2025.pdf",
+        "slides_format": "PDF",
+        "pages": "1—24",
+        "summary": "把 io_uring 从磁盘后端扩展到 AioContext，使 eventfd、文件和自定义命令复用提交与完成处理。区分 eventfd 微基准约 30% 的提升与尚不明确的整机存储收益，讨论批处理和通知延迟的取舍。"
+      },
+      {
+        "id": "shadow-ioeventfd",
+        "title": "Shadow ioeventfd：在 KVM 内传递门铃值",
+        "original_title": "Shadow ioeventfd: Accelerating MMIO in vfio-user with Kernel-Assisted Dispatch",
+        "speakers": "Thanos Makatos、John Levon · Nutanix",
+        "url": "https://www.youtube.com/watch?v=dBllBwdAlL8",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2025/Shadow_ioev_qdOrApF.pdf",
+        "slides_format": "PDF",
+        "pages": "1—14",
+        "summary": "NVMe 门铃需要携带队列尾指针，普通 ioeventfd 只传通知。新路径由 KVM 保存写入值并唤醒后端，省去 QEMU 往返；结合 Windows 随机读实验，分析异步通知、覆盖语义与实际性能收益。"
+      },
+      {
+        "id": "arm-onlining",
+        "title": "Arm 多核启动：并行初始化与独立启动上下文",
+        "original_title": "PPaPaarraraallllelelelll vCPU onlining for arm64",
+        "speakers": "Will Deacon · Google",
+        "url": "https://www.youtube.com/watch?v=Q6kOshnnQuE",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2025/KVM_Forum_2_LIGkHtZ.pdf",
+        "slides_format": "PDF",
+        "pages": "1—48",
+        "summary": "逐核启动会累积固件和寄存器访问开销，共用启动变量还可能被延迟运行的 vCPU 破坏。方案通过 PSCI 传递独立上下文，把本地初始化并行化，并在同步点之后更新全局 CPU 特性。"
+      }
+    ]
+  }
+}

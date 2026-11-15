@@ -14,12 +14,13 @@ test('default browser checks are bounded smoke journeys, not screenshot sweeps',
 
 test('review and full audits preserve the existing suites as explicit options', () => {
   const review = getPlan(['--review']), full = getPlan(['--full']);
-  assert.equal(review.suites.length, 11);
+  const expectedSuites = [...review.suites];
+  assert(review.suites.includes('kvm_forum'));
   assert(review.suites.includes('execution_demos'));
   assert.deepEqual(full.suites, [...review.suites, 'walkthrough_global']);
   assert(!review.suites.includes('smoke'));
   review.suites.pop();
-  assert.equal(getPlan(['--review']).suites.length, 11, 'plans do not mutate the catalogue');
+  assert.deepEqual(getPlan(['--review']).suites, expectedSuites, 'plans do not mutate the catalogue');
 });
 
 test('invalid or conflicting modes fail rather than silently running a slow audit', () => {

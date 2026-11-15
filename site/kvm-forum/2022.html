@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>KVM Forum 2022 精选解读 - virt-report</title>
+  <meta name="description" content="六场分享覆盖 Arm MMU 扩展性、IOMMUFD、pKVM、passt、独立存储服务与内核热更新。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
+  <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/forum.css?v=02b518d59aa4">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=0ad6552bf0f5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="on" aria-current="page">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="forum-review mechanism-article">
+  <header class="mechanism-header">
+    <nav class="mechanism-breadcrumb" aria-label="面包屑"><a href="../conferences.html">会议</a><span aria-hidden="true">/</span><a href="../kvm-forum.html#year-2022">KVM Forum</a></nav>
+    <h1>KVM Forum 2022 精选解读</h1>
+    <p>六场分享覆盖 Arm MMU 扩展性、IOMMUFD、pKVM、passt、独立存储服务与内核热更新。</p>
+    <p class="forum-event">6 篇精选</p>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、本届观察</a></li><li><a href="#arm-mmu">二、Arm 大虚机迁移：控制页表拆分与 TLB 广播</a></li><li><a href="#iommufd">三、IOMMUFD：重建直通设备的地址空间接口</a></li><li><a href="#protected-kvm">四、pKVM：让宿主内核受内存访问规则约束</a></li><li><a href="#passt">五、passt：把虚机网络接入普通宿主套接字</a></li><li><a href="#storage-daemon">六、QSD 与 libblkio：拆开虚机和存储的生命周期</a></li><li><a href="#iommu-kexec">七、内核热更新：跨 kexec 保留 DMA 映射</a></li></ol>
+    </nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+<h2><span class="mechanism-heading-number">一、</span>本届观察</h2>
+<p>2022 年的议题体现了规模化与安全要求对既有接口的压力。Arm 云实例已经进入实际部署，MMU 维护中的短暂串行区会被大量 vCPU 放大。可信虚机要求重新划分宿主权限，设备加速要求更灵活的 I/O 地址空间管理。与此同时，容器平台、独立存储服务和原机更新，把虚机生命周期与周边组件的关系推到前台。</p>
+</section>
+<section id="arm-mmu" class="mechanism-section">
+<h2><span class="mechanism-heading-number">二、</span>Arm 大虚机迁移：控制页表拆分与 TLB 广播</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=uPhNaDg19Hg" target="_blank" rel="noopener noreferrer">KVM/ARM at Scale: Improvements to the MMU in the Face of Hardware Growing Pains</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2022/KVM_ARM%20at%20Scale%20KVM%20Forum%202022.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Oliver Upton</p>
+</div>
+<h3 id="arm-mmu-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>热迁移启动脏页跟踪后，客户机应继续提供服务。Oliver Upton 展示的 Arm 场景却发生了超过 99% 的性能下降，客户机接近 30 秒得不到有效执行。这种停顿发生在迁移准备阶段，即使最终切换窗口很短，用户仍会感知严重中断。研究重点因此是限制迁移准备对在线业务的冲击。</p>
+<h3 id="arm-mmu-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>测试虚机有 48 个 vCPU、192 GiB 内存，宿主使用 2 MiB HugeTLB，客户机以连续写入制造最坏压力。写保护使大量 vCPU 同时进入二级缺页处理，争用 MMU 锁；大页还要拆成细粒度映射。Arm 的 break-before-make 规则要求替换某些有效页表项前完成失效和同步，跨核广播会让这些操作相互等待。</p>
+<h3 id="arm-mmu-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>权限放宽等路径改用 MMU 读锁，允许多个缺页处理并行进行。作者继续追踪后发现，单靠锁改造仍留下明显停顿，因为页表拆分过程中的 TLB 失效成本没有消失。允许的权限放宽使用本地失效，减少不必要的广播；必须进行的大页拆分则提前分批完成，通过扩展清理脏页的接口，让用户态控制拆分速率。</p>
+<p>这两项优化分别作用于软件互斥和硬件同步。限速把瞬间的大量维护工作摊到更长时间，客户机能够在准备阶段保持执行。架构要求的失效不能随意省略，否则可能出现转换冲突、原子性和内存顺序问题。</p>
+<h3 id="arm-mmu-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>讲稿曲线比较了原始实现、锁优化与综合优化：锁优化后仍有明显的瞬时低谷；加入本地失效和受控拆分后，吞吐逐步小幅下降，替代了原先接近停摆的表现。图中的时间轴不同，不能据此断言总迁移耗时也同幅减少。实验使用人为构造的高写入压力，主要验证最坏场景下的运行连续性。</p>
+<h3 id="arm-mmu-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>更多物理核会进一步放大广播同步成本。支持范围失效和更宽松拆分规则的硬件，可以减少操作数量，但内核仍需处理架构允许的转换冲突。实际平台应同时记录业务尾延迟、脏页处理速率和总迁移时间，选择合适的拆分节奏。把全部成本提前，也可能增加准备阶段开销；这里需要根据在线服务的延迟预算进行取舍。</p>
+</section>
+<section id="iommufd" class="mechanism-section">
+<h2><span class="mechanism-heading-number">三、</span>IOMMUFD：重建直通设备的地址空间接口</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=PlEzLywexHE" target="_blank" rel="noopener noreferrer">IOMMUFD Integration in QEMU</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2022/IOMMUFD%20Integration%20in%20QEMU%20-%20Yi%20Liu%20%26%20Eric%20Auger.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Yi Liu, Eric Auger</p>
+</div>
+<h3 id="iommufd-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>VFIO 的传统接口围绕设备组和容器管理 DMA 映射。随着嵌套地址转换、共享虚拟地址和可恢复设备缺页加入，单纯扩展容器接口开始累积重复逻辑。IOMMUFD 将用户态 I/O 地址空间管理独立出来，希望让 VFIO 等不同设备框架共享基础能力，并为硬件页表的显式管理提供入口。</p>
+<h3 id="iommufd-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>用户态给出的内存范围需要固定页面、统计资源、建立 DMA 映射，并遵守设备的地址限制。嵌套转换还要区分客户机控制的一级页表和宿主控制的二级页表。不同架构对 PASID、故障上报和中断门铃的处理各不相同，新接口必须容纳差异，同时避免把不安全的映射控制权交给客户机。</p>
+<h3 id="iommufd-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>设计以 /dev/iommu 的文件描述符管理对象。IOAS 表示 I/O 地址空间，保存地址到用户内存的映射关系；硬件页表对象负责对应 IOMMU 的具体转换。设备绑定到 IOMMUFD 后，可以附着到指定地址空间或硬件页表。QEMU 把通用 VFIO 设备逻辑与 IOMMU 后端分开，以兼容旧接口并接入新后端。</p>
+<p>嵌套转换方案进一步显式表达一级和二级硬件页表，客户机虚拟 IOMMU 发起相应配置和失效操作。缺页事件通过通知与故障记录交给用户态处理，随后返回响应。讲稿中的 ioctl 名称和对象组织处于 RFC 阶段，展示的是设计方向，不能直接作为今天的配置文档。</p>
+<h3 id="iommufd-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>作者给出了内核与 QEMU 原型分支，并展示 Intel VT-d 和 Arm SMMUv3 的联合设计。传统映射兼容、设备绑定和新后端抽象已有代码基础；嵌套转换和 vSVA 正在集成。材料没有提供吞吐或延迟对照，成果主要体现在接口拆分与跨架构可行性，不能把架构重构本身描述为已经测得的性能提升。</p>
+<h3 id="iommufd-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>当时新旧后端尚未功能对等，PASID 虚拟化和其他架构支持仍有开放问题。面向设备的用户接口也没有取消硬件隔离要求，IOMMU 组所反映的隔离约束仍需执行。后续验证需要覆盖失败回滚、设备解绑、部分映射撤销和资源耗尽，尤其要保证用户态进程异常退出后不会留下仍可 DMA 的过期地址空间。</p>
+</section>
+<section id="protected-kvm" class="mechanism-section">
+<h2><span class="mechanism-heading-number">四、</span>pKVM：让宿主内核受内存访问规则约束</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=9npebeVFbFw" target="_blank" rel="noopener noreferrer">Protected KVM on Arm64: A Technical Deep Dive</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2022/KVM%20forum%202022%20-%20pKVM%20deep%20dive.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Quentin Perret</p>
+</div>
+<h3 id="protected-kvm-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>普通 KVM 依赖宿主内核管理客户机内存，宿主被攻破后，客户机秘密也可能暴露。pKVM 在 Arm EL2 建立较小的保护层，为宿主本身增加二级地址转换约束。Linux 仍负责资源分配和调度，受保护客户机的敏感状态则由宿主无法直接访问的组件管理，适合需要隔离敏感负载的设备环境。</p>
+<h3 id="protected-kvm-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>保护层必须检查宿主提供的地址和对象，防止重复占有页面或使用已销毁的 vCPU。设备模拟又需要有限共享数据，不能完全切断宿主与客户机的交流。EL2 代码不可随意阻塞，销毁大虚机时若一次清理全部内存，也会形成长时间不可抢占区。因此权限变化、对象引用和回收流程需要共同设计。</p>
+<h3 id="protected-kvm-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>启动时，EL2 建立自己的页表和宿主二级页表，把私有代码与数据从宿主映射中移除。页面按所有权和共享关系记录状态，捐赠会转移独占访问权，共享则保留受控的双方访问。虚机和 vCPU 在 EL2 拥有影子对象，宿主通过句柄请求操作，运行期间持有引用以阻止并发销毁。</p>
+<p>受保护客户机显式声明 MMIO 区域，并通过规定寄存器传递访问值，避免退出时泄露其他寄存器。私有页返回宿主前必须清除敏感内容；销毁将其标记为待回收，再分批交还。讲稿把完整生命周期展开，展示隔离规则如何贯穿创建、缺页、退出和释放。</p>
+<h3 id="protected-kvm-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>材料基于当时的上游代码和待合入补丁，给出可追踪到具体 hypercall 的实现。它还展示一个实际难题：恶意 VMM 把客户机私有地址传给普通内核读取接口，可能使宿主内核发生无法正常处理的访问异常。这说明仅阻止硬件访问还不够，需要修改内存对象模型，防止普通 Linux 路径误入私有页面。</p>
+<h3 id="protected-kvm-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>当时的补丁系列尚缺部分普通 KVM 功能，大页、kexec 和设备分配也有限制。长期固定页面阻止换出和迁移，私有文件描述符方案被用作后续方向。讲稿未覆盖完整 DMA 防护与中断设计，也没有给出性能总评；不能据此声称整个设备威胁面都已解决。对这类系统，生命周期负面测试与安全边界审计和性能验证同样重要。</p>
+</section>
+<section id="passt" class="mechanism-section">
+<h2><span class="mechanism-heading-number">五、</span>passt：把虚机网络接入普通宿主套接字</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=U89bWP1HNgU" target="_blank" rel="noopener noreferrer">Slirp is Dead, Long Live Slirp! A New Approach to User-mode Networking</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2022/Slirp%20is%20dead%2C%20long%20live%20Slirp%21%20KVM%20Forum%202022.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Stefano Brivio, Alona Paz</p>
+</div>
+<h3 id="passt-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>KubeVirt 把虚机运行在 Pod 中，但应用位于客户机内部，未必满足服务网格代理对同一网络命名空间和套接字可见性的假设。桥接与 NAT 绑定还需要额外配置和权限。passt 提供以太帧到宿主 TCP、UDP 和 ICMP echo 套接字的转换，让虚机流量更容易接入普通 Pod 网络管理路径。</p>
+<h3 id="passt-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>用户态网络容易承担大量系统调用、复制和协议状态开销。若实现另一套完整 TCP 栈，还要重复处理拥塞控制与复杂状态。安全上，外部数据直接进入解析逻辑，网络进程又不应获得创建宿主接口和修改路由的广泛权限。性能与最小权限必须同时考虑，单纯把处理代码移出 QEMU 并不会自动解决问题。</p>
+<h3 id="passt-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>当时的 passt 通过 Unix socket 与 QEMU 交换以太帧，以宿主原生套接字完成外侧通信。它复用内核已有的传输状态，使用精简的适配逻辑；固定缓冲区、批量发送、合并报文和预构造头部减少分配与系统调用。接收确认与套接字数据消费协调，避免为每条连接额外保留大量独立缓存。</p>
+<p>独立进程采用命名空间、seccomp 和安全策略限制能力，初始化后尽量隔离文件系统与其他进程，不需要 CAP_NET_ADMIN 创建网络接口。客户机可以使用较大的 MTU，由宿主套接字路径处理外侧分段。这里仍有数据复制和解析开销，讲稿提出后续使用 vhost-user 减少中间传输成本。</p>
+<h3 id="passt-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>材料展示了 KubeVirt 技术预览、发行版软件包以及 QEMU、libvirt 的集成工作，证明方案已经超出概念讨论。性能部分解释批量化和缓存局部性的来源，也明确与多队列 TAP 仍有差距，没有提供足以统一排名的完整基准。其主要工程价值是无需额外网络权限的集成能力，不能用“用户态开销消失”概括。</p>
+<h3 id="passt-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>2022 年原生 QEMU socket 接入和 libvirt 支持仍在推进，KubeVirt 的默认绑定替换也只是方向。TCP_INFO 等依赖限制了可移植性。实际部署需验证端口映射、IPv6、连接关闭和高并发连接下的资源使用，并检查代理规则是否覆盖预期流量。面向高包速网络，还需把单线程处理和数据复制成本纳入评估。</p>
+</section>
+<section id="storage-daemon" class="mechanism-section">
+<h2><span class="mechanism-heading-number">六、</span>QSD 与 libblkio：拆开虚机和存储的生命周期</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=rAL_tH-gr8k" target="_blank" rel="noopener noreferrer">QEMU-Storage-Daemon and libblkio: Exploring New Shores for the QEMU Block Layer</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2022/kvmforum2022_qsd_libblkio_v1.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Kevin Wolf, Stefano Garzarella</p>
+</div>
+<h3 id="storage-daemon-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>备份、镜像合并和共享底层镜像常常需要独立于虚机运行。若块层全部放在 QEMU 虚机进程中，虚机关闭就会影响管理任务，多个进程分别打开镜像链也会限制可执行操作。qemu-storage-daemon 将块层服务单独运行，使存储管理、权限控制和虚机生命周期可以分别安排。</p>
+<h3 id="storage-daemon-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>拆成独立进程后，需要选择数据传输接口，并明确谁负责队列、镜像功能和错误恢复。vhost-user-blk 可以把后端直接暴露给客户机，但这条路径会绕开前端 QEMU 的块层；若还需要其他模拟设备或块层功能，就必须让 QEMU 自己成为后端的客户端。共享轮询线程虽然节省 CPU，也会引入跨虚机干扰。</p>
+<h3 id="storage-daemon-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>QSD 保留块设备图、块作业和相关 QMP 接口，通过 NBD、FUSE、vhost-user 或 VDUSE 等方式导出存储。独立服务可以在虚机离线时继续执行作业，也可以统一管理多个虚机使用的镜像链。VDUSE 依托 vDPA，把用户态实现同时接入虚机和宿主块设备使用场景。</p>
+<p>libblkio 提供统一块 I/O API，封装 io_uring、vhost-user、vhost-vDPA 等后端。QEMU 借助它访问 Virtio 块设备时，客户机队列与后端队列是两组不同对象，请求仍经过 QEMU 块层。讲稿提出在不需要块层处理时直接透传客户机队列、需要时切回完整路径的后续设计，以兼顾功能和效率。</p>
+<h3 id="storage-daemon-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>QSD 已有实际导出能力；讲稿明确 VDUSE 导出进入 QEMU 7.1，依赖 Linux 5.15 及以上相关支持，FUSE 导出则已在 QEMU 6.0 引入。材料展示可执行的配置与组件连接关系，没有完整性能对照。队列透传和自动切换属于未来计划，不能把它们算作当时已经实现的零额外处理路径。</p>
+<h3 id="storage-daemon-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>不同导出协议的同步性、复制和权限差异，会影响实际选择。拆分进程缩小单进程权限范围，但共享内存及控制接口仍需安全设计，不能简单等同于完全隔离。后续需要完善 libvirt 的独立存储服务管理，并测试后端退出、重连、作业失败和多个客户机争用时的行为。衡量收益时应同时比较管理灵活性、资源占用与端到端延迟。</p>
+</section>
+<section id="iommu-kexec" class="mechanism-section">
+<h2><span class="mechanism-heading-number">七、</span>内核热更新：跨 kexec 保留 DMA 映射</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=KoSMUjC2mL8" target="_blank" rel="noopener noreferrer">Preserving IOMMU States During Kexec Reboot</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2022/kvmforum2022-Preserving%20IOMMU%20states%20during%20kexec%20reboot-v4.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Fam Zheng</p>
+</div>
+<h3 id="iommu-kexec-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>热迁移需要目标宿主和传输资源，原机更新则希望保留内存，在同一机器更换 QEMU 或内核。直通设备让这件事更困难：内核退出时通常复位设备并销毁 DMA 映射，客户机驱动却仍保留旧状态。本工作探索跨 kexec 维持设备运行条件，减少升级对长运行虚机的影响。</p>
+<h3 id="iommu-kexec-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>设备可能在内核切换期间继续 DMA。客户机页或 IOMMU 页表若被新内核重新分配，设备就可能访问错误内存；仅保留 QEMU 状态文件远远不够。PCI 配置和总线主控状态需要连续，中断连接又依赖新内核中的向量和事件对象。新旧内核必须对保留区域及其含义达成一致。</p>
+<h3 id="iommu-kexec-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>原型用预留物理内存承载客户机 RAM，并为 IOMMU 根表和映射页设计固定区域分配器，使地址跨 kexec 保持稳定。VFIO 的实验性 raw mode 跳过正常关闭、初始化路径中的设备复位和相关配置重置。中断在关闭前屏蔽，新内核重新建立连接后恢复，并补发通知促使客户机检查完成状态。</p>
+<p>QEMU 保存执行状态，kexec 进入新内核，由精简启动流程重新启动 QEMU 并加载状态。设备和 DMA 映射的连续性依赖专门修改的内核与 VMM，讲稿中的预留内存及 raw mode 用法只是原型说明，不适合直接当作通用生产操作步骤。</p>
+<h3 id="iommu-kexec-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>测试在嵌套环境中进行：外层 QEMU 提供虚拟 IOMMU 与 e1000e，修改后的 L1 内核把设备交给 L2。更新 L1 内核和 QEMU 后，L2 恢复并观察到网络报文，报告时间约 160 ms。这个结果验证了状态交接思路，规模较小且设备由软件提供；它不证明真实 NIC、GPU 或不同固件组合都能达到相同恢复时间。</p>
+<h3 id="iommu-kexec-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>作者明确把物理机测试、错误处理、AMD 与 Arm 支持列为后续工作。真实设备的后台 DMA、复位依赖和中断重映射都需要逐项确认，失败时还必须避免保留设备访问已回收内存。原机更新也无法处理硬件故障。其价值在于提出完整状态连续性的要求，最终是否可部署，取决于保留资源协议与设备恢复边界是否可靠。</p>
+</section>
+</div>
+  </div>
+  <nav class="mechanism-related" aria-label="会议资料"><a href="../kvm-forum.html#year-2022">返回年度总览</a><a href="https://kvm-forum.qemu.org/2022/" target="_blank" rel="noopener noreferrer">原始议程</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=0ad6552bf0f5"></script>
+<script src="../assets/mechanism-viewer.js?v=02b518d59aa4" defer></script></body>
+</html>

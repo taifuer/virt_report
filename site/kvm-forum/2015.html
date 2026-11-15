@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>KVM Forum 2015 精选解读 - virt-report</title>
+  <meta name="description" content="本届精选连接性能、兼容性与安全三类工程问题。实时 KVM 控制响应长尾，40GbE 原型尝试保留直通性能与迁移能力；Virtio 1.0 和多线程 TCG 整理接口与并发语义，SMM 与 Arm VGIC 则展示固件保护和中断模型如何落到 QEMU/KVM 实现。六项工作分别保留当年的实验条件及未完成部分。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
+  <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/forum.css?v=02b518d59aa4">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=0ad6552bf0f5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="on" aria-current="page">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="forum-review mechanism-article">
+  <header class="mechanism-header">
+    <nav class="mechanism-breadcrumb" aria-label="面包屑"><a href="../conferences.html">会议</a><span aria-hidden="true">/</span><a href="../kvm-forum.html#year-2015">KVM Forum</a></nav>
+    <h1>KVM Forum 2015 精选解读</h1>
+    <p>本届精选连接性能、兼容性与安全三类工程问题。实时 KVM 控制响应长尾，40GbE 原型尝试保留直通性能与迁移能力；Virtio 1.0 和多线程 TCG 整理接口与并发语义，SMM 与 Arm VGIC 则展示固件保护和中断模型如何落到 QEMU/KVM 实现。六项工作分别保留当年的实验条件及未完成部分。</p>
+    <p class="forum-event">6 篇精选</p>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、本届观察</a></li><li><a href="#realtime">二、实时 KVM：控制调度延迟的长尾</a></li><li><a href="#migratable-nic">三、可迁移 40GbE：直通设备状态怎样接管</a></li><li><a href="#virtio-one">四、Virtio 1.0：把隐含约定变成明确协议</a></li><li><a href="#mttcg">五、多线程 TCG：并行执行与客户机内存语义</a></li><li><a href="#smm">六、SMM 与 Secure Boot：保护虚拟机固件状态</a></li><li><a href="#arm-irq">七、Arm 中断虚拟化：从 GICv2 到 GICv3</a></li></ol>
+    </nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+<h2><span class="mechanism-heading-number">一、</span>本届观察</h2>
+<p>2015 年精选中的方案都在处理虚拟化对既有系统语义的影响：实时任务跨越两层调度，网卡迁移需要保存硬件状态，软件模拟并行化需要重建内存顺序，安全启动需要保护固件运行时状态。Virtio 与 Arm 中断模型的演进则表明，长期可维护的接口和数据结构与单次性能优化同样重要。</p>
+</section>
+<section id="realtime" class="mechanism-section">
+<h2><span class="mechanism-heading-number">二、</span>实时 KVM：控制调度延迟的长尾</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=cZ5aTHeDLDE" target="_blank" rel="noopener noreferrer">Real-time KVM from the Ground Up</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://www.linux-kvm.org/images/2/24/01x02-Rik_van_Riel-KVM_realtime.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Rik van Riel · Red Hat</p>
+</div>
+<h3 id="realtime-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>电信和控制类应用需要在约定时间内响应，少量很慢的请求就可能造成业务故障。虚拟化增加了宿主调度、客户机调度和设备模拟等边界，平均延迟难以反映这些边界偶发的停顿。讲稿从硬件到软件梳理延迟来源，为实时虚拟机配置提供可解释的依据。</p>
+<h3 id="realtime-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>SMI 可以让 CPU 进入操作系统无法调度的固件代码；内核不可抢占区、IRQ 和后台任务也会延迟应用。宿主只看见 vCPU 线程，无法直接知道客户机内哪个任务最重要。把 vCPU 设为高实时优先级后，客户机空闲轮询又可能让宿主低优先级任务长期得不到执行，形成新的饥饿问题。</p>
+<h3 id="realtime-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>方案以资源分区为基础：宿主把实时 vCPU 放到专用 CPU，日常维护任务留在其他 CPU；客户机内部同样区分实时任务与设备管理等系统任务。这样可以减少慢速设备模拟把实时任务所在 vCPU 阻塞的机会。内核抢占、优先级继承、IRQ 线程化和定时器调整进一步缩短软件不可响应的区间。</p>
+<p>讲稿还要求检查固件延迟、时钟稳定性、缺页、换页和缓存干扰。CPU 绑核只是其中一项措施；电源状态、共享缓存和客户机操作都可能重新引入长尾。2015 年 PREEMPT_RT 的合入状态也应按当时背景理解。</p>
+<h3 id="realtime-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>作者给出的客户机 cyclictest 示例为最小 5 µs、平均 6 µs、最大 14 µs，并说明依赖仔细配置和专用资源。这个最大值是特定实验中观测到的结果，材料不足以证明所有压力、固件事件和运行时长下都存在同样上界。它展示了实时虚拟化的可行性，不能替代业务系统的最坏情况验证。</p>
+<h3 id="realtime-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>讲稿列出调频、CPU 热插拔、模块装卸、任务迁移和慢设备访问等风险操作。资源超分也与这套专用 CPU 方案的保证前提冲突。工程验证应增加长期运行、宿主干扰、缓存竞争和实际业务截止时间统计，同时确认高优先级 vCPU 没有饿死完成 I/O 或维护系统所需的宿主线程。</p>
+</section>
+<section id="migratable-nic" class="mechanism-section">
+<h2><span class="mechanism-heading-number">三、</span>可迁移 40GbE：直通设备状态怎样接管</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=U5V6c6lVnw0" target="_blank" rel="noopener noreferrer">Migratable 40GBit/s Ethernet</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://www.linux-kvm.org/images/7/79/01x06-Alexander_Graf-Migratable_40gbs_ethernet.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Alexander Graf · SUSE</p>
+</div>
+<h3 id="migratable-nic-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>VFIO 直通可以减少网络数据路径的软件开销，但通用驱动并不了解每种网卡内部状态。迁移时，仅复制客户机 RAM 无法恢复网卡的队列位置、控制配置和仍在进行的 DMA。讲稿选择特定 40GbE VF，尝试由了解设备协议的后端补足这些信息，探索高吞吐与热迁移能否共存。</p>
+<h3 id="migratable-nic-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>控制队列会改变 MAC、队列地址和工作属性，数据队列又持续与硬件并发交互。目标端设备复位后的队列位置可能不同于源端，DMA 写入还会修改客户机内存。接管必须同时考虑队列中的在途请求、已收到但尚未处理的报文，以及迁移期间哪些内存页被设备改写。</p>
+<h3 id="migratable-nic-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>原型 vfio-i40evf 介入管理队列，跟踪客户机对设备的控制操作，以便在目标设备重建配置。运行态数据路径尽量保留直接访问；迁移阶段增加接收队列跟踪和中转，掌握缓冲区使用情况与相关内存修改。讲稿用动画解释源、目标队列位置重建及 DMA 状态交接。</p>
+<p>这是针对设备协议的专用方案。通用 VFIO 框架提供分配与隔离基础，设备相关后端补充状态语义；无法从一个 VF 的原型直接推出所有 PCI 设备都具备相同能力。讲稿还比较硬件感知 vhost 和队列转换等其他设计方向。</p>
+<h3 id="migratable-nic-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>图表中，大报文场景的迁移跟踪路径可以接近普通 VFIO 的吞吐；1024 字节点却有明显下降，不能概括为全尺寸无损。延迟图里，跟踪模式约为 0.3 ms，高于对应普通 VFIO 示例。作者报告热迁移可工作、正常运行性能接近直通，但同时注明不支持内存超分。测试平台细节有限，这些结果属于特定原型。</p>
+<h3 id="migratable-nic-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>方案依赖对网卡协议的了解，硬件与固件版本变化可能扩大兼容成本。完整评价还需要丢包、停机时间、错误恢复与多队列压力测试。它的工程价值是揭示迁移所需的控制面可观测性和 DMA 跟踪，而非给出可泛化的“直通设备都能迁移”结论。</p>
+</section>
+<section id="virtio-one" class="mechanism-section">
+<h2><span class="mechanism-heading-number">四、</span>Virtio 1.0：把隐含约定变成明确协议</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=eTD4l90S5Pg" target="_blank" rel="noopener noreferrer">Virtio 1 — Why Do It? And Are We There Yet?</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://www.linux-kvm.org/images/5/59/01x11-Michael_S_Tsirkin-virtio_1-why_do_it_and_are_we_there_yet.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Michael S. Tsirkin · Red Hat</p>
+</div>
+<h3 id="virtio-one-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>早期 Virtio 实现中存在未充分写明的默认行为，包括驱动何时可以通知设备、配置值怎样读取，以及不同架构如何解释数据。随着驱动、后端和硬件实现增多，这些约定会成为兼容性问题。Virtio 1.0 的重要变化是把初始化、字节序和能力发现转化为明确协议，使独立实现有可核对的契约。</p>
+<h3 id="virtio-one-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>协议升级必须兼容已经部署的客户机，无法要求所有驱动与后端同时更新。PCI 接口还要适应 MMIO 和可扩展的区域布局，避免固定位置限制后续功能。配置可能在读取过程中发生变化，驱动选择的特性组合也可能不被设备接受；这些情况需要协议层给出可判断的状态。</p>
+<h3 id="virtio-one-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>FEATURES_OK 为特性协商增加双方确认，驱动提交特性后必须检查设备是否接受；DRIVER_OK 明确设备开始工作的边界。配置代际计数帮助驱动发现多次读取期间的更新，固定字节序减少跨架构歧义。Modern PCI 接口通过 capability 描述区域，通知地址布局也为降低解码成本留下空间。</p>
+<p>过渡设备和驱动组合提供 Legacy 与 Modern 的兼容路径。错误状态与复位协议使后端异常有机会通过设备重新初始化恢复，但具体恢复能力还依赖驱动和设备实现。讲稿中的下一版设备类型与功能规划，应与当时已经定稿的 1.0 内容分开。</p>
+<h3 id="virtio-one-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>材料通过状态机、布局及访问开销图表说明设计效果，并展示驱动与后端生态的实现进展。图表的测试条件并不完整，无法给出可复用的整体性能提升比例。更直接可检验的收益是错误协商能够被识别、配置变化能够被检测、接口可以通过能力发现扩展，适合写成兼容性与异常路径测试。</p>
+<h3 id="virtio-one-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>规范版本不等于整套设备实现支持同一组特性。实际部署仍需检查前后端协商结果及过渡模式，尤其是固件、引导驱动与内核运行时驱动的组合。后续优化也不能破坏旧默认值。评估 Virtio 升级时，应同时关注协议正确性、启动兼容和特定队列路径的性能，避免仅凭版本号判断能力。</p>
+</section>
+<section id="mttcg" class="mechanism-section">
+<h2><span class="mechanism-heading-number">五、</span>多线程 TCG：并行执行与客户机内存语义</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=KnSW0WjWHZI" target="_blank" rel="noopener noreferrer">Towards Multi-threaded TCG</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://www.linux-kvm.org/images/c/cf/02x02-Alex_Benee-Towards_Multithreaded_TCG.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Alex Bennée · Linaro；Frederic Konrad · GreenSocs</p>
+</div>
+<h3 id="mttcg-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>多核客户机在单个 TCG 执行线程上轮流运行，无法充分利用多核宿主，也难以暴露真实并发中的软件错误。多线程 TCG 希望让不同模拟 CPU 同时执行翻译代码，服务跨架构开发、系统验证与多核负载。问题既包含速度，也包含客户机看到的并发行为是否可信。</p>
+<h3 id="mttcg-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>TCG 的代码生成和运行时结构存在全局状态，翻译块补丁、跳转缓存和跨 CPU 操作需要同步。客户机的原子指令、LL/SC 和内存屏障语义也不能依靠单线程执行顺序自然满足。设备模型及辅助函数有些只访问当前 CPU，有些修改共享系统状态，必须区分处理。</p>
+<h3 id="mttcg-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>讲稿中的原型将可拆分状态移到每 CPU 或线程对象，使用锁保护翻译生成与相关缓存修改，让翻译代码的常见执行路径能够并行。修改多个 vCPU 状态的操作可以通过延迟工作机制，在相关 CPU 到达安全点后执行，避免复杂的交叉加锁。</p>
+<p>LL/SC 原型利用新的 TCG 操作与 SoftMMU 慢路径记录排他访问状态；设备 MMIO 继续通过内存 API，按设备能力选择无锁处理或 BQL。这里描述的是当时方案，不能把这些原型操作名当作所有后续版本的固定实现。</p>
+<h3 id="mttcg-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>讲稿报告主要测试 ARM32 客户机与 x86 宿主组合，并安排性能演示，但 PDF 没有提供足够的可复核应用基准数据。能够确认的是全局状态整理、并行执行路径和原子语义方案已经有补丁与测试工作；内存屏障当时仍有缺口，尚不能宣称所有前后端组合均正确可用。</p>
+<h3 id="mttcg-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>弱内存宿主可能暴露 x86 测试中难以出现的问题，跨页访问、自修改代码和翻译失效也需要并发压力验证。后续工作包括内存屏障操作、架构覆盖、文档和专门测试。评价这项演进时，正确性测试与性能扩展曲线必须同时存在，多启动几个宿主线程并不足以完成多核模拟。</p>
+</section>
+<section id="smm" class="mechanism-section">
+<h2><span class="mechanism-heading-number">六、</span>SMM 与 Secure Boot：保护虚拟机固件状态</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=IxLvxP1O8T8" target="_blank" rel="noopener noreferrer">Securing Secure Boot with System Management Mode</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://www.linux-kvm.org/images/c/ce/03x06-Aspen-Paolo_Bonzini-Securing_secure_boot.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Paolo Bonzini · Red Hat</p>
+</div>
+<h3 id="smm-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>Secure Boot 的签名检查依赖可信密钥和固件状态。如果操作系统能够直接修改保存密钥的变量或 S3 恢复脚本，启动链仍可能被破坏。SMM 提供受保护的固件执行环境，虚拟机需要由 QEMU、KVM 和 OVMF 共同模拟其状态切换、内存隔离与闪存访问规则。</p>
+<h3 id="smm-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>SMM 内存必须对普通模式隐藏，又要对进入 SMM 的 CPU 可见；多 vCPU 同时处于不同模式时，不能简单修改一份全局映射。闪存访问同样需要知道发起访问的 CPU 当前模式。迁移还要保存相关状态，而固件处理程序自身若错误访问不可信内存，硬件隔离也无法修复逻辑漏洞。</p>
+<h3 id="smm-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>QEMU 补齐 Q35 的 SMRAM/TSEG 和锁定行为，利用内存事务属性判断访问是否来自 SMM，对普通模式下不允许的闪存写入进行限制。KVM 维护普通与 SMM 两套内存视图，由 vCPU 当前模式选择，避免每次变化为所有 vCPU 分别更新完整映射。</p>
+<p>KVM 还负责 SMI 进入、RSM 返回和寄存器状态处理，QEMU 将模式信息传给用户态设备访问路径。讲稿展示虚拟硬件可以采用更简单的受控闪存写入方式，减少对真实芯片组复杂协议的复制，同时保持固件需要的保护语义。</p>
+<h3 id="smm-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>作者列出 QEMU 2.4 与 Linux 4.2 的相关支持状态，OVMF 补丁当时仍在评审，示例还受 32 位、单处理器等条件限制。材料提供寄存器与地址空间设计，没有给出完整固件安全审计结果。功能路径可用与整条信任链安全是不同层面的验证，不能相互替代。</p>
+<h3 id="smm-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>SMM 处理程序、共享通信缓冲区、恢复脚本和嵌套状态都需要继续审查。客户机固件隔离也不负责防御恶意宿主修改虚拟硬件。后续评价应明确威胁边界，并测试多 CPU、迁移及异常进入返回，检查受保护变量在不同运行阶段是否始终遵守同一权限规则。</p>
+</section>
+<section id="arm-irq" class="mechanism-section">
+<h2><span class="mechanism-heading-number">七、</span>Arm 中断虚拟化：从 GICv2 到 GICv3</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=BGGbgufgP_Y" target="_blank" rel="noopener noreferrer">ARM Interrupt Virtualization</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://www.linux-kvm.org/images/7/79/03x09-Aspen-Andre_Przywara-ARM_Interrupt_Virtualization.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Andre Przywara · Arm</p>
+</div>
+<h3 id="arm-irq-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>中断虚拟化需要让客户机接收、确认和结束设备事件，同时尽量减少每次操作引起的软件切换。GICv2 已提供虚拟 CPU 接口与 List Registers，GICv3 又引入更大 CPU 规模、Redistributor 和 MSI/LPI。原有按少量连续中断组织的 VGIC 软件模型，因此需要适应新的数量与路由方式。</p>
+<h3 id="arm-irq-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>GICv2 的部分 MMIO 寄存器按 CPU 分组，同一地址的意义取决于访问 vCPU。GICv3 的状态分布和系统寄存器接口又不同，软件需要同时支持两种模型。大量稀疏 LPI 不适合沿用固定大位图，ITS 表位于客户机内存还会增加访问成本；迁移时软件状态与硬件 List Registers 必须一致。</p>
+<h3 id="arm-irq-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>GICv2 路径由软件模拟 Distributor，把待处理中断装入 List Registers；客户机通过虚拟 CPU 接口执行部分确认与 EOI，无需每次退出，运行后再同步相关状态。对可以关联的物理和虚拟中断，硬件还能协助结束物理中断，减少额外监视。</p>
+<p>面向 GICv3，讲稿提出按实际使用的中断组织状态，分离不同 IRQ 类型与模拟模型。ITS 的设备 ID、门铃地址和消息内容共同参与识别中断，无法直接套用一个全局中断号的假设；KVM 路由接口需要表达这些信息。</p>
+<h3 id="arm-irq-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>讲稿区分已完成的初始化与多模型重构，以及正在处理的物理/虚拟中断关联和后续结构调整。材料没有吞吐或延迟基准，能够确认的是硬件快速路径的职责和软件扩展性问题。GICv4 直接注入虚拟 LPI 在此属于后续方向，不能当作当年 VGIC 已经具备的能力。</p>
+<h3 id="arm-irq-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>状态缓存、失效与迁移会影响中断是否丢失、重复或发给错误 vCPU。稀疏分配结构也需要兼顾常见路径成本。后续验证应覆盖电平与边沿触发、不同中断类别、vCPU 调度和迁移同步，既检查快速注入，也检查不满足硬件直达条件时的软件回退。</p>
+</section>
+</div>
+  </div>
+  <nav class="mechanism-related" aria-label="会议资料"><a href="../kvm-forum.html#year-2015">返回年度总览</a><a href="https://www.linux-kvm.org/page/KVM_Forum_2015" target="_blank" rel="noopener noreferrer">原始议程</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=0ad6552bf0f5"></script>
+<script src="../assets/mechanism-viewer.js?v=02b518d59aa4" defer></script></body>
+</html>

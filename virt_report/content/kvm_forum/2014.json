@@ -1,0 +1,78 @@
+{
+  "year": 2014,
+  "url": "https://www.linux-kvm.org/page/KVM_Forum_2014",
+  "analysis": {
+    "headline": "资源放置、设备并行与隔离机制",
+    "themes": [
+      "NUMA",
+      "IOThread",
+      "GPU 共享",
+      "安全加固",
+      "userfaultfd"
+    ],
+    "summary": "2014 年的五项精选关注资源管理与隔离机制的基础改造。自动 NUMA 平衡把内存位置与调度联系起来，IOThread 推进设备处理并行化；KVMGT 与 KVM 加固分别探索共享设备和更小的特权处理面，userfaultfd 则开始把远端缺页整理成通用接口。每项解读都保留原型阶段及负面实验结果。"
+  },
+  "review": {
+    "source": "2014.md",
+    "title": "KVM Forum 2014 精选解读",
+    "reviewed_on": "2026-11-15",
+    "summary": "2014 年的五项精选关注资源管理与隔离机制的基础改造。自动 NUMA 平衡把内存位置与调度联系起来，IOThread 推进设备处理并行化；KVMGT 与 KVM 加固分别探索共享设备和更小的特权处理面，userfaultfd 则开始把远端缺页整理成通用接口。每项解读都保留原型阶段及负面实验结果。",
+    "talks": [
+      {
+        "id": "hardening",
+        "title": "KVM 安全加固：缩小内核中的客户机输入处理面",
+        "original_title": "KVM Security Improvements",
+        "speakers": "Andrew Honig · Google",
+        "url": "https://www.linux-kvm.org/images/f/f6/01x02-KVMHardening.pdf",
+        "slides_url": "https://www.linux-kvm.org/images/f/f6/01x02-KVMHardening.pdf",
+        "slides_format": "PDF",
+        "pages": "1—17",
+        "summary": "真实漏洞暴露了长度校验、发布版断言和指令模拟的风险。讲稿提出把部分功能移至用户态、在内核保留必要快速路径的方向；解读区分已经确认的漏洞原因与尚未完成的攻击面、性能目标。"
+      },
+      {
+        "id": "numa",
+        "title": "自动 NUMA 平衡：页面迁移与任务放置如何配合",
+        "original_title": "Automatic NUMA Balancing",
+        "speakers": "Rik van Riel · Red Hat；Vinod Chegu · HP",
+        "url": "https://www.linux-kvm.org/images/7/75/01x07b-NumaAutobalancing.pdf",
+        "slides_url": "https://www.linux-kvm.org/images/7/75/01x07b-NumaAutobalancing.pdf",
+        "slides_format": "PDF",
+        "pages": "1—69",
+        "summary": "通过提示缺页采样内存访问，内核同时调整页面位置和任务位置。讲稿解释共享任务分组、负载均衡与页迁移抑制，并给出接近手动绑定及明显退化的不同负载，展示自动策略的适用边界。"
+      },
+      {
+        "id": "kvmgt",
+        "title": "KVMGT：共享 GPU 的选择性直通",
+        "original_title": "KVMGT: A Full GPU Virtualization Solution",
+        "speakers": "Jike Song、Zhiyuan Lv、Kevin Tian · Intel",
+        "url": "https://www.linux-kvm.org/images/f/f3/01x08b-KVMGT-a.pdf",
+        "slides_url": "https://www.linux-kvm.org/images/f/f3/01x08b-KVMGT-a.pdf",
+        "slides_format": "PDF",
+        "pages": "1—18",
+        "summary": "客户机使用原生图形驱动，宿主拦截特权操作并分时复用 GPU。讲稿展示早期 KVMGT 的内核设备模型、地址空间划分与直接映射路径，同时明确 PPGTT、Windows 支持和性能数据的限制。"
+      },
+      {
+        "id": "iothreads",
+        "title": "IOThread 与 AioContext：设备处理移出全局锁",
+        "original_title": "Towards Multi-threaded Device Emulation in QEMU",
+        "speakers": "Stefan Hajnoczi · Red Hat",
+        "url": "https://www.linux-kvm.org/images/a/a7/02x04-MultithreadedDevices.pdf",
+        "slides_url": "https://www.linux-kvm.org/images/a/a7/02x04-MultithreadedDevices.pdf",
+        "slides_format": "PDF",
+        "pages": "1—26",
+        "summary": "块设备数据面可以独立处理请求，但块层状态、脏页位图和跨设备 DMA 仍然共享。讲稿从 IOThread 的事件循环归属讲到锁顺序与多队列，解释并行设备模拟需要解决哪些一致性问题。"
+      },
+      {
+        "id": "userfaultfd-design",
+        "title": "userfaultfd 的设计起点：远端内存与原子补页",
+        "original_title": "Memory Externalization with userfaultfd",
+        "speakers": "Andrea Arcangeli、David Alan Gilbert · Red Hat",
+        "url": "https://www.linux-kvm.org/images/c/c8/02x05-Userfauld.pdf",
+        "slides_url": "https://www.linux-kvm.org/images/c/c8/02x05-Userfauld.pdf",
+        "slides_format": "PDF",
+        "pages": "1—26",
+        "summary": "为远端内存建立通用缺页接口，需要同时支持用户态访问和内核访问，避免带着核心锁无限等待。讲稿比较信号、重映射与原子复制方案，并揭示后台页面传输如何拖慢按需请求。"
+      }
+    ]
+  }
+}

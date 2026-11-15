@@ -93,6 +93,19 @@ def test_prose_is_not_jinja_or_raw_html_and_ordinary_fences_stay_literal():
     assert 'href="javascript:' not in html
 
 
+def test_reviews_can_explicitly_omit_software_baselines_without_relaxing_structure():
+    html = render_article_markdown(
+        '## 本届观察 {#preface}\n\n来源见演讲。',
+        baselines='', diagrams={}, components={}, require_baselines=False,
+    )
+    assert '<section id="preface"' in html
+    assert '来源见演讲。' in html
+    for source in ('', 'no section', '## Unknown {#unknown}\n'):
+        with pytest.raises(ValueError):
+            render_article_markdown(source, baselines='', diagrams={}, components={},
+                                    require_baselines=False)
+
+
 @pytest.mark.parametrize('source,match', [
     ('', 'requires'), ('prose before heading', 'start'),
     ('## 标题\n', 'stable'), ('## 标题 {#other}\n', 'first'),

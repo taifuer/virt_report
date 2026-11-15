@@ -1,0 +1,78 @@
+{
+  "year": 2020,
+  "url": "https://kvm-forum.qemu.org/2020/",
+  "analysis": {
+    "headline": "加速路径、迁移记录与原机维护",
+    "themes": [
+      "vDPA",
+      "Dirty ring",
+      "vCPU 调度",
+      "QEMU 更新",
+      "qcow2"
+    ],
+    "summary": "2020 年的精选体现了两种优化方向：把高频操作放到合适的执行位置，以及降低系统维护过程中不必要的扫描、复制和重建。vDPA 为硬件数据路径建立统一接入，dirty ring 细化脏页汇报，IPI 与调度优化缩短多核等待。QEMU 原机更新和 qcow2 子簇进一步处理更新、首次写入等低频但昂贵的阶段。五篇分别交代机制、实测条件和仍待完善的接口。"
+  },
+  "review": {
+    "source": "2020.md",
+    "title": "KVM Forum 2020 精选解读",
+    "reviewed_on": "2026-11-15",
+    "summary": "五场分享覆盖 vDPA、dirty ring、vCPU 协作延迟、QEMU 原机更新和 qcow2 子簇分配。",
+    "talks": [
+      {
+        "id": "vdpa",
+        "title": "vDPA 内核框架：统一数据面与厂商控制接口",
+        "original_title": "vDPA Support in Linux Kernel",
+        "speakers": "Jason Wang",
+        "url": "https://www.youtube.com/watch?v=HarITOZ0hIw",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2020/vDPA_novideo.pdf",
+        "slides_format": "PDF",
+        "pages": "1—24",
+        "summary": "硬件能直接消费 Virtio 队列，控制寄存器和管理方式却各不相同。vDPA 用设备抽象与总线驱动连接 QEMU、宿主 Virtio 驱动和硬件，保留标准客户机接口，同时明确迁移能力仍需配套。"
+      },
+      {
+        "id": "dirty-ring",
+        "title": "Dirty ring：按 vCPU 收集脏页变化",
+        "original_title": "KVM Dirty Ring - A New Approach to Logging",
+        "speakers": "Peter Xu",
+        "url": "https://www.youtube.com/watch?v=YsQJ-Vll3sg",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2020/kvm_dirty_ring_peter.pdf",
+        "slides_format": "PDF",
+        "pages": "1—24",
+        "summary": "大虚机反复复制和扫描整张位图，会增加迁移同步成本。dirty ring 用共享环记录变化页面，将收集与重新保护分开；环满带来的 vCPU 退出既是流控手段，也是必须控制的业务延迟来源。"
+      },
+      {
+        "id": "vcpu-latency",
+        "title": "vCPU 协作优化：缩短 IPI 路径并唤起关键执行者",
+        "original_title": "KVM Latency Performance Tuning",
+        "speakers": "Wanpeng Li",
+        "url": "https://www.youtube.com/watch?v=eQVH-zZK3so",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2020/KVM%20Latency%20and%20Scalability%20Performance%20Tuning.pdf",
+        "slides_format": "PDF",
+        "pages": "1—15",
+        "summary": "跨 vCPU 调用既受中断模拟成本影响，也可能等待被宿主抢占的目标线程。演讲结合退出快路径与定向让出 CPU，展示多核和超分环境中不同的瓶颈，并保留硬件加速出现退化的对照。"
+      },
+      {
+        "id": "qemu-update",
+        "title": "QEMU 原机更新：保留内存与直通设备连接",
+        "original_title": "QEMU Live Update",
+        "speakers": "Steven Sistare",
+        "url": "https://www.youtube.com/watch?v=Qujgm-EPyvY",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2020/qemu_live_update.pdf",
+        "slides_format": "PDF",
+        "pages": "1—14",
+        "summary": "替换 QEMU 进程时保留 RAM、文件描述符和 VFIO 映射，再重建 KVM 对象，可减少跨机迁移的资源需求。分析状态交接、持续 DMA 与设备恢复，并区分用户态更新和内核更新的条件。"
+      },
+      {
+        "id": "qcow2-subclusters",
+        "title": "qcow2 子簇：减少小写入的复制与元数据成本",
+        "original_title": "Faster and Smaller qcow2 Files With Subcluster-based Allocation",
+        "speakers": "Alberto Garcia",
+        "url": "https://www.youtube.com/watch?v=zJetcfDVFNw",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2020/qcow2-subcluster-allocation.pdf",
+        "slides_format": "PDF",
+        "pages": "1—38",
+        "summary": "大簇减少映射元数据，却放大小块首次写入的复制；小簇又增加分配和缓存负担。扩展 L2 表项用子簇状态拆开两个粒度，通过随机写测试说明收益主要发生在哪些镜像区域。"
+      }
+    ]
+  }
+}

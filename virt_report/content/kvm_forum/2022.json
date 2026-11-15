@@ -1,0 +1,89 @@
+{
+  "year": 2022,
+  "url": "https://kvm-forum.qemu.org/2022/",
+  "analysis": {
+    "headline": "规模化运行、可信隔离与维护接口",
+    "themes": [
+      "Arm MMU",
+      "IOMMUFD",
+      "pKVM",
+      "用户态网络",
+      "热更新"
+    ],
+    "summary": "2022 年的精选围绕系统边界展开：大规模虚机的页表维护如何避免阻塞业务，私有内存如何限制宿主访问，直通设备如何获得可扩展的地址空间接口。passt 与 QSD 将网络、存储接入更灵活的进程和容器环境；保留 IOMMU 状态的热更新原型则探索不停掉设备的宿主维护。六项工作分别展示了规模效应、隔离要求和生命周期管理之间的制约。"
+  },
+  "review": {
+    "source": "2022.md",
+    "title": "KVM Forum 2022 精选解读",
+    "reviewed_on": "2026-11-15",
+    "summary": "六场分享覆盖 Arm MMU 扩展性、IOMMUFD、pKVM、passt、独立存储服务与内核热更新。",
+    "talks": [
+      {
+        "id": "arm-mmu",
+        "title": "Arm 大虚机迁移：控制页表拆分与 TLB 广播",
+        "original_title": "KVM/ARM at Scale: Improvements to the MMU in the Face of Hardware Growing Pains",
+        "speakers": "Oliver Upton",
+        "url": "https://www.youtube.com/watch?v=uPhNaDg19Hg",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2022/KVM_ARM%20at%20Scale%20KVM%20Forum%202022.pdf",
+        "slides_format": "PDF",
+        "pages": "1—21",
+        "summary": "48 vCPU、192 GiB 虚机在启用脏页跟踪时出现严重停顿。分析 MMU 锁、大页拆分与 Arm TLB 失效规则的叠加成本，说明并行缺页处理和限速拆分怎样共同改善运行连续性。"
+      },
+      {
+        "id": "iommufd",
+        "title": "IOMMUFD：重建直通设备的地址空间接口",
+        "original_title": "IOMMUFD Integration in QEMU",
+        "speakers": "Yi Liu, Eric Auger",
+        "url": "https://www.youtube.com/watch?v=PlEzLywexHE",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2022/IOMMUFD%20Integration%20in%20QEMU%20-%20Yi%20Liu%20%26%20Eric%20Auger.pdf",
+        "slides_format": "PDF",
+        "pages": "1—20",
+        "summary": "设备直通需要共享地址空间、嵌套转换和缺页上报，旧 VFIO 容器接口逐渐难以扩展。沿 IOAS、硬件页表和设备绑定关系，解读新接口的设计目的与 2022 年尚未稳定的能力边界。"
+      },
+      {
+        "id": "protected-kvm",
+        "title": "pKVM：让宿主内核受内存访问规则约束",
+        "original_title": "Protected KVM on Arm64: A Technical Deep Dive",
+        "speakers": "Quentin Perret",
+        "url": "https://www.youtube.com/watch?v=9npebeVFbFw",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2022/KVM%20forum%202022%20-%20pKVM%20deep%20dive.pdf",
+        "slides_format": "PDF",
+        "pages": "1—85",
+        "summary": "pKVM 在 EL2 为宿主和客户机分别管理访问权限，把敏感 vCPU 状态保存在宿主不可读取的对象中。沿页面所有权、MMIO 和销毁过程，说明隔离实现，以及与普通 Linux 内存访问的冲突。"
+      },
+      {
+        "id": "passt",
+        "title": "passt：把虚机网络接入普通宿主套接字",
+        "original_title": "Slirp is Dead, Long Live Slirp! A New Approach to User-mode Networking",
+        "speakers": "Stefano Brivio, Alona Paz",
+        "url": "https://www.youtube.com/watch?v=U89bWP1HNgU",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2022/Slirp%20is%20dead%2C%20long%20live%20Slirp%21%20KVM%20Forum%202022.pdf",
+        "slides_format": "PDF",
+        "pages": "1—23",
+        "summary": "KubeVirt 的网络需要与 Pod 内的代理、安全策略和地址模型协作。passt 把以太帧转换为宿主套接字操作，在无需创建特权网络接口的条件下工作，同时通过批量处理控制用户态网络的成本。"
+      },
+      {
+        "id": "storage-daemon",
+        "title": "QSD 与 libblkio：拆开虚机和存储的生命周期",
+        "original_title": "QEMU-Storage-Daemon and libblkio: Exploring New Shores for the QEMU Block Layer",
+        "speakers": "Kevin Wolf, Stefano Garzarella",
+        "url": "https://www.youtube.com/watch?v=rAL_tH-gr8k",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2022/kvmforum2022_qsd_libblkio_v1.pdf",
+        "slides_format": "PDF",
+        "pages": "1—35",
+        "summary": "存储任务常常需要在虚机关闭后继续执行，多个虚机也可能共享镜像链。QSD 抽出块层服务，libblkio 提供设备访问接口；比较直接导出队列与经过 QEMU 块层的路径及其取舍。"
+      },
+      {
+        "id": "iommu-kexec",
+        "title": "内核热更新：跨 kexec 保留 DMA 映射",
+        "original_title": "Preserving IOMMU States During Kexec Reboot",
+        "speakers": "Fam Zheng",
+        "url": "https://www.youtube.com/watch?v=KoSMUjC2mL8",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2022/kvmforum2022-Preserving%20IOMMU%20states%20during%20kexec%20reboot-v4.pdf",
+        "slides_format": "PDF",
+        "pages": "1—25",
+        "summary": "更换宿主内核时，直通设备可能继续进行 DMA。方案保留客户机内存、IOMMU 页表和 PCI 状态，在新内核中重建中断连接；重点辨析原型验证范围与真实硬件上的安全要求。"
+      }
+    ]
+  }
+}

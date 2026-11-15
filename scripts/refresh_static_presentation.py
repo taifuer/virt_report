@@ -225,7 +225,8 @@ def _page_chrome(relative: str, site_name: str) -> dict[str, str]:
         active.update(("reports", period))
     elif relative == "topics.html" or period == "topics":
         active.add("topics")
-    elif relative in {"conferences.html", "kvm-forum.html", "academic-conferences.html", "conference-papers.html"}:
+    elif (relative in {"conferences.html", "kvm-forum.html", "academic-conferences.html", "conference-papers.html"}
+          or period == "kvm-forum"):
         active.add("conferences")
     elif relative == "mechanisms.html" or period == "mechanisms":
         active.add("mechanisms")

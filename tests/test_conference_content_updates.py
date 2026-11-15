@@ -42,28 +42,30 @@ def test_paper_archive_keeps_topic_tags_without_community_topic_row():
     assert "editor-comment" in paper
 
 
-def test_kvm_forum_preview_replaces_withdrawn_session_without_inflating_count():
+def test_kvm_forum_post_event_agenda_keeps_withdrawals_and_title_updates():
     editions, analysis = kvm_forum.load_content()
-    preview = next(item for item in editions if item["year"] == 2026)
-    talks = {item["url"]: item for item in preview["talks"]}
+    edition = next(item for item in editions if item["year"] == 2026)
+    talks = {item["url"]: item for item in edition["talks"]}
 
-    assert preview["preview"] is True
-    assert preview["starts_on"] == "2026-11-12"
-    assert preview["ends_on"] == "2026-11-13"
-    assert preview["checked_at"] == "2026-10-12"
-    assert len(talks) == len(preview["talks"]) == 43
+    assert "preview" not in edition
+    assert edition["starts_on"] == "2026-11-12"
+    assert edition["ends_on"] == "2026-11-13"
+    assert edition["checked_at"] == "2026-11-15"
+    assert len(talks) == len(edition["talks"]) == 43
     assert "https://pretalx.com/kvm-forum-2026/talk/KP3ZN7/" not in talks
     assert talks["https://pretalx.com/kvm-forum-2026/talk/BY8NR3/"]["title"] == (
         "Artificial Intuition: Lessons Learned From Vibe-Auditing KVM"
     )
-    assert set(preview["selected_urls"]) <= talks.keys()
-    assert "AI 辅助 KVM 安全审计" in preview["analysis"]["summary"]
-    assert "依据会前议程归纳" in preview["analysis"]["summary"]
-    assert "合入、验证和部署状态需以各项目后续记录为准" in preview["analysis"]["summary"]
+    assert talks["https://pretalx.com/kvm-forum-2026/talk/ZB3GWA/"]["title"] == (
+        "COCONUT-SVSM, KVM Planes, and Secure Interrupt Injection - Upstream Alignment"
+    )
+    assert {talk["url"] for talk in edition["review"]["talks"]} <= talks.keys()
 
     page = html_render.render_kvm_forum_html(Config(), editions, analysis)
     assert "43 个议题" in page
-    assert "AI 辅助 KVM 安全审计" in page
+    assert "原始讲稿" in page
+    assert "议程预览" not in page and "核对于" not in page
+    assert "依据会前议程归纳" not in page
     assert "Scheduling KVM Sandboxes" not in page
 
 

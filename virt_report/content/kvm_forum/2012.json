@@ -1,0 +1,78 @@
+{
+  "year": 2012,
+  "url": "https://www.linux-kvm.org/page/KVM_Forum_2012",
+  "analysis": {
+    "headline": "地址空间、多队列与硬件辅助的新基础",
+    "themes": [
+      "MemoryRegion",
+      "APICv",
+      "网络多队列",
+      "KVM/ARM",
+      "BQL"
+    ],
+    "summary": "2012 年精选覆盖 QEMU/KVM 后续发展的几块基础：MemoryRegion 统一地址空间描述，APICv 减少中断相关退出，多队列网络扩大并行数据路径，KVM/ARM 接入新的硬件虚拟化模型。围绕 BQL 的讨论进一步说明性能路径拆分所需的锁顺序与对象寿命规则，原型限制和负面测试一并保留。"
+  },
+  "review": {
+    "source": "2012.md",
+    "title": "KVM Forum 2012 精选解读",
+    "reviewed_on": "2026-11-15",
+    "summary": "2012 年精选覆盖 QEMU/KVM 后续发展的几块基础：MemoryRegion 统一地址空间描述，APICv 减少中断相关退出，多队列网络扩大并行数据路径，KVM/ARM 接入新的硬件虚拟化模型。围绕 BQL 的讨论进一步说明性能路径拆分所需的锁顺序与对象寿命规则，原型限制和负面测试一并保留。",
+    "talks": [
+      {
+        "id": "memory-api",
+        "title": "QEMU 内存 API：把总线拓扑变成地址视图",
+        "original_title": "Revamping the QEMU Memory API",
+        "speakers": "Avi Kivity · Red Hat",
+        "url": "https://www.linux-kvm.org/images/e/e4/2012-forum-memory-api.pdf",
+        "slides_url": "https://www.linux-kvm.org/images/e/e4/2012-forum-memory-api.pdf",
+        "slides_format": "PDF",
+        "pages": "1—21",
+        "summary": "真实设备地址经过桥、别名和区域覆盖，简单按页登记很难正确表达。新 MemoryRegion 模型由设备声明局部区域、核心生成平坦视图，再通知 KVM 和设备后端，为多地址空间与并发读取建立基础。"
+      },
+      {
+        "id": "apicv",
+        "title": "APICv：让硬件处理更多虚拟中断状态",
+        "original_title": "Enabling Optimized Interrupt/APIC Virtualization in KVM",
+        "speakers": "Jun Nakajima · Intel",
+        "url": "https://www.linux-kvm.org/images/7/70/2012-forum-nakajima_apicv.pdf",
+        "slides_url": "https://www.linux-kvm.org/images/7/70/2012-forum-nakajima_apicv.pdf",
+        "slides_format": "PDF",
+        "pages": "1—15",
+        "summary": "APIC 寄存器访问、中断窗口和 EOI 都可能造成退出。讲稿逐项解释寄存器虚拟化、虚拟中断投递与 Posted Interrupt 的职责，尤其区分目标 vCPU 免退出和发送侧仍需软件处理的情况。"
+      },
+      {
+        "id": "multiqueue-net",
+        "title": "Virtio-net 多队列：从网卡队列到宿主线程",
+        "original_title": "Multiqueue Networking for KVM",
+        "speakers": "Jason Wang · Red Hat",
+        "url": "https://www.linux-kvm.org/images/6/63/2012-forum-multiqueue-networking-for-kvm.pdf",
+        "slides_url": "https://www.linux-kvm.org/images/6/63/2012-forum-multiqueue-networking-for-kvm.pdf",
+        "slides_format": "PDF",
+        "pages": "1—20",
+        "summary": "单队列让客户机与 vhost 的处理能力集中在少量 CPU。方案贯通 Virtio 队列对、QEMU、TAP 文件描述符与多个 vhost 线程，并用事务与流式负载展示并行度提高后可能出现的相反结果。"
+      },
+      {
+        "id": "arm-kvm",
+        "title": "KVM/ARM：Hyp 模式、二级页表与设备协作",
+        "original_title": "ARM Virtualization for the Masses",
+        "speakers": "Christoffer Dall · Virtual Open Systems / Columbia University",
+        "url": "https://www.linux-kvm.org/images/d/d4/2012-forum-arm-christoffer-dall.pdf",
+        "slides_url": "https://www.linux-kvm.org/images/d/d4/2012-forum-arm-christoffer-dall.pdf",
+        "slides_format": "PDF",
+        "pages": "1—70",
+        "summary": "早期 Armv7 硬件虚拟化引入 Hyp 模式和 Stage-2，但完整 Linux 宿主仍运行在普通内核模式。讲稿沿世界切换、缺页、MMIO 和 VGIC 说明两部分 KVM 如何协作，并交代当时上游评审状态。"
+      },
+      {
+        "id": "bql",
+        "title": "绕过 BQL：低延迟设备路径需要怎样的锁规则",
+        "original_title": "For Performance and Latency, Not for Fun — How to Overcome the Big QEMU Lock",
+        "speakers": "Jan Kiszka · Siemens",
+        "url": "https://www.linux-kvm.org/images/2/24/2012-forum-Jan-Kiszka-BQL.pdf",
+        "slides_url": "https://www.linux-kvm.org/images/2/24/2012-forum-Jan-Kiszka-BQL.pdf",
+        "slides_format": "PDF",
+        "pages": "1—25",
+        "summary": "细化设备锁可以降低全局争用，却会遇到回调嵌套、热拔除和前后端反向加锁。讲稿以 RTC 定时器原型贯通独立路径，解释生命周期和锁顺序为何必须一起设计，同时列明尚未支持的操作。"
+      }
+    ]
+  }
+}

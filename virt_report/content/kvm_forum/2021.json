@@ -1,0 +1,78 @@
+{
+  "year": 2021,
+  "url": "https://kvm-forum.qemu.org/2021/",
+  "analysis": {
+    "headline": "内存效率、设备复用与机密虚机的落地条件",
+    "themes": [
+      "内存超分",
+      "脏页跟踪",
+      "VDUSE",
+      "SEV-SNP",
+      "设备迁移"
+    ],
+    "summary": "本届精选把注意力放在运行条件上：内存超分要在客户机不配合时仍能回退，TB 级虚机迁移要避免管理数据本身耗尽时间预算，独立设备后端要有稳定的映射和恢复接口。SEV-SNP 则将页面所有权与验证引入内存生命周期。五篇解读从生产控制策略、内核数据结构到设备协议，说明功能可用与大规模可靠运行之间还需要哪些配套。"
+  },
+  "review": {
+    "source": "2021.md",
+    "title": "KVM Forum 2021 精选解读",
+    "reviewed_on": "2026-11-15",
+    "summary": "五场分享讨论生产内存超分、大虚机脏页跟踪、VDUSE、SEV-SNP 与外部设备迁移。",
+    "talks": [
+      {
+        "id": "memory-overcommit",
+        "title": "生产内存超分：组合 balloon、换页与工作集估计",
+        "original_title": "Lessons Learned Building a Production Memory-Overcommit Solution",
+        "speakers": "Florian Schmidt, Ivan Teterevkov",
+        "url": "https://www.youtube.com/watch?v=r1wxgLTG40g",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2021/2021-KVM-Forum-Memory_Overcommit.pdf",
+        "slides_format": "PDF",
+        "pages": "1—14",
+        "summary": "单靠 balloon 依赖客户机配合，单靠宿主换页又容易触发双重换页。生产方案结合 cgroup 限额、空闲页采样和备用内存池，重点处理突发需求、失效回退以及迁移对工作集的扰动。"
+      },
+      {
+        "id": "dirty-tracking",
+        "title": "大内存迁移：脏页位图也会成为瓶颈",
+        "original_title": "KVM Dirty Page Tracking",
+        "speakers": "Peter Xu",
+        "url": "https://www.youtube.com/watch?v=5FZPIJim_Us",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2021/KVM%20Dirty%20Page%20Tracking.pdf",
+        "slides_format": "PDF",
+        "pages": "1—17",
+        "summary": "TB 级虚机的脏页位图达到数百 MB，多层复制和原子操作会消耗可观时间。结合 3 TB 虚机观察与位图微基准，区分写入捕获、变化上报和用户态归并，分析应当优化哪一层。"
+      },
+      {
+        "id": "vduse",
+        "title": "VDUSE：让用户态设备服务虚机和容器",
+        "original_title": "VDUSE - vDPA Device in Userspace",
+        "speakers": "Yongji Xie",
+        "url": "https://www.youtube.com/watch?v=rLzXh8DI3lE",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2021/YongjiXie_KVM_VDUSE%20%281%29.pdf",
+        "slides_format": "PDF",
+        "pages": "1—24",
+        "summary": "同一用户态块设备后端需要同时接入虚机与宿主应用。VDUSE 复用 vDPA 控制接口，以共享映射或回弹缓冲区连接数据路径，说明 IOTLB、通知与设备生命周期的协作方式。"
+      },
+      {
+        "id": "sev-snp",
+        "title": "SEV-SNP：把页面所有权纳入硬件检查",
+        "original_title": "Protecting from Malicious Hypervisor Using AMD SEV-SNP",
+        "speakers": "Brijesh Singh",
+        "url": "https://www.youtube.com/watch?v=egbFKv8vmYE",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2021/SEV-SNP-AMD-Brijesh-Singh.pdf",
+        "slides_format": "PDF",
+        "pages": "1—18",
+        "summary": "内存加密无法独自阻止恶意映射和数据篡改。SNP 通过 RMP、客户机页面验证和受控状态转换补上完整性保护；解读启动、共享内存与证明接口，并保留当时补丁阶段的功能限制。"
+      },
+      {
+        "id": "device-migration",
+        "title": "外部设备迁移：状态格式与兼容性如何约定",
+        "original_title": "Live Migrating VFIO, vhost-user, and vfio-user Devices",
+        "speakers": "Stefan Hajnoczi",
+        "url": "https://www.youtube.com/watch?v=L9B5mYVr3ow",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2021/Live%20Migrating%20VFIO%2C%20vhost-user%2C%20and%20vfio-user%20Devices.pdf",
+        "slides_format": "PDF",
+        "pages": "1—17",
+        "summary": "迁移不只需要读写设备状态，还需要提前判断目标能否恢复。比较 vhost-user、VFIO 与 vfio-user 的状态处理方式，分析设备模型、版本标识及跨实现兼容的边界。"
+      }
+    ]
+  }
+}

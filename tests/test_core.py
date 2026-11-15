@@ -430,6 +430,8 @@ def test_about_page_and_architecture_badge_render():
     actions = about.split('<nav class="about-actions"', 1)[1].split("</nav>", 1)[0]
     assert 'href="topics.html">查看专题</a>' in actions
     assert 'href="conferences.html">查看会议</a>' in actions
+    assert actions.count('href="conference-papers.html">查看论文</a>') == 1
+    assert actions.index('conferences.html') < actions.index('conference-papers.html') < actions.index('versions.html')
     assert 'href="versions.html">查看版本</a>' in actions
     assert about.index('class="about-contact"') < about.index('class="about-actions"') < about.index('class="about-sections"')
     assert "<h2>版本记录</h2>" not in about
@@ -1259,7 +1261,7 @@ def test_kvm_forum_renders_newest_first_with_source_links():
     assert "<title>KVM Forum - virt-report</title>" in page
     assert page.index('id="year-2025"') < page.index('id="year-2010"')
     assert page.index("2022—2025") < page.index("2010—2013")
-    assert "查看 2025 年原始议程" in page
+    assert page.count('>原始议程</a>') == len(editions)
     for edition in editions:
         assert f'<h2>{edition["year"]}</h2>' in page
         assert page.count(f'href="{edition["url"]}"') == 1
@@ -1303,7 +1305,7 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert '<div><h2>KVM Forum</h2><span class="guide-range">2010—2026</span></div>' in page
     assert (f'<div><h2>学术会议</h2><span class="guide-range">'
             f'{content["analysis"]["coverage"]}</span></div>') in page
-    assert 'href="kvm-forum.html">查看技术演进</a>' in page
+    assert 'href="kvm-forum.html">查看年度解读</a>' in page
     assert 'href="conference-papers.html">查看相关论文</a>' in page
     assert f'其中 {content["curated_count"]} 篇经典论文' in page
     assert f'{content["article_count"]} 篇论文、{content["monograph_count"]} 部专著' in page
@@ -1431,7 +1433,7 @@ def test_kvm_forum_uses_conference_navigation():
     page = html_render.render_kvm_forum_html(Config(), editions, analysis)
     assert 'href="conferences.html" class="on" aria-current="page">会议</a>' in page
     assert ">KVM Forum</a>" not in page.split("</nav>", 1)[0]
-    assert '<nav class="kicker" aria-label="面包屑">' in page
+    assert '<nav class="kicker" aria-label="面包屑">' not in page
     assert 'KVM Forum Review' not in page
     assert "会议</a> · Conference Archive" not in page
 

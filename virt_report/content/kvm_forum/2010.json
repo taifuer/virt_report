@@ -1,0 +1,78 @@
+{
+  "year": 2010,
+  "url": "https://kvm-forum.qemu.org/2010/",
+  "analysis": {
+    "headline": "设备模型、管理接口与内存效率",
+    "themes": [
+      "qdev",
+      "VMState",
+      "QMP",
+      "透明大页",
+      "异步缺页"
+    ],
+    "summary": "2010 年的精选集中在长期影响 QEMU/KVM 的基础接口：qdev 统一设备管理，VMState 组织迁移状态，QMP 连接管理程序；透明大页与异步缺页则分别改善地址转换和内存超分下的执行效率。这些讲稿既展示原型或当时实现，也留下了兼容性、异步完成与尾延迟等持续演进的问题。"
+  },
+  "review": {
+    "source": "2010.md",
+    "title": "KVM Forum 2010 精选解读",
+    "reviewed_on": "2026-11-15",
+    "summary": "2010 年的精选集中在长期影响 QEMU/KVM 的基础接口：qdev 统一设备管理，VMState 组织迁移状态，QMP 连接管理程序；透明大页与异步缺页则分别改善地址转换和内存超分下的执行效率。这些讲稿既展示原型或当时实现，也留下了兼容性、异步完成与尾延迟等持续演进的问题。",
+    "talks": [
+      {
+        "id": "qdev",
+        "title": "qdev：统一 QEMU 设备的创建与管理",
+        "original_title": "QEMU’s new device model qdev",
+        "speakers": "Markus Armbruster · Red Hat",
+        "pages": "1—19",
+        "summary": "设备参数、初始化和热插拔原本分散在不同路径。qdev 用设备树、属性和生命周期回调统一管理入口；原稿通过串口代码说明改造方式，也指出热拔除完成通知与设备标识仍需完善。",
+        "url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2010/2010-forum-armbru-qdev.pdf",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2010/2010-forum-armbru-qdev.pdf",
+        "slides_format": "PDF"
+      },
+      {
+        "id": "transparent-hugepages",
+        "title": "透明大页：降低虚拟机地址转换成本",
+        "original_title": "Transparent Hugepage Support",
+        "speakers": "Andrea Arcangeli · Red Hat",
+        "pages": "1—33",
+        "summary": "客户机与宿主的两级页表放大了地址转换成本。透明大页通过按需分配、后台合并和回退机制扩大 TLB 覆盖；原稿用定制编译负载比较两层大页组合，并讨论碎片、回收和内存占用。",
+        "url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2010/2010-forum-thp.pdf",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2010/2010-forum-thp.pdf",
+        "slides_format": "PDF"
+      },
+      {
+        "id": "vmstate",
+        "title": "VMState：描述可迁移的设备状态",
+        "original_title": "Migration: How to Hop from Machine to Machine without Losing State",
+        "speakers": "Juan Quintela · Red Hat",
+        "pages": "1—53",
+        "summary": "手工维护保存和加载函数容易产生字段顺序与版本错误。VMState 把状态结构、版本和可选子节集中描述，并通过加载后回调恢复派生状态；接口简化仍需要兼容性与在途 I/O 测试支撑。",
+        "url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2010/2010-forum-migration.pdf",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2010/2010-forum-migration.pdf",
+        "slides_format": "PDF"
+      },
+      {
+        "id": "qmp",
+        "title": "QMP：建立面向管理程序的控制接口",
+        "original_title": "A Quick Tour of the QEMU Monitor Protocol",
+        "speakers": "Luiz Capitulino · Red Hat",
+        "pages": "1—24",
+        "summary": "管理程序需要稳定的机器接口，人工 monitor 文本难以承担这个角色。QMP 用 JSON 表达命令、结果、错误和异步事件；讲稿还分析迁移、热拔除等长操作的完成语义与接口演进问题。",
+        "url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2010/2010-forum-qmp-status-talk.pp.pdf",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2010/2010-forum-qmp-status-talk.pp.pdf",
+        "slides_format": "PDF"
+      },
+      {
+        "id": "async-page-faults",
+        "title": "异步缺页：让宿主换页不再阻塞整个 vCPU",
+        "original_title": "Asynchronous Page Faults: AIX Did It",
+        "speakers": "Gleb Natapov · Red Hat",
+        "pages": "1—38",
+        "summary": "宿主换入一个客户机页面时，同一 vCPU 上的其他任务也可能停顿。异步缺页让客户机调度器获知等待与完成事件，切换到仍可运行的任务；原型以重度内存超分实验验证这种协作。",
+        "url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2010/2010-forum-Async-page-faults.pdf",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2010/2010-forum-Async-page-faults.pdf",
+        "slides_format": "PDF"
+      }
+    ]
+  }
+}

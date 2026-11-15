@@ -1,0 +1,89 @@
+{
+  "year": 2015,
+  "url": "https://www.linux-kvm.org/page/KVM_Forum_2015",
+  "analysis": {
+    "headline": "实时性、协议升级与硬件状态管理",
+    "themes": [
+      "实时 KVM",
+      "Virtio 1.0",
+      "MTTCG",
+      "设备迁移",
+      "SMM / VGIC"
+    ],
+    "summary": "本届精选连接性能、兼容性与安全三类工程问题。实时 KVM 控制响应长尾，40GbE 原型尝试保留直通性能与迁移能力；Virtio 1.0 和多线程 TCG 整理接口与并发语义，SMM 与 Arm VGIC 则展示固件保护和中断模型如何落到 QEMU/KVM 实现。六项工作分别保留当年的实验条件及未完成部分。"
+  },
+  "review": {
+    "source": "2015.md",
+    "title": "KVM Forum 2015 精选解读",
+    "reviewed_on": "2026-11-15",
+    "summary": "本届精选连接性能、兼容性与安全三类工程问题。实时 KVM 控制响应长尾，40GbE 原型尝试保留直通性能与迁移能力；Virtio 1.0 和多线程 TCG 整理接口与并发语义，SMM 与 Arm VGIC 则展示固件保护和中断模型如何落到 QEMU/KVM 实现。六项工作分别保留当年的实验条件及未完成部分。",
+    "talks": [
+      {
+        "id": "realtime",
+        "title": "实时 KVM：控制调度延迟的长尾",
+        "original_title": "Real-time KVM from the Ground Up",
+        "speakers": "Rik van Riel · Red Hat",
+        "url": "https://www.youtube.com/watch?v=cZ5aTHeDLDE",
+        "slides_url": "https://www.linux-kvm.org/images/2/24/01x02-Rik_van_Riel-KVM_realtime.pdf",
+        "slides_format": "PDF",
+        "pages": "1—21",
+        "summary": "实时负载关心截止时间，平均吞吐无法暴露偶发停顿。讲稿从 SMI、内核抢占和双层调度讲到宿主与客户机 CPU 分区，解释为何只绑核仍不够，并限定 cyclictest 的 14 µs 最大观测值适用范围。"
+      },
+      {
+        "id": "migratable-nic",
+        "title": "可迁移 40GbE：直通设备状态怎样接管",
+        "original_title": "Migratable 40GBit/s Ethernet",
+        "speakers": "Alexander Graf · SUSE",
+        "url": "https://www.youtube.com/watch?v=U5V6c6lVnw0",
+        "slides_url": "https://www.linux-kvm.org/images/7/79/01x06-Alexander_Graf-Migratable_40gbs_ethernet.pdf",
+        "slides_format": "PDF",
+        "pages": "1—118",
+        "summary": "专用 VFIO 后端跟踪网卡控制操作，并在迁移期间介入接收队列和 DMA 状态。原型展示硬件直通迁移的可行性，同时保留特定报文尺寸吞吐下降、延迟增加和不支持内存超分的限制。"
+      },
+      {
+        "id": "virtio-one",
+        "title": "Virtio 1.0：把隐含约定变成明确协议",
+        "original_title": "Virtio 1 — Why Do It? And Are We There Yet?",
+        "speakers": "Michael S. Tsirkin · Red Hat",
+        "url": "https://www.youtube.com/watch?v=eTD4l90S5Pg",
+        "slides_url": "https://www.linux-kvm.org/images/5/59/01x11-Michael_S_Tsirkin-virtio_1-why_do_it_and_are_we_there_yet.pdf",
+        "slides_format": "PDF",
+        "pages": "1—63",
+        "summary": "从 Legacy 到 Modern 的变化涉及协商确认、字节序、配置读取和 PCI 布局。讲稿通过实际接口问题说明标准化的价值，并解释过渡设备如何兼容旧驱动；性能优化只是这次演进的一部分。"
+      },
+      {
+        "id": "mttcg",
+        "title": "多线程 TCG：并行执行与客户机内存语义",
+        "original_title": "Towards Multi-threaded TCG",
+        "speakers": "Alex Bennée · Linaro；Frederic Konrad · GreenSocs",
+        "url": "https://www.youtube.com/watch?v=KnSW0WjWHZI",
+        "slides_url": "https://www.linux-kvm.org/images/c/cf/02x02-Alex_Benee-Towards_Multithreaded_TCG.pdf",
+        "slides_format": "PDF",
+        "pages": "1—94",
+        "summary": "为每个模拟 CPU 启动线程之后，翻译缓存、辅助函数和客户机原子指令都会出现新的并发关系。讲稿拆解当时原型的锁、跨 vCPU 安全工作和 LL/SC 方案，明确内存屏障与架构覆盖仍待完善。"
+      },
+      {
+        "id": "smm",
+        "title": "SMM 与 Secure Boot：保护虚拟机固件状态",
+        "original_title": "Securing Secure Boot with System Management Mode",
+        "speakers": "Paolo Bonzini · Red Hat",
+        "url": "https://www.youtube.com/watch?v=IxLvxP1O8T8",
+        "slides_url": "https://www.linux-kvm.org/images/c/ce/03x06-Aspen-Paolo_Bonzini-Securing_secure_boot.pdf",
+        "slides_format": "PDF",
+        "pages": "1—29",
+        "summary": "签名校验依赖可信的固件变量和恢复状态。QEMU、KVM 与 OVMF 需要共同实现 SMRAM 隔离、SMM 切换及闪存写保护；讲稿也说明虚拟化可以简化硬件协议，以及当时 OVMF 集成的范围限制。"
+      },
+      {
+        "id": "arm-irq",
+        "title": "Arm 中断虚拟化：从 GICv2 到 GICv3",
+        "original_title": "ARM Interrupt Virtualization",
+        "speakers": "Andre Przywara · Arm",
+        "url": "https://www.youtube.com/watch?v=BGGbgufgP_Y",
+        "slides_url": "https://www.linux-kvm.org/images/7/79/03x09-Aspen-Andre_Przywara-ARM_Interrupt_Virtualization.pdf",
+        "slides_format": "PDF",
+        "pages": "1—14",
+        "summary": "GICv2 用 List Registers 支持客户机确认与结束中断，GICv3 的 Redistributor、ITS 和大量稀疏 LPI 又改变了软件结构。解读沿中断状态的保存、注入和同步，说明 VGIC 为扩展性进行重构的原因。"
+      }
+    ]
+  }
+}

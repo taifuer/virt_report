@@ -66,6 +66,7 @@ def test_snapshot_chrome_uses_shared_navigation_without_touching_article():
 def test_snapshot_chrome_tracks_principle_and_version_routes():
     html = '<header class="site-head"></header>'
     for path, target in (("mechanisms/qemu-memory-migration.html", "../mechanisms.html"),
+                         ("kvm-forum/2026.html", "../conferences.html"),
                          ("versions.html", "versions.html")):
         result = refresh_page_chrome(html, path, "virt-report")
         assert f'href="{target}" class="on" aria-current="page"' in result
@@ -90,7 +91,8 @@ def test_listing_heading_refresh_preserves_entries_breadcrumbs_and_report_dates(
 def test_topic_and_conference_snapshots_use_current_shared_header():
     site = Path(__file__).resolve().parents[1] / "site"
     for relative in ("topics.html", "topics/migration/index.html", "conferences.html",
-                     "academic-conferences.html", "conference-papers.html", "kvm-forum.html"):
+                     "academic-conferences.html", "conference-papers.html", "kvm-forum.html",
+                     "kvm-forum/2026.html"):
         html = (site / relative).read_text(encoding="utf-8")
         assert refresh_page_chrome(html, relative, "virt-report") == html, relative
 

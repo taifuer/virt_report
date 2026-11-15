@@ -1,0 +1,78 @@
+{
+  "year": 2018,
+  "url": "https://kvm-forum.qemu.org/2018/",
+  "analysis": {
+    "headline": "规模化管理、嵌套正确性与安全内存",
+    "themes": [
+      "libvirt 扩展性",
+      "嵌套 VMX",
+      "vIOMMU",
+      "SPDK",
+      "安全虚机"
+    ],
+    "summary": "2018 年的精选把虚拟化放进更复杂的运行环境：管理系统同时操作大量实例，客户机内部再运行 Hypervisor，用户态驱动需要独立 DMA 保护，存储后端追求更短处理路径。Power 安全虚机则开始重新划分宿主与可信固件的权限。这五项工作不仅介绍功能，还通过死锁、映射开销和测试限制展示系统组合后才会出现的问题。"
+  },
+  "review": {
+    "source": "2018.md",
+    "title": "KVM Forum 2018 精选解读",
+    "reviewed_on": "2026-11-15",
+    "summary": "五场分享覆盖 libvirt 扩展性、嵌套事件处理、设备 DMA 映射、SPDK vhost 和 Power 安全虚机。",
+    "talks": [
+      {
+        "id": "libvirt-scale",
+        "title": "libvirt 扩展性：减少重复检查，避免主循环阻塞",
+        "original_title": "Scalability and Stability of libvirt: Experiences with Very Large Hosts",
+        "speakers": "Marc Hartmayer",
+        "url": "https://www.youtube.com/watch?v=H3lw50IKqGo",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2018/scalability_and_stability_of_libvirt.pdf",
+        "slides_format": "PDF",
+        "pages": "1—36",
+        "summary": "并发创建大量虚机时，重复能力验证与锁等待会放大管理延迟。通过 z14 大宿主的故障复现、火焰图和补丁对照，分析事件分发、资源生命周期及按任务缓存的实际收益。"
+      },
+      {
+        "id": "nested-vmx",
+        "title": "嵌套 VMX：正确处理事件重注入与层间切换",
+        "original_title": "Improving KVM x86 Nested-Virtualization",
+        "speakers": "Liran Alon",
+        "url": "https://www.youtube.com/watch?v=Pc7F-n5278w",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2018/Improving_KVM_nVMX.pdf",
+        "slides_format": "PDF",
+        "pages": "1—161",
+        "summary": "L2 的异常投递尚未完成时，L1 又可能收到新的 IPI。嵌套虚拟化需要保留两层不同事件语义；演讲从真实死锁追踪到 immediate-exit 修复，并讨论 VMCS 同步与迁移状态的复杂度。"
+      },
+      {
+        "id": "nested-dma",
+        "title": "嵌套设备直通：同步客户机与宿主 IOMMU 映射",
+        "original_title": "Device Assignment with Nested Guests and DPDK",
+        "speakers": "Peter Xu",
+        "url": "https://www.youtube.com/watch?v=0otGlPftFCU",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2018/KVM_Forum_2018_viommu_vfio.pdf",
+        "slides_format": "PDF",
+        "pages": "1—24",
+        "summary": "客户机用户态驱动和二层虚机需要自己的 DMA 地址空间。QEMU 根据虚拟 IOMMU 通知构造宿主影子映射，使物理设备访问正确内存；映射更新成本也解释了内核驱动与 DPDK 的性能差异。"
+      },
+      {
+        "id": "spdk-vhost",
+        "title": "SPDK vhost：缩短存储提交与完成路径",
+        "original_title": "SPDK vhost Target: A Practical Solution to Accelerate Storage I/Os Inside VMs",
+        "speakers": "Changpeng Liu, Ziye Yang",
+        "url": "https://www.youtube.com/watch?v=paTvtJ6JdAc",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2018/KVM_Forum_26_Oct_2018_Vhost-NVMe.pdf",
+        "slides_format": "PDF",
+        "pages": "1—27",
+        "summary": "独立 SPDK 后端用共享队列、用户态设备访问和轮询减少存储处理成本。以 Virtio 与实验性 NVMe 前端作对照，说明影子门铃的作用，以及吞吐提升背后的 CPU、兼容性和迁移条件。"
+      },
+      {
+        "id": "power-secure",
+        "title": "Power 安全虚机：由 Ultravisor 管理受保护内存",
+        "original_title": "Secure Virtual Machines on Power",
+        "speakers": "Guerney Hunt, Ram Pai",
+        "url": "https://www.youtube.com/watch?v=l4jccqc14Vc",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2018/SVM_Edinburg_v3.pdf",
+        "slides_format": "PDF",
+        "pages": "1—17",
+        "summary": "宿主负责调度和 I/O，可信固件负责私有页与安全转换。沿镜像授权、进入安全模式、共享缓冲区和页面移出过程，解释 Power 的保护边界，以及普通 Linux 内存管理需要怎样配合。"
+      }
+    ]
+  }
+}

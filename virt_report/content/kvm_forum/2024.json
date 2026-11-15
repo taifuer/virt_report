@@ -1,0 +1,104 @@
+{
+  "year": 2024,
+  "url": "https://kvm-forum.qemu.org/2024/",
+  "starts_on": "2024-09-22",
+  "ends_on": "2024-09-23",
+  "timezone": "Europe/Prague",
+  "location": "捷克布尔诺",
+  "analysis": {
+    "headline": "多队列、内存超分与复杂虚机的维护",
+    "themes": [
+      "多队列 I/O",
+      "内存超分",
+      "设备迁移",
+      "内核热更新",
+      "SEV-SNP"
+    ],
+    "summary": "2024 年的工作把优化推进到完整运行路径：客户机多队列需要宿主多线程配合，进程外存储需要兼顾数据拷贝与管理权限，内存超分需要避免迁移扰乱工作集。设备状态并行传输和 Akamai 的原机内核更新，则回应大规模平台的维护成本。SNP 迁移与安全中断进一步展示了机密计算的配套难点：受保护内存、可信服务与中断状态必须一同处理。这七篇既有已合入功能和实践测量，也有尚在开发的接口设计，正文分别说明其成熟度。"
+  },
+  "review": {
+    "source": "2024.md",
+    "title": "KVM Forum 2024 精选解读",
+    "reviewed_on": "2026-11-15",
+    "summary": "七场分享覆盖多队列 I/O、进程外存储、内存超分、设备迁移、原机热更新，以及 SNP 的迁移与中断保护。",
+    "talks": [
+      {
+        "id": "iothread-mapping",
+        "title": "virtio-blk 多队列：把请求分配到多个 IOThread",
+        "original_title": "IOThread Virtqueue Mapping: Improving virtio-blk SMP scalability in QEMU",
+        "speakers": "Stefan Hajnoczi",
+        "url": "https://www.youtube.com/watch?v=tVIRDdf79-0",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2024/IOThread_Virtqueue_Mapping_EGsYiZC.pdf",
+        "slides_format": "PDF",
+        "pages": "1—20",
+        "summary": "客户机有多个 virtqueue，宿主仍可能由一个线程处理全部队列。QEMU 9.0 的队列映射打通宿主并行路径；结合 Optane 随机读与数据库测试，说明线程数量、CPU 绑核和剩余带宽如何决定收益。"
+      },
+      {
+        "id": "storage-backends",
+        "title": "进程外存储：性能、隔离与管理接口的取舍",
+        "original_title": "Practical and efficient out-of-process storage backends",
+        "speakers": "Kevin Wolf",
+        "url": "https://www.youtube.com/watch?v=EeXY4n1-hBE",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2024/slides_out_of_process_storage_backends_hGZBfpS.pdf",
+        "slides_format": "PDF",
+        "pages": "1—32",
+        "summary": "NBD、FUSE、vhost-user、vDPA 与 ublk 提供不同的进程外存储路径。比较拷贝、权限、共享内存和管理方式，结合不同后端的测量，解释单项 IOPS 排名为什么不足以决定部署方案。"
+      },
+      {
+        "id": "memory-overcommit",
+        "title": "userfaultfd 内存超分：让换页策略与迁移协调",
+        "original_title": "UserfaultFD-based Memory Overcommitment",
+        "speakers": "Tejus GK, Manish Mishra, Rohit Kumar",
+        "url": "https://www.youtube.com/watch?v=MUR97DaqlO8",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2024/VM_Memory_Overcommitment_with_Userfaultfd_2Fl36r7.pdf",
+        "slides_format": "PDF",
+        "pages": "1—29",
+        "summary": "外部内存控制器掌握页面驻留与换出位置，让迁移避免重新读入全部冷页。讲稿同时展示 SATA SSD 上的明显收益、RAM-disk 与内核编译中的退化，揭示用户态缺页路径自身的成本。"
+      },
+      {
+        "id": "multifd-devices",
+        "title": "设备状态并行迁移：减少多 VF 的停机时间",
+        "original_title": "QEMU live migration device state transfer parallelization via multifd channels",
+        "speakers": "Maciej S. Szmigiero",
+        "url": "https://www.youtube.com/watch?v=oyNFtkfzMlU",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2024/kvm-forum-2024-multifd-device-state-transfer_3K5EQIG.pdf",
+        "slides_format": "PDF",
+        "pages": "1—27",
+        "summary": "VFIO 设备的大量状态挤在单条迁移流中，会延长切换停机。方案把设备状态读取、multifd 传输和恢复分开并行处理；从一到四个 ConnectX-7 VF 的数据分析收益与通道数量的边界。"
+      },
+      {
+        "id": "kernel-update",
+        "title": "Akamai 内核热更新：原机保留内存并恢复虚机",
+        "original_title": "Live Updates @ Akamai",
+        "speakers": "Michael Galaxy",
+        "url": "https://www.youtube.com/watch?v=AyIVsDP7Bto",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2024/Live_Updates__Akamai_-_KVM_Forum_2024_1_RSxTQDH.pdf",
+        "slides_format": "PDF",
+        "pages": "1—8",
+        "summary": "找不到兼容迁移目标时，通过持久保留的内存后端和 QEMU CPR，在原机更换内核并恢复客户机。重点讨论设备重初始化、NUMA、时间服务和启动编排对停机窗口的影响。"
+      },
+      {
+        "id": "snp-migration",
+        "title": "SNP 迁移：在受保护上下文中打包内存",
+        "original_title": "SNP Live Migration with guest-memfd and mirror VM",
+        "speakers": "Tom Lendacky, Pankaj Gupta",
+        "url": "https://www.youtube.com/watch?v=RYIjUweFysA",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2024/SNP_Live_Migration_KVM_forum_2024_svDwxa3.pdf",
+        "slides_format": "PDF",
+        "pages": "1—14",
+        "summary": "宿主不能直接读取 SNP 私有内存，迁移打包工作需要可信执行上下文。比较 Mirror VM 与 Shadow vCPU，说明 guest_memfd 地址空间共享、身份验证和状态收尾为何成为关键配套。"
+      },
+      {
+        "id": "secure-interrupts",
+        "title": "SNP 中断保护：让可信组件决定注入",
+        "original_title": "Securing Interrupt Delivery for SEV-SNP Guests",
+        "speakers": "Melody (Huibo) Wang",
+        "url": "https://www.youtube.com/watch?v=ceNPOXj_ZPQ",
+        "slides_url": "https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2024/kvm-forum-2024-Melody_WyX4HuH.pdf",
+        "slides_format": "PDF",
+        "pages": "1—15",
+        "summary": "内存加密后，不可信宿主仍可能利用异常注入影响客户机。Restricted Injection 和 Alternate Injection 将接受与转交中断的职责移入可信组件，带来 SVSM、VMPL 与客户机 APIC 协议的协作要求。"
+      }
+    ]
+  }
+}

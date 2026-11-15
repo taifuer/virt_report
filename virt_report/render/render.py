@@ -27,6 +27,7 @@ ASSETS_DIR = Path(__file__).parent / "assets"
 ARTICLES_DIR = ASSETS_DIR.parents[1] / "content" / "articles"
 HOME_REPORT_LIMITS = {"daily": 15, "weekly": 9, "monthly": 6}
 STATIC_ASSET_NAMES = ("brand-mark.png", "site.css", "site.js")
+FORUM_ASSET_NAMES = ("forum.css", "mechanisms.css", "mechanism-viewer.css", "mechanism-viewer.js")
 SEARCH_ASSET_NAMES = ("search.css", "editorial-search.js")
 FAVICON_ASSET_NAMES = ("favicon-32.png", "favicon.ico")
 MECHANISM_DIAGRAM_NAMES = (
@@ -614,18 +615,59 @@ def render_archive_html(config: Config, period: str, reports: list[dict],
 
 
 def render_kvm_forum(config: Config, editions: list[dict], analysis: dict) -> Path:
-    """导出 KVM Forum 年度主题页。"""
+    """Export the yearly index and only the explicitly reviewed annual pages."""
     html = render_kvm_forum_html(config, editions, analysis)
     out = Path(config.output_dir) / "kvm-forum.html"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")
+    assets = out.parent / "assets"
+    assets.mkdir(parents=True, exist_ok=True)
+    for filename in FORUM_ASSET_NAMES:
+        shutil.copyfile(ASSETS_DIR / filename, assets / filename)
+    for edition in editions:
+        if not edition.get("review"):
+            continue
+        review_path = out.parent / edition["review"]["path"]
+        review_path.parent.mkdir(parents=True, exist_ok=True)
+        review_path.write_text(render_kvm_forum_review_html(config, edition), encoding="utf-8")
     return out
 
 
 def render_kvm_forum_html(config: Config, editions: list[dict], analysis: dict) -> str:
     env = _env()
     tpl = env.get_template("kvm_forum.html")
-    return tpl.render(editions=editions, analysis=analysis, root="", site_name=config.name)
+    return tpl.render(editions=editions, analysis=analysis, root="", site_name=config.name,
+                      forum_asset_version=_forum_asset_version())
+
+
+def _forum_asset_version() -> str:
+    return hashlib.sha256(b"".join(
+        (ASSETS_DIR / name).read_bytes() for name in FORUM_ASSET_NAMES
+    )).hexdigest()[:12]
+
+
+def render_kvm_forum_review_html(config: Config, edition: dict) -> str:
+    """Render authored slides-based reviews with the shared article layout and outline."""
+    from virt_report.kvm_forum import EDITIONS_DIR
+
+    env = _env()
+    review = edition["review"]
+    source_template = env.get_template("_forum_talk_source.html")
+    body = render_article_markdown(
+        (EDITIONS_DIR / review["source"]).read_text(encoding="utf-8"),
+        baselines="", diagrams={}, require_baselines=False,
+        components={f'talk-source-{talk["id"]}': (
+            lambda talk=talk: source_template.render(talk=talk)
+        ) for talk in review["talks"]},
+    )
+    sections = [{"id": "preface", "title": "本届观察"}, *(
+        {"id": talk["id"], "title": talk["title"]} for talk in review["talks"]
+    )]
+    body, outline = prepare_outline(body, sections)
+    return env.get_template("kvm_forum_review.html").render(
+        edition=edition, review=review, article_body=body, article_outline=outline,
+        root="../", site_name=config.name, forum_asset_version=_forum_asset_version(),
+    )
 
 
 def render_conferences(config: Config, content: dict, filename: str = "conferences.html") -> Path:
@@ -644,10 +686,8 @@ def render_conferences_html(config: Config, content: dict) -> str:
     tpl = env.get_template("conferences.html")
     editions, _ = load_content()
     years = [item["year"] for item in editions]
-    preview_year = next((item["year"] for item in editions if item.get("preview")), None)
     return tpl.render(content=content, root="", site_name=config.name,
-                      forum_coverage=f"{min(years)}—{max(years)}",
-                      forum_preview_year=preview_year)
+                      forum_coverage=f"{min(years)}—{max(years)}")
 
 
 def render_academic_conferences(

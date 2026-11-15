@@ -1,0 +1,89 @@
+{
+  "year": 2016,
+  "url": "https://www.linux-kvm.org/page/KVM_Forum_2016",
+  "analysis": {
+    "headline": "内存、设备与并发接口的隔离边界",
+    "themes": [
+      "userfaultfd",
+      "mdev / VFIO",
+      "SEV",
+      "CPU 热插拔",
+      "内存模型"
+    ],
+    "summary": "2016 年精选同时覆盖接口演进与隔离边界。userfaultfd 和统一 CPU 热插拔模型让管理软件获得新的控制能力；mdev、SEV 与 vIOMMU 分别处理共享设备、客户机内存和 DMA 的权限。原子操作讲解补上这些并发实现所依赖的内存模型，实验部分也保留性能退化和接口尚未定稿的情况。"
+  },
+  "review": {
+    "source": "2016.md",
+    "title": "KVM Forum 2016 精选解读",
+    "reviewed_on": "2026-11-15",
+    "summary": "2016 年精选同时覆盖接口演进与隔离边界。userfaultfd 和统一 CPU 热插拔模型让管理软件获得新的控制能力；mdev、SEV 与 vIOMMU 分别处理共享设备、客户机内存和 DMA 的权限。原子操作讲解补上这些并发实现所依赖的内存模型，实验部分也保留性能退化和接口尚未定稿的情况。",
+    "talks": [
+      {
+        "id": "userfaultfd",
+        "title": "userfaultfd：把缺页处理交给用户态",
+        "original_title": "Userland Page Faults and Beyond: Why, How and What's Next",
+        "speakers": "Andrea Arcangeli · Red Hat",
+        "url": "https://www.youtube.com/watch?v=xhOBc5L_Hkk",
+        "slides_url": "https://www.linux-kvm.org/images/1/10/01Wed-1415-LinuxCON-aarcangeli-userfaultfd.pdf",
+        "slides_format": "PDF",
+        "pages": "1—40",
+        "summary": "缺失页面可能在远端，内核并不知道如何取回。userfaultfd 把缺页通知交给用户态，并让访问线程留在内核等待。解读区分当时已合入的缺页能力、尚在开发的写保护扩展，以及迁移实验展示的延迟代价。"
+      },
+      {
+        "id": "mdev",
+        "title": "mdev：共享 GPU 的 VFIO 接口",
+        "original_title": "vGPU on KVM — A VFIO Based Framework",
+        "speakers": "Neo Jia、Kirti Wankhede · NVIDIA",
+        "url": "https://www.youtube.com/watch?v=Xs0TJU_sIPc",
+        "slides_url": "https://www.linux-kvm.org/images/5/59/02x03-Neo_Jia_and_Kirti_Wankhede-vGPU_on_KVM-A_VFIO_based_Framework.pdf",
+        "slides_format": "PDF",
+        "pages": "1—43",
+        "summary": "共享 GPU 需要厂商驱动管理资源，同时保留 QEMU 可复用的设备接口。讲稿沿设备创建、寄存器访问、DMA 和中断说明 mdev 的职责，尤其区分模拟区域与直映区域，避免把所有访问都画成同一路径。"
+      },
+      {
+        "id": "sev",
+        "title": "SEV 的早期架构：客户机内存与密钥隔离",
+        "original_title": "AMD's Virtualization Memory Encryption Technology",
+        "speakers": "Thomas Lendacky · AMD",
+        "url": "https://www.youtube.com/watch?v=RcvQ1xN55Ew",
+        "slides_url": "https://www.linux-kvm.org/images/7/74/02x08A-Thomas_Lendacky-AMDs_Virtualizatoin_Memory_Encryption_Technology.pdf",
+        "slides_format": "PDF",
+        "pages": "1—24",
+        "summary": "传统隔离由宿主执行，宿主也能读取客户机内存。SEV 将每台虚拟机的内存密钥交由安全处理器管理，同时要求显式共享 I/O 页面；解读关注启动、ASID、调试策略与软件栈改动，并限定早期方案的安全结论。"
+      },
+      {
+        "id": "atomics",
+        "title": "QEMU 原子操作：从共享变量到内存顺序",
+        "original_title": "Atomic.h Weapons: The C11 Memory Model and QEMU",
+        "speakers": "Paolo Bonzini · Red Hat",
+        "url": "https://www.youtube.com/watch?v=NE73iPMpzj4",
+        "slides_url": "https://www.linux-kvm.org/images/3/39/03x05A-Paolo_Bonzini-Atomic.h_weapons_The_C11_Memory_Model_and_QEMU.pdf",
+        "slides_format": "PDF",
+        "pages": "1—49",
+        "summary": "移除粗粒度锁后，共享指针发布、队列和统计量需要明确的同步规则。讲稿通过 C11 内存模型解释原子性与可见性的区别，并讨论 QEMU 兼容旧编译器时的封装限制，适合用来审查并发代码。"
+      },
+      {
+        "id": "cpu-hotplug",
+        "title": "CPU 热插拔：拓扑、设备模型与迁移身份",
+        "original_title": "CPU Hotplug Support in QEMU",
+        "speakers": "Bharata B Rao · IBM；David Gibson、Igor Mammedov · Red Hat",
+        "url": "https://www.youtube.com/watch?v=WuTPq8XgEbY",
+        "slides_url": "https://www.linux-kvm.org/images/0/0c/03x07A-Bharata_Rao_and_David_Gibson-CPU_Hotplug_Support_in_QEMU.pdf",
+        "slides_format": "PDF",
+        "pages": "1—24",
+        "summary": "CPU 热插拔既涉及线程创建，也涉及平台拓扑和客户机协议。讲稿把 CPU 纳入标准设备模型，通过可插槽位查询、创建前检查和稳定标识解决跨架构管理问题，并说明 KVM vCPU 对象保留复用的限制。"
+      },
+      {
+        "id": "vhost-iommu",
+        "title": "vhost 与 vIOMMU：DMA 权限和转换缓存",
+        "original_title": "Vhost with Guest vIOMMU",
+        "speakers": "Jason Wang、Wei Xu、Peter Xu · Red Hat",
+        "url": "https://www.linux-kvm.org/images/c/c5/03x07B-Peter_Xu_and_Wei_Xu-Vhost_with_Guest_vIOMMU.pdf",
+        "slides_url": "https://www.linux-kvm.org/images/c/c5/03x07B-Peter_Xu_and_Wei_Xu-Vhost_with_Guest_vIOMMU.pdf",
+        "slides_format": "PDF",
+        "pages": "1—29",
+        "summary": "让 Virtio 后端遵守客户机 DMA 映射，需要连接内核 vhost 与用户态 vIOMMU。设备 IOTLB 缓存降低了逐次跨边界查询成本，但动态映射仍可能显著拖慢网络；材料为隔离与性能的权衡提供了具体案例。"
+      }
+    ]
+  }
+}

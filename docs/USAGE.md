@@ -319,9 +319,32 @@ DBLP 全量目录继续保存在 SQLite；官方名单检查作为提前发现�
 只有标题的已录用论文留在候选目录，筛选记录使用 `defer`，不能进入公开论文列表，也不能推断机制、架构或性能数字。获得摘要、作者项目或原文依据后再审准入；录用或发表本身不替代相关性筛选。
 新增条目记录 `evidence_source_url`、`evidence_level` 和核验日期；旧记录缺少证据等级时保持 `unspecified`，不补写虚假的复核日期。可选 `pdf_url`、`code_url` 作为标题旁的 PDF、代码标签展示；证据等级、作者项目和 Artifact 来源留在编辑元数据，不另占资源行。有代码或评审记录不代表本站已经复现实验。
 
-KVM Forum 的会前预览独立保存在 `virt_report/content/kvm_forum_preview.json`，包含核对日期、公开议题链接与人工点评。
-`kvm-forum` 命令仍用于历史标题和辅助分析，会调用配置中的模型；查看和导出页面不会调用模型，也不会覆盖独立预览。
-会议结束后需人工复核最终议程，再将该届转为年度内容，不会仅凭日期自动更改“预览”状态。
+KVM Forum 的年度编辑内容放在 `virt_report/content/kvm_forum/YYYY.json`，精选正文放在同目录的 `YYYY.md`。总览 `kvm-forum.html` 在页面介绍之后、所有年份之前完整展示趋势总结；年度精选另导出 `kvm-forum/YYYY.html`，各演讲使用稳定锚点。2010—2026 年共 17 届已完成 95 篇解读，每年 5—7 篇。年度标题直接链接精选页，年份下方提供“原始议程”；精选入口以桌面两列、窄屏一列展示标题与实质性摘要，不使用编号列表。
+
+每年精选 **5—10 场**，优先选择有影响力、机制创新或具体工程价值的工作，原始资料完整是写作前提。写作前需读完官方原始讲稿（PDF；官方仅提供 PPTX 时使用 PPTX），核对图表、实验条件与实现状态。每篇围绕问题与工程价值、实现挑战、解决方案、验证结果、局限与后续工作展开，区分作者证据与本站评价。`review.talks` 保存原始议题标题、作者、讲稿链接、格式及供编辑核对的页码；页码不对外展示。只有摘要或标题的候选不能充作深度解读；不能为了达到数量而虚构原文依据。
+
+年度正文沿用受限 Markdown 渲染与右侧目录，不使用原理文章的软件基线声明。开头为 `## 本届观察 {#preface}`，每场演讲用 `## 标题 {#稳定ID}`，其后的 `component talk-source-稳定ID` 围栏生成统一来源区：原始标题后紧接讲稿下载链接，作者另起一行；窄屏自然换行，不把下载链接推向页面右侧。原始英文标题集中在这里展示。发布前检查标题与议程、正文与页码对应，并核对实验数字及 PoC／RFC 状态。网页不内嵌整份第三方讲稿。使用直接的陈述，避免设问、空泛的转折句与重复的写作说明，并检查 Markdown 标记没有泄漏到正文。
+
+`kvm-forum` 命令仍用于历史标题和辅助分析，会调用配置中的模型，不会覆盖年度编辑稿。长期趋势单独维护在 `virt_report/content/kvm_forum_trends.json`，加载时优先于标题分析，避免旧范围的辅助分析覆盖 2026 年趋势。查看和导出页面不联网、不调用模型。会议进度根据举办地时区和起止日期计算，解读是否完成则只取决于显式的 `review` 内容，两者独立。不会因会议结束就自动生成或宣称完成解读。
+
+仅更新会议页面可执行以下离线导出，不触发报告重建：
+
+```bash
+.venv/bin/python - <<'PY'
+from virt_report import conferences, kvm_forum
+from virt_report.config import Config
+from virt_report.render import render
+config = Config()
+render.render_kvm_forum(config, *kvm_forum.load_content())
+render.render_conferences(config, conferences.load_content())
+PY
+.venv/bin/python -m pytest tests/test_kvm_forum_reviews.py -q
+# 在另一个终端启动静态预览后检查目录、来源、表格和移动端；仅访问本机。
+.venv/bin/python scripts/preview_site.py --port 8092
+node scripts/check_kvm_forum_browser.cjs http://127.0.0.1:8092
+```
+
+年度页面检查也包含在可选的 `npm run test:browser:review` 中，不增加日常 smoke 的页面遍历量。
 
 论文页支持中英文关键词、单位与主题标签筛选，并与会议、年份、分页组合使用；URL 保留筛选状态。
 专题的相关研究由 `topic_links` 手动精选，每类最多三篇，不参与社区条目数量或排序；版本链接只是同主题参考，不表示论文已落地。

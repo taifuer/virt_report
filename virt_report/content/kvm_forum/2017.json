@@ -1,0 +1,89 @@
+{
+  "year": 2017,
+  "url": "https://www.linux-kvm.org/page/KVM_Forum_2017",
+  "analysis": {
+    "headline": "队列、切换与设备隔离的重新设计",
+    "themes": [
+      "Virtio / vDPA",
+      "Arm VHE",
+      "多进程 QEMU",
+      "脏页跟踪",
+      "I/O 轮询"
+    ],
+    "summary": "本届精选围绕虚拟化数据通路中的切换、缓存与隔离成本展开。Packed virtqueue 和 I/O 轮询减少请求处理开销，VHE 重排宿主与客户机状态切换，快速写保护缓解迁移中的锁竞争；vDPA 和多进程 QEMU 则探索硬件卸载与设备隔离的新边界。六篇解读分别说明原型条件、已实现部分及后续工程问题。"
+  },
+  "review": {
+    "source": "2017.md",
+    "title": "KVM Forum 2017 精选解读",
+    "reviewed_on": "2026-11-15",
+    "summary": "本届精选围绕虚拟化数据通路中的切换、缓存与隔离成本展开。Packed virtqueue 和 I/O 轮询减少请求处理开销，VHE 重排宿主与客户机状态切换，快速写保护缓解迁移中的锁竞争；vDPA 和多进程 QEMU 则探索硬件卸载与设备隔离的新边界。六篇解读分别说明原型条件、已实现部分及后续工程问题。",
+    "talks": [
+      {
+        "id": "packed-ring",
+        "title": "Packed virtqueue 的早期设计：减少队列缓存访问",
+        "original_title": "The Future of virtio: Riddles, Myths and Surprises",
+        "speakers": "Michael S. Tsirkin、Jens Freimann · Red Hat",
+        "url": "https://www.youtube.com/watch?v=z9cWwgYH97A",
+        "slides_url": "https://www.linux-kvm.org/images/0/03/Virtio_fall_2017.pdf",
+        "slides_format": "PDF",
+        "pages": "1—34",
+        "summary": "Split 队列的描述符、可用环与完成环分散在不同缓存行。讲稿展示把请求与完成状态合入单环的设计，以及批处理、缓存共享和乱序完成的取舍；原型结果说明收益高度依赖缓存拓扑和提交方式。"
+      },
+      {
+        "id": "arm-vhe",
+        "title": "Arm VHE：把 KVM 宿主移到 EL2",
+        "original_title": "To EL2, and Beyond!",
+        "speakers": "Christoffer Dall、Shih-Wei Li · Linaro / Columbia University",
+        "url": "https://www.youtube.com/watch?v=j0bp4fnO98w",
+        "slides_url": "https://www.linux-kvm.org/images/a/a1/To_EL2_and_Beyond_0.pdf",
+        "slides_format": "PDF",
+        "pages": "1—61",
+        "summary": "VHE 为宿主内核直接运行在 EL2 提供硬件支持。解读关注哪些寄存器切换可以移出频繁的世界切换路径，以及作者在缺少 VHE 硬件时如何构建实验系统；同时保留用户态 I/O 路径变慢的结果。"
+      },
+      {
+        "id": "vdpa",
+        "title": "vDPA 的早期方案：保留 Virtio 接口，卸载数据通路",
+        "original_title": "virtio: vhost Data Path Acceleration towards NFV Cloud",
+        "speakers": "Cunming Liang · Intel",
+        "url": "https://www.linux-kvm.org/images/8/87/KVM17vDPA-v4_0.pdf",
+        "slides_url": "https://www.linux-kvm.org/images/8/87/KVM17vDPA-v4_0.pdf",
+        "slides_format": "PDF",
+        "pages": "1—21",
+        "summary": "标准 Virtio 驱动与硬件数据面之间，需要有人处理内存映射、门铃和中断。讲稿比较用户态与内核适配路径，提出把控制面留在软件中的方案，并暴露设备迁移、隔离与硬件兼容性尚待解决的部分。"
+      },
+      {
+        "id": "multiprocess",
+        "title": "多进程 QEMU：设备模拟的隔离边界",
+        "original_title": "Multi-Process QEMU",
+        "speakers": "Marc-André Lureau · Red Hat；Konrad Rzeszutek Wilk · Oracle",
+        "url": "https://www.youtube.com/watch?v=Kq1-coHh7lg",
+        "slides_url": "https://www.linux-kvm.org/images/f/fc/KVM_FORUM_multi-process.pdf",
+        "slides_format": "PDF",
+        "pages": "1—59",
+        "summary": "将复杂设备模型移入独立进程，可以缩小设备漏洞的影响范围。真正困难的是进程间总线协议、共享内存权限、中断通知和生命周期管理；讲稿讨论已有后端的经验与统一接口的设计空间。"
+      },
+      {
+        "id": "fast-dirtylog",
+        "title": "快速写保护：缩短脏页同步对 vCPU 的阻塞",
+        "original_title": "Fast Write-Protect and Fast Dirtylog-Bitmap Sync Up",
+        "speakers": "Guangrong Xiao · Tencent Cloud",
+        "url": "https://www.youtube.com/watch?v=kJt348q8OZQ",
+        "slides_url": "https://www.linux-kvm.org/images/e/eb/Guangrong-fast-write-protection.pdf",
+        "slides_format": "PDF",
+        "pages": "1—21",
+        "summary": "逐页写保护持有 MMU 锁，虚拟机越大，脏页同步越容易干扰客户机。原型利用代际标记与按需处理缩短集中操作，但客户机恢复写入后也可能增加迁移数据量，需要连同总迁移时间评价。"
+      },
+      {
+        "id": "io-polling",
+        "title": "QEMU 自适应轮询：降低 virtio-blk 的唤醒延迟",
+        "original_title": "Applying Polling Techniques to QEMU: Reducing virtio-blk I/O Latency",
+        "speakers": "Stefan Hajnoczi · Red Hat",
+        "url": "https://www.youtube.com/watch?v=g2Wlia9bo88",
+        "slides_url": "https://www.linux-kvm.org/images/0/0a/Stefanha-kvm-forum-2017.pdf",
+        "slides_format": "PDF",
+        "pages": "1—26",
+        "summary": "NVMe 缩短了设备服务时间，线程睡眠与唤醒开始占据明显比例。QEMU 在 IOThread 中短暂轮询队列和完成事件，并按观测到的等待时间调整窗口；单队列深度实验展示收益，也提示 CPU 消耗和设备状态的影响。"
+      }
+    ]
+  }
+}

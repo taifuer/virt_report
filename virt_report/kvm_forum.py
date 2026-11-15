@@ -1,13 +1,15 @@
-"""KVM Forum 官方议程标题采集与年度主题分析。"""
+"""KVM Forum 议程归档、年度简述与基于原始讲稿的精选解读。"""
 from __future__ import annotations
 
 import json
 import logging
 import re
+from datetime import date, datetime
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 from virt_report import __version__
 from virt_report.config import Config
@@ -17,7 +19,8 @@ log = logging.getLogger(__name__)
 CONTENT_DIR = Path(__file__).parent / "content"
 TITLES_PATH = CONTENT_DIR / "kvm_forum_titles.json"
 ANALYSIS_PATH = CONTENT_DIR / "kvm_forum_analysis.json"
-PREVIEW_PATH = CONTENT_DIR / "kvm_forum_preview.json"
+TRENDS_PATH = CONTENT_DIR / "kvm_forum_trends.json"
+EDITIONS_DIR = CONTENT_DIR / "kvm_forum"
 YEARS = range(2010, 2026)
 WIKI_YEARS = {2011, 2012, 2013, 2014, 2015, 2017}
 _NON_TOPIC_RE = re.compile(
@@ -270,22 +273,79 @@ def analyze(config: Config, editions: list[dict]) -> dict:
     return result
 
 
-def load_content() -> tuple[list[dict], dict]:
-    """读取历史点评及独立维护的会前预览，不在页面请求中采集或调用模型。"""
+def event_status(edition: dict, today: date | None = None) -> str:
+    """Derive event progress in the venue's timezone, separately from review status."""
+    if not edition.get("starts_on") or not edition.get("ends_on"):
+        return "archived"
+    today = today or datetime.now(ZoneInfo(edition["timezone"])).date()
+    start, end = date.fromisoformat(edition["starts_on"]), date.fromisoformat(edition["ends_on"])
+    if end < start:
+        raise ValueError("KVM Forum end date precedes its start date")
+    return "upcoming" if today < start else "ongoing" if today <= end else "completed"
+
+
+def _validate_review(edition: dict) -> None:
+    """Only publish complete, source-backed selections; never infer a review from dates."""
+    review = edition["review"]
+    if review["source"] != f'{edition["year"]}.md':
+        raise ValueError("A forum review must use its local year Markdown file")
+    if not (EDITIONS_DIR / review["source"]).is_file():
+        raise ValueError("A published forum review needs its authored source")
+    talks = review["talks"]
+    if not 5 <= len(talks) <= 10:
+        raise ValueError("A forum review needs 5–10 selected talks")
+    identifiers = [talk["id"] for talk in talks]
+    if (len(set(identifiers)) != len(identifiers)
+            or any(not re.fullmatch(r"[a-z][a-z0-9-]*", key) or key == "preface"
+                   for key in identifiers)):
+        raise ValueError("Forum review anchors must be unique stable identifiers")
+    if len({talk["url"] for talk in talks}) != len(talks):
+        raise ValueError("A forum review must not count the same talk twice")
+    for talk in talks:
+        if (talk["slides_format"] not in {"PDF", "PPTX"}
+                or not talk["slides_url"].startswith("https://")
+                or not talk["url"].startswith("https://")
+                or not talk["pages"] or not talk["speakers"]):
+            raise ValueError("A selected talk needs its original slides and page references")
+    if edition.get("talks"):
+        agenda = {talk["url"]: talk["title"] for talk in edition["talks"]}
+        if any(agenda.get(talk["url"]) != talk["original_title"] for talk in talks):
+            raise ValueError("Selected talks must match the archived agenda")
+    review["path"] = f'kvm-forum/{edition["year"]}.html'
+
+
+def load_content(today: date | None = None) -> tuple[list[dict], dict]:
+    """Load title summaries and reviewed editions offline; editorial files win by year."""
     titles = json.loads(TITLES_PATH.read_text(encoding="utf-8"))["editions"]
     analysis = json.loads(ANALYSIS_PATH.read_text(encoding="utf-8"))
+    # Editorial trends must survive a refresh of the older title-only summaries.
+    if TRENDS_PATH.exists():
+        trends = json.loads(TRENDS_PATH.read_text(encoding="utf-8"))
+        analysis.update({key: trends[key] for key in ("headline", "overview", "eras")})
     by_year = {item["year"]: item for item in analysis.get("years", [])}
     for edition in titles:
         edition["analysis"] = by_year.get(edition["year"], {})
-    if PREVIEW_PATH.exists():
-        preview = json.loads(PREVIEW_PATH.read_text(encoding="utf-8"))
-        if preview["year"] not in {item["year"] for item in titles}:
-            preview["titles"] = [item["title"] for item in preview["talks"]]
-            preview["selected_talks"] = [item for item in preview["talks"]
-                                         if item["url"] in preview["selected_urls"]]
-            titles.append(preview)
-    titles.sort(key=lambda item: item["year"])
-    return titles, analysis
+    editions = {item["year"]: item for item in titles}
+    for path in sorted(EDITIONS_DIR.glob("*.json")):
+        curated = json.loads(path.read_text(encoding="utf-8"))
+        year = curated["year"]
+        if type(year) is not int or path.stem != str(year):
+            raise ValueError("An editorial edition must use its year as the filename")
+        edition = editions.setdefault(year, {})
+        edition.update(curated)
+        if "talks" in curated:
+            edition["titles"] = [item["title"] for item in curated["talks"]]
+        if edition.get("review"):
+            _validate_review(edition)
+    for edition in editions.values():
+        edition["event_status"] = event_status(edition, today)
+    return sorted(editions.values(), key=lambda item: item["year"]), analysis
+
+
+def get_review(year: int) -> dict | None:
+    """Return an explicitly published edition, without probing arbitrary file paths."""
+    editions, _ = load_content()
+    return next((item for item in editions if item["year"] == year and item.get("review")), None)
 
 
 def load_titles() -> list[dict]:

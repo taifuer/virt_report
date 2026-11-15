@@ -1,9 +1,12 @@
 {
   "year": 2026,
-  "preview": true,
   "starts_on": "2026-11-12",
   "ends_on": "2026-11-13",
-  "checked_at": "2026-10-12",
+  "timezone": "America/Vancouver",
+  "location": "加拿大温哥华",
+  "checked_at": "2026-11-15",
+  "schedule_version": "0.8",
+  "official_url": "https://kvm-forum.qemu.org/2026/",
   "url": "https://pretalx.com/kvm-forum-2026/schedule/nojs",
   "talks": [
     {
@@ -111,7 +114,7 @@
       "url": "https://pretalx.com/kvm-forum-2026/talk/CEUSUL/"
     },
     {
-      "title": "COCONUT-SVSM on KVM Planes: Boarding Completed?",
+      "title": "COCONUT-SVSM, KVM Planes, and Secure Interrupt Injection - Upstream Alignment",
       "url": "https://pretalx.com/kvm-forum-2026/talk/ZB3GWA/"
     },
     {
@@ -179,22 +182,90 @@
       "url": "https://pretalx.com/kvm-forum-2026/talk/UGZ9WN/"
     }
   ],
-  "selected_urls": [
-    "https://pretalx.com/kvm-forum-2026/talk/QQWNVD/",
-    "https://pretalx.com/kvm-forum-2026/talk/ATSSVN/",
-    "https://pretalx.com/kvm-forum-2026/talk/XU7ZP7/",
-    "https://pretalx.com/kvm-forum-2026/talk/BFHGKB/"
-  ],
+  "review": {
+    "source": "2026.md",
+    "title": "KVM Forum 2026 精选解读",
+    "reviewed_on": "2026-11-15",
+    "summary": "六场分享，讨论 CPU 与内存利用、I/O 线程调节及机密虚机和 GPU 热迁移，梳理实际问题、实现难点、方案设计与验证结果。",
+    "talks": [
+      {
+        "id": "cpu-overcommit",
+        "title": "CPU 超分：空闲识别与 vCPU 调度",
+        "original_title": "Scaling CPU Overcommit in KVM with Dynamic MWAIT Interception and Coroutine vCPUs",
+        "speakers": "Zhimin Feng、Xiangfeng Cai、Ying Fang · ByteDance",
+        "url": "https://pretalx.com/kvm-forum-2026/talk/AWM8WP/",
+        "slides_url": "https://pretalx.com/media/kvm-forum-2026/submissions/AWM8WP/resources/Scaling_CP_XWB7JBM.pptx",
+        "slides_format": "PPTX",
+        "pages": "4—15",
+        "summary": "回收绑核虚机被 MWAIT 隐藏的空闲 CPU，并用轻量执行上下文减少共享虚机的调度成本。结合唤醒延迟和并发负载结果，说明三种优化各自的适用场景。"
+      },
+      {
+        "id": "memory-tiering",
+        "title": "QEMU 内存分层：迁移时保留冷热分布",
+        "original_title": "QEMU memory tiering",
+        "speakers": "Peter Xu · Red Hat",
+        "url": "https://pretalx.com/kvm-forum-2026/talk/QPSFWD/",
+        "slides_url": "https://pretalx.com/media/kvm-forum-2026/submissions/QPSFWD/resources/slides_MtYpRNp.pdf",
+        "slides_format": "PDF",
+        "pages": "6—18",
+        "summary": "迁移扫描把冷页重新读入内存，可能挤走业务热页。比较三条分层迁移路径，用业务 p99 与迁移耗时分析保留冷热信息的收益和回收等待的代价。"
+      },
+      {
+        "id": "ept-cow",
+        "title": "EPT 写时复制：共享快照与独立写入",
+        "original_title": "EPT-Based CoW and Incremental Snapshot for Agentic Sandbox Memory Oversubscription",
+        "speakers": "Hao Hong、Zhengyu Zhao、Issac Hai · ByteDance",
+        "url": "https://pretalx.com/kvm-forum-2026/talk/BCYMLB/",
+        "slides_url": "https://pretalx.com/media/kvm-forum-2026/submissions/BCYMLB/resources/kvm-forum-_MRmJ1GR.pptx",
+        "slides_format": "PPTX",
+        "pages": "6—17",
+        "summary": "让大量沙箱共享初始化快照，同时保持每台 VM 及其 vhost-user 后端的数据一致。解读首次写入、并发缺页、缓冲区准备与增量恢复，并核对内存节省和访问成本。"
+      },
+      {
+        "id": "io-thread-controller",
+        "title": "IOThread 动态伸缩：按负载调节 I/O 线程",
+        "original_title": "Dynamic disk IO Thread Scaling for QEMU with the io-thread-controller",
+        "speakers": "Thanos Makatos · Nutanix",
+        "url": "https://pretalx.com/kvm-forum-2026/talk/TKPCUV/",
+        "slides_url": "https://pretalx.com/media/kvm-forum-2026/submissions/TKPCUV/resources/io-thread-c_seSu9m3.pdf",
+        "slides_format": "PDF",
+        "pages": "2—12、14",
+        "summary": "固定 I/O 线程配置难以适应负载变化。控制器结合线程利用率、IOPS 和宿主余量进行扩缩容，通过效果检查与回退控制调参风险；队列重绑定的暂停仍是关键成本。"
+      },
+      {
+        "id": "tdx-migration",
+        "title": "TDX 热迁移：受保护状态的导出与接管",
+        "original_title": "Enabling live migration of TDX guests",
+        "speakers": "Kishen Maloor · Intel",
+        "url": "https://pretalx.com/kvm-forum-2026/talk/QQWNVD/",
+        "slides_url": "https://pretalx.com/media/kvm-forum-2026/submissions/QQWNVD/resources/kvm-forum-2_rz7lxsW.pdf",
+        "slides_format": "PDF",
+        "pages": "7—23",
+        "summary": "TDX 保护的内存与 vCPU 状态需要平台参与导出和接管。梳理 KVM 接口如何接入 QEMU 迁移流程，以及已跑通的 PoC、脏页扫描限制和待验证的错误恢复。"
+      },
+      {
+        "id": "vgpu-migration",
+        "title": "vGPU 热迁移：缓冲区交接与复制开销",
+        "original_title": "NVIDIA vGPU: Towards zero-copy live migration",
+        "speakers": "Vinayak Kale · NVIDIA",
+        "url": "https://pretalx.com/kvm-forum-2026/talk/7NLBGB/",
+        "slides_url": "https://pretalx.com/media/kvm-forum-2026/submissions/7NLBGB/resources/KVM-Forum-v_EN1EYe9.pdf",
+        "slides_format": "PDF",
+        "pages": "5—23",
+        "summary": "用共享缓冲池减少驱动内部复制，让 GPU DMA 与 QEMU I/O 重叠。结合有无 multifd 的两组实验，解释总迁移时间与停机时间的不同收益，以及 QEMU 侧的后续优化。"
+      }
+    ]
+  },
   "analysis": {
-    "headline": "议程预览：迁移边界、机密内存与设备虚拟化",
+    "headline": "资源利用与热迁移的工程进展",
     "themes": [
       "热迁移",
-      "guest_memfd",
-      "Arm 嵌套虚拟化",
+      "内存分层 / CoW",
+      "I/O 线程",
       "GPU / VFIO",
       "资源调度"
     ],
-    "summary": "截至 2026 年 10 月 12 日公开的议程中，热迁移继续向 TDX 客户机、Arm64 异构主机和 vGPU 扩展；guest_memfd 的原地转换则涉及私有内存管理、共享状态与设备访问。GPU 上游化、CXL 设备直通、Arm 嵌套虚拟化、I/O 线程伸缩和 CPU 超分，需要结合迁移能力、内存管理和运维接口共同设计。AI 辅助 KVM 安全审计议题关注云环境中的客户机隔离与宿主机稳定性，可进一步跟踪自动化工具与漏洞研究的配合方式。以上依据会前议程归纳，方案的合入、验证和部署状态需以各项目后续记录为准。",
-    "method": "依据本次公开议程标题及相关网页简介人工整理，不调用 DeepSeek，不读取 PDF、PPT 或视频；议程仍可能调整。"
+    "summary": "本届值得关注的工程问题集中在资源成本与服务连续性。CPU 超分尝试回收绑核虚机的空闲时间、减少共享虚机的调度开销；EPT 写时复制让多个沙箱复用初始化内存，同时协调 VMM 与独立设备后端的数据访问。内存分层迁移关注业务热页被迁移扫描挤出的延迟问题，IOThread 控制器则根据负载动态调整磁盘处理线程。迁移能力方面，TDX 通过平台导入导出接口保护客户机状态，vGPU 通过共享缓冲池减少复制与串行等待。下面六篇分别说明方案解决了哪部分问题、实验支持哪些结论，以及落地还需补齐的工作。",
+    "method": "依据官方议程及六场演讲的原始 PDF/PPTX 编写；实验数字按讲稿条件呈现，实现状态以演讲时点为准。"
   }
 }

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>KVM Forum 2023 精选解读 - virt-report</title>
+  <meta name="description" content="六场分享讨论私有内存、Arm CCA、可信服务、多队列、vDPA 迁移与低延迟 MMIO。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
+  <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/forum.css?v=02b518d59aa4">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=0ad6552bf0f5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="on" aria-current="page">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="forum-review mechanism-article">
+  <header class="mechanism-header">
+    <nav class="mechanism-breadcrumb" aria-label="面包屑"><a href="../conferences.html">会议</a><span aria-hidden="true">/</span><a href="../kvm-forum.html#year-2023">KVM Forum</a></nav>
+    <h1>KVM Forum 2023 精选解读</h1>
+    <p>六场分享讨论私有内存、Arm CCA、可信服务、多队列、vDPA 迁移与低延迟 MMIO。</p>
+    <p class="forum-event">6 篇精选</p>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、本届观察</a></li><li><a href="#block-multiqueue">二、块层多队列：让多个 IOThread 安全共享块图</a></li><li><a href="#shadow-virtqueue">三、vDPA 热迁移：用影子队列保存设备状态</a></li><li><a href="#private-memory">四、私有内存：补上页面迁移与资源记账</a></li><li><a href="#arm-cca">五、Arm CCA：KVM 如何管理不可读取的虚机</a></li><li><a href="#coconut-svsm">六、COCONUT-SVSM：在机密虚机内部提供可信服务</a></li><li><a href="#bpf-mmio">七、eBPF 处理 MMIO：缩短虚机与宿主的反馈路径</a></li></ol>
+    </nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+<h2><span class="mechanism-heading-number">一、</span>本届观察</h2>
+<p>2023 年的机密计算讨论已经深入内存管理和设备接口。客户机的私有状态受到保护后，宿主原有的换页、资源统计和设备模拟方式都需要调整。Arm CCA、guest_memfd 与 COCONUT-SVSM 从不同位置处理这一变化。I/O 方向同时推进多队列和硬件加速，但并发访问的正确性、迁移时的状态可见性仍决定它们能否实际部署。</p>
+</section>
+<section id="block-multiqueue" class="mechanism-section">
+<h2><span class="mechanism-heading-number">二、</span>块层多队列：让多个 IOThread 安全共享块图</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=Ubped0PgvZI" target="_blank" rel="noopener noreferrer">Multiqueue in the block layer</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2023/Multiqueue_in_the_block_layer_wLom4Bt.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Kevin Wolf, Emanuele Giuseppe Esposito</p>
+</div>
+<h3 id="block-multiqueue-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>客户机创建多个 virtqueue 后，请求仍可能汇聚到宿主的一个 IOThread。磁盘足够快时，单个线程会成为瓶颈。让不同队列进入不同线程，可以利用多核处理请求；同一磁盘镜像背后的块图也因此会被并发访问。这个工作讨论的是并行能力的基础改造，关系到多队列能否从客户机延伸到完整存储路径。</p>
+<h3 id="block-multiqueue-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>AioContext 锁原本保护一个上下文中的块层对象，后来扩展到设备、BlockBackend、作业和回调，形成覆盖很广的锁。块图的读操作还会沿父子关系递归，若另一线程同时更换节点，读者可能访问失效关系。协程会让出执行权，嵌套事件循环又可能重入其他操作；仅给几处列表操作加锁，无法覆盖这些约束。</p>
+<h3 id="block-multiqueue-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>作者把 API 分成全局状态操作与 I/O 操作，给作业、线程池等对象提供各自的保护。块图采用类似读写锁的机制：遍历父子边持有读锁，修改连接持有写锁。读侧与协程配合，写侧由主循环执行；持锁期间的事件轮询受到严格限制，避免读者等待 AioContext 锁、写者又等待读者的死锁。</p>
+<p>实现还使用 Clang 线程安全标注检查锁要求，以调用图工具检查协程函数的调用关系。原有 drain 机制只覆盖愿意配合的 I/O，无法保证所有图访问都停止，因此不足以独立承担结构保护。锁的显式契约让检查能够进入编译和代码审查流程。</p>
+<h3 id="block-multiqueue-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>讲稿用原型估计收益：8 vCPU 客户机运行 fio 随机读，8 个作业、队列深度 16，未做 CPU 绑核。无 IOThread、单 IOThread、每队列独立 IOThread 分别约为 14.1 万、15.6 万、28 万 IOPS。原型通过重复打开 raw 镜像、为队列创建独立后端绕开部分线程安全问题，证明并行处理值得投入，不能视为最终通用块层的性能保证。</p>
+<h3 id="block-multiqueue-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>当时块驱动已完成相当部分改造，设备侧多线程提交、队列配置和剩余字段的锁规则仍需收尾。Clang 对 C 函数指针和自动清理宏的分析也有限。工程上的关键是把每个对象的访问规则落实到测试与接口，随后再测共享镜像、块作业和配置变更同时发生时的表现。增加线程数的收益，还要扣除锁竞争和宿主 CPU 占用。</p>
+</section>
+<section id="shadow-virtqueue" class="mechanism-section">
+<h2><span class="mechanism-heading-number">三、</span>vDPA 热迁移：用影子队列保存设备状态</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=x9ARoNVzS04" target="_blank" rel="noopener noreferrer">vDPA-net live migration with Shadow Virtqueue</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2023/vDPA_sw_lm_-_KVM2023_6Ix6R5i.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Eugenio Pérez, Gautam Dawar</p>
+</div>
+<h3 id="shadow-virtqueue-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>将 VF 直接交给客户机，通常会把客户机驱动与具体硬件绑定。vDPA 通过标准 Virtio 接口减少这层依赖，让不同厂商硬件可以承接同一客户机。迁移仍需要知道设备配置、队列进度和 DMA 改写了哪些页面。硬件绕过 QEMU 消费队列后，这些信息不会自然进入原有的软件迁移框架。</p>
+<h3 id="shadow-virtqueue-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>控制队列可以修改 MAC 地址、队列数量等设备状态；这些命令若全部直达硬件，QEMU 的设备模型会缺少恢复所需的信息。数据队列中的接收缓冲区和完成记录又会被 DMA 修改，单靠 CPU 页表的脏位无法完整跟踪。切换到可观察路径时，还需要准确冻结和恢复队列位置，避免重复消费或遗漏请求。</p>
+<h3 id="shadow-virtqueue-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>影子 virtqueue 在客户机队列与硬件队列之间加入 QEMU 管理的中间队列。控制命令经过软件记录后交给设备，目标端能够按记录重新设置配置。恢复阶段可以先启用控制队列、重放状态，待配置准备好后再开放数据队列。</p>
+<p>需要软件跟踪 DMA 写入时，QEMU 暂停 vDPA 设备、取得队列状态，重新配置设备使用影子队列，再恢复处理。软件掌握缓冲区和完成信息后，可以复用 Virtio 设备模型的脏页记录能力。这里的优势是复用现有格式和迁移设施；额外的队列处理本身仍有运行成本。</p>
+<h3 id="shadow-virtqueue-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>演示环境把客户机从使用 AMD Xilinx SN1022 的宿主迁移到 Mellanox ConnectX-6 所在宿主，客户机保留 virtio-net 驱动，并运行网络业务验证连通。两端网口通过交换机处于相同 VLAN。演示说明相容功能集合下的跨厂商迁移路径能够工作，讲稿没有提供足以外推所有负载的停机时间、丢包率或吞吐统计。</p>
+<h3 id="shadow-virtqueue-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>功能协商、设备暂停和队列状态接口必须得到两端实现支持；“接口是 Virtio”并不自动保证任意设备组合可迁移。增加新的控制功能，也需要设备模型理解并恢复对应状态。后续评估应分别测正常硬件路径、影子队列路径和迁移切换窗口，观察 CPU 使用、网络延迟与脏页速率。硬件脏页跟踪可以减少软件开销，但会引入新的设备能力与兼容要求。</p>
+</section>
+<section id="private-memory" class="mechanism-section">
+<h2><span class="mechanism-heading-number">四、</span>私有内存：补上页面迁移与资源记账</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=c__UZ3pEQig" target="_blank" rel="noopener noreferrer">Accounting and page migration challenges in Secure guests using FD-based private memory</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2023/gmem-and-memory-accounting_5zqBSyo.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Nikunj A. Dadhania, Michael Roth</p>
+</div>
+<h3 id="private-memory-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>机密虚机的私有内存不能像普通匿名内存一样映射给用户态 VMM。以文件描述符和偏移管理私有页，可以减少宿主错误访问，却也改变了 Linux 内存管理长期依赖的前提。页面整理、NUMA 调整、内存下线和资源监控都需要重新接入。缺少这些能力，虚机即使能够启动，运维系统也很难准确分配和回收资源。</p>
+<h3 id="private-memory-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>普通页面迁移借助反向映射找到 VMA，并通过 MMU notifier 使 KVM 的二级映射失效。私有页没有对应用户态 VMA，这条通知链会断开；直接套用普通迁移流程可能留下指向旧页的二级映射。页面内容还受到加密与完整性保护，普通内存复制无法完成有效搬迁。统计侧则可能把页面记入文件缓存，而非 QEMU 的进程驻留内存。</p>
+<h3 id="private-memory-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>讲稿提出让私有内存对象与 KVM 建立更直接的关系，通过专用迁移回调完成二级映射撤销和页面移动；SNP 页面搬迁还需要平台支持，例如固件提供的受保护页面移动操作。共享页和私有页由不同后端承载，状态转换需要客户机、KVM 与 VMM 协调。</p>
+<p>记账和策略方面，作者比较了影子 VMA、专用统计接口，以及把内存策略传给文件对象的方案。仅增加一个 VMA 并不能自动得到全部进程统计，因为部分计数建立在普通缺页路径上。按内存后端绑定 NUMA 的接口也需要重新设计，传统 mbind() 只能操作有地址范围的映射。</p>
+<h3 id="private-memory-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>讲稿展示 40 GB SNP 客户机的实际观察：通过进程策略可以把内存分配到指定 NUMA 节点，但这些私有页没有按预期出现在 QEMU 的 smaps、numa_maps 等统计中。这个实验揭示“分配策略生效”和“进程统计可见”是两个问题。它属于功能与可观测性诊断，讲稿没有把尚未完成的页面迁移方案包装成性能结果。</p>
+<h3 id="private-memory-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>当时私有页迁移与完整记账仍是开放问题，候选接口需要同时考虑安全、内核资源模型和用户态兼容性。后续验收应覆盖 NUMA 迁移、内存压缩整理、进程退出和共享属性切换，确认映射失效与页生命周期同步。对平台而言，还应明确监控系统统计的是客户机容量、宿主实际占用还是共享文件缓存，避免把不同口径的数值直接相减。</p>
+</section>
+<section id="arm-cca" class="mechanism-section">
+<h2><span class="mechanism-heading-number">五、</span>Arm CCA：KVM 如何管理不可读取的虚机</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=RJfNM3pzZaE" target="_blank" rel="noopener noreferrer">KVM: Arm Confidential Compute Architecture Support</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2023/Arm_CCA_KVM_Support_GKucB4G.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Suzuki Kuruppassery Poulose</p>
+</div>
+<h3 id="arm-cca-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>Arm CCA 将客户机放入 Realm，使普通宿主无法读取其私有内存和执行状态。KVM 仍要完成虚机创建、vCPU 调度和 I/O 协调。演讲的价值在于说明这套分工如何落到既有 KVM 对象与运行接口上，以及可信固件和客户机分别要承担哪些新职责。</p>
+<h3 id="arm-cca-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>宿主不能再任意改写客户机页表和寄存器，但内存容量、vCPU 运行时间等资源仍由宿主提供。RME 的物理访问保护由可信侧控制，Realm 的二级地址转换也由 RMM 管理。普通设备又需要访问共享缓冲区，因此私有地址与共享地址之间必须有明确边界，不能把整个客户机内存直接暴露给设备模拟器。</p>
+<h3 id="arm-cca-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>KVM 通过 RMI 与 RMM 通信：交付内存粒度、创建 Realm 描述符和 vCPU 执行上下文，建立受管理的地址转换表，装入初始内容并激活 Realm。vCPU 仍由 KVM_RUN 驱动，底层进入 RMI_REC_ENTER；返回时交出允许宿主处理的退出信息，而非完整的私有寄存器现场。</p>
+<p>客户机通过 RSI 请求内存状态变化和证明服务。讲稿采用受保护与非受保护 IPA 区域组织 I/O，共享缓冲区供宿主设备模型访问。Linux 侧需要 SWIOTLB 回弹缓冲区、符合 DMA API 的 Virtio 路径，以及适当放置的中断相关共享结构。可信内存保护与设备可访问性由这些明确的转换点衔接。</p>
+<h3 id="arm-cca-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>截至演讲时，已有基于早期 RMM 规范的 Linux/KVM RFC、kvmtool 和 kvm-unit-tests 支持，QEMU 与固件集成也在推进。材料展示创建和运行所需的接口与对象关系，提供了能够开展系统联调的实现基础；没有给出可用于比较生产性能的完整基准。解读中的功能状态据此限定在 2023 年的开发阶段。</p>
+<h3 id="arm-cca-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>初期实现固定匿名内存，宿主换页尚未完整支持；激活后修改初始状态和创建执行上下文也受到规范约束。设备直接分配、可信 I/O、私有页换出与热迁移需要更多协议配套。工程上需要把保护保证与可用性分开评估：宿主不能随意读取私有页，仍能控制是否调度客户机。不同 RMM 版本的生命周期约束也必须体现在 VMM 的能力协商中。</p>
+</section>
+<section id="coconut-svsm" class="mechanism-section">
+<h2><span class="mechanism-heading-number">六、</span>COCONUT-SVSM：在机密虚机内部提供可信服务</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=zIcqetNmBmw" target="_blank" rel="noopener noreferrer">The COCONUT Secure VM Service Module</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2023/COCONUT-SVSM_Pj9DVIQ.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Jörg Rödel</p>
+</div>
+<h3 id="coconut-svsm-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>机密虚机把宿主排除在信任边界之外，宿主模拟的 TPM、外设输入和中断也就不能天然可信。某些设备持有安全敏感状态，需要移入受保护的客户机内部。COCONUT-SVSM 提供一个小型服务层，集中承接受限操作与可信服务，减少每个客户机操作系统分别实现这些机制的负担。</p>
+<h3 id="coconut-svsm-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>服务层与客户机操作系统共享一台虚机，却需要彼此隔离。第三方设备模拟代码又可能扩大可信代码量。若把所有服务堆入最高权限核心，一个 vTPM 模块的错误可能影响整个保护边界。启动顺序、持久状态、任务管理和跨层调用也必须统一，否则服务虽然位于加密内存中，仍可能因状态混乱失去安全意义。</p>
+<h3 id="coconut-svsm-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>SEV-SNP 的 VMPL 提供客户机内部的内存访问权限层次。SVSM 在 VMPL0 运行，操作系统位于较低权限层，通过核心协议请求页面验证、开放内存以及 vCPU 创建和删除等操作。COCONUT 使用 Rust 实现核心，并以每 CPU 页表加强内部隔离。</p>
+<p>模块设计计划让附加服务以 CPL3 运行，通过明确的系统调用和通信接口访问核心。这样可以容纳用其他语言编写的 TPM 等模块，并限制其可见内存。讲稿还展示两阶段加载器、分配器、ELF 装载和调试支持，说明它需要一套精简但完整的运行基础。</p>
+<h3 id="coconut-svsm-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>项目当时约有 1.15 万行代码，已在 AMD SEV-SNP 上运行，复用 linux-svsm 的 Linux 与 OVMF 配套。核心协议、分配与加载等能力构成了可执行基础。CPL3 模块支持仍在开发，IPC 设计也未最终确定；因此不能把“计划隔离 vTPM”写成当时已经交付的完整可信设备栈。讲稿没有提供性能或攻击面量化对照。</p>
+<h3 id="coconut-svsm-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>启动依赖非标准初始 CPU 状态，作者希望形成更通用的固件或初始状态封装。持久化层需要同时保证加密、完整性以及 TPM、UEFI 变量的恢复语义。中断代理还涉及 APIC 状态和注入规则，支持未改造操作系统则会增加模拟功能。这个项目的长期价值取决于能否保持小核心与清晰服务边界，并为新增接口建立独立测试和审计。</p>
+</section>
+<section id="bpf-mmio" class="mechanism-section">
+<h2><span class="mechanism-heading-number">七、</span>eBPF 处理 MMIO：缩短虚机与宿主的反馈路径</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=nTMls33dG8Q" target="_blank" rel="noopener noreferrer">Handling complex guest exits with eBPF</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2023/Handling_complex_guest_exits_with_eBPF_--_KVM_Forum_20_8gH6w3X.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Will Deacon</p>
+</div>
+<h3 id="bpf-mmio-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>客户机访问软件模拟设备时，硬件退出进入 KVM，部分请求还要返回用户态 VMM。对于频繁读取 CPU 频率或发送调度提示的小型设备，跨用户态往返会占用反馈预算。演讲探索将受限设备回调装入内核 eBPF，让短小控制操作就近完成，同时保留运行时装载与检查能力。</p>
+<h3 id="bpf-mmio-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>设备处理需要状态、权限与异步通知，不能直接照搬普通网络过滤程序的模型。内核若允许回调随意读取客户机内存、阻塞或触发中断，验证和授权边界会迅速扩大。接口还必须明确哪些退出可以在回调中完成，哪些需要交回 VMM，以及多 vCPU 同时访问时如何维护设备状态。</p>
+<h3 id="bpf-mmio-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>原型新增 KVM 设备类型，为 MMIO 区域关联读写 BPF 程序。回调收到偏移、长度、数据和 vCPU 标识等受限上下文，验证器约束字段访问。回调成功则完成访问并返回客户机，无法处理则继续退出用户态。设备状态保存在 BPF map，ELF 元信息描述 MMIO 范围等配置，由修改后的 kvmtool 装载。</p>
+<p>vCPUFreq 示例用不足 80 行 BPF 代码查询宿主 CPU 属性，并把客户机频率请求转为宿主线程的 uclamp 提示。vCPU 绑定到物理 CPU 后，这条反馈路径可以帮助客户机理解异构 CPU 容量与频率变化。硬件 VM-exit 仍然存在，减少的是后续用户态处理成本。</p>
+<h3 id="bpf-mmio-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>pKVM 初步 fio 结果把基线归一为 1。随机写中，用户态 MMIO 方案为 1.13，eBPF MMIO 为 1.23；顺序写分别为 1.10 和 1.15，读取方向收益较小。这些结果包含频率反馈本身的效果，不能把 23% 全算成 eBPF 相对用户态的提速。讲稿缺少完整负载与硬件参数，适合证明方向，尚不足以形成普遍性能结论。</p>
+<h3 id="bpf-mmio-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>实现当时只支持每个设备一个区域，虚拟中断尚未工作，使用的程序类型与构建方式也带有原型性质。异步操作、客户机内存访问、设备迁移与细粒度权限仍需设计。该工作的工程启发是选择小而明确的内核快路径，并保留用户态回退；若继续扩展为完整设备框架，就必须重新审视长期 ABI 和安全审核成本。</p>
+</section>
+</div>
+  </div>
+  <nav class="mechanism-related" aria-label="会议资料"><a href="../kvm-forum.html#year-2023">返回年度总览</a><a href="https://kvm-forum.qemu.org/2023/" target="_blank" rel="noopener noreferrer">原始议程</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=0ad6552bf0f5"></script>
+<script src="../assets/mechanism-viewer.js?v=02b518d59aa4" defer></script></body>
+</html>

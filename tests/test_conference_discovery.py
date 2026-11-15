@@ -203,19 +203,24 @@ def test_topic_links_work_with_dynamic_and_static_paths(path):
     assert server._TOPIC_ROUTE.fullmatch("/topics/../index.html") is None
 
 
-def test_forum_preview_keeps_historical_analysis_separate():
+def test_forum_reviews_keep_title_only_historical_analysis_separate():
     editions, analysis = kvm_forum.load_content()
-    preview = editions[-1]
-    assert preview["year"] == 2026 and preview["preview"]
-    assert len(preview["titles"]) == len(set(preview["titles"])) == 43
-    assert len(preview["selected_talks"]) == 4
+    edition = editions[-1]
+    assert edition["year"] == 2026 and edition["review"]
+    assert len(edition["titles"]) == len(set(edition["titles"])) == 43
+    assert 5 <= len(edition["review"]["talks"]) <= 10
     assert all(item["year"] <= 2025 for item in analysis["years"])
     page = render.render_kvm_forum_html(Config(), editions, analysis)
     assert page.index('id="year-2026"') < page.index('id="year-2025"')
-    assert "议程预览" in page and "2026-11-12" in page
+    assert "议程预览" not in page
+    assert "解读依据各届原始讲稿" in page
     assert "43 个议题" in page
     assert '<h2>2026</h2>' in page
-    assert page.count(f'href="{preview["url"]}"') == 1
+    assert page.count(f'href="{edition["url"]}"') == 1
     assert 'class="representative-papers"' not in page
     assert 'class="forum-preview-method"' not in page
-    assert all(talk["url"] not in page for talk in preview["selected_talks"])
+    for talk in edition["review"]["talks"]:
+        assert f'href="kvm-forum/2026.html#{talk["id"]}"' in page
+    for edition in editions:
+        if edition.get('review'):
+            assert f'href="kvm-forum/{edition["year"]}.html"' in page

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>KVM Forum 2017 精选解读 - virt-report</title>
+  <meta name="description" content="本届精选围绕虚拟化数据通路中的切换、缓存与隔离成本展开。Packed virtqueue 和 I/O 轮询减少请求处理开销，VHE 重排宿主与客户机状态切换，快速写保护缓解迁移中的锁竞争；vDPA 和多进程 QEMU 则探索硬件卸载与设备隔离的新边界。六篇解读分别说明原型条件、已实现部分及后续工程问题。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
+  <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/forum.css?v=02b518d59aa4">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=0ad6552bf0f5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="on" aria-current="page">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="forum-review mechanism-article">
+  <header class="mechanism-header">
+    <nav class="mechanism-breadcrumb" aria-label="面包屑"><a href="../conferences.html">会议</a><span aria-hidden="true">/</span><a href="../kvm-forum.html#year-2017">KVM Forum</a></nav>
+    <h1>KVM Forum 2017 精选解读</h1>
+    <p>本届精选围绕虚拟化数据通路中的切换、缓存与隔离成本展开。Packed virtqueue 和 I/O 轮询减少请求处理开销，VHE 重排宿主与客户机状态切换，快速写保护缓解迁移中的锁竞争；vDPA 和多进程 QEMU 则探索硬件卸载与设备隔离的新边界。六篇解读分别说明原型条件、已实现部分及后续工程问题。</p>
+    <p class="forum-event">6 篇精选</p>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、本届观察</a></li><li><a href="#packed-ring">二、Packed virtqueue 的早期设计：减少队列缓存访问</a></li><li><a href="#arm-vhe">三、Arm VHE：把 KVM 宿主移到 EL2</a></li><li><a href="#vdpa">四、vDPA 的早期方案：保留 Virtio 接口，卸载数据通路</a></li><li><a href="#multiprocess">五、多进程 QEMU：设备模拟的隔离边界</a></li><li><a href="#fast-dirtylog">六、快速写保护：缩短脏页同步对 vCPU 的阻塞</a></li><li><a href="#io-polling">七、QEMU 自适应轮询：降低 virtio-blk 的唤醒延迟</a></li></ol>
+    </nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+<h2><span class="mechanism-heading-number">一、</span>本届观察</h2>
+<p>2017 年的这些工作开始重新审视成熟接口内部的成本：一次请求要访问多少缓存行，一次客户机退出要保存多少寄存器，一轮脏页同步会阻塞多少 vCPU。与此同时，硬件卸载和设备进程拆分要求建立新的控制边界。下面六项工作兼有可测量的性能优化与影响后续架构的设计提案；两者的完成程度分别说明。</p>
+</section>
+<section id="packed-ring" class="mechanism-section">
+<h2><span class="mechanism-heading-number">二、</span>Packed virtqueue 的早期设计：减少队列缓存访问</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=z9cWwgYH97A" target="_blank" rel="noopener noreferrer">The Future of virtio: Riddles, Myths and Surprises</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://www.linux-kvm.org/images/0/03/Virtio_fall_2017.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Michael S. Tsirkin、Jens Freimann · Red Hat</p>
+</div>
+<h3 id="packed-ring-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>Virtio 的共享队列避免了逐次复制请求描述信息，但共享结构本身仍有缓存成本。Split 队列把描述符表、可用环和完成环分开，驱动发布请求与设备回报完成需要触及不同位置。当后端处理越来越快、报文越来越小时，队列元数据的缓存往返可能占据明显比例。讲稿提出将请求与完成状态放入同一描述符环，这是理解 Packed virtqueue 设计动机的重要材料。</p>
+<h3 id="packed-ring-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>合并结构需要解决所有权、绕回和完成顺序。驱动必须辨认描述符属于本轮请求还是上一轮遗留状态，设备也需要判断哪些槽位可消费。乱序完成时，完成位置与原始缓冲区之间仍要保持对应。另一个约束是兼容性：新队列布局需要通过特性协商启用，已有设备与驱动组合仍应按共同支持的接口工作。</p>
+<h3 id="packed-ring-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>原型在描述符中放入地址、长度及可用与完成状态，结合环绕计数区分相邻轮次。缓冲区标识用于找回原始请求，顺序处理场景可以进一步合并完成更新。这样，生产者与消费者围绕较少的缓存行交换所有权，批量处理还能够摊薄缓存传递和通知成本。</p>
+<p>讲稿同时讨论通知抑制、硬件更容易处理的队列约束，以及门铃携带可用位置等方向。这些议题说明队列格式、通知协议和硬件实现需要共同设计；其中部分在当时仍是面向下一版规范的讨论，不能全部当作已经定稿的接口。</p>
+<h3 id="packed-ring-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>原型图表中，不共享缓存的单请求处理时间由约 183 ns 降至约 114 ns；共享缓存时，两者都在约 40 ns 附近。批量增加后差距进一步收窄。64 字节报文实验还展示了约 18.8 Mpps 到 22.5 Mpps 的变化。这里的数值来自讲稿图示，平台与所有配置披露有限，适合用来观察缓存布局的影响，不能据此推算任意网卡的提升幅度。</p>
+<h3 id="packed-ring-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>更紧凑的队列仍需要正确的内存顺序、通知抑制和乱序完成处理。共享缓存、批量大小以及设备实现都会改变收益，单线程微基准不能替代真实网络负载。2017 年材料展示的是规范演进中的设计与原型；评价具体部署时，还要核对驱动、后端和硬件共同支持的特性，并同时观察吞吐、延迟和 CPU 使用量。</p>
+</section>
+<section id="arm-vhe" class="mechanism-section">
+<h2><span class="mechanism-heading-number">三、</span>Arm VHE：把 KVM 宿主移到 EL2</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=j0bp4fnO98w" target="_blank" rel="noopener noreferrer">To EL2, and Beyond!</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://www.linux-kvm.org/images/a/a1/To_EL2_and_Beyond_0.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Christoffer Dall、Shih-Wei Li · Linaro / Columbia University</p>
+</div>
+<h3 id="arm-vhe-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>传统 Arm KVM 把宿主 Linux 放在 EL1，把客户机与宿主切换所需的低层代码放在 EL2。客户机退出后，处理流程可能需要跨越这两个异常级，频繁 I/O 和中断会放大切换成本。VHE 为完整宿主内核运行在 EL2 增加支持，使 KVM 有机会缩短路径，并减少宿主根本不需要使用的客户机状态的重复保存与恢复。</p>
+<h3 id="arm-vhe-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>把 Linux 移到 EL2 并不会自动消除所有开销。寄存器布局、异常入口、地址翻译和定时器访问都要适应新的运行方式；哪些客户机状态可以跨退出保留，还取决于宿主是否会使用相同硬件状态。讲稿研究时缺少可用的 VHE 硬件，实验系统必须模拟部分运行条件，这也限制了结果的外推范围。</p>
+<h3 id="arm-vhe-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>VHE 的 E2H、TGE 等控制支持宿主寄存器访问和异常路由，宿主拥有适合内核运行的 EL2 地址翻译环境。软件优化把一部分 EL1 寄存器和定时器状态的处理，从频繁的客户机进入退出循环移到 vCPU 加载与卸载边界。宿主在 EL2 运行时，可以保留只供客户机使用的 EL1 状态，进一步减少世界切换工作。</p>
+<p>作者在 Armv8.0 机器上改造 Linux 构建原型，包括受限的地址空间、额外的异常转接和上下文切换处理。它用于检验减少切换工作的潜力，并不具备正式 VHE 实现的全部硬件语义与安全属性。</p>
+<h3 id="arm-vhe-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>实验使用 2 GHz、8 核、16 GB 内存的 Seattle A1100。讲稿显示，仅改变宿主所在异常级时，hypercall 从 3181 周期降至 3045 周期；配合路径优化后降至 752 周期，虚拟 IPI 从 14155 周期降至 2526 周期。用户态 I/O 则从 6665 周期升至 7630 周期，体现原型转接路径的代价。不同工作负载的收益方向并不一致，不能只挑最短路径的结果。</p>
+<h3 id="arm-vhe-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>这些数据属于特殊实验内核，正式硬件上的地址空间标识、权限检查和异常路由会改变成本。讲稿的长期价值是状态归属分析：宿主与客户机使用哪些寄存器，哪些操作必须在每次切换执行，哪些可以延后。后续验证需要覆盖真实 VHE 硬件、用户态设备模拟和应用负载，并检查状态延后保存对抢占与迁移的影响。</p>
+</section>
+<section id="vdpa" class="mechanism-section">
+<h2><span class="mechanism-heading-number">四、</span>vDPA 的早期方案：保留 Virtio 接口，卸载数据通路</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.linux-kvm.org/images/8/87/KVM17vDPA-v4_0.pdf" target="_blank" rel="noopener noreferrer">virtio: vhost Data Path Acceleration towards NFV Cloud</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://www.linux-kvm.org/images/8/87/KVM17vDPA-v4_0.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Cunming Liang · Intel</p>
+</div>
+<h3 id="vdpa-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>NFV 负载希望降低报文处理占用的宿主 CPU，同时保留标准 Virtio 客户机驱动以及软件管理方式。直接给客户机分配厂商网卡，会把客户机接口和硬件类型紧密绑定。讲稿探索由硬件读取 Virtio 队列、软件继续管理设备控制面的路径，目标是在驱动兼容性与数据面卸载之间取得可用的组合。</p>
+<h3 id="vdpa-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>硬件消费队列需要访问客户机内存，而 DMA 权限、地址转换和内存生命周期必须由宿主管理。客户机写门铃与设备产生中断，也要连接到正确的硬件与 vCPU。标准 Virtio 外观只能统一客户机接口，硬件内部的队列状态、迁移能力及复位行为仍可能不同，这些差异需要控制面承担。</p>
+<h3 id="vdpa-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>讲稿拆分控制与数据路径：QEMU 维持客户机可见设备，适配层设置硬件队列和 DMA 映射，报文由硬件处理。通知可以经过软件事件转发，也可以在合适条件下映射 MMIO 门铃；设备中断则借助 VFIO、eventfd 和 KVM 的相关机制接入客户机。映射与权限由软件建立，稳定运行后的数据请求可避开逐次的软件处理。</p>
+<p>两条集成路线分别采用 vhost-user 扩展加用户态驱动，以及面向 VFIO/mdev 的内核适配方案。前者涉及 VFIO 描述符与通知信息的传递，后者涉及设备建模和 IOMMU 接入。它们共同追求标准前端与可替换后端，但协议和内核接口在当时仍处于探索阶段。</p>
+<h3 id="vdpa-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>原始讲稿提供架构、控制流程和依赖关系，没有足够的吞吐、延迟或 CPU 对比数据。能够从材料确认的是数据路径如何接线，以及需要修改哪些组件；无法确认任何通用性能增益。讲稿提出的迁移友好性同样属于目标，材料没有证明任意硬件后端都能完成透明热迁移。</p>
+<h3 id="vdpa-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>设备状态导出、DMA 脏页跟踪、在途请求和软件后端接管都需要进一步处理。硬件不原生理解 Virtio 队列时，还需要额外转换方案。阅读时应把这套 2017 年提案与后来形成的 Linux vDPA 接口区分开；它展示了关键职责如何拆分，不能直接充当当前内核的配置手册。</p>
+</section>
+<section id="multiprocess" class="mechanism-section">
+<h2><span class="mechanism-heading-number">五、</span>多进程 QEMU：设备模拟的隔离边界</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=Kq1-coHh7lg" target="_blank" rel="noopener noreferrer">Multi-Process QEMU</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://www.linux-kvm.org/images/f/fc/KVM_FORUM_multi-process.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Marc-André Lureau · Red Hat；Konrad Rzeszutek Wilk · Oracle</p>
+</div>
+<h3 id="multiprocess-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>单个 QEMU 进程承载虚拟机控制、内存管理及多种设备模型。设备解析客户机输入，图形等功能还会引入规模较大的依赖库；一个设备漏洞可能因此影响进程内其他状态。把设备移到独立进程，有机会限制可访问资源，也能隔离长时间执行的设备操作。这项工作讨论了拆分后必须建立的工程接口。</p>
+<h3 id="multiprocess-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>设备模型与 QEMU 核心共享大量隐含关系，包括总线枚举、MMIO/PIO、DMA、中断、复位和迁移。移出进程后，这些关系都需要显式协议。共享客户机内存会扩大后端权限，减少映射又可能增加转发成本；后端崩溃时，管理层还需要判断虚拟机能够继续运行、重建设备还是必须停止。</p>
+<h3 id="multiprocess-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>讲稿比较 fork 与独立执行后端的方式。前者容易共享同一程序的实现约定，后者更利于独立发布，却需要稳定协议和版本协商。NBD、TPM、USB 重定向与 vhost-user 等已有后端展示了不同的拆分经验，也暴露了多套控制方式带来的管理负担。</p>
+<p>对高频通知，可以使用 ioeventfd、irqfd 等机制减少经 QEMU 主事件循环转发的工作；这不等于消除了所有硬件 VM-exit。设备初始化、固件信息和迁移状态仍要由明确的控制协议承载。图形后端还可以把复杂依赖及耗时操作移出主进程，改善故障与执行时间的隔离。</p>
+<h3 id="multiprocess-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>材料以已有方案和设计分析为主，没有给出统一的攻击面量化或性能对比。Xen stub domain 等经验说明进程或虚拟机边界有实际用途，同时共享协议仍可能存在重复取数等漏洞。可确认的工程结论是需要缩小后端权限并审查协议；单凭“多了一个进程”无法证明系统整体更安全。</p>
+<h3 id="multiprocess-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>后端由谁启动、如何报告就绪、退出时怎样清理资源，以及不同版本怎样共同迁移，都尚需系统处理。进程数量增长还会影响部署和调试复杂度。讲稿中的用户态 VFIO 方向应按当时提案理解，不能套用后来接口的完成状态。后续评价应同时覆盖最小权限、故障恢复、性能开销与兼容矩阵。</p>
+</section>
+<section id="fast-dirtylog" class="mechanism-section">
+<h2><span class="mechanism-heading-number">六、</span>快速写保护：缩短脏页同步对 vCPU 的阻塞</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=kJt348q8OZQ" target="_blank" rel="noopener noreferrer">Fast Write-Protect and Fast Dirtylog-Bitmap Sync Up</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://www.linux-kvm.org/images/e/eb/Guangrong-fast-write-protection.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Guangrong Xiao · Tencent Cloud</p>
+</div>
+<h3 id="fast-dirtylog-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>预拷贝迁移需要反复获得脏页并重新跟踪后续写入。传统实现遍历映射、逐页设置写保护，持有 MMU 锁的时间会随客户机规模增长；其他 vCPU 的缺页处理也可能被阻塞。讲稿希望缩短这种集中同步，让客户机在迁移期间维持执行能力，关注点同时包含管理操作延迟与客户机受到的干扰。</p>
+<h3 id="fast-dirtylog-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>推迟逐页处理必须保持脏页记录正确。新一轮跟踪开始后，旧映射不能继续允许未记录的写入；多个 vCPU 还可能并发修改页表或处理缺页。将工作移到缺页路径可以减少集中停顿，却会增加后续访问成本，甚至因为客户机运行更快而产生更多脏页，改变整个迁移过程的收敛速度。</p>
+<h3 id="fast-dirtylog-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>原型使用全局与页表代际标记，结合根映射重载，在较高层级建立写保护。访问触发缺页后，再把必要的保护和权限处理向下推进，使逐页工作跟随实际访问发生。页表中的可写状态统计还可帮助跳过无需处理的部分。这样，一次同步不必立刻完整扫描所有叶子映射。</p>
+<p>讲稿提出新的整体写保护操作及与脏页读取配合的接口，同时讨论共享位图等后续方向。这些属于实验实现与接口提案，应与当时已可用的 KVM 接口区分。设计的关键是重新分配工作发生的时机，而非让写保护成本完全消失。</p>
+<h3 id="fast-dirtylog-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>3 GB、12 vCPU 的微基准中，脏页同步操作由约 64.3 ms 降至约 0.138 ms；随后使页面恢复可写的总时间却从约 281.7 ms 增至约 291.2 ms。另一组 30 GB、8 vCPU 的迁移实验显示，客户机写入更活跃时总迁移时间反而增加约 47%。预写入场景的总时间由 31068 降至 28310，按这两个数计算约缩短 8.9%；原图旁的百分比标注与数值不一致，不能照抄。</p>
+<h3 id="fast-dirtylog-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>单次同步变快并不保证迁移更快。部署评价需要同时测量 vCPU 阻塞、缺页处理、脏页速率及停机时间，并观察持续写入负载能否收敛。讲稿当时还计划完善补丁与 QEMU 配合。代际更新、并发缺页和大页拆分的正确性，以及成本是否集中到某些访问上，都是后续实现需要验证的部分。</p>
+</section>
+<section id="io-polling" class="mechanism-section">
+<h2><span class="mechanism-heading-number">七、</span>QEMU 自适应轮询：降低 virtio-blk 的唤醒延迟</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=g2Wlia9bo88" target="_blank" rel="noopener noreferrer">Applying Polling Techniques to QEMU: Reducing virtio-blk I/O Latency</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://www.linux-kvm.org/images/0/0a/Stefanha-kvm-forum-2017.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Stefan Hajnoczi · Red Hat</p>
+</div>
+<h3 id="io-polling-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>当 NVMe 请求只需十几微秒完成时，QEMU 线程从睡眠到运行的延迟可能占据较大比例。客户机发出请求、后端被唤醒、完成后再次通知客户机，路径中有多个等待边界。短暂轮询可以捕获即将到来的请求或完成事件，减少睡眠与唤醒开销，尤其适合队列深度较低、关注响应时间的负载。</p>
+<h3 id="io-polling-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>无限轮询会消耗 CPU 并增加功耗，也可能挤占客户机和其他虚拟机的运行时间。事件循环还会处理多种事件源，只有部分支持低成本轮询；若某个源必须依赖文件描述符通知，统一关闭等待会造成遗漏。轮询窗口需要随事件到达间隔调整，并在等待过长时可靠地返回阻塞模式。</p>
+<h3 id="io-polling-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>讲稿在 AioContext/IOThread 路径中增加有上限的自适应轮询，检查 Virtio 队列和 Linux AIO 完成状态。它轮询的是软件可见的共享状态，并非在内核仍拥有设备时直接接管物理 NVMe 队列。根据观察到的等待时间，窗口在设定上限内增长或缩小，长时间无事件时仍使用正常的睡眠等待。</p>
+<p>这类策略把低延迟请求的一小段等待留在运行线程上，同时限制空闲时的浪费。讲稿说明当时实现已进入 QEMU 2.9，主要用于 IOThread；不满足轮询条件的事件源会限制该优化，主事件循环也不在相同适用范围内。</p>
+<h3 id="io-polling-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>Intel P3700、4 KiB 随机读、队列深度 1 的实验中，32 µs 轮询上限对应客户机 IOPS 约提升 37%。配置包括单 vCPU、4 GB 客户机内存、raw 存储及 native AIO。作者也报告宿主结果波动较大，并计划通过 TRIM 与完整预写统一设备状态。该限制会影响对绝对性能和提升幅度的判断，需要与结果一起保留。</p>
+<h3 id="io-polling-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>吞吐提高的同时必须核对 CPU 时间与功耗。多租户、绑核、过量分配和突发负载可能改变合适的轮询上限；高队列深度也未必有相同收益。后续实验应使用稳定的设备预处理、延迟分位数和竞争负载，检查平均延迟改善是否伴随其他线程饥饿，避免用单个 IOPS 数字评价整个策略。</p>
+</section>
+</div>
+  </div>
+  <nav class="mechanism-related" aria-label="会议资料"><a href="../kvm-forum.html#year-2017">返回年度总览</a><a href="https://www.linux-kvm.org/page/KVM_Forum_2017" target="_blank" rel="noopener noreferrer">原始议程</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=0ad6552bf0f5"></script>
+<script src="../assets/mechanism-viewer.js?v=02b518d59aa4" defer></script></body>
+</html>

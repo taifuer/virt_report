@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>KVM Forum 2018 精选解读 - virt-report</title>
+  <meta name="description" content="五场分享覆盖 libvirt 扩展性、嵌套事件处理、设备 DMA 映射、SPDK vhost 和 Power 安全虚机。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=0ad6552bf0f5">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=0ad6552bf0f5">
+  <link rel="stylesheet" href="../assets/site.css?v=0ad6552bf0f5">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/forum.css?v=02b518d59aa4">
+</head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=0ad6552bf0f5" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="on" aria-current="page">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../mechanisms.html" class="">原理</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="forum-review mechanism-article">
+  <header class="mechanism-header">
+    <nav class="mechanism-breadcrumb" aria-label="面包屑"><a href="../conferences.html">会议</a><span aria-hidden="true">/</span><a href="../kvm-forum.html#year-2018">KVM Forum</a></nav>
+    <h1>KVM Forum 2018 精选解读</h1>
+    <p>五场分享覆盖 libvirt 扩展性、嵌套事件处理、设备 DMA 映射、SPDK vhost 和 Power 安全虚机。</p>
+    <p class="forum-event">5 篇精选</p>
+  </header>
+  <div class="mechanism-layout">
+    <nav class="mechanism-toc" aria-label="文章目录">
+      <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、本届观察</a></li><li><a href="#libvirt-scale">二、libvirt 扩展性：减少重复检查，避免主循环阻塞</a></li><li><a href="#nested-vmx">三、嵌套 VMX：正确处理事件重注入与层间切换</a></li><li><a href="#nested-dma">四、嵌套设备直通：同步客户机与宿主 IOMMU 映射</a></li><li><a href="#spdk-vhost">五、SPDK vhost：缩短存储提交与完成路径</a></li><li><a href="#power-secure">六、Power 安全虚机：由 Ultravisor 管理受保护内存</a></li></ol>
+    </nav>
+    <div class="mechanism-prose"><section id="preface" class="mechanism-section">
+<h2><span class="mechanism-heading-number">一、</span>本届观察</h2>
+<p>本届精选覆盖管理面、嵌套执行、设备数据路径和安全内存。它们共同说明，单项功能成功启动后，规模、并发和组合使用还会暴露新问题。libvirt 的重复检查会随设备数量增长，嵌套虚拟化的事件投递会跨越多层状态，直通设备的快速 I/O 又依赖昂贵的映射维护。理解这些成本，才能判断优化适合什么场景。</p>
+</section>
+<section id="libvirt-scale" class="mechanism-section">
+<h2><span class="mechanism-heading-number">二、</span>libvirt 扩展性：减少重复检查，避免主循环阻塞</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=H3lw50IKqGo" target="_blank" rel="noopener noreferrer">Scalability and Stability of libvirt: Experiences with Very Large Hosts</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2018/scalability_and_stability_of_libvirt.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Marc Hartmayer</p>
+</div>
+<h3 id="libvirt-scale-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>多台虚机反复启动和销毁时，libvirtd 主循环出现约 30 秒的停顿。管理连接、事件处理和其他实例操作会一起受到影响。演讲用大宿主压力测试追踪问题，并发现能力检查和生命周期并发中的更多缺陷，展示管理面为何需要与虚机运行面一样严肃的扩展性测试。</p>
+<h3 id="libvirt-scale-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>工作线程持有虚机对象锁等待 D-Bus 调用时，主线程也可能尝试取得同一把锁，使事件循环无法推进。高并发还暴露 fork 相关死锁、未认证连接计数竞争、初始化前处理事件和重复释放等问题。它们分属锁顺序、对象寿命和启动时序，单纯提高工作线程数量无法一并解决。</p>
+<h3 id="libvirt-scale-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>作者按最小场景分别复现启动/销毁、定义/取消定义和连接/断开，再结合调用链与 SystemTap 观察等待位置。管理主循环应主要分发事件，可能阻塞的工作交给受控工作队列，并审查跨线程锁依赖。</p>
+<p>性能剖析发现，每个设备验证都可能触发 QEMU 能力缓存有效性检查，其中又通过 fork 检查 /dev/kvm 访问权限。缓存命中仍然很贵。补丁把能力查询收敛到每项任务一次，同时避免同一任务使用前后不一致的能力结果。这里优化的是重复验证次数，不能简单概括为“增加缓存”。</p>
+<h3 id="libvirt-scale-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>测试环境为 64 共享核、4 TB 内存的 IBM z14，使用 QEMU 3.0、Fedora 28 和小型直接引导客户机。定义阶段的一个火焰图中，virFork 占比约 96.1%。在 256 台虚机、每台 16 个测试 SCSI 磁盘的特定对照中，能力查询补丁使定义与启动操作分别获得约 127 倍、26 倍的时间比改善。磁盘由 scsi_debug 提供，这些数字针对管理操作，不代表客户机业务性能。</p>
+<h3 id="libvirt-scale-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>直接启动 QEMU 与经过 libvirt 的比较只能作为参考下界，后者还承担安全标签、cgroup、命名空间和审计工作。能力检查优化也不等于所有 D-Bus 和锁问题已解决。后续应加入迁移、进程异常退出与服务重连，结合 off-CPU 分析检查等待链。对平台开发者，最可复用的经验是按实例数和设备数同时放大测试，并验证长期运行后的稳定性。</p>
+</section>
+<section id="nested-vmx" class="mechanism-section">
+<h2><span class="mechanism-heading-number">三、</span>嵌套 VMX：正确处理事件重注入与层间切换</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=Pc7F-n5278w" target="_blank" rel="noopener noreferrer">Improving KVM x86 Nested-Virtualization</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2018/Improving_KVM_nVMX.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Liran Alon</p>
+</div>
+<h3 id="nested-vmx-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>嵌套虚拟化让 L1 Hypervisor 继续运行 L2 客户机。L0 合并控制状态并决定哪些退出反射给 L1，因此必须让 L1 观察到符合硬件语义的事件顺序。演讲从 L1 偶发卡死追踪到事件处理缺陷，说明嵌套支持的核心难点不仅是模拟 VMX 指令，更是维护多层同时存在的执行状态。</p>
+<h3 id="nested-vmx-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>CPU 投递异常或中断时，写入异常栈也可能触发 EPT 缺页。这个事件已经开始投递，后续需要重注入；另一个尚待投递的事件则仍可能被 L1 拦截。若把两者混同，会重复触发 L1 拦截或丢失通知。同时，L2 运行期间 L1 可能收到 IPI，相关事件不能因为一次请求标记已被消费就永远不再检查。</p>
+<h3 id="nested-vmx-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>KVM 明确区分 pending 与 injected 状态。已开始投递给 L2 的事件按重注入语义完成，不能重新当作普通待处理事件交给 L1 决定。若此时还存在 L1 事件，使用 immediate-exit：让 CPU 完成必要的进入与事件投递后尽快退出 L2，再重新评估 L1 的待处理状态。</p>
+<p>演讲还分析 APICv 和 EOI 位图的层级问题。L1 的 IOAPIC 配置变化应更新对应控制状态，不能因为当前运行 L2 就改错 VMCS。遵循统一请求和唤醒框架，有助于减少发送方与目标 vCPU 进入、退出 L2 之间的竞争窗口。</p>
+<h3 id="nested-vmx-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>真实故障中，一个 L1 CPU 持有 MMU 锁等待 IPI 确认，其他 CPU 等待该锁；L0 跟踪显示，L2 重注入过程中到来的 L1 IPI 未被重新评估。讲稿给出相应修复提交，并展示 ESXi 嵌套运行时 EOI 丢失导致网络中断的另一个案例。这些证据验证了具体状态机修复，比仅报告嵌套虚机能启动更有说服力。</p>
+<h3 id="nested-vmx-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>迁移还需要保存 VMXON、VMCS 缓存和内部嵌套标志，不能只迁移普通寄存器。更深层嵌套会放大 VMCS 复制和层间退出，演讲中的三层实验仍达不到部分生产负载要求。半虚拟化接口能减少同步成本，也带来不同 Hypervisor 组合的兼容问题。后续测试应覆盖多种 L1 实现及事件边界，防止只验证同一套软件互相嵌套。</p>
+</section>
+<section id="nested-dma" class="mechanism-section">
+<h2><span class="mechanism-heading-number">四、</span>嵌套设备直通：同步客户机与宿主 IOMMU 映射</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=0otGlPftFCU" target="_blank" rel="noopener noreferrer">Device Assignment with Nested Guests and DPDK</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2018/KVM_Forum_2018_viommu_vfio.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Peter Xu</p>
+</div>
+<h3 id="nested-dma-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>客户机中的 DPDK 等用户态驱动需要 DMA 隔离，L1 把设备继续分配给 L2 时也需要二层地址转换。没有虚拟 IOMMU 的配合，物理设备只认识宿主已配置的映射，无法正确理解客户机驱动选择的 IOVA。演讲解释如何把客户机地址空间变化同步到真实 IOMMU，让这些组合场景可以工作。</p>
+<h3 id="nested-dma-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>客户机维护 IOVA 到 GPA 的页表，宿主还要把 GPA 对应到物理页。设备 DMA 不会像普通 CPU 访问一样自然进入 KVM 缺页处理，映射必须在提交 I/O 前有效。同步又经过客户机驱动、虚拟设备模型、VFIO 和宿主 IOMMU，多层切换使频繁映射和撤销非常昂贵。</p>
+<h3 id="nested-dma-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>QEMU 根据客户机虚拟 IOMMU 的更新，组合出 IOVA 到宿主物理地址的影子映射，并通过 VFIO 映射接口提交给真实 IOMMU。Intel VT-d caching mode 要求客户机显式失效缓存，QEMU 利用这些通知发现变化，无需为所有客户机 IOMMU 页表写入建立新的 KVM 写保护机制。</p>
+<p>宿主接口按添加、删除映射工作，QEMU 需要保存已有映射状态，才能决定哪些范围撤销、哪些重建。映射完成后，数据 DMA 直接由硬件转换；软件成本集中在地址空间变更，而非每个数据包都进行一次用户态页表遍历。</p>
+<h3 id="nested-dma-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>讲稿使用 Intel ixgbe 10 Gbit/s 网卡比较路径：内核 ixgbe 驱动在 L1 中出现约 80% 的性能下降，长期使用 DMA 映射的 DPDK 在 L1 和 L2 中都接近线速。材料没有给出完整包长和流量分布，不能把数字视为所有网卡的固定结果；它清楚说明映射频率会决定影子同步的成本占比。</p>
+<h3 id="nested-dma-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>演讲范围是 DMA 映射，没有完整覆盖 PCI 配置、中断和 MMIO 的嵌套处理。caching mode 路径也具有具体架构依赖。后续方向包括减少同步上下文切换、复用映射缓存，以及用硬件嵌套转换减少软件组合。部署时应同时评估 DMA 隔离、映射更新频率与队列生命周期，不能仅凭数据面直通就假设整体开销接近裸机。</p>
+</section>
+<section id="spdk-vhost" class="mechanism-section">
+<h2><span class="mechanism-heading-number">五、</span>SPDK vhost：缩短存储提交与完成路径</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=paTvtJ6JdAc" target="_blank" rel="noopener noreferrer">SPDK vhost Target: A Practical Solution to Accelerate Storage I/Os Inside VMs</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2018/KVM_Forum_26_Oct_2018_Vhost-NVMe.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Changpeng Liu, Ziye Yang</p>
+</div>
+<h3 id="spdk-vhost-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>高速 SSD 的延迟降低后，设备模拟、上下文切换和中断处理更容易成为瓶颈。SPDK vhost 后端在独立用户态进程中消费客户机队列，并通过块设备抽象访问 NVMe 等存储。演讲同时讨论成熟的 Virtio 前端与实验性的 NVMe 前端，目标是减少每个请求经过的处理层次。</p>
+<h3 id="spdk-vhost-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>独立后端需要客户机内存映射、队列位置和完成通知，管理路径仍要与 QEMU 协作。NVMe 客户机驱动通过 MMIO 门铃提交请求，若每次都触发退出，后端轮询也无法消除前端成本。硬件队列还可能访问不同 namespace，简单分割队列并不天然提供安全的设备共享与迁移能力。</p>
+<h3 id="spdk-vhost-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>SPDK 使用 vhost 相关控制消息取得内存和队列信息，数据面直接消费共享队列，通过 bdev 抽象连接底层存储。Virtio-SCSI、Virtio-BLK 使用标准客户机驱动；实验性 vhost-NVMe 将 NVMe 队列和管理操作连接到用户态后端，需要额外 QEMU 补丁。</p>
+<p>支持 NVMe shadow doorbell buffer 的客户机可以在共享内存中更新门铃，减少 I/O 提交时的 MMIO 退出。旧驱动仍可能执行普通 MMIO 写。完成通知也仍有中断与退出成本，因此“提交路径减少退出”和“整台虚机没有退出”应严格区分。轮询换取低延迟，同时占用宿主 CPU。</p>
+<h3 id="spdk-vhost-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>单虚机测试使用 4 vCPU、4 GB 内存、4 队列、Optane P4800X 和 4 KiB I/O，SPDK 占一个后端核。图中三种 vhost 路径比原 QEMU NVMe 模拟有更高吞吐与更少退出。另一组 8 台虚机、4 块 P4510、两个后端核的随机读中，实验性 NVMe 前端约 250 万 IOPS，高于同图的 SCSI 与 BLK；该组队列深度为 128，不能与低延迟轻载直接类比。</p>
+<h3 id="spdk-vhost-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>讲稿把 vhost-NVMe 上游支持和迁移列为未来工作，不能因为对照表列出潜在能力就认定完整迁移已交付。测试还注明结果取得于相关漏洞缓解补丁之前，现代部署不能照搬数值。选择后端时应同时测低负载 CPU 消耗、尾延迟、设备共享与错误恢复，确认专用轮询核带来的资源成本是否符合业务收益。</p>
+</section>
+<section id="power-secure" class="mechanism-section">
+<h2><span class="mechanism-heading-number">六、</span>Power 安全虚机：由 Ultravisor 管理受保护内存</h2>
+<div class="forum-talk-source">
+  <p class="forum-source-title">原始演讲：<a href="https://www.youtube.com/watch?v=l4jccqc14Vc" target="_blank" rel="noopener noreferrer">Secure Virtual Machines on Power</a><span aria-hidden="true"> · </span><a class="forum-source-download" href="https://gitlab.com/qemu-project/kvm-forum/-/raw/main/_attachments/2018/SVM_Edinburg_v3.pdf" target="_blank" rel="noopener noreferrer">原始讲稿（PDF）</a></p>
+  <p class="forum-source-author">Guerney Hunt, Ram Pai</p>
+</div>
+<h3 id="power-secure-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
+<p>云客户希望保护虚机数据，避免宿主管理员或被攻破的 Hypervisor 读取秘密。Power 的方案将私有内容放入受硬件限制的安全内存，由 Ultravisor 负责可信操作，普通 Linux/KVM 保留调度与 I/O 管理。它展示了在既有虚拟化栈之下加入可信组件时，内存与生命周期需要怎样重新划分。</p>
+<h3 id="power-secure-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
+<p>安全虚机仍需要启动固件和内核、提交 I/O、共享必要数据，以及在资源压力下移动页面。宿主不能读取私有明文，却要掌握页面分配关系。镜像还必须绑定到获授权的平台，防止把秘密释放给错误宿主。可信固件承担过多普通服务会扩大信任范围，承担过少又无法维护安全状态。</p>
+<h3 id="power-secure-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
+<p>Power 的受保护执行设施提供安全内存和更高权限的 Ultravisor。安全镜像包含加密秘密及面向授权平台的密钥封装。虚机以普通模式启动后请求安全转换，由 Ultravisor 验证镜像信息、取得密钥并把内容移入安全页，随后开放受保护执行。</p>
+<p>客户机显式共享用于虚拟 I/O 等用途的页面。Linux 侧把安全页视为特殊内存，通过 HMM 配套协调移动，但内容转换由 Ultravisor 完成：移出到普通内存时加密，移入时恢复。调度等与保密无关的服务继续由宿主管理，减少可信固件负责的普通系统功能。</p>
+<h3 id="power-secure-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
+<p>材料给出镜像转换、平台密钥匹配和页面进出接口，并关联当时的内核补丁讨论。错误平台无法打开对应封装，转换流程还检查内核、initrd 和命令行等测量信息。讲稿没有提供吞吐、内存回收或启动时间的完整测试，且明确设计仍待定型与上游接受，应理解为体系与接口方案，不能当作最终产品能力列表。</p>
+<h3 id="power-secure-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
+<p>共享页中的数据不再具有相同私有保护，客户机需要检查来自宿主的输入。页面移动的加密、完整性和恢复行为也需要与内核资源管理共同验证。平台授权如何更新、异常退出后如何回收安全页，都是实际部署必须明确的生命周期问题。安全边界限制了宿主读写能力，却不保证宿主持续提供 CPU 与 I/O 服务，可用性仍需其他机制支持。</p>
+</section>
+</div>
+  </div>
+  <nav class="mechanism-related" aria-label="会议资料"><a href="../kvm-forum.html#year-2018">返回年度总览</a><a href="https://kvm-forum.qemu.org/2018/" target="_blank" rel="noopener noreferrer">原始议程</a></nav>
+</article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=0ad6552bf0f5"></script>
+<script src="../assets/mechanism-viewer.js?v=02b518d59aa4" defer></script></body>
+</html>

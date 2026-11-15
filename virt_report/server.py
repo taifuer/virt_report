@@ -24,6 +24,7 @@ _REPORT_ROUTE = re.compile(r"^/(daily|weekly|monthly)/([^/]+?)(?:\.html)?$")
 _ARCHIVE_ROUTE = re.compile(r"^/(daily|weekly|monthly)(?:/|/index\.html)?$")
 _TOPIC_ROUTE = re.compile(r"^/topics/([a-z-]+)(?:/(?:index\.html)?|\.html)?$")
 _MECHANISM_ROUTE = re.compile(r"^/mechanisms/([a-z0-9-]+)\.html$")
+_FORUM_REVIEW_ROUTE = re.compile(r"^/kvm-forum/([0-9]{4})\.html$")
 READINESS_MAX_AGE_HOURS = 12
 _REPORT_TYPE_NAMES = {"daily": "日报", "weekly": "周报", "monthly": "月报"}
 # Keep JSON parsing inside SQLite for archive/navigation queries. CASE guards
@@ -358,14 +359,17 @@ def make_handler(config: Config, *, _database_initialized: bool = False):
                     ".css": "text/css; charset=utf-8",
                     ".js": "text/javascript; charset=utf-8",
                     ".svg": "image/svg+xml",
-                }[Path(name).suffix]) for name in render.MECHANISM_ASSET_NAMES + render.SEARCH_ASSET_NAMES},
+                }[Path(name).suffix]) for name in (
+                    render.MECHANISM_ASSET_NAMES + render.SEARCH_ASSET_NAMES + render.FORUM_ASSET_NAMES
+                )},
             }
             if path in brand_assets:
                 filename, content_type = brand_assets[path]
                 body = (render.ASSETS_DIR / filename).read_bytes()
                 cache_control = (
                     "public, max-age=31536000, immutable"
-                    if filename in {"site.css", "site.js", *render.MECHANISM_ASSET_NAMES, *render.SEARCH_ASSET_NAMES}
+                    if filename in {"site.css", "site.js", *render.MECHANISM_ASSET_NAMES,
+                                    *render.SEARCH_ASSET_NAMES, *render.FORUM_ASSET_NAMES}
                     else "public, max-age=3600"
                 )
                 self._send(
@@ -524,6 +528,13 @@ def make_handler(config: Config, *, _database_initialized: bool = False):
                 with closing(open_database()) as conn:
                     html = render.render_metrics_html(config, build_metrics(conn, config))
                 self._send(200, html, head_only)
+                return
+            forum_review_match = _FORUM_REVIEW_ROUTE.fullmatch(path)
+            if forum_review_match:
+                from virt_report.kvm_forum import get_review
+                edition = get_review(int(forum_review_match.group(1)))
+                html = render.render_kvm_forum_review_html(config, edition) if edition else None
+                self._send(200 if html else 404, html or "Not found", head_only)
                 return
             if path in ("/kvm-forum", "/kvm-forum/", "/kvm-forum.html"):
                 try:

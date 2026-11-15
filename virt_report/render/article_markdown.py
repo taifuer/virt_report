@@ -30,12 +30,14 @@ def render_article_markdown(
     baselines: str,
     diagrams: Mapping[str, Callable[[str, str], str]],
     components: Mapping[str, Callable[[], str]],
+    require_baselines: bool = True,
 ) -> str:
     """Render authored content; metadata/outline validation follows at publication.
 
     H2s require ``{#stable-id}``. Fenced ``diagram NAME`` blocks contain a
     title and description; ``baselines`` and ``component NAME`` have no body.
     Ordinary code fences remain literal, including Jinja-looking examples.
+    Conference reviews cite individual talks and can omit software baselines.
     """
     parser = MarkdownIt("commonmark", {"html": False}).enable("table")
     env: dict = {}
@@ -101,7 +103,7 @@ def render_article_markdown(
         if token.type == "th_open":
             token.attrSet("scope", "col")
         output.append(token)
-    if not section or not baselines_seen:
+    if not section or (require_baselines and not baselines_seen):
         raise ValueError("An article requires a preface and source baselines")
     output.append(_html_token("</section>"))
     return parser.renderer.render(output, parser.options, env)
