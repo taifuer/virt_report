@@ -16,7 +16,7 @@
     <div>{% set item=edition.analysis %}<h3>{% if edition.review %}<a href="{{ edition.review.path }}">{{ item.headline }}</a>{% else %}{{ item.headline or "样本不足" }}{% endif %}</h3>
       {% if edition.event_status == 'upcoming' %}<p class="forum-event">会议日期：{{ edition.starts_on }}—{{ edition.ends_on }}</p>{% elif edition.event_status == 'ongoing' %}<p class="forum-event">会议进行中 · {{ edition.starts_on }}—{{ edition.ends_on }}</p>{% endif %}
       {% if item.themes %}<div class="theme-list">{% for theme in item.themes %}<span class="tag">{{ theme }}</span>{% endfor %}</div>{% endif %}
-      <p>{{ item.summary or "该年度页面未提取到足够的有效议题，暂不作主题判断。" }}</p>
+      <p class="forum-year-summary">{{ item.summary or "该年度页面未提取到足够的有效议题，暂不作主题判断。" }}</p>
       {% if edition.review %}<div class="forum-selections" aria-label="{{ edition.year }} 年精选解读">{% for talk in edition.review.talks %}<article class="forum-selection"><h4><a href="{{ edition.review.path }}#{{ talk.id }}">{{ talk.title }}</a></h4><p>{{ talk.summary }}</p></article>{% endfor %}</div>{% endif %}
     </div>
   </section>{% endfor %}</div>

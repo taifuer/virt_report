@@ -7,6 +7,7 @@ const {launchBrowser} = require('./browser_runtime.cjs');
 const base = (process.argv[2] || 'http://127.0.0.1:8092').replace(/\/$/, '');
 assert(['127.0.0.1', 'localhost'].includes(new URL(base).hostname), 'use a local preview only');
 const edition = require('../virt_report/content/kvm_forum/2026.json');
+const previousEdition = require('../virt_report/content/kvm_forum/2025.json');
 const artifacts = path.join(process.env.BROWSER_ARTIFACT_DIR || '/tmp/virt-report-browser', 'kvm-forum');
 
 async function noOverflow(page) {
@@ -58,6 +59,16 @@ async function run() {
       'annual headings use the same green as selection links');
       assert.match(await trends.innerText(), /2026/);
       assert.equal(await page.locator(`#year-${edition.year} .forum-agenda`).innerText(), '原始议程');
+      const annualSummaries = page.locator('.forum-year-summary');
+      assert.equal(await annualSummaries.count(), 17);
+      assert(await annualSummaries.evaluateAll(nodes => nodes.every(node =>
+        !/精选|解读/.test(node.textContent))), 'annual summaries cover the agenda, not the selection');
+      for (const item of [edition, previousEdition]) {
+        assert.equal(await page.locator(`#year-${item.year} .forum-year-summary`).innerText(),
+          item.analysis.summary);
+      }
+      await page.locator('#year-2025 .forum-year-summary').scrollIntoViewIfNeeded();
+      await page.screenshot({path: path.join(artifacts, `annual-2025-${width}.png`)});
       await page.locator(`#year-${edition.year} h3 a[href="kvm-forum/${edition.year}.html"]`).click();
       await page.locator('.forum-review').waitFor();
       const links = page.locator('#mechanism-toc-links');

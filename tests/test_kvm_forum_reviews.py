@@ -115,10 +115,47 @@ def test_trends_group_recent_years_and_cover_more_than_selected_talks():
                   'ARM64', 'CPU 与内存超分', '迁移', '热更新'):
         assert topic in recent
     assert '降低迁移后的缺页代价' not in recent
-    assert editions[-1]['analysis']['summary'].startswith('这组六场精选')
     html = render.render_kvm_forum_html(Config(), editions, analysis)
     assert html.count('class="era-years"') == 4
     assert html.index('2022—2026') < html.index('2018—2021')
+
+
+def test_annual_overviews_summarize_the_agenda_not_the_selection():
+    editions, analysis = kvm_forum.load_content()
+    html = render.render_kvm_forum_html(Config(), editions, analysis)
+    paragraphs = re.findall(r'<p class="forum-year-summary">(.*?)</p>', html, flags=re.S)
+    assert [unescape(paragraph) for paragraph in paragraphs] == [
+        edition['analysis']['summary'] for edition in reversed(editions)
+    ]
+    for edition in editions:
+        annual = edition['analysis']
+        assert len(annual['summary']) >= 180, edition['year']
+        assert annual['summary'] != edition['review']['summary'], edition['year']
+        for text in (annual['headline'], annual['summary'], *annual['themes']):
+            assert '精选' not in text and '解读' not in text, edition['year']
+
+
+@pytest.mark.parametrize('year,topics', [
+    (2025, ('NVIDIA vGPU', 'Grace Blackwell', 'Rust', '单一二进制',
+            'Windows on Arm', 'RISC-V pKVM', '芯粒')),
+    (2026, ('guest_memfd', 'KVM planes', 'SVSM', 'CXL Type-2',
+            'ARM64', 'AF_VSOCK', 'Firecracker')),
+])
+def test_recent_annual_overviews_include_directions_beyond_selected_talks(year, topics):
+    edition = kvm_forum.get_review(year)
+    assert all(topic in edition['analysis']['summary'] for topic in topics)
+
+
+def test_selected_review_intro_does_not_replace_the_annual_overview():
+    editions, analysis = kvm_forum.load_content()
+    original = render.render_kvm_forum_html(Config(), editions, analysis)
+    updated = deepcopy(editions)
+    edition = next(item for item in updated if item['year'] == 2025)
+    edition['review']['summary'] = '用于精选解读页面的独立导语。'
+    assert render.render_kvm_forum_html(Config(), updated, analysis) == original
+    article = render.render_kvm_forum_review_html(Config(), edition)
+    assert f'<p>{edition["review"]["summary"]}</p>' in article
+    assert edition['analysis']['summary'] not in unescape(article)
 
 
 def test_cpu_review_separates_deployment_scenarios_and_evidence():
