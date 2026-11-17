@@ -135,17 +135,6 @@ if(reportToc){
   document.querySelectorAll('a[href^="#item-"]').forEach(link=>link.addEventListener('click',()=>{if(link.hash===location.hash)revealReportItem()}));
   window.addEventListener('scroll',requestTocDraw,{passive:true});window.addEventListener('resize',requestTocDraw);window.addEventListener('hashchange',()=>{revealReportItem();requestTocDraw()});applyFilters();revealReportItem();drawToc();
 }
-document.querySelectorAll('[data-copy-report-link]').forEach(link=>link.addEventListener('click',async event=>{
-  if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey||event.button!==0)return;
-  // Keep the native fragment-link fallback on HTTP/file previews or denied clipboard access.
-  const status=link.parentElement.querySelector('[data-copy-status]');
-  try{
-    if(!navigator.clipboard?.writeText)throw new Error('clipboard unavailable');
-    await navigator.clipboard.writeText(link.href);
-    link.textContent='已复制';if(status)status.textContent='条目链接已复制';
-  }catch{if(status)status.textContent='已定位条目，可复制浏览器地址分享'}
-  window.setTimeout(()=>{link.textContent='分享';if(status)status.textContent=''},2200);
-}));
 // Shared pagination state; server-rendered lists keep real navigation links.
 const readPageState=()=>{
   const params=new URLSearchParams(location.search);

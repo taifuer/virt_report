@@ -106,14 +106,34 @@ def add_attributes(doc: Document, node: Node, values: dict) -> tuple[int, int, s
     return node.opening_end - 1, node.opening_end - 1, extra
 
 
+def legacy_original_title(doc: Document, node: Node) -> Node | None:
+    """Recognize only the original-title disclosure emitted by the old template."""
+    if node.tag != "details" or not node.parent or not node.parent.has_class("dyn"):
+        return None
+    children = [child for child in doc.descendants(node) if child.parent is node]
+    if ([child.tag for child in children] == ["summary", "span"]
+            and doc.text(children[0]) == "查看原始标题"):
+        return children[1]
+    return None
+
+
 def protected_report_parts(html: str) -> list[str]:
     """Report text/statistics/headers must not change in a presentation refresh."""
     doc = Document(html)
     classes = {"report-hero", "overview-card", "d-heading", "d-meta", "d-sum"}
-    return [html[node.start:node.end] for node in doc.nodes
-            if any(node.has_class(name) for name in classes)
-            or node.attrs.get("id") in {"stats", "period-analysis"}
-            or (node.tag == "details" and node.parent and node.parent.has_class("dyn"))]
+    parts, original_titles = [], []
+    for node in doc.nodes:
+        original = legacy_original_title(doc, node)
+        if node.has_class("d-original-title") and node.parent and node.parent.has_class("dyn"):
+            original = node
+        if original is not None:
+            # Moving the title must preserve its exact escaped content.
+            original_titles.append(html[original.opening_end:original.closing_start])
+        elif (any(node.has_class(name) for name in classes)
+              or node.attrs.get("id") in {"stats", "period-analysis"}
+              or (node.tag == "details" and node.parent and node.parent.has_class("dyn"))):
+            parts.append(html[node.start:node.end])
+    return parts + original_titles
 
 
 def refresh_report_html(html: str) -> tuple[str, dict[tuple[str, str], str]]:
@@ -121,6 +141,19 @@ def refresh_report_html(html: str) -> tuple[str, dict[tuple[str, str], str]]:
     entries = [node for node in doc.nodes if node.has_class("dyn")]
     used_ids = {node.attrs["id"] for node in doc.nodes if node.attrs.get("id")}
     for node in entries:
+        children = [child for child in doc.descendants(node) if child.parent is node]
+        heading = next((child for child in children if child.has_class("d-heading")), None)
+        has_original = any(child.has_class("d-original-title") for child in children)
+        for child in children:
+            original = legacy_original_title(doc, child)
+            if original is not None and heading and not has_original:
+                title_html = html[original.opening_end:original.closing_start]
+                edits.append((heading.end, heading.end,
+                              f'\n        <p class="d-original-title">{title_html}</p>'))
+                edits.append((child.start, child.end, ""))
+                has_original = True
+            if child.has_class("item-permalink-row"):
+                edits.append((child.start, child.end, ""))
         section = node.parent
         while section and "data-project" not in section.attrs:
             section = section.parent
@@ -145,12 +178,6 @@ def refresh_report_html(html: str) -> tuple[str, dict[tuple[str, str], str]]:
         if not existing_id:
             edits.append(add_attributes(doc, node, {"id": anchor}))
             used_ids.add(anchor)
-        if not any("data-copy-report-link" in child.attrs for child in doc.descendants(node)):
-            label = escape("分享条目：" + doc.text(title), quote=True)
-            edits.append((node.closing_start, node.closing_start,
-                          f'<div class="item-permalink-row"><a class="item-permalink" href="#{anchor}" '
-                          f'data-copy-report-link aria-label="{label}">分享</a>'
-                          '<span class="sr-only" role="status" data-copy-status></span></div>'))
     for node in doc.nodes:
         for key in ("data-project-filter", "data-item-filter"):
             if key in node.attrs:

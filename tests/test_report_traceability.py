@@ -1,5 +1,6 @@
 """Stable links, safe evidence rendering and explicit static search behavior."""
 from copy import deepcopy
+from html import escape
 
 import pytest
 
@@ -72,11 +73,46 @@ def test_refs_link_to_selected_items_or_original_evidence_and_escape_all_text():
     assert "javascript:" not in page and "forged.example" not in page
     assert "<script>unsafe" not in page and "&lt;script&gt;unsafe" in page
     assert "&lt;script&gt;title&lt;/script&gt;" in page
-    assert 'data-copy-report-link aria-label="分享条目：迁移点评"' in page
+    assert 'data-copy-report-link' not in page
+    assert 'item-permalink-row' not in page
     assert 'aria-pressed="true" data-project-filter="all"' in page
     assert 'aria-pressed="false" data-item-filter="feature"' in page
     assert 'data-report-filter-status>显示 1 / 1 条精选' in page
     assert 'data-report-filter-empty hidden' in page
+
+
+@pytest.mark.parametrize('period,key', [
+    ('daily', '2026-11-16'), ('weekly', '2026-W47'), ('monthly', '2026-11'),
+])
+def test_original_title_is_visible_under_heading_without_share_controls(period, key):
+    content = _report()
+    content.update(period=period, period_key=key)
+    original = '[PULL 00/33] target-arm: <script>alert(1)</script> & queue'
+    content['sections'][0]['items'][0]['original_title'] = original
+    html = render.render_report_html(Config(), content)
+    card = html.split('<article class="dyn', 1)[1].split('</article>', 1)[0]
+    paragraph = f'<p class="d-original-title">{escape(original)}</p>'
+    assert paragraph in card
+    assert card.index('class="d-heading"') < card.index(paragraph) < card.index('class="d-meta"')
+    assert '<details' not in card
+    assert '<script>' not in card
+    assert '查看原始标题' not in html
+    assert 'data-copy-report-link' not in html and 'item-permalink-row' not in html
+    anchor = report_item_anchor('qemu', 'https://example.org/first')
+    assert f'id="{anchor}"' in card
+    assert f'href="#{anchor}"' in html  # Overview and progress references remain usable.
+
+
+@pytest.mark.parametrize('original', [None, '', '迁移点评'])
+def test_missing_or_identical_original_title_does_not_add_an_empty_row(original):
+    content = _report()
+    item = content['sections'][0]['items'][0]
+    if original is None:
+        item.pop('original_title')
+    else:
+        item['original_title'] = original
+    html = render.render_report_html(Config(), content)
+    assert 'class="d-original-title"' not in html
 
 
 def test_duplicate_selection_uses_one_target_and_unknown_refs_remain_plain_text():
@@ -161,7 +197,7 @@ def test_filter_script_reveals_hidden_link_targets_and_announces_results():
     assert "setAttribute('aria-pressed',String(active))" in script
     assert "if(target.hidden||target.closest('.project-section')?.hidden)resetFilters()" in script
     assert "if(empty)empty.hidden=matched>0" in script
-    assert "navigator.clipboard.writeText(link.href)" in script
+    assert 'data-copy-report-link' not in script
     assert ".dyn:target" in (render.ASSETS_DIR / "site.css").read_text()
 
 

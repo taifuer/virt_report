@@ -1,6 +1,8 @@
 """Presentation refresh must preserve exports newer than the local database."""
 from pathlib import Path
 
+import pytest
+
 from scripts.refresh_static_presentation import (
     Document, protected_report_parts, refresh_listing_heading, refresh_page_chrome,
     refresh_report_html, refresh_topic_html,
@@ -22,6 +24,65 @@ def test_snapshot_refresh_adds_stable_targets_and_preserves_report_prose():
     assert "[T001] 历史点评" in refreshed  # No candidate mapping: do not guess.
     again, repeated = refresh_report_html(refreshed)
     assert again == refreshed and repeated == targets
+
+
+@pytest.mark.parametrize('attributes,source', [
+    ('', '<a href="https://example.com/patch">中文标题</a>'),
+    (' id="historical-anchor"', '<a href="https://example.com/patch">中文标题</a>'),
+    ('', '中文标题'),
+    ('', '<a href="javascript:alert(1)">中文标题</a>'),
+])
+def test_snapshot_refresh_shows_original_titles_and_removes_share_rows(attributes, source):
+    original = '[PATCH v3 01/33] target-arm: &lt;tag&gt; &amp; queue'
+    disclosure = ('<details style="color:gray"><summary>查看原始标题</summary>'
+                  f'<span>{original}</span></details>')
+    crossposts = '<details class="item-evidence-note"><summary>同文跨列表归档</summary>QEMU · KVM</details>'
+    html = (f'<section data-project="qemu"><article class="dyn"{attributes}>'
+            f'<div class="d-heading"><div class="d-title">{source}</div></div>'
+            '<div class="d-meta">邮件列表 · 2026-11-16</div>'
+            '<p class="d-sum">原始点评保持。</p>' + disclosure + crossposts +
+            '<div class="item-permalink-row"><a href="#historical-anchor" '
+            'data-copy-report-link>分享</a><span data-copy-status></span></div>'
+            '</article></section>')
+    refreshed, targets = refresh_report_html(html)
+    paragraph = f'<p class="d-original-title">{original}</p>'
+    assert paragraph in refreshed
+    assert refreshed.index('class="d-heading"') < refreshed.index(paragraph) < refreshed.index('class="d-meta"')
+    assert '查看原始标题' not in refreshed and 'item-permalink-row' not in refreshed
+    assert 'data-copy-report-link' not in refreshed and 'data-copy-status' not in refreshed
+    assert crossposts in refreshed
+    assert protected_report_parts(refreshed) == protected_report_parts(html)
+    if attributes:
+        assert attributes in refreshed
+        assert targets[('qemu', 'https://example.com/patch')] == 'historical-anchor'
+    assert refresh_report_html(refreshed) == (refreshed, targets)
+
+
+def test_snapshot_guard_still_detects_changed_original_title_content():
+    html = '<article class="dyn"><p class="d-original-title">[PATCH] 原题</p></article>'
+    changed = html.replace('[PATCH] 原题', '[PATCH] 改写')
+    assert protected_report_parts(html) != protected_report_parts(changed)
+
+
+def test_all_report_snapshots_show_original_titles_without_share_footers():
+    site = Path(__file__).resolve().parents[1] / 'site'
+    title_count = 0
+    for period in ('daily', 'weekly', 'monthly'):
+        for path in (site / period).glob('*.html'):
+            html = path.read_text(encoding='utf-8')
+            assert 'data-copy-report-link' not in html and 'item-permalink-row' not in html, path
+            assert '查看原始标题' not in html, path
+            doc = Document(html)
+            for node in doc.nodes:
+                if not node.has_class('d-original-title'):
+                    continue
+                assert node.tag == 'p' and node.parent.has_class('dyn'), path
+                siblings = [child for child in doc.descendants(node.parent) if child.parent is node.parent]
+                position = siblings.index(node)
+                assert siblings[position - 1].has_class('d-heading'), path
+                assert siblings[position + 1].has_class('d-meta'), path
+                title_count += 1
+    assert title_count > 0
 
 
 def test_topic_snapshot_backlinks_only_use_existing_exact_report_targets():

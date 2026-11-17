@@ -27,6 +27,7 @@ for period, key in (("daily", "2026-11-05"), ("weekly", "2026-W45"), ("monthly",
                          for _, name in groups],
             "sections": [{"key": group, "name": name, "items": [{
                 "title": name + " 队列提案", "summary": "保持历史正文与来源。",
+                "original_title": "[PATCH v2 01/33] " + group + ": " + "virtqueue_" * 20,
                 "url": "https://example.test/" + group, "source": "邮件列表",
                 "time": "2026-11-05", "status": "评审中", "tag": "virtqueue"}]}
                          for group, name in groups],
@@ -40,13 +41,16 @@ print(json.dumps(pages))
 (async () => {
   const browser = await launchBrowser({args: ['--no-sandbox']});
   const context = await browser.newContext({reducedMotion: 'reduce'});
-  await context.route('**/*', route => {
+  context.setDefaultTimeout(8000);
+  context.setDefaultNavigationTimeout(15000);
+  const localRoute = route => {
     const url = new URL(route.request().url());
     if (url.origin !== base) return route.abort();
     const fixture = url.pathname.match(/^\/__report-policy__\/([^/]+)\.html$/)?.[1];
     if (fixture && fixtures[fixture]) return route.fulfill({contentType: 'text/html', body: fixtures[fixture]});
     return route.continue();
-  });
+  };
+  await context.route('**/*', localRoute);
   const page = await context.newPage(), errors = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -76,12 +80,49 @@ print(json.dumps(pages))
         assert.equal(await page.locator('a[href="#overview"]').count(), mixed ? 1 : 0);
         assert.equal(await page.locator('.toc a[href="#virtio"]').count(), 1);
         assert(!await page.getByText('本期未观察到显著动态。', {exact: true}).count());
+        assert.equal(await page.locator('[data-copy-report-link],.item-permalink-row').count(), 0);
+        const cards = await page.locator('.dyn').evaluateAll(nodes => nodes.map(node => {
+          const original = node.querySelector('.d-original-title');
+          return {
+            text: original?.textContent,
+            previous: original?.previousElementSibling?.className,
+            next: original?.nextElementSibling?.className,
+            collapsed: Boolean(original?.closest('details')),
+            titleSize: parseFloat(getComputedStyle(node.querySelector('.d-title')).fontSize),
+            originalSize: original && parseFloat(getComputedStyle(original).fontSize),
+            overflow: original && original.scrollWidth > original.clientWidth + 1,
+          };
+        }));
+        assert(cards.length > 0);
+        for (const card of cards) {
+          assert(card.text.startsWith('[PATCH v2 01/33]'));
+          assert.equal(card.previous, 'd-heading');
+          assert.equal(card.next, 'd-meta');
+          assert(!card.collapsed && !card.overflow);
+          assert(card.originalSize < card.titleSize);
+        }
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${name}/${width}: overflow`);
-        if (name === 'weekly-mixed') await page.screenshot({path: path.join(shots, `weekly-${width}.png`), fullPage: true});
+        if (name === 'weekly-mixed') {
+          const first = page.locator('.dyn').first(), anchor = await first.getAttribute('id');
+          await page.locator('[data-project-filter="virtio"]').click();
+          assert(await first.isHidden());
+          await page.evaluate(id => { location.hash = id; }, anchor);
+          await first.waitFor({state: 'visible'});
+          assert.equal(new URL(page.url()).hash, `#${anchor}`);
+          await page.locator('.dynamics').first().screenshot({path: path.join(shots, `cards-${width}.png`)});
+        }
       }
     }
+    const plain = await browser.newContext({javaScriptEnabled: false, viewport: {width: 320, height: 900}});
+    await plain.route('**/*', localRoute);
+    const reader = await plain.newPage();
+    await reader.goto(`${base}/__report-policy__/daily-mixed.html`);
+    assert(await reader.locator('.d-original-title').first().isVisible());
+    assert.equal(await reader.locator('.dyn details,[data-copy-report-link]').count(), 0);
+    assert(await reader.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await plain.close();
     assert.deepEqual(errors, []);
-    console.log('PASS unified sources, historical daily/weekly/monthly bodies, overview and TOC, four viewport widths');
+    console.log('PASS unified sources, daily/weekly/monthly cards, visible original titles, stable anchors, four widths and no-JS');
   } catch (error) {
     await page.screenshot({path: path.join(shots, 'failure.png'), fullPage: true}).catch(() => {});
     throw error;
