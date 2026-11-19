@@ -24,6 +24,16 @@ async function ready(page) {
 async function noOverflow(page) {
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'no horizontal overflow');
 }
+async function checkPaperPanels(row) {
+  const panels = await row.locator('.paper-summary, .editor-comment').evaluateAll(nodes => nodes.map(node => {
+    const {left, right} = node.getBoundingClientRect();
+    const {backgroundColor, borderTop, borderRadius, padding} = getComputedStyle(node);
+    return {left, right, backgroundColor, borderTop, borderRadius, padding};
+  }));
+  assert.equal(panels.length, 2, 'each paper shows its content and review');
+  assert.deepEqual(panels[0], panels[1], 'the two panels share their frame and align');
+  assert.notEqual(panels[0].backgroundColor, 'rgba(0, 0, 0, 0)', 'the panels have a visible background');
+}
 async function facetCounts(page, papers, key) {
   const actual = await page.locator(`[data-conference-${key}] option`).evaluateAll(nodes =>
     nodes.map(node => ({value: node.value, label: node.textContent})));
@@ -66,6 +76,7 @@ async function stableControls(page, baseline, state) {
       await page.setViewportSize({width, height: 1000});
       await page.goto(url); await ready(page);
       const geometry = await controlGeometry(page);
+      await checkPaperPanels(page.locator('[data-curated="false"]:visible').first());
       assert.equal(await page.locator('[data-conference-item][data-curated="true"] h2 .paper-classic-mark').count(), selectedCount);
       assert.equal(await page.locator('[data-conference-item][data-curated="false"] .paper-classic-mark').count(), 0);
       assert.equal(await classic(page).count(), 1);
@@ -161,6 +172,7 @@ async function stableControls(page, baseline, state) {
       assert.equal(await page.locator(visible).count(), 1);
       const ingens = page.locator('#paper-osdi16-ingens');
       assert(await ingens.isVisible());
+      await checkPaperPanels(ingens);
       assert.equal(await ingens.locator('.editor-comment').count(), 1);
       assert.equal(await ingens.locator(':scope > .paper-body > p').count(), 2, 'content and commentary stay merged');
       assert(await ingens.locator('h2 .paper-classic-mark svg').isVisible());

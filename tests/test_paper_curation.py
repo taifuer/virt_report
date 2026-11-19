@@ -85,13 +85,14 @@ def test_papers_have_compact_title_resources_and_one_classic_filter():
     )
     for row in rows:
         heading = row.split("<h2>", 1)[1].split("</h2>", 1)[0]
+        assert row.count('<p class="paper-summary"><strong>内容</strong>') == 1
+        assert row.count('<p class="editor-comment"><strong>点评</strong>') == 1
         if 'data-curated="true"' in row:
             assert 'class="paper-classic-mark"' in heading
             assert heading.index('class="paper-classic-mark"') < heading.index('<a ')
             assert 'class="sr-only">经典论文：</span>' in heading
             assert 'aria-hidden="true" focusable="false"' in heading
             assert 'class="paper-resource-tag"' in heading and ">PDF</a>" in heading
-            assert "<strong>内容</strong>" in row and "<strong>点评</strong>" in row
         else:
             assert 'class="paper-classic-mark"' not in heading
         assert 'class="relation' not in row and 'class="tag representative' not in row
