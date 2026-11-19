@@ -100,7 +100,7 @@ async function stableControls(page, baseline, state) {
       assert.equal(new URL(page.url()).searchParams.get('scope'), 'surveys');
       assert.equal(await surveyFilter(page).getAttribute('aria-pressed'), 'true');
       assert.equal(await classic(page).getAttribute('aria-pressed'), 'false');
-      assert.equal(await page.locator(visible).count(), 5, 'four surveys and one book');
+      assert.equal(await page.locator(visible).count(), reviews.length, 'all surveys and the separate book');
       assert(await page.locator('#paper-slca20-memory-consistency').isVisible());
       assert(await page.locator(visible).evaluateAll(nodes => nodes.every(n =>
         ['survey', 'monograph'].includes(n.dataset.publicationType))));
@@ -119,7 +119,7 @@ async function stableControls(page, baseline, state) {
       assert.deepEqual(await options(page, 'year'), ['2020']);
       await page.locator('[data-conference-reset]').click();
       assert.equal(await surveyFilter(page).getAttribute('aria-pressed'), 'true');
-      assert.equal(await page.locator(visible).count(), 5);
+      assert.equal(await page.locator(visible).count(), reviews.length);
       await classic(page).click();
       assert.equal(await classic(page).getAttribute('aria-pressed'), 'true');
       assert.equal(await surveyFilter(page).getAttribute('aria-pressed'), 'false', 'quick filters are mutually exclusive');
@@ -127,7 +127,7 @@ async function stableControls(page, baseline, state) {
       await page.goBack(); await ready(page);
       assert.equal(await surveyFilter(page).getAttribute('aria-pressed'), 'true');
       assert.equal(await classic(page).getAttribute('aria-pressed'), 'false');
-      assert.equal(await page.locator(visible).count(), 5, 'back restores survey scope');
+      assert.equal(await page.locator(visible).count(), reviews.length, 'back restores survey scope');
       await surveyFilter(page).click();
       assert.equal(await surveyFilter(page).getAttribute('aria-pressed'), 'false', 'click active filter again to clear it');
       assert.equal(await classic(page).getAttribute('aria-pressed'), 'false');
@@ -282,7 +282,7 @@ async function stableControls(page, baseline, state) {
     await page.goto(`${url}?scope=surveys&year=1974`); await ready(page);
     assert.equal(await page.locator('[data-conference-year]').inputValue(), '');
     assert.equal(await surveyFilter(page).getAttribute('aria-pressed'), 'true');
-    assert.equal(await page.locator(visible).count(), 5, 'unavailable year clears within survey scope');
+    assert.equal(await page.locator(visible).count(), reviews.length, 'unavailable year clears within survey scope');
     await page.goto(`${url}?scope=surveys&sort=oldest#paper-slca20-memory-consistency`); await ready(page);
     assert.equal(await surveyFilter(page).getAttribute('aria-pressed'), 'true', 'deep link retains a matching scope');
     assert.equal(await page.locator(visible).first().getAttribute('id'), 'paper-slca20-memory-consistency');
@@ -299,14 +299,11 @@ async function stableControls(page, baseline, state) {
     assert(await page.locator('[data-conference-empty]').isVisible());
     assert.equal(await surveyFilter(page).getAttribute('aria-pressed'), 'true', 'empty search retains the selected scope');
     await page.locator('[data-conference-reset]').click();
-    assert.equal(await page.locator(visible).count(), 5);
+    assert.equal(await page.locator(visible).count(), reviews.length);
     await surveyFilter(page).focus(); await page.keyboard.press('Space');
     assert.equal(await surveyFilter(page).getAttribute('aria-pressed'), 'false');
     for (const [paperId, query, venue, year, source] of [
-      ['systor13-blk-mq', 'blk-mq', 'systor', '2013', 'https://doi.org/10.1145/2485732.2485740'],
-      ['atc12-netmap', 'netmap', 'atc', '2012', 'https://www.usenix.org/conference/atc12/technical-sessions/presentation/rizzo'],
-      ['eurosys16-linux-scheduler', 'Wasted Cores', 'eurosys', '2016', 'https://doi.org/10.1145/2901318.2901326'],
-      ['asplos20-mitosis', 'Mitosis', 'asplos', '2020', 'https://doi.org/10.1145/3373376.3378468'],
+      ['osdi16-ingens', 'Ingens', 'osdi', '2016', 'https://www.usenix.org/conference/osdi16/technical-sessions/presentation/kwon'],
       ['nsdi19-shinjuku', 'Shinjuku', 'nsdi', '2019', 'https://www.usenix.org/conference/nsdi19/presentation/kaffes'],
     ]) {
       await page.goto(`${url}?scope=curated&venue=${venue}&year=${year}&q=${query}`); await ready(page);
@@ -322,7 +319,7 @@ async function stableControls(page, baseline, state) {
       await page.setViewportSize({width, height: 900});
       const surveys = raw.papers.filter(paper => paper.publication_type === 'survey');
       await page.goto(`${url}?topic=${encodeURIComponent('综述')}`); await ready(page);
-      assert.equal(await page.locator(visible).count(), 4, 'survey topic finds all four new reviews');
+      assert.equal(await page.locator(visible).count(), surveys.length, 'survey topic finds all retained surveys');
       await facetCounts(page, surveys, 'venue');
       await facetCounts(page, surveys, 'year');
       await noOverflow(page);
@@ -351,7 +348,8 @@ async function stableControls(page, baseline, state) {
       const articleCount = raw.papers.filter(paper => paper.publication_type !== 'monograph').length;
       assert((await page.locator('.conference-page > header').innerText()).includes(`${articleCount} 篇论文、1 部专著`));
       await page.goto(url); await ready(page);
-      for (const paperId of ['cacm68-working-set', 'osdi94-lottery', 'sosp25-pkvm-oracle', 'sosp25-miralis']) {
+      for (const paperId of ['cacm68-working-set', 'osdi94-lottery', 'sosp25-pkvm-oracle', 'sosp25-miralis',
+        'csur24-cxl', 'csur24-transient-execution', 'asplos20-mitosis', 'eurosys13-radixvm']) {
         assert.equal(await page.locator(`#paper-${paperId}`).count(), 0, 'removed papers stay out of the catalogue');
       }
       const mainConference = page.locator('.main-nav').getByRole('link', {name: '会议', exact: true, includeHidden: true});
@@ -364,6 +362,14 @@ async function stableControls(page, baseline, state) {
       assert.equal(await page.locator('.conference-page > header .kicker, .conference-page > header nav').count(), 0);
       assert.equal(await page.getByRole('link', {name: '查看相关论文', exact: true}).getAttribute('href'), 'conference-papers.html');
       await page.screenshot({path: path.join(shots, `conference-directory-${width}.png`)});
+      await page.getByRole('link', {name: '查看技术演进', exact: true}).click();
+      const timeline = page.locator('.academic-page');
+      assert(await timeline.getByRole('heading', {name: '学术会议', exact: true}).isVisible());
+      assert.equal(await timeline.locator('header nav, .conference-method a').count(), 0);
+      assert(await timeline.getByRole('link', {name: '查看 2026 年相关论文', exact: true}).isVisible());
+      await noOverflow(page);
+      await page.screenshot({path: path.join(shots, `academic-timeline-${width}.png`)});
+      await page.goBack();
       await page.locator('a[href="kvm-forum.html"]').click();
       assert.equal(await page.locator('.forum-page>header nav,.forum-page>header .kicker').count(), 0);
       await noOverflow(page);

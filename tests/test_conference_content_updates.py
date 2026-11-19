@@ -18,7 +18,7 @@ def test_conference_directory_omits_maintenance_notes_without_changing_records()
     assert "本轮未复核" not in page
     assert "已收录至" not in page
     assert "核对进度" not in page
-    for venue in content["publication_venues"]:
+    for venue in content["paper_venues"]:
         assert f'<h3>{escape(venue["name"])}</h3>' in page
         assert f'<div class="venue-description"><p>{escape(venue["focus"])}</p></div>' in page
         assert (f'href="conference-papers.html?scope=all&amp;venue={venue["key"]}">'
@@ -26,7 +26,9 @@ def test_conference_directory_omits_maintenance_notes_without_changing_records()
         assert (f'href="{escape(venue["url"])}" target="_blank" '
                 'rel="noopener noreferrer">官方网站</a>') in page
     timeline = html_render.render_academic_conferences_html(Config(), content)
-    assert 'href="conferences.html#conference-sources">收录会议</a>' in timeline
+    assert '<nav class="kicker"' not in timeline
+    assert 'href="conferences.html#conference-sources"' not in timeline
+    assert 'venue=systor"' not in page
     assert "核对进度" not in timeline
     assert content == before
 
@@ -127,4 +129,5 @@ def test_publication_badges_are_not_presented_as_a_quality_rating():
     assert "<strong>点评</strong>" in block and ">PDF</a>" in block
     assert "入选理由" not in block and "评估与证据" not in block
     timeline = html_render.render_academic_conferences_html(Config(), content)
-    assert 'href="conference-papers.html">查看相关论文</a>' in timeline
+    assert 'href="conference-papers.html">查看相关论文</a>' not in timeline
+    assert 'href="conference-papers.html?scope=all&amp;year=2026"' in timeline

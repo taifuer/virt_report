@@ -11,10 +11,8 @@ from virt_report.render import render
 
 
 ADDITIONS = [
-    ("csur24-cxl", 2024, "csur", "survey", "10.1145/3669900"),
     ("comst24-network-acceleration", 2024, "comst", "survey", "10.1109/COMST.2024.3377531"),
     ("csur23-vm-interference", 2023, "csur", "survey", "10.1145/3573009"),
-    ("csur24-transient-execution", 2024, "csur", "survey", "10.1145/3603619"),
     ("slca20-memory-consistency", 2020, "slca", "monograph", "10.1007/978-3-031-01764-3"),
 ]
 
@@ -58,16 +56,17 @@ def test_book_counts_and_source_filters_do_not_label_monographs_as_papers():
     article_count = sum(p["publication_type"] != "monograph" for p in content["papers"])
     assert (content["article_count"], content["monograph_count"]) == (article_count, 1)
     assert content["paper_count"] == article_count + 1
-    assert content["curated_count"] == 27
+    curated_count = len(content["reading_selection"]["papers"])
+    assert content["curated_count"] == curated_count
     venues = {venue["key"]: venue for venue in content["paper_venues"]}
-    assert venues["csur"]["paper_count"] == 3 and venues["csur"]["kind"] == "期刊"
+    assert venues["csur"]["paper_count"] == 1 and venues["csur"]["kind"] == "期刊"
     assert venues["comst"]["paper_count"] == 1 and venues["comst"]["kind"] == "期刊"
     assert venues["slca"]["kind"] == "专著系列"
     assert venues["slca"]["count_label"] == "1 部专著"
     assert "slca" not in {venue["key"] for venue in content["academic_venues"]}
     assert {"csur", "comst", "slca"} <= {venue["key"] for venue in content["publication_venues"]}
     archive = render.render_conference_papers_html(Config(), content)
-    assert f"共 {article_count} 篇论文、1 部专著，其中 27 篇经典论文。" in archive
+    assert f"共 {article_count} 篇论文、1 部专著，其中 {curated_count} 篇经典论文。" in archive
     assert "<label>来源<select data-conference-venue>" in archive
     for venue in ("csur", "comst", "slca"):
         assert f'<option value="{venue}"' in archive
@@ -83,17 +82,11 @@ def test_book_counts_and_source_filters_do_not_label_monographs_as_papers():
 
 def test_surveys_keep_edition_years_and_technical_boundaries_explicit():
     papers = {p["id"]: p for p in conferences.load_content()["papers"]}
-    transient = papers["csur24-transient-execution"]
-    assert transient["published_online"] == "2023-10-06"
-    assert "2024 年卷期" in transient["commentary"]
-    assert "2023 年 10 月" in transient["commentary"]
     book = papers["slca20-memory-consistency"]
     assert book["edition"] == 2
     assert book["original_doi"] == "10.2200/S00962ED2V01Y201910CAC049"
     assert "2020 年第二版" in book["commentary"] and "2022 年" in book["commentary"]
     assert "DMA、MMIO" in book["commentary"]
-    assert "截至 CXL 3.0" in papers["csur24-cxl"]["commentary"]
-    assert "University of Washington" in papers["csur24-cxl"]["institutions"]
     assert "硬件、负载和测试条件" in papers["comst24-network-acceleration"]["commentary"]
     assert "采样开销" in papers["csur23-vm-interference"]["commentary"]
 
@@ -129,7 +122,7 @@ def test_archive_without_monographs_preserves_paper_counts(monkeypatch):
         assert loaded["article_count"] == loaded["paper_count"] == article_count
         assert loaded["monograph_count"] == 0
         page = render.render_conference_papers_html(Config(), loaded)
-        assert f"共 {article_count} 篇论文，其中 27 篇经典论文。" in page
+        assert f'共 {article_count} 篇论文，其中 {loaded["curated_count"]} 篇经典论文。' in page
         assert 'value="slca"' not in page
     finally:
         conferences.load_content.cache_clear()

@@ -1310,7 +1310,7 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert f'其中 {content["curated_count"]} 篇经典论文' in page
     assert f'{content["article_count"]} 篇论文、{content["monograph_count"]} 部专著' in page
     assert '<section class="conference-sources" id="conference-sources"><h2>收录会议与出版物</h2>' in page
-    for venue in content["publication_venues"]:
+    for venue in content["paper_venues"]:
         assert (f'href="conference-papers.html?scope=all&amp;venue={venue["key"]}">'
                 f'{venue["count_label"]}</a>') in page
     assert "国内技术活动" not in page
@@ -1324,7 +1324,7 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
 
     timeline = html_render.render_academic_conferences_html(Config(), content)
     assert "<title>学术会议 - virt-report</title>" in timeline
-    assert '<nav class="kicker" aria-label="面包屑">' in timeline
+    assert '<header><h1>学术会议</h1>' in timeline
     assert 'Academic Conference Review' not in timeline
     assert timeline.index('id="year-2026"') < timeline.index('id="year-2010"')
     assert "技术演进" not in timeline.split("<h1>", 1)[1].split("</h1>", 1)[0]

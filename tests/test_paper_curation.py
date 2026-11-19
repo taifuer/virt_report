@@ -180,61 +180,24 @@ def test_ingens_is_a_source_backed_2016_memory_paper():
         assert condition in evaluation
 
 
-def test_linux_scheduler_is_an_explicit_source_backed_kernel_classic():
+BACKGROUND_ARTICLES = {
+    "cacm74-unix": "linux-execution-scheduling",
+    "eurosys16-linux-scheduler": "linux-execution-scheduling",
+    "asplos20-mitosis": "linux-memory",
+    "eurosys13-radixvm": "linux-memory",
+    "systor13-blk-mq": "linux-block-io",
+    "atc12-netmap": "linux-network-io",
+}
+
+
+@pytest.mark.parametrize("paper_id,article", BACKGROUND_ARTICLES.items())
+def test_kernel_background_keeps_a_primary_source_in_the_linux_lesson(paper_id, article):
     content = conferences.load_content()
-    paper = next(p for p in content["papers"] if p["id"] == "eurosys16-linux-scheduler")
-    assert (paper["year"], paper["venue"], paper["domain"]) == (2016, "eurosys", "kernel")
-    assert paper["curated"] and paper["evidence_level"] == "full_text"
-    assert paper["url"] == "https://doi.org/10.1145/2901318.2901326"
-    assert paper["doi"] == "10.1145/2901318.2901326"
-    assert paper["pdf_url"] == paper["reading"]["source_url"]
-    assert len(paper["authors"]) == 6 and len(paper["institutions"]) == 5
-    reading = paper["reading"]
-    assert reading["source_kind"] == "pdf" and "§4.1–4.2" in reading["verified_sections"]
-    for term in ("64 核", "8 个 NUMA", "Opteron", "make/R", "13%", "3.17", "4.3"):
-        assert term in reading["evaluation"]
-    for term in ("负载度量", "调度组", "唤醒选核", "热插拔", "四类", "可视化"):
-        assert term in reading["mechanism"]
-    assert "CFS" in reading["limitations"] and "EEVDF" in reading["limitations"]
-    assert "linux-execution-scheduling" in reading["related_articles"]
-    page = render.render_mechanisms_html(Config(), "linux-execution-scheduling")
-    assert 'href="../conference-papers.html#paper-eurosys16-linux-scheduler"' in page
-
-
-def test_kernel_scope_is_limited_to_individually_reviewed_classics():
-    content = conferences.load_content()
-    kernel = [paper for paper in content["papers"] if paper.get("domain") == "kernel"]
-    assert {paper["id"] for paper in kernel} == {
-        "cacm74-unix", "eurosys13-radixvm", "eurosys16-linux-scheduler",
-        "systor13-blk-mq", "atc12-netmap", "asplos20-mitosis",
-    }
-    assert all(paper["curated"] and paper["reading"]["source_kind"] == "pdf" for paper in kernel)
-    altered = deepcopy(content)
-    del altered["reading_selection"]["papers"]["eurosys13-radixvm"]
-    with pytest.raises(ValueError, match="内核方向仅收录经典论文"):
-        conferences._apply_reading_selection(altered)
-
-
-def test_mitosis_preserves_page_table_scope_and_numa_measurement_conditions():
-    content = conferences.load_content()
-    paper = next(p for p in content["papers"] if p["id"] == "asplos20-mitosis")
-    assert (paper["year"], paper["venue"], paper["domain"]) == (2020, "asplos", "kernel")
-    assert paper["curated"] and paper["evidence_level"] == "full_text"
-    assert paper["doi"] == "10.1145/3373376.3378468"
-    assert paper["url"] == f'https://doi.org/{paper["doi"]}'
-    assert paper["pdf_url"] == "https://retoachermann.ch/static/papers/achermann-2020-mts.pdf"
-    reading = paper["reading"]
-    assert paper["pdf_url"] == reading["source_url"]
-    assert len(paper["authors"]) == 5 and len(paper["institutions"]) == 4
-    for term in ("PV-Ops", "页表根", "应用数据", "访问位", "脏位"):
-        assert term in reading["mechanism"]
-    for term in ("4.17", "四插槽", "E7-4850v3", "512 GB", "4 KiB", "Canneal", "1.34×"):
-        assert term in reading["evaluation"]
-    for term in ("额外内存", "映射更新", "进程页表", "EPT/NPT"):
-        assert term in reading["limitations"]
-    assert "§8.1–8.3" in reading["verified_sections"]
-    page = render.render_mechanisms_html(Config(), "linux-memory")
-    assert 'href="../conference-papers.html#paper-asplos20-mitosis"' in page
+    record = next(p for p in content["screening"]["papers"] if p["id"] == paper_id)
+    assert record["decision"] == "exclude" and record["review_basis"] != "title"
+    page = render.render_mechanisms_html(Config(), article)
+    assert f"#paper-{paper_id}" not in page
+    assert f'href="{record["source_url"]}"' in page
 
 
 def test_shinjuku_preserves_virtualization_mechanism_and_experiment_boundaries():
@@ -291,10 +254,6 @@ def test_editorial_search_retains_ordinary_papers_and_indexes_deep_reviews():
     assert esx["href"].endswith("#paper-osdi02-esx-memory")
     ingens = next(p for p in papers if p["slug"] == "osdi16-ingens")
     assert "Cloudstone" in ingens["keywords"] and "0.7%" in ingens["keywords"]
-    scheduler = next(p for p in papers if p["slug"] == "eurosys16-linux-scheduler")
-    assert "运行队列" in scheduler["keywords"] and "13%" in scheduler["keywords"]
-    mitosis = next(p for p in papers if p["slug"] == "asplos20-mitosis")
-    assert "页表局部性" in mitosis["keywords"] and "PV-Ops" in mitosis["keywords"]
     shinjuku = next(p for p in papers if p["slug"] == "nsdi19-shinjuku")
     assert "posted interrupts" in shinjuku["keywords"] and "RocksDB" in shinjuku["keywords"]
     removed = {p["id"] for p in conferences.load_content()["screening"]["papers"]
@@ -317,35 +276,23 @@ def test_every_original_and_added_paper_has_an_individual_screening_decision():
     assert not any(p["evidence_level"] == "title" for p in content["papers"])
 
 
-def test_io_classics_preserve_primary_sources_and_measurement_boundaries():
+def test_relevance_sweep_covers_papers_and_keeps_books_separate():
     content = conferences.load_content()
-    papers = {paper["id"]: paper for paper in content["papers"]}
-    block, net = papers["systor13-blk-mq"], papers["atc12-netmap"]
-    assert (block["year"], block["venue"]) == (2013, "systor")
-    assert block["url"] == "https://doi.org/10.1145/2485732.2485740"
-    assert block["pdf_url"] == "https://www.kernel.dk/blk-mq.pdf"
-    assert len(block["authors"]) == 4
-    assert block["institutions"] == ["IT University of Copenhagen", "Fusion-io"]
-    assert (net["year"], net["venue"]) == (2012, "atc")
-    assert net["url"] == "https://www.usenix.org/conference/atc12/technical-sessions/presentation/rizzo"
-    assert net["authors"] == ["Luigi Rizzo"]
-    for paper in (block, net):
-        assert paper["domain"] == "kernel" and paper["curated"]
-        assert paper["pdf_url"] == paper["reading"]["source_url"]
-        assert paper["reading"]["verified_sections"]
-    for term in ("3.10", "fio", "null", "单插槽", "350 万"):
-        assert term in block["reading"]["evaluation"]
-    assert "不传输数据" in block["reading"]["limitations"]
-    for term in ("FreeBSD", "82599", "64 B", "900 MHz", "1488 万"):
-        assert term in net["reading"]["evaluation"]
-    assert "上述数字来自 FreeBSD" in net["reading"]["limitations"]
-    assert "linux-block-io" in block["reading"]["related_articles"]
-    assert "linux-network-io" in net["reading"]["related_articles"]
-    html = render.render_conference_papers_html(Config(), content)
-    assert "立即完成请求的 null 设备" in html
-    netmap_row = html.split('id="paper-atc12-netmap"', 1)[1].split("</article>", 1)[0]
-    assert "预先生成的包" in netmap_row and "接收只计数" in netmap_row
-    assert 'data-option-label="SYSTOR"' in html
+    records = {p["id"]: p for p in content["screening"]["papers"] if p.get("review_focus")}
+    removed = set(BACKGROUND_ARTICLES) | {"csur24-cxl", "csur24-transient-execution"}
+    assert {pid for pid, r in records.items() if r["decision"] == "exclude"} == removed
+    assert {pid for pid, r in records.items() if r["decision"] == "keep"} == {
+        p["id"] for p in content["papers"] if p["publication_type"] != "monograph"
+    }
+    assert removed.isdisjoint(content["reading_selection"]["papers"])
+    assert removed.isdisjoint(
+        pid for year in content["analysis"]["years"] for pid in year["representative_ids"]
+    )
+    assert "slca20-memory-consistency" not in records
+    assert all(records[pid]["reason"] and records[pid]["source_url"] for pid in removed)
+    for pid in ("nsdi19-shinjuku", "osdi16-ingens",
+                "osdi24-cxl-memory-tiers", "comst24-network-acceleration", "eurosys26-bask"):
+        assert records[pid]["decision"] == "keep"
 
 
 def test_screening_rejects_unreviewed_or_reintroduced_papers():
@@ -354,10 +301,11 @@ def test_screening_rejects_unreviewed_or_reintroduced_papers():
     with pytest.raises(ValueError, match="保留集合不一致"):
         conferences._validate_screening(content)
     content = deepcopy(conferences.load_content())
-    content["screening"]["papers"][0]["review_basis"] = "title"
+    kept_record = next(p for p in content["screening"]["papers"] if p["decision"] == "keep")
+    kept_record["review_basis"] = "title"
     with pytest.raises(ValueError, match="仅有标题"):
         conferences._validate_screening(content)
-    content["screening"]["papers"][0]["reason"] = ""
+    kept_record["reason"] = ""
     with pytest.raises(ValueError, match="缺少决定"):
         conferences._validate_screening(content)
 

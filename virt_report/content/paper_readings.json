@@ -1,27 +1,10 @@
 {
   "version": 1,
   "reviewed_on": "2026-11-10",
-  "policy": "先审准入，再选精读。每篇普通研究论文须与 VMM、真实 ISA 模拟、Guest/Host 资源与设备接口、VM 状态交接或隔离安全有实质联系；只使用虚机、只研究云控制面，或只有标题证据的，不进入公开目录。内核的进程、调度、内存、处理器与 I/O 原始研究只纳入核对过原文的经典论文；专题综述和教程型专著按技术覆盖范围另行审核，收录不自动赋予经典星标。精选须至少满足一项：建立重要基础概念；代表一条有持续影响的技术路线；提供可迁移的工程经验，并能解释机制、证据与局限。同题优先选择互补的原始研究，不按年份、顶会名额或引用数自动入选。收录集合经过人工筛选，未覆盖全部相关文献。",
+  "policy": "经典论文先过相关性筛选。研究须直接涉及虚机执行、Guest/Host 接口、设备模拟、状态交接或隔离；综述须具体比较这些机制。入选经典的论文还须提出基础概念、代表长期沿用的设计，或留下可以核实的工程经验。解读交代设计、证据和局限。",
   "reading_method": "先交代问题与关键机制，再核对评估条件，最后区分论文结论、编辑判断和今天的适用边界；不给未读到的实验补数字。",
   "method_url": "https://www.cs.cmu.edu/~15712/papers/howtoreadacspaper.pdf",
   "papers": {
-    "asplos20-mitosis": {
-      "basis": "代表性设计",
-      "reason": "将 NUMA 局部性从应用数据扩展到页表，补充地址翻译与内核内存管理研究。",
-      "question": "TLB miss 后，远端页表访问会拖慢地址翻译；数据迁移到本地后，页表仍可能留在原插槽。",
-      "mechanism": "Mitosis 按插槽复制和迁移进程页表，通过扩展 PV-Ops 同步副本更新、汇总访问位与脏位，并在调度时选择本地页表根。应用数据按自身内存策略放置。",
-      "evaluation": "四插槽 Xeon E7-4850v3 上，Canneal 用 4 KiB 页时，速度最高达到原来的 1.34×。原型运行 Linux 4.17，配有 512 GB 内存。作者还单独测了页表迁移和 2 MiB 页。",
-      "strengths": "作者分别改变数据和页表的位置，单独测出了页表局部性对查表时间的影响。",
-      "limitations": "副本占用额外内存，每次映射更新也更费工。论文测的是进程页表，KVM 的 EPT/NPT 还要单独验证。",
-      "relevance": "衔接 Linux 内存与 vCPU/NUMA 放置，区分进程数据页和硬件遍历所访问的页表页。",
-      "guide": "§3 NUMA 页表问题；§5 副本与迁移机制；§7–8 原型和评估。",
-      "source_kind": "pdf",
-      "source_url": "https://retoachermann.ch/static/papers/achermann-2020-mts.pdf",
-      "support_url": "https://retoachermann.ch/publications/achermann-2020-mts.html",
-      "verified_sections": "§3、§5.1–5.5、§6、§7.1、§8.1–8.3",
-      "related_articles": ["linux-memory", "memory-virtualization"],
-      "reviewed_on": "2026-11-11"
-    },
     "nsdi19-shinjuku": {
       "basis": "代表性设计",
       "reason": "用硬件虚拟化降低中断与抢占成本，将中断投递、请求队列和尾延迟联系起来。",
@@ -37,73 +20,6 @@
       "support_url": "https://www.usenix.org/conference/nsdi19/presentation/kaffes",
       "verified_sections": "§3.1–3.4、表 1、§4.1–4.4、图 8",
       "related_articles": ["linux-execution-scheduling", "linux-interrupts", "interrupt-virtualization"],
-      "reviewed_on": "2026-11-11"
-    },
-    "eurosys16-linux-scheduler": {
-      "basis": "工程价值",
-      "reason": "从运行队列和 NUMA 拓扑诊断 Linux 调度性能，为内核与宿主线程分析提供方法。",
-      "question": "可运行线程持续排队，部分 CPU 却长期空闲，拖慢并行任务。",
-      "mechanism": "论文定位负载度量、NUMA 调度组构造、唤醒选核和 CPU 热插拔后调度域更新中的四类缺陷；结合在线不变量检查、运行队列可视化与逐项修复验证原因。",
-      "evaluation": "修复负载均衡后，make/R 混合负载里的内核编译用时减少 13%。机器配有 64 核 AMD Opteron 和 8 个 NUMA 节点。作者还把检查工具从 Linux 3.17 移植到了 4.3。",
-      "strengths": "把各核的运行队列画在同一条时间轴上，就能看出哪个核闲着、哪个核还有线程在等。",
-      "limitations": "论文检查的是当时的 CFS。要在采用 EEVDF 的内核上排查同类问题，需要核对该版本的负载均衡代码。",
-      "relevance": "连接 Linux 调度与宿主 vCPU 线程的排队、亲和性和 NUMA 放置。",
-      "guide": "§2 调度结构；§3.1–3.4 缺陷与修复；§4 检查与可视化。",
-      "source_kind": "pdf",
-      "source_url": "https://people.ece.ubc.ca/sasha/papers/eurosys16-final29.pdf",
-      "verified_sections": "§1、§2、§3.1–3.4、表 5、§4.1–4.2",
-      "related_articles": ["linux-execution-scheduling", "kvm-vcpu-run"],
-      "reviewed_on": "2026-11-11"
-    },
-    "systor13-blk-mq": {
-      "basis": "工程价值",
-      "reason": "多队列块层连接 CPU 局部性与设备并行能力，是 Linux I/O 路径的重要设计。",
-      "question": "高并发提交集中争用单请求队列，额外 CPU 可能消耗在锁和缓存一致性上。",
-      "mechanism": "按 CPU 或 NUMA 节点分散软件暂存队列，再映射到硬件派发队列，减少共享状态竞争。",
-      "evaluation": "Linux 3.10 原型上，fio 在单插槽测得每秒约 350 万次 I/O。作者用的是立即完成请求的 null 设备，还在 1 到 8 个插槽上测了扩展性。",
-      "strengths": "各核先在本地排队，再把请求发给设备。增加插槽后，块层以外的开销也显了出来。",
-      "limitations": "null 设备不传输数据。这组数字量的是提交请求的软件开销，实际 SSD 还要花时间读写。",
-      "relevance": "对照 Linux 块层与 virtio-blk；硬件派发上下文和设备队列需分别识别。",
-      "guide": "§2.2 瓶颈；§3 两级队列；§4–5 测试条件与结果。",
-      "source_kind": "pdf",
-      "source_url": "https://www.kernel.dk/blk-mq.pdf",
-      "support_url": "https://docs.kernel.org/block/blk-mq.html",
-      "verified_sections": "§2.2、§3.2、§4、§5.1",
-      "related_articles": ["linux-block-io", "qemu-virtio-blk"],
-      "reviewed_on": "2026-11-11"
-    },
-    "atc12-netmap": {
-      "basis": "代表性设计",
-      "reason": "通过共享内存和批处理压低逐包成本，便于比较不同网络 I/O 接口。",
-      "question": "逐包分配、复制与系统调用消耗大量 CPU 时间。",
-      "mechanism": "预分配数据缓冲区与共享环，按批同步收发；内核仍校验槽位并控制网卡访问。",
-      "evaluation": "在 2012 年的 FreeBSD 原型上，一个约 900 MHz 的核就跑满了 10 Gbit/s。作者用 Intel 82599 网卡批量收发 64 B 帧，约每秒 1488 万包。",
-      "strengths": "缓冲区预先分配，一次调用能交接一批包，网卡仍由内核控制。",
-      "limitations": "测发送用的是预先生成的包，测接收只计数。协议栈和应用还要另花时间。论文提到 Linux 移植，上述数字来自 FreeBSD。",
-      "relevance": "结合 Linux 网络 I/O 和 DPDK 后端，比较缓冲区所有权与同步方式。",
-      "guide": "§4 接口与实现；§5.1–5.4 工作负载、设备和收发结果。",
-      "source_kind": "pdf",
-      "source_url": "https://www.usenix.org/system/files/conference/atc12/atc12-final186.pdf",
-      "verified_sections": "§4、§5.1–5.4",
-      "related_articles": ["linux-network-io", "dpdk-vhost-user-net", "network-io"],
-      "reviewed_on": "2026-11-11"
-    },
-    "cacm74-unix": {
-      "basis": "奠基机制",
-      "reason": "进程映像、fork、程序替换和管道构成现代 Unix 类内核的接口基础；限定为经典内核阅读。",
-      "question": "分时系统要让用户能启动多个程序，并把它们接起来工作。",
-      "mechanism": "fork 创建子进程，执行接口换掉子进程里的程序，wait 等它结束。子进程继承文件描述符，shell 就能用管道把几个命令接起来。",
-      "evaluation": "作者记录了 1974 年 PDP-11 上实际运行的 UNIX，包括机器配置和工具的运行测量。",
-      "strengths": "shell 接一条管道时，让子进程继承已经接好的文件描述符，再装入要运行的程序。内核只需提供这几个基本动作。",
-      "limitations": "现代 Linux 的线程、写时复制和命名空间是后来的设计。它们的开销要查相应版本的实现。",
-      "relevance": "衔接 Linux 进程文章中的 fork／execve／wait 和文件表继承，区分创建进程与装入程序。",
-      "guide": "§5 Processes and Images；§6 的 shell 与命令组合。这里采用 1974 年 CACM 原版，避免与 1978 年扩展稿的细节混用。",
-      "source_kind": "pdf",
-      "source_url": "https://www.cs.cmu.edu/~15712/papers/ritchie74.pdf",
-      "related_articles": [
-        "linux-execution-scheduling",
-        "linux-kernel-evolution"
-      ],
       "reviewed_on": "2026-11-11"
     },
     "sosp97-disco": {
@@ -140,25 +56,6 @@
         "memory-virtualization",
         "kvm-ept-fault",
         "kvm-hugepages"
-      ],
-      "reviewed_on": "2026-11-11"
-    },
-    "eurosys13-radixvm": {
-      "basis": "代表性设计",
-      "reason": "将共享地址空间扩展性和物理页安全复用一起解决，补充内核内存管理经典；明确 xv6 原型与 Linux 的实现边界。",
-      "question": "两个线程各自映射不同的地址，也可能因为要拿同一把锁而互相等待。",
-      "mechanism": "RadixVM 用 radix tree 管理映射，用 Refcache 分散引用计数更新。各核维护自己的页表，只通知需要清除旧翻译的核；解除映射后才允许复用物理页。",
-      "evaluation": "在 80 核机器和 xv6 衍生内核上，各线程能并行修改互不重叠的映射。作者也测试了 MapReduce。",
-      "strengths": "两个线程只要改到同一段地址，就还得协调。清掉旧的地址翻译后，内核才能把物理页交给别人。",
-      "limitations": "按核维护数据结构会多占内存。原型测过的复杂应用有限，Linux 上的实际表现需要另测。",
-      "relevance": "用于理解 Linux mmap/munmap、锁与 TLB 失效的约束。RadixVM 的 radix tree 与 Linux 的 Maple Tree 分属不同实现。",
-      "guide": "§3 的 radix tree、Refcache 和 TLB 方案；§3.4 的操作顺序；§4–5 的原型与实验条件。",
-      "source_kind": "pdf",
-      "source_url": "https://pdos.csail.mit.edu/papers/radixvm:eurosys13.pdf",
-      "related_articles": [
-        "linux-memory",
-        "linux-execution-scheduling",
-        "memory-virtualization"
       ],
       "reviewed_on": "2026-11-11"
     },

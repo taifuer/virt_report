@@ -1,8 +1,8 @@
 {
   "version": 1,
   "updated_at": "2026-11-19",
-  "coverage": "选录 1974—2026 年研究，默认按年份倒序；系统虚拟化之外，补充内核经典论文及相关体系结构、云基础设施的专题综述与教程型专著",
-  "method": "离线保存出版元数据，逐篇审核其与系统虚拟化的实质关联；关键词只用于发现候选，不自动收录。普通研究论文须能说明 VMM、真实 ISA 模拟、Guest/Host 机制或 VM 隔离与状态交接的联系。内核的进程、调度、内存、处理器与 I/O 原始研究补充经过原文核对的经典论文；专题综述与教程型专著另行审核覆盖范围，并标明文献类型。边界条目核对一手摘要、作者项目或原文；只有标题的候选暂不公开。精选另写问题、机制、证据、优点和局限，并明确阅读范围。单位按出版方或机构元数据规范化，不推断通讯作者。不转载全文，不调用 DeepSeek 自动生成；收录数量不代表研究热度或全部相关文献数量。",
+  "coverage": "选录 1974—2026 年的虚拟化研究，按年份从新到旧排列；教程型专著另计",
+  "method": "按论文实际研究的问题收录：虚机如何执行和管理资源，设备如何模拟或共享，运行状态如何迁移，隔离是否有效。综述也要具体比较这些机制。关键词只用于发现候选；只有标题的条目暂不公开。年份取正式出版年份，作者单位以出版方或作者机构的记录为准。不转载全文，不调用 DeepSeek 自动生成。",
   "edition_checks": [
     {
       "venue": "atc", "year": 2026, "checked_at": "2026-11-19",
@@ -215,15 +215,13 @@
         "themes": [
           "microVM",
           "Serverless",
-          "ARM I/O",
-          "多对一虚拟化",
-          "页表局部性"
+          "Arm I/O",
+          "多对一虚拟化"
         ],
-        "summary": "Firecracker 精简面向 Serverless 的 VMM 与设备模型，SEUSS 通过 unikernel 快照复用初始化状态，Catalyzer 结合按需恢复与环境克隆缩短启动路径。三者可按设备范围、快照边界和兼容性比较。GiantVM 探索将多台物理主机聚合为一个系统虚机，LeapIO 则研究 Arm 平台的虚拟 NVMe 路径。Mitosis 在 Linux 中复制和迁移页表，减少多插槽机器上地址翻译的远端访问。",
+        "summary": "Firecracker 精简了 VMM 和设备模型，SEUSS 用 unikernel 快照复用初始化状态，Catalyzer 按需恢复沙箱。GiantVM 把多台物理机呈现为一台虚机，LeapIO 则让客户机通过虚拟 NVMe 访问卸载到 Arm 处理器的存储服务。",
         "representative_ids": [
           "nsdi20-firecracker",
-          "asplos20-leapio",
-          "asplos20-mitosis"
+          "asplos20-leapio"
         ]
       },
       {
@@ -286,12 +284,12 @@
           "在线迁移",
           "异构架构"
         ],
-        "summary": "这一阶段的研究量化 EPT 的性能影响、选择迁移优化，并把 KVM 适配到异构系统架构。Hyperprobe 分析客户机可观察到的 KVM 行为；Linux 调度研究通过运行队列可视化与在线检查定位多核负载不均衡。",
+        "summary": "研究者测量了 EPT 查表的开销，也在 Linux/KVM 上用 Ingens 协调多台虚机争用的大页。另一些工作比较了迁移策略，或把 KVM 适配到 CPU 和加速器共享资源的平台。",
         "representative_ids": [
-          "vee16-kvm-hsa",
+          "osdi16-ingens",
           "vee16-ept",
-          "vee16-migration-optimizations",
-          "eurosys16-linux-scheduler"
+          "vee16-kvm-hsa",
+          "vee16-migration-optimizations"
         ]
       },
       {
@@ -335,7 +333,7 @@
           "迁移",
           "恢复"
         ],
-        "summary": "Unikernels 将应用所需的库操作系统与应用一起编译为专用客户机。Halite、Hyper-Switch 和 MiG 分别优化恢复、虚拟网络与迁移流量。内核机制方面，blk-mq 以两级队列缓解多核块 I/O 的锁竞争，RadixVM 研究共享地址空间的并发操作。",
+        "summary": "Unikernels 把应用与所需的系统库编译成专用客户机。Halite 调整 ESXi 检查点的数据布局，加快虚机恢复；Hyper-Switch 重做虚拟交换路径，MiG 按内存页的用途压缩迁移数据。",
         "representative_ids": [
           "atc13-halite",
           "atc13-hyperswitch",
@@ -351,9 +349,10 @@
           "灾难恢复",
           "设备直通"
         ],
-        "summary": "Dune 用硬件虚拟化向进程安全开放页表等特权能力，保留 Linux 进程接口。SecondSite 研究 VM 状态复制与跨站故障切换，CompSC 处理设备直通 VM 的迁移。netmap 则在操作系统网络 I/O 层结合批处理、预分配和共享缓冲区，降低用户态收发包开销。",
+        "summary": "Dune 让 Linux 进程安全使用受控的 CPU 特权。SecondSite 复制运行中的虚机，在站点故障时切换；CompSC 研究直通设备的虚机怎样迁移。",
         "representative_ids": [
-            "vee12-secondsite",
+          "osdi12-dune",
+          "vee12-secondsite",
           "vee12-compsc"
         ]
       },
@@ -425,10 +424,16 @@
         "summary": "Disco 在 ccNUMA 机器上协调多个操作系统实例，通过页面迁移、复制和共享改善资源利用，为后续 VMM 设计提供参照。",
         "representative_ids": ["sosp97-disco"]
       },{
-        "year": 1974, "headline": "虚拟化条件与 UNIX 进程接口",
-        "themes": ["虚拟化理论", "敏感指令", "进程"],
-        "summary": "Popek 与 Goldberg 在明确机器模型下给出可虚拟化充分条件；UNIX 论文展示进程、程序映像、文件描述符与管道的组合。两项工作分别建立虚拟化理论和内核接口的经典参照。",
-        "representative_ids": ["cacm74-popek-goldberg", "cacm74-unix"]
+        "year": 1974,
+        "headline": "什么样的机器可以虚拟化",
+        "themes": [
+          "虚拟化理论",
+          "敏感指令"
+        ],
+        "summary": "Popek 和 Goldberg 区分了两类指令：一类能改变或察觉机器状态，另一类会在权限不足时陷入监控器。他们给出了监控器能据此接管执行的一组充分条件。",
+        "representative_ids": [
+          "cacm74-popek-goldberg"
+        ]
       }
     ]
   },
@@ -437,7 +442,7 @@
       "key": "csur", "name": "ACM CSUR", "full_name": "ACM Computing Surveys",
       "kind": "期刊", "priority": "选择性",
       "url": "https://dl.acm.org/journal/csur",
-      "focus": "选录体系结构、虚拟化性能与隔离安全的专题综述，注明技术覆盖范围。"
+      "focus": "选录直接讨论虚机性能干扰、资源共享与隔离的专题综述。"
     },
     {
       "key": "comst", "name": "IEEE COMST", "full_name": "IEEE Communications Surveys & Tutorials",
@@ -862,28 +867,6 @@
       "evidence_verified_at": "2026-11-19"
     },
     {
-      "id": "csur24-cxl",
-      "year": 2024,
-      "venue": "csur",
-      "publication_type": "survey",
-      "title": "An Introduction to the Compute Express Link (CXL) Interconnect",
-      "authors": ["Debendra Das Sharma", "Robert Blankenship", "Daniel Berger"],
-      "url": "https://doi.org/10.1145/3669900",
-      "doi": "10.1145/3669900",
-      "pdf_url": "https://arxiv.org/pdf/2306.11227v3",
-      "introduction": "综述 CXL 1.0、2.0 与 3.0，从 CPU 与设备的一致性访问讲到内存扩展、池化、共享和互连拓扑，解释 PCIe 物理基础上的缓存与内存语义。",
-      "commentary": "同一块 CXL 内存能由谁访问、缓存由谁保持一致，文中都有协议说明。覆盖范围截至 CXL 3.0，操作系统怎样给虚机分配这些内存只占很少篇幅。论文正式发表于 2024 年，链接的 PDF 是作者预印本。",
-      "relation": "相关机制",
-      "domain": "architecture",
-      "topics": ["综述", "CXL", "体系结构", "内存池化", "缓存一致性"],
-      "institutions": ["Intel", "Microsoft", "University of Washington"],
-      "affiliation_source": "crossref",
-      "affiliation_source_url": "https://api.crossref.org/works/10.1145/3669900",
-      "affiliation_verified_at": "2026-11-11",
-      "evidence_level": "full_text",
-      "evidence_source_url": "https://arxiv.org/pdf/2306.11227v3"
-    },
-    {
       "id": "comst24-network-acceleration",
       "year": 2024,
       "venue": "comst",
@@ -926,29 +909,6 @@
       "evidence_source_url": "https://www.cs.newpaltz.edu/~lik/publications/Weiwei-Lin-ACM-CSUR-2022"
     },
     {
-      "id": "csur24-transient-execution",
-      "year": 2024,
-      "published_online": "2023-10-06",
-      "venue": "csur",
-      "publication_type": "survey",
-      "title": "Transient-Execution Attacks: A Computer Architect Perspective",
-      "authors": ["Luís Fiolhais", "Leonel Sousa"],
-      "url": "https://doi.org/10.1145/3603619",
-      "doi": "10.1145/3603619",
-      "pdf_url": "https://dl.acm.org/doi/pdf/10.1145/3603619",
-      "introduction": "从乱序执行、分支预测和缓存等微体系结构出发，综述 Spectre 类与 Meltdown 类攻击，串起瞬态访问、侧信道传递和防御方法。",
-      "commentary": "处理器撤销一条推测执行的指令后，缓存里仍可能留下痕迹。给虚机做隔离时也要考虑这些共享状态，具体防护要看处理器型号。这篇综述在线发表于 2023 年 10 月，按 2024 年卷期收录。",
-      "relation": "相关机制",
-      "domain": "architecture",
-      "topics": ["综述", "体系结构", "瞬态执行", "Spectre", "Meltdown", "隔离安全"],
-      "institutions": ["INESC-ID", "Instituto Superior Técnico, Universidade de Lisboa"],
-      "affiliation_source": "official",
-      "affiliation_source_url": "https://doi.org/10.1145/3603619",
-      "affiliation_verified_at": "2026-11-11",
-      "evidence_level": "full_text",
-      "evidence_source_url": "https://doi.org/10.1145/3603619"
-    },
-    {
       "id": "slca20-memory-consistency",
       "year": 2020,
       "venue": "slca",
@@ -973,26 +933,6 @@
       "evidence_source_url": "https://link.springer.com/book/10.1007/978-3-031-01764-3"
     },
     {
-      "id": "asplos20-mitosis",
-      "year": 2020,
-      "venue": "asplos",
-      "title": "Mitosis: Transparently Self-Replicating Page-Tables for Large-Memory Machines",
-      "authors": ["Reto Achermann", "Ashish Panwar", "Abhishek Bhattacharjee", "Timothy Roscoe", "Jayneel Gandhi"],
-      "url": "https://doi.org/10.1145/3373376.3378468",
-      "doi": "10.1145/3373376.3378468",
-      "pdf_url": "https://retoachermann.ch/static/papers/achermann-2020-mts.pdf",
-      "introduction": "应用数据位于本地 NUMA 节点时，页表仍可能在远端。Mitosis 在 Linux 中按插槽复制和迁移页表，让硬件地址翻译使用本地副本。",
-      "commentary": "把应用数据搬到本地 NUMA 节点后，CPU 查页表时仍可能要跨插槽。Mitosis 在 Linux 4.17 上复制进程页表，让 CPU 就近查表。每份副本都占内存，映射一变还得一起更新。",
-      "relation": "相关机制",
-      "domain": "kernel",
-      "topics": ["内核经典", "Linux", "NUMA", "页表复制", "页表迁移", "TLB"],
-      "institutions": ["ETH Zurich", "IISc Bangalore", "Yale University", "VMware Research"],
-      "affiliation_source": "institution",
-      "affiliation_source_url": "https://retoachermann.ch/static/papers/achermann-2020-mts.pdf",
-      "affiliation_verified_at": "2026-11-11",
-      "evidence_level": "full_text"
-    },
-    {
       "id": "nsdi19-shinjuku",
       "year": 2019,
       "venue": "nsdi",
@@ -1007,90 +947,6 @@
       "institutions": ["Stanford University", "Massachusetts Institute of Technology"],
       "affiliation_source": "usenix",
       "affiliation_source_url": "https://www.usenix.org/conference/nsdi19/presentation/kaffes",
-      "affiliation_verified_at": "2026-11-11",
-      "evidence_level": "full_text"
-    },
-    {
-      "id": "eurosys16-linux-scheduler",
-      "year": 2016,
-      "venue": "eurosys",
-      "title": "The Linux Scheduler: a Decade of Wasted Cores",
-      "authors": ["Jean-Pierre Lozi", "Baptiste Lepers", "Justin Funston", "Fabien Gaud", "Vivien Quéma", "Alexandra Fedorova"],
-      "url": "https://doi.org/10.1145/2901318.2901326",
-      "doi": "10.1145/2901318.2901326",
-      "pdf_url": "https://people.ece.ubc.ca/sasha/papers/eurosys16-final29.pdf",
-      "introduction": "可运行线程持续排队时，部分 CPU 仍可能长期空闲。论文分析 Linux 多核负载均衡中的四类缺陷，以在线检查与运行队列可视化定位原因并验证修复。",
-      "commentary": "一颗 CPU 闲着，另一颗 CPU 上的线程却在排队。作者同时记录各核的运行队列，找出了当时 CFS 没把工作分出去的原因。复查新内核时，先确认调度器版本和 NUMA 配置。",
-      "relation": "相关机制",
-      "domain": "kernel",
-      "topics": ["内核经典", "Linux", "CPU 调度", "CFS", "负载均衡", "NUMA", "性能诊断"],
-      "institutions": ["Université Nice Sophia-Antipolis", "EPFL", "University of British Columbia", "Coho Data", "Grenoble INP / ENSIMAG"],
-      "affiliation_source": "institution",
-      "affiliation_source_url": "https://people.ece.ubc.ca/sasha/papers/eurosys16-final29.pdf",
-      "affiliation_verified_at": "2026-11-11",
-      "evidence_level": "full_text"
-    },
-    {
-      "id": "systor13-blk-mq",
-      "year": 2013,
-      "venue": "systor",
-      "title": "Linux Block IO: Introducing Multi-queue SSD Access on Multi-core Systems",
-      "authors": ["Matias Bjørling", "Jens Axboe", "David Nellans", "Philippe Bonnet"],
-      "url": "https://doi.org/10.1145/2485732.2485740",
-      "pdf_url": "https://www.kernel.dk/blk-mq.pdf",
-      "introduction": "SSD 的高 IOPS 暴露出单请求队列的锁竞争和跨核访存成本。论文用软件暂存队列与硬件派发队列组织并行提交，形成 blk-mq 的早期设计。",
-      "commentary": "多个 CPU 一起提交磁盘请求时，每个核先用自己的软件队列，减少了抢同一把锁的时间。论文用立即返回的 null 设备测块层开销。真实 SSD 还得花时间传输数据。",
-      "relation": "相关机制",
-      "domain": "kernel",
-      "topics": ["内核经典", "Linux", "blk-mq", "块 I/O", "多队列", "NUMA"],
-      "institutions": ["IT University of Copenhagen", "Fusion-io"],
-      "affiliation_source": "official",
-      "affiliation_source_url": "https://www.systor.org/2013/program.html",
-      "affiliation_verified_at": "2026-11-11",
-      "evidence_level": "full_text"
-    },
-    {
-      "id": "atc12-netmap",
-      "year": 2012,
-      "venue": "atc",
-      "title": "netmap: A Novel Framework for Fast Packet I/O",
-      "authors": ["Luigi Rizzo"],
-      "url": "https://www.usenix.org/conference/atc12/technical-sessions/presentation/rizzo",
-      "pdf_url": "https://www.usenix.org/system/files/conference/atc12/atc12-final186.pdf",
-      "introduction": "逐包分配、系统调用和内存复制限制高速收发。netmap 用预分配缓冲区、共享环与批处理降低开销，由内核校验请求并操作网卡。",
-      "commentary": "一次系统调用处理一批包，分到每个包上的调用开销就小了。网卡仍由内核控制。论文里的线速数字来自 FreeBSD，实验只做收发，业务处理时间另算。",
-      "relation": "相关机制",
-      "domain": "kernel",
-      "topics": ["内核经典", "netmap", "网络 I/O", "批处理", "共享缓冲区"],
-      "institutions": ["University of Pisa"],
-      "affiliation_source": "usenix",
-      "affiliation_source_url": "https://www.usenix.org/conference/atc12/technical-sessions/presentation/rizzo",
-      "affiliation_verified_at": "2026-11-11",
-      "evidence_level": "full_text"
-    },
-    {
-      "id": "cacm74-unix",
-      "year": 1974,
-      "venue": "cacm",
-      "title": "The UNIX Time-Sharing System",
-      "url": "https://doi.org/10.1145/361011.361061",
-      "pdf_url": "https://www.cs.cmu.edu/~15712/papers/ritchie74.pdf",
-      "introduction": "早期 UNIX 提供了创建进程、装入程序和连接管道的基本接口。shell 用这些接口把命令接起来运行。",
-      "commentary": "shell 启动一个命令时，先用 fork 创建子进程，再装入程序。子进程继承文件描述符，所以前一个命令的输出能经管道直接交给后一个命令。",
-      "relation": "相关机制",
-      "domain": "kernel",
-      "topics": [
-        "内核经典",
-        "进程",
-        "fork",
-        "exec",
-        "管道"
-      ],
-      "institutions": [
-        "Bell Laboratories"
-      ],
-      "affiliation_source": "institution",
-      "affiliation_source_url": "https://www.cs.cmu.edu/~15712/papers/ritchie74.pdf",
       "affiliation_verified_at": "2026-11-11",
       "evidence_level": "full_text"
     },
@@ -1140,32 +996,6 @@
       ],
       "affiliation_source": "institution",
       "affiliation_source_url": "https://www.cs.columbia.edu/~cdall/candidacy/pdf/Bhargava2008.pdf",
-      "affiliation_verified_at": "2026-11-11",
-      "evidence_level": "full_text"
-    },
-    {
-      "id": "eurosys13-radixvm",
-      "year": 2013,
-      "venue": "eurosys",
-      "title": "RadixVM: Scalable Address Spaces for Multithreaded Applications",
-      "url": "https://pdos.csail.mit.edu/papers/radixvm:eurosys13.pdf",
-      "pdf_url": "https://pdos.csail.mit.edu/papers/radixvm:eurosys13.pdf",
-      "introduction": "RadixVM 减少线程修改地址映射时争用的锁。两个线程各改一段互不重叠的地址时，可以同时执行。",
-      "commentary": "两个线程各改一段互不重叠的映射，本来可以同时做。RadixVM 拆开共享的元数据和计数，减少它们互相等待的时间。这套设计在 xv6 衍生内核上测试，Linux 的 Maple Tree 用的是另一种实现。",
-      "relation": "相关机制",
-      "domain": "kernel",
-      "topics": [
-        "内核经典",
-        "地址空间",
-        "多核扩展",
-        "TLB shootdown",
-        "内存管理"
-      ],
-      "institutions": [
-        "Massachusetts Institute of Technology"
-      ],
-      "affiliation_source": "institution",
-      "affiliation_source_url": "https://pdos.csail.mit.edu/papers/radixvm:eurosys13.pdf",
       "affiliation_verified_at": "2026-11-11",
       "evidence_level": "full_text"
     },
@@ -1509,7 +1339,7 @@
       "published_on": "2026-04-26",
       "publication_source_url": "https://pure.kaist.ac.kr/en/publications/bask-batch-and-smartnic-offloaded-ksm/",
       "introduction": "KSM 通过合并重复页缓解内存压力，但比较和哈希会消耗宿主 CPU。BASK 将去重的控制面与数据面一并卸载到 SmartNIC，利用批处理、乐观并发控制和影子元数据降低往返成本，并用校验与回滚处理失败。",
-      "commentary": "合并重复的内存页能省容量，扫描和比较这些页也会占用宿主 CPU。BASK 把这部分工作交给 SmartNIC。遇到频繁改写的页或网卡故障时，还得算上重新校验和恢复的成本。",
+      "commentary": "作者在同一台宿主上运行两组虚机，测 KSM 能省下多少内存。SmartNIC 帮宿主批量比较页面；页被改写或网卡出故障时，宿主还得重新校验，才能安全地合并。",
       "relation": "相关机制",
       "topics": [
         "KSM",
@@ -5270,8 +5100,12 @@
       "venue": "vee",
       "title": "Mortar: Filling the Gaps in Data Center Memory",
       "url": "https://doi.org/10.1145/2576195.2576203",
-      "introduction": "面向数据中心内存利用率差异，探索跨虚机和主机调配空闲内存容量的机制。",
-      "commentary": "一台宿主内存吃紧时，另一台可能还有空闲页。Mortar 研究怎样把这部分容量借给需要的虚机。页借到手之后，远端访问要多久、对端失效时怎么办，都影响实际可用性。",
+      "pdf_url": "https://faculty.cs.gwu.edu/timwood/papers/14-VEE-Mortar.pdf",
+      "evidence_level": "full_text",
+      "evidence_source_url": "https://faculty.cs.gwu.edu/timwood/papers/14-VEE-Mortar.pdf",
+      "evidence_verified_at": "2026-11-19",
+      "introduction": "Mortar 把 Xen 宿主上暂时闲置的内存当作可回收缓存。应用能存放可重建的键值数据，虚拟磁盘也能用它预取数据块。",
+      "commentary": "虚机要用内存时，Xen 可以直接丢掉缓存，把页腾出来。缓存里只放能从别处重新取回的数据，应用不能把它当成永久存储。",
       "relation": "机制相关",
       "topics": [
         "内存超分",

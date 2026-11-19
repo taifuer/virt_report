@@ -1108,8 +1108,6 @@ def _apply_reading_selection(content: dict) -> None:
     for order, paper in enumerate(content["papers"]):
         paper["archive_order"] = order
         paper["curated"] = paper["id"] in readings
-        if paper.get("domain") == "kernel" and not paper["curated"]:
-            raise ValueError(f"内核方向仅收录经典论文: {paper['id']}")
         paper["reading"] = None
         reading = readings.get(paper["id"])
         if reading is None:

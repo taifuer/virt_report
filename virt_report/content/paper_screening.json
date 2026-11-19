@@ -1,8 +1,8 @@
 {
   "version": 1,
   "reviewed_on": "2026-11-19",
-  "scope": "以系统虚拟化为主：VMM/Hypervisor、真实 ISA 模拟、Guest/Host CPU/内存/I/O 契约、VM 状态迁移及其隔离安全。内核原始研究仅收录进程、CPU 调度、内存管理与 I/O 的经典论文，须核对原文并关联对应原理文章。另选与相关体系结构和云基础设施机制紧密关联的专题综述及教程型专著，核对出版信息、类型和覆盖范围，收录不自动赋予经典星标。云、Serverless、容器、AI 或 VM 关键词不是自动收录依据。",
-  "method": "逐条复核标题、现有介绍和点评所陈述的贡献；边界不清的条目补查一手摘要、作者项目或原文段落。editorial_record 表示这次仅重审既有内容与来源指向，不声称新读过全文；pdf_sections 仅表示核对相关段落。精选深读范围另见 paper_readings.json。",
+  "scope": "论文须直接研究虚机怎样执行、管理资源、交接状态或隔离故障，也收真实 ISA 模拟，以及专门比较上述问题的综述。通用内核和硬件文章放在对应的原理章节。教程型专著单列，不计入论文数。",
+  "method": "review_focus 记录本轮逐篇复核时看的机制；reason 写每篇的取舍，source_url 保留出处。先核对已有介绍、点评和筛选记录，有疑问再查原文、作者摘要或实验材料。review_basis 记录可用证据，不代表本轮重新通读了每篇全文。",
   "decisions": {
     "keep": "保留公开目录；是否精选另行决定",
     "exclude": "不符合当前选题范围或编辑取舍，移出公开目录",
@@ -15,9 +15,10 @@
       "year": 2025,
       "origin": "added",
       "decision": "keep",
-      "reason": "核对作者 PDF 的设计概述和图 1：不是泛云调度，SmartNIC 控制面运行于可抢占 vCPU，与物理核运行的数据面共享 OS。",
+      "reason": "SmartNIC 的控制面跑在可抢占的 vCPU 上，I/O 到来时数据面能收回物理核。原文图 1 区分了两者。",
       "review_basis": "pdf_sections",
-      "source_url": "https://dibang2008.github.io/files/SOSP2025-0917.pdf"
+      "source_url": "https://dibang2008.github.io/files/SOSP2025-0917.pdf",
+      "review_focus": "虚拟 CPU 与执行控制"
     },
     {
       "id": "sosp26-bpf-fault",
@@ -25,9 +26,10 @@
       "year": 2026,
       "origin": "added",
       "decision": "keep",
-      "reason": "作者实现包含 Firecracker 在线快照及 userfaultfd 对照；以可辨认的 VMM 内存路径收录，不因通用 BPF 主题入选。",
+      "reason": "作者改了 Firecracker 的在线快照路径，并提供相应实现；宿主页故障如何处理会直接改变虚机快照的开销。",
       "review_basis": "author_project",
-      "source_url": "https://github.com/bpf-fault/bpf-fault"
+      "source_url": "https://github.com/bpf-fault/bpf-fault",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "sosp26-volistorm",
@@ -35,9 +37,10 @@
       "year": 2026,
       "origin": "added",
       "decision": "keep",
-      "reason": "作者公开摘要与实验制品说明以硬件虚拟化隔开两个内核，在独立 I/O 栈提供崩溃一致的缓存。",
+      "reason": "两个内核靠硬件虚拟化分开运行，一个管通用系统，一个管 I/O 和崩溃一致性；这个分工就是作者提出的缓存设计。",
       "review_basis": "primary_abstract",
-      "source_url": "https://www.janadoing.science/publications"
+      "source_url": "https://www.janadoing.science/publications",
+      "review_focus": "监控器与客户机架构"
     },
     {
       "id": "sosp25-demeter",
@@ -47,7 +50,8 @@
       "decision": "keep",
       "reason": "作者机构收录的原始摘要及实验制品明确区分 Guest 页管理与宿主配额，属于虚机分层内存研究。",
       "review_basis": "primary_abstract",
-      "source_url": "https://research.cuhk.edu.hk/en/publications/demeter-a-scalable-and-elastic-tiered-memory-solution-for-virtual/"
+      "source_url": "https://research.cuhk.edu.hk/en/publications/demeter-a-scalable-and-elastic-tiered-memory-solution-for-virtual/",
+      "review_focus": "虚机内存与地址翻译"
     },
     {
       "id": "sosp25-rdma-live-migration",
@@ -57,7 +61,8 @@
       "decision": "keep",
       "reason": "作者摘要明确给出设备接口、ConnectX 实现与 PCIe 通信静止点，并报告直通虚机迁移；与 NVIDIA 的迁移文档交叉核对。",
       "review_basis": "primary_abstract",
-      "source_url": "https://doi.org/10.1145/3731569.3764795"
+      "source_url": "https://doi.org/10.1145/3731569.3764795",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "sosp25-pkvm-oracle",
@@ -85,9 +90,10 @@
       "year": 2025,
       "origin": "added",
       "decision": "keep",
-      "reason": "核对作者 PDF §6.2，KVM 是有实现细节的 microVM 隔离后端，不只是测试环境或对照组。",
+      "reason": "原文 §6.2 写明 KVM 后端怎样复用虚机结构、复位 vCPU、更换内存页。这些操作直接决定下一次函数启动的成本。",
       "review_basis": "pdf_sections",
-      "source_url": "https://anakli.inf.ethz.ch/papers/dandelion_sosp25.pdf"
+      "source_url": "https://anakli.inf.ethz.ch/papers/dandelion_sosp25.pdf",
+      "review_focus": "监控器与客户机架构"
     },
     {
       "id": "sosp25-oasis",
@@ -154,10 +160,11 @@
       "title": "An Introduction to the Compute Express Link (CXL) Interconnect",
       "year": 2024,
       "origin": "added",
-      "decision": "keep",
-      "reason": "用户确认补充的体系结构综述；核对摘要及引言，覆盖 CXL 1.0、2.0、3.0 的一致性互连和内存池化，明确工程侧重点与作者预印本来源。",
+      "decision": "exclude",
+      "reason": "文章介绍 CXL 1.0 至 3.0 的互连协议、内存扩展和池化。虚机怎样分配不同层的内存，目录另有直接研究这个问题的 OSDI 2024 论文。",
       "review_basis": "pdf_sections",
-      "source_url": "https://arxiv.org/pdf/2306.11227v3"
+      "source_url": "https://arxiv.org/pdf/2306.11227v3",
+      "review_focus": "通用内核与体系结构背景"
     },
     {
       "id": "comst24-network-acceleration",
@@ -165,9 +172,10 @@
       "year": 2024,
       "origin": "added",
       "decision": "keep",
-      "reason": "用户确认补充；根据正式原文摘要核对 XDP、DPDK、RDMA 参照及四维分类，补充云网络加速与虚拟化共享的方案比较。",
+      "reason": "作者专门比较直通、半虚拟化等网络 I/O 路径，讨论多个租户怎样共享加速设备。这是综述的主要问题之一。",
       "review_basis": "primary_abstract",
-      "source_url": "https://cris.unibo.it/retrieve/249c5d98-73ff-4fdd-9fe9-6940f960fd82/COMST_Final_Editorial.pdf"
+      "source_url": "https://cris.unibo.it/retrieve/249c5d98-73ff-4fdd-9fe9-6940f960fd82/COMST_Final_Editorial.pdf",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "csur23-vm-interference",
@@ -175,19 +183,21 @@
       "year": 2023,
       "origin": "added",
       "decision": "keep",
-      "reason": "用户确认补充的虚机性能干扰综述；核对摘要和第 1 节，介绍测量建模与调度优化框架，区分 2023 正式发表、2022 作者稿及被综述实验的适用范围。",
+      "reason": "研究对象是同一宿主上的多台虚机。综述比较怎样测量它们争用 CPU、内存和 I/O 的影响，以及宿主能怎样调度。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.cs.newpaltz.edu/~lik/publications/Weiwei-Lin-ACM-CSUR-2022"
+      "source_url": "https://www.cs.newpaltz.edu/~lik/publications/Weiwei-Lin-ACM-CSUR-2022",
+      "review_focus": "虚机资源干扰"
     },
     {
       "id": "csur24-transient-execution",
       "title": "Transient-Execution Attacks: A Computer Architect Perspective",
       "year": 2024,
       "origin": "added",
-      "decision": "keep",
-      "reason": "用户确认补充；核对出版方摘要、引言及相关原文段落，从处理器机制解释瞬态执行与隔离边界；按 2024 卷期归档并注明 2023 在线发表。",
+      "decision": "exclude",
+      "reason": "作者按处理器微体系结构梳理瞬态执行与防御。虚机隔离是应用背景之一，综述的主线是通用 CPU 安全。",
       "review_basis": "primary_excerpt",
-      "source_url": "https://doi.org/10.1145/3603619"
+      "source_url": "https://doi.org/10.1145/3603619",
+      "review_focus": "通用内核与体系结构背景"
     },
     {
       "id": "slca20-memory-consistency",
@@ -204,10 +214,12 @@
       "title": "Mitosis: Transparently Self-Replicating Page-Tables for Large-Memory Machines",
       "year": 2020,
       "origin": "added",
-      "decision": "keep",
-      "reason": "用户确认补充的 NUMA 页表研究；核对 Linux 4.17 原型、副本同步与多插槽评估，按内核经典收录并区分进程页表和 KVM 第二级页表。",
+      "decision": "exclude",
+      "reason": "原作在裸机 Linux 上复制、迁移进程页表。Guest 页表和二级页表是后续 vMitosis 的研究对象，不能算在 2020 年这篇上。",
       "review_basis": "pdf_sections",
-      "source_url": "https://retoachermann.ch/static/papers/achermann-2020-mts.pdf"
+      "source_url": "https://retoachermann.ch/static/papers/achermann-2020-mts.pdf",
+      "review_focus": "通用内核与体系结构背景",
+      "support_url": "https://asplos-conference.org/abstracts/asplos21-paper158-extended_abstract.pdf"
     },
     {
       "id": "nsdi19-shinjuku",
@@ -215,39 +227,43 @@
       "year": 2019,
       "origin": "added",
       "decision": "keep",
-      "reason": "用户确认补充；Dune、posted interrupts 和可信调度器的 APIC 映射直接使用硬件虚拟化机制，核对抢占路径与 RocksDB 实验的负载、协议及专用核约束。",
+      "reason": "调度器通过 Dune 和 posted interrupts 抢占工作核；去掉这条虚拟中断路径，原文的微秒级抢占设计就变了。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.usenix.org/system/files/nsdi19-kaffes.pdf"
+      "source_url": "https://www.usenix.org/system/files/nsdi19-kaffes.pdf",
+      "review_focus": "虚拟 CPU 与执行控制"
     },
     {
       "id": "eurosys16-linux-scheduler",
       "title": "The Linux Scheduler: a Decade of Wasted Cores",
       "year": 2016,
       "origin": "added",
-      "decision": "keep",
-      "reason": "用户确认补充的 Linux 调度经典；核对多核负载均衡缺陷、诊断工具与 make/R 实验，限定为历史 CFS 研究及可迁移的诊断方法。",
+      "decision": "exclude",
+      "reason": "作者定位 Linux 线程在运行队列里等待、物理核却空闲的原因。研究对象是内核负载均衡，未处理 Guest 与宿主两级调度。",
       "review_basis": "pdf_sections",
-      "source_url": "https://people.ece.ubc.ca/sasha/papers/eurosys16-final29.pdf"
+      "source_url": "https://people.ece.ubc.ca/sasha/papers/eurosys16-final29.pdf",
+      "review_focus": "通用内核与体系结构背景"
     },
     {
       "id": "systor13-blk-mq",
       "title": "Linux Block IO: Introducing Multi-queue SSD Access on Multi-core Systems",
       "year": 2013,
       "origin": "added",
-      "decision": "keep",
-      "reason": "Linux 多队列块层的原始设计，补充内核 I/O 经典；核对两级队列与 null 设备实验边界。",
+      "decision": "exclude",
+      "reason": "blk-mq 解决多核同时向 SSD 提交请求时的块层竞争。后来的虚拟块设备也用它，原文设计的是通用 Linux 块层。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.kernel.dk/blk-mq.pdf"
+      "source_url": "https://www.kernel.dk/blk-mq.pdf",
+      "review_focus": "通用内核与体系结构背景"
     },
     {
       "id": "atc12-netmap",
       "title": "netmap: A Novel Framework for Fast Packet I/O",
       "year": 2012,
       "origin": "added",
-      "decision": "keep",
-      "reason": "预分配、共享环与批量收发构成高速网络 I/O 的代表设计；按内核经典收录，注明 FreeBSD 测量与 Linux 移植的区别。",
+      "decision": "exclude",
+      "reason": "2012 年的 netmap 研究应用与内核之间的批量收发和缓冲区共享。跨 Guest 与设备后端的数据路径是另一件事。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.usenix.org/system/files/conference/atc12/atc12-final186.pdf"
+      "source_url": "https://www.usenix.org/system/files/conference/atc12/atc12-final186.pdf",
+      "review_focus": "通用内核与体系结构背景"
     },
     {
       "id": "cacm68-working-set",
@@ -264,10 +280,11 @@
       "title": "The UNIX Time-Sharing System",
       "year": 1974,
       "origin": "added",
-      "decision": "keep",
-      "reason": "进程映像、fork、程序替换和管道构成现代 Unix 类内核的接口基础；限定为经典内核阅读。",
+      "decision": "exclude",
+      "reason": "Ritchie 和 Thompson 讲 PDP-11 上的文件、进程与 shell。分时操作系统是这里的研究对象，原文留给 Linux 进程章节。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.cs.cmu.edu/~15712/papers/ritchie74.pdf"
+      "source_url": "https://www.cs.cmu.edu/~15712/papers/ritchie74.pdf",
+      "review_focus": "通用内核与体系结构背景"
     },
     {
       "id": "osdi94-lottery",
@@ -287,7 +304,8 @@
       "decision": "keep",
       "reason": "1990 年代 VMM 复兴的代表工作，直接连接虚拟机、NUMA、页面迁移与共享，补齐早期机制脉络。",
       "review_basis": "pdf_sections",
-      "source_url": "https://web.stanford.edu/class/archive/cs/cs240/cs240.1056/readings/disco.pdf"
+      "source_url": "https://web.stanford.edu/class/archive/cs/cs240/cs240.1056/readings/disco.pdf",
+      "review_focus": "监控器与客户机架构"
     },
     {
       "id": "asplos08-two-dimensional-page-walks",
@@ -297,17 +315,19 @@
       "decision": "keep",
       "reason": "针对虚拟化二维页表遍历的缓存设计，是理解 EPT/NPT 与大页成本的代表性体系结构研究。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.cs.columbia.edu/~cdall/candidacy/pdf/Bhargava2008.pdf"
+      "source_url": "https://www.cs.columbia.edu/~cdall/candidacy/pdf/Bhargava2008.pdf",
+      "review_focus": "虚机内存与地址翻译"
     },
     {
       "id": "eurosys13-radixvm",
       "title": "RadixVM: Scalable Address Spaces for Multithreaded Applications",
       "year": 2013,
       "origin": "added",
-      "decision": "keep",
-      "reason": "将共享地址空间扩展性和物理页安全复用一起解决，补充内核内存管理经典；明确 xv6 原型与 Linux 的实现边界。",
+      "decision": "exclude",
+      "reason": "这里的 VM 指虚拟内存。RadixVM 让同一进程的线程同时修改不同地址区间，处理的是 mmap、引用计数和 TLB 失效。",
       "review_basis": "pdf_sections",
-      "source_url": "https://pdos.csail.mit.edu/papers/radixvm:eurosys13.pdf"
+      "source_url": "https://pdos.csail.mit.edu/papers/radixvm:eurosys13.pdf",
+      "review_focus": "通用内核与体系结构背景"
     },
     {
       "id": "osdi16-ingens",
@@ -317,7 +337,8 @@
       "decision": "keep",
       "reason": "直接改造 Linux/KVM 大页与页共享管理，涉及 Guest/Host 两级地址翻译和 VM 间连续内存分配；已核对官方全文的机制、平台及 §6 实验条件。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.usenix.org/system/files/conference/osdi16/osdi16-kwon.pdf"
+      "source_url": "https://www.usenix.org/system/files/conference/osdi16/osdi16-kwon.pdf",
+      "review_focus": "虚机内存与地址翻译"
     },
     {
       "id": "cacm74-popek-goldberg",
@@ -327,7 +348,8 @@
       "decision": "keep",
       "reason": "直接定义 VMM 与可虚拟化充分条件，是系统虚拟化理论起点。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.cse.iitb.ac.in/~puru/courses/spring2024-25/downloads/popekgoldberg.pdf"
+      "source_url": "https://www.cse.iitb.ac.in/~puru/courses/spring2024-25/downloads/popekgoldberg.pdf",
+      "review_focus": "虚拟 CPU 与执行控制"
     },
     {
       "id": "osdi02-esx-memory",
@@ -337,7 +359,8 @@
       "decision": "keep",
       "reason": "研究 Hypervisor 内存超配、balloon、页共享与跨 Guest 资源分配。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.usenix.org/legacy/event/osdi02/tech/waldspurger/waldspurger.pdf"
+      "source_url": "https://www.usenix.org/legacy/event/osdi02/tech/waldspurger/waldspurger.pdf",
+      "review_focus": "虚机内存与地址翻译"
     },
     {
       "id": "sosp03-xen",
@@ -347,7 +370,8 @@
       "decision": "keep",
       "reason": "联合设计 Guest 内核、Hypervisor、页表与共享 I/O ring，属于核心系统虚拟化。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.cl.cam.ac.uk/research/srg/netos/papers/2003-xensosp.pdf"
+      "source_url": "https://www.cl.cam.ac.uk/research/srg/netos/papers/2003-xensosp.pdf",
+      "review_focus": "监控器与客户机架构"
     },
     {
       "id": "nsdi05-live-migration",
@@ -357,7 +381,8 @@
       "decision": "keep",
       "reason": "直接研究运行中 VM 的 pre-copy、状态交接和业务连续性。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.usenix.org/legacy/events/nsdi05/tech/full_papers/clark/clark.pdf"
+      "source_url": "https://www.usenix.org/legacy/events/nsdi05/tech/full_papers/clark/clark.pdf",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "asplos06-software-hardware",
@@ -367,7 +392,8 @@
       "decision": "keep",
       "reason": "比较二进制翻译与硬件辅助 VMM，分析退出和 MMU 虚拟化开销。",
       "review_basis": "pdf_sections",
-      "source_url": "https://web.stanford.edu/class/archive/cs/cs240/cs240.1136/readings/asplos235_adams.pdf"
+      "source_url": "https://web.stanford.edu/class/archive/cs/cs240/cs240.1136/readings/asplos235_adams.pdf",
+      "review_focus": "虚拟 CPU 与执行控制"
     },
     {
       "id": "asplos14-kvm-arm",
@@ -377,7 +403,8 @@
       "decision": "keep",
       "reason": "解释 KVM/ARM 特权级分工与进入主线的工程取舍。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.nieh.net/pubs/asplos2014_kvmarm.pdf"
+      "source_url": "https://www.nieh.net/pubs/asplos2014_kvmarm.pdf",
+      "review_focus": "虚拟 CPU 与执行控制"
     },
     {
       "id": "atc14-gvirt",
@@ -387,7 +414,8 @@
       "decision": "keep",
       "reason": "研究原生 Guest GPU 驱动、mediator、地址隔离与共享设备执行。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.usenix.org/system/files/conference/atc14/atc14-paper-tian.pdf"
+      "source_url": "https://www.usenix.org/system/files/conference/atc14/atc14-paper-tian.pdf",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "atc05-qemu",
@@ -397,7 +425,8 @@
       "decision": "keep",
       "reason": "QEMU 原始设计直接覆盖 CPU 动态翻译、软件 MMU 与完整系统模拟。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.usenix.org/legacy/event/usenix05/tech/freenix/full_papers/bellard/bellard.pdf"
+      "source_url": "https://www.usenix.org/legacy/event/usenix05/tech/freenix/full_papers/bellard/bellard.pdf",
+      "review_focus": "ISA 与系统模拟"
     },
     {
       "id": "ols07-kvm",
@@ -407,7 +436,8 @@
       "decision": "keep",
       "reason": "KVM 原始论文界定 Linux 内核执行控制与用户态 VMM 的接口。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.kernel.org/doc/ols/2007/ols2007v1-pages-225-230.pdf"
+      "source_url": "https://www.kernel.org/doc/ols/2007/ols2007v1-pages-225-230.pdf",
+      "review_focus": "虚拟 CPU 与执行控制"
     },
     {
       "id": "osr08-virtio",
@@ -417,7 +447,8 @@
       "decision": "keep",
       "reason": "通用虚拟 I/O 接口与共享缓冲区交接是 Guest 和设备后端的基础契约。",
       "review_basis": "pdf_sections",
-      "source_url": "https://ozlabs.org/~rusty/virtio-spec/virtio-paper.pdf"
+      "source_url": "https://ozlabs.org/~rusty/virtio-spec/virtio-paper.pdf",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "osdi12-dune",
@@ -427,7 +458,8 @@
       "decision": "keep",
       "reason": "主动利用 VMX 暴露受控特权能力；虽不是完整 Guest OS，研究的是硬件虚拟化机制。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.usenix.org/system/files/conference/osdi12/osdi12-final-117.pdf"
+      "source_url": "https://www.usenix.org/system/files/conference/osdi12/osdi12-final-117.pdf",
+      "review_focus": "虚拟 CPU 与执行控制"
     },
     {
       "id": "asplos13-unikernels",
@@ -437,7 +469,8 @@
       "decision": "keep",
       "reason": "以 Hypervisor 上运行的专用 Guest 镜像重构操作系统边界，而非普通应用裁剪。",
       "review_basis": "pdf_sections",
-      "source_url": "https://anil.recoil.org/papers/2013-asplos-mirage.pdf"
+      "source_url": "https://anil.recoil.org/papers/2013-asplos-mirage.pdf",
+      "review_focus": "监控器与客户机架构"
     },
     {
       "id": "nsdi14-clickos",
@@ -447,7 +480,8 @@
       "decision": "keep",
       "reason": "同时修改 Xen I/O 路径和轻量 Guest，直接研究虚机网络功能的执行成本。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/nsdi14/technical-sessions/presentation/martins"
+      "source_url": "https://www.usenix.org/conference/nsdi14/technical-sessions/presentation/martins",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "atc14-osv",
@@ -457,7 +491,8 @@
       "decision": "keep",
       "reason": "为单应用虚机构建 Guest OS，明确利用 Hypervisor 隔离和设备抽象。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/atc14/technical-sessions/presentation/kivity"
+      "source_url": "https://www.usenix.org/conference/atc14/technical-sessions/presentation/kivity",
+      "review_focus": "监控器与客户机架构"
     },
     {
       "id": "eurosys20-seuss",
@@ -467,7 +502,8 @@
       "decision": "keep",
       "reason": "核心是 unikernel 快照、状态复用和实例隔离，不是一般 FaaS 请求调度。",
       "review_basis": "editorial_record",
-      "source_url": "https://research.redhat.com/blog/publication/seuss-skip-redundant-paths-to-make-serverless-fast/"
+      "source_url": "https://research.redhat.com/blog/publication/seuss-skip-redundant-paths-to-make-serverless-fast/",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "asplos20-catalyzer",
@@ -475,9 +511,10 @@
       "year": 2020,
       "origin": "existing",
       "decision": "keep",
-      "reason": "通过 gVisor 沙箱执行环境的系统状态恢复与 sandbox fork 改变启动边界；作为虚拟化运行时对照，而非泛收 Serverless。",
+      "reason": "作者具体实现了 gVisor 沙箱状态恢复和 sandbox fork。保留的是隔离运行环境的启动机制，不当作硬件虚机引导。",
       "review_basis": "pdf_sections",
-      "source_url": "https://ipads.se.sjtu.edu.cn/zh/publications/DuASPLOS20.pdf"
+      "source_url": "https://ipads.se.sjtu.edu.cn/zh/publications/DuASPLOS20.pdf",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "atc23-lambda-loading",
@@ -485,9 +522,10 @@
       "year": 2023,
       "origin": "existing",
       "decision": "keep",
-      "reason": "原文 §2.1 和图 4 明确由本地 agent 经 Firecracker 的 virtio 块设备提供 Guest 镜像，属于虚机存储启动路径。",
+      "reason": "原文 §2.1 和图 4 说明，Firecracker 通过 virtio 块设备把尚未完整下载的镜像交给 Guest。保留的是这条启动 I/O 路径。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.usenix.org/system/files/atc23-brooker.pdf"
+      "source_url": "https://www.usenix.org/system/files/atc23-brooker.pdf",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "atc26-deltasandbox",
@@ -507,7 +545,8 @@
       "decision": "keep",
       "reason": "已核对 DOI 对应的作者摘要及实验制品：提前在共享 CXL 池保留副本是明确的 VM 迁移机制。",
       "review_basis": "primary_abstract",
-      "source_url": "https://api.openalex.org/works/W7229651790"
+      "source_url": "https://api.openalex.org/works/W7229651790",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "atc26-pave",
@@ -517,7 +556,8 @@
       "decision": "keep",
       "reason": "作者摘要描述了 L0 预建翻译和共享只读映射的边界，补足旧记录所缺的机制证据。",
       "review_basis": "primary_abstract",
-      "source_url": "https://api.openalex.org/works/W7230136763"
+      "source_url": "https://api.openalex.org/works/W7230136763",
+      "review_focus": "虚机内存与地址翻译"
     },
     {
       "id": "atc26-joseph",
@@ -527,7 +567,8 @@
       "decision": "keep",
       "reason": "作者摘要交代从 RNIC 到 Guest 页以及 EPT 映射的先后，足以区别于普通远程快照优化。",
       "review_basis": "primary_abstract",
-      "source_url": "https://api.openalex.org/works/W7230039808"
+      "source_url": "https://api.openalex.org/works/W7230039808",
+      "review_focus": "虚机内存与地址翻译"
     },
     {
       "id": "atc26-chameleon",
@@ -537,7 +578,8 @@
       "decision": "keep",
       "reason": "DOI 对应的作者摘要和制品均可查；核对了内存回收粒度与二级翻译维护，而非仅按题目判断。",
       "review_basis": "primary_abstract",
-      "source_url": "https://api.openalex.org/works/W7229991617"
+      "source_url": "https://api.openalex.org/works/W7229991617",
+      "review_focus": "虚机内存与地址翻译"
     },
     {
       "id": "atc26-courier",
@@ -547,7 +589,8 @@
       "decision": "keep",
       "reason": "作者摘要明确安全容器采用嵌套 microVM，并描述影子 IOMMU、直接通知与 used ring 路径。",
       "review_basis": "primary_abstract",
-      "source_url": "https://api.openalex.org/works/W7227419253"
+      "source_url": "https://api.openalex.org/works/W7227419253",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "osdi26-ramryder",
@@ -557,7 +600,8 @@
       "decision": "keep",
       "reason": "调整 Guest 页到宿主内存通道的映射，研究虚机容量、带宽与性能隔离。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/osdi26/presentation/zhou-yanbo"
+      "source_url": "https://www.usenix.org/conference/osdi26/presentation/zhou-yanbo",
+      "review_focus": "虚机内存与地址翻译"
     },
     {
       "id": "nsdi26-wallet",
@@ -567,7 +611,8 @@
       "decision": "keep",
       "reason": "机密 VM 内的嵌套执行与 trustlet 隔离是核心，不仅是函数服务应用。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/nsdi26/presentation/sabanic"
+      "source_url": "https://www.usenix.org/conference/nsdi26/presentation/sabanic",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "nsdi26-cstar",
@@ -575,9 +620,10 @@
       "year": 2026,
       "origin": "existing",
       "decision": "keep",
-      "reason": "重新划分网络功能 VM、vNIC/vSwitch 与 FPGA 之间的职责，保留为虚拟网络架构研究。",
+      "reason": "为避免先耗尽虚拟网卡和会话，CStar 把多租户转发职责从 vSwitch 移进网络功能虚机。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/nsdi26/presentation/li-haonan"
+      "source_url": "https://www.usenix.org/conference/nsdi26/presentation/li-haonan",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "security26-hyperaudit",
@@ -587,7 +633,8 @@
       "decision": "keep",
       "reason": "通过 Hypervisor 保护 Guest 日志并交给隔离 VM，实质依赖虚机内省与隔离边界。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/zhang-renpeng"
+      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/zhang-renpeng",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "eurosys26-bask",
@@ -595,9 +642,11 @@
       "year": 2026,
       "origin": "existing",
       "decision": "keep",
-      "reason": "将 KSM 页去重卸载至 SmartNIC，涉及共享页一致性、回滚与宿主内存成本；作为虚机内存管理相关机制保留，不称其为 KVM 专用方案。",
+      "reason": "宿主把 KSM 扫描与合并工作交给 SmartNIC。作者用两组虚机实际测了共享页省下的内存和扫描开销，虚机页是被管理的对象。",
       "review_basis": "editorial_record",
-      "source_url": "https://pure.kaist.ac.kr/en/publications/bask-batch-and-smartnic-offloaded-ksm/"
+      "source_url": "https://pure.kaist.ac.kr/en/publications/bask-batch-and-smartnic-offloaded-ksm/",
+      "review_focus": "虚机内存与地址翻译",
+      "support_url": "https://github.com/casys-kaist/bask_ae_eurosys26/blob/main/cloud_workloads/README.md"
     },
     {
       "id": "asplos26-arancini",
@@ -605,9 +654,10 @@
       "year": 2026,
       "origin": "existing",
       "decision": "keep",
-      "reason": "研究真实 ISA 间二进制翻译及内存序保持，可对照 QEMU TCG；不是 JVM 等语言级虚拟机，也不据此宣称完整系统虚拟化。",
+      "reason": "作者做真实 x86-64 指令到弱内存序 ISA 的二进制翻译。研究的是跨 ISA 并发语义，不把它写成完整系统 VMM。",
       "review_basis": "editorial_record",
-      "source_url": "https://research-portal.st-andrews.ac.uk/en/publications/arancini-a-hybrid-binary-translator-for-weak-memory-model-archite/"
+      "source_url": "https://research-portal.st-andrews.ac.uk/en/publications/arancini-a-hybrid-binary-translator-for-weak-memory-model-archite/",
+      "review_focus": "ISA 与系统模拟"
     },
     {
       "id": "asplos26-cemu",
@@ -617,7 +667,8 @@
       "decision": "keep",
       "reason": "作者实现明确基于 FEMU/QEMU，建立 Guest 可访问的计算存储设备模型。",
       "review_basis": "editorial_record",
-      "source_url": "https://github.com/cs-qyzhang/CEMU"
+      "source_url": "https://github.com/cs-qyzhang/CEMU",
+      "review_focus": "ISA 与系统模拟"
     },
     {
       "id": "security26-free",
@@ -627,7 +678,8 @@
       "decision": "keep",
       "reason": "直接研究 MicroVM 的实际宿主消耗与资源记账边界，涉及 VMM 隔离有效性。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/wang-shiwen"
+      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/wang-shiwen",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "security26-aspbreaker",
@@ -637,7 +689,8 @@
       "decision": "keep",
       "reason": "分析 SEV-SNP 固件边界对虚机内存保护和证明的影响，属于机密虚拟化安全。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/shen"
+      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/shen",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "security26-fabricked",
@@ -647,7 +700,8 @@
       "decision": "keep",
       "reason": "攻击对象是 SEV-SNP 的 VM 内存与证明保证，硬件互连配置直接破坏虚机信任边界。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/schlueter-1"
+      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/schlueter-1",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "security26-khost",
@@ -657,7 +711,8 @@
       "decision": "keep",
       "reason": "实际改造 KVM 的执行、页表与中断机制来重托管固件，保留为虚拟化机制的工程应用。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/wang-chunlin"
+      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/wang-chunlin",
+      "review_focus": "ISA 与系统模拟"
     },
     {
       "id": "sosp26-cpu-virtualization",
@@ -667,7 +722,8 @@
       "decision": "keep",
       "reason": "作者摘要给出了 DDVM 的共享决策、被抢占 vCPU 的中断处理和生产评估；已与正式议程、DOI 核对，恢复原 ID。",
       "review_basis": "primary_abstract",
-      "source_url": "https://api.openalex.org/works/W7214709955"
+      "source_url": "https://api.openalex.org/works/W7214709955",
+      "review_focus": "虚拟 CPU 与执行控制"
     },
     {
       "id": "security26-staleus",
@@ -677,7 +733,8 @@
       "decision": "keep",
       "reason": "研究恶意 Hypervisor 利用内存不一致破坏 SEV-SNP 客户机隔离。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/schlueter-2"
+      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/schlueter-2",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "security26-ovs-side-channels",
@@ -687,7 +744,8 @@
       "decision": "keep",
       "reason": "Open vSwitch 共享转发缓存泄漏租户信息，直接涉及虚拟网络数据面的隔离边界。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/kim-daewoo"
+      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/kim-daewoo",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "security25-tdxploit",
@@ -697,7 +755,8 @@
       "decision": "keep",
       "reason": "研究 Intel TDX 可信域的单步控制与缓存侧信道，属于机密 VM 的安全保证。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/usenixsecurity25/presentation/rauscher"
+      "source_url": "https://www.usenix.org/conference/usenixsecurity25/presentation/rauscher",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "osdi26-mwait-sched",
@@ -707,7 +766,8 @@
       "decision": "keep",
       "reason": "解决 mwait 直通使 Hypervisor 失去 vCPU 空闲可见性的问题，直接关联调度与退出策略。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/osdi26/presentation/wang-yun"
+      "source_url": "https://www.usenix.org/conference/osdi26/presentation/wang-yun",
+      "review_focus": "虚拟 CPU 与执行控制"
     },
     {
       "id": "osdi26-janus",
@@ -717,7 +777,8 @@
       "decision": "keep",
       "reason": "重分嵌套 Hypervisor 的 CPU 切换与内存翻译职责，是多层虚拟化机制。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/osdi26/presentation/lai"
+      "source_url": "https://www.usenix.org/conference/osdi26/presentation/lai",
+      "review_focus": "监控器与客户机架构"
     },
     {
       "id": "osdi26-nested-sev",
@@ -727,7 +788,8 @@
       "decision": "keep",
       "reason": "虚拟化 SEV 上下文以支持嵌套 VM，直接处理 L0/L1/L2 信任关系。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/osdi26/presentation/takiguchi"
+      "source_url": "https://www.usenix.org/conference/osdi26/presentation/takiguchi",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "osdi26-blowfish",
@@ -737,7 +799,8 @@
       "decision": "keep",
       "reason": "联合 Guest 冷热页跟踪与 Hypervisor 回收，研究分离内存中的 VM 弹性。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/osdi26/presentation/zhang-yulong"
+      "source_url": "https://www.usenix.org/conference/osdi26/presentation/zhang-yulong",
+      "review_focus": "虚机内存与地址翻译"
     },
     {
       "id": "osdi26-m3u",
@@ -747,7 +810,8 @@
       "decision": "keep",
       "reason": "重构大 VM 后拷贝中的内核缺页与设备状态处理，直接属于迁移路径。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/osdi26/presentation/xu-yizhe"
+      "source_url": "https://www.usenix.org/conference/osdi26/presentation/xu-yizhe",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "osdi26-infinidefrag",
@@ -757,7 +821,8 @@
       "decision": "keep",
       "reason": "通过 GPA/HPA 映射重组减少虚机内存碎片，直接研究二阶段地址空间。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/osdi26/presentation/zeng"
+      "source_url": "https://www.usenix.org/conference/osdi26/presentation/zeng",
+      "review_focus": "虚机内存与地址翻译"
     },
     {
       "id": "osdi26-goodkit",
@@ -767,7 +832,8 @@
       "decision": "keep",
       "reason": "重新组织 VMM 与内省监控 VM 的隔离和内存观测，属于 VMI 架构。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/osdi26/presentation/teguia"
+      "source_url": "https://www.usenix.org/conference/osdi26/presentation/teguia",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "osdi26-dvla",
@@ -787,7 +853,8 @@
       "decision": "keep",
       "reason": "建立 CXL-SSD 全系统模拟并处理 Hypervisor trap 与时延校准，直接关联设备模拟。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/fast26/presentation/yoon"
+      "source_url": "https://www.usenix.org/conference/fast26/presentation/yoon",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "fast26-thinkahead",
@@ -795,9 +862,10 @@
       "year": 2026,
       "origin": "existing",
       "decision": "keep",
-      "reason": "以虚拟磁盘镜像的块预载改善 VM 冷启动 I/O，关联虚拟存储后端而非一般缓存论文。",
+      "reason": "预取对象是按需加载的虚拟磁盘镜像块，作者用实际镜像启动轨迹研究首次读取这些块的等待。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/fast26/presentation/chen"
+      "source_url": "https://www.usenix.org/conference/fast26/presentation/chen",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "fast26-rosenbridge",
@@ -807,7 +875,8 @@
       "decision": "keep",
       "reason": "设计 virtio-ndp 接口跨越 Guest/Host I/O 边界，是半虚拟化设备研究。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/fast26/presentation/qiu"
+      "source_url": "https://www.usenix.org/conference/fast26/presentation/qiu",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "eurosys26-necofuzz",
@@ -817,7 +886,8 @@
       "decision": "keep",
       "reason": "被测对象是嵌套虚拟化的接口和状态组合，专用 VM 是测试框架核心。",
       "review_basis": "editorial_record",
-      "source_url": "https://dl.acm.org/doi/10.1145/3767295.3769347"
+      "source_url": "https://dl.acm.org/doi/10.1145/3767295.3769347",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "eurosys26-squeezy",
@@ -827,7 +897,8 @@
       "decision": "keep",
       "reason": "直接针对承载函数的 VM 做内存回收，不因 Serverless 标签而收录。",
       "review_basis": "editorial_record",
-      "source_url": "https://dl.acm.org/doi/10.1145/3767295.3769357"
+      "source_url": "https://dl.acm.org/doi/10.1145/3767295.3769357",
+      "review_focus": "虚机内存与地址翻译"
     },
     {
       "id": "eurosys26-x86-riscv",
@@ -837,7 +908,8 @@
       "decision": "keep",
       "reason": "研究真实 x86-64 ISA 在 RISC-V 上的执行模拟，属于本站 QEMU/跨 ISA 执行范围。",
       "review_basis": "editorial_record",
-      "source_url": "https://dl.acm.org/doi/10.1145/3767295.3803574"
+      "source_url": "https://dl.acm.org/doi/10.1145/3767295.3803574",
+      "review_focus": "ISA 与系统模拟"
     },
     {
       "id": "eurosys26-heterogeneous-migration",
@@ -847,7 +919,8 @@
       "decision": "keep",
       "reason": "研究异构处理器间 VM 状态与兼容性条件，直接关联迁移正确性。",
       "review_basis": "editorial_record",
-      "source_url": "https://dl.acm.org/doi/10.1145/3767295.3803609"
+      "source_url": "https://dl.acm.org/doi/10.1145/3767295.3803609",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "asplos26-sgiov",
@@ -867,7 +940,8 @@
       "decision": "keep",
       "reason": "研究 DPU 与主机故障下 VM 状态的协作恢复，直接关联虚机连续性。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.asplos-conference.org/asplos2026/program/index.html"
+      "source_url": "https://www.asplos-conference.org/asplos2026/program/index.html",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "nsdi26-zoc",
@@ -877,7 +951,8 @@
       "decision": "keep",
       "reason": "用专用服务 VM 和直通 NIC 组织虚拟 SmartNIC，研究跨域设备抽象与资源共享。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/nsdi26/presentation/guan-naixuan"
+      "source_url": "https://www.usenix.org/conference/nsdi26/presentation/guan-naixuan",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "security26-stackwarp",
@@ -887,7 +962,8 @@
       "decision": "keep",
       "reason": "恶意宿主影响 SEV-SNP Guest 的栈状态，直接检验机密虚机完整性。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/zhang-ruiyi"
+      "source_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/zhang-ruiyi",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "atc25-hyperturtle",
@@ -897,7 +973,8 @@
       "decision": "keep",
       "reason": "将嵌套 Hypervisor 路径安全委托 L0 执行，以减少跨层退出。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/atc25/presentation/zur"
+      "source_url": "https://www.usenix.org/conference/atc25/presentation/zur",
+      "review_focus": "虚拟 CPU 与执行控制"
     },
     {
       "id": "osdi25-vio",
@@ -907,7 +984,8 @@
       "decision": "keep",
       "reason": "在 virtio 与直通路径间切换以协调 DMA、性能和 VM 内存超配。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/osdi25/presentation/wang-yun"
+      "source_url": "https://www.usenix.org/conference/osdi25/presentation/wang-yun",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "osdi25-krr",
@@ -917,7 +995,8 @@
       "decision": "keep",
       "reason": "Guest/Host 协同记录内核执行，面向多核虚机确定性回放与 I/O 事件。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/osdi25/presentation/zhang-tianren"
+      "source_url": "https://www.usenix.org/conference/osdi25/presentation/zhang-tianren",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "osdi25-kamino",
@@ -937,7 +1016,8 @@
       "decision": "keep",
       "reason": "在 TDX Trust Domain 内重划可信执行区，并复用 VMM 的内存/vCPU 管理。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/usenixsecurity25/presentation/wang-zhanbo"
+      "source_url": "https://www.usenix.org/conference/usenixsecurity25/presentation/wang-zhanbo",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "security25-cofunc",
@@ -947,7 +1027,8 @@
       "decision": "keep",
       "reason": "把微内核与 LibOS 放入 SEV/TDX 机密 VM，拆分可信与不可信管理边界。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/usenixsecurity25/presentation/shi-jiacheng"
+      "source_url": "https://www.usenix.org/conference/usenixsecurity25/presentation/shi-jiacheng",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "osdi24-sabre",
@@ -957,7 +1038,8 @@
       "decision": "keep",
       "reason": "针对 Firecracker MicroVM 内存快照的压缩、预取与恢复，不是泛化数据压缩。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/osdi24/presentation/lazarev"
+      "source_url": "https://www.usenix.org/conference/osdi24/presentation/lazarev",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "osdi24-cxl-memory-tiers",
@@ -967,7 +1049,8 @@
       "decision": "keep",
       "reason": "研究虚拟化环境的 CXL 页放置与 VM 间性能隔离。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/osdi24/presentation/zhong-yuhong"
+      "source_url": "https://www.usenix.org/conference/osdi24/presentation/zhong-yuhong",
+      "review_focus": "虚机内存与地址翻译"
     },
     {
       "id": "sosp24-vsoc",
@@ -977,7 +1060,8 @@
       "decision": "keep",
       "reason": "解决 Guest SoC 与宿主设备内存模型差异，属于完整设备/系统模拟。",
       "review_basis": "primary_abstract",
-      "source_url": "https://thucloud.com/zhenhua/papers/%5BSOSP%2724%5D%20vSoC.pdf"
+      "source_url": "https://thucloud.com/zhenhua/papers/%5BSOSP%2724%5D%20vSoC.pdf",
+      "review_focus": "ISA 与系统模拟"
     },
     {
       "id": "sosp24-vpri",
@@ -987,7 +1071,8 @@
       "decision": "keep",
       "reason": "设备 I/O page fault 与 VM 按需分页协同，直接研究直通和内存虚拟化。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/3694715.3695957"
+      "source_url": "https://doi.org/10.1145/3694715.3695957",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "asplos24-dmt",
@@ -997,7 +1082,8 @@
       "decision": "keep",
       "reason": "重设计 Guest/Host 地址翻译契约，面向二阶段及嵌套页表开销。",
       "review_basis": "primary_abstract",
-      "source_url": "https://tianyin.github.io/pub/dmt.pdf"
+      "source_url": "https://tianyin.github.io/pub/dmt.pdf",
+      "review_focus": "虚机内存与地址翻译"
     },
     {
       "id": "asplos24-cps",
@@ -1007,7 +1093,8 @@
       "decision": "keep",
       "reason": "KVM 原型通过 Guest/Host 调度协作改善 vCPU 可见性，区别于集群放置算法。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.asplos-conference.org/asplos2024/main-program/abstracts/index.html"
+      "source_url": "https://www.asplos-conference.org/asplos2024/main-program/abstracts/index.html",
+      "review_focus": "虚拟 CPU 与执行控制"
     },
     {
       "id": "asplos24-veil",
@@ -1017,7 +1104,8 @@
       "decision": "keep",
       "reason": "利用 SEV-SNP VMPL 在机密 VM 内隔离受保护服务，直接改变 Guest 信任边界。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.asplos-conference.org/asplos2024/main-program/abstracts/index.html"
+      "source_url": "https://www.asplos-conference.org/asplos2024/main-program/abstracts/index.html",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "osdi23-duvisor",
@@ -1027,7 +1115,8 @@
       "decision": "keep",
       "reason": "将虚机运行面委托用户态并结合硬件扩展，重划 VMM 权限与执行控制。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/osdi23/presentation/chen"
+      "source_url": "https://www.usenix.org/conference/osdi23/presentation/chen",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "sosp23-pvm",
@@ -1037,7 +1126,8 @@
       "decision": "keep",
       "reason": "在不暴露嵌套硬件能力时，以影子页表和 Guest Hypervisor 支持安全容器。",
       "review_basis": "editorial_record",
-      "source_url": "https://sigops.org/s/conferences/sosp/2023/toc.html"
+      "source_url": "https://sigops.org/s/conferences/sosp/2023/toc.html",
+      "review_focus": "虚机内存与地址翻译"
     },
     {
       "id": "sosp23-siloz",
@@ -1047,7 +1137,8 @@
       "decision": "keep",
       "reason": "由 Hypervisor 按 DRAM 拓扑隔离 VM 与 EPT 页，直接针对跨 VM Rowhammer。",
       "review_basis": "editorial_record",
-      "source_url": "https://sigops.org/s/conferences/sosp/2023/toc.html"
+      "source_url": "https://sigops.org/s/conferences/sosp/2023/toc.html",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "socc23-anubis",
@@ -1057,7 +1148,8 @@
       "decision": "keep",
       "reason": "利用 KVM exit 和中断信号调整宿主 vCPU 调度，直接处理虚拟化双层调度问题。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.sigops.org/s/conferences/socc/2023/toc.html"
+      "source_url": "https://www.sigops.org/s/conferences/socc/2023/toc.html",
+      "review_focus": "虚拟 CPU 与执行控制"
     },
     {
       "id": "atc22-rund",
@@ -1067,7 +1159,8 @@
       "decision": "keep",
       "reason": "优化一容器一 MicroVM 的宿主、Guest 和镜像路径，有明确虚机启动与隔离边界。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/atc22/presentation/li-zijun-rund"
+      "source_url": "https://www.usenix.org/conference/atc22/presentation/li-zijun-rund",
+      "review_focus": "监控器与客户机架构"
     },
     {
       "id": "vee22-clusterrr",
@@ -1077,7 +1170,8 @@
       "decision": "keep",
       "reason": "在 QEMU/KVM 中协调虚机执行与网络事件回放，是 VM 集群记录回放机制。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.sigops.org/s/conferences/vee/2022/toc.html"
+      "source_url": "https://www.sigops.org/s/conferences/vee/2022/toc.html",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "asplos21-reap",
@@ -1087,7 +1181,8 @@
       "decision": "keep",
       "reason": "原型基于 Firecracker，预取 Guest 内存工作集以改善快照后的缺页路径。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.research.ed.ac.uk/en/publications/benchmarking-analysis-and-optimization-of-serverless-function-sna/"
+      "source_url": "https://www.research.ed.ac.uk/en/publications/benchmarking-analysis-and-optimization-of-serverless-function-sna/",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "sosp21-twinvisor",
@@ -1097,7 +1192,8 @@
       "decision": "keep",
       "reason": "以 Arm TrustZone 与双 Hypervisor 隔离机密 VM，研究宿主资源管理和可信基拆分。",
       "review_basis": "editorial_record",
-      "source_url": "https://sigops.org/s/conferences/sosp/2021/toc.html"
+      "source_url": "https://sigops.org/s/conferences/sosp/2021/toc.html",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "vee21-adamig",
@@ -1107,7 +1203,8 @@
       "decision": "keep",
       "reason": "基于 QEMU 调整 VM 迁移方式与参数，直接应对带宽和脏页收敛条件。",
       "review_basis": "editorial_record",
-      "source_url": "https://conf.researchr.org/details/vee-2021/vee-2021-papers/11/Adaptive-Live-Migration-of-Virtual-Machines-under-Limited-Network-Bandwidth"
+      "source_url": "https://conf.researchr.org/details/vee-2021/vee-2021-papers/11/Adaptive-Live-Migration-of-Virtual-Machines-under-Limited-Network-Bandwidth",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "vee21-virtio-mem",
@@ -1117,7 +1214,8 @@
       "decision": "keep",
       "reason": "提出并实现细粒度 virtio 内存热插拔接口，直接关联 QEMU/KVM/Linux 上游工程。",
       "review_basis": "editorial_record",
-      "source_url": "https://conf.researchr.org/details/vee-2021/vee-2021-papers/4/virtio-mem-Paravirtualized-Memory-Hot-Un-Plug"
+      "source_url": "https://conf.researchr.org/details/vee-2021/vee-2021-papers/4/virtio-mem-Paravirtualized-Memory-Hot-Un-Plug",
+      "review_focus": "虚机内存与地址翻译"
     },
     {
       "id": "nsdi20-firecracker",
@@ -1127,7 +1225,8 @@
       "decision": "keep",
       "reason": "KVM 上的精简 VMM 与设备集合设计，具有明确生产使用场景和实现边界。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.usenix.org/system/files/nsdi20-paper-agache.pdf"
+      "source_url": "https://www.usenix.org/system/files/nsdi20-paper-agache.pdf",
+      "review_focus": "监控器与客户机架构"
     },
     {
       "id": "vee20-giantvm",
@@ -1137,7 +1236,8 @@
       "decision": "keep",
       "reason": "实际基于 QEMU/KVM 将多台主机聚合为一个系统 Guest，区别于自定义分布式语言虚拟机。",
       "review_basis": "editorial_record",
-      "source_url": "https://conf.researchr.org/details/vee-2020/vee-2020-papers/10/GiantVM-A-Type-II-Hypervisor-Implementing-Many-to-one-Virtualization"
+      "source_url": "https://conf.researchr.org/details/vee-2020/vee-2020-papers/10/GiantVM-A-Type-II-Hypervisor-Implementing-Many-to-one-Virtualization",
+      "review_focus": "监控器与客户机架构"
     },
     {
       "id": "asplos20-leapio",
@@ -1147,7 +1247,8 @@
       "decision": "keep",
       "reason": "把虚拟 NVMe 后端卸载到 Arm 协处理器，为未修改 Guest 提供存储设备。",
       "review_basis": "editorial_record",
-      "source_url": "https://asplos-conference.org/wp-content/uploads/2020/abstracts/paper_6_4.html"
+      "source_url": "https://asplos-conference.org/wp-content/uploads/2020/abstracts/paper_6_4.html",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "vee22-portkey",
@@ -1157,7 +1258,8 @@
       "decision": "keep",
       "reason": "Hypervisor 参与嵌套云容器迁移的跨层状态协调，并非只在 VM 里运行普通容器。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/3516807.3516817"
+      "source_url": "https://doi.org/10.1145/3516807.3516817",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "asplos19-orthus",
@@ -1167,7 +1269,8 @@
       "decision": "keep",
       "reason": "直接处理新旧 KVM/QEMU 共存、VM grafting 和直通设备交接；PDF 受限，解读单独披露证据边界。",
       "review_basis": "primary_excerpt",
-      "source_url": "https://www.alibabacloud.com/blog/alibaba-cloud-releases-major-paper-at-asplos19_594741"
+      "source_url": "https://www.alibabacloud.com/blog/alibaba-cloud-releases-major-paper-at-asplos19_594741",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "vee19-live-replacement",
@@ -1177,7 +1280,8 @@
       "decision": "keep",
       "reason": "利用嵌套虚拟化与内存重映射替换 L1 Hypervisor，与同内核 Dual KVM 路线互补。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/3313808.3313821"
+      "source_url": "https://doi.org/10.1145/3313808.3313821",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "vee19-acrn",
@@ -1187,7 +1291,8 @@
       "decision": "keep",
       "reason": "面向嵌入式平台设计 Hypervisor，处理实时性、可信基与设备共享。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/3313808.3313816"
+      "source_url": "https://doi.org/10.1145/3313808.3313816",
+      "review_focus": "虚拟 CPU 与执行控制"
     },
     {
       "id": "vee19-teev",
@@ -1197,7 +1302,8 @@
       "decision": "keep",
       "reason": "一手摘要明确 TEE-visor 隔离多个 vTEE 操作系统实例，是执行环境虚拟化而非普通可信应用。",
       "review_basis": "primary_abstract",
-      "source_url": "https://conf.researchr.org/details/vee-2019/vee-2019-papers/11/TEEv-Virtualizing-Trusted-Execution-Environments-on-Mobile-Platforms"
+      "source_url": "https://conf.researchr.org/details/vee-2019/vee-2019-papers/11/TEEv-Virtualizing-Trusted-Execution-Environments-on-Mobile-Platforms",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "atc19-nica",
@@ -1207,7 +1313,8 @@
       "decision": "keep",
       "reason": "在 KVM 中虚拟化共享 FPGA SmartNIC 的逻辑和 I/O 路径，提供 VM 间隔离。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/atc19/presentation/eran"
+      "source_url": "https://www.usenix.org/conference/atc19/presentation/eran",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "atc19-mts",
@@ -1217,7 +1324,8 @@
       "decision": "keep",
       "reason": "拆分高权限虚拟交换数据面并增强租户隔离，直接关联宿主虚拟网络架构。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/atc19/presentation/thimmaraju"
+      "source_url": "https://www.usenix.org/conference/atc19/presentation/thimmaraju",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "security19-hypsec",
@@ -1227,7 +1335,8 @@
       "decision": "keep",
       "reason": "改造 KVM 的可信与不可信组件分界，保护 Guest 免受宿主攻破影响。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/usenixsecurity19/presentation/li-shih-wei"
+      "source_url": "https://www.usenix.org/conference/usenixsecurity19/presentation/li-shih-wei",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "vee18-gmig",
@@ -1237,7 +1346,8 @@
       "decision": "keep",
       "reason": "处理全虚拟化 GPU 的设备脏页与迁移状态，不是普通 GPU 计算优化。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/3186411.3186414"
+      "source_url": "https://doi.org/10.1145/3186411.3186414",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "vee18-live-migration-scale",
@@ -1247,7 +1357,8 @@
       "decision": "keep",
       "reason": "研究批量 VM 热迁移本身的资源竞争和落地约束，作为机制扩展到生产规模的补充。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/3186411.3186415"
+      "source_url": "https://doi.org/10.1145/3186411.3186415",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "vee18-demon",
@@ -1257,7 +1368,8 @@
       "decision": "keep",
       "reason": "研究 mediated pass-through 中设备侧 MMU 虚拟化，直接涉及映射和共享设备访问。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/3186411.3186416"
+      "source_url": "https://doi.org/10.1145/3186411.3186416",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "atc18-hyperupcalls",
@@ -1267,7 +1379,8 @@
       "decision": "keep",
       "reason": "允许 Hypervisor 受控执行 Guest 提供的代码，改变跨层语义交换接口。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/atc18/presentation/amit"
+      "source_url": "https://www.usenix.org/conference/atc18/presentation/amit",
+      "review_focus": "虚拟 CPU 与执行控制"
     },
     {
       "id": "atc18-epti",
@@ -1277,7 +1390,8 @@
       "decision": "keep",
       "reason": "利用 EPT 在 Guest 外实现用户/内核页隔离，是虚拟化层的兼容性安全修复。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/atc18/presentation/hua"
+      "source_url": "https://www.usenix.org/conference/atc18/presentation/hua",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "atc17-kvm-arm",
@@ -1287,7 +1401,8 @@
       "decision": "keep",
       "reason": "重构 KVM/ARM 的异常级别与执行模式，直接关联主线 Hypervisor 设计。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/atc17/technical-sessions/presentation/dall"
+      "source_url": "https://www.usenix.org/conference/atc17/technical-sessions/presentation/dall",
+      "review_focus": "虚拟 CPU 与执行控制"
     },
     {
       "id": "atc17-multi-hypervisor",
@@ -1297,7 +1412,8 @@
       "decision": "keep",
       "reason": "通过嵌套 KVM/QEMU 在同一 Guest 下组合隔离的 Hypervisor 服务。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/atc17/technical-sessions/presentation/gopalan"
+      "source_url": "https://www.usenix.org/conference/atc17/technical-sessions/presentation/gopalan",
+      "review_focus": "监控器与客户机架构"
     },
     {
       "id": "sosp17-neve",
@@ -1307,7 +1423,8 @@
       "decision": "keep",
       "reason": "扩展 Arm 硬件和软件的嵌套虚拟化执行，属于多层 CPU/MMU 虚拟化。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.sigops.org/s/conferences/sosp/2017/program.html"
+      "source_url": "https://www.sigops.org/s/conferences/sosp/2017/program.html",
+      "review_focus": "虚拟 CPU 与执行控制"
     },
     {
       "id": "sosp17-lightvm",
@@ -1317,7 +1434,8 @@
       "decision": "keep",
       "reason": "同时裁剪 Xen 工具栈与 Guest 镜像，直接研究 VM 创建成本和密度。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.sigops.org/s/conferences/sosp/2017/program.html"
+      "source_url": "https://www.sigops.org/s/conferences/sosp/2017/program.html",
+      "review_focus": "监控器与客户机架构"
     },
     {
       "id": "vee16-kvm-hsa",
@@ -1327,7 +1445,8 @@
       "decision": "keep",
       "reason": "将 KVM 适配 CPU/加速器共享的 HSA 资源与执行模型。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/2892242.2892246"
+      "source_url": "https://doi.org/10.1145/2892242.2892246",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "vee16-ept",
@@ -1337,7 +1456,8 @@
       "decision": "keep",
       "reason": "直接量化虚拟化 x86 的二阶段页表成本，作为内存虚拟化基线。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/2892242.2892258"
+      "source_url": "https://doi.org/10.1145/2892242.2892258",
+      "review_focus": "虚机内存与地址翻译"
     },
     {
       "id": "vee16-migration-optimizations",
@@ -1347,7 +1467,8 @@
       "decision": "keep",
       "reason": "比较 VM 迁移机制在负载与网络条件下的选择，不是一般集群调度。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/2892242.2892247"
+      "source_url": "https://doi.org/10.1145/2892242.2892247",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "vee16-urgent-eviction",
@@ -1357,7 +1478,8 @@
       "decision": "keep",
       "reason": "由 Guest 配合 post-copy 尽快释放源主机，改变运行状态迁移路径。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/2892242.2892252"
+      "source_url": "https://doi.org/10.1145/2892242.2892252",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "atc16-hyperprobe",
@@ -1367,7 +1489,8 @@
       "decision": "keep",
       "reason": "从 Guest 行为识别底层 KVM 特征和缺陷，研究虚拟化可观察性边界。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/atc16/technical-sessions/presentation/xiao"
+      "source_url": "https://www.usenix.org/conference/atc16/technical-sessions/presentation/xiao",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "vee15-direct-interrupt",
@@ -1377,7 +1500,8 @@
       "decision": "keep",
       "reason": "实现和测量直接中断投递，涉及设备、Hypervisor 和 Guest 路由控制。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/2731186.2731189"
+      "source_url": "https://doi.org/10.1145/2731186.2731189",
+      "review_focus": "虚拟 CPU 与执行控制"
     },
     {
       "id": "vee15-rdma-io",
@@ -1387,7 +1511,8 @@
       "decision": "keep",
       "reason": "研究 RDMA NIC 在 VM 中的混合共享/直访接口，处理隔离与控制路径。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/2731186.2731200"
+      "source_url": "https://doi.org/10.1145/2731186.2731200",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "vee15-virtual-cluster",
@@ -1397,7 +1522,8 @@
       "decision": "keep",
       "reason": "核心是 IOMMU/SR-IOV/GPUDirect 在虚拟集群中的集成和边界，HPC 只是验证负载。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/2731186.2731194"
+      "source_url": "https://doi.org/10.1145/2731186.2731194",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "vee14-introspection",
@@ -1407,7 +1533,8 @@
       "decision": "keep",
       "reason": "研究如何在 Guest 外恢复实时高层状态，是虚机内省机制。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/2576195.2576196"
+      "source_url": "https://doi.org/10.1145/2576195.2576196",
+      "review_focus": "虚机安全与隔离"
     },
     {
       "id": "vee14-tesseract",
@@ -1417,7 +1544,8 @@
       "decision": "keep",
       "reason": "协调 Guest I/O 与 Hypervisor swapping，直接应对双层内存管理的信息缺失。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/2576195.2576198"
+      "source_url": "https://doi.org/10.1145/2576195.2576198",
+      "review_focus": "虚机内存与地址翻译"
     },
     {
       "id": "vee14-mortar",
@@ -1425,9 +1553,10 @@
       "year": 2014,
       "origin": "existing",
       "decision": "keep",
-      "reason": "围绕 VM 空闲内存利用和跨层资源共享展开，保留为虚机内存治理相关研究。",
-      "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/2576195.2576203"
+      "reason": "Xen 管理一批可随时丢弃的缓存数据，虚机需要内存时先让出缓存；这是 Hypervisor 的内存回收策略。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://faculty.cs.gwu.edu/timwood/papers/14-VEE-Mortar.pdf",
+      "review_focus": "虚机内存与地址翻译"
     },
     {
       "id": "atc13-halite",
@@ -1437,7 +1566,8 @@
       "decision": "keep",
       "reason": "优化 VMware ESXi 的内存检查点布局与按需恢复，直接服务虚机恢复路径。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/atc13/technical-sessions/presentation/zhang"
+      "source_url": "https://www.usenix.org/conference/atc13/technical-sessions/presentation/zhang",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "atc13-hyperswitch",
@@ -1447,7 +1577,8 @@
       "decision": "keep",
       "reason": "在驱动域和 Hypervisor 间重新分配虚拟交换职责，直接面向 VM 网络数据面。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/atc13/technical-sessions/presentation/ram"
+      "source_url": "https://www.usenix.org/conference/atc13/technical-sessions/presentation/ram",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "atc13-mig",
@@ -1457,7 +1588,8 @@
       "decision": "keep",
       "reason": "按 Guest 内存语义压缩迁移状态，直接优化桌面 VM 迁移。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/atc13/technical-sessions/presentation/rai"
+      "source_url": "https://www.usenix.org/conference/atc13/technical-sessions/presentation/rai",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "vee12-dvm",
@@ -1477,7 +1609,8 @@
       "decision": "keep",
       "reason": "以 VM 运行状态复制与跨站故障切换实现容灾，状态一致性是设计核心。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/2151024.2151039"
+      "source_url": "https://doi.org/10.1145/2151024.2151039",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "vee12-compsc",
@@ -1487,7 +1620,8 @@
       "decision": "keep",
       "reason": "直接处理设备直通状态无法随 RAM 简单迁移的问题。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/2151024.2151040"
+      "source_url": "https://doi.org/10.1145/2151024.2151040",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "vee11-rehype",
@@ -1497,7 +1631,8 @@
       "decision": "keep",
       "reason": "Hypervisor 失败后保留并恢复 VM 运行状态，属于 VMM 可靠性机制。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/1952682.1952692"
+      "source_url": "https://doi.org/10.1145/1952682.1952692",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "vee11-checkpoint",
@@ -1507,7 +1642,8 @@
       "decision": "keep",
       "reason": "直接减少完整 VM 运行状态检查点的时间与空间成本。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/1952682.1952694"
+      "source_url": "https://doi.org/10.1145/1952682.1952694",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "vee11-cloudnet",
@@ -1517,7 +1653,8 @@
       "decision": "keep",
       "reason": "处理 VM 广域在线迁移的内存、网络身份与存储衔接，而非只调用迁移的放置算法。",
       "review_basis": "editorial_record",
-      "source_url": "https://doi.org/10.1145/1952682.1952699"
+      "source_url": "https://doi.org/10.1145/1952682.1952699",
+      "review_focus": "虚拟机状态交接"
     },
     {
       "id": "osdi10-turtles",
@@ -1527,7 +1664,8 @@
       "decision": "keep",
       "reason": "在 KVM 中实现未修改 Hypervisor 的嵌套运行与多层状态合成。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.usenix.org/legacy/events/osdi10/tech/full_papers/Ben-Yehuda.pdf"
+      "source_url": "https://www.usenix.org/legacy/events/osdi10/tech/full_papers/Ben-Yehuda.pdf",
+      "review_focus": "虚拟 CPU 与执行控制"
     },
     {
       "id": "osdi10-mclock",
@@ -1537,7 +1675,8 @@
       "decision": "keep",
       "reason": "直接在 Hypervisor I/O 调度中实现 VM 间预约、上限与比例公平。",
       "review_basis": "pdf_sections",
-      "source_url": "https://www.usenix.org/legacy/events/osdi10/tech/full_papers/Gulati.pdf"
+      "source_url": "https://www.usenix.org/legacy/events/osdi10/tech/full_papers/Gulati.pdf",
+      "review_focus": "虚拟设备与 I/O"
     },
     {
       "id": "osdi10-time",
@@ -1547,7 +1686,8 @@
       "decision": "keep",
       "reason": "面向 Xen VM 的时间源虚拟化和迁移后的时钟连续性。",
       "review_basis": "editorial_record",
-      "source_url": "https://www.usenix.org/conference/osdi10/virtualize-everything-time"
+      "source_url": "https://www.usenix.org/conference/osdi10/virtualize-everything-time",
+      "review_focus": "虚拟 CPU 与执行控制"
     }
   ]
 }

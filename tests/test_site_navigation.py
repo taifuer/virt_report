@@ -127,9 +127,9 @@ def test_conference_pages_express_parent_child_navigation():
     academic = render.render_academic_conferences_html(config, content)
     forum = render.render_kvm_forum_html(config, editions, analysis)
     academic_doc = Document(academic).root
-    breadcrumb = next(node for node in academic_doc.find("nav")
-                      if node.attrs.get("aria-label") == "面包屑")
-    assert [node.attrs["href"] for node in breadcrumb.find("a")] == ["conferences.html"]
+    academic_article = academic_doc.find("article")[0]
+    assert academic_article.find("header")[0].find("nav") == []
+    assert not {a.text() for a in academic_article.find("a")} & {"查看相关论文", "收录会议"}
     forum_doc = Document(forum).root
     assert not any(node.attrs.get("aria-label") == "面包屑" for node in forum_doc.find("nav"))
     for page in (directory_page, papers, academic, forum):
