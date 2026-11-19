@@ -137,9 +137,18 @@ def check_updates(output: Path, *, venues: list[str] | None = None,
             try:
                 response = session.get(source["source_url"], timeout=(10, 25))
                 response.raise_for_status()
-                if "text/html" not in response.headers.get("Content-Type", ""):
+                content_type = response.headers.get("Content-Type", "").lower()
+                if "text/html" not in content_type:
                     raise ValueError("会议列表未返回 HTML")
-                records = parse_title_list(response.text, source)
+                # SIGOPS serves UTF-8 HTML without an HTTP charset. Requests
+                # defaults text/html to Latin-1, corrupting e.g. μFork and μTPS.
+                body = response.text
+                if "charset" not in content_type:
+                    try:
+                        body = response.content.decode("utf-8-sig")
+                    except UnicodeDecodeError:
+                        pass  # Keep Requests' decoding for older non-UTF-8 sites.
+                records = parse_title_list(body, source)
                 old_titles = {conferences._normalized_title(item["title"])
                               for item in old.get("titles", [])}
                 reviewed = {conferences._normalized_title(paper["title"])

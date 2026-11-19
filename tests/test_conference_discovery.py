@@ -107,7 +107,7 @@ def test_official_checks_are_incremental_and_keep_last_success(tmp_path, monkeyp
     class Session:
         headers = {}
         trust_env = True
-        titles = ["A KVM Paper", "New Intel TDX Paper"]
+        titles = ["A KVM Paper", "New Intel TDX Paper", "μFork"]
         failure = False
 
         def __enter__(self):
@@ -124,6 +124,7 @@ def test_official_checks_are_incremental_and_keep_last_success(tmp_path, monkeyp
             response = requests.Response()
             response.status_code = 200
             response.headers["Content-Type"] = "text/html"
+            response.encoding = "ISO-8859-1"  # Requests' default for this header.
             response._content = ('<ul class="paperlist">' + ''.join(
                 f'<li><b>{title}</b></li>' for title in self.titles
             ) + '</ul>').encode()
@@ -131,7 +132,8 @@ def test_official_checks_are_incremental_and_keep_last_success(tmp_path, monkeyp
 
     monkeypatch.setattr(conference_watch.requests, "Session", Session)
     first = conference_watch.check_updates(output)["sources"][0]
-    assert first["new_titles"] == 2
+    assert first["new_titles"] == 3
+    assert json.loads(output.read_text())["sources"][0]["titles"][-1]["title"] == "μFork"
     assert [p["title"] for p in first["pending_candidates"]] == ["New Intel TDX Paper"]
     assert conference_watch.check_updates(output)["sources"][0]["new_titles"] == 0
     Session.titles = [*Session.titles, "Another SEV-SNP Paper"]
