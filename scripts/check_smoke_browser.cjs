@@ -42,6 +42,15 @@ async function papers(page) {
   assert.equal(new URL(page.url()).searchParams.get('scope'), null);
   await page.locator('[data-conference-next]').click();
   assert.equal(new URL(page.url()).searchParams.get('page'), '2');
+  await page.locator('[data-conference-venue]').selectOption('sosp');
+  for (const year of [2025, 2026]) {
+    await page.locator('[data-conference-year]').selectOption(String(year));
+    const expected = catalogue.papers.filter(p => p.venue === 'sosp' && p.year === year);
+    assert(expected.length > 0);
+    assert.equal(await visible.count(), Math.min(pageSize, expected.length));
+    const id = year === 2025 ? 'sosp25-demeter' : 'sosp26-cpu-virtualization';
+    assert(await page.locator(`#paper-${id}`).isVisible());
+  }
 }
 
 async function versions(page) {
