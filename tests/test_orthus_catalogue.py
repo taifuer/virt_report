@@ -132,8 +132,8 @@ def test_hyperfresh_is_discoverable_with_its_nested_replacement_boundary():
     assert {"HyperFresh", "KVM", "嵌套虚拟化"} <= set(paper["topics"])
     for phrase in ("L0 hyperplexor", "L1 Hypervisor", "APSys 2017", "多虚机"):
         assert phrase in paper["introduction"]
-    assert "L0 保留" in paper["commentary"]
-    assert "暂停数字直接排名" in paper["commentary"]
+    assert "最外层 L0 继续运行" in paper["commentary"]
+    assert "Orthus" in paper["commentary"] and "测停顿的条件不同" in paper["commentary"]
     page = render.render_conference_papers_html(Config(), content)
     block = page.split('id="paper-vee19-live-replacement"', 1)[1].split("</article>", 1)[0]
     assert "HyperFresh" in block and "嵌套虚拟化" in block

@@ -3,7 +3,7 @@
 from copy import deepcopy
 from html import escape
 
-from virt_report import conferences, kvm_forum
+from virt_report import conferences, editorial_search, kvm_forum
 from virt_report.config import Config
 from virt_report.render import render as html_render
 
@@ -69,20 +69,54 @@ def test_kvm_forum_post_event_agenda_keeps_withdrawals_and_title_updates():
     assert "Scheduling KVM Sandboxes" not in page
 
 
-def test_sosp_publication_does_not_override_title_only_admission_decision():
+def test_sosp_editions_track_parseable_lists_and_restored_paper_has_evidence():
     content = conferences.load_content()
-    assert not any(p["id"] == "sosp26-cpu-virtualization" for p in content["papers"])
+    paper = next(p for p in content["papers"] if p["id"] == "sosp26-cpu-virtualization")
     audit = next(p for p in content["screening"]["papers"]
-                 if p["id"] == "sosp26-cpu-virtualization")
-    assert audit["decision"] == "defer"
-    assert audit["review_basis"] == "title"
-    assert audit["source_url"] == "https://dl.acm.org/doi/10.1145/3830418.3843895"
-    check = next(item for item in content["edition_checks"]
-                 if item["venue"] == "sosp" and item["year"] == 2026)
-    assert check["source_url"].endswith("/sosp/2026/schedule.html")
-    assert "不因已发表自动收录" in check["note"]
+                 if p["id"] == paper["id"])
+    assert (audit["origin"], audit["decision"], audit["review_basis"]) == (
+        "existing", "keep", "primary_abstract")
+    assert paper["doi"] == "10.1145/3830418.3843895" and paper["published_on"] == "2026-09-28"
+    assert paper["evidence_source_url"] == audit["source_url"]
+    assert paper["evidence_level"] == "abstract" and not paper["curated"]
+    assert "DDVM" in paper["introduction"] and "超配" in paper["commentary"]
+    checks = {c["year"]: c for c in content["edition_checks"] if c["venue"] == "sosp"}
+    for year in (2025, 2026):
+        assert checks[year]["parser"] == "sosp"
+        assert checks[year]["source_url"].endswith(f"/sosp/{year}/accepted.html")
+        assert checks[year]["program_url"].endswith(f"/sosp/{year}/schedule.html")
     page = html_render.render_conference_papers_html(Config(), content)
-    assert 'id="paper-sosp26-cpu-virtualization"' not in page
+    assert page.count('id="paper-sosp26-cpu-virtualization"') == 1
+
+
+def test_sosp_backfill_reaches_year_facets_and_search_without_starring_new_records():
+    content = conferences.load_content()
+    papers = {p["id"]: p for p in content["papers"]}
+    decisions = {p["id"]: p for p in content["screening"]["papers"]}
+    documents = {d["slug"]: d for d in editorial_search.catalogue()["documents"]
+                 if d["kind"] == "papers"}
+    page = html_render.render_conference_papers_html(Config(), content)
+    additions = {
+        2025: ("demeter", "rdma-live-migration", "dandelion", "tai-chi"),
+        2026: ("bpf-fault", "volistorm"),
+    }
+    for year, slugs in additions.items():
+        for slug in slugs:
+            pid = f"sosp{year % 100}-{slug}"
+            paper, decision = papers[pid], decisions[pid]
+            assert (paper["venue"], paper["year"], paper["curated"]) == ("sosp", year, False)
+            assert (decision["origin"], decision["decision"]) == ("added", "keep")
+            assert paper["evidence_source_url"] == decision["source_url"]
+            assert decision["review_basis"] in {"primary_abstract", "pdf_sections", "author_project"}
+            assert paper["doi"] and paper["url"] == f'https://doi.org/{paper["doi"]}'
+            assert documents[pid]["href"] == f"conference-papers.html#paper-{pid}"
+            row = page.split(f'id="paper-{pid}"', 1)[1].split("</article>", 1)[0]
+            assert f'data-venue="sosp" data-year="{year}"' in row
+    for pid in ("sosp26-skill-vm", "sosp25-oasis", "sosp25-coyote-v2", "sosp25-mufork",
+                "sosp25-phoenixos", "sosp25-nex-dsim", "sosp25-pkvm-oracle", "sosp25-miralis"):
+        assert decisions[pid]["decision"] == "exclude"
+        assert pid not in papers and pid not in documents
+        assert f'id="paper-{pid}"' not in page
 
 
 def test_publication_badges_are_not_presented_as_a_quality_rating():

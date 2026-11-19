@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "reviewed_on": "2026-11-11",
+  "reviewed_on": "2026-11-19",
   "scope": "以系统虚拟化为主：VMM/Hypervisor、真实 ISA 模拟、Guest/Host CPU/内存/I/O 契约、VM 状态迁移及其隔离安全。内核原始研究仅收录进程、CPU 调度、内存管理与 I/O 的经典论文，须核对原文并关联对应原理文章。另选与相关体系结构和云基础设施机制紧密关联的专题综述及教程型专著，核对出版信息、类型和覆盖范围，收录不自动赋予经典星标。云、Serverless、容器、AI 或 VM 关键词不是自动收录依据。",
   "method": "逐条复核标题、现有介绍和点评所陈述的贡献；边界不清的条目补查一手摘要、作者项目或原文段落。editorial_record 表示这次仅重审既有内容与来源指向，不声称新读过全文；pdf_sections 仅表示核对相关段落。精选深读范围另见 paper_readings.json。",
   "decisions": {
@@ -9,6 +9,146 @@
     "defer": "相关方向明确但证据不足，待核实后重新评审"
   },
   "papers": [
+    {
+      "id": "sosp25-tai-chi",
+      "title": "Tai Chi: A General High-Efficiency Scheduling Framework for SmartNICs in Hyperscale Clouds",
+      "year": 2025,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "核对作者 PDF 的设计概述和图 1：不是泛云调度，SmartNIC 控制面运行于可抢占 vCPU，与物理核运行的数据面共享 OS。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://dibang2008.github.io/files/SOSP2025-0917.pdf"
+    },
+    {
+      "id": "sosp26-bpf-fault",
+      "title": "It's the Kernel's Fault! Custom Page Fault Handling With bpf_fault",
+      "year": 2026,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "作者实现包含 Firecracker 在线快照及 userfaultfd 对照；以可辨认的 VMM 内存路径收录，不因通用 BPF 主题入选。",
+      "review_basis": "author_project",
+      "source_url": "https://github.com/bpf-fault/bpf-fault"
+    },
+    {
+      "id": "sosp26-volistorm",
+      "title": "VoliStorM: A Crash-Consistent I/O Cache with Two Kernels Instead of Two Caches",
+      "year": 2026,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "作者公开摘要与实验制品说明以硬件虚拟化隔开两个内核，在独立 I/O 栈提供崩溃一致的缓存。",
+      "review_basis": "primary_abstract",
+      "source_url": "https://www.janadoing.science/publications"
+    },
+    {
+      "id": "sosp25-demeter",
+      "title": "Demeter: A Scalable and Elastic Tiered Memory Solution for Virtualized Cloud via Guest Delegation",
+      "year": 2025,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "作者机构收录的原始摘要及实验制品明确区分 Guest 页管理与宿主配额，属于虚机分层内存研究。",
+      "review_basis": "primary_abstract",
+      "source_url": "https://research.cuhk.edu.hk/en/publications/demeter-a-scalable-and-elastic-tiered-memory-solution-for-virtual/"
+    },
+    {
+      "id": "sosp25-rdma-live-migration",
+      "title": "Device-Assisted Live Migration of RDMA Devices",
+      "year": 2025,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "作者摘要明确给出设备接口、ConnectX 实现与 PCIe 通信静止点，并报告直通虚机迁移；与 NVIDIA 的迁移文档交叉核对。",
+      "review_basis": "primary_abstract",
+      "source_url": "https://doi.org/10.1145/3731569.3764795"
+    },
+    {
+      "id": "sosp25-pkvm-oracle",
+      "title": "Ghost in the Android Shell: Pragmatic Test-oracle Specification of a Production Hypervisor",
+      "year": 2025,
+      "origin": "added",
+      "decision": "exclude",
+      "reason": "按编辑要求从公开目录撤下。论文讨论 pKVM 的可执行测试规格；保留原文依据，避免以后按标题重复补录。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://2plus2a.com/files/publications/2025-SOSP-execspec.pdf"
+    },
+    {
+      "id": "sosp25-miralis",
+      "title": "The Design and Implementation of a Virtual Firmware Monitor",
+      "year": 2025,
+      "origin": "added",
+      "decision": "exclude",
+      "reason": "按编辑要求从公开目录撤下。Miralis 研究 RISC-V 固件的特权隔离；保留原文依据，避免再次收录。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://people.inf.ethz.ch/troscoe/pubs/caste-sosp-2025.pdf"
+    },
+    {
+      "id": "sosp25-dandelion",
+      "title": "Unlocking True Elasticity for the Cloud-Native Era with Dandelion",
+      "year": 2025,
+      "origin": "added",
+      "decision": "keep",
+      "reason": "核对作者 PDF §6.2，KVM 是有实现细节的 microVM 隔离后端，不只是测试环境或对照组。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://anakli.inf.ethz.ch/papers/dandelion_sosp25.pdf"
+    },
+    {
+      "id": "sosp25-oasis",
+      "title": "Oasis: Pooling PCIe Devices Over CXL to Boost Utilization",
+      "year": 2025,
+      "origin": "added",
+      "decision": "exclude",
+      "reason": "原文 §3.3 的远端 NIC 原型面向容器。共享队列借鉴 VirtIO，但论文没有以 Guest/VMM 的设备接口或直通迁移作为研究对象，本轮不纳入。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.yuhong-zhong.com/papers/Oasis_SOSP25.pdf"
+    },
+    {
+      "id": "sosp25-coyote-v2",
+      "title": "Coyote v2: Raising the Level of Abstraction for Data Center FPGAs",
+      "year": 2025,
+      "origin": "added",
+      "decision": "exclude",
+      "reason": "原文图 3 和驱动部分展示 FPGA 内的分区、应用多租户与共享服务；vFPGA 不等于系统虚机。作者教程另提宿主 VM 集成，不把它当作本篇评估过的 Guest 设备交接。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://www.research-collection.ethz.ch/bitstreams/fbffacde-f474-4500-a821-b9d8774dbf1e/download"
+    },
+    {
+      "id": "sosp25-mufork",
+      "title": "μFork: Supporting POSIX fork Within a Single-Address-Space OS",
+      "year": 2025,
+      "origin": "added",
+      "decision": "exclude",
+      "reason": "作者研究单地址空间 OS 内基于 CHERI 的进程隔离和 POSIX fork，不是虚拟机 fork 或 VMM 快照。",
+      "review_basis": "primary_abstract",
+      "source_url": "https://arxiv.org/abs/2509.09439"
+    },
+    {
+      "id": "sosp25-nex-dsim",
+      "title": "Fast End-to-End Performance Simulation of Accelerated Hardware-Software Stacks",
+      "year": 2025,
+      "origin": "added",
+      "decision": "exclude",
+      "reason": "原文对照 NEX 原生执行与 DSim 加速器仿真；运行真实 CPU 代码不等于实现 Guest ISA 或系统 VMM，不能因为与 QEMU/KVM 对比就收录。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://dslab.epfl.ch/pubs/nex.pdf"
+    },
+    {
+      "id": "sosp25-phoenixos",
+      "title": "PhoenixOS: Concurrent OS-level GPU Checkpoint and Restore with Validated Speculation",
+      "year": 2025,
+      "origin": "added",
+      "decision": "exclude",
+      "reason": "检查点对象是 GPU 应用进程及其运行状态，不是 Guest 可见的虚拟 GPU 或直通设备的迁移契约。",
+      "review_basis": "pdf_sections",
+      "source_url": "https://ipads.sjtu.edu.cn/_media/publications/phos-sosp25.pdf"
+    },
+    {
+      "id": "sosp26-skill-vm",
+      "title": "Skill VM: Write Once, Run Everywhere Efficiently",
+      "year": 2026,
+      "origin": "added",
+      "decision": "exclude",
+      "reason": "作者项目定义的是执行技能程序的语言运行时；VM 在这里不是运行 Guest OS 的虚拟机，也不是对真实处理器 ISA 的模拟。",
+      "review_basis": "author_project",
+      "source_url": "https://github.com/SJTU-IPADS/SkVM"
+    },
     {
       "id": "csur24-cxl",
       "title": "An Introduction to the Compute Express Link (CXL) Interconnect",
@@ -364,50 +504,50 @@
       "title": "FM2: Fast Live VM Migration in CXL Memory Pools",
       "year": 2026,
       "origin": "existing",
-      "decision": "defer",
-      "reason": "标题直接指向 CXL 内存池上的 VM 迁移，但现有记录只有录用标题，尚不足以核实具体机制；补齐一手摘要后再决定收录。",
-      "review_basis": "title",
-      "source_url": "https://atc.sigops.org/2026/accepted.html"
+      "decision": "keep",
+      "reason": "已核对 DOI 对应的作者摘要及实验制品：提前在共享 CXL 池保留副本是明确的 VM 迁移机制。",
+      "review_basis": "primary_abstract",
+      "source_url": "https://api.openalex.org/works/W7229651790"
     },
     {
       "id": "atc26-pave",
       "title": "PAVE: Prebuilding Address Translations for Fast Nested MicroVM Restore",
       "year": 2026,
       "origin": "existing",
-      "decision": "defer",
-      "reason": "标题涉及嵌套 MicroVM 的地址转换预建；当前只有标题，不能据此确认实现、贡献及边界，移入待复核。",
-      "review_basis": "title",
-      "source_url": "https://atc.sigops.org/2026/accepted.html"
+      "decision": "keep",
+      "reason": "作者摘要描述了 L0 预建翻译和共享只读映射的边界，补足旧记录所缺的机制证据。",
+      "review_basis": "primary_abstract",
+      "source_url": "https://api.openalex.org/works/W7230136763"
     },
     {
       "id": "atc26-joseph",
       "title": "Joseph: Hypervisor–RDMA Co-Design for Kernel-Bypass Remote MicroVM SnapStart",
       "year": 2026,
       "origin": "existing",
-      "decision": "defer",
-      "reason": "标题涉及 Hypervisor/RDMA 协同恢复，但当前没有足够的一手机制说明，不将标题推测当作普通论文点评。",
-      "review_basis": "title",
-      "source_url": "https://atc.sigops.org/2026/accepted.html"
+      "decision": "keep",
+      "reason": "作者摘要交代从 RNIC 到 Guest 页以及 EPT 映射的先后，足以区别于普通远程快照优化。",
+      "review_basis": "primary_abstract",
+      "source_url": "https://api.openalex.org/works/W7230039808"
     },
     {
       "id": "atc26-chameleon",
       "title": "Chameleon: Adaptive Memory Overcommitment for Disaggregated Virtual Machines",
       "year": 2026,
       "origin": "existing",
-      "decision": "defer",
-      "reason": "标题属于虚机内存超配方向；缺少已核实的摘要或作者实现说明，先移出公开列表而非判定不相关。",
-      "review_basis": "title",
-      "source_url": "https://atc.sigops.org/2026/accepted.html"
+      "decision": "keep",
+      "reason": "DOI 对应的作者摘要和制品均可查；核对了内存回收粒度与二级翻译维护，而非仅按题目判断。",
+      "review_basis": "primary_abstract",
+      "source_url": "https://api.openalex.org/works/W7229991617"
     },
     {
       "id": "atc26-courier",
       "title": "Courier: Host-Transparent Direct Network I/O for Secure Containers in Cloud VMs",
       "year": 2026,
       "origin": "existing",
-      "decision": "defer",
-      "reason": "标题涉及云 VM 内安全容器的直接 I/O；未核实 Guest/Host 边界与宿主透明条件，先待复核。",
-      "review_basis": "title",
-      "source_url": "https://atc.sigops.org/2026/accepted.html"
+      "decision": "keep",
+      "reason": "作者摘要明确安全容器采用嵌套 microVM，并描述影子 IOMMU、直接通知与 used ring 路径。",
+      "review_basis": "primary_abstract",
+      "source_url": "https://api.openalex.org/works/W7227419253"
     },
     {
       "id": "osdi26-ramryder",
@@ -524,10 +664,10 @@
       "title": "You Can Always Get What You Want: CPU Virtualization Made Fast and Free",
       "year": 2026,
       "origin": "existing",
-      "decision": "defer",
-      "reason": "题目明确相关，但现有点评仅依据标题和单位，未核实一手机制说明；发表状态不能代替收录证据。",
-      "review_basis": "title",
-      "source_url": "https://dl.acm.org/doi/10.1145/3830418.3843895"
+      "decision": "keep",
+      "reason": "作者摘要给出了 DDVM 的共享决策、被抢占 vCPU 的中断处理和生产评估；已与正式议程、DOI 核对，恢复原 ID。",
+      "review_basis": "primary_abstract",
+      "source_url": "https://api.openalex.org/works/W7214709955"
     },
     {
       "id": "security26-staleus",

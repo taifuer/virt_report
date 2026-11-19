@@ -38,23 +38,29 @@ def test_retained_additions_have_unique_ids_and_verified_institutions():
         assert not paper.get("abstract")  # Store paraphrases, not copied abstracts.
 
 
-def test_atc_tracking_is_separate_from_title_only_paper_admission():
+def test_atc_restores_existing_ids_after_publication_and_substantive_review():
     content = conferences.load_content()
     venue = next(item for item in content["venues"] if item["key"] == "atc")
     assert venue["name"] == "ATC"
-    assert venue["latest_year"] == 2025
+    assert venue["latest_year"] >= 2026
     assert "2025 年及以前为 USENIX ATC" in venue["focus"]
     assert "ACM SIGOPS" in venue["focus"]
     assert venue["latest_check"]["parser"] == "atc"
     assert venue["latest_check"]["source_url"] == "https://atc.sigops.org/2026/accepted.html"
     assert any(p["id"] == "atc25-hyperturtle" for p in content["papers"])
     page = render.render_conference_papers_html(Config(), content)
-    assert ATC_IDS.isdisjoint(p["id"] for p in content["papers"])
+    papers = {p["id"]: p for p in content["papers"]}
     audit = {p["id"]: p for p in content["screening"]["papers"]}
     for pid in ATC_IDS:
-        assert audit[pid]["decision"] == "defer"
-        assert audit[pid]["review_basis"] == "title"
-        assert f'id="paper-{pid}"' not in page
+        paper = papers[pid]
+        assert (audit[pid]["origin"], audit[pid]["decision"]) == ("existing", "keep")
+        assert audit[pid]["review_basis"] == "primary_abstract"
+        assert paper["evidence_source_url"] == audit[pid]["source_url"]
+        assert paper["published_on"] == "2026-11-14" and paper["publication_status"] == "published"
+        assert paper["url"] == f'https://doi.org/{paper["doi"]}'
+        assert not paper["curated"] and page.count(f'id="paper-{pid}"') == 1
+    assert audit["atc26-deltasandbox"]["decision"] == "exclude"
+    assert 'id="paper-atc26-deltasandbox"' not in page
 
 
 def test_abstracts_and_author_project_are_distinct_review_sources():
@@ -84,7 +90,7 @@ def test_year_review_and_check_notes_reflect_scope_of_the_update():
     assert content["updated_at"] >= "2026-11-02"
     for name in ("RamRyder", "CStar", "Wallet", "HyperAudit", "ATC 2026"):
         assert name in year["summary"]
-    assert "标题级候选暂不公开" in year["summary"]
+    assert "DDVM" in year["summary"] and "PAVE" in year["summary"]
     assert year["paper_count"] == content["year_counts"][2026]
     assert set(year["representative_ids"]) <= {p["id"] for p in content["papers"]}
     checks = {item["venue"]: item for item in content["edition_checks"]}

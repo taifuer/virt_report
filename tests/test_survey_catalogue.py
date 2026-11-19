@@ -55,7 +55,9 @@ def test_recent_surveys_have_primary_sources_and_explicit_types(paper_id, year, 
 
 def test_book_counts_and_source_filters_do_not_label_monographs_as_papers():
     content = conferences.load_content()
-    assert (content["paper_count"], content["article_count"], content["monograph_count"]) == (127, 126, 1)
+    article_count = sum(p["publication_type"] != "monograph" for p in content["papers"])
+    assert (content["article_count"], content["monograph_count"]) == (article_count, 1)
+    assert content["paper_count"] == article_count + 1
     assert content["curated_count"] == 27
     venues = {venue["key"]: venue for venue in content["paper_venues"]}
     assert venues["csur"]["paper_count"] == 3 and venues["csur"]["kind"] == "期刊"
@@ -65,7 +67,7 @@ def test_book_counts_and_source_filters_do_not_label_monographs_as_papers():
     assert "slca" not in {venue["key"] for venue in content["academic_venues"]}
     assert {"csur", "comst", "slca"} <= {venue["key"] for venue in content["publication_venues"]}
     archive = render.render_conference_papers_html(Config(), content)
-    assert "共 126 篇论文、1 部专著，其中 27 篇经典论文。" in archive
+    assert f"共 {article_count} 篇论文、1 部专著，其中 27 篇经典论文。" in archive
     assert "<label>来源<select data-conference-venue>" in archive
     for venue in ("csur", "comst", "slca"):
         assert f'<option value="{venue}"' in archive
@@ -123,10 +125,11 @@ def test_archive_without_monographs_preserves_paper_counts(monkeypatch):
     conferences.load_content.cache_clear()
     try:
         loaded = conferences.load_content()
-        assert loaded["article_count"] == loaded["paper_count"] == 126
+        article_count = len(content["papers"])
+        assert loaded["article_count"] == loaded["paper_count"] == article_count
         assert loaded["monograph_count"] == 0
         page = render.render_conference_papers_html(Config(), loaded)
-        assert "共 126 篇论文，其中 27 篇经典论文。" in page
+        assert f"共 {article_count} 篇论文，其中 27 篇经典论文。" in page
         assert 'value="slca"' not in page
     finally:
         conferences.load_content.cache_clear()

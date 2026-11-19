@@ -348,9 +348,10 @@ async function stableControls(page, baseline, state) {
       await page.goto(`${url}?venue=slca`); await ready(page);
       assert.equal(await page.locator(visible).count(), 1, 'book series is a selectable source');
       assert.deepEqual(await options(page, 'year'), ['2020']);
-      assert((await page.locator('.conference-page > header').innerText()).includes('126 篇论文、1 部专著'));
+      const articleCount = raw.papers.filter(paper => paper.publication_type !== 'monograph').length;
+      assert((await page.locator('.conference-page > header').innerText()).includes(`${articleCount} 篇论文、1 部专著`));
       await page.goto(url); await ready(page);
-      for (const paperId of ['cacm68-working-set', 'osdi94-lottery']) {
+      for (const paperId of ['cacm68-working-set', 'osdi94-lottery', 'sosp25-pkvm-oracle', 'sosp25-miralis']) {
         assert.equal(await page.locator(`#paper-${paperId}`).count(), 0, 'removed papers stay out of the catalogue');
       }
       const mainConference = page.locator('.main-nav').getByRole('link', {name: '会议', exact: true, includeHidden: true});

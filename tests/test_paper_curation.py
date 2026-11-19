@@ -114,7 +114,7 @@ def test_papers_have_compact_title_resources_and_one_classic_filter():
                     "data-conference-count", "入选理由", "精选标准与阅读方法", "原文阅读位置",
                     "今天怎样读", "站内延伸", "核对日期", "作者项目说明", "摘要与来源"):
         assert removed not in html
-    assert 'id="paper-sosp26-cpu-virtualization"' not in html
+    assert 'id="paper-sosp26-cpu-virtualization"' in html
     assert "移除 5 篇" not in html and "6 篇因证据不足" not in html
 
 
@@ -154,6 +154,17 @@ def test_classic_comments_include_evidence_without_fragmenting_the_row():
         )
         assert "？" not in reading["question"]
     assert "未完成全文及实验表格复核" not in html
+
+
+def test_paper_comments_skip_rhetorical_questions_and_editorial_prompts():
+    content = conferences.load_content()
+    page = render.render_conference_papers_html(Config(), content)
+    comments = re.findall(r'<p class="editor-comment"><strong>点评</strong>(.*?)</p>', page, re.S)
+    assert len(comments) == len(content["papers"])
+    for comment in comments:
+        assert not any(prompt in comment for prompt in (
+            "？", "值得一提的是", "这篇论文的价值在于", "阅读重点在于", "与其说",
+        )), comment
 
 
 def test_ingens_is_a_source_backed_2016_memory_paper():
@@ -294,14 +305,15 @@ def test_editorial_search_retains_ordinary_papers_and_indexes_deep_reviews():
 def test_every_original_and_added_paper_has_an_individual_screening_decision():
     content = conferences.load_content()
     audit = content["screening"]["papers"]
-    assert len(audit) == 140
     assert sum(p["origin"] == "existing" for p in audit) == 116
-    assert sum(p["origin"] == "added" for p in audit) == 24
+    assert sum(p["origin"] == "added" for p in audit) == len(audit) - 116
     assert len({p["reason"] for p in audit}) == len(audit)
     assert {p["id"] for p in audit if p["decision"] == "keep"} == {
         p["id"] for p in content["papers"]
     }
-    assert content["screening_counts"] == {"keep": 127, "exclude": 7, "defer": 6}
+    for decision in ("keep", "exclude", "defer"):
+        assert content["screening_counts"][decision] == sum(p["decision"] == decision for p in audit)
+    assert content["screening_counts"]["keep"] == len(content["papers"])
     assert not any(p["evidence_level"] == "title" for p in content["papers"])
 
 
@@ -331,7 +343,8 @@ def test_io_classics_preserve_primary_sources_and_measurement_boundaries():
     assert "linux-network-io" in net["reading"]["related_articles"]
     html = render.render_conference_papers_html(Config(), content)
     assert "立即完成请求的 null 设备" in html
-    assert "基准预先生成报文或只计数接收" in html
+    netmap_row = html.split('id="paper-atc12-netmap"', 1)[1].split("</article>", 1)[0]
+    assert "预先生成的包" in netmap_row and "接收只计数" in netmap_row
     assert 'data-option-label="SYSTOR"' in html
 
 
