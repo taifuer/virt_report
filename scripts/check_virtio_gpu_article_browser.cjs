@@ -42,7 +42,7 @@ const oldRendering = require('../virt_report/content/mechanisms.json').redirects
         }
         if (step === 9) {
           assert.equal(await lab.locator('[data-gpu-image="display"]').getAttribute('data-version'), 'A');
-          assert((await lab.locator('[data-gpu-response]').textContent()).includes('不代表物理呈现完成'));
+          assert((await lab.locator('[data-gpu-response]').textContent()).includes('FLUSH 命令处理完成'));
         }
       }
       assert(await lab.locator('[data-gpu-next]').isDisabled());

@@ -1,21 +1,18 @@
 {% from '_mechanism_diagram.html' import diagram with context %}
 {% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 <section id="preface" class="mechanism-section">
-  <h2>QEMU 系统模拟器的职责</h2>
-  <p>QEMU 系统模拟器建立客户机可见的机器，包括 CPU、内存、总线、设备和固件，并将它们连接到执行引擎及实际 I/O 后端。操作系统除了执行指令，还要发现设备、访问磁盘并接收中断；这些操作依赖确定的地址布局、设备寄存器和复位状态。采用 KVM 加速时，兼容架构的客户机指令可以在硬件上执行，QEMU 继续维护机器模型并处理需要用户态参与的设备操作。</p>
-  <p>本文以 KVM 加速、现代 virtio PCI 接口、split virtqueue 和配置了 IOThread 的 virtio-blk 为例，通过一次 4 KiB 读取介绍对象组织、设备请求、执行上下文与生命周期管理。</p>
+  <h2>序言</h2>
+  <p>QEMU 建立客户机可见的整台机器：内存放在哪些地址，固件从哪里启动，磁盘和网卡呈现什么接口。以一次 4 KiB 磁盘读取为例，KVM 运行客户机驱动，驱动向 virtio-blk 的 split virtqueue 发布请求；QEMU 的 IOThread 处理队列，把读取交给宿主存储。机器模型、执行引擎和 I/O 后端各有具体工作。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="architecture" class="mechanism-section">
   <h2>机器接口、执行引擎与后端的分工</h2>
-  <p>客户机驱动认识的是设备接口，并不需要知道数据最终存在宿主文件还是远端存储。CPU 执行引擎也不应承担每种磁盘格式的处理。QEMU 因此把三项责任分开：</p>
   <table><thead><tr><th scope="col">组件</th><th scope="col">运行位置</th><th scope="col">本例中的职责</th></tr></thead><tbody>
     <tr><td>机器与 virtio-blk 设备模型</td><td>宿主 QEMU 进程的用户态对象</td><td>提供客户机看到的总线、寄存器、队列及中断接口</td></tr>
     <tr><td>vCPU 线程与 KVM</td><td>线程属于 QEMU，进入宿主内核 KVM 后运行客户机</td><td>执行客户机 Linux 及其块设备驱动；退出后处理需用户态参与的操作</td></tr>
     <tr><td>raw 与文件块节点</td><td>QEMU 进程内的块层，向宿主内核提交文件 I/O</td><td>将磁盘偏移转换为后端操作，返回数据或错误</td></tr>
   </tbody></table>
-  <p>本例的一台虚拟机由一个 QEMU 进程承载，其中可以有多个 vCPU 线程和 IOThread；KVM 是宿主内核模块。客户机驱动在虚拟 CPU 上运行，QEMU 的设备模型与块层在宿主用户态执行，两者通过客户机 RAM 中的队列交换请求。</p>
   {{ diagram('qemu-internals-overview', '客户机接口、执行路径与实际资源', '设备模型维持客户机可见的协议，CPU 执行和 I/O 后端各自推进工作。QMP 位于管理路径；客户机数据请求无需逐次经过管理命令。') }}
   <p>这种分工允许保留同一种 virtio-blk 接口，改变后端镜像格式；也允许同一机器模型选择 KVM 或 TCG。变化仍有兼容条件：后端容量、错误处理和缓存语义需要正确反映给设备，执行引擎也必须遵守机器提供的地址与中断规则。</p>
 </section>
@@ -30,7 +27,7 @@
     <li><strong>等待实际数据。</strong>块层可异步执行或挂起协程，存储完成后恢复。等待期间事件循环可以处理其他工作；客户机其他 vCPU 也可继续执行。</li>
     <li><strong>归还结果。</strong>成功后数据缓冲区已填入 4 KiB，状态写为 OK，设备在 used ring 发布完成记录，并按需通知客户机。驱动据此找到原请求、使用数据并回收缓冲区。</li>
   </ol>
-  <p>这条路径串起了 QEMU 的四项工作：解释设备协议、访问客户机内存、调用实际后端、发布完成状态。一次通知可以对应多个完成，后端也可能返回错误。描述符字段与完成长度的计算放在<a href="qemu-virtio-blk.html">virtio-blk 专篇</a>；源码入口分别是<a href="{{ qemu }}hw/block/virtio-blk.c#L787-L868">请求解析</a>与<a href="{{ qemu }}hw/block/virtio-blk.c#L54-L66">完成发布</a>。</p>
+  <p>一次通知可以对应多个完成。区分存储慢还是客户机取走结果慢，可对照<a href="{{ qemu }}hw/block/virtio-blk.c#L787-L868">请求解析</a>和<a href="{{ qemu }}hw/block/virtio-blk.c#L54-L66">完成发布</a>两个入口，并看驱动何时消费 used 记录。描述符和完成长度的实例见<a href="qemu-virtio-blk.html">virtio-blk 读写</a>。</p>
 </section>
 
 <section id="objects" class="mechanism-section">
@@ -62,7 +59,7 @@
 </section>
 
 <section id="evaluation" class="mechanism-section">
-  <h2>按请求经过的边界定位问题</h2>
+  <h2>总结</h2>
   <p>排查读取变慢，依次检查 available 是否推进、处理线程何时消费、块后端耗时、used 何时发布，以及客户机何时获得运行机会。对比方案时保持镜像格式、缓存与持久化要求一致，同时记录吞吐、尾延迟、CPU 占用和锁等待。</p>
 </section>
 

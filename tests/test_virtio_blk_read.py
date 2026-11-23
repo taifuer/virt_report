@@ -143,7 +143,7 @@ def test_walkthrough_links_queue_basics_and_backend_sources():
     # Backend evidence is local to this article, not a generic reading-list link.
     assert 'SPDK vhost_blk.c' in sources
     assert 'href="packed-virtqueue.html#split-layout"' in page
-    assert "缓存与持久化" in page
+    assert "缓存、写入完成与持久化" in page
     assert "普通文件与写入的差异" not in page
     ids = {"local-scsi": "scsi-qemu-vq", "rbd-blk": "rbd-submit",
            "spdk-blk": "spdk-blk-vq", "spdk-scsi": "spdk-scsi-vq"}

@@ -1,7 +1,7 @@
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 {% from '_mechanism_diagram.html' import diagram with context %}
 <section id="preface" class="mechanism-section">
-  <h2>并行传输带来的顺序问题</h2>
+  <h2>序言</h2>
   <p>MultiFD 将迁移数据分派给多个工作线程，通过独立通道并行发送和接收。当单线程的页面处理速度限制吞吐时，这种拆分可以利用更多 CPU；主流继续负责迁移阶段与同步。并行之后，各通道的到达顺序不再统一，需要在同一页可能再次发送之前建立同步边界，防止旧内容晚到而覆盖新内容。</p>
   <p>本文分析普通 socket 迁移中未压缩 RAM 数据的分发与同步。示例采用默认同步方式：在 RAM 扫描轮次边界通过主流的 <code>RAM_SAVE_FLAG_MULTIFD_FLUSH</code> 协调数据通道。旧机器兼容模式、文件迁移及压缩路径在后文分别说明。</p>
   {% include '_mechanism_baselines.html' %}
@@ -24,7 +24,7 @@
     <li><strong>发送端：</strong>工作线程完成已有任务，并按要求把 SYNC 包写入各自通道，主线程才能继续发出主流同步标记。</li>
     <li><strong>接收端：</strong>主流读到同步标记后，等待全部数据通道读到 SYNC；各接收线程此前已经处理了该通道上排在 SYNC 前的页面。</li>
   </ul>
-  <p>发送函数返回只说明本地写入完成，数据仍可能位于 socket 缓冲区或网络中。发送端无需为每个同步点等待一条远端确认消息；跨通道的接收顺序由目的端屏障保证。<a href="{{ qemu_source }}migration/multifd.h#L21-L35">同步请求定义</a>、<a href="{{ qemu_source }}migration/multifd.c#L1179-L1239">接收端屏障</a></p>
+  <p>发送函数返回时本地写入已完成，数据仍可能在 socket 缓冲区或网络中。发送端无需为每个同步点等待一条远端确认消息；跨通道的接收顺序由目的端屏障保证。<a href="{{ qemu_source }}migration/multifd.h#L21-L35">同步请求定义</a>、<a href="{{ qemu_source }}migration/multifd.c#L1179-L1239">接收端屏障</a></p>
 </section>
 
 <section id="flow" class="mechanism-section">
@@ -71,7 +71,7 @@
   <p>FLUSH 可能早于某条数据通道上的 SYNC 到达，某些 SYNC 也可能先于 FLUSH 到达。两种情况都由同一个汇合条件处理。接收线程在屏障处暂停，可以防止后续轮次的数据提前覆盖当前阶段仍在使用的状态。</p>
   <p>本页交互为了逐步查看，等目的端完成同步后才生成下一组任务。实际源端完成本地同步并发出 FLUSH 后即可继续工作，下一组数据可以在通道中排队；目的端接收线程仍须通过屏障才能继续装载。<a href="{{ qemu_source }}migration/multifd-nocomp.c#L397-L437">同步发起</a>、<a href="{{ qemu_source }}migration/multifd.c#L615-L773">发送线程</a>、<a href="{{ qemu_source }}migration/multifd.c#L1409-L1424">接收线程等待</a></p>
   <h3>RAM EOS 与同步点</h3>
-  <p>默认配置下，RAM EOS 结束本次 RAM section 载荷，专门的 FLUSH 则触发跨通道同步；两者用途不同。一轮 RAM 扫描可能跨越多个 PART，不能把 PART 的数量当作预拷贝轮数。使用旧机器兼容配置时，接收端在每个 RAM EOS 上同步，发送端也必须配对发送各通道的 SYNC。<a href="{{ qemu_source }}migration/ram.c#L4426-L4440">RAM 标记分派</a></p>
+  <p>默认配置下，RAM EOS 结束本次 RAM section 载荷，专门的 FLUSH 则触发跨通道同步；两者用途不同。一次 RAM 扫描可跨多个 PART，扫描轮次和流中的分段应分别计数。使用旧机器兼容配置时，接收端在每个 RAM EOS 上同步，发送端也必须配对发送各通道的 SYNC。<a href="{{ qemu_source }}migration/ram.c#L4426-L4440">RAM 标记分派</a></p>
 </section>
 
 <section id="implementation" class="mechanism-section">
@@ -95,6 +95,10 @@
   <p>同步减少后，工作线程可以连续处理更多批次，但协议仍需要在页面可能跨轮重复发送及阶段切换的位置建立顺序。QEMU 10.2.0 的 <code>multifd_ram_sync_per_section()</code> 与 <code>multifd_ram_sync_per_round()</code> 明确区分两种路径。演进改变的是同步频率和标记位置，顺序约束始终存在。</p>
   <h3>通道数与性能测量</h3>
   <p>增加通道会增加线程、连接和缓冲区，也可能提高内存访问竞争。当网卡带宽已经耗尽，更多线程不能增加物理链路容量；当目的端解压或写内存较慢时，发送端的并行度也无法单独解决瓶颈。一个明显较慢的通道还会拉长屏障等待。</p>
+</section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
   <p>评估时先区分两种结果：增加通道后吞吐上升，说明先前的处理路径存在可利用的并行空间；吞吐不变而线程 CPU 或屏障等待增加，则应检查网络、内存带宽或慢通道。结合 <code>multifd_send_sync_main_wait</code>、<code>multifd_recv_sync_main_wait</code> 等 trace 事件，再比较总迁移时间和停机时间。交互中的逻辑步数只展示顺序，不是性能测量。</p>
 </section>
 

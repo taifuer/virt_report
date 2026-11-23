@@ -5,13 +5,13 @@ sequenceDiagram
   participant Q as QEMU virtio-blk
   participant B as 块层与文件后端
   participant S as 宿主存储
-  G->>Q: 发布 OUT 链头 5，按需 kick
+  G->>Q: 发布 OUT 链头 0，按需 kick
   Q->>B: blk_aio_pwritev，offset = 1 MiB
   B->>S: 写入 4096 B
   S-->>B: 本次写操作完成
   Note over B,S: writeback：数据仍可能位于易失缓存
   B-->>Q: virtio_blk_rw_complete(ret = 0)
-  Q->>Q: status = OK；used {id:5, len:1}；更新 idx
+  Q->>Q: status = OK；used {id:0, len:1}；更新 idx
   Q-->>G: 按条件发送完成通知
   G->>G: 读取 used 和 status，回收写请求缓冲区
   G->>Q: 写完成后提交独立 FLUSH 请求

@@ -3,10 +3,10 @@
 {% set kernel_source = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>迁移一台运行中的虚拟机</h2>
-  <p>QEMU 热迁移把虚拟机的运行状态从源端交给目的端，使客户机在另一台宿主上继续执行。本文沿目标准备、预拷贝、停机保存和恢复执行讲解完整流程，再展开脏页迭代与停机判断。</p>
+  <h2>序言</h2>
+  <p>QEMU 热迁移把内存、处理器和设备状态交给另一台宿主，让客户机在那里继续运行。迁移耗时可以很长，业务真正停下来的时间取决于切换时还有多少工作要做。</p>
   <p>以 8 GiB 内存、1000 MiB/s 的有效传输速率为例，停机后复制全部内存，仅传输就约需 8.2 秒。预拷贝在运行期间完成大部分复制，并重传期间写脏的页面，使停机阶段只需传输剩余内存与设备状态。</p>
-  <p>示例采用 x86 / KVM、普通 RAM、virtio-blk 和共享存储。两端使用兼容的机器、CPU 和设备配置，目的端已具备磁盘访问与网络接管条件。客户机在预拷贝期间继续运行，写过的页可能需要重传；最终暂停后再补齐内存、处理器与设备状态。</p>
+  <p>示例采用 x86/KVM、普通 RAM、virtio-blk 和共享存储。目的端已准备兼容的机器、CPU 和设备，可以访问同一块磁盘并接管网络。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -65,7 +65,7 @@
 合并后的 bmap       0  1  1  0  0  0  0  0   # P2 已待传，只新增 P1
 处理 P1 并准备发送   0  0  1  0  0  0  0  0   # 先恢复跟踪，再清待传位并读页
 P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
-  <p><code>bmap</code>记录发送调度需求，不代表目的端已确认收到；网络中的数据还可能尚未装载。块内第 i 个目标页的内存地址为 <code>host + i × 目标页大小</code>。它与 <code>RAMBlock.offset</code>在 QEMU 全局 RAM 地址空间中的位置也应区分。<a href="{{ qemu_source }}include/system/ramblock.h#L25-L91">RAMBlock 字段</a>、<a href="{{ qemu_source }}migration/ram.c#L128-L146">扫描状态</a></p>
+  <p><code>bmap</code>记录本端的发送调度需求，目的端接收另行确认；网络中的数据还可能尚未装载。块内第 i 个目标页的内存地址为 <code>host + i × 目标页大小</code>。它与 <code>RAMBlock.offset</code>在 QEMU 全局 RAM 地址空间中的位置也应区分。<a href="{{ qemu_source }}include/system/ramblock.h#L25-L91">RAMBlock 字段</a>、<a href="{{ qemu_source }}migration/ram.c#L128-L146">扫描状态</a></p>
   <h3>页面重传与跟踪顺序</h3>
   <p>继续看上面的 P1：待传位清零后，页面经过发送、接收和装载，目的端得到一份副本。客户机再次修改 P1，底层脏页跟踪便记录这次写入；修改也可能发生在上一份副本尚在传输时。下次同步把 P1 重新标为 1，扫描再次选中它，新的页内容随后覆盖目的端旧副本。同一页由“待传 → 已安排发送 → 再次待传”反复切换，直到最终同步完成。</p>
   <p><code>migration_bitmap_clear_dirty()</code>在发送前处理底层脏标记的清除，再清除迁移位图中的该页。相关页的跟踪必须在读取、发送之前重新有效：若发送之后才清标记，两者之间的新写入就可能被一并清除。手动 dirty-log 模式允许按块推迟清除操作，前提是仍在读页之前恢复跟踪。<a href="{{ qemu_source }}migration/ram.c#L830-L864">清除顺序</a>、<a href="{{ qemu_source }}migration/ram.c#L2247-L2265">页面发送</a></p>
@@ -133,7 +133,6 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
 
 <section id="optimization" class="mechanism-section">
   <h2>并行、限速与收尾成本</h2>
-  <p>预拷贝的主要开销来自内存传输、脏页跟踪与重传，以及暂停阶段的状态保存和恢复。不同优化机制针对其中的不同环节，也各自需要额外的计算、内存或同步资源。</p>
   <h3>传输能力不足：并行化</h3>
   <p>当单一路径的页面处理或传输成为瓶颈时，MultiFD 使用多个工作线程和通道处理内存；QAPI 的 <code>multifd</code>能力自 QEMU 4.0 提供。它有机会提高有效 B，但会增加线程、缓冲区和同步开销；若已受网络总带宽或内存带宽限制，增加通道不会按比例提速。<a href="{{ qemu_source }}migration/multifd.c">MultiFD 实现</a>、<a href="{{ qemu_source }}qapi/migration.json#L476">能力版本</a></p>
   <p>多通道的任务分发和同步过程见<a href="qemu-multifd.html">《QEMU MultiFD 并行迁移》</a>。</p>
@@ -145,6 +144,10 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
   <p>零页识别避免发送整页零值；XBZRLE 在适合的重传场景中编码与已缓存页面的差异；压缩以 CPU 工作换取链路字节减少。实际收益取决于页面内容、缓存命中和处理能力。内存剩余量已经很小而停机仍长时，需要进一步分析设备保存、目的端装载和 I/O 交接的耗时。放宽停机目标可以更早切换，也会把更多工作留在暂停阶段。</p>
 </section>
 
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>判断预拷贝能否收敛，看相邻轮次里待传内存是否持续减少；判断停机时间能否达标，还要算进设备收尾和目的端装载。若待传页已很少而停顿仍长，下一步应分段测设备保存与恢复耗时，单纯增加传输带宽帮助有限。</p>
+</section>
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul class="mechanism-sources">

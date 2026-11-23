@@ -122,7 +122,7 @@ def build_demo() -> dict:
         scenarios.append({"id": mode, "label": label, "summary": "区分 Guest 页的使用权、队列交接和宿主后备页处理。",
                           "assumptions": ["x86/KVM，Guest 与后备内存均按 4 KiB 页讲解；RAM 固定 8 GiB，未混合 DIMM 或 virtio-mem。",
                                           "设备、队列与特性协商已完成。通知使用通用 virtio 机制，不限定每次必须注入一次中断。",
-                                          "目标达成场景假定 Guest 能取得足够页面；演示不代表 RSS 实测，也不模拟内存压力控制策略。"],
+                                          "目标达成场景假定 Guest 能取得足够页面；示例按步骤展示页面归还和再分配，RSS 与内存压力需在运行中的宿主测量。"],
                           "nodes": deepcopy(nodes), "layout": deepcopy(layout),
                           "links": [dict(zip(("id", "from", "to", "kind", "label"), item)) for item in links],
                           "structures": [{"id": "balloon", "title": "气球配置、页列表与后备页", "kind": "address",

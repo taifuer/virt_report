@@ -47,4 +47,4 @@ def test_dpdk_article_distinguishes_copy_and_completion_ownership():
     assert "后 12 个仍归应用" in article
     assert "enqueue 没有接管这个 mbuf 的生命周期" in article
     assert "本例不属于端到端零拷贝" in article
-    assert "spdk-vhost-user-blk.html" in article
+    assert 'href="qemu-vhost-net.html#architecture"' in article

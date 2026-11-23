@@ -33,7 +33,7 @@
     </div>
   </div>
   <div class="viommu-explanation" data-viommu-explanation hidden><p data-viommu-detail></p><small data-viommu-queue></small></div>
-  <p class="viommu-note">错误分支仅清除客户机 PTE，没有调用宿主 UNMAP。正常 UNMAP 完成的步骤已包含缓存处理。故意发出的迟到探测用于比较旧映射是否仍可访问，不代表设备协议允许继续使用已回收缓冲区。</p>
+  <p class="viommu-note">错误分支仅清除客户机 PTE，没有调用宿主 UNMAP。正常 UNMAP 完成的步骤已包含缓存处理。图中用一次迟到探测展示旧映射是否仍然有效；正常设备应在回收缓冲区前停止访问。</p>
   <div data-viommu-fallback>
     <ol><li>客户机写入 A 的映射，提交失效，QEMU 同步宿主映射后开始 DMA。</li><li>旧请求完成后清除客户机 PTE，再完成宿主 UNMAP 与转换缓存处理。</li><li>A 回收后，旧地址访问被阻止；若遗漏失效，旧映射仍可能访问 A。</li><li>同一 IOVA 重新映射到 B，同步完成后，DMA 改为访问 B。</li></ol>
     <p>启用 JavaScript 后可逐步比较两种场景。</p>

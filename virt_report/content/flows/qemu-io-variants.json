@@ -201,7 +201,7 @@
         "assumptions": [
           "固定 QEMU 10.2.0 / Linux 6.18，x86 VMX、in-kernel LAPIC、MSI-X 与 ioeventfd / irqfd 已建立；关闭 APICv / posted interrupt，成功 VM-entry 注入。",
           "Guest 用 O_DIRECT 对 /dev/sda 同步 pread 或 pwrite，偏移 1 MiB、长度 4 KiB、对齐单页、单 bio、单请求、单 SG 数据段；无拆分合并、资源等待或错误。",
-          "scsi-hd 逻辑块 512 B，target 0 / LUN 0，固定 use_10_for_rw 分支：LBA 2048、传输 8 块，READ(10) / WRITE(10)。不把所有设备都说成必用 10 字节 CDB。",
+          "scsi-hd 逻辑块 512 B，target 0 / LUN 0，固定 use_10_for_rw 分支：LBA 2048、传输 8 块，READ(10) / WRITE(10)。",
           "未启用 T10 PI，CDB 容量 32 B、sense 容量 96 B。packed 结构布局得到请求 51 B、响应区 108 B；实际 CDB 长度 10 B 不改变整个请求头容量。",
           "modern PCI、split ring、大小 8、无间接描述符；只有 request queue 2 承载本次普通 I/O，控制和事件队列不搬运这次数据。",
           "QEMU scsi-hd 模拟而非 scsi-block 透传，raw 本地文件、aio=threads、cache.direct=off；数据可命中宿主页缓存。",
@@ -520,7 +520,7 @@
                 "file-worker",
                 "file-pread"
               ],
-              "boundary": "aio=threads 在 worker 执行宿主文件 I/O。它与 IOThread 回调分开；cache.direct=off 可使用宿主页缓存，不能由完成推断物理盘行为。"
+              "boundary": "aio=threads 在 worker 执行宿主文件 I/O。它与 IOThread 回调分开；cache.direct=off 时写入可以停留在宿主页缓存。"
             },
             {
               "id": "qemu-scsi-completion",
@@ -581,7 +581,7 @@
                 "guest-read-iter",
                 "guest-pread"
               ],
-              "boundary": "完成回调满足等待条件，原系统调用线程恢复执行，释放固定页引用后返回 4096。普通写入成功不额外承诺掉电持久性。"
+              "boundary": "完成回调满足等待条件，原系统调用线程恢复执行，释放固定页引用后返回 4096。普通写的完成条件由缓存配置决定；掉电时易失数据仍可能丢失。"
             }
           ],
           "stepPatches": {
@@ -595,7 +595,7 @@
             "submit-read": {
               "title": "scsi-hd 提交后端读取",
               "description": "scsi_do_read 通过 DMA SG 与 scsi_dma_readv 调用 blk_aio_preadv。",
-              "detail": "数据传输进入 BlockBackend、raw 格式与 file 节点。aio=threads 后续交给 worker；没有 FUA / FLUSH，也不把提交当成完成。",
+              "detail": "数据传输进入 BlockBackend、raw 格式与 file 节点。aio=threads 后续交给 worker；这是一次未带 FUA / FLUSH 的普通写提交。",
               "sourceIds": [
                 "scsi-qemu-read",
                 "scsi-qemu-preadv",
@@ -710,7 +710,7 @@
                 "file-worker",
                 "file-pwrite"
               ],
-              "boundary": "aio=threads 在 worker 执行宿主文件 I/O。它与 IOThread 回调分开；cache.direct=off 可使用宿主页缓存，不能由完成推断物理盘行为。"
+              "boundary": "aio=threads 在 worker 执行宿主文件 I/O。它与 IOThread 回调分开；cache.direct=off 时写入可以停留在宿主页缓存。"
             },
             {
               "id": "qemu-scsi-completion",
@@ -772,7 +772,7 @@
                 "guest-write-iter",
                 "guest-pwrite"
               ],
-              "boundary": "完成回调满足等待条件，原系统调用线程恢复执行，释放固定页引用后返回 4096。普通写入成功不额外承诺掉电持久性。"
+              "boundary": "完成回调满足等待条件，原系统调用线程恢复执行，释放固定页引用后返回 4096。普通写的完成条件由缓存配置决定；掉电时易失数据仍可能丢失。"
             }
           ],
           "stepPatches": {
@@ -786,7 +786,7 @@
             "submit-read": {
               "title": "scsi-hd 提交后端写入",
               "description": "scsi_write_data 通过 DMA SG 与 scsi_dma_writev 调用 blk_aio_pwritev。",
-              "detail": "数据传输进入 BlockBackend、raw 格式与 file 节点。aio=threads 后续交给 worker；没有 FUA / FLUSH，也不把提交当成完成。",
+              "detail": "数据传输进入 BlockBackend、raw 格式与 file 节点。aio=threads 后续交给 worker；这是一次未带 FUA / FLUSH 的普通写提交。",
               "sourceIds": [
                 "scsi-qemu-write",
                 "scsi-qemu-pwritev",
@@ -798,7 +798,7 @@
               "detail": "virtio_scsi_complete_req 使用 qsgl.size(4096)+resp_iov.size(108)，WRITE 也报告 4204；设备实际可写区域只有响应 108 B，并未把输入 payload 写回 Guest。Linux virtscsi_vq_done 不依据该计数确定 SCSI 成功字节数。"
             },
             "return-to-user": {
-              "detail": "同步等待和直接写一致性收尾完成，pwrite 返回4096；used报告4204不是应用字节数，也不代表持久化。"
+              "detail": "同步等待和直接写一致性收尾完成，pwrite 返回4096；used 的 4204 字节是设备写回长度；应用数据量和持久性分别按请求和缓存语义判断。"
             }
           }
         }
@@ -923,9 +923,9 @@
           "Guest O_DIRECT 读写 /dev/vda，偏移1 MiB、对齐4 KiB、单页、单bio、单请求，无拆分、合并、错误、重试或资源不足。",
           "QEMU 块图直接连接 RBD 节点与已存在 image，使用用户态 librbd，不走 file-posix 或宿主 /dev/rbdX；本次写入不需要扩容。",
           "不固定 Ceph 集群版本，不展开客户端缓存、对象布局、OSD 或复制内部函数；以 rbd_aio_* 接受请求到 completion_cb 返回为已核验异步边界。",
-          "写入未请求 O_SYNC / O_DSYNC、FLUSH 或 FUA。librbd缓存和集群持久化策略不是本动画模拟对象，普通WRITE成功不能额外推出断电保证。",
-          "关闭 APICv / posted interrupt，经LAPIC挂起与成功VM-entry注入。示例只表现成功因果顺序，不代表真实时间或唯一线程交错。",
-          "status=0xff为教学占位；数据缓冲在异步回调完成前持续有效。读取可命中客户端缓存，不能把每次请求都等同远端磁盘访问。"
+          "写入未请求 O_SYNC / O_DSYNC、FLUSH 或 FUA。这是普通 WRITE，掉电持久性由 librbd 缓存和集群的持久化策略决定。",
+          "关闭 APICv / posted interrupt，经LAPIC挂起与成功VM-entry注入。步骤展示本例一次成功请求的因果顺序；线程可按其他顺序交错执行。",
+          "status=0xff为教学占位；数据缓冲在异步回调完成前持续有效。读取可命中客户端缓存，也可能访问远端存储。"
         ],
         "phasePatches": {
           "read": {
@@ -951,7 +951,7 @@
               "title": "librbd 推进异步存储请求",
               "actor": "backend",
               "description": "Ceph 客户端处理该RBD请求；需要远端数据时与集群交互，QEMU提交协程保持等待。",
-              "detail": "这一块是API可见的异步边界，不虚构OSD执行或对象拆分。读取可能命中缓存，写入持久化受librbd与集群配置约束。",
+              "detail": "这里跟踪到 librbd 的异步接口。读取可能命中缓存，写入持久化受librbd与集群配置约束。",
               "sourceIds": [
                 "rbd-submit",
                 "rbd-callback"
@@ -1076,7 +1076,7 @@
                 "rbd-aio-read",
                 "rbd-callback"
               ],
-              "boundary": "这里只标注已核验的 API 入口和完成边界；不编造特定 Ceph 版本的 OSD、对象拆分或缓存内部调用。缓存可能使一次 API 请求并不对应一次远端磁盘访问。"
+              "boundary": "这里只标注已核验的 API 入口和完成边界；对象拆分、缓存和 OSD 执行由 Ceph 实现。缓存可能使一次 API 请求并不对应一次远端磁盘访问。"
             },
             {
               "id": "rbd-callback-bh",
@@ -1144,7 +1144,7 @@
                 "guest-read-iter",
                 "guest-pread"
               ],
-              "boundary": "完成回调满足等待条件，原系统调用线程恢复执行，释放固定页引用后返回 4096。普通写入成功不额外承诺掉电持久性。"
+              "boundary": "完成回调满足等待条件，原系统调用线程恢复执行，释放固定页引用后返回 4096。普通写的完成条件由缓存配置决定；掉电时易失数据仍可能丢失。"
             }
           ],
           "stepPatches": {
@@ -1242,7 +1242,7 @@
                 "rbd-aio-write",
                 "rbd-callback"
               ],
-              "boundary": "这里只标注已核验的 API 入口和完成边界；不编造特定 Ceph 版本的 OSD、对象拆分或缓存内部调用。缓存可能使一次 API 请求并不对应一次远端磁盘访问。"
+              "boundary": "这里只标注已核验的 API 入口和完成边界；对象拆分、缓存和 OSD 执行由 Ceph 实现。缓存可能使一次 API 请求并不对应一次远端磁盘访问。"
             },
             {
               "id": "rbd-callback-bh",
@@ -1311,7 +1311,7 @@
                 "guest-write-iter",
                 "guest-pwrite"
               ],
-              "boundary": "完成回调满足等待条件，原系统调用线程恢复执行，释放固定页引用后返回 4096。普通写入成功不额外承诺掉电持久性。"
+              "boundary": "完成回调满足等待条件，原系统调用线程恢复执行，释放固定页引用后返回 4096。普通写的完成条件由缓存配置决定；掉电时易失数据仍可能丢失。"
             }
           ],
           "stepPatches": {
@@ -1339,7 +1339,7 @@
               "detail": "RBD协程经BH恢复并成功返回后，virtio_blk_rw_complete 才进入标准virtio状态回写；不能把librbd completion与Guest中断视为同一回调。"
             },
             "return-to-user": {
-              "detail": "Guest同步bio完成、页面引用释放后pwrite返回4096。used.len=1；Ceph后端的普通完成不额外承诺持久化，未执行flush/FUA。"
+              "detail": "Guest同步bio完成、页面引用释放后pwrite返回4096。used.len=1；本例执行普通写，未请求 FLUSH/FUA；掉电持久性取决于缓存策略。"
             }
           }
         }

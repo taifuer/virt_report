@@ -8,7 +8,7 @@ from virt_report.render import render
 
 @pytest.mark.parametrize("slug,command,boundary", [
     ("memory-virtualization", "virsh dommemstat VM", "last-update"),
-    ("qemu-virtio-blk", "virsh domblkstat VM vda --human", "缺项不代表零"),
+    ("qemu-virtio-blk", "virsh domblkstat VM vda --human", "未提供的指标记为未知"),
     ("network-io", "virsh domifstat VM vnet0", "不能套用 TAP 名称"),
 ])
 def test_read_only_verification_entry_is_listed_in_article_navigation(slug, command, boundary, article_source):

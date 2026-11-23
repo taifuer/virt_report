@@ -2,7 +2,7 @@
 {% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 {% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 <section id="preface" class="mechanism-section">
-  <h2>vDPA 的 virtio 接口与队列卸载</h2>
+  <h2>序言</h2>
   <p>高报文率虚拟机常把大量宿主 CPU 时间花在队列解析、缓冲区访问和网络转发上。vhost-net 把处理放进宿主内核，vhost-user 允许独立进程接管；如果设备本身能够消费 virtio 队列，还可以进一步减少软件参与。vDPA 为这类设备提供框架：数据路径遵循 virtio，设备的配置方式可以由厂商驱动转换。</p>
   <p>QEMU 的 vhost-vDPA 网络后端通过 vDPA 接口配置队列、DMA 地址与通知。直接模式下，硬件消费 Guest virtqueue；迁移时可使用 QEMU 中转的 Shadow Virtqueue。vDPA 框架也支持软件实现，下面的发送例子采用硬件后端。</p>
   {% include '_mechanism_baselines.html' %}
@@ -30,8 +30,8 @@
     <li><strong>回收。</strong>客户机读 used，解除对应映射或引用，回收描述符及数据缓冲区。</li>
   </ol>
   <p>直接模式由设备访问队列与报文，省去了 QEMU 普通软件收发路径的逐包解析和复制。网络处理、DMA、IOMMU 转换和通知仍消耗资源，其他环节的复制取决于设备、驱动及工作模式。设备发布 TX used 后，客户机可回收本地缓冲区；远端应用接收由网络协议确认。</p>
-  <p>TX used 的前置条件是设备已结束对该链和客户机缓冲区的使用。具体设备可能在内部缓存帧，也可能让发送流水线继续引用原缓冲区；归还时刻取决于这些实现及完成策略。通用 vDPA 接口不规定“DMA 一开始就能归还”或“先复制到设备副本再归还”，也不能单凭 used 推断物理链路及远端应用的进度。</p>
-  <p>设备失联、映射错误或队列停止时，要先确认设备不会继续访问旧内存，再释放队列和缓冲区。只关闭客户机驱动或停止发新请求，不足以证明之前的 DMA 已结束。可恢复状态、队列暂停、设备复位和资源释放之间必须有明确的完成边界。</p>
+  <p>TX used 的前置条件是设备已结束对该链和客户机缓冲区的使用。具体设备可能在内部缓存帧，也可能让发送流水线继续引用原缓冲区；归还时刻取决于这些实现及完成策略。</p>
+  <p>设备失联、映射错误或队列停止时，要先确认设备不会继续访问旧内存，再释放队列和缓冲区。停止提交后，还须等待在途 DMA 结束。可恢复状态、队列暂停、设备复位和资源释放之间必须有明确的完成边界。</p>
 </section>
 <section id="configuration" class="mechanism-section">
   <h2>队列启动前，需要建立三类关系</h2>
@@ -63,7 +63,7 @@
 </section>
 <section id="migration" class="mechanism-section">
   <h2>能记录脏页，还要解决状态与兼容性</h2>
-  <p>SVQ 提供软件协作办法，但一个设备能否迁移，还取决于暂停与恢复能力、特性集、队列状态、控制命令状态，以及目的端支持情况。QEMU 对 SVQ 支持的特性进行验证，并会设置迁移阻止原因。启用了 vDPA 或 x-svq，不足以推导“任意硬件之间都能迁移”。</p>
+  <p>SVQ 提供软件协作办法，但一个设备能否迁移，还取决于暂停与恢复能力、特性集、队列状态、控制命令状态，以及目的端支持情况。QEMU 对 SVQ 支持的特性进行验证，并会设置迁移阻止原因。</p>
   <table><thead><tr><th scope="col">需要保留的状态</th><th scope="col">遗漏时的后果</th><th scope="col">应核对什么</th></tr></thead><tbody>
     <tr><td>客户机已协商特性与队列布局</td><td>目的端按不同格式解释相同内存</td><td>源/目的能力交集及运行中的既定选择</td></tr>
     <tr><td>在途请求与队列进度</td><td>请求重复执行或被跳过</td><td>停止完成、消费位置、恢复位置</td></tr>
@@ -82,7 +82,7 @@
     <tr><td><a href="{{ linux }}drivers/vhost/vdpa.c">Linux drivers/vhost/vdpa.c</a></td><td>用户接口到 vDPA 配置及地址映射的转换</td></tr>
     <tr><td><a href="{{ linux }}include/linux/vdpa.h">Linux include/linux/vdpa.h</a></td><td>设备驱动实现的配置操作和能力约定</td></tr>
   </tbody></table>
-  <p>SVQ 的完成路径先从后端 used 取回关联的 VirtQueueElement，检查 ID 和有效链，再调用 virtqueue_fill/flush 向客户机发布完成。设备写出的 ID 必须引用已提交的影子请求；来自设备的完成元数据仍需要验证，不能直接当作可信内存索引。</p>
+  <p>SVQ 的完成路径先从后端 used 取回关联的 VirtQueueElement，检查 ID 和有效链，再调用 virtqueue_fill/flush 向客户机发布完成。设备写出的 ID 必须引用已提交的影子请求；设备上报的完成索引须先校验，再用于访问内存。</p>
 </section>
 <section id="evolution" class="mechanism-section">
   <h2>从软件后端到硬件数据面，再补齐可迁移性</h2>
@@ -90,6 +90,12 @@
   <p>直接硬件访问缩短正常路径，却让软件更难观察在途请求和 DMA 写入。2022 年的 QEMU SVQ 讨论把影子队列作为迁移脏页追踪的协作方案，后续实现可在迁移阶段切换，平时继续使用较短的数据路径。它用额外 CPU 和状态管理换取迁移可见性，并没有消除设备特性限制。<a href="https://lists.gnu.org/archive/html/qemu-devel/2022-03/msg02180.html">SVQ 初期设计讨论</a></p>
   <p>vDPA 也支持软件实现；VDUSE 提供用户态数据面与内核控制、隔离之间的接口，支持的设备类型和能力取决于版本。后端选择需要同时考虑正常吞吐、CPU 开销、尾延迟、迁移降速和故障恢复。直接模式与 SVQ 的对比尤其要标明测试处于正常运行还是迁移阶段。</p>
 </section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>直接模式下，硬件消费客户机队列；引入影子队列后，QEMU 能跟踪请求和写入，代价是多一次软件转交。选用哪条路径，既看正常运行中的吞吐、CPU，也看设备可导出的状态、迁移阶段的性能和目的端恢复能力。</p>
+</section>
+
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul><li><a href="{{ qemu }}docs/interop/vhost-vdpa.rst">QEMU 10.2.0 Vhost-vdpa Protocol</a>：数据接口与控制适配的职责边界。</li><li><a href="{{ qemu }}hw/virtio/vhost-vdpa.c">QEMU vhost-vDPA 后端</a>、<a href="{{ qemu }}net/vhost-vdpa.c">网络后端</a>：映射、队列和迁移阶段管理。</li><li><a href="{{ qemu }}hw/virtio/vhost-shadow-virtqueue.c">QEMU Shadow Virtqueue</a>：描述符转发、地址翻译和完成发布。</li><li><a href="{{ linux }}drivers/vhost/vdpa.c">Linux vhost_vdpa</a>、<a href="{{ linux }}include/linux/vdpa.h">vDPA 配置接口</a>：内核后端与设备驱动之间的约定。</li><li><a href="{{ linux }}Documentation/userspace-api/vduse.rst">Linux 6.18 VDUSE 文档</a>：用户态数据面、IOTLB 映射和设备控制。</li></ul>

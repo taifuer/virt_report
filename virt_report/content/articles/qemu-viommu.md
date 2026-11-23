@@ -1,4 +1,4 @@
-## 客户机管理的 DMA 地址空间 {#preface}
+## 序言 {#preface}
 
 虚拟机使用直通网卡时，网卡直接读写客户机 RAM 的宿主后备页。宿主 IOMMU 负责限制物理设备可访问的内存；客户机启用 vIOMMU 后，还可以为设备分配自己的 DMA 地址、设置访问权限，并在缓冲区回收时撤销映射。QEMU 需要把客户机维护的映射落实到物理设备实际使用的转换路径中。
 
@@ -41,7 +41,7 @@ EPT 服务于客户机 CPU 的 GPA 访问；这里的宿主 I/O 页表服务于�
 3. QEMU 产生 IOMMU MAP 通知。VFIO listener 把目标 GPA 换算成 RAM 后备地址，调用宿主映射接口，建立 `IOVA 0x00800000 → HPA 0x120000000`。
 4. DMA API 完成映射并返回后，客户机驱动才向网卡发布接收描述符。网卡发出 DMA，宿主 IOMMU 检查转换与权限，写入 A。
 
-这里的 invalidation 同时承担了通知 VMM 更新合成映射的作用。**客户机写完页表与物理设备可使用新映射，是两个不同的完成点。** 如果过早提交 DMA，宿主可能还没有对应映射，访问就可能失败。若宿主建图失败，页表内容和客户机侧完成信息也不足以证明设备已可用；还要结合 QEMU 的映射错误和宿主 IOMMU 故障判断。
+这里的 invalidation 同时承担了通知 VMM 更新合成映射的作用。**客户机写完页表与物理设备可使用新映射，是两个不同的完成点。** 如果过早提交 DMA，宿主可能还没有对应映射，访问就可能失败。宿主建图失败时，设备仍无法按新映射访问；还要结合 QEMU 的映射错误和宿主 IOMMU 故障判断。
 
 模拟设备采用另一条执行路径：QEMU 在设备访问内存时可以调用 `IOMMUMemoryRegion.translate`，在软件中取得 GPA。直通设备的请求绕过 QEMU，因此需要提前维护上述硬件映射。[软件转换入口](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/intel_iommu.c#L3943-L3983)
 
@@ -61,7 +61,7 @@ A 使用结束时，客户机驱动先确认相应接收请求不再由设备持
 | 阶段 | 客户机页表 | 宿主有效映射 | 缓冲区处理要求 |
 | --- | --- | --- | --- |
 | A 正在使用 | 指向 A | 指向 A，IOTLB 也可能缓存 A | 保持 A 有效 |
-| 已清除客户机 PTE，尚未同步 | 无映射 | 仍可能指向 A | 不可据此认为旧访问已被阻断 |
+| 已清除客户机 PTE，尚未同步 | 无映射 | 仍可能指向 A | 设备仍可能经缓存访问 A |
 | UNMAP 与失效已完成 | 无映射 | 无映射，旧缓存已处理 | 结合设备完成条件回收 A |
 | B 的映射已同步 | 指向 B | 指向 B | 可以向设备提交 B |
 
@@ -133,9 +133,9 @@ Linux 6.18 的 IOMMUFD 以 `HWPT_NESTED` 和父 `HWPT_PAGING` 表达两阶段关
 
 此外，IOMMUFD 中名为 `VIOMMU` 的对象表示某个物理 IOMMU 的虚拟化资源切片，与客户机看到的一整个虚拟 IOMMU 不必一一对应。区分接口对象和客户机设备模型，有助于阅读跨多个物理 IOMMU 的部署路径。
 
-设备迁移还有独立的兼容性限制：QEMU 10.2 的 `vfio_migration_realize()` 检测到 VFIO 设备启用 vIOMMU 时，会阻止该配置迁移。即使设备具有状态保存能力，也不能据此把本文的 vIOMMU 路径与设备热迁移直接组合。[固定版本的迁移限制](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L1205-L1209)；未启用 vIOMMU 的设备迁移过程见 [VFIO 设备热迁移](vfio-device-migration.html)。
+设备迁移还有独立的兼容性限制：QEMU 10.2 的 `vfio_migration_realize()` 检测到 VFIO 设备启用 vIOMMU 时，会阻止该配置迁移。将 vIOMMU 与设备热迁移组合使用，还需核对该版本对两者的支持条件。[固定版本的迁移限制](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L1205-L1209)；未启用 vIOMMU 的设备迁移过程见 [VFIO 设备热迁移](vfio-device-migration.html)。
 
-## 总结与进一步阅读 {#summary}
+## 总结 {#summary}
 
 本例围绕同一个 IOVA 完成了 A 到 B 的交接：客户机建立映射，QEMU 同步合成页表，物理设备通过宿主 IOMMU 访问 RAM；旧请求结束后撤销映射，再把地址交给新的缓冲区。页表内容、转换缓存和设备正在使用的请求分别有自己的状态，正确交接依赖它们按顺序收敛。
 

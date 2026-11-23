@@ -44,7 +44,7 @@
     container.replaceChildren();
     container.classList.add('walkthrough-sequence');
     container.append(element('p', scene.parallel
-      ? '分叉后各路独立推进；图中分别保留每一路的先后关系。选择事件可查看对应状态，观看顺序不代表实际调度顺序。'
+      ? '分叉后各路独立推进；图中分别保留每一路的先后关系。选择事件可查看对应状态；实际顺序由调度决定。'
       : '纵向表示本例的事件顺序，列表示执行位置或共享内存。点击事件查看状态；行距不表示耗时。', 'walkthrough-sequence-help'));
     for (const group of groups(scene, trace)) {
       const section = element('section', undefined, 'walkthrough-sequence-group');

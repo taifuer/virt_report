@@ -79,7 +79,7 @@ def test_vdpa_completion_states_only_the_hardware_buffer_contract(scenes):
     assert "egress" not in steps
     assert all(link["id"] != "egress" for link in scene["links"])
     assert "结束对 Guest 链和缓冲区的使用" in steps["fill-used"]["description"]
-    assert "设备私有缓冲区" in steps["fill-used"]["detail"]
+    assert "内部发送流水线何时完成由设备决定" in steps["fill-used"]["detail"]
     assert "内部发送进度未展开" in steps["transfer"]["changes"]["networkStage"]
 
 

@@ -5,9 +5,9 @@
 {% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>从应用收发到虚拟网卡</h2>
+  <h2>序言</h2>
   <p>发送由客户机应用调用 <code>sendto()</code>，UDP/IP 协议栈封装网络帧，再由 virtio-net 驱动交给后端。接收由驱动预置可写 RX 缓冲区；外部报文到达后，经设备、驱动和协议栈进入已绑定的 socket，应用用 <code>recvfrom()</code> 取走数据或等待后续报文。</p>
-  <p>QEMU、内核 vhost-net、DPDK vhost-user 与硬件 vDPA 使用相同的客户机设备接口，但数据处理位置和缓冲区交接方式不同。本页分别观察应用调用、Guest 队列、完成中断与宿主处理；它们的“完成”不代表同一件事。</p>
+  <p>QEMU、内核 vhost-net、DPDK vhost-user 与硬件 vDPA 使用相同的客户机设备接口，但数据处理位置和缓冲区交接方式不同。本页分别观察应用调用、Guest 队列、完成中断与宿主处理；每一层都有自己的完成条件。</p>
   <p>示例发送 ASCII 字符串 <code>virt-report-demo01</code>，共 18 B。加上 8 B UDP 头、20 B IPv4 头和 14 B Ethernet 头，得到 60 B 帧 P1；virtio-net 另外使用 12 B 网络头，设备 RX 的实际写入量为 72 B。接收应用提供 128 B 缓冲区，成功时 <code>recvfrom()</code> 返回 18。</p>
   <p>队列按 8 个槽位展示，使用直接描述符。发送选取头部不能直接压入 skb 的分支，<code>desc[0] → desc[2]</code> 分别指向 12 B 网络头和 60 B 帧；接收采用 <code>add_recvbuf_small()</code>，<code>desc[2]</code> 提供 <code>12 + GOOD_PACKET_LEN = 1530 B</code> 可写空间。本次实际写入仍为 72 B。页片段还会分配 headroom 和 skb 元数据，分配大小不等于描述符向设备暴露的长度。</p>
   <p>演示采用 x86 + KVM、QEMU 10.2.0、Linux 6.18；DPDK 路径采用 24.11。设备为 modern virtio-net，使用 split ring 和一个队列对：队列 0 接收，队列 1 发送。路由、邻居、设备协商与内存映射已经就绪；使用普通 UDP 复制路径，关闭分段、校验和卸载、合并 RX 缓冲区、UDP cork 和零拷贝发送。报文不带 IP 选项或 VLAN，也无需分片。</p>
@@ -78,9 +78,6 @@
 <section id="completion" class="mechanism-section">
   <h2>缓冲区与完成语义</h2>
   <p>普通发送会把用户数据复制到客户机内核的 skb。应用缓冲区 U0、内核 skb S1、设备描述符，以及 DPDK 路径中的宿主 mbuf 是不同对象。<code>sendto()</code> 返回后，应用可以复用 U0，已经复制出的数据仍可沿后续路径转发。UDP 发送内存预算用于约束本地资源使用；普通无 cork UDP 不会像 TCP 那样保留可靠重传队列。</p>
-  <p>TX 发布的是已准备好的帧，后端获得设备可读的缓冲区；RX 提前发布空闲空间，后端获得设备可写的缓冲区。两种方向都先写内容或描述符，再发布索引。通知只提示另一端检查队列，完成记录由 used 保存，多个报文可以共用一次通知。</p>
-  <p>本例先发布 used，再发起完成提示；KVM 记录 vLAPIC 待处理中断，目标 vCPU 随后接受它，Guest 回调安排 NAPI。这是一次完成通知从提交到处理的完整路径。驱动依据 used 消费完成记录，单次通知可以覆盖多个完成项；通知也可以被抑制或由轮询替代。</p>
-  <p><code>avail.ring[n]</code> 保存链头编号，描述符的 <code>addr</code> 指向缓冲区；<code>used.ring[n]</code> 保存链头与本次设备写入长度。另一端须观察到发布的新索引后才能消费对应槽位。TX 的 <code>used.len = 0</code> 表示设备向可写描述符写入了 0 字节，帧长记录在发送描述符中。RX 的 <code>used.len = 72</code> 是本次写入长度，缓冲区容量为 1530 B。</p>
   <table>
     <thead><tr><th scope="col">观察点</th><th scope="col">已经完成</th><th scope="col">后续工作</th></tr></thead>
     <tbody>
@@ -98,7 +95,7 @@
   <p>RX 演示选取单帧接收路径：NAPI poll 从 used 取回链，构造 skb 并交给 GRO；<code>GRO_NORMAL</code> 普通列表尚未达到提前刷新条件，驱动先补充新 RX 空间。本轮处理量小于 budget，随后在 NAPI 完成阶段由 <code>gro_flush_normal()</code> 把普通列表交给协议栈。IPv4 / UDP 校验与分发完成后，数据才进入 socket。批量阈值或处理预算不同，协议交付与 refill 可以交错；补充新空间始终不以应用读完旧数据为前提。</p>
   <p>本例数据先进入 socket，应用随后调用 recvfrom，直接读取已有数据。若应用先调用、socket 尚无数据，阻塞调用会等待；入队时再唤醒等待者，线程获得 CPU 后才能复制载荷。非阻塞调用在无数据时返回 EAGAIN。这是同一接收机制下调用时机的区别，不需要另选一种收包模式。设备完成也不保证数据能进入 socket：协议校验、接收预算等可能导致后续丢弃。</p>
   <p>DPDK 的普通同步路径有两份独立存储。TX 将 Guest 帧复制为 mbuf，在发布 used 并检查通知条件后返回；应用取得 mbuf，即可交给 PMD，无需等待 Guest 执行中断或回收描述符。RX 则从 mbuf 复制到 Guest 空间；<code>rte_vhost_enqueue_burst()</code> 成功返回后，应用可释放已复制报文对应的宿主 mbuf，Guest 的 NAPI 与协议栈继续处理自己的副本。<code>rte_vhost_dequeue_burst()</code> 从 Guest 取包，<code>rte_vhost_enqueue_burst()</code> 向 Guest 送包，两个名字以 vhost 接口为视角。</p>
-  <p>硬件 vDPA 直接访问 Guest 缓冲区。设备必须结束对本次发送链及其数据的使用，才可发布 TX used；DMA 刚开始或报文刚进入硬件处理流程都不足以满足这一条件。内部缓存、流水线和发送完成策略由具体设备实现，通用 virtio 接口只保证 used 之后可以归还缓冲区。演示保留这条保证，不把设备完成解释为远端收包确认。</p>
+  <p>硬件 vDPA 直接访问 Guest 缓冲区。设备必须结束对本次发送链及其数据的使用，才可发布 TX used；设备结束对客户机缓冲区的最后一次访问后，缓冲区才可归还。内部缓存、流水线和发送完成策略由具体设备实现，通用 virtio 接口只保证 used 之后可以归还缓冲区。演示保留这条保证，不把设备完成解释为远端收包确认。</p>
   <p>队列空间和网络交付能力也应分别观察。TX 的 TAP 暂不可写时，QEMU 会保留异步请求；RX 没有可写缓冲区时，也可能暂停上游交付。持续超载受有限队列约束，仍可能丢包。演示固定空间充足的成功路径，下面继续说明 NAPI、缓冲区补充与通知竞态。</p>
 </section>
 
@@ -106,7 +103,7 @@
   <h2>NAPI 的中断与批量轮询切换</h2>
   <p>如果每个报文都引发一次中断，流量增大后，CPU 会频繁进入通知处理路径，却没有足够时间真正处理报文。NAPI 用一次调度承接一批完成：回调安排 poll 并抑制重复通知，poll 逐步取走 used 中已经完成的接收缓冲区。常规处理发生在客户机网络软中断上下文，也存在 threaded NAPI 和 busy polling 等模式。</p>
   <p>设一轮 poll 的预算为 4，这是便于观察的教学值。如果 used 中已有 7 帧，第一轮取 4 帧并返回预算值，NAPI 继续保持待处理状态；下一轮取剩余 3 帧，观察到队列已空后才尝试完成本轮调度。预算限制一次轮询的接收工作量，防止一个繁忙队列长期占用执行机会；它不等于硬件队列大小，也不保证每帧各占一个描述符。</p>
-  <p>恰好取走 4 帧时，即使队列此刻为空，也不能同时用“返回 4”向 NAPI 表示已经完成。Linux virtio-net 在 <code>received &lt; budget</code> 时调用完成辅助函数，等于预算则交给后续轮询确认。<code>budget = 0</code> 是只处理特定 TX 完成等场景的特殊输入，不能据此执行普通 RX 消费或完成 NAPI。<a href="{{ linux }}drivers/net/virtio_net.c#L3114-L3154">virtnet_poll</a>、<a href="https://docs.kernel.org/6.18/networking/napi.html">Linux 6.18 NAPI API</a></p>
+  <p>恰好取走 4 帧时，即使队列此刻为空，也不能同时用“返回 4”向 NAPI 表示已经完成。Linux virtio-net 在 <code>received &lt; budget</code> 时调用完成辅助函数，等于预算则交给后续轮询确认。<code>budget = 0</code> 是专用于处理 TX 完成等工作的特殊输入；普通 RX 消费和 NAPI 完成须满足各自条件。<a href="{{ linux }}drivers/net/virtio_net.c#L3114-L3154">virtnet_poll</a>、<a href="https://docs.kernel.org/6.18/networking/napi.html">Linux 6.18 NAPI API</a></p>
   <p>GRO 在客户机网络栈中把适合合并的报文组织为更大的处理单元，降低上层逐包开销。设备仍逐项发布 RX 完成，NAPI 消费这些完成后再向上层交付。接收帧、used 项、NAPI poll、通知与应用读取分别记录这条路径上不同阶段的工作量。</p>
 </section>
 
@@ -115,7 +112,7 @@
   <h3>发布队列与发送 kick</h3>
   <p>驱动先发布可用缓冲区，后端才能安全地消费。通知只提示设备检查队列；多个请求可以共享一次 kick，设备正在处理队列时也可以抑制新的 kick。队列发布需要正确的内存屏障，通知抑制还需要防止“设备准备休眠时恰好新增请求”的竞态。仅删除通知操作，会让后端失去唤醒机会。</p>
   <p>设 <code>avail.idx = last_avail_idx = 7</code>，设备暂时关闭 kick，准备结束本轮处理。如果它检查空队列之后直接恢复通知并等待，驱动可能已在这两步之间发布第 8 项，却因为当时通知关闭而省略 kick。队列中有请求，事件循环却没有新通知可等。</p>
-  <p>安全路径先恢复通知，以必要的内存屏障约束顺序，再复查队列。第 8 项早到，复查会发现它；晚到，驱动按新的通知条件发出 kick，事件通知保持就绪，等待端继续处理。两端都需要遵守发布与检查规则，单独给某个计数器加一次屏障并不能替代完整协议。这里用 split 队列的通知开关演示；协商 EVENT_IDX 后，通知条件改用事件索引，重新启用与复查的要求仍然存在。<a href="{{ qemu_source }}hw/virtio/virtio.c#L515-L605">QEMU 通知设置与顺序约束</a>、<a href="{{ qemu_source }}hw/net/virtio-net.c#L2865-L2960">发送处理的通知重启与复查</a></p>
+  <p>安全路径先恢复通知，以必要的内存屏障约束顺序，再复查队列。第 8 项早到，复查会发现它；晚到，驱动按新的通知条件发出 kick，事件通知保持就绪，等待端继续处理。正确性依赖两端共同遵守发布、检查及内存排序规则。这里用 split 队列的通知开关演示；协商 EVENT_IDX 后，通知条件改用事件索引，重新启用与复查的要求仍然存在。<a href="{{ qemu_source }}hw/virtio/virtio.c#L515-L605">QEMU 通知设置与顺序约束</a>、<a href="{{ qemu_source }}hw/net/virtio-net.c#L2865-L2960">发送处理的通知重启与复查</a></p>
   <p>在普通 MMIO 路径中，客户机写 virtio PCI 通知地址，QEMU 的 <code>virtio_pci_notify_write()</code>找到队列后调用通知函数。启用 ioeventfd 时，QEMU 预先注册通知地址与 eventfd 的对应关系；KVM 处理匹配的写入并触发 eventfd，QEMU 的事件处理再调度该队列。这减少了通过 <code>KVM_RUN</code>返回用户态模拟此次 MMIO 的往返。CPU 从客户机执行切换到 KVM 的硬件退出仍可能发生，二者应分开计数。<a href="{{ qemu_source }}hw/virtio/virtio-pci.c#L371-L415">ioeventfd 注册</a>、<a href="{{ qemu_source }}hw/virtio/virtio.c#L3949-L3955">QEMU 事件处理</a>、<a href="{{ kernel_source }}Documentation/virt/kvm/api.rst#L2092-L2135">KVM_IOEVENTFD</a></p>
 </section>
 
@@ -125,7 +122,7 @@
   <p>驱动最后一次检查 used 时没有数据；紧接着设备写入新完成，却看到驱动仍在抑制通知。如果驱动随后直接退出 poll 等下一次中断，这个完成可能无人处理。正确交接需要协调 NAPI 状态、重新启用队列回调，并再次检查完成进度；发现窗口内到达的新工作，就重新安排处理。Linux 将这些步骤封装在 <code>virtqueue_napi_complete()</code> 等辅助函数中。</p>
   <p>这里通过 virtqueue 协议请求设备暂缓完成通知。通知可能已经在路上，多个队列也可能共享中断，因此驱动恢复回调后继续检查 used 进度。通知决定何时检查，used 记录决定本轮有哪些缓冲区可取回。</p>
   <h3>接收空间耗尽后的背压与补充</h3>
-  <p>客户机长时间得不到 CPU、分配内存失败或补充速度不足，都会让 RX available 耗尽。QEMU 的 <code>virtio_net_has_buffers()</code> 会启用缓冲区到达通知并复查队列，确认仍无空间后让上游暂缓交付。后端可能排队、暂停读取或丢包，取决于具体路径和排队上限；这不构成无限缓存或不丢包保证。</p>
+  <p>客户机长时间得不到 CPU、分配内存失败或补充速度不足，都会让 RX available 耗尽。QEMU 的 <code>virtio_net_has_buffers()</code> 会启用缓冲区到达通知并复查队列，确认仍无空间后让上游暂缓交付。后端可能排队、暂停读取或丢包，取决于具体路径和排队上限；缓存容量有限，耗尽时仍可能丢包。</p>
   <p>Linux 补充空间遇到内存不足时可安排延迟 refill 工作；如果描述符已满却应用仍慢，瓶颈也可能在后续协议栈、socket 或应用消费。排查顺序应是可写缓冲区数量、used 消费速度、NAPI 调度与预算、CPU 时间，再到上层协议和应用。单纯增大 ring 可以吸收短时突发，但持续超载时还会增加排队延迟。<a href="{{ qemu }}hw/net/virtio-net.c#L1651-L1677">QEMU 空间检查</a>、<a href="{{ linux }}drivers/net/virtio_net.c#L3022-L3060">Linux 回收与 refill</a></p>
 </section>
 
@@ -178,13 +175,13 @@ TAP 后端
     <tr><td>客户机安排处理</td><td><code>skb_recv_done → virtqueue_napi_schedule</code></td><td>NAPI 是否已调度及队列回调状态</td></tr>
     <tr><td>消费与交付</td><td><code>virtnet_poll → virtnet_receive → receive_buf</code></td><td>预算、used、skb/XDP 分支，以及 refill 条件</td></tr>
   </tbody></table>
-  <p>实际 Linux 驱动支持 small、big、mergeable 和 XSK 缓冲区，不能把某一条分配分支当成所有接收路径。MRG_RXBUF 允许一个报文占用多个已发布的缓冲区，头中的 num_buffers 告知驱动如何收齐；一个报文因此可以对应多个 used 元素，NAPI 的 RX 预算仍按处理报文计数。</p>
+  <p>Linux 驱动会按配置选择 small、big、mergeable 或 XSK 缓冲区。MRG_RXBUF 允许一个报文占用多个已发布的缓冲区，头中的 num_buffers 告知驱动如何收齐；一个报文因此可以对应多个 used 元素，NAPI 的 RX 预算仍按处理报文计数。</p>
 
 </section>
 
 <section id="evolution" class="mechanism-section">
   <h2>后端演进与取舍</h2>
-  <p>这些路径保留相同的客户机设备接口，把不同部分放到更合适的执行位置。优化应同时观察吞吐、尾延迟、CPU 消耗，以及迁移和维护能力，单看少经过一个进程无法判断最终效果。</p>
+  <p>同一个 virtio-net 接口可以接到不同执行者。下面对照哪一端消费队列、怎样观察拥塞；vhost 的内存与通知配置见<a href="qemu-vhost-net.html#architecture">队列怎样交给后端</a>。</p>
   <table>
     <thead><tr><th scope="col">后端</th><th scope="col">数据面变化</th><th scope="col">代价与适用条件</th></tr></thead>
     <tbody>
@@ -209,6 +206,11 @@ virsh domifstat VM vnet0</code></pre>
     <tr><td>吞吐正常，中断计数很少</td><td>先确认通知抑制、NAPI、批处理和轮询方式</td><td>报文数、中断数和 NAPI 轮次不一一对应；不能只靠中断少判断 irqfd 丢失</td></tr>
   </tbody></table>
   <p><a href="https://www.libvirt.org/manpages/virsh.html#domifstat">domifstat</a> 只覆盖接口支持的统计。DPDK vhost-user 或硬件 vDPA 需使用对应进程、PMD 或设备计数，不能套用 TAP 名称。比较两端时先确认 TX/RX 的观察视角，以及卸载、分段和合并设置；若要定位到单个报文，应在隔离测试环境收窄流量并关联各段记录。</p>
+</section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>发送时跟到驱动何时可以回收缓冲区；接收时跟到报文何时进入 socket 队列。TX 的 used 完成只表示后端结束使用这条客户机链，物理网卡可能仍在发送。遇到收包停滞，则分开检查 RX 缓冲区、used、NAPI 和应用读取。</p>
 </section>
 
 <section id="sources" class="mechanism-section">

@@ -70,8 +70,8 @@ def test_upgrade_has_its_own_overview_and_explicit_vfio_scope():
         'qemu-cpr-transfer', 'kvm-live-upgrade',
     }
     page = render.render_mechanisms_html(Config(), 'live-upgrade-overview')
-    for term in ('CPR-transfer', 'Dual KVM', 'IOMMUFD', 'DMA', '暂停窗口',
-                 '不等于可以在线替换任意 vfio-pci', '新实例已修改共享 RAM'):
+    for term in ('CPR-transfer', 'Dual KVM', 'IOMMUFD', 'DMA', '暂停',
+                 '替换厂商驱动或设备固件', '新实例已修改共享 RAM', '回退到旧寄存器'):
         assert term in page
     assert len(re.findall(r'href="[a-z-]+\.html"', page)) == 2
 
@@ -86,7 +86,7 @@ def test_linux_boot_follows_firmware_kernel_and_userspace_handoffs():
     assert '同一个 PID 1 换入新的程序映像' in page
     sections = [s['id'] for s in mechanisms.get_article('linux-boot')['sections']]
     assert sections == ['preface', 'firmware', 'early', 'kernel', 'devices',
-                        'root', 'services', 'observation', 'sources']
+                        'root', 'services', 'observation', 'summary', 'sources']
 
 
 def test_overviews_do_not_repeat_directory_as_reading_lists():
@@ -120,4 +120,4 @@ def test_migration_example_is_shell_syntax_only_and_has_domain_and_destination(a
     assert 'demo qemu+ssh://host-b/system' in shell
     assert 'qemu+tcp://host-b/system' in source
     assert 'postcopy' not in source.lower()
-    assert 'TCP URI 本身不承诺加密' in source
+    assert 'TCP URI 本身不提供加密' in source

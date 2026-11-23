@@ -4,7 +4,7 @@
 {% set seabios_source = 'https://github.com/coreboot/seabios/blob/b52ca86e094d19b58e2304417787e96b940e39c6/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>从 QEMU 进程到可运行的整机</h2>
+  <h2>序言</h2>
   <p>QEMU 根据启动参数创建一台完整的虚拟计算机：CPU 与内存提供执行环境，磁盘提供系统镜像，网卡连接外部网络，芯片组、总线、中断控制器和固件把这些部件组织起来。硬件模型完成创建与复位后，客户机 CPU 开始执行固件，再由固件装载操作系统。</p>
   <p>以 x86 的 <code>pc-q35-10.2</code>、KVM 加速、SeaBIOS、BIOS 可引导的 Linux 系统盘与 virtio 设备为例，冷启动依次经过“QEMU 建立机器 → 映射固件 → 设置复位状态 → VM-entry → 固件 → 引导程序 → Guest 内核 → Guest 用户态”。</p>
   {% include '_mechanism_baselines.html' %}
@@ -35,7 +35,7 @@
 {"execute":"query-cpus-fast"}
 {"execute":"query-block"}
 {"execute":"cont"}</code></pre>
-  <p>正常冷启动的 <code>-S</code> 配置在 cont 前处于 <code>prelaunch</code>，<code>running</code> 为 false。此时 query-cpus-fast 已能返回 vCPU 的宿主线程信息。QMP 的 RESUME 事件表示开始恢复执行，不代表固件初始化、磁盘引导或客户机服务已经完成。</p>
+  <p>正常冷启动的 <code>-S</code> 配置在 cont 前处于 <code>prelaunch</code>，<code>running</code> 为 false。此时 query-cpus-fast 已能返回 vCPU 的宿主线程信息。QMP 的 RESUME 事件标记恢复执行的起点；固件、磁盘引导和客户机服务随后各有自己的就绪信号。</p>
   <p>这个例子把后面的调用链分为两段：<code>qemu_init → machine init → CPU / RAM / 设备就绪 → 复位</code> 建立可运行的机器；<code>cont → vm_start → KVM_RUN</code> 才允许客户机执行。下面先按这个顺序跟踪启动，再用对象表对照源码。</p>
 </section>
 
@@ -84,7 +84,7 @@ vmfd
 每个 kvm_fd
   ├─ mmap → 各自的 kvm_run
   └─ KVM_RUN → 运行或处理该 vCPU 的执行请求</code></pre>
-  <p>默认的两核拓扑下，APIC ID 为 0 和 1；其他拓扑可以产生不连续的 APIC ID，不能总把它当成 cpu_index。两个 vCPU 共享一个 KVM 虚拟机的内存槽与机器资源，各自拥有独立 kvm_run 和寄存器状态。</p>
+  <p>默认的两核拓扑下，APIC ID 为 0 和 1；其他拓扑可能产生不连续的 APIC ID，设备应按拓扑映射到 cpu_index。两个 vCPU 共享一个 KVM 虚拟机的内存槽与机器资源，各自拥有独立 kvm_run 和寄存器状态。</p>
   <p>线程的创建握手不包含客户机第一条指令。主线程等待 created 时会释放 BQL，使新线程可以完成初始化；它收到通知后继续设备创建。vCPU 线程通过 <code>cpu_can_run()</code> 检查 stopped 和整机运行状态，只在允许执行时进入 <code>kvm_cpu_exec()</code>。</p>
 </section>
 
@@ -168,7 +168,7 @@ ROM 文件偏移           = 0xfffffff0 - 0xfffc0000 = 0x3fff0
 
 <section id="evolution" class="mechanism-section">
   <h2>受控启动的演进与耗时分析</h2>
-  <p>自动启动适合直接运行虚拟机，管理程序则需要在客户机运行前检查拓扑、设置资源策略或等待迁移。<code>-S</code> 提供了“机器已经完成初始化、客户机尚未执行”的控制点。此时内存和 CPU 拓扑已经落地，不能再把启动参数当成任意可改的配置表。</p>
+  <p>自动启动适合直接运行虚拟机，管理程序则需要在客户机运行前检查拓扑、设置资源策略或等待迁移。<code>-S</code> 提供了“机器已经完成初始化、客户机尚未执行”的控制点。此时内存和 CPU 拓扑已经建立，运行期间的变更需通过相应设备的管理接口。</p>
   <p>2018 年引入的 <a href="https://github.com/qemu/qemu/commit/047f7038f586d2150f16c6d9ba9cfd0479f0f6ac">preconfig 模式</a> 把控制点前移到板级初始化之前，让管理程序可以先查询允许的配置，再通过 QMP 设置 NUMA 等信息。在本文版本中，它仍是实验接口，只有标记允许的命令可用；<code>x-exit-preconfig</code> 才会继续创建板级设备。它也已经完成一部分前置初始化，不能理解为 QEMU 尚未创建任何对象。</p>
   <table><thead><tr><th scope="col">控制点</th><th scope="col">解决的问题</th><th scope="col">约束</th></tr></thead><tbody>
     <tr><td>preconfig</td><td>在板级创建前补充允许的机器配置</td><td>QMP 命令集合受限，退出后不能回到此前的配置阶段</td></tr>
@@ -195,6 +195,11 @@ ROM 文件偏移           = 0xfffffff0 - 0xfffc0000 = 0x3fff0
     <tr><td><a href="{{ linux_source }}arch/x86/boot/compressed/head_64.S">压缩内核启动汇编</a>、<a href="{{ linux_source }}arch/x86/kernel/head_64.S">解压后内核启动汇编</a>、<a href="{{ linux_source }}init/main.c">start_kernel / kernel_init</a></td><td>Guest 内核从引导协议入口、架构启动到执行首个用户程序的路径。</td></tr>
     <tr><td><a href="{{ qemu_source }}monitor/qmp-cmds.c#L66-L113">qmp_cont</a>、<a href="{{ qemu_source }}system/cpus.c#L757-L807">vm_start</a></td><td>继续执行前的状态检查、通知与 vCPU 恢复。</td></tr>
   </tbody></table>
+</section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>QEMU 建好整机时，内存、固件和设备已经接在客户机可见的地址空间上；使用 <code>-S</code> 时，vCPU 仍停在复位状态。若能开始取指却找不到系统盘，故障点已从建机转到固件的设备发现或引导选择。启动耗时也应分别记录建机、首次执行与业务就绪。</p>
 </section>
 
 <section id="sources" class="mechanism-section">

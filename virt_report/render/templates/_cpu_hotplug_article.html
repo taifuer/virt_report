@@ -3,7 +3,7 @@
 {% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 {% set libvirt = 'https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/' %}
 <section id="preface" class="mechanism-section">
-  <h2>vCPU 热插拔与客户机状态</h2>
+  <h2>序言</h2>
   <p>vCPU 热插拔用于在虚拟机运行期间调整虚拟处理器数量。热添加由 QEMU 创建 CPU 对象和执行线程，经 ACPI 通知后，客户机发现处理器、初始化每 CPU 状态，并将其上线供调度器使用。热移除则先由客户机迁移任务、中断和定时器，完成下线后，再由 QEMU 撤销相应设备与执行上下文。</p>
   <p>这条路径属于<a href="hotplug.html">虚拟机热插拔</a>的 CPU 资源调整。与 PCIe 设备的插槽枚举不同，x86 PC 机器通过 ACPI CPU 热插拔接口表达处理器的存在与移除请求；新增处理器还受到启动时最大拓扑的约束。</p>
   <p>本文以最大允许 4 个 vCPU、启动时使用 2 个的虚拟机为例，跟踪第三个 vCPU 的添加与移除。先区分预留位置、QEMU CPU 对象与客户机在线状态，再说明 QMP 操作、ACPI 通知、完成事件及源码实现。客户机采用支持 ACPI CPU 热插拔的 Linux，自动上线行为取决于客户机配置。</p>
@@ -18,7 +18,7 @@
     <tr><td>客户机 online</td><td>客户机已完成上线，允许该 CPU 承担调度与中断工作</td><td>客户机 /sys/devices/system/cpu/online</td></tr>
   </tbody></table>
   <p>前三项也各有观察边界。QEMU 创建了设备，客户机可能尚未处理通知；客户机看到了 CPU，也可能按策略保持 offline。把 CPU 在客户机中 offline，通常只是停止使用，QEMU 对象和宿主线程仍可存在；它与从虚拟硬件中移除 CPU 是两件事。</p>
-  <p>Linux 的 <code>possible</code> 集合用于描述内核预先支持的 CPU 范围，通常在启动阶段确定。它还受客户机自身配置影响，不应机械地认为它一定与 QEMU 的 maxcpus 相等。最大拓扑也不代表预留了同样数量的独占物理核，宿主调度与绑核需要另行规划。</p>
+  <p>Linux 的 <code>possible</code> 集合用于描述内核预先支持的 CPU 范围，通常在启动阶段确定。它还受客户机自身配置影响，不应机械地认为它一定与 QEMU 的 maxcpus 相等。最大拓扑限定客户机可用的 vCPU 槽位；物理核分配与绑核由宿主另行安排。</p>
 </section>
 <section id="example" class="mechanism-section">
   <h2>从 2 个 vCPU 扩到 3 个</h2>
@@ -58,7 +58,7 @@ lscpu -e=CPU,ONLINE</code></pre>
 {"event":"DEVICE_DELETED","data":{
   "device":"cpu-extra","path":"/machine/peripheral/cpu-extra"
 }}</code></pre>
-  <p>命令成功表示移除请求已受理。管理程序需要持续接收并关联完成事件，也要能处理事件与响应的不同先后顺序。完成后再次查询可插拔 CPU 列表，该位置应不再包含 qom-path，运行实例列表中也不再包含被删除对象。客户机的 online 列表可能更早变化，不能单独用它证明宿主资源已经释放。</p>
+  <p>命令成功表示移除请求已受理。管理程序需要持续接收并关联完成事件，也要能处理事件与响应的不同先后顺序。完成后再次查询可插拔 CPU 列表，该位置应不再包含 qom-path，运行实例列表中也不再包含被删除对象。客户机的 online 列表可能更早变化，宿主资源是否已释放要在宿主侧核对。</p>
   <p>Libvirt 的 <code>qemuDomainHotplugDelVcpu()</code> 会标记待移除的别名、发送删除请求并等待设备移除；超时错误明确要求重新检查实际结果。事件可能在等待超时后才到达，因此重连后应重新查询状态，再决定是否重试或复用标识。<a href="{{ libvirt }}src/qemu/qemu_hotplug.c#L6709-L6758">Libvirt 的移除等待</a></p>
   <p>使用 Libvirt 管理的虚拟机，应通过其 vCPU 管理接口操作，使运行状态与持久配置保持一致。<code>--live</code>、<code>--config</code> 和客户机内部 online 控制各有不同对象；不要用旁路 QMP 操作后再假定 Libvirt XML 会自动成为预期配置。</p>
 </section>
@@ -77,8 +77,13 @@ lscpu -e=CPU,ONLINE</code></pre>
   <h2>从调整数量到管理完整生命周期</h2>
   <p>早期 CPU 增加接口更强调数量和 CPU 编号。现在的 <code>query-hotpluggable-cpus</code> 配合 <code>device_add/device_del</code>，显式表达空位、设备类型与拓扑，并用异步事件区分请求与完成。ACPI 中保留的旧接口兼容分支也说明，固件描述、机器版本与客户机支持需要一起演进。</p>
   <p>在线扩容减少了重启，但不会自动增加应用并行度或宿主可用算力。新增 vCPU 还需要合适的宿主亲和性、NUMA 放置与客户机线程分配。缩容可降低争抢，也可能让剩余 CPU 的排队和尾延迟上升。应同时观察业务吞吐、尾延迟、客户机 online 状态和宿主调度等待。</p>
-  <p>可用性检查可以分三步：先验证预留位置能否成功创建，再验证客户机是否上线，最后验证移除事件和状态收敛。测试应包含客户机延迟响应或暂不响应的情况；只验证添加命令返回成功，会漏掉最容易出问题的后半段。</p>
 </section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>添加处理器要核对预留的拓扑槽位、QEMU 已创建的 vCPU，以及客户机的 online CPU。移除时还要等客户机下线并交还处理器，再确认 QEMU 的设备移除事件。这样可以区分卡在对象创建、客户机接纳，还是最终拆除。</p>
+</section>
+
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>

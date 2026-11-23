@@ -86,15 +86,15 @@ def test_article_traces_render_decode_and_encode_commands(markers):
     article = SOURCE.read_text()
     for marker in markers:
         assert marker in article
-    assert "不能按 OpenGL 调用次数推算 virtqueue 请求数" in article
-    assert "共享句柄也不意味着整个视频链没有复制" in article
+    assert "一次 ioctl 可以包含多条绘制和状态命令" in article
+    assert "其他阶段仍可能复制数据" in article
 
 
 def test_video_examples_keep_surface_and_feedback_constraints():
     article = SOURCE.read_text()
     assert "选择两端支持的 NV12 输出表面" in article
     assert "该函数等待相关缓冲区可复用" in article
-    assert "成功状态本身不能证明输出缓冲区足够大" in article
+    assert "即使只写回了部分码流，这条路径也会填写 SUCCESS" in article
     assert "普通、不带 FENCE 的命令响应可以早于 GPU 执行完成" in article
 
 
@@ -119,7 +119,7 @@ def test_merged_article_keeps_2d_and_3d_bookmarks_and_a_single_reading_path():
     article = mechanisms.get_article(SLUG)
     assert [section["id"] for section in article["sections"]] == [
         "preface", "resources", "update-flow", "render", "video-support",
-        "walkthrough", "decode", "encode", "completion", "evolution", "sources",
+        "walkthrough", "decode", "encode", "completion", "evolution", "summary", "sources",
     ]
     page = render.render_mechanisms_html(Config(), SLUG)
     for anchor in ("preface", "resources", "update-flow", "interactive", "commands",

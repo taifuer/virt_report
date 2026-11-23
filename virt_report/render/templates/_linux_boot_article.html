@@ -1,7 +1,7 @@
 {% from '_mechanism_diagram.html' import diagram with context %}
 {% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 <section id="preface" class="mechanism-section">
-  <h2>从固件交接到应用运行</h2>
+  <h2>序言</h2>
   <p>Linux 启动逐步建立可供应用使用的执行环境：固件提供最初的机器初始化，引导程序准备内核映像和参数，内核接管 CPU、内存与设备，首个用户进程组织系统服务，最后启动登录程序与业务应用。每一阶段给下一阶段留下明确的代码入口和资源信息。</p>
   <p>本文以 x86-64 Linux 和使用 systemd 的常见发行版为例。BIOS、UEFI 影响前面的引导方式，发行版决定 initramfs 和服务组织；内核的核心职责保持一致。虚拟机中，固件与 Linux 在 vCPU 上执行，磁盘、网卡和中断控制器由虚拟平台提供。</p>
   {% include '_mechanism_baselines.html' %}
@@ -32,7 +32,7 @@
 </section>
 <section id="devices" class="mechanism-section">
   <h2>驱动发现设备，准备访问根文件系统</h2>
-  <p>平台信息与总线枚举提供设备描述，驱动匹配设备并执行 probe，建立寄存器映射、队列、DMA 和中断连接。内建驱动可在内核初始化期间工作；模块驱动需要后续用户空间加载。probe 可能异步执行或因依赖未就绪而推迟，某个初始化函数返回不意味着所有设备已经可用。</p>
+  <p>平台信息与总线枚举提供设备描述，驱动匹配设备并执行 probe，建立寄存器映射、队列、DMA 和中断连接。内建驱动可在内核初始化期间工作；模块驱动需要后续用户空间加载。probe 可能异步执行，也可能因依赖未就绪而推迟；设备就绪时间取决于各自的探测结果。</p>
   <p>例如根文件系统在 virtio-blk 磁盘上，系统必须能使用 virtio 总线、块驱动和对应文件系统。驱动若编成模块且只存在于尚未挂载的根目录，就形成依赖闭环；initramfs 把这些早期必需的模块和工具提前带入内存。</p>
   <p>网卡驱动加载完成后，接口的 IP、路由与业务配置通常仍由用户空间完成。本地磁盘启动一般无需等待网卡联网；网络根文件系统则需要在挂载根之前准备相应网络条件。</p>
 </section>
@@ -61,12 +61,18 @@ systemd-analyze critical-chain
 journalctl -b -k</code></pre>
   <table><thead><tr><th>现象</th><th>优先核对</th></tr></thead><tbody>
     <tr><td>固件找不到引导项</td><td>启动设备、EFI/BIOS 模式、引导程序和磁盘内容。</td></tr>
-    <tr><td>看不到内核日志</td><td>入口和映像兼容性、console= 及实际显示/串口配置；日志不可见本身不足以证明内核未运行。</td></tr>
+    <tr><td>看不到内核日志</td><td>核对内核入口与映像格式，确认 console= 选择的输出设备与实际显示器或串口一致。</td></tr>
     <tr><td>无法挂载根或停在早期 Shell</td><td>root=、UUID、必需驱动、initramfs、解密或卷激活。</td></tr>
     <tr><td>内核启动后等待很久</td><td>驱动探测、挂载、unit 依赖与服务自身的初始化。</td></tr>
   </tbody></table>
   <p>启动耗时应分为固件、引导、内核、早期用户空间和服务阶段。systemd-analyze 的可见范围取决于平台提供的时间信息；critical-chain 也不是所有后台工作和业务延迟的完整记录。</p>
 </section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>启动日志中最后一次成功的交接最有用：引导程序交出内核与参数，有 initramfs 的本例由 PID 1 执行早期 <code>/init</code>；切换到真实根后，同一个 PID 1 换入系统的 init。卡在找根设备时查驱动与 <code>root=</code>；已经进入系统服务阶段，就从失败的服务和依赖入手。</p>
+</section>
+
 <section id="sources" class="mechanism-section">
   <h2>源码与参考资料</h2>
   <ul>

@@ -1,7 +1,7 @@
 {% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 {% from '_mechanism_diagram.html' import diagram with context %}
 <section id="preface" class="mechanism-section">
-  <h2>应用 I/O 与设备 I/O</h2>
+  <h2>序言</h2>
   <p>普通文件 I/O 通过 VFS、文件系统、页缓存和块层衔接应用与设备。缓存命中的读取可以直接返回；缓存缺失时，文件系统把文件区间转换成设备请求。一个系统调用可能对应零个、一个或多个设备命令。</p>
   <p>完成状态随层次而异：读取返回后应用可以使用数据，缓存写入返回后内核负责后续回写，设备请求结束后驱动可以回收资源。持久化还需兑现文件系统与设备的同步约定。同步或异步描述等待与交付方式，并不自动决定持久化强度。</p>
   {% include '_mechanism_baselines.html' %}
@@ -57,18 +57,18 @@
 </section>
 <section id="writes" class="mechanism-section">
   <h2>写入完成与持久化</h2>
-  <table><thead><tr><th>观察到的完成</th><th>通常能够确认</th><th>尚不能据此确认</th></tr></thead><tbody>
-    <tr><td>普通 buffered write 返回</td><td>返回长度对应的数据已被内核接受，通常进入页缓存并标脏</td><td>设备已写完、后续回写不会失败</td></tr>
-    <tr><td>块设备写请求成功完成</td><td>设备按所协商命令语义完成请求，相关资源可进入回收流程</td><td>普通易失写缓存中的数据已经耐断电</td></tr>
-    <tr><td>正确实现栈上的 fsync / fdatasync 成功</td><td>相应文件数据及要求的元数据按接口约定同步</td><td>跨文件事务原子性；新建文件名的目录项也未必由文件 fsync 一并保证</td></tr>
+  <table><thead><tr><th>观察到的完成</th><th>通常能够确认</th><th>还需处理什么</th></tr></thead><tbody>
+    <tr><td>普通 buffered write 返回</td><td>返回长度对应的数据已被内核接受，通常进入页缓存并标脏</td><td>后续回写可能报错；需要持久化时检查同步调用结果</td></tr>
+    <tr><td>块设备写请求成功完成</td><td>设备按所协商命令语义完成请求，相关资源可进入回收流程</td><td>启用易失写缓存时，断电持久性取决于刷新或 FUA 语义</td></tr>
+    <tr><td>正确实现栈上的 fsync / fdatasync 成功</td><td>相应文件数据及要求的元数据按接口约定同步</td><td>新建文件名的持久化还需同步父目录；跨文件事务另需一致性协议</td></tr>
   </tbody></table>
-  <p>写入同样需要完成处理：传播设备错误、结束上层请求、更新回写状态、释放 tag 和缓冲区，并让等待者继续。通知可以被合并或由轮询替代，但不能凭空省略请求完成状态。设备支持的 FLUSH/FUA 用于明确缓存与持久化边界，不能把它们和普通写完成混为一谈。</p>
+  <p>写入同样需要完成处理：传播设备错误、结束上层请求、更新回写状态、释放 tag 和缓冲区，并让等待者继续。驱动通过中断或轮询读取请求完成状态。普通写、FLUSH 和 FUA 对易失缓存有不同的要求。</p>
   <h3>脏页写回与完成处理</h3>
   <p>一次普通 write 可以先把新内容复制到页缓存并标脏，应用随即继续。后台回写或同步调用把脏数据组成设备请求，并跟踪正在写回的状态。完成回调结束这轮写回、记录错误并唤醒相关等待者；若页面在写回期间又被修改，还需要保留再次回写的工作。否则内核既无法安全回收页面，也无法判断 fsync 应该等待什么。</p>
   <p>持久化还跨越设备的易失缓存。<code>REQ_PREFLUSH</code> 要求相关设备缓存先刷出，再开始带该标志的数据 I/O；<code>REQ_FUA</code> 要求这次写的数据达到非易失存储后才报告完成。文件系统据此安排数据、日志和元数据的先后关系，具体组合由文件系统和设备能力决定，见 <a href="{{ linux }}Documentation/block/writeback_cache_control.rst">块层缓存控制约定</a>。</p>
-  <p><code>O_DIRECT</code> 主要影响页缓存路径，不自动等于持久化；异步提交也不等于“不需要完成”。在虚机中，Guest 的 virtio-blk 写请求、QEMU 后端 I/O 和物理存储又是不同层。后端必须兑现 Guest 可见的写缓存与 flush 约定，并通过底层支持的同步机制落实；不能据此推断 virtio-blk 直接暴露了全部物理设备命令。</p>
+  <p><code>O_DIRECT</code> 控制文件数据是否绕过页缓存；持久化仍取决于同步写入或刷新的完成。异步接口通过完成通知交付结果。在虚机中，Guest 的 virtio-blk 写请求、QEMU 后端 I/O 和物理存储又是不同层。后端必须兑现 Guest 可见的写缓存与 flush 约定，并通过底层支持的同步机制落实；virtio-blk 向客户机暴露的是已经协商的块设备命令。</p>
   {{ diagram('linux-write-boundaries', 'write 返回、设备完成与持久化完成', '固定设备有易失写缓存，以数据写入后再 FLUSH 为示例。实际 fsync 还受文件系统日志、元数据、错误及设备能力影响，不一定照此生成两条命令。') }}
-  <p>从上往下看，应用第一次得到的成功仅覆盖缓存写入；中间的设备完成让内核结束那条请求；最后的同步结果才覆盖要求的持久化工作。异步接口可以改变结果的交付方式，却不能把第一条边界直接提升成最后一条。</p>
+  <p>从上往下看，应用第一次得到的成功仅覆盖缓存写入；中间的设备完成让内核结束那条请求；最后的同步结果才覆盖要求的持久化工作。</p>
 </section>
 <section id="queues" class="mechanism-section">
   <h2>队列深度、合并与背压</h2>
@@ -79,10 +79,16 @@
 </section>
 <section id="observe" class="mechanism-section">
   <h2>只读观察与虚拟磁盘</h2>
-  <p><code>/proc/PID/io</code> 区分部分进程级 I/O 计数，<code>/proc/diskstats</code> 提供块设备统计。它们的统计层次不同，预读、缓存、合并和文件系统元数据都会影响对应关系；应看同一时间窗口的增量，而不是直接拿累计字节相除得出命中率。</p>
+  <p><code>/proc/PID/io</code> 区分部分进程级 I/O 计数，<code>/proc/diskstats</code> 提供块设备统计。它们的统计层次不同，预读、缓存、合并和文件系统元数据都会影响对应关系；应比较同一时间窗口内各计数器的增量。</p>
   <p>还可只读查看 <code>/sys/block/设备名/queue/</code> 下存在的 <code>scheduler</code>、<code>nr_requests</code>、<code>logical_block_size</code> 等属性。它们分别描述调度选择、部分请求分配限制与块大小，不能用一个字段代替所有层的队列深度；不同设备驱动暴露的属性也不完全相同。</p>
   <p>虚机应分别观察 Guest、QEMU 和宿主设备：Guest 页缓存命中时没有新的 virtio 请求，宿主页缓存命中时也可能没有物理读。通过 <a href="qemu-virtio-blk.html">磁盘 I/O 演示</a> 可继续观察 Descriptor Table、Buffer、Available Ring、Used Ring 和完成通知。</p>
 </section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>一次应用读取可能命中页缓存，也可能等多个块请求。分析写入则要记清成功返回的是哪一步：数据进入页缓存、块请求完成，还是文件系统完成了同步。分别观察应用等待和设备完成，才能区分缓存、排队与持久化耗时。</p>
+</section>
+
 <section id="sources" class="mechanism-section">
   <h2>源码与参考资料</h2>
   <ul>

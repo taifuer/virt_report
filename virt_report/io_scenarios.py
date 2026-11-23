@@ -388,7 +388,7 @@ def _background_domains(backend: str) -> list[dict[str, str]]:
             {"component": "host-kernel", "title": "Host kernel", "context": "宿主内核 · 网络 I/O",
              "note": "librbd / librados 经宿主网络连接 Ceph；此配置没有将镜像映射成宿主 /dev/rbdX 块设备。"},
             {"component": "hardware", "title": "物理设备", "context": "远端 Ceph 集群 · 演示边界外",
-             "note": "数据存储在集群后端。本图止于 librbd 的异步接口，不将完成回调等同于某块本地磁盘完成。"},
+             "note": "数据存储在集群后端。本图跟踪到 librbd 的异步完成回调；集群内部的存储操作由 Ceph 管理。"},
         ]
     return [
         {"component": "host-kernel", "title": "Host kernel", "context": "宿主内核 · 文件系统与块层",

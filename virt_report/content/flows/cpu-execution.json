@@ -658,7 +658,7 @@
           "title": "观察运算输入",
           "actor": "物理处理器 · Guest 上下文",
           "description": "本次加法的输入为 EAX=41 和立即数 1。",
-          "detail": "输入观察与下一步结果是一次架构指令的展示拆分，不意味着中间插入另一条 Guest 指令。",
+          "detail": "观察输入和执行结果是同一条 Guest 指令的两个步骤。",
           "active": [
             "guest"
           ],
@@ -789,7 +789,7 @@
           "sourceIds": [
             "sdm"
           ],
-          "detail": "以下是演示用汇编，输入状态已经是 EAX=41。识别指令和观察输入是同一指令的教学拆分，不代表两次软件调用。",
+          "detail": "以下是演示用汇编，输入状态已经是 EAX=41。识别指令和读取输入都属于同一条指令。",
           "code": "0x400000: ADD EAX, 1"
         },
         {
@@ -1701,7 +1701,7 @@
           "title": "继续客户机执行",
           "actor": "KVM → 客户机",
           "description": "处理器进入客户机，下一条指令可以使用 EAX 的新值。",
-          "detail": "exit_reason 是上次正常用户态返回的记录，不能把其残留值当成新的待处理请求。这里的第二次 KVM_RUN 仍在执行。",
+          "detail": "exit_reason 保留上一次正常返回用户态时的退出原因，新请求要看本次返回。这里的第二次 KVM_RUN 仍在执行。",
           "active": [
             "guest"
           ],
@@ -1776,7 +1776,7 @@
             "qemu-memory-read",
             "qemu-device-read"
           ],
-          "boundary": "地址空间路由最终调用具体设备的 MemoryRegionOps.read；本例只规定返回值，不虚构具体设备名称。",
+          "boundary": "地址空间路由最终调用具体设备的 MemoryRegionOps.read；本例给出抽象设备的返回值。",
           "entry": {
             "kind": "return",
             "label": "KVM_EXIT_MMIO 使 KVM_RUN 返回，再由 QEMU 分派设备访问"
@@ -2190,8 +2190,8 @@
         "Guest 使用内核 LAPIC，APICv / posted-interrupt processing / virtual-interrupt delivery 已启用，PID 与 VMCS 通知向量匹配。HLT 直通本身不要求 posted；这里另选 posted 唤醒作为固定对照。",
         "同一次设备完成的向量 0x51 由另一宿主 CPU 的 KVM 中断提交上下文发布到 PIR；不使用 VT-d 设备 posting，也不把发送方执行的 KVM 代码算作目标 vCPU 的 VM-exit。",
         "Guest CPL = 0、IF = 1，无 interrupt shadow，优先级允许；初始 PIR[0x51] = 0、ON = 0、SN = 0，无并发通知。EOI-exit bitmap 不要求向量 0x51 退出。",
-        "硬件活动状态表示处理器当前的逻辑状态，不是在每个演示步骤读取 VMCS 的实测值。KVM arch.mp_state 保持 RUNNABLE，不能把硬件 HLT 状态等同于 KVM 软件 HALTED。",
-        "此处只演示 HLT，不把 MONITOR/MWAIT 的监视地址唤醒混入同一条路径。QEMU cpu-pm 默认关闭，实际可用性还受硬件、内核安全策略和虚拟机配置限制。"
+        "硬件活动状态表示处理器当前的逻辑状态，不是在每个演示步骤读取 VMCS 的实测值。此时硬件处于 HLT 状态，KVM 的软件状态 arch.mp_state 仍为 RUNNABLE。",
+        "本例跟踪 HLT；MONITOR/MWAIT 由被监视地址的写入等事件唤醒。QEMU cpu-pm 默认关闭，实际可用性还受硬件、内核安全策略和虚拟机配置限制。"
       ],
       "nodes": [
         {"id": "guest", "label": "Guest idle / IRQ", "role": "客户机内核", "badge": "内核态", "initial": "准备执行 HLT，IF = 1"},
@@ -2203,7 +2203,7 @@
       "layout": {
         "domains": [
           {"id": "guest", "component": "guest", "title": "Guest", "context": "客户机内核 · 空闲与中断处理", "nodes": ["guest"]},
-          {"id": "sender", "component": "kvm", "title": "KVM", "context": "另一宿主 CPU · 异步提交", "nodes": ["sender"], "note": "发送方执行 KVM 代码，不代表目标 vCPU 退出 Guest。"},
+          {"id": "sender", "component": "kvm", "title": "KVM", "context": "另一宿主 CPU · 异步提交", "nodes": ["sender"], "note": "发送方执行 KVM 代码时，目标 vCPU 仍可留在 Guest。"},
           {"id": "qemu", "component": "qemu", "title": "QEMU", "context": "宿主用户态 · 事先配置", "nodes": [], "note": "预先请求关闭 HLT exiting；目标 vCPU 的 KVM_RUN 持续调用中，不返回用户态。"},
           {"id": "host", "component": "host-kernel", "title": "Host kernel", "context": "目标线程 · 调度视角", "nodes": ["thread"], "note": "未调用 schedule / rcuwait。宿主不因这次 Guest 空闲主动换入其他任务。"},
           {"id": "cpu", "component": "hardware", "title": "物理硬件", "context": "同一目标 CPU · non-root 等待", "nodes": ["cpu"]}
@@ -2263,7 +2263,7 @@
         {
           "id": "halt", "title": "直接进入硬件等待", "actor": "目标 CPU · VMX non-root",
           "description": "处理器执行 HLT，进入硬件 HLT 活动状态。HLT 本身没有触发 VM-exit，目标 vCPU 仍处于 non-root。",
-          "detail": "未进入 kvm_emulate_halt、halt polling 或 schedule。KVM 的 mp_state 仍为 RUNNABLE，宿主线程仍为 TASK_RUNNING；这只说明它未被阻塞，不代表 CPU 正在执行指令或忙轮询。硬件 HLT 与 KVM 软件 HALTED 是不同状态。",
+          "detail": "未进入 kvm_emulate_halt、halt polling 或 schedule。KVM 的 mp_state 仍为 RUNNABLE，宿主线程仍为 TASK_RUNNING；它描述宿主线程可运行；此刻物理 CPU 是否在执行指令要看硬件状态。硬件 HLT 与 KVM 软件 HALTED 是不同状态。",
           "active": ["guest", "cpu"], "links": [],
           "changes": {"activity": "HLT（硬件等待）", "rip": "0xffffffff81001001（HLT 之后）"},
           "nodeStates": {"guest": "已执行 HLT，等待中断", "cpu": "non-root · 硬件 HLT", "thread": "TASK_RUNNING，CPU 在硬件等待"},
@@ -2290,7 +2290,7 @@
         {
           "id": "eoi", "title": "Guest 应答中断", "actor": "Guest IRQ / APICv",
           "description": "Guest 按设备协议处理完成，并通过虚拟 APIC EOI 应答本次中断；硬件清除 vISR[0x51]。",
-          "detail": "本例固定 EOI-exit bitmap 不要求退出，不调用宿主的软件 LAPIC EOI 处理。这里不展开设备数据处理，也不把 EOI 当成新的完成通知。",
+          "detail": "本例固定 EOI-exit bitmap 不要求退出，不调用宿主的软件 LAPIC EOI 处理。这里的 EOI 应答的是本次中断。",
           "active": ["guest", "cpu"], "links": [], "changes": {"isr": "0"},
           "nodeStates": {"guest": "已应答，准备返回 idle", "cpu": "non-root · vISR[0x51] = 0"},
           "sourceIds": ["sdm"], "focus": true
@@ -2963,7 +2963,7 @@
       "summary": "A 休眠后客户机没有其他可运行任务，idle 执行 HLT。宿主定时器先唤醒 vCPU 线程，取得物理 CPU 后才递送 Guest 定时中断，最后由 Guest 调度 A。",
       "assumptions": [
         "单 vCPU 的 x86-64 Linux 6.18 客户机，QEMU 10.2.0 / KVM；普通非 PREEMPT_RT 内核，A 休眠后该 vCPU 没有其他可运行的普通任务。",
-        "A 调用 nanosleep({0, 1000000}, NULL)，无信号打断。D 是 Guest 根据请求、当前时间和 timer slack 选定的下一 clockevent 时刻；本例不承诺恰好 1 ms 后返回。",
+        "A 调用 nanosleep({0, 1000000}, NULL)，无信号打断。D 是 Guest 根据请求、当前时间和 timer slack 选定的下一 clockevent 时刻；实际返回时间取决于唤醒与调度。",
         "Guest 高分辨率定时器与 TSC-deadline 已启用。固定为宿主软件 hrtimer 分支，提前量为 0；不启用 VMX 硬件定时辅助、APICv 或 posted timer。",
         "Guest 空闲路径使用 HLT，不使用 MWAIT 或 Guest halt polling；KVM 拦截 HLT，宿主 halt-poll 预算为 0。进入等待后没有其他事件提前唤醒。",
         "虚拟定时向量未屏蔽，Guest IF、interrupt shadow 与 APIC 优先级允许接受。宿主到期后有一段运行队列等待，再调度该 vCPU；Guest 随后运行到期回调并选择 A。"
@@ -3564,7 +3564,7 @@
           "title": "nanosleep 返回用户态",
           "actor": "Guest 用户态 · 任务 A",
           "description": "休眠等待完成，nanosleep 返回 0，A 继续运行。",
-          "detail": "延迟可能来自定时安排、宿主运行队列、Guest 中断处理和 Guest 调度。仅有“定时器已经到期”不足以判断用户代码何时继续；本次 KVM_RUN 始终没有返回 QEMU 用户态。",
+          "detail": "延迟可能来自定时安排、宿主运行队列、Guest 中断处理和 Guest 调度。用户代码恢复的时刻还要看中断投递和线程调度；本次 KVM_RUN 始终没有返回 QEMU 用户态。",
           "active": [
             "app"
           ],

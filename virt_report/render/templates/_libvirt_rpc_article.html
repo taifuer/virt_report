@@ -2,10 +2,10 @@
 {% set libvirt_source = 'https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>Libvirt RPC 与跨进程状态查询</h2>
+  <h2>序言</h2>
   <p>应用程序调用 Libvirt API 时，连接 URI 决定请求交给哪个驱动。对于常见的 <code>qemu:///system</code> 连接，客户端通过 RPC 访问管理守护进程，再由服务端 QEMU 驱动处理虚拟机对象。应用拿到的 <code>virDomainPtr</code> 是本进程中的句柄，跨进程传输的是对象标识与参数。</p>
   <p>本文跟踪一次 <code>virDomainGetInfo()</code>：查询已有虚拟机的状态、内存、vCPU 数和 CPU 时间。连接建立与认证已完成；传输采用本机 UNIX socket，服务端可以是 <code>libvirtd</code> 或模块化的 <code>virtqemud</code>。</p>
-  <p>以虚拟机 <code>demo</code> 为例，客户端把 UUID 等标识编码进 CALL；服务端按过程号选择查询函数，用 UUID 找到对象，再把结果放入 REPLY。客户端靠调用序号找到原等待者。编码解决跨进程表示，分发决定执行哪项操作，序号解决多个调用并发时的响应归属，下面依次展开这三段。</p>
+  <p>以虚拟机 <code>demo</code> 为例，客户端把 UUID 等标识编码进 CALL；服务端按过程号选择查询函数，用 UUID 找到对象，再把结果放入 REPLY。客户端靠调用序号找到原等待者。编码解决跨进程表示，分发决定执行哪项操作，序号解决多个调用并发时的响应归属。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -53,7 +53,7 @@
 <section id="dispatch" class="mechanism-section">
   <h2>服务端分发与对象查询</h2>
   {{ diagram('libvirt-rpc-dispatch', '一次 virDomainGetInfo 调用的往返', '客户端和服务端分别绑定 remote 与 QEMU 驱动。UUID 用于定位服务端对象，响应通过同一连接上的 program、version、serial 匹配等待者。') }}
-  <p>服务端按 program/version 找程序，按 proc 找 <code>virNetServerProgramProc</code>。该表项包含处理函数、参数与返回结构大小、XDR 过滤函数和认证要求。通用分发器检查认证，解码参数，设置当前客户端身份，再调用过程处理函数；QEMU 驱动随后执行对象级 ACL 检查。认证通过只说明客户端身份可被接受，仍需判断它能否读取目标虚拟机。<a href="{{ libvirt_source }}src/rpc/virnetserverprogram.c#L360-L423">通用分发</a></p>
+  <p>服务端按 program/version 找程序，按 proc 找 <code>virNetServerProgramProc</code>。该表项包含处理函数、参数与返回结构大小、XDR 过滤函数和认证要求。通用分发器检查认证，解码参数，设置当前客户端身份，再调用过程处理函数；QEMU 驱动随后执行对象级 ACL 检查。认证确认客户端身份，读取目标虚拟机还要经过授权。<a href="{{ libvirt_source }}src/rpc/virnetserverprogram.c#L360-L423">通用分发</a></p>
   <p>生成的 <code>remoteDispatchDomainGetInfo()</code> 从客户端上下文取得服务端连接，把 <code>name/uuid/id</code> 转成本地句柄，再调用公开 API。QEMU 驱动通过 UUID 查找并锁住 <code>virDomainObj</code>。这段代码位于 Libvirt 守护进程中，从管理对象取得状态、内存和 vCPU 信息；对活跃实例，再按其 QEMU PID 读取宿主进程 CPU 时间。RPC 的实际工作因而包含对象查询与宿主统计读取，而不要求每项字段都另发 QMP。<a href="{{ libvirt_source }}src/qemu/qemu_domain.c#L427-L453">对象查找</a>、<a href="{{ libvirt_source }}src/qemu/qemu_driver.c#L2438-L2490">GetInfo 实现</a></p>
   <p>名称便于展示，运行时 ID 随实例启动而分配，UUID 则用于这里的对象定位。客户端持有旧句柄时，服务端对象可能已经删除或状态改变，因此发送一个曾经有效的 ID 不能跳过查找与权限检查。获得句柄和执行查询属于不同时间点，对象锁只保护本次访问的一致性。</p>
   <p>返回值填入 <code>remote_domain_get_info_ret</code>，RPC 层复用请求头，只把 type 改为 REPLY、status 改为 OK，再编码载荷并加入发送队列。本例由此生成前节的 60 字节响应，保留 serial 42。服务端查询已结束，客户端仍需收齐消息、找到原等待者并解码结果，才能完成这次 API 调用。两端样板代码由<a href="{{ libvirt_source }}src/rpc/gendispatch.pl">协议生成器</a>维护。</p>
@@ -72,7 +72,11 @@
   <h2>协议复用、接口扩展与兼容成本</h2>
   <p>RPC 起初服务于客户端库与 libvirtd 的通信，后来公共消息、连接和分发代码独立为可复用的 RPC 基础设施。program/version 选择一组协议，procedure 选择其中的操作，具体参数则由各自的 XDR 定义。新服务因而可以复用消息收发和认证，而不必把所有业务都塞进同一张过程表。<a href="{{ libvirt_source }}docs/kbase/internals/rpc.rst">RPC 架构文档</a></p>
   <p>这种分离也有维护约束：过程号和已经发布的字段布局需要保持兼容，公共编解码成功后仍要做业务权限与参数检查。客户端和服务端由同一协议定义生成样板，减少手写两份编码的偏差，但不能替代对接口语义的设计。后来的<a href="libvirt-internals.html#evolution">守护进程拆分</a>改变了消息最终到达的进程，上层 API 和 RPC 边界得以保留。</p>
-  <p>对本例，可以依次核对四个结果：完整请求已按 length 接收；proc=16 已分派；UUID 查询取得对象；serial=42 的响应已交回调用者。请求延迟可能出现在连接、RPC 排队或驱动执行中，应分段定位；一次网络往返时间不能代表整次 API 调用的全部耗时。</p>
+</section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>对本例，可以依次核对四个结果：完整请求已按 length 接收；proc=16 已分派；UUID 查询取得对象；serial=42 的响应已交回调用者。请求延迟可能出现在连接、RPC 排队或驱动执行中，应分段定位；API 调用耗时还包括服务端处理与等待时间。</p>
 </section>
 
 <section id="sources" class="mechanism-section">

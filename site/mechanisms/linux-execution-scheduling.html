@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=1934a7814284">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1934a7814284">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=5eb1bb7dc04a">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=5eb1bb7dc04a">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -50,10 +50,10 @@
   <div class="mechanism-layout">
     <nav class="mechanism-toc" aria-label="文章目录">
       <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
-      <ol id="mechanism-toc-links"><li><a href="#preface">一、线程与执行上下文</a></li><li><a href="#history">二、从时间片调度到 CFS 与 EEVDF</a></li><li><a href="#objects">三、进程、线程与共享资源</a></li><li><a href="#lifecycle">四、创建、执行新程序与退出</a><ol><li><a href="#lifecycle-part-1">信号的生成、挂起与处理</a></li></ol></li><li><a href="#states">五、任务状态与运行队列</a></li><li><a href="#path">六、阻塞、唤醒与上下文切换</a><ol><li><a href="#path-part-1">1. 从用户指令进入内核</a></li><li><a href="#path-part-2">2. 切换时的寄存器与内核栈</a></li><li><a href="#path-part-3">3. 用户锁与 futex 等待</a></li></ol></li><li><a href="#policy">七、公平调度与资源约束</a><ol><li><a href="#policy-part-1">1. 按权重计算虚拟运行时间</a></li><li><a href="#policy-part-2">2. 资格与虚拟截止时间</a></li></ol></li><li><a href="#placement">八、选择任务、选择 CPU 与限制资源</a></li><li><a href="#observe">九、只读观察与虚拟化对照</a></li><li><a href="#sources">十、源码与参考资料</a></li></ol>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a></li><li><a href="#history">二、从时间片调度到 CFS 与 EEVDF</a></li><li><a href="#objects">三、进程、线程与共享资源</a></li><li><a href="#lifecycle">四、创建、执行新程序与退出</a><ol><li><a href="#lifecycle-part-1">信号的生成、挂起与处理</a></li></ol></li><li><a href="#states">五、任务状态与运行队列</a></li><li><a href="#path">六、阻塞、唤醒与上下文切换</a><ol><li><a href="#path-part-1">1. 从用户指令进入内核</a></li><li><a href="#path-part-2">2. 切换时的寄存器与内核栈</a></li><li><a href="#path-part-3">3. 用户锁与 futex 等待</a></li></ol></li><li><a href="#policy">七、公平调度与资源约束</a><ol><li><a href="#policy-part-1">1. 按权重计算虚拟运行时间</a></li><li><a href="#policy-part-2">2. 资格与虚拟截止时间</a></li></ol></li><li><a href="#placement">八、选择任务、选择 CPU 与限制资源</a></li><li><a href="#observe">九、只读观察与虚拟化对照</a></li><li><a href="#summary">十、总结</a></li><li><a href="#sources">十一、源码与参考资料</a></li></ol>
     </nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">一、</span>线程与执行上下文</h2>
+  <h2><span class="mechanism-heading-number">一、</span>序言</h2>
   <p>Linux 用 <code>task_struct</code> 描述可调度的任务。同一进程的多个线程通常共享地址空间和文件表，各自保留寄存器现场、内核栈和调度状态。</p>
   <p>线程调用 <code>read()</code> 时，由该线程进入内核执行系统调用。需要等待数据或发生抢占时，调度器才可能切换到其他任务。用户态到内核态的转换改变执行权限，线程上下文切换则改变当前运行的任务。</p>
 <p class="mechanism-baselines">源码版本：Linux 6.18。</p></section>
@@ -73,9 +73,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看三个时期，三种选择依据" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="三个时期，三种选择依据">
-    <img src="../assets/linux-scheduler-evolution.svg?v=1934a7814284" alt="比较的是普通调度主线：O(1) 的优先级数组、CFS 的公平进度，以及 EEVDF 的资格与截止时间；不包含实时调度类。" loading="lazy">
+    <img src="../assets/linux-scheduler-evolution.svg?v=5eb1bb7dc04a" width="837" height="260" alt="比较的是普通调度主线：O(1) 的优先级数组、CFS 的公平进度，以及 EEVDF 的资格与截止时间；不包含实时调度类。" loading="lazy">
   </div>
-  <figcaption>比较的是普通调度主线：O(1) 的优先级数组、CFS 的公平进度，以及 EEVDF 的资格与截止时间；不包含实时调度类。 <a href="../assets/linux-scheduler-evolution.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>比较的是普通调度主线：O(1) 的优先级数组、CFS 的公平进度，以及 EEVDF 的资格与截止时间；不包含实时调度类。 <a href="../assets/linux-scheduler-evolution.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart LR
     accTitle: O1、CFS 和 EEVDF 的选择依据
     accDescr: O1 通过优先级数组和位图选择任务，CFS 按权重记账并偏向虚拟运行时间较小的实体，EEVDF 先判断服务资格再比较虚拟截止时间。三者是普通调度主线的历史演变，不包含所有调度类。
@@ -145,9 +145,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看等待、唤醒与重新运行" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="等待、唤醒与重新运行">
-    <img src="../assets/linux-task-wakeup.svg?v=1934a7814284" alt="图示需要等待的读取；完成时只使任务重新可运行，不保证立即获得 CPU。" loading="lazy">
+    <img src="../assets/linux-task-wakeup.svg?v=5eb1bb7dc04a" width="1278" height="80" alt="图示需要等待的读取；完成时只使任务重新可运行，不保证立即获得 CPU。" loading="lazy">
   </div>
-  <figcaption>图示需要等待的读取；完成时只使任务重新可运行，不保证立即获得 CPU。 <a href="../assets/linux-task-wakeup.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>图示需要等待的读取；完成时只使任务重新可运行，不保证立即获得 CPU。 <a href="../assets/linux-task-wakeup.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart LR
     accTitle: 阻塞任务从等待到重新执行
     accDescr: 任务登记等待条件并睡眠，CPU 可执行其他任务。完成路径唤醒等待任务，只使其重新可运行；调度器选中后才恢复执行。
@@ -193,9 +193,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看先过资格门槛，再比较截止时间" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="先过资格门槛，再比较截止时间">
-    <img src="../assets/linux-eevdf-choice.svg?v=1934a7814284" alt="取上表 B 运行了 1 ms 后的状态：本轮 A 合格，B 不合格。虚拟截止时间只在合格候选者之间比较，短请求不能无限插队。" loading="lazy">
+    <img src="../assets/linux-eevdf-choice.svg?v=5eb1bb7dc04a" width="488" height="522" alt="取上表 B 运行了 1 ms 后的状态：本轮 A 合格，B 不合格。虚拟截止时间只在合格候选者之间比较，短请求不能无限插队。" loading="lazy">
   </div>
-  <figcaption>取上表 B 运行了 1 ms 后的状态：本轮 A 合格，B 不合格。虚拟截止时间只在合格候选者之间比较，短请求不能无限插队。 <a href="../assets/linux-eevdf-choice.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>取上表 B 运行了 1 ms 后的状态：本轮 A 合格，B 不合格。虚拟截止时间只在合格候选者之间比较，短请求不能无限插队。 <a href="../assets/linux-eevdf-choice.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: EEVDF 把资格与截止时间选择分成两步
     accDescr: 在简化同权重例子中，A 的虚拟运行时间为零，B 为一，平均进度为零点五。A 欠服务而合格，B 已超额而暂不合格，不能只凭 B 请求较短一直选择 B。候选实体先通过资格判断，再比较截止时间。
@@ -219,7 +219,7 @@
 </section>
 <section id="observe" class="mechanism-section">
   <h2><span class="mechanism-heading-number">九、</span>只读观察与虚拟化对照</h2>
-  <p>可在自己的实验机用 <code>ps -eLo pid,tid,psr,stat,comm</code> 区分进程和线程，用 <code>/proc/PID/task/TID/status</code> 查看任务状态与切换计数。PSR 是最近使用的 CPU，不承诺后续固定在那里；采样也可能错过短暂的运行和等待。读取这些信息不需要改变调度策略，权限仍取决于系统配置。</p>
+  <p>可在自己的实验机用 <code>ps -eLo pid,tid,psr,stat,comm</code> 区分进程和线程，用 <code>/proc/PID/task/TID/status</code> 查看任务状态与切换计数。PSR 显示线程最近运行的 CPU，后续调度可将它迁到别处；采样也可能错过短暂的运行和等待。读取这些信息不需要改变调度策略，权限仍取决于系统配置。</p>
   <table><thead><tr><th>观察入口</th><th>可以回答的问题</th><th>统计边界</th></tr></thead><tbody>
     <tr><td><code>/proc/PID/task/TID/status</code></td><td>线程标识、状态、允许的 CPU，以及自愿／非自愿切换计数</td><td>切换次数不包含每次等待持续了多久</td></tr>
     <tr><td><code>/proc/PID/task/TID/stat</code></td><td>累计用户态、内核态 CPU 时间</td><td>时间字段按时钟滴答计，阻塞期间没有持续累加为执行时间</td></tr>
@@ -230,8 +230,14 @@
   <p>QEMU 的 vCPU 线程仍是宿主可调度任务。Guest 调度器先决定让哪个 Guest 线程占用 vCPU，宿主调度器再决定该 vCPU 线程何时占用物理 CPU；Guest 已经“可运行”，宿主却可能没给它 CPU。VM-exit 只是离开 Guest 执行环境，宿主线程可以继续在 KVM 中处理，并不必然被换出。</p>
   <p>Guest 空闲时，HLT exiting 与 halt polling 等配置决定宿主是否继续执行、轮询或睡眠，见 <a href="kvm-vcpu-halt.html">KVM vCPU 阻塞、轮询与唤醒</a>。</p>
 </section>
+
+<section id="summary" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">十、</span>总结</h2>
+  <p>系统调用可以在当前线程上直接返回；等待数据才可能让出 CPU。定位一次迟到，把线程睡眠到被唤醒的时间与唤醒后排队等 CPU 的时间分开。前者看等待的资源，后者看可运行线程、亲和性和 CPU 配额。</p>
+</section>
+
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">十、</span>源码与参考资料</h2>
+  <h2><span class="mechanism-heading-number">十一、</span>源码与参考资料</h2>
   <ul>
     <li><a href="https://man7.org/linux/man-pages/man2/clone.2.html">clone / clone3 的资源共享</a>、<a href="https://man7.org/linux/man-pages/man2/execve.2.html">execve 的程序替换</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/exit.c#L1162">退出状态与 wait 回收</a>。</li>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/sched/core.c#L4107">调度核心：唤醒的同步约定</a>；<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/kernel/sched/fair.c#L930">公平类的 EEVDF 选择</a>。</li>
@@ -248,6 +254,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=1934a7814284" defer></script>
+<script src="../assets/mechanism-viewer.js?v=5eb1bb7dc04a" defer></script>
 </body>
 </html>

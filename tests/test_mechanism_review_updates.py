@@ -88,7 +88,7 @@ def test_interrupt_guide_locates_controllers_and_separates_observation_sides():
                    "lspci -vv -s 0000:00:03.0", "cat /proc/interrupts",
                    "在客户机执行，只查询状态", "宿主的 <code>/proc/interrupts</code>"):
         assert marker in html
-    assert "不能证明宿主启用了 irqfd 或 APICv" in html
+    assert "irqfd 和 APICv 的启用情况要在宿主核对" in html
     source = (Path(__file__).resolve().parents[1] / "virt_report/content/diagrams"
               / "interrupt-controller-paths.mmd").read_text()
     for group in ("subgraph DEVICE", "subgraph PLATFORM", "subgraph PROCESSOR"):

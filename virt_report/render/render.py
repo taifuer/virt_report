@@ -9,6 +9,7 @@ import shutil
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
+from xml.etree import ElementTree
 from zoneinfo import ZoneInfo
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -406,6 +407,21 @@ def render_versions_html(config: Config, content: dict) -> str:
     )
 
 
+@lru_cache(maxsize=1)
+def _mechanism_diagrams() -> dict[str, dict]:
+    """Reserve offline figures' intrinsic space before lazy images load."""
+    diagrams = {}
+    for name in MECHANISM_DIAGRAM_NAMES:
+        svg = ElementTree.parse(ASSETS_DIR / f"{name}.svg").getroot()
+        diagrams[name] = {
+            "width": round(float(svg.attrib["width"])),
+            "height": round(float(svg.attrib["height"])),
+            "source": (ASSETS_DIR.parents[1] / "content" / "diagrams" / f"{name}.mmd"
+                       ).read_text(encoding="utf-8"),
+        }
+    return diagrams
+
+
 @lru_cache(maxsize=64)
 def _render_mechanism_page(site_name: str, slug: str | None) -> str | None:
     """Render immutable editorial pages once; no database or network work."""
@@ -445,9 +461,7 @@ def _render_mechanism_page(site_name: str, slug: str | None) -> str | None:
         topic=mechanisms.get_topic(article["topic"]) if article else None,
         root="../" if article else "",
         site_name=site_name, mechanism_asset_version=digest.hexdigest()[:12],
-        mechanism_diagrams={name: {"source": (
-            ASSETS_DIR.parents[1] / "content" / "diagrams" / f"{name}.mmd"
-        ).read_text(encoding="utf-8")} for name in MECHANISM_DIAGRAM_NAMES} if article else {},
+        mechanism_diagrams=_mechanism_diagrams() if article else {},
     )
     if article:
         stylesheets = [article.get("stylesheet"), *article.get("extra_stylesheets", ())]

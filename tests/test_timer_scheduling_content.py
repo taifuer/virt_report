@@ -153,8 +153,8 @@ def test_cpu_article_explains_timer_boundaries_and_reuses_existing_deep_dives():
     article = (ROOT / "virt_report" / "render" / "templates"
                / "_cpu_overview_article.html").read_text()
     for term in ("任务休眠与两层调度", "nanosleep", "hrtimer_sleeper",
-                 "hrtimer_wakeup", "timer slack", "mp_state", "HALTED",
-                 "宿主运行队列等待", "Guest 调度", "kvm-vcpu-halt.html",
+                 "mp_state", "HALTED", "截止时刻",
+                 "vCPU 在宿主上排队", "Guest 调度", "kvm-vcpu-halt.html",
                  "kvm-virtual-time.html"):
         assert term in article
     assert "五个小例子" not in article

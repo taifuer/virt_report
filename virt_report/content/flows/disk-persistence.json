@@ -625,7 +625,7 @@
           "title": "确认完成边界",
           "actor": "应用与存储契约",
           "description": "应用已得到成功返回，B 的稳定存储状态仍未确认。",
-          "detail": "后台写回可能随后推进；本演示停在尚未回写的一个合法时刻。宿主掉电时不能依靠这次普通返回证明 B 可恢复。",
+          "detail": "后台写回可能随后推进；本演示停在尚未回写的一个合法时刻。普通写返回时 B 仍可能在易失缓存中。",
           "active": [],
           "links": [],
           "changes": {
@@ -1216,7 +1216,7 @@
           "title": "发布 FLUSH 完成",
           "actor": "QEMU virtio-blk",
           "description": "后端刷新成功，QEMU 为第二条命令发布 OK 与 used。",
-          "detail": "只有成功的刷新结果才能支撑这个完成边界；实际程序仍需检查错误，不能把失败返回当作持久化成功。",
+          "detail": "只有成功的刷新结果才能支撑这个完成边界；实际程序需检查刷新是否成功。",
           "active": [
             "qemu",
             "queue"
@@ -1664,7 +1664,7 @@
           "title": "落实 FUA 要求",
           "actor": "QEMU 文件后端",
           "description": "raw threads 写操作成功后执行 bdrv_co_flush()，等待 fdatasync 完成。",
-          "detail": "这是选定后端对 FUA 的实现。Guest 队列仍只有一条 WRITE FUA；支持原生 FUA 的其他后端可采用不同实现，不能据此假定所有 FUA 都会发送独立 FLUSH。",
+          "detail": "这是选定后端对 FUA 的实现。Guest 队列仍只有一条 WRITE FUA；支持原生 FUA 的后端可直接执行带 FUA 的写入；独立 FLUSH 是本例后端的实现方式。",
           "active": [
             "qemu",
             "host-cache"
@@ -1772,7 +1772,7 @@
           "title": "完成本次块请求",
           "actor": "Guest 完成路径 / 上层请求方",
           "description": "Guest 消费完成，上层收到该块请求成功完成的结果，并可回收本次请求的数据缓冲区。",
-          "detail": "此时本次 B 已获得 FUA 保证。该块请求的完成不代表外层系统调用已经结束其他同步。FUA 不承诺一组写入的原子性，也不替代文件系统事务或目录同步。",
+          "detail": "此时本次 B 已获得 FUA 保证。该块请求完成后，外层系统调用还需完成其余同步工作。FUA 约束单次写入的持久性；多次写入的原子性、文件系统事务和目录同步另有要求。",
           "active": [
             "queue",
             "guest",

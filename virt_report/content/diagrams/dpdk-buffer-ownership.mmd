@@ -1,6 +1,6 @@
 flowchart TB
     accTitle: 客户机链、DPDK mbuf 与物理发送环
-    accDescr: 客户机链和 mbuf 之间有复制边界；mbuf 数据被物理网卡 DMA 读取。客户机链在复制结束后可以归还；mbuf 保留到硬件结束对它的使用，再由 PMD 清理。缓冲区回收不代表远端收到报文。
+    accDescr: 客户机链和 mbuf 之间有复制边界；mbuf 数据被物理网卡 DMA 读取。客户机链在复制结束后可以归还；mbuf 保留到硬件结束对它的使用，再由 PMD 清理。远端接收要在对端确认。
     A["avail.ring[0] = 0<br/>avail.idx = 1"]
     D0["desc[0]<br/>addr 0x1000 · len 12<br/>NEXT → 2"]
     D2["desc[2]<br/>addr 0x2000 · len 60<br/>链结束"]

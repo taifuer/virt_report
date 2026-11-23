@@ -41,6 +41,7 @@ def test_only_one_endpoint_can_run_and_dma_requires_running_device(runs):
             if state["targetCpu"]:
                 assert state["validated"] and state["ramFinal"] and state["deviceFinal"]
                 assert state["sourceRam"] == state["targetRam"]
+                assert state["sourceVram"] == state["targetVram"]
                 assert state["stopped"]
 
 
@@ -86,6 +87,24 @@ def test_device_tail_needs_validation_before_destination_runs(runs):
         assert last["sourceDevice"] == "STOP" and not last["sourceCpu"]
 
 
+def test_gpu_framebuffer_and_guest_ram_travel_on_separate_paths(runs):
+    for mode in ("precopy", "stopcopy"):
+        by_key = {state["key"]: state for state in runs[mode]}
+        # After the final write, the precopy path still needs F; stop-copy needs F and G.
+        paused = by_key["pause-cpu"]
+        assert paused["sourceVram"] == [3, 1]
+        assert paused["targetVram"] == ([2, 1] if mode == "precopy" else [0, 0])
+        ram = by_key["final-ram"]
+        assert ram["targetRam"] == ram["sourceRam"]
+        assert ram["targetVram"] == paused["targetVram"]
+        device = by_key["final-device"]
+        assert device["targetVram"] == device["sourceVram"]
+        assert device["targetRam"] == ram["targetRam"]
+        assert not device["targetCpu"]
+    iteration = next(s for s in runs["precopy"] if s["key"] == "vram-iterate")
+    assert iteration["sourceCpu"] and iteration["transferDevice"] and not iteration["transferRam"]
+
+
 def test_cancel_is_confined_to_running_source_and_resets_incoming_session(runs):
     states = runs["cancel"]
     assert all(state["sourceCpu"] and state["sourceDma"] for state in states)
@@ -102,6 +121,7 @@ def test_cancel_is_confined_to_running_source_and_resets_incoming_session(runs):
     last = states[-1]
     assert last["sourceDevice"] == "RUNNING" and last["targetDevice"] == "STOP"
     assert last["targetRam"] == [0, 0, 0, 0]
+    assert last["targetVram"] == [0, 0] and last["sourceVram"] == [2, 1]
     assert last["cancelled"] and last["done"] and last["authority"] == "source"
 
 
@@ -128,7 +148,9 @@ for (const mode of m.MODES) {
   assert.deepEqual(m.back(s), s);
   const frames = m.buildRun(mode);
   frames[0].sourceRam[0] = 900;
+  frames[0].sourceVram[0] = 900;
   assert.equal(frames[1].sourceRam[0], 1);
+  assert.equal(frames[1].sourceVram[0], 1);
 }
 assert.throws(() => m.buildRun('invalid'), RangeError);
 for (const index of [-1, 1.5, NaN, 100]) {

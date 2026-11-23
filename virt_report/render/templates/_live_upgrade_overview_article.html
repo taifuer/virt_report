@@ -1,8 +1,8 @@
 {% from '_mechanism_diagram.html' import diagram with context %}
 {% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 <section id="preface" class="mechanism-section">
-  <h2>更新承载软件，保留客户机的运行状态</h2>
-  <p>虚拟机运行期间，QEMU、KVM 或设备支持代码可能需要修复和升级。热升级的目标是让新实现接管同一台客户机，保留内存内容、执行位置与设备状态，避免客户机重新启动。交接通常仍有暂停窗口，业务连接是否连续还取决于停顿、设备和外部网络。</p>
+  <h2>序言</h2>
+  <p>热升级是在同一台宿主机上更新承载虚机的软件，让客户机保留内存、CPU 和设备状态并继续运行。更新 QEMU 可以保留原来的宿主内核；更新 KVM 则要把仍在使用的内核状态交给新实现。带直通设备的虚机还要保住在途 DMA 和完成通知。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 <section id="scope" class="mechanism-section">
@@ -12,19 +12,12 @@
     <tr><td><a href="kvm-live-upgrade.html">KVM 热升级</a></td><td>替换承载客户机执行的 KVM 实现，接管内核对象及运行状态</td><td>Orthus / Dual KVM 允许新旧 KVM 共存，逐台交接；HyperFresh 和字节跳动方案也需要各自的专门改造</td></tr>
     <tr><td>VFIO 设备连续性</td><td>在 VMM 升级期间保留直通设备及 DMA、IOMMU、中断关联</td><td>设备 fd 和映射保留、通知解绑与重绑，或设备支持的停止与恢复协议</td></tr>
   </tbody></table>
-  <p>VFIO 是把设备访问、DMA 隔离和中断交给用户态 VMM 的接口。这里讨论的“VFIO 热升级”是升级过程中的直通设备交接：它不等于可以在线替换任意 vfio-pci 驱动、厂商内核模块或设备固件。升级这些组件需要另行验证厂商能力、设备复位行为和资源保留条件。</p>
+  <p>表中的 VFIO 指 VMM 更换时如何接手原设备。替换厂商驱动或设备固件是另一项操作，取决于设备支持的更新和复位方式。</p>
 </section>
 <section id="handoff" class="mechanism-section">
   <h2>准备、冻结、接管与清理</h2>
   {{ diagram('live-upgrade-handoff', '执行权与资源的交接', '切换时旧实例停止执行，新实例接管客户机状态及必要资源；确认成功后再释放旧对象。资源保留和失败恢复能力由具体方案决定。') }}
-  <ol>
-    <li><strong>准备新实现：</strong>核对机器与状态格式兼容性，准备内存映射和后端资源；可提前完成的工作放在暂停窗口之前。</li>
-    <li><strong>冻结旧实例：</strong>停止 vCPU，并按各后端协议收尾在途 I/O，建立可恢复的一致状态。</li>
-    <li><strong>交接状态与资源：</strong>保留或转交 RAM、资源句柄，恢复 CPU 寄存器、设备状态、路由和定时器。</li>
-    <li><strong>新实例继续执行：</strong>确认数据与通知路径可用后放行客户机；旧实例保持停止。</li>
-    <li><strong>清理旧资源：</strong>新实例接管成功后释放旧对象，核对没有泄漏或残留的设备访问权。</li>
-  </ol>
-  <p>跨主机迁移通常要搬运 RAM；同机升级有机会保留原内存后备，显著减少复制工作。用户态地址、对象指针及内核对象可能变化，所以仍需把持久的客户机状态与临时实现状态分开处理。</p>
+  <p>同机升级可以把原 RAM 后备交给新进程，省去整机内存复制；旧进程的对象指针却只在自己的地址空间有效。暂停之前可以准备后备映射、核对状态格式。暂停期间需要交接的是最后仍会变化的状态，如 vCPU 寄存器、设备队列和待处理的中断。</p>
 </section>
 <section id="vfio" class="mechanism-section">
   <h2>VFIO：保持 DMA 与完成通知连续</h2>
@@ -33,9 +26,8 @@
   <p>同机升级可保留原物理设备；跨机迁移需要把设备状态导出并恢复到兼容目标设备。两种能力需分别验证。</p>
 </section>
 <section id="evaluation" class="mechanism-section">
-  <h2>验证兼容性、停顿与失败处理</h2>
-  <p>新实例尚未执行时，方案可能允许继续使用旧实例；新实例已修改共享 RAM 或磁盘后，旧状态就不能直接恢复。需要分别测试准备失败、冻结后失败和接管后失败，并检查是否仍有设备访问旧映射、通知旧 vCPU。</p>
-  <p>暂停时间从旧实例停止到新实例恢复执行测量；业务恢复还受连接超时、网络和应用调度影响。确认状态与请求连续后，再评价暂停窗口和资源开销。</p>
+  <h2>总结</h2>
+  <p>接管点决定故障时可以回到哪里。新实例开始执行前，旧实例可能仍有完整状态可供恢复。如果新实例已修改共享 RAM 或磁盘，此时回退到旧寄存器和设备状态，会让执行进度与数据错位。验收时分别记录 vCPU 暂停时间与业务请求中断时间。</p>
 </section>
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>

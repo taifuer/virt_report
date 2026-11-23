@@ -23,6 +23,32 @@ def test_embedded_demos_belong_to_canonical_articles():
         assert 'id="execution-demo-data"' in page
 
 
+def test_directory_demo_links_match_real_widgets_in_all_published_articles():
+    directory = render.render_mechanisms_html(Config())
+    badges = re.findall(r'class="mechanism-demo-link" href="mechanisms/([\w-]+)\.html#([\w-]+)"',
+                        directory)
+    assert len(badges) == len(dict(badges))
+    links = dict(badges)
+    widget = r'(?:data-mechanism-view="lab"|data-walkthrough-lab\b)'
+    for article in mechanisms.articles():
+        slug = article["slug"]
+        page = render.render_mechanisms_html(Config(), slug)
+        assert (slug in links) == bool(re.search(widget, page)), slug
+        if slug not in links:
+            continue
+        anchor = links[slug]
+        assert page.count(f'id="{anchor}"') == 1, slug
+        # Dedicated widgets label themselves with their title or have their own id.
+        tags = re.findall(r'<(?:div|section)\b[^>]*' + widget + r'[^>]*>', page)
+        if any(f'aria-labelledby="{anchor}"' in tag or f'id="{anchor}"' in tag for tag in tags):
+            continue
+        # Walkthroughs also have canonical section fragments used by old bookmarks.
+        section = page.split(f'<section id="{anchor}" class="mechanism-section">', 1)
+        assert len(section) == 2, slug
+        assert re.search(widget, re.split(r'<section id="[^"]+" class="mechanism-section">',
+                                         section[1], maxsplit=1)[0]), slug
+
+
 def test_directory_metadata_covers_each_topic_and_article_once():
     content = mechanisms._content()
     group_slugs = [group['slug'] for group in content['groups']]

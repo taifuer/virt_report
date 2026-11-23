@@ -1,11 +1,10 @@
 {% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 {% from '_mechanism_diagram.html' import diagram with context %}
 <section id="preface" class="mechanism-section">
-  <h2>内核的位置与基本分工</h2>
+  <h2>序言</h2>
   <p>同一台机器可以一边编译程序，一边保存文件、接收网络请求。CPU 和内存是有限的，磁盘和网卡又按自己的节奏工作。Linux 内核负责把这些资源组织成应用可使用的进程、地址空间、文件和 socket：决定谁获得 CPU，维护地址与权限，把 I/O 交给设备，并在结果就绪时让等待者继续。</p>
   <p>Linux 内核与 Shell、C 库、systemd 等用户空间软件共同组成发行版。应用通常通过库封装的系统调用请求内核服务，普通计算和已映射内存访问则由处理器直接执行。</p>
-  {{ diagram('linux-kernel-architecture', '应用、内核子系统与硬件', '实线表示主要调用或访问关系，虚线表示资源支持与事件通知。各子系统相互协作，不是每次请求都依次经过所有方框。') }}
-  <p>系统调用切换执行权限：线程执行 read 时，由同一线程进入内核并使用自己的内核栈；等待或抢占可能引发任务切换。设备中断处理、内核工作线程也是执行内核代码的方式。</p>
+  {{ diagram('linux-kernel-architecture', '应用、内核子系统与硬件', '实线表示调用或访问，虚线表示资源支持与事件通知。沿一次文件读取可看到 VFS 与页缓存；需要设备读盘时，才经过块层和驱动。') }}
   <p>Linux 采用<strong>单体内核</strong>结构：调度、内存、文件系统和大量驱动在内核权限下协作，可直接调用彼此的接口。可加载模块方便按需装载和维护，模块与其余内核代码共享权限和地址空间，模块故障也可能影响整个系统。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
@@ -13,14 +12,14 @@
   <h2>用户空间、内核空间与执行权限</h2>
   <p>用户空间承载应用、运行库和系统服务；内核空间保存受保护的内核代码与数据。每个进程有自己的用户虚拟地址视图，同一个数值地址可以映射到不同物理页。同一进程的线程通常共享这些映射，并分别保存寄存器现场、内核栈和调度状态。</p>
   <p>“空间”描述地址和访问范围，“态”描述 CPU 当前的执行权限。以 x86-64 为例，普通应用通常运行在 CPL 3，内核运行在 CPL 0；页表权限与处理器检查阻止普通应用直接访问受保护的内核数据或执行特权操作。具体地址划分随体系结构、配置和页表隔离策略变化。</p>
-  <p>系统调用把用户请求交给内核，通常仍由同一线程执行。入口代码建立可信的内核执行现场，检查用户提供的 fd、长度、地址和权限，再分派操作。返回时恢复用户执行状态。地址指向用户缓冲区不代表内容可信，内核需通过相应用户访问接口检查并传递数据。</p>
+  <p>系统调用把用户请求交给内核，通常仍由同一线程执行。入口代码建立可信的内核执行现场，检查用户提供的 fd、长度、地址和权限，再分派操作。返回时恢复用户执行状态。内核通过用户访问接口检查用户缓冲区并传递数据。</p>
   <table><thead><tr><th>进入或执行内核的方式</th><th>触发原因</th><th>与线程的关系</th></tr></thead><tbody>
     <tr><td>系统调用</td><td>应用主动请求 read、mmap、socket 等服务</td><td>当前线程进入内核；等待或抢占时才可能切换任务</td></tr>
     <tr><td>同步异常</td><td>当前指令发生缺页、权限错误等事件</td><td>按异常处理结果重试、返回，或向进程发送信号</td></tr>
     <tr><td>外部中断</td><td>设备或计时事件到达处理器</td><td>可打断当前上下文；硬中断处理不一定属于当前任务的业务</td></tr>
     <tr><td>内核线程与延后工作</td><td>回写、回收或异步工作需要推进</td><td>具有可调度的线程上下文，按相应睡眠与锁规则工作</td></tr>
   </tbody></table>
-  <p>权限切换不等同于线程切换。一次缓存命中的 read 可以由当前线程进入内核、复制数据并直接返回；等待设备时，线程才可能睡眠，由调度器选择其他可运行任务。设备完成后唤醒等待者，后者重新获得 CPU 再继续原调用。</p>
+  <p>线程可在一次系统调用中跨越权限边界，继续由同一线程执行。一次缓存命中的 read 可以由当前线程进入内核、复制数据并直接返回；等待设备时，线程才可能睡眠，由调度器选择其他可运行任务。设备完成后唤醒等待者，后者重新获得 CPU 再继续原调用。</p>
 </section>
 <section id="resources" class="mechanism-section">
   <h2>进程、内存与 I/O 的协作</h2>
@@ -76,23 +75,26 @@
   </ol>
   <p>源码可以沿 <a href="{{ linux }}mm/filemap.c#L2899">generic_file_read_iter() 的读取选择</a>、<a href="{{ linux }}block/blk-mq.c#L1158">blk_mq_end_request() 的请求完成</a>和<a href="{{ linux }}kernel/sched/core.c#L4143">try_to_wake_up() 的任务唤醒</a>分别观察。这些路径通过数据结构、完成回调和等待状态衔接，可以在不同 CPU 上执行。</p>
   <p>排查读取延迟时，可分别统计 CPU 执行、设备等待和调度等待。设备完成较慢时关注存储路径，完成后仍迟迟无法运行时关注 CPU 竞争。</p>
-  <p>网络接收又有一个重要不同：外部报文可以先到，驱动预先准备 RX 缓冲区；recv 是从 socket 取数据或等待数据，并不命令远端发送特定报文。发送完成也首先描述本地资源可回收，不代表远端已收到。</p>
+  <p>网络接收又有一个重要不同：外部报文可以先到，驱动预先准备 RX 缓冲区；recv 是从 socket 取数据或等待数据，并不命令远端发送特定报文。本地发送完成后可回收资源；对端接收情况由传输协议或应用应答确认。</p>
 </section>
 <section id="development" class="mechanism-section">
   <h2>版本演进与长期维护</h2>
   <p>现代内核按发布周期滚动演进：补丁先经子系统评审、集成测试，再在约两周的合并窗口进入主线；随后若干 rc 版本集中修复问题，正式版之后由 stable 或长期维护分支继续接收适合回移的修复。5.x 到 6.x 等主版本号变化也延续这套流程。依据见<a href="{{ linux }}Documentation/process/2.Process.rst">内核开发过程</a>。</p>
   <p>实际行为取决于发行版回移的补丁、内核配置、运行参数、驱动与硬件能力。上线评估需要同时核对这些条件。文章以固定源码基线解释机制，并用旧版源码标注历史变化。</p>
-  <p>兼容性也有边界：内核重视已有用户空间程序继续工作，但内部驱动接口并非永久不变。发行版的模块 ABI 承诺还可能与上游不同。LTS 表示一条维护线，不意味着每个新功能都会回移，更不表示所有硬件和工作负载都应采用同一内核配置。</p>
+  <p>兼容性也有边界：内核重视已有用户空间程序继续工作，但内部驱动接口并非永久不变。发行版的模块 ABI 承诺还可能与上游不同。LTS 是长期维护分支；功能回移取决于分支维护策略，配置则要匹配硬件与负载。</p>
 </section>
 <section id="reading" class="mechanism-section">
   <h2>只读观察内核与资源状态</h2>
-  <p>下面命令只读取信息；路径和权限因发行版、内核配置及容器可见性而异。</p>
-  <table><thead><tr><th>观察入口</th><th>对应问题</th><th>解释边界</th></tr></thead><tbody>
-    <tr><td><code>uname -r</code>、<code>lscpu</code></td><td>正在运行的内核与 CPU/NUMA 拓扑</td><td>在 VM 中看到的可能是 Guest 视图；版本字符串不是完整补丁清单</td></tr>
-    <tr><td><code>ps -eLo pid,tid,psr,stat,comm</code></td><td>哪些线程可运行、睡眠，最近在哪个 CPU 上执行</td><td>一次快照不能解释整段延迟，R 也不保证此刻正在执行</td></tr>
-    <tr><td><code>/proc/meminfo</code>、<code>/proc/vmstat</code></td><td>驻留、缓存、回收与缺页活动</td><td>缓存不是自动等同泄漏；许多计数需要比较时间窗口内的增量</td></tr>
-    <tr><td><code>/proc/interrupts</code>、<code>/proc/diskstats</code>、<code>ip -s link</code></td><td>通知、块设备与网络工作量</td><td>三者处于不同统计层次，不能期待中断数、请求数和包数一一对应</td></tr>
+  <table><thead><tr><th>观察入口</th><th>读取的信息</th><th>读数含义</th></tr></thead><tbody>
+    <tr><td><code>uname -r</code>、<code>lscpu</code></td><td>内核版本与 CPU/NUMA 拓扑</td><td>在虚拟机里执行时，看到的是客户机的内核与虚拟拓扑。</td></tr>
+    <tr><td><code>ps -eLo pid,tid,psr,stat,comm</code></td><td>线程状态，最近一次执行它的 CPU</td><td>R 包括正在执行和已可运行、等待调度的线程。</td></tr>
+    <tr><td><code>/proc/meminfo</code>、<code>/proc/vmstat</code></td><td>驻留、缓存、回收与缺页活动</td><td>区分可回收缓存和持续增长的分配；许多计数需要比较时间窗口内的增量</td></tr>
+    <tr><td><code>/proc/interrupts</code>、<code>/proc/diskstats</code>、<code>ip -s link</code></td><td>中断通知、块请求与网络报文</td><td>一次中断可通知多个请求完成。对齐采样窗口，再看各类工作量的变化。</td></tr>
   </tbody></table>
+</section>
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>线程发起文件读取后，命中页缓存时可以在同一线程里取回数据；等待磁盘时，调度器可让其他线程运行。设备完成 I/O 后，等待者被唤醒，还要获得 CPU 才能把结果交给应用。排查慢读取时，可把这段时间分成等设备和等调度两段，分别查块请求与线程状态。</p>
 </section>
 <section id="sources" class="mechanism-section">
   <h2>源码与参考资料</h2>

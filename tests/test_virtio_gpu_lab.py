@@ -83,7 +83,7 @@ def test_gpu_lab_has_non_javascript_explanation_and_accessible_controls():
 def test_gpu_source_links_pin_qemu_and_do_not_claim_fence_is_presentation():
     source = (ROOT / "virt_report/content/articles/virtio-gpu.md").read_text()
     assert "698104725efad4b29079d857dfdebbd804e34c99" in source
-    assert "不能证明远程客户端已经收到图像" in source
+    assert "远程交付与物理屏幕扫描由各自的显示路径完成" in source
     assert "393728 B" in source
     assert "180 MiB/s" in source
-    assert "## 从应用到虚拟设备与宿主 GPU {#preface}" in source
+    assert "## 序言 {#preface}" in source

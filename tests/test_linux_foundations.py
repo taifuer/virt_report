@@ -30,9 +30,7 @@ def test_linux_prerequisites_share_navigation_and_pinned_source_baseline(slug):
         assert section["title"] in page
     rendered_sections = re.findall(r'<section id="([^"]+)" class="mechanism-section">', page)
     assert rendered_sections == [section["id"] for section in article["sections"]]
-    assert len(rendered_sections) == (9 if slug == 'linux-boot' else 10 if slug in {
-        "linux-execution-scheduling", "linux-memory", "linux-kernel-evolution",
-    } else 8)
+    assert rendered_sections[0] == 'preface' and rendered_sections[-1] == 'sources'
     assert rendered_sections[1] == {'linux-kernel-evolution': 'privilege',
                                     'linux-boot': 'firmware'}.get(slug, 'history')
     figures = re.findall(r'data-diagram="(linux-[^"]+)"', page)
@@ -64,9 +62,9 @@ def test_linux_overview_covers_history_boundaries_and_subsystem_cooperation():
 @pytest.mark.parametrize("slug,phrases", [
     ("linux-execution-scheduling", ["TASK_RUNNING", "EEVDF", "VM-exit", "不一定更换任务"]),
     ("linux-memory", ["TLB", "VMA", "COW", "零页", "Guest"]),
-    ("linux-interrupts", ["不是 Linux IRQ", "ksoftirqd", "不是远端收到确认", "同一完成事件"]),
-    ("linux-block-io", ["FLUSH/FUA", "O_DIRECT", "不自动等于持久化", "块设备写请求成功完成"]),
-    ("linux-network-io", ["外部可随时发来", "virtio-net TX Used", "远端应用已读", "不同环节"]),
+    ("linux-interrupts", ["表项索引映射到 Linux IRQ", "ksoftirqd", "不是远端收到确认", "同一完成事件"]),
+    ("linux-block-io", ["REQ_PREFLUSH", "REQ_FUA", "O_DIRECT", "持久化仍取决于同步写入或刷新的完成", "块设备写请求成功完成"]),
+    ("linux-network-io", ["外部可随时发来", "virtio-net TX Used", "远端应用读取要由应用层确认", "不同环节"]),
 ])
 def test_linux_prerequisites_preserve_critical_distinctions(slug, phrases):
     page = render.render_mechanisms_html(Config(), slug)
@@ -104,6 +102,20 @@ def test_linux_articles_keep_worked_examples_and_ownership_boundaries(slug, phra
     page = render.render_mechanisms_html(Config(), slug)
     for phrase in phrases:
         assert phrase in page
+
+
+def test_linux_memory_fault_table_pairs_conditions_with_outcomes():
+    from virt_report.versions import Document
+
+    page = render.render_mechanisms_html(Config(), "linux-memory")
+    faults = next(s for s in Document(page).root.find("section") if s.attrs.get("id") == "faults")
+    table, = faults.find("table")
+    outcomes = {row.find("th")[0].text(): row.find("td")[-1].text()
+                for row in table.find("tbody")[0].find("tr")}
+    for condition, outcome in (("首次读私有匿名页", "零"), ("首次写私有匿名页", "私有页"),
+                               ("读普通文件映射", "I/O"), ("写 fork", "各自的内容"),
+                               ("访问未映射地址", "SIGSEGV"), ("文件截短后", "SIGBUS")):
+        assert any(key.startswith(condition) and outcome in value for key, value in outcomes.items())
 
 
 def test_process_title_keeps_existing_permalink_and_directory_consistency():

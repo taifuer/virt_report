@@ -147,7 +147,8 @@ def test_real_diagram_macro_escapes_untrusted_looking_titles_and_captions():
     from virt_report.render.render import _env
 
     diagram = _env().get_template('_mechanism_diagram.html').make_module({
-        'mechanism_diagrams': {'test-path': {'source': 'flowchart LR\nA-->B'}},
+        'mechanism_diagrams': {'test-path': {'source': 'flowchart LR\nA-->B',
+                                            'width': 640, 'height': 480}},
         'root': '../', 'mechanism_asset_version': 'test',
     }).diagram
     html = render_article_markdown(
@@ -195,6 +196,28 @@ def test_markdown_articles_use_pinned_sources_local_components_and_existing_navi
     commits = re.findall(r'https://github.com/(?:qemu/qemu|torvalds/linux)/blob/([^/]+)/', html)
     assert commits
     assert set(commits) <= {baseline['commit'] for baseline in article['baselines']}
+
+
+def test_vfio_article_matches_driver_baseline_and_preserves_old_bookmarks():
+    from virt_report import mechanisms
+    from virt_report.config import Config
+    from virt_report.render import render as pages
+
+    slug = 'vfio-device-migration'
+    article = mechanisms.get_article(slug)
+    page = pages.render_mechanisms_html(Config(), slug)
+    for fragment, number, title in (('preface', '一、', '序言'), ('summary', '七、', '总结')):
+        assert f'href="#{fragment}">{number}{title}</a>' in page
+        assert f'<span class="mechanism-heading-number">{number}</span>{title}</h2>' in page
+    gim = next(source for source in article['baselines'] if source['project'] == 'AMD GIM')
+    vendor = f'https://github.com/amd/MxGPU-Virtualization/blob/{gim["commit"]}/'
+    for path in ('gim/amd-vfio-pci/amd-vfio.c', 'gim/gim_shim/gim_mig.c',
+                 'libgv/core/amdgv_live_migration.c', 'libgv/core/amdgv_dirtybit.c'):
+        assert vendor + path in page
+    for fragment in ('consistency', 'states', 'precopy', 'handoff', 'dma-dirty', 'failure',
+                     'evolution', 'sources', article['demo_anchor']):
+        assert page.count(f'id="{fragment}"') == 1
+    assert 'data-vfio-migration-target-vram' in page and '网卡 VF' not in page
 
 
 @pytest.mark.parametrize('field,value,match', [

@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=1934a7814284">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1934a7814284">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=5eb1bb7dc04a">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=5eb1bb7dc04a">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -50,11 +50,11 @@
   <div class="mechanism-layout">
     <nav class="mechanism-toc" aria-label="文章目录">
       <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
-      <ol id="mechanism-toc-links"><li><a href="#preface">一、一台机器的四条执行流</a></li><li><a href="#machine">二、创建四个 vCPU 与共享机器资源</a></li><li><a href="#discovery">三、处理器发现与拓扑描述</a></li><li><a href="#firmware">四、固件初始化与引导交接</a></li><li><a href="#kernel">五、Linux SMP 启动与 CPU 上线</a></li><li><a href="#cooperation">六、共享数据、同步与跨核通知</a><ol><li><a href="#cooperation-part-1">Guest IPI 与宿主协调</a></li></ol></li><li><a href="#scheduling">七、Guest 与宿主的双层调度</a><ol><li><a href="#scheduling-part-1">等待、抢占与并行效率</a></li></ol></li><li><a href="#application">八、应用线程的并行执行</a></li><li><a href="#verification">九、对照宿主线程与 Guest CPU</a><ol><li><a href="#verification-part-1">1. 宿主：从创建到放行执行</a></li><li><a href="#verification-part-2">2. Guest：从发现到上线</a></li><li><a href="#verification-part-3">3. 两侧对照</a></li></ol></li><li><a href="#sources">十、源码与参考资料</a></li></ol>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a></li><li><a href="#machine">二、创建四个 vCPU 与共享机器资源</a></li><li><a href="#discovery">三、处理器发现与拓扑描述</a></li><li><a href="#firmware">四、固件初始化与引导交接</a></li><li><a href="#kernel">五、Linux SMP 启动与 CPU 上线</a></li><li><a href="#cooperation">六、共享数据、同步与跨核通知</a><ol><li><a href="#cooperation-part-1">Guest IPI 与宿主协调</a></li></ol></li><li><a href="#scheduling">七、Guest 与宿主的双层调度</a><ol><li><a href="#scheduling-part-1">等待、抢占与并行效率</a></li></ol></li><li><a href="#application">八、应用线程的并行执行</a></li><li><a href="#verification">九、对照宿主线程与 Guest CPU</a><ol><li><a href="#verification-part-1">1. 宿主：从创建到放行执行</a></li><li><a href="#verification-part-2">2. Guest：从发现到上线</a></li><li><a href="#verification-part-3">3. 两侧对照</a></li></ol></li><li><a href="#summary">十、总结</a></li><li><a href="#sources">十一、源码与参考资料</a></li></ol>
     </nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">一、</span>一台机器的四条执行流</h2>
+  <h2><span class="mechanism-heading-number">一、</span>序言</h2>
   <p>一台 4 vCPU 虚拟机有四套处理器执行状态：各自保存指令位置、寄存器和本地中断状态，共享同一台机器的 RAM 与设备。固件和操作系统通过处理器拓扑、启动协议与中断控制器使用这些执行流。Linux 将 CPU 上线后，四个 vCPU 可以分别执行内核任务和应用线程。</p>
   <p>在 QEMU/KVM 中，每个 vCPU 由一个 QEMU 宿主线程驱动。Guest 调度器把任务安排到 vCPU，宿主调度器把这些 vCPU 线程安排到实际逻辑 CPU。本文以 x86-64、Q35、SeaBIOS 和 Linux Guest 为例，沿“创建 → 固件 → 引导 → SMP 上线 → 应用并行”跟踪这两层关系。</p>
 <p class="mechanism-baselines">源码版本：QEMU 10.2.0、SeaBIOS QEMU 10.2.0 随附固件、Linux 6.18。</p></section>
@@ -106,9 +106,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看BSP 与 AP 的两阶段启动" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="BSP 与 AP 的两阶段启动">
-    <img src="../assets/multi-vcpu-boot.svg?v=1934a7814284" alt="SeaBIOS 先使用 AP 完成固件初始化，Linux 随后用自己的跳板和每 CPU 环境完成 SMP 上线。图中 AP 一栏代表 vCPU 1、2、3；运行阶段每个 CPU 都有独立的执行流。" loading="lazy">
+    <img src="../assets/multi-vcpu-boot.svg?v=5eb1bb7dc04a" width="674" height="644" alt="SeaBIOS 先使用 AP 完成固件初始化，Linux 随后用自己的跳板和每 CPU 环境完成 SMP 上线。图中 AP 一栏代表 vCPU 1、2、3；运行阶段每个 CPU 都有独立的执行流。" loading="lazy">
   </div>
-  <figcaption>SeaBIOS 先使用 AP 完成固件初始化，Linux 随后用自己的跳板和每 CPU 环境完成 SMP 上线。图中 AP 一栏代表 vCPU 1、2、3；运行阶段每个 CPU 都有独立的执行流。 <a href="../assets/multi-vcpu-boot.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>SeaBIOS 先使用 AP 完成固件初始化，Linux 随后用自己的跳板和每 CPU 环境完成 SMP 上线。图中 AP 一栏代表 vCPU 1、2、3；运行阶段每个 CPU 都有独立的执行流。 <a href="../assets/multi-vcpu-boot.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>%%{init: {&#34;sequence&#34;: {&#34;width&#34;: 220, &#34;actorMargin&#34;: 110, &#34;messageMargin&#34;: 20, &#34;wrap&#34;: false}}}%%
 sequenceDiagram
   accTitle: 四个 vCPU 从固件初始化到 Linux SMP 上线
@@ -178,9 +178,9 @@ sequenceDiagram
     <button type="button" data-mechanism-expand aria-label="放大查看四个 vCPU 与两个可用宿主逻辑 CPU 的示意" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="四个 vCPU 与两个可用宿主逻辑 CPU 的示意">
-    <img src="../assets/multi-vcpu-scheduling.svg?v=1934a7814284" alt="示例时刻 T0、T1 获得宿主执行时间，T2、T3 等待后续时间片。实线表示当前执行关系，虚线表示后续运行机会；任务到 vCPU、线程到宿主 CPU 的映射均可随调度变化。" loading="lazy">
+    <img src="../assets/multi-vcpu-scheduling.svg?v=5eb1bb7dc04a" width="796" height="456" alt="示例时刻 T0、T1 获得宿主执行时间，T2、T3 等待后续时间片。实线表示当前执行关系，虚线表示后续运行机会；任务到 vCPU、线程到宿主 CPU 的映射均可随调度变化。" loading="lazy">
   </div>
-  <figcaption>示例时刻 T0、T1 获得宿主执行时间，T2、T3 等待后续时间片。实线表示当前执行关系，虚线表示后续运行机会；任务到 vCPU、线程到宿主 CPU 的映射均可随调度变化。 <a href="../assets/multi-vcpu-scheduling.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>示例时刻 T0、T1 获得宿主执行时间，T2、T3 等待后续时间片。实线表示当前执行关系，虚线表示后续运行机会；任务到 vCPU、线程到宿主 CPU 的映射均可随调度变化。 <a href="../assets/multi-vcpu-scheduling.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: Guest 任务与宿主 vCPU 线程的双层调度
   accDescr: 示例时刻，4 个 Guest 工作线程分别由 vCPU 0 至 3 承载，对应 4 个 QEMU 宿主线程。假设此刻可提供 2 个宿主逻辑 CPU，T0 与 T1 正在运行，T2 与 T3 等待后续时间片。Guest 任务可以迁移到其他 vCPU，宿主线程也可以在亲和性允许的 CPU 间迁移；图中箭头不表示永久绑定。
@@ -320,8 +320,13 @@ cat /proc/interrupts</code></pre>
   <p>Guest 运行上面的 1 / 4 线程程序时，再观察宿主的 vCPU 线程。四个 Guest CPU online、四个工作线程可运行、四个宿主 vCPU 线程同时获得 CPU，是不同层面的条件。<code>ps</code> 和程序打印都是瞬时采样；需要证明时间上的重叠执行时，应进一步采集两侧调度轨迹并对齐观测窗口。实验结束后从 Guest 正常关机，等待 QEMU 退出；<code>-snapshot</code> 下的 Guest 文件修改会随之丢弃。</p>
 </section>
 
+<section id="summary" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">十、</span>总结</h2>
+  <p>固件描述哪些处理器存在，客户机内核启动它们、建立各自的运行队列，应用的可运行线程才有机会并行。看到四个 online CPU 只确定拓扑和上线状态；要判断四个线程是否同时工作，还要把客户机的运行区间同宿主 vCPU 线程获得物理 CPU 的区间对齐。</p>
+</section>
+
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">十、</span>源码与参考资料</h2>
+  <h2><span class="mechanism-heading-number">十一、</span>源码与参考资料</h2>
   <ul>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-accel-ops.c#L30-L75">QEMU：每 vCPU 宿主线程与执行循环</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c">KVM_CREATE_VCPU、KVM_RUN 与 BQL 交接</a>。</li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/acpi-build.c">QEMU：x86 ACPI 表构造</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qapi/machine.json">query-cpus-fast 的字段定义</a>。</li>
@@ -340,6 +345,6 @@ cat /proc/interrupts</code></pre>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=1934a7814284" defer></script>
+<script src="../assets/mechanism-viewer.js?v=5eb1bb7dc04a" defer></script>
 </body>
 </html>

@@ -128,7 +128,7 @@ def test_ram_registration_does_not_claim_all_pages_are_resident(demo):
     cold = scene(demo, "cold-start")
     ram = step(cold, "map-ram")
     assert "内存槽" in ram["description"]
-    assert "不代表 8 GiB 宿主页已经全部驻留" in ram["detail"]
+    assert "8 GiB 后备内存可按需驻留" in ram["detail"]
     assert "KVM_CREATE_VCPU" in step(cold, "create-vcpus")["detail"]
     assert "DRIVER_OK" in step(cold, "probe-virtio")["description"]
 

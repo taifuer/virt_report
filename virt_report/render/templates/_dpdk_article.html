@@ -3,7 +3,7 @@
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>DPDK vhost-user 的网络转发路径</h2>
+  <h2>序言</h2>
   <p>virtio-net 定义客户机与虚拟设备之间的请求格式，报文的处理线程和物理出口则由后端实现。DPDK vhost-user 后端在独立用户态进程中消费客户机 virtqueue，将报文组织为 rte_mbuf，再交给网卡的轮询模式驱动（PMD）。QEMU 保留设备呈现和控制连接，通常不参与这条路径上的逐包处理。</p>
   <p>本文跟踪一个 60 B 以太网帧 P1：客户机 TX 队列 → DPDK vhost → rte_mbuf → 物理网卡 TX 队列。分析采用 DPDK 24.11 的同步 split-ring 路径、单个队列对、普通复制模式，不启用分段和校验和卸载。客户机使用 modern virtio-net，12 B 网络头与帧分别放在两个只读描述符中。关键在于两次所有权交接：客户机缓冲区何时可以复用，以及交给 PMD 的 mbuf 何时可以释放。</p>
   {% include '_mechanism_baselines.html' %}
@@ -14,14 +14,9 @@
   <p>DPDK 提供的是数据面基础设施，应用负责交换、路由、过滤或转发策略。vhost 库读写客户机共享队列，mempool 管理报文对象，ethdev 与 PMD 把统一的收发接口接到具体网卡。本文假设应用把 P1 转发到一个物理端口；同一后端也可以把报文送到另一台虚拟机，此时没有物理网卡 TX 这一步。</p>
   {{ diagram('dpdk-vhost-data-path', '从客户机 TX virtqueue 到物理网卡', '虚线为初始化和通知，实线为报文访问及交接。vhost-user socket 传递控制消息和文件描述符；数据通过共享内存进入 vhost，再复制到本例的 mbuf。') }}
   <h3>初始化中的内存、队列与通知配置</h3>
-  <ol>
-    <li>DPDK 应用初始化 EAL、mempool、网卡端口及 RX/TX 队列，安排数据线程与队列的对应关系。</li>
-    <li>通过 <code>rte_vhost_driver_register()</code> 注册 Unix socket 路径，设置支持的特性和设备生命周期回调，再启动控制连接。客户端或服务端角色只决定连接由谁建立。</li>
-    <li>QEMU 传递共享 RAM 的文件描述符及内存区域信息；后端建立自己的虚拟地址映射。随后配置 virtqueue 大小、描述符和环地址、消费位置，以及 kick/call eventfd。</li>
-    <li>设备和队列就绪后，应用才将该队列加入数据线程的轮询集合。停止或断开时先退出这个集合，再处理在途访问与映射释放。</li>
-  </ol>
+  <p>应用先准备 mempool 和网卡 RX/TX 队列，用 <code>rte_vhost_driver_register()</code> 注册控制通道。后端取得共享内存、队列和通知配置后，才把队列加入数据线程的轮询集合；断开时先从集合移除，待在途访问结束再释放映射。QEMU 侧的配置见<a href="qemu-vhost-net.html#architecture">vhost 队列交接</a>。</p>
   <p>共享的物理页可以映射在 QEMU 和 DPDK 进程的不同虚拟地址。描述符中的设备地址需要经过已协商的内存映射或 IOTLB 转换，不能直接作为后端 C 指针使用。<a href="{{ qemu_source }}docs/interop/vhost-user.rst">vhost-user 协议</a>和<a href="{{ dpdk_source }}lib/vhost/vhost_user.c">DPDK 控制消息处理</a>分别定义和实现这些关系。</p>
-  <p>轮询数据线程可以按协议请求客户机抑制 kick，直接检查 avail 索引；后端完成请求后仍须单独判断客户机是否需要中断。需要通知时触发 call eventfd，QEMU 配置的 KVM irqfd 路径可把它转换为客户机中断。eventfd 传递的是事件计数，描述符和帧内容仍保存在各自的内存缓冲区。<a href="{{ dpdk_source }}lib/vhost/vhost.h#L989-L1015">split 完成通知判断</a></p>
+  <p>轮询线程可抑制提交方向的 kick，直接检查 avail；完成方向仍须根据客户机设置判断是否发送 call。<a href="{{ dpdk_source }}lib/vhost/vhost.h#L989-L1015">DPDK 的完成通知检查</a>。</p>
 </section>
 
 
@@ -90,7 +85,11 @@ rte_eth_tx_burst(port, txq, pkts, 1)
   <p>把 virtio 后端移到独立用户态进程，使交换机可以统一调度多个虚拟机和物理端口，代价是必须管理共享内存、队列状态与进程生命周期。DPDK 16.07 加入 vhost-user 客户端模式，重连能力进一步减少了固定启动顺序的约束；重连后仍需恢复一致的特性和队列状态，socket 恢复不等于在途报文自动恢复。<a href="{{ dpdk_source }}doc/guides/prog_guide/vhost_lib.rst">vhost-user 连接模式</a></p>
   <p>split 到 packed 的队列演进把发布与完成标记集中到一张描述符环，改善元数据访问局部性，同时引入 wrap counter 和不同的所有权判断。双方在初始化时选定格式，后端据此进入各自的数据处理分支；本文使用 split 的 desc、avail、used 三个共享区域。<a href="{{ dpdk_source }}lib/vhost/virtio_net.c#L3586-L3684">split / packed 数据路径选择</a></p>
   <p>当复制成为瓶颈，可以考虑 DMA copy 卸载。复制仍然存在，只是执行者从 CPU 转为 DMA 设备；提交、完成轮询、缓冲区存活和 DMA 通道资源变得更重要。DPDK 18.11 已提供 vDPA 示例，利用硬件实现兼容 virtio 的数据面，减少专门的 vhost 轮询工作；可迁移状态、特性组合和硬件支持随之成为约束。<a href="{{ dpdk_source }}doc/guides/rel_notes/release_18_11.rst#L284-L293">18.11 的 vDPA 示例</a></p>
-  <p>这些演进分别针对进程调度、元数据访问、内存复制和数据面执行位置。先用 P1 的路径确认时间和 CPU 花在哪里，再选择改变哪一个环节。块设备的 SPDK vhost 后端采用不同的请求格式和存储完成语义，可结合<a href="spdk-vhost-user-blk.html">SPDK vhost-blk 的请求与完成路径</a>对照。</p>
+</section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>同步复制路径有两个完成点：vhost 把客户机数据复制到 mbuf 后可以归还描述符，PMD 接受 mbuf 后才接管物理发送。遇到出口拥塞，应用要处理未被接受的 mbuf，给重试队列设上限，并按积压量调整下一批 dequeue。</p>
 </section>
 
 <section id="sources" class="mechanism-section">

@@ -108,11 +108,11 @@ def test_topic_overviews_are_complete_and_categories_list_all_articles():
         assert overview and overview["slug"] == topic["overview"]
         assert f'<a href="mechanisms/{overview["slug"]}.html">{topic["title"]}</a>' in index
         page = render.render_mechanisms_html(Config(), overview["slug"])
-        # The overview is self-contained; it need not repeat the index as a
-        # reading-list section. Every authored section still has a TOC entry.
-        assert len(overview['sections']) >= 6
+        # Concise visual overviews and source walkthroughs have different lengths.
+        assert overview['sections'][0]['id'] == 'preface'
         for section in overview['sections']:
             assert f'id="{section["id"]}"' in page
+            assert f'href="#{section["id"]}"' in page
         assert 'id="sources"' in page or 'id="implementation"' in page
         assert 'class="mechanism-toc"' in page
         assert 'mechanism-chapters' not in page
@@ -120,6 +120,15 @@ def test_topic_overviews_are_complete_and_categories_list_all_articles():
         # only sections within that article.
         for article in topic['detail_articles']:
             assert f'href="mechanisms/{article["slug"]}.html"' in index
+
+
+@pytest.mark.parametrize("slug", [a["slug"] for a in mechanisms.articles()])
+def test_articles_open_with_a_preface_and_conclude_before_sources(slug):
+    sections = mechanisms.get_article(slug)["sections"]
+    assert sections[0] == {"id": "preface", "title": "序言"}
+    assert sections[-2]["title"] == "总结"
+    assert sections[-1]["id"] in {"sources", "implementation"}
+    assert any(word in sections[-1]["title"] for word in ("资料", "参考", "源码"))
 
 
 def test_cross_article_reading_links_resolve_to_published_pages_and_anchors():

@@ -4,7 +4,7 @@
 {% set seabios = 'https://github.com/coreboot/seabios/blob/b52ca86e094d19b58e2304417787e96b940e39c6/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>一台机器的四条执行流</h2>
+  <h2>序言</h2>
   <p>一台 4 vCPU 虚拟机有四套处理器执行状态：各自保存指令位置、寄存器和本地中断状态，共享同一台机器的 RAM 与设备。固件和操作系统通过处理器拓扑、启动协议与中断控制器使用这些执行流。Linux 将 CPU 上线后，四个 vCPU 可以分别执行内核任务和应用线程。</p>
   <p>在 QEMU/KVM 中，每个 vCPU 由一个 QEMU 宿主线程驱动。Guest 调度器把任务安排到 vCPU，宿主调度器把这些 vCPU 线程安排到实际逻辑 CPU。本文以 x86-64、Q35、SeaBIOS 和 Linux Guest 为例，沿“创建 → 固件 → 引导 → SMP 上线 → 应用并行”跟踪这两层关系。</p>
   {% include '_mechanism_baselines.html' %}
@@ -211,6 +211,11 @@ cat /proc/interrupts</code></pre>
   <p><code>/proc/interrupts</code> 的每列对应 Guest CPU，RES、CAL、TLB 等统计项的名称和出现情况随内核、架构及配置变化。它们可以辅助观察跨核活动；单次计数增加无法直接归因到某个应用任务，PV 优化也可能改变通知次数。</p>
   <h3>两侧对照</h3>
   <p>Guest 运行上面的 1 / 4 线程程序时，再观察宿主的 vCPU 线程。四个 Guest CPU online、四个工作线程可运行、四个宿主 vCPU 线程同时获得 CPU，是不同层面的条件。<code>ps</code> 和程序打印都是瞬时采样；需要证明时间上的重叠执行时，应进一步采集两侧调度轨迹并对齐观测窗口。实验结束后从 Guest 正常关机，等待 QEMU 退出；<code>-snapshot</code> 下的 Guest 文件修改会随之丢弃。</p>
+</section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>固件描述哪些处理器存在，客户机内核启动它们、建立各自的运行队列，应用的可运行线程才有机会并行。看到四个 online CPU 只确定拓扑和上线状态；要判断四个线程是否同时工作，还要把客户机的运行区间同宿主 vCPU 线程获得物理 CPU 的区间对齐。</p>
 </section>
 
 <section id="sources" class="mechanism-section">

@@ -546,7 +546,7 @@
           "title": "准备描述符",
           "actor": "Guest virtio-net 驱动",
           "description": "将 12 B 网络头和 60 B 帧 P1 组织为链 0 → 2。",
-          "detail": "desc[0] 的 NEXT 指向 desc[2]，两个缓冲区均为设备可读。此时 avail.idx 尚未增加，后端不能据此消费本次请求。 这里的 60 B 来自 S1，virtio 网络头是设备接口附加的 12 B，不会交给远端 UDP 应用。",
+          "detail": "desc[0] 的 NEXT 指向 desc[2]，两个缓冲区均为设备可读。此时 avail.idx 尚未增加，后端要等驱动发布请求后才能消费。 这里的 60 B 来自 S1，virtio 网络头是设备接口附加的 12 B，不会交给远端 UDP 应用。",
           "active": [
             "guest",
             "queue"
@@ -669,7 +669,7 @@
           "title": "发布 TX 完成",
           "actor": "QEMU 用户态",
           "description": "将链头 0 写入 used，used.idx 从 0 增至 1。",
-          "detail": "used = {id: 0, len: 0} 表示设备已经结束对本链的使用。驱动观察到完成后可以回收原缓冲区；这一记录不能证明远端已经收到 P1。",
+          "detail": "used = {id: 0, len: 0} 表示设备已经结束对本链的使用。驱动观察到完成后可以回收原缓冲区。对端是否收到 P1，要看接收端记录或应答。",
           "active": [
             "backend",
             "queue"
@@ -744,7 +744,7 @@
           "title": "继续网络转发",
           "actor": "宿主网络",
           "description": "宿主网络继续处理已接受的 P1，按出口配置排队与转发。",
-          "detail": "这一侧不等待 Guest 处理完成中断或回收 TX 链；转发也可能在提交 TAP 的内核调用中已经推进。图中观察本地转发边界，不推断物理网卡完成或远端收到。",
+          "detail": "这一侧不等待 Guest 处理完成中断或回收 TX 链；转发也可能在提交 TAP 的内核调用中已经推进。图中跟踪到本地转发；物理网卡完成和远端接收各有自己的观察点。",
           "active": [
             "port"
           ],
@@ -1127,7 +1127,7 @@
           "title": "发布 RX 空间",
           "actor": "Guest virtio-net 驱动",
           "description": "准备一条 1530 B 可写链，发布 head 2，avail.idx = 1。",
-          "detail": "RX 描述符带 WRITE，允许设备写入头和报文。空缓冲区在来包之前提供；available 记录表示空间已准备好，不代表里面已经有新帧。",
+          "detail": "RX 描述符带 WRITE，允许设备写入头和报文。空缓冲区在来包之前提供；available 记录标记可供设备写入的接收缓冲区。",
           "active": [
             "guest",
             "queue"
@@ -1839,7 +1839,7 @@
           "title": "准备描述符",
           "actor": "Guest virtio-net 驱动",
           "description": "将 12 B 网络头和 60 B 帧 P1 组织为链 0 → 2。",
-          "detail": "desc[0] 的 NEXT 指向 desc[2]，两个缓冲区均为设备可读。此时 avail.idx 尚未增加，后端不能据此消费本次请求。 这里的 60 B 来自 S1，virtio 网络头是设备接口附加的 12 B，不会交给远端 UDP 应用。",
+          "detail": "desc[0] 的 NEXT 指向 desc[2]，两个缓冲区均为设备可读。此时 avail.idx 尚未增加，后端要等驱动发布请求后才能消费。 这里的 60 B 来自 S1，virtio 网络头是设备接口附加的 12 B，不会交给远端 UDP 应用。",
           "active": [
             "guest",
             "queue"
@@ -1961,7 +1961,7 @@
           "title": "发布 TX 完成",
           "actor": "宿主内核 vhost-net",
           "description": "将链头 0 写入 used，used.idx 从 0 增至 1。",
-          "detail": "used = {id: 0, len: 0} 表示设备已经结束对本链的使用。驱动观察到完成后可以回收原缓冲区；这一记录不能证明远端已经收到 P1。",
+          "detail": "used = {id: 0, len: 0} 表示设备已经结束对本链的使用。驱动观察到完成后可以回收原缓冲区。对端是否收到 P1，要看接收端记录或应答。",
           "active": [
             "backend",
             "queue"
@@ -2036,7 +2036,7 @@
           "title": "继续网络转发",
           "actor": "宿主网络",
           "description": "宿主网络继续处理已接受的 P1，按出口配置排队与转发。",
-          "detail": "这一侧不等待 Guest 处理完成中断或回收 TX 链；转发也可能在提交 TAP 的内核调用中已经推进。图中观察本地转发边界，不推断物理网卡完成或远端收到。",
+          "detail": "这一侧不等待 Guest 处理完成中断或回收 TX 链；转发也可能在提交 TAP 的内核调用中已经推进。图中跟踪到本地转发；物理网卡完成和远端接收各有自己的观察点。",
           "active": [
             "port"
           ],
@@ -2431,7 +2431,7 @@
           "title": "发布 RX 空间",
           "actor": "Guest virtio-net 驱动",
           "description": "准备一条 1530 B 可写链，发布 head 2，avail.idx = 1。",
-          "detail": "RX 描述符带 WRITE，允许设备写入头和报文。空缓冲区在来包之前提供；available 记录表示空间已准备好，不代表里面已经有新帧。",
+          "detail": "RX 描述符带 WRITE，允许设备写入头和报文。空缓冲区在来包之前提供；available 记录标记可供设备写入的接收缓冲区。",
           "active": [
             "guest",
             "queue"
@@ -3158,7 +3158,7 @@
           "title": "准备描述符",
           "actor": "Guest virtio-net 驱动",
           "description": "将 12 B 网络头和 60 B 帧 P1 组织为链 0 → 2。",
-          "detail": "desc[0] 的 NEXT 指向 desc[2]，两个缓冲区均为设备可读。此时 avail.idx 尚未增加，后端不能据此消费本次请求。 这里的 60 B 来自 S1，virtio 网络头是设备接口附加的 12 B，不会交给远端 UDP 应用。",
+          "detail": "desc[0] 的 NEXT 指向 desc[2]，两个缓冲区均为设备可读。此时 avail.idx 尚未增加，后端要等驱动发布请求后才能消费。 这里的 60 B 来自 S1，virtio 网络头是设备接口附加的 12 B，不会交给远端 UDP 应用。",
           "active": [
             "guest",
             "queue"
@@ -3283,7 +3283,7 @@
           "title": "发布 TX 完成",
           "actor": "DPDK 数据线程",
           "description": "将链头 0 写入 used，used.idx 从 0 增至 1。",
-          "detail": "used = {id: 0, len: 0} 表示设备已经结束对本链的使用。驱动观察到完成后可以回收原缓冲区；这一记录不能证明远端已经收到 P1。",
+          "detail": "used = {id: 0, len: 0} 表示设备已经结束对本链的使用。驱动观察到完成后可以回收原缓冲区。对端是否收到 P1，要看接收端记录或应答。",
           "active": [
             "backend",
             "queue"
@@ -3795,7 +3795,7 @@
           "title": "发布 RX 空间",
           "actor": "Guest virtio-net 驱动",
           "description": "准备一条 1530 B 可写链，发布 head 2，avail.idx = 1。",
-          "detail": "RX 描述符带 WRITE，允许设备写入头和报文。空缓冲区在来包之前提供；available 记录表示空间已准备好，不代表里面已经有新帧。",
+          "detail": "RX 描述符带 WRITE，允许设备写入头和报文。空缓冲区在来包之前提供；available 记录标记可供设备写入的接收缓冲区。",
           "active": [
             "guest",
             "queue"
@@ -4542,7 +4542,7 @@
           "title": "准备描述符",
           "actor": "Guest virtio-net 驱动",
           "description": "将 12 B 网络头和 60 B 帧 P1 组织为链 0 → 2。",
-          "detail": "desc[0] 的 NEXT 指向 desc[2]，两个缓冲区均为设备可读。此时 avail.idx 尚未增加，后端不能据此消费本次请求。 这里的 60 B 来自 S1，virtio 网络头是设备接口附加的 12 B，不会交给远端 UDP 应用。",
+          "detail": "desc[0] 的 NEXT 指向 desc[2]，两个缓冲区均为设备可读。此时 avail.idx 尚未增加，后端要等驱动发布请求后才能消费。 这里的 60 B 来自 S1，virtio 网络头是设备接口附加的 12 B，不会交给远端 UDP 应用。",
           "active": [
             "guest",
             "queue"
@@ -4666,7 +4666,7 @@
           "title": "发布 TX 完成",
           "actor": "vDPA 硬件设备",
           "description": "将链头 0 写入 used，used.idx 从 0 增至 1。",
-          "detail": "used = {id: 0, len: 0} 表示设备已经结束对本链的使用。驱动观察到完成后可以回收原缓冲区；这一记录不能证明远端已经收到 P1。",
+          "detail": "used = {id: 0, len: 0} 表示设备已经结束对本链的使用。驱动观察到完成后可以回收原缓冲区。对端是否收到 P1，要看接收端记录或应答。",
           "active": [
             "backend",
             "queue"
@@ -5126,7 +5126,7 @@
           "title": "发布 RX 空间",
           "actor": "Guest virtio-net 驱动",
           "description": "准备一条 1530 B 可写链，发布 head 2，avail.idx = 1。",
-          "detail": "RX 描述符带 WRITE，允许设备写入头和报文。空缓冲区在来包之前提供；available 记录表示空间已准备好，不代表里面已经有新帧。",
+          "detail": "RX 描述符带 WRITE，允许设备写入头和报文。空缓冲区在来包之前提供；available 记录标记可供设备写入的接收缓冲区。",
           "active": [
             "guest",
             "queue"
@@ -5825,7 +5825,7 @@
           "title": "准备描述符",
           "actor": "Guest virtio-net 驱动",
           "description": "将 12 B 网络头和 60 B 帧 P1 组织为链 0 → 2。",
-          "detail": "desc[0] 的 NEXT 指向 desc[2]，两个缓冲区均为设备可读。此时 avail.idx 尚未增加，后端不能据此消费本次请求。 这里的 60 B 来自 S1，virtio 网络头是设备接口附加的 12 B，不会交给远端 UDP 应用。",
+          "detail": "desc[0] 的 NEXT 指向 desc[2]，两个缓冲区均为设备可读。此时 avail.idx 尚未增加，后端要等驱动发布请求后才能消费。 这里的 60 B 来自 S1，virtio 网络头是设备接口附加的 12 B，不会交给远端 UDP 应用。",
           "active": [
             "guest",
             "queue"
@@ -5950,7 +5950,7 @@
           "title": "恢复写入",
           "actor": "QEMU TAP 后端",
           "description": "TAP 再次可写，QEMU 刷新排队报文，本次写入成功。",
-          "detail": "网络层触发 virtio_net_tx_complete() 回调；只有这时才归还保存的 VirtQueueElement。一次背压不会凭空增加 used.idx。",
+          "detail": "网络层触发 virtio_net_tx_complete() 回调；只有这时才归还保存的 VirtQueueElement。发生背压时，used.idx 维持原值。",
           "active": [
             "port",
             "backend"
@@ -5974,7 +5974,7 @@
           "title": "发布 TX 完成",
           "actor": "QEMU 用户态",
           "description": "将链头 0 写入 used，used.idx 从 0 增至 1。",
-          "detail": "virtio_net_tx_complete() 发布 used、判断通知并清除 async_tx.elem，随后可以恢复处理其他 TX 链。used 表示本地缓冲区归还，不证明远端收到 P1。",
+          "detail": "virtio_net_tx_complete() 发布 used、判断通知并清除 async_tx.elem，随后可以恢复处理其他 TX 链。used 标记本地缓冲区归还；P1 的接收情况要到对端确认。",
           "active": [
             "backend",
             "queue"
@@ -6049,7 +6049,7 @@
           "title": "继续网络转发",
           "actor": "宿主网络",
           "description": "宿主网络继续处理已接受的 P1，按出口配置排队与转发。",
-          "detail": "这一侧不等待 Guest 处理完成中断或回收 TX 链；转发也可能在提交 TAP 的内核调用中已经推进。图中观察本地转发边界，不推断物理网卡完成或远端收到。",
+          "detail": "这一侧不等待 Guest 处理完成中断或回收 TX 链；转发也可能在提交 TAP 的内核调用中已经推进。图中跟踪到本地转发；物理网卡完成和远端接收各有自己的观察点。",
           "active": [
             "port"
           ],

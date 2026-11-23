@@ -2,10 +2,9 @@
 {% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 {% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 <section id="preface" class="mechanism-section">
-  <h2>虚拟机与资源隔离</h2>
-  <p>系统虚拟化在一台物理机器上提供多套独立的运行环境，每套环境具有自己的 CPU 状态、内存地址空间和设备视图，可以分别启动操作系统。一台服务器由此能够同时承载数据库、测试环境和旧版应用，兼顾资源共享与系统隔离。相较于共用一个操作系统，虚拟机可以分别选择内核、驱动和系统配置；相较于每项业务独占服务器，它又能减少空闲资源。</p>
-  <p>运行虚拟机的系统称为宿主，虚拟机里的系统称为客户机。客户机内核仍要调度进程、管理页表和驱动设备；虚拟化层则控制这些动作最终能使用哪些真实资源。本文以 x86 Linux 上两台各有 2 个虚拟 CPU（vCPU）、4 GiB 内存的 QEMU/KVM 虚拟机 A、B 为例，介绍资源视图的建立、组件分工与运行过程。</p>
-  <p>客户机看到的“独立”指独立的状态和访问范围，不代表每台虚拟机都独占对应硬件。两台客户机可以使用不同内核，却仍共享宿主 CPU 时间与内存带宽；一台负载升高，另一台即使没有被越权访问，也可能因为资源争用而变慢。</p>
+  <h2>序言</h2>
+  <p>一台 x86 Linux 服务器上运行两台 QEMU/KVM 虚拟机 A 和 B，各有 2 个虚拟 CPU（vCPU）和 4 GiB 内存。服务器上的系统称为宿主；A 和 B 中的系统称为客户机。它们各自启动内核、调度进程和驱动设备，同一个物理核可以轮流执行两台客户机的指令。</p>
+  <p>资源隔离决定一台虚机可以访问什么，资源调度决定它何时用得上。A 无权改写 B 的内存，但 A 的负载升高时，两者争用同一物理核或内存带宽，B 仍可能变慢。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 <section id="isolation" class="mechanism-section">
@@ -34,7 +33,6 @@
 
 <section id="architecture" class="mechanism-section">
   <h2>QEMU、KVM 与 Libvirt 的分工</h2>
-  <p>这些能力分布在多个组件中。QEMU 负责组装客户机可见的机器，KVM 把硬件辅助执行与内存映射能力接入 Linux，Libvirt 则负责把配置转成可管理的运行实例。宿主调度器和内存管理器仍参与实际资源分配。</p>
   {{ diagram('virtualization-system-overview', '管理请求与客户机运行路径', '管理通道建立和改变运行条件；CPU 执行与设备请求随后沿各自路径推进。Libvirt 不转发每条客户机指令或每个网络报文。') }}
   <table><thead><tr><th>组件</th><th>运行位置</th><th>本例中的职责</th></tr></thead><tbody>
     <tr><td>Libvirt</td><td>客户端库与宿主用户态守护进程</td><td>保存 A、B 的定义，准备网络和磁盘，启动 QEMU，处理启动、停止与迁移请求</td></tr>
@@ -59,7 +57,7 @@
   <p>内存也经历了类似变化：软件维护影子映射，需要跟踪客户机页表变化；EPT/NPT 允许硬件组合两级转换，但仍有页表遍历、TLB 缓存与映射失效成本。设备方面，virtio 把虚拟化环境中的请求交接规范化，vhost 和硬件卸载再改变处理位置。演变通常消除了某种重复工作，同时带来新的同步和状态管理要求。</p>
 </section>
 <section id="tradeoffs" class="mechanism-section">
-  <h2>资源利用、隔离与可管理性的取舍</h2>
+  <h2>总结</h2>
   <p>虚拟机让多套系统共享服务器，也增加客户机内核、虚拟设备和管理状态的开销。超分 vCPU 可以利用负载错峰，宿主繁忙时却会增加调度等待；直通可缩短 I/O 路径，但能否迁移，还取决于设备状态能否导出、恢复及停止 DMA。</p>
 </section>
 <section id="sources" class="mechanism-section">

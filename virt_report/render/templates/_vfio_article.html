@@ -3,7 +3,7 @@
 {% from '_mechanism_diagram.html' import diagram with context %}
 
 <section id="preface" class="mechanism-section">
-  <h2>让设备访问客户机内存并限制范围</h2>
+  <h2>序言</h2>
   <p>设备直通把物理设备的功能交给客户机驱动使用。驱动向设备提交缓冲区地址后，设备可以通过 DMA 读写客户机内存。宿主机需要把这些地址转换成实际的物理页，同时限制设备能够访问的范围。VFIO 管理设备访问与 DMA 资源，宿主 IOMMU 执行地址转换和权限检查。</p>
   <p>本文分析 x86 / KVM 下普通 PCIe 设备访问客户机 RAM 的过程：客户机不配置虚拟 IOMMU，设备使用 GPA 作为 DMA 地址，宿主启用 IOMMU 隔离；内存采用常规可固定的 RAM。本例不涉及 PCIe 对等访问、ATS、PASID 和可恢复页故障。设备寄存器与中断仅作为请求提交和完成的上下文。</p>
   {% include '_mechanism_baselines.html' %}
@@ -43,7 +43,7 @@
     <li>客户机驱动准备缓冲区和设备所需的描述符，按照设备协议与内存顺序要求提交请求。寄存器访问可通过受支持的 BAR 映射或 VFIO 访问路径到达设备。</li>
     <li>物理设备发出携带 DMA 地址的读写事务，宿主根据设备标识选择对应 IOMMU 转换上下文。</li>
     <li>IOMMU 检查映射及读写权限。转换成功时访问目标宿主页；本例缺失映射或写只读页时产生故障，目标数据访问被阻止。</li>
-    <li>正常完成的数据请求由设备按其协议报告完成，驱动随后回收或消费缓冲区。DMA 故障后的错误报告、超时或恢复过程依赖设备及平台，不能当作成功完成。</li>
+    <li>正常完成的数据请求由设备按其协议报告完成，驱动随后回收或消费缓冲区。DMA 故障后，错误报告、超时和恢复路径由设备及平台决定。</li>
   </ol>
   <p>读写权限以<strong>设备视角</strong>命名：设备读取 RAM 使用 READ，设备把接收数据写入 RAM 使用 WRITE。驱动的“发送”通常包含设备读，“接收”通常包含设备写。<a href="{{ kernel_source }}drivers/vfio/vfio_iommu_type1.c#L1585-L1615">内核的权限解释</a></p>
 </section>
@@ -109,14 +109,18 @@ IOMMUFD：iommufd_ioas_map()
   <p>QEMU 在 <a href="https://github.com/qemu/qemu/commit/5ee3dc7af7859e7b8aa34c10c21778101c15e812">2023 年合入 IOMMUFD 后端实现</a>。公共 VFIO 内存监听逻辑保留，后端分别完成传统 container 或 IOMMUFD 的绑定与 map / unmap。现在的 <code>iommufd_cdev_connect_and_bind()</code>与 <code>iommufd_cdev_attach_ioas_hwpt()</code>对应绑定和附着两个步骤。<a href="{{ qemu_source }}hw/vfio/iommufd.c#L88-L123">绑定实现</a>、<a href="{{ qemu_source }}hw/vfio/iommufd.c#L262-L282">附着实现</a></p>
   <p>接口拆分为后续页表能力提供了扩展位置，同时引入对象生命周期、能力协商和多种页表关系的管理。切换后端不会改变设备的 DMA 协议，也不会自动补齐设备迁移、复位或硬件隔离能力。比较两条路径时，应分别检查地址空间管理能力与具体设备支持的功能。</p>
   <h3>与其他设备虚拟化方式的关系</h3>
-  <p>SR-IOV 让一个物理功能提供多个 VF，VF 可以再通过 VFIO 分配；mdev 由宿主设备驱动提供受管理的设备实例；vDPA 则面向 virtio 数据面加速。它们分别解决功能划分、设备实例管理或 virtio 加速的问题。此处讨论的物理 PCIe 设备 DMA 路径，不能不加区分地套用到所有 mdev 或 vDPA 实现。</p>
+</section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>设备发起 DMA 时，访问范围和读写权限来自宿主 IOMMU 中已经安装的映射。新增 RAM 需要更新设备可用的映射；释放后备页前要停止相关 DMA、处理在途请求并撤销映射。排查故障时，用设备上报的 IOVA、访问方向和当时的映射范围核对。</p>
 </section>
 
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul class="mechanism-sources">
     <li><a href="qemu-viommu.html">vIOMMU：客户机 DMA 映射与失效同步</a>：客户机启用虚拟 IOMMU 后，IOVA 映射的建立、撤销与缓存一致性。</li>
-    <li><a href="vfio-device-migration.html">VFIO 设备热迁移：设备状态与 DMA 交接</a>：设备迁移能力、DMA 脏页跟踪与停机交接。</li>
+    <li><a href="vfio-device-migration.html">VFIO 设备热迁移</a>：QEMU 与 AMD GPU 驱动迁移客户机内存、VF 显存和硬件状态的过程。</li>
     <li>QEMU：<a href="{{ qemu_source }}hw/vfio/listener.c">VFIO MemoryListener</a>、<a href="{{ qemu_source }}hw/vfio/container.c">公共映射分派</a>、<a href="{{ qemu_source }}hw/vfio/container-legacy.c">传统 container</a>。</li>
     <li>QEMU：<a href="{{ qemu_source }}hw/vfio/iommufd.c">VFIO IOMMUFD 后端</a>、<a href="{{ qemu_source }}backends/iommufd.c">IOMMUFD ioctl 封装</a>、<a href="{{ qemu_source }}docs/devel/vfio-iommufd.rst">后端设计说明</a>。</li>
     <li>Linux：<a href="{{ kernel_source }}drivers/vfio/vfio_iommu_type1.c">Type1 映射实现</a>、<a href="{{ kernel_source }}drivers/iommu/iommufd/ioas.c">IOAS 管理</a>、<a href="{{ kernel_source }}Documentation/driver-api/vfio.rst">VFIO 设备与隔离组</a>。</li>

@@ -34,6 +34,14 @@ def test_editorial_matches_titles_sections_scenarios_and_multiple_terms():
     assert editorial_search.find("<script>alert(1)</script>")["articles"] == []
 
 
+@pytest.mark.parametrize("query,slug", [
+    ("DEVICE_DELETED", "hotplug"), ("pc-dimm", "hotplug"), ("domjobinfo", "libvirt-live-migration"),
+    ("KVM_EXIT_MMIO", "kvm-vcpu-run"), ("SIGBUS", "linux-memory"), ("avail.idx", "packed-virtqueue"),
+])
+def test_principles_are_findable_by_the_operational_term(query, slug):
+    assert slug in {entry["slug"] for entry in editorial_search.find(query)["articles"]}
+
+
 @pytest.mark.parametrize("query", ["SR-IOV", "mdev", "doorbell", "ELSP", "libvirt XML"])
 def test_gpu_sharing_demo_is_discoverable_by_assignment_and_access_terms(query):
     result = editorial_search.find(query)

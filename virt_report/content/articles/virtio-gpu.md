@@ -1,4 +1,4 @@
-## 从应用到虚拟设备与宿主 GPU {#preface}
+## 序言 {#preface}
 
 virtio-gpu 为客户机提供图形设备接口。基础二维后端接收客户机已经画好的像素；VirGL 路径接收图形命令，由宿主渲染库和驱动完成绘制；视频扩展进一步传递码流、帧参数和图像资源。它们共用资源与队列机制，但执行位置、所需能力和完成条件各有区别。
 
@@ -157,7 +157,7 @@ capset 描述渲染协议及能力，例如支持哪些格式、功能和限制�
 
 应用绑定顶点、着色器和颜色目标后，调用 `glDrawArrays(GL_TRIANGLES, 0, 3)`。Mesa 完成状态检查，通过 Gallium 的绘制接口进入 `virgl_draw_vbo()`，由 `virgl_encoder_draw_vbo()` 把绘制参数编码进命令缓冲区。此前的状态设置也可以保存在同一批命令里。
 
-`glDrawArrays()` 返回时，GPU 工作可能尚未提交。显式 flush、命令缓冲区容量限制或后续同步会促使 Mesa 调用 `virgl_flush_eq()`，经 `virgl_drm_winsys_submit_cmd()` 发出 `DRM_IOCTL_VIRTGPU_EXECBUFFER`。因此，一次 ioctl 可以包含多条绘制和状态命令，不能按 OpenGL 调用次数推算 virtqueue 请求数。[绘制编码](https://gitlab.freedesktop.org/mesa/mesa/-/blob/4fa244fddfebb21378042556862e197284ef65ac/src/gallium/drivers/virgl/virgl_encode.c)、[Guest DRM winsys 提交](https://gitlab.freedesktop.org/mesa/mesa/-/blob/4fa244fddfebb21378042556862e197284ef65ac/src/gallium/winsys/virgl/drm/virgl_drm_winsys.c)
+`glDrawArrays()` 返回时，GPU 工作可能尚未提交。显式 flush、命令缓冲区容量限制或后续同步会促使 Mesa 调用 `virgl_flush_eq()`，经 `virgl_drm_winsys_submit_cmd()` 发出 `DRM_IOCTL_VIRTGPU_EXECBUFFER`。一次 ioctl 可以包含多条绘制和状态命令。统计 virtqueue 请求数时，要看实际提交的命令批次。[绘制编码](https://gitlab.freedesktop.org/mesa/mesa/-/blob/4fa244fddfebb21378042556862e197284ef65ac/src/gallium/drivers/virgl/virgl_encode.c)、[Guest DRM winsys 提交](https://gitlab.freedesktop.org/mesa/mesa/-/blob/4fa244fddfebb21378042556862e197284ef65ac/src/gallium/winsys/virgl/drm/virgl_drm_winsys.c)
 
 Guest 内核的 `virtio_gpu_execbuffer_ioctl()` 校验参数、取得资源及输入同步依赖，再由 `virtio_gpu_cmd_submit()` 构造 `SUBMIT_3D`。命令和响应缓冲区组成描述符链，驱动发布到 controlq 并按通知条件提示设备。这里交接的是客户机准备好的命令流及资源引用；客户机 CPU 继续由 KVM 执行。[Guest 提交处理](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/gpu/drm/virtio/virtgpu_submit.c)、[controlq 命令构造](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/gpu/drm/virtio/virtgpu_vq.c)
 
@@ -209,7 +209,7 @@ Guest 驱动经 `virtio_gpu_dequeue_ctrl_func()` 消费响应，调用 `virtio_g
 ```component _execution_lab.html
 ```
 
-演示分别标记提交返回、GPU 完成、Guest 确认 fence 和应用消费。播放间隔与示例地址用于解释顺序，不代表实测耗时或硬件布局。
+演示分别标记提交返回、GPU 完成、Guest 确认 fence 和应用消费。示例地址标识各资源，播放间隔用于分隔步骤。
 
 ## 一帧 H.264 的解码与显示 {#decode}
 
@@ -234,7 +234,7 @@ QEMU 只识别外层提交并交给 renderer。宿主 `vrend_video_decode_bitstr
 
 ### 解码表面转为可消费图像
 
-`vaEndPicture()` 提交工作后，输出表面可能仍在写入。virglrenderer 的这一实现使用 `vaSyncSurface()` 等待表面就绪，再通过 DMA-BUF 导出表面，并以 EGLImage 等对象连接到 GL。解码完成回调把各平面内容复制到对应的 VirGL 纹理资源；`sync_dmabuf_to_video_buffer()` 中有实际的 `glCopyTexSubImage2D()` 调用。因此，即使使用了 DMA-BUF，共享句柄也不意味着整个视频链没有复制。[解码完成与平面复制](https://gitlab.freedesktop.org/virgl/virglrenderer/-/blob/500b41d5c8638f9b80dd558f4044f3301c7457a4/src/vrend/vrend_video.c#L149)
+`vaEndPicture()` 提交工作后，输出表面可能仍在写入。virglrenderer 的这一实现使用 `vaSyncSurface()` 等待表面就绪，再通过 DMA-BUF 导出表面，并以 EGLImage 等对象连接到 GL。解码完成回调把各平面内容复制到对应的 VirGL 纹理资源；`sync_dmabuf_to_video_buffer()` 中有实际的 `glCopyTexSubImage2D()` 调用。DMA-BUF 让两端通过句柄访问共享缓冲区，视频链的其他阶段仍可能复制数据。[解码完成与平面复制](https://gitlab.freedesktop.org/virgl/virglrenderer/-/blob/500b41d5c8638f9b80dd558f4044f3301c7457a4/src/vrend/vrend_video.c#L149)
 
 播放器或合成器随后可以把 Y、UV 作为纹理输入，完成颜色转换、缩放和界面合成，再交给[三维渲染一节介绍的显示路径](#render-part-4)。若应用需要在 Guest CPU 上访问解码像素，还要走相应的资源映射或读回路径。视频解码完成、平面资源可用、完成渲染和实际显示各有明确的依赖，画面才能正确交付。
 
@@ -263,7 +263,7 @@ QEMU 只识别外层提交并交给 renderer。宿主 `vrend_video_decode_bitstr
 
 Guest 的 `virgl_video_get_feedback()` 等待对应工作，再读取反馈。VA state tracker 通过 coded buffer 接口把编码结果交给应用；应用接着封装容器、写文件或进行网络发送。编码器生成 H.264 数据、文件写入完成以及远端收到视频分别属于不同阶段。[宿主编码反馈](https://gitlab.freedesktop.org/virgl/virglrenderer/-/blob/500b41d5c8638f9b80dd558f4044f3301c7457a4/src/vrend/vrend_video.c#L296)、[Guest 编码与反馈](https://gitlab.freedesktop.org/mesa/mesa/-/blob/4fa244fddfebb21378042556862e197284ef65ac/src/gallium/drivers/virgl/virgl_video.c#L1058)
 
-固定版本的输出复制按资源剩余容量限制每段写回量，并把已复制的字节数记入 `coded_size`；这个分支随后仍填写 SUCCESS。因此，成功状态本身不能证明输出缓冲区足够大。调用方需要按编码接口要求提供足够容量，并检查状态、有效长度和结果完整性，不能指望容量不足一定转换为失败响应。
+固定版本的输出复制按资源剩余容量限制每段写回量，并把已复制的字节数记入 `coded_size`。即使只写回了部分码流，这条路径也会填写 SUCCESS。调用方应提供足够的输出空间，并检查状态、有效长度和码流完整性。
 
 一般的视频编码还可能使用多参考帧、重排序及缓冲策略，输入一帧和立即得到一帧输出不能作为通用假设。这里选择 IDR 单帧，目的是把资源与完成关系对应起来；完整视频序列继续由 codec 会话维护跨帧状态。
 
@@ -280,7 +280,7 @@ Guest 的 `virgl_video_get_feedback()` 等待对应工作，再读取反馈。VA
 | 编码 feedback 成功且长度有效 | 可以按接口约定消费本次压缩输出 | 文件封装、磁盘持久化或网络交付 |
 | 显示后端收到图像更新 | 输出端可以安排消费资源 | 实际呈现时间及远端客户端状态 |
 
-FLUSH 的带 fence 响应也不能证明远程客户端已经收到图像，或物理显示器已经扫描到那一行。Virtio 的命令生命周期与 fence 约定见[规范第 5.7.6.5 节](https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html)。
+FLUSH 的 fence 标记该命令处理完成；远程交付与物理屏幕扫描由各自的显示路径完成。Virtio 的命令生命周期与 fence 约定见[规范第 5.7.6.5 节](https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html)。
 
 错误也沿这些边界传播。无效资源句柄、无法支持的 profile 或宿主 API 失败需要检查响应和状态，输出容量还要满足前述约束。Guest 只有在相关访问完成、依赖解除后才能复用资源；参考帧、后续渲染任务和显示输出可能分别持有同一图像。
 
@@ -290,7 +290,7 @@ FLUSH 的带 fence 响应也不能证明远程客户端已经收到图像，或�
 
 ## 技术演进与方案取舍 {#evolution}
 
-从二维像素传输到三维加速，优化目标逐渐扩展到渲染卸载、资源共享和进程隔离。下面把这些方向放在一起比较，便于按应用需求选择；它们可以组合，并不构成必须逐级替换的升级顺序。
+从二维像素传输到三维加速，优化目标逐渐扩展到渲染卸载、资源共享和进程隔离。下面把这些方向放在一起比较，便于按应用需求选择；这些机制可以按渲染、视频和显示需求组合使用。
 
 | 路径或能力 | 主要变化 | 条件与代价 |
 | --- | --- | --- |
@@ -306,9 +306,11 @@ Venus 为 Vulkan 定义另一套序列化协议，使用不同的 capset 和上�
 
 这里涉及三种不同的队列：**virtqueue** 是 Guest 驱动与设备的请求通道；**Venus 共享 ring** 是协议命令传输机制；**Vulkan VkQueue** 是应用提交 GPU 工作的 API 对象。一次 Vulkan 调用、一次协议传输和一次物理 GPU 提交之间可能存在批处理与异步执行。[Venus 协议实现说明](https://gitlab.freedesktop.org/mesa/mesa/-/blob/4fa244fddfebb21378042556862e197284ef65ac/docs/drivers/venus.rst)
 
-这些能力沿不同方向扩展。支持 OpenGL 渲染不自动推出视频 profile 可用，支持 Venus 也不能推出所需 Vulkan Video 扩展已经端到端接通。应用应查询实际能力；GPU 型号、宿主驱动和虚拟化后端需要共同满足条件。
+应用应查询所需的视频 profile 或 Vulkan Video 扩展。它们能否使用，取决于客户机驱动、渲染器、宿主驱动和 GPU 的共同支持。
 
 远程桌面的编码则位于另一条链：客户机图像已经由显示端取得，远程显示服务再选择软件或硬件 codec 压缩画面，发送给客户端。它服务于桌面传输，与 Guest 应用请求的 VA-API 编码是两个独立功能。`virtio-video` 也属于独立的视频设备协议设计，应与这里承载在 virtio-gpu `SUBMIT_3D` 中的 VirGL 视频命令区分。
+
+## 总结 {#summary}
 
 总体上，资源编号和内存映射确定数据存在哪里，命令决定如何处理，fence 与响应约定何时可以继续使用结果。画面未更新时可以先查资源与 scanout 关系，内容错误时检查传输范围和格式，延迟过高时再分别观察队列等待、执行、复制及显示消费。各后端的配置边界见 [QEMU 10.2 设备文档](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/system/devices/virtio/virtio-gpu.rst#L18)。
 

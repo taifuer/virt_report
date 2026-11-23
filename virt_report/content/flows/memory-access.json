@@ -910,7 +910,7 @@
           "sourceIds": [
             "address-model"
           ],
-          "detail": "读取 Guest 页表本身也可能需要 EPT 转换；两级遍历可交织发生。这里按最终 Guest PTE 与 EPT 叶项分解解释，不冒充两次 Linux 函数调用。",
+          "detail": "读取 Guest 页表本身也可能需要 EPT 转换；两级遍历可交织发生。这里分两步展示硬件如何结合最终的 Guest PTE 与 EPT 叶项。",
           "code": "Guest 页表：GVA → GPA\nEPT：GPA → HPA"
         },
         {
@@ -1465,7 +1465,7 @@
           "title": "取得当前后备页",
           "actor": "KVM → 宿主内存管理",
           "description": "后备页已经驻留，宿主内存管理返回 PFN 0x21000。",
-          "detail": "KVM 获得页引用和可写状态，并检查相关映射失效条件。这并不意味着整台虚机的 RAM 被永久固定。",
+          "detail": "KVM 获得页引用和可写状态，并检查相关映射失效条件。该引用仅保持本次使用的后备页有效。",
           "active": [
             "kvm",
             "host-mm"
@@ -2258,7 +2258,7 @@
             "qemu-memory-read",
             "qemu-device-read"
           ],
-          "boundary": "经过 FlatView/MemoryRegion 翻译调用所选设备的 read 回调。本例是抽象寄存器，不冒充某一具体设备实现；设备返回的字节仍不是 Guest 指令已完成。",
+          "boundary": "经过 FlatView/MemoryRegion 翻译调用所选设备的 read 回调。本例用抽象寄存器演示该访问；设备返回的字节仍不是 Guest 指令已完成。",
           "entry": {
             "kind": "return",
             "label": "KVM_EXIT_MMIO 使 KVM_RUN 返回，再由 QEMU 分派设备访问"
@@ -2479,7 +2479,7 @@
           "title": "恢复 EPT 写权限",
           "actor": "KVM fast_page_fault",
           "description": "KVM 确认映射允许恢复写权限，原子更新 SPTE。",
-          "detail": "本例沿 fast_pf_fix_direct_spte() 的顺序展示：先成功更新 SPTE，随后记录脏页，再返回 Guest。这里只展示一个 vCPU 的成功路径，不将图中分步视为可供其他线程观察的同步屏障。",
+          "detail": "本例沿 fast_pf_fix_direct_spte() 的顺序展示：先成功更新 SPTE，随后记录脏页，再返回 Guest。本例跟踪一个 vCPU 的操作顺序，并发可见性由相应的同步机制决定。",
           "active": [
             "kvm",
             "mmu"
@@ -3251,7 +3251,7 @@
     {
       "id": "mmio-ivshmem-direct",
       "label": "共享内存 BAR · ivshmem",
-      "summary": "ivshmem BAR2 暴露宿主共享 RAM。Guest 经页表与 EPT 直接读同一后备页；没有物理 PCIe 设备或 VFIO。BAR 是客户机资源窗口的形式，不代表落点一定是设备寄存器。",
+      "summary": "ivshmem BAR2 暴露宿主共享 RAM。Guest 经页表与 EPT 直接读同一后备页；没有物理 PCIe 设备或 VFIO。BAR 定义客户机可访问的资源窗口，具体落点由设备映射决定。",
       "assumptions": [
         "x86-64 / Intel VMX，QEMU 10.2.0、Linux 6.18；固定 ivshmem-plain，memdev 指向 share=on 的宿主共享内存后备。",
         "只读 BAR2 中 offset 0x1000 的 4 B 数据；不访问 BAR0 控制寄存器，不使用 ivshmem-doorbell、MSI-X、通知或任何设备 DMA。",

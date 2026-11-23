@@ -3,7 +3,7 @@
 {% set linux_source = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>客户机访存与宿主内存映射</h2>
+  <h2>序言</h2>
   <p>客户机页表记录客户机虚拟地址到客户机物理地址的映射，宿主页的位置则由宿主内存管理决定。宿主可能按需分配、回收或迁移这些页。第二级地址转换在保留客户机地址空间的同时，将访问映射到当前宿主页；后备页变化时，KVM 需要撤销旧映射并重新建立转换。</p>
   <p>Intel EPT 为此增加 GPA → HPA 转换：QEMU 登记 RAM 后备范围，KVM 按需建立并维护 EPT，处理器利用这些页表和 TLB 执行访存。本文跟踪一次 <code>GVA 0x40203080</code> 的读取，依次走过“登记范围 → 缺页建图 → 重试访问 → 后备页变更后重建”。</p>
   <p>源码路径采用 x86、Intel EPT 和 KVM TDP MMU。后备内存使用 QEMU 可访问的匿名内存或文件映射，示例以 4 KiB 页展开；私有内存与嵌套虚拟化另有处理路径。</p>
@@ -53,7 +53,7 @@ memslot.npages            = 0x200 = 512 页
 EPT 叶子映射             = GPA 页 0x00403000 → HPA 页 0x21000000
 本次访问的 HPA           = 0x21000000 + 0x080
                          = 0x21000080</code></pre>
-  <p>GFN 是 GPA 除以页大小得到的客户机页号，PFN 是宿主物理页号。KVM 先用槽内偏移找到 HVA，再让宿主内存管理提供当前 PFN；负责这两步的入口分别是 <code>__gfn_to_hva_memslot()</code> 与 <code>__kvm_faultin_pfn()</code>。后备页未驻留时还需分配、调入或等待 I/O。这里取得的是临时页引用，不能推导为整台 VM 的 RAM 永久固定在同一物理地址。<a href="{{ linux_source }}include/linux/kvm_host.h#L1862-L1875">GFN → HVA</a>、<a href="{{ linux_source }}virt/kvm/kvm_main.c#L2854-L2936">宿主取页</a></p>
+  <p>GFN 是 GPA 除以页大小得到的客户机页号，PFN 是宿主物理页号。KVM 先用槽内偏移找到 HVA，再让宿主内存管理提供当前 PFN；负责这两步的入口分别是 <code>__gfn_to_hva_memslot()</code> 与 <code>__kvm_faultin_pfn()</code>。后备页未驻留时还需分配、调入或等待 I/O。KVM 在这里取得当前后备页的临时引用。<a href="{{ linux_source }}include/linux/kvm_host.h#L1862-L1875">GFN → HVA</a>、<a href="{{ linux_source }}virt/kvm/kvm_main.c#L2854-L2936">宿主取页</a></p>
   <h3>提交映射后，处理器重试同一条读取</h3>
   <p>在 TDP MMU 慢路径中，KVM 取得 PFN 后获取 <code>mmu_lock</code> 读锁，确认本次结果没有失效，再逐级创建缺少的页表页，以原子操作安装叶子 SPTE（KVM 管理的页表项，这里对应 EPT 项）。若其他 vCPU 已建立映射或修改同一项，会检查结果或重试；成功后重新进入客户机，由处理器重试原来的访存。通常无需返回 QEMU，也不需要修改客户机页表。<a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L4882-L4925">缺页入口</a>、<a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1174-L1238">叶子项安装</a></p>
   <p>本例最终读取 <code>HPA 0x21000080</code>。后续相同访问若命中有效 TLB / EPT 映射，就沿硬件路径完成；QEMU 不会再次逐项计算 HVA，KVM 也无需每次重新取得 PFN。按需建图把工作集中到首次访问和映射变化时。</p>
@@ -101,7 +101,7 @@ EPT 叶子映射             = GPA 页 0x00403000 → HPA 页 0x21000000
     <tr><td>宿主后备页无法取得</td><td>RAM 槽存在，但宿主内存解析出错</td><td>根据错误类型重试、处理信号或报错，不能一律转换成普通 MMIO</td></tr>
   </tbody></table>
   <p>例如迁移开启写保护式脏页跟踪后，客户机对已存在 RAM 页的首次写入会触发 EPT 处理，KVM 记录页被修改，再允许后续写入。<code>KVM_MEM_READONLY</code> 则声明槽的只读属性：x86 对它的写请求可交给用户态 MMIO 处理，不应像脏页记录那样随意恢复可写。脏页记录也可以结合硬件辅助机制，不能把所有记录模式都归结为逐页写退出。<a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L1407-L1417">只读槽约定</a></p>
-  <p>无槽访问还可能缓存成特殊 MMIO SPTE，后续通过 EPT misconfiguration 等路径识别；“看到 EPT 退出”不足以判断是否需要 QEMU。对应实现见 <a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L3507-L3544"><code>kvm_handle_noslot_fault()</code></a> 与 <a href="{{ linux_source }}arch/x86/kvm/vmx/vmx.c#L5779-L5798"><code>handle_ept_misconfig()</code></a>。用户态往返见<a href="kvm-vcpu-run.html#paths">vCPU 退出处理</a>，迁移脏页交接见<a href="kvm-dirty-ring.html">Dirty Ring</a>。</p>
+  <p>无槽访问还可能缓存成特殊 MMIO SPTE，后续通过 EPT misconfiguration 等路径识别；决定是否返回 QEMU，要看这次 EPT 退出对应的是 RAM 建图还是需要用户态处理的访问。对应实现见 <a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L3507-L3544"><code>kvm_handle_noslot_fault()</code></a> 与 <a href="{{ linux_source }}arch/x86/kvm/vmx/vmx.c#L5779-L5798"><code>handle_ept_misconfig()</code></a>。用户态往返见<a href="kvm-vcpu-run.html#paths">vCPU 退出处理</a>，迁移脏页交接见<a href="kvm-dirty-ring.html">Dirty Ring</a>。</p>
 </section>
 
 <section id="invalidation" class="mechanism-section">
@@ -163,6 +163,11 @@ return r;</code></pre>
   </tbody></table>
   <p>评估时分别观察启动或首次触页耗时、稳定业务延迟、KVM MMU 退出与宿主缺页 / 内存压力，再比较同一负载的变化。客户机 #PF、EPT 缺页和宿主取页等待来源不同；只看一个“缺页数”，无法知道应该改客户机内存管理、KVM 建图还是宿主分配策略。</p>
   <p>大页条件与迁移期间的粒度变化见<a href="kvm-hugepages.html">KVM 大页映射的建立、拆分与恢复</a>，其中逐步展示 2 MiB 叶子与 512 个 4 KiB 叶子的转换。</p>
+</section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>分析一次访存停顿，先区分客户机自身的缺页、KVM 补建二级映射，以及宿主为后备页等待的时间。普通 RAM 建图成功后可以重试原指令；如果目标是设备寄存器，还要沿 MMIO 路径检查由谁提供数据。</p>
 </section>
 
 <section id="sources" class="mechanism-section">

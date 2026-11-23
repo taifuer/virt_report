@@ -1,134 +1,105 @@
-## 直通网卡的状态交接 {#preface}
+## 序言 {#preface}
 
-一台虚拟机使用直通网卡 VF 接收数据包。网卡把报文写入客户机的接收缓冲区，推进接收队列，并产生完成通知。迁移这台虚拟机时，目的端既要拿到报文所在的 RAM，也要恢复网卡已经处理到哪一个请求。只恢复其中一部分，就可能把旧缓冲区当作新报文，或让已经完成的请求再次执行。
+VFIO 设备热迁移让虚拟机从一台宿主机迁到另一台时，能在目的端的直通设备上接续运行。以正在用 AMD GPU 做计算的虚拟机为例：源端物理 GPU 通过 SR-IOV 提供一个虚拟功能（VF），客户机驱动把它当作自己的 PCI 设备使用。迁移结束后，接着执行任务的是目的端另一块 GPU 上的 VF。两端需要兼容的设备、固件和迁移驱动。
 
-本文以一块支持 VFIO 迁移的网卡 VF 为例，跟踪源端继续收包、状态预拷贝、暂停交接和目的端恢复。客户机使用普通 RAM，未启用 vIOMMU；目的端已有兼容的设备与网络配置。设备型号、固件、驱动和管理面的配套共同决定兼容性，普通 VFIO 直通能力不包含迁移保证。
+普通虚拟机热迁移已经负责搬运 vCPU、客户机 RAM 和 QEMU 模拟设备的状态。直通 GPU 增加了两项工作：**找出 GPU 通过 DMA 改写的客户机 RAM；把 VF 的显存和硬件执行状态交给目的端驱动。** 例如，一次计算把结果留在显存里，再向客户机内存写入完成记录。目的端看到这条完成记录时，对应的计算结果也应当已经就位。
 
 ```baselines
 ```
 
-## RAM、设备状态与运行权 {#consistency}
+## VFIO 迁移接口的演变 {#evolution}
 
-客户机驱动的描述符、报文缓冲区和完成记录通常位于客户机 RAM。网卡内部还可能保存队列上下文、内部缓存、协议处理进度等状态。这些内容由设备及其迁移驱动定义，QEMU 无法通过读取客户机内存把它们全部重建出来。
+v1 和 v2 指的是 Linux VFIO 提供给 QEMU 的两代设备迁移接口。两代接口都由厂商驱动解释设备状态，变化在于 QEMU 用什么方式控制设备、又从哪里取数据。
 
-| 需要交接的内容 | 更新者与位置 | 迁移时的处理 |
+| QEMU 版本 | 接口变化 | 对迁移过程的影响 |
 | --- | --- | --- |
-| 客户机执行状态 | vCPU 寄存器、中断控制器等 | 停机后保存并在目的端恢复 |
-| CPU 写入的 RAM | 客户机 CPU 修改页表、队列和应用数据 | KVM 脏页日志等机制交给 QEMU RAM 迁移 |
-| DMA 写入的 RAM | 直通设备写入报文、完成记录等 | 设备或 IOMMU 的 DMA 脏页跟踪交给 QEMU RAM 迁移 |
-| VF 内部状态 | 设备队列上下文、内部缓存和运行进度 | VFIO 迁移驱动导出字节流，目的端兼容驱动导入 |
-| 设备配置与运行权 | PCI 配置及源、目的端的执行状态 | 恢复配置，完成全部依赖后切换运行端 |
+| 5.2：v1 | 驱动暴露迁移区域。QEMU 读写 `device_state` 位组合，用 `pending_bytes`、`data_offset` 和 `data_size` 找到待传内容。 | 控制字段和数据窗口共用设备文件；双方通过一系列按偏移的读写协调进度。 |
+| 8.0：v2 | `VFIO_DEVICE_FEATURE` 查询能力、请求状态转换；进入保存或恢复会话时，内核返回独立的 `data_fd`。 | 设备文件负责控制，数据文件负责顺序读写。基础能力是停机导出和恢复。 |
+| 8.1：v2 设备预拷贝 | 支持 `VFIO_MIGRATION_PRE_COPY` 的驱动可在设备工作时提供数据，并回答 `VFIO_MIG_GET_PRECOPY_INFO` 查询。 | 部分设备状态可以提前装入目的端，停机时只处理剩余部分。 |
+| 10.0：设备状态接入 multifd | QEMU 可以用多个迁移通道发送 `STOP_COPY` 阶段的设备状态。 | 改变的是两台 QEMU 之间的传输；两端驱动继续顺序读写各自的数据 FD。 |
 
-假设源端第一次传出了接收缓冲区所在的页 P。随后网卡把新报文写到 P，同时推进内部接收队列。下一轮迁移需要重新发送 P；停机交接还要拿到与该报文对应的设备状态。**CPU 写脏记录、DMA 写脏记录和设备内部变化需要分别覆盖，最终在同一个停止边界上对齐。**
+## QEMU 与内核的迁移流程 {#states}
 
-```diagram vfio-migration-consistency
-一次收包涉及的三类变化
-CPU 与设备都能修改客户机 RAM；VFIO 导出的设备状态是另一条数据流。停止所有相关写入者后，目的端才能得到一致的恢复点。
-```
+### 建立会话与运行中预拷贝 {#precopy}
 
-RAM 可以在两端同时保留副本，但同一虚拟机的执行只能交给一个端点。源端停机后保留的内存与设备状态仍有恢复价值；目的端开始运行后，它们已经成为旧副本，不能再直接启动源端。
+QEMU 先从源设备查询迁移能力。源端单块 VF 支持预拷贝时，`vfio_save_setup()` 请求 `RUNNING → PRE_COPY`。Linux VFIO 把请求交给驱动的 `migration_set_state`，把驱动返回的文件安装成 QEMU 可读的 FD。目的端则通过 `vfio_load_setup()` 进入 `RESUMING`，取得可写的 FD。此时源 VF 继续处理客户机任务，目的 VF 只接收恢复数据。
 
-## VFIO 用状态机约束设备行为 {#states}
+运行期间有两条数据流。RAM 迁移发送客户机内存页，VFIO 的 `vfio_save_iterate()` 则从设备 FD 读一块，写进迁移流。QEMU 用 `initial_bytes` 和 `dirty_bytes` 估算当前待传的**设备字节数**。启用 `switchover-ack` 时，目的端确认初始设备数据已加载，源端再进入停机切换。这样，初始数据触发的资源准备也可以放在虚拟机仍提供服务的时段。
 
-QEMU 通过设备 fd 上的 `VFIO_DEVICE_FEATURE_MIGRATION` 查询支持能力，再通过 `VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE` 切换状态。设备迁移至少需要 `VFIO_MIGRATION_STOP_COPY`；运行中预拷贝由可选的 `VFIO_MIGRATION_PRE_COPY` 标志声明。
+### 停机与目的端恢复 {#handoff}
 
-| 状态 | 设备对客户机的行为 | 状态数据的方向 |
-| --- | --- | --- |
-| `RUNNING` | 正常处理请求，可进行 DMA 和中断 | 无迁移数据会话 |
-| `PRE_COPY` | 继续工作，并跟踪内部状态变化 | 源端读取初始状态和后续变化 |
-| `STOP` | 不再改变内部状态，也不产生 DMA 或中断 | 无活动迁移数据会话 |
-| `STOP_COPY` | 保持停止 | 源端读取剩余状态，直到永久结束 |
-| `RESUMING` | 保持停止，接收要恢复的状态 | 目的端写入迁移字节流 |
+暂停 vCPU 后，设备先前接到的任务还可能完成一次 DMA 写入。源端 QEMU 通过虚拟机状态回调和保存回调把 VF 转入 `STOP_COPY`；驱动完成停止后，设备的最后一笔写入也确定下来。RAM 迁移同步最终脏页，VFIO 读完设备 FD 的剩余数据。仅支持停机拷贝的设备在这个阶段导出全部状态，客户机 RAM 的预拷贝仍照常进行。
 
-`RESUMING` 表示“正在恢复状态”，设备还没有恢复对客户机的服务。进入保存或恢复会话时，内核返回独立的 `data_fd`。QEMU 从源端 fd 读出字节，再按相同顺序写入目的端 fd。数据内容对 QEMU 是不透明的，不能根据名称把其中的 `dirty_bytes` 当成客户机 RAM 脏页数量。
-
-```text
-设备 fd：VFIO_DEVICE_FEATURE
-  device_state = PRE_COPY / STOP_COPY / RESUMING
-  data_fd      = 由内核返回的数据会话 fd
-
-源端 data_fd --read--> QEMU 迁移流 --write--> 目的端 data_fd
-                 保持设备状态字节顺序
-```
-
-状态切换成功返回，表示驱动已经完成该转换；失败时设备可能停在组合转换的中间状态。`ERROR` 需要设备复位，不能当作普通暂停处理。Linux UAPI 同时规定，中止目的端的 `RESUMING` 会话需要复位设备。复位回到初始 `RUNNING` 状态，会丢失正在恢复的上下文；需要保持停止时，还要继续请求 `STOP`。这里的初始 `RUNNING` 不代表客户机队列已经配置或目的端虚拟机已经启动。[状态与数据 fd 的定义](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/uapi/linux/vfio.h#L1011-L1255)
-
-## 运行阶段：同步 RAM 与预拷贝设备状态 {#precopy}
-
-迁移开始后，QEMU 为 RAM 开启脏页跟踪。支持设备预拷贝时，`vfio_save_setup()` 还把源端 VF 从 `RUNNING` 切到 `PRE_COPY`；目的端的 `vfio_load_setup()` 把对应设备放入 `RESUMING`。此时仍由源端处理业务，目的端只恢复数据。
-
-VFIO 的预拷贝查询把待传状态分为 `initial_bytes` 和 `dirty_bytes`。前者表示初始设备状态，后者表示此前导出后又发生的内部变化。驱动可按设备特点选择导出粒度，这两个估计值不保证等于最终 `STOP_COPY` 阶段的剩余量。QEMU 使用查询结果参与迁移进度判断，再由 `vfio_save_iterate()` 分块读取并发送。[预拷贝查询语义](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/uapi/linux/vfio.h#L1257-L1305)、[QEMU 迭代发送](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L589-L632)
-
-初始设备状态可能触发目的端较慢的资源分配。启用 `switchover-ack` 后，目的端加载初始数据并反馈确认，QEMU 再允许进入相应的停机切换。这可以把部分准备成本移到源端仍运行的阶段。**该确认只说明初始加载满足切换条件，不表示全部状态已经恢复，也不授予目的端运行权。**
-
-设备不支持预拷贝时，RAM 仍可正常迭代；设备状态留到停机后导出。这条路径减少了运行中设备状态跟踪的要求，但停机窗口通常要承受更多设备状态的传输和加载工作。[初始数据标记及接收确认](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L602-L631)、[目的端确认处理](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L726-L807)
-
-## 停机阶段：停止 DMA 并形成恢复点 {#handoff}
-
-停止 vCPU 只能阻止客户机继续提交 CPU 请求。此前已经交给 VF 的工作仍可能推进，DMA 还可能修改 RAM。QEMU 通过虚拟机状态回调驱动 VFIO 状态转换，使设备到达停止状态，再同步最终的 DMA 脏页。停机后导出的设备状态才能与最终 RAM 内容对齐。
-
-对于有预拷贝的路径，源端设备可进入 `STOP_COPY` 并继续读取同一保存会话的尾部；无预拷贝时，设备先停止，再进入 `STOP_COPY` 开始导出。目的端按顺序写入设备状态，结束 `RESUMING` 时，驱动完成最终校验和状态安装。在完整 RAM、vCPU、设备配置和内部状态都就绪之后，目的端才启动设备与客户机。
+目的端 QEMU 按设备字节流的顺序写入 FD，恢复 PCI 配置。驱动结束 `RESUMING`、安装设备状态，目的端具备完整的 RAM、vCPU 和设备状态后接管运行。多块 VF 之间有 P2P DMA 时，VFIO 的 P2P 静止阶段会先阻止新的设备间请求，并等在途事务完成，再分别停止设备。
 
 ```diagram vfio-migration-handoff
-源端、迁移流与目的端的交接
-RAM 和设备状态在停机窗口内都要完成。图中的并列分支表示共同的完成条件，不要求它们按固定先后发送，也不表示两者必然使用并行通道。
+单块 GPU VF 从源端切换到目的端
+源端运行时可以同时传客户机 RAM 和设备数据；停机后，最终 DMA 脏页与剩余设备字节在目的端会合。
 ```
 
-`vfio_vmstate_change()` 在虚拟机恢复运行时请求设备进入 `RUNNING`。这个请求可以由内核沿合法的组合转换到达目标状态，其中包含结束 `RESUMING` 的校验；设备恢复成功是完成切换的重要条件。源端的 `STOP_COPY` 清理则放在保存清理阶段，避免不必要地延长关键停机路径。[虚拟机状态回调](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L851-L905)、[源端最终保存与清理](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L509-L538)
+### 运行中取消 {#failure}
 
-多设备间还可能存在 P2P DMA。支持 `VFIO_MIGRATION_P2P` 时，`RUNNING_P2P` / `PRE_COPY_P2P` 阶段先禁止新的 P2P 请求，并完成在途 P2P 事务，然后再把各设备彻底停下来。否则，一块设备已经停止，另一块却仍向它写入，会破坏一致性。QEMU 10.2 对多 VFIO 设备的迁移检查这项能力；单设备例子无需引入这组状态。[P2P 静止语义](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/uapi/linux/vfio.h#L1199-L1238)、[多设备能力检查](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L1041-L1081)
+如果在预拷贝期间取消，业务仍在源端。源 VF 结束保存会话，返回 `RUNNING`；目的端复位正在恢复的 VF，清理这次迁移的副本。成功切换后，新的计算结果和 DMA 写入发生在目的端，源端保持停止。
+
+## 用 multifd 并行传输设备状态 {#multifd}
+
+单通道路径中，`vfio_save_complete_precopy()` 从源设备 FD 读到流结束，经主迁移通道发送。启用 VFIO multifd 后，QEMU 把停机导出交给工作线程：它读出设备数据，为每块编上序号，再把数据块放入 multifd 发送队列。对于显存较大或同时迁移多个设备的虚拟机，这段传输可能占去相当一部分停机时间。
+
+多个通道的到达顺序可以不同。假设同一 VF 的块 8 比块 7 先到，目的端 `vfio_multifd_load_state_buffer()` 按序号暂存块 8；加载线程取得块 7 后，才顺序把 7、8 写进驱动。增加通道可以提高传输吞吐，乱序块会占用目的端缓冲，驱动导出和导入也各有自己的速率。因此，调优时要同时看停机待传字节、通道吞吐和目的端加载耗时。
+
+## AMD GPU 驱动的实现 {#amd-driver}
+
+### 从 PCI VF 进入 GIM
+
+AMD 的 MxGPU 通过 SR-IOV 把物理 GPU 的资源分给 VF；GIM（GPU-IOV Module）管理这些 VF。宿主机的 `amd-vfio-pci` 把一个 VF 接入 Linux VFIO。在 GIM 9.4.0.K 中，`amd_vfio_pci_open_device()` 检查宿主 IOMMU 的脏页跟踪能力，向 GIM 取得迁移操作，再注册 VF 的 `mig_ops` 和能力标志。
+
+QEMU 请求切换状态后，可以沿内核的 `migration_set_state` 一直追到 GIM 的 `gim_mig_set_state()`。GIM 按 VF 保存当前状态，用 `vfio_mig_get_next_state()` 找到下一步。进入源端预拷贝时，`gim_mig_setup_copy()` 建立缓冲区、复制线程和保存文件；目的端进入恢复时建立方向相反的会话。
+
+### 客户机 RAM 和显存的脏页跟踪 {#dma-dirty}
+
+| 被修改的数据 | 谁记录变化 | 目的端如何获得新内容 |
+| --- | --- | --- |
+| 客户机 RAM，例如命令队列和完成记录 | KVM 记录 vCPU 写入；对直通设备的 DMA 写入，QEMU 的 VFIO 内存监听器从相应跟踪后端收集脏页。本例的 AMD 驱动要求 IOMMU 支持跟踪。 | 脏页合入 QEMU 的 RAM 迁移集合，由 RAM 迁移重传页面。 |
+| 分配给 VF 的 GPU 显存（驱动称为 FB），例如计算结果 | GIM 查询该 VF 的显存变化位图，`gim_mig_update_shadow_dirtybit()` 暂存位图并计算本轮待复制的大小。 | GIM 从置位的显存范围复制数据，经设备 FD 传输；目的端驱动写回对应显存。 |
+| VF 硬件状态，例如固件维护的执行上下文 | GIM 区分迁移上下文、静态硬件数据和停机时刻的动态硬件数据。 | 驱动向迁移消息填入各段的类型、偏移和长度，目的端按类型导入。 |
+
+例如，GPU 修改显存页 F，又对客户机 RAM 页 C 写了完成记录。**F 走 VFIO 设备数据流，C 走 RAM 迁移流。** 两者在同一个设备停止点对齐。进一步读芯片实现，可以看 `mi300_dirtybit_query_data()`：它根据显存共享配置选择查询硬件脏位或比较显存页哈希，向上层提供位图。DMA 的地址映射见[设备直通与 DMA 地址转换](qemu-vfio-dma.html)。
+
+### 从一轮预拷贝到最后一次导出
+
+QEMU 在保存 FD 上查询进度时，`gim_migf_save_ioctl()` 汇总当前消息中尚未读出的数据，并通过 `gim_mig_update_msg_copy_info()` 更新下一批内容。迁移早期包括 VF 上下文和静态硬件数据；显存内容按位图选择，连续的脏页可以合成一段复制。源 VF 仍在执行，已经传过的显存页可能再次变脏，后续轮次会补传新版本。
+
+从 `PRE_COPY` 进入 `STOP_COPY` 时，GIM 暂停 VF，把动态硬件数据和最后一批显存变化加入导出。底层 `amdgv_migration_transfer_manifest_data()` 根据数据类型调用固件接口。目的端校验消息头、长度和设备上下文，导入静态、动态数据并写回显存；结束恢复会话时还要等复制线程把环中的数据消费完。QEMU 搬运的是一条字节流，AMD 驱动掌握其中每段的含义。
+
+### 显存与 QEMU 之间的环形缓冲区
+
+`gim_mig_buffer_init()` 分配一块 CPU 和 GPU 都能访问的宿主内存作环形缓冲区。源端复制线程 `gim_mig_data_copy_thread()` 根据显存位图填环，QEMU 一侧的 `read()` 从已填好的区域取走数据。目的端反过来：QEMU 通过 `write()` 填环，复制线程把数据送回目的 VF。读写指针区分空闲与可用空间，环满时生产方等待，空间释放后继续。
+
+这让 GPU 复制下一批显存页时，QEMU 可以处理上一批。驱动与用户空间之间仍有 `copy_to_user()` 和 `copy_from_user()`。**环形缓冲区衔接本机 GPU 和 QEMU；multifd 衔接两台主机的 QEMU。** 观察到网络空闲时，还要看源端能多快填环、目的端能多快把环里的数据写回显存。
+
+```diagram vfio-migration-consistency
+显存和客户机内存的两条传输路径
+显存经驱动环形缓冲区和 VFIO 数据 FD 传输；DMA 写脏的客户机内存由 QEMU 的 RAM 迁移发送。目的端用两条路径的数据恢复同一次计算。
+```
+
+## 单块 GPU VF 的迁移演示 {#demo}
+
+选择“设备预拷贝”和“仅停机拷贝”，比较暂停 vCPU 时目的端已有的显存页。页 F 在运行中被再次写入；最后一笔 DMA 则落在客户机 RAM 页 C。切换场景后，观察这两页分别在哪一步追上源端。
 
 ```component _vfio_migration_lab.html
 ```
 
-## DMA 脏页跟踪接入 RAM 迁移 {#dma-dirty}
+## 总结 {#summary}
 
-同一接收缓冲区 P 可能先被 CPU 初始化，再由网卡写入报文。KVM 对 CPU 写入的记录并不能覆盖这次设备 DMA。QEMU 的 VFIO MemoryListener 需要把设备侧的写脏结果合并到 RAM 迁移的脏页集合中，再由 RAM 迁移发送页面内容。
+VFIO 迁移要交接两样东西：设备写过的客户机内存，以及设备本身。QEMU 把 DMA 脏页纳入 RAM 迁移，通过 VFIO 接口控制设备的保存与恢复；AMD 驱动跟踪 VF 显存，导出硬件状态，在目的 GPU 上重建它们。
 
-| 跟踪来源 | 观察范围 | 条件与成本 |
-| --- | --- | --- |
-| 设备 DMA 日志 | 设备报告它写入的 IOVA 区间 | 依赖设备迁移驱动；日志粒度及读取成本由实现决定 |
-| IOMMU 硬件脏页跟踪 | 页表所管理的 DMA 映射 | 依赖宿主 IOMMU 和驱动支持，页表需以相应能力创建 |
-| 保守重传 | 无法精确区分的映射范围 | 可能重复传输大量 RAM，难以满足停机与收敛目标 |
+评估停机时间时，先量停机边界还剩多少设备数据，再区分时间花在源 GPU 导出、跨主机传输还是目的 GPU 导入。设备预拷贝减少停机待传量，GIM 的环形缓冲区让本机复制与读写重叠，multifd 增加跨主机的传输并行度。这三项优化分别作用于不同环节。
 
-QEMU 10.2 的 IOMMUFD 后端已查询 `IOMMU_HW_CAP_DIRTY_TRACKING`，在支持时分配带跟踪能力的 HWPT，并通过对应 ioctl 启停与读取位图。这条路径依赖宿主 IOMMU 与驱动提供跟踪能力，未提供该能力的平台不能使用该方式。[HWPT 能力查询与分配](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/iommufd.c#L348-L399)、[IOMMUFD 脏页接口](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/backends/iommufd.c#L337-L387)
+## 核心源码 {#sources}
 
-正常配置应在迁移前确认有效的 DMA 跟踪路径。在 QEMU 10.2 的自动选择模式下，设备和 IOMMU 均不支持可用跟踪时会添加迁移阻断条件。设备内部状态保存成功，仍不能弥补 RAM 中漏掉的 DMA 写入。[能力门控](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L1186-L1198)、[VFIO 脏页同步](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/listener.c#L1184-L1235)
-
-## 取消迁移与失败边界 {#failure}
-
-运行阶段取消迁移最容易保持原有业务：源端尚未停止，仍持有完整的当前状态；终止设备保存会话，让 VF 返回 `RUNNING`，销毁目的端准备状态即可。交互演示采用这个取消位置，并假定状态转换成功。
-
-| 发生位置 | 需要确认的条件 | 处理边界 |
-| --- | --- | --- |
-| 源端运行中的预拷贝 | 目的端未运行，源设备仍可正常返回运行态 | 取消保存，复位并清理目的端恢复会话，继续使用源端 |
-| 源端已经停止，目的端尚未运行 | 源设备状态仍可恢复，管理面确认目的端不会启动 | 根据错误和设备状态决定是否恢复源端；不能只根据网络断开判断 |
-| 设备转换失败或进入 `ERROR` | 当前实际设备状态、复位结果及业务状态 | 复位可能丢失原有运行上下文，不能承诺无损继续 |
-| 目的端已经运行 | 目的端已产生新的 CPU、设备和外部 I/O 状态 | 源端旧副本不能直接恢复，避免双端执行和重复外部写入 |
-
-QEMU 的 `MIG_EVENT_PRECOPY_FAILED` 处理会尝试把源设备恢复到 `RUNNING`；底层状态转换失败还可能触发复位。这是错误处理路径，不构成“任何失败都可无损回退”的保证。管理面需要结合迁移状态、设备错误和端点隔离决定下一步。[失败通知与状态恢复](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L908-L932)、[状态转换失败处理](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L124-L214)
-
-## 从停机导出到运行中准备 {#evolution}
-
-直通把请求交给真实硬件后，设备内部状态的格式与停止方式也随硬件而变化。VFIO 迁移状态机把行为约束统一在内核接口上，设备驱动负责具体的导出、恢复和兼容性检查，QEMU 负责把这些操作接入虚拟机迁移生命周期。
-
-| 改进 | 移走或减少的关键成本 | 仍然保留的条件 |
-| --- | --- | --- |
-| `STOP_COPY` / `RESUMING` | 建立统一的停止、导出和导入接口 | 设备必须有可迁移状态实现；全部导出会占用停机窗口 |
-| 可选 `PRE_COPY` | 把部分设备状态传输提前到运行阶段 | 增加状态跟踪与重复传输；高变化率仍可能留下较多尾部 |
-| `switchover-ack` | 把目的端初始资源准备尽量移出停机窗口 | 只覆盖相应初始加载，最终校验与恢复仍需完成 |
-| 设备或 IOMMU DMA 日志 | 减少保守重传的 RAM | 跟踪粒度、查询开销和平台能力仍有约束 |
-| VFIO 状态 multifd 传输 | 并行发送停机阶段的设备状态 | 目的端仍需保持每个设备字节流的加载顺序，并管理缓冲 |
-
-QEMU 从 10.0 起支持用 multifd 传输 VFIO 的 `STOP_COPY` 状态。它扩展可用传输并行度，不能消除源设备停止、目的端安装状态和网络重新可达的耗时。分析停机时间应分段观察：停止与同步、最终 RAM、设备状态发送、目的端加载及启动；有些工作可重叠，应看关键路径，不能把所有阶段时长简单相加。[QEMU 10.2 VFIO 迁移与 multifd 说明](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/migration/vfio.rst)
-
-QEMU 10.2 的 VFIO 迁移拒绝 RAM postcopy，且在启用客户机 vIOMMU 时添加阻断条件。[vIOMMU 映射同步](qemu-viommu.html)与本篇的迁移路径在该版本中需要分开使用。[postcopy 检查](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L419-L447)、[vIOMMU 检查](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L1200-L1210)
-
-## 源码入口与参考资料 {#sources}
-
-- [QEMU VFIO migration.c](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c)：沿 `vfio_save_setup()`、`vfio_save_iterate()`、`vfio_save_complete_precopy()` 和 `vfio_load_state()` 跟踪数据；结合 VM 状态回调观察停止与启动。
-- [Linux VFIO UAPI](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/uapi/linux/vfio.h)：状态机、数据 fd、P2P 和预拷贝估计值的契约。
-- [QEMU VFIO MemoryListener](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/listener.c)：跟踪启停与 RAM 脏页同步。
-- [QEMU VFIO multifd 实现](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration-multifd.c)：停机状态的分块、通道传输与顺序加载。
-- [VFIO 设备直通与 DMA 地址转换](qemu-vfio-dma.html)：设备区域、DMA 映射与请求访问的基础路径。
-- [预拷贝内存迁移](qemu-memory-migration.html)、[迁移流格式](qemu-migration-stream.html)、[IOMMUFD 对象与生命周期](iommufd.html)：分别展开 RAM 迭代、迁移流组织与 DMA 页表管理。
+- **QEMU 迁移流程**：[hw/vfio/migration.c](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L449)（建立会话、迭代、收尾和加载）；[hw/vfio/listener.c](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/listener.c#L1184)（DMA 脏页并入 RAM 迁移）。
+- **QEMU 并行传输**：[hw/vfio/migration-multifd.c](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration-multifd.c#L165)（停机分块、块序号与目的端加载）。
+- **Linux VFIO**：[include/uapi/linux/vfio.h](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/uapi/linux/vfio.h#L1011)（状态、数据 FD 和预拷贝查询）；[drivers/vfio/vfio_main.c](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vfio/vfio_main.c#L888)（向厂商驱动分派状态请求）。
+- **AMD VF 接入和迁移数据路径**：[gim/amd-vfio-pci/amd-vfio.c](https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/gim/amd-vfio-pci/amd-vfio.c#L115)（能力与回调注册）；[gim/gim_shim/gim_mig.c](https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/gim/gim_shim/gim_mig.c#L710)（预拷贝查询、显存复制、环形缓冲区与状态转换）。
+- **AMD 显存和固件状态**：[libgv/core/amdgv_dirtybit.c](https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/libgv/core/amdgv_dirtybit.c#L333)（累积变化位图）；[mi300_dirtybit.c](https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/libgv/core/hw/AI/mi300/mi300_dirtybit.c#L440)（芯片查询实现）；[libgv/core/amdgv_live_migration.c](https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/libgv/core/amdgv_live_migration.c#L404)（固件状态导出和导入）。
+- **接口沿革**：QEMU 的 [v2 实现说明](https://github.com/qemu/qemu/commit/31bcbbb5be04c7036223ce680a12927f5e51dc77)与[设备预拷贝变更](https://github.com/qemu/qemu/commit/eda7362af9595a9c6b1f1fefdd94b5ef711c250c)。

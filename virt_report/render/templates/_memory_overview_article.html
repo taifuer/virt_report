@@ -3,11 +3,9 @@
 {% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>客户机地址空间与宿主内存</h2>
-  <p>内存虚拟化为每台客户机提供独立的物理地址空间，并将它映射到宿主的后备内存。两台虚拟机都可以从物理地址零开始使用内存，而不读写彼此的数据。客户机应用还有自己的虚拟地址，客户机内核通过页表把它们映射到自己认识的物理页；宿主再决定每个客户机物理页实际由哪块宿主内存承载。</p>
-  <p>内存虚拟化需要同时满足三个条件：客户机页表的含义保持不变，访问被限制在获准的宿主页内，宿主仍能分配、迁移和回收这些页面。本文以普通、可由宿主访问的 RAM 和 x86 KVM 为例，从一次读取推导影子页表与 EPT/NPT 的解决办法。</p>
-  <p>客户机内核维护自己的页表，QEMU 在宿主用户态准备 RAM 后备范围，KVM 在宿主内核维护第二级映射，处理器完成实际遍历。下文沿同一条 load 比较影子页表和 EPT，再跟踪宿主后备页变化时的映射重建。</p>
-  <p>RAM 后备范围与内存槽的建立过程见<a href="qemu-memory-region.html">QEMU 内存初始化与地址空间管理</a>，包括机器地址布局、MemoryRegion、FlatView 与 KVM 注册的对应关系。</p>
+  <h2>序言</h2>
+  <p>两台虚机都可以从物理地址零开始使用内存，写入的却是各自的宿主页。以 x86 KVM 和普通 RAM 为例，一次客户机读取涉及两层地址关系：客户机内核把应用的虚拟地址映射到客户机物理页；宿主决定这页由哪块内存承载，以及允许哪些访问。</p>
+  <p>QEMU 为 RAM 提供后备并向 KVM 登记内存槽，建立过程见<a href="qemu-memory-region.html">QEMU 内存初始化与地址空间管理</a>。处理器按页表执行访问；后备页迁走后，KVM 要撤销旧的转换，再让同一条指令访问新位置。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -50,7 +48,7 @@
 
 <section id="walkthrough" class="mechanism-section">
   <h2>内存访问与异常处理演示</h2>
-  <p>RAM 场景沿 GVA 0x40203080 → GPA 0x00403080 → HPA 0x21000080，使用 4 KiB 页。后备内存槽起于 GPA 0x00400000、HVA 0x7f0000000000，目标页对应 HVA 0x7f0000003000。另可切换模拟 MMIO、内核处理和已建立映射的设备 BAR，比较处理路径。</p>
+  <p>对照普通 RAM 读取和模拟设备 MMIO 读取。两者都从客户机的一条 load 开始：前者在映射就绪后直接取数，后者要把读请求交给设备模型。切换场景可以看到是哪一层提供了读出的值。</p>
   {% include '_execution_lab.html' %}
 </section>
 
@@ -72,7 +70,7 @@
     </tbody>
   </table>
   <p>两个 BAR 示例使用相同 Guest 地址表示两种独立配置，便于对照。VFIO 的 HPA 指向宿主设备 MMIO 窗口。本例宿主 BAR0 的 CPU 物理资源基址为 <code>0xd0000000</code>，加上窗口内 offset <code>0x1000</code> 即为目标地址。示例宿主桥采用恒等窗口；其他平台可能还需换算 CPU 物理地址与 PCI 总线地址。<a href="https://docs.kernel.org/core-api/dma-api-howto.html#cpu-and-dma-addresses">CPU 物理地址、总线地址与宿主桥</a></p>
-  <p>ivshmem 的 BAR2 则将共享内存对象暴露给 Guest。它没有真实 PCIe 设备，不需要 VFIO，也不逐次执行 QEMU 寄存器回调；BAR0 控制寄存器是另一片区域，不能由 BAR2 推断整个设备都无退出。普通 Guest RAM 同样不会因为启用了 VFIO 就自动指向 BAR。设备主动 DMA 访问内存时，才涉及另一个方向的 IOMMU 地址链。<a href="{{ demo.sources['ivshmem-setup'].url }}">BAR0 与 BAR2 的注册</a>、<a href="{{ demo.sources['ivshmem-spec'].url }}">ivshmem 设备规范</a></p>
+  <p>ivshmem 的 BAR2 则将共享内存对象暴露给 Guest。它没有真实 PCIe 设备，不需要 VFIO，也不逐次执行 QEMU 寄存器回调；BAR0 控制寄存器是另一片区域，有自己的访问路径。普通 Guest RAM 同样不会因为启用了 VFIO 就自动指向 BAR。设备主动 DMA 访问内存时，才涉及另一个方向的 IOMMU 地址链。<a href="{{ demo.sources['ivshmem-setup'].url }}">BAR0 与 BAR2 的注册</a>、<a href="{{ demo.sources['ivshmem-spec'].url }}">ivshmem 设备规范</a></p>
 </section>
 
 <section id="comparison" class="mechanism-section">
@@ -94,7 +92,7 @@
       <tr><td>已有 EPT 的脏页写保护（进阶）</td><td>KVM 恢复 EPT 写权限并标记脏页；不需要另找一个页面</td><td>VM-entry 后重试写入；Guest PTE 保持不变</td></tr>
     </tbody>
   </table>
-  <p>普通 TLB miss 只说明转换缓存没有可用条目。Guest 页表和 EPT 都有效时，硬件能够自行完成遍历。CPU 数据缓存则保存数据或指令，其命中情况与转换缓存要分别观察。</p>
+  <p>普通 TLB miss 表示转换缓存中没有可用条目。Guest 页表和 EPT 都有效时，硬件能够自行完成遍历。CPU 数据缓存则保存数据或指令，其命中情况与转换缓存要分别观察。</p>
   <p>Guest #PF 示例选用合法匿名映射的首次写入，由客户机内核处理；非法地址与权限错误可能终止应用。宿主缺页示例选用未启用 KVM 异步缺页协议的同步换入，由宿主内存管理提供后备页；在其他配置中，KVM 可以把等待转成异步处理。</p>
   <p>只有交给用户态的 MMIO 读才需要这次往返：<code>kvm_run.mmio.data</code> 已填好时，Guest 寄存器仍可能保留旧值，用户态需重新进入 <code>KVM_RUN</code>，由内核先完成待决操作。KVM 在此之前会尝试内核 LAPIC 与 MMIO 总线；命中的 ioeventfd 写通知也可在内核完成。相关执行循环见<a href="kvm-vcpu-run.html">KVM vCPU 运行与退出</a>。</p>
   <p>VFIO 直接访问只适用于允许映射的 BAR 区间，且本例从映射已建立的稳态开始。MSI-X 表、需模拟区域、首次映射缺失与权限变化不属于这条无退出路径。这里的 CPU 地址链是 Guest 页表与 EPT；设备自身发起 DMA 时使用的 IOMMU 地址链是另一个方向，不能串成一次 CPU 读取的必经环节。</p>
@@ -119,7 +117,7 @@ virsh dommemstat VM</code></pre>
   <table><thead><tr><th>现象</th><th>从哪里核实</th><th>可以得出的结论</th></tr></thead><tbody>
     <tr><td>应用第一次访问慢，重复访问快</td><td>在 Guest 运行下节的首次触碰实验，比较进程 minor fault</td><td>能定位 Guest 匿名页按需建立的影响；计数不包含完整的宿主 EPT/NPT 活动</td></tr>
     <tr><td>Guest 空闲很多，宿主 RSS 仍高</td><td>对照 Guest 内存统计、<code>dommemstat</code> 的 RSS 与 XML 中的后备配置</td><td>Guest 可用容量与宿主驻留量口径不同；空闲页仍可能保留宿主后备，见 <a href="virtio-balloon.html#balloon-measured">balloon 实测</a></td></tr>
-    <tr><td>怀疑 EPT/NPT 建图或宿主调页造成停顿</td><td>进一步在宿主对齐 KVM 缺页事件、宿主缺页与负载时间窗口</td><td>先区分第二级建图和取得后备页的等待；仅凭 Guest 缺页数或 RSS 无法判断 VM-Exit 原因</td></tr>
+    <tr><td>怀疑 EPT/NPT 建图或宿主调页造成停顿</td><td>进一步在宿主对齐 KVM 缺页事件、宿主缺页与负载时间窗口</td><td>先区分第二级建图和取得后备页的等待；定位 VM-Exit 原因要看宿主的 KVM 退出记录</td></tr>
   </tbody></table>
   <p><code>dommemstat</code> 的 Guest 统计依赖驱动和已有采集配置。检查 <code>last-update</code> 是否更新；缺少字段应记为“未提供”，不能填零。命令与字段口径见 <a href="https://www.libvirt.org/manpages/virsh.html#dommemstat">libvirt 手册</a>。下节保留已完成实验的环境和原始计数，便于与自己的结果比较。</p>
 </section>
@@ -166,7 +164,6 @@ int main(void)
   <pre><code>cc -std=c11 -O2 -Wall -Wextra -Werror first-touch.c -o first-touch
 ./first-touch</code></pre>
   <p>在 4 KiB 基础页、无明显内存压力的条件下，32 MiB 包含 8192 页，首次写入的 minor fault 应接近这一数量；第二遍通常明显减少。统计覆盖整个进程，少量额外缺页可能来自程序或运行库，不要求恰好得到 8192 和 0。<a href="https://man7.org/linux/man-pages/man2/getrusage.2.html">getrusage 的统计口径</a>、<a href="https://www.kernel.org/doc/html/latest/admin-guide/mm/transhuge.html">透明大页与 madvise</a>。</p>
-  <p>这两个数只说明客户机进程的缺页情况。一次 Guest #PF 的处理可能伴随多个 GPA 的访问，宿主是否需要补建 EPT/NPT 又取决于既有映射。因此不能从 <code>first_minor</code> 推算 VM-Exit 次数，更不能把第二遍缺页少解释成 TLB 全部命中。需要分析后两者时，要在宿主另采 KVM 事件或硬件计数，并对齐同一运行窗口。</p>
   <h3 id="first-touch-measured">实测：两遍访问的缺页计数</h3>
   {% include '_kvm_memory_experiment_environment.html' %}
   <p>将上面的同一份 C 代码以 <code>cc -static -std=c11 -O2 -Wall -Wextra -Werror</code> 编译后放入客户机，连续启动三个独立进程。每次都重新申请 32 MiB，先逐页写一遍，再写第二遍；<code>MADV_NOHUGEPAGE</code> 仅作用于该进程的测试映射。</p>
@@ -176,9 +173,13 @@ int main(void)
     <tr><td>第 3 次</td><td>4096</td><td>8192</td><td>0</td></tr>
   </tbody></table>
   <p>宿主已经为这台 VM 预分配了 RAM 后备，Guest 中新进程的匿名页映射仍要按需建立：<code>32 MiB / 4 KiB = 8192</code>，第一遍逐页写入触发缺页，第二遍复用这些映射。这组结果把宿主的后备分配与 Guest 应用的缺页区分开；也说明 <code>mmap</code> 成功后，页面未必已经全部准备好。</p>
-  <p>本次记录没有采集 NPT 缺页、VM-Exit 或 TLB 计数，也没有做吞吐或延迟比较，结论限于上述 Guest 缺页行为。自动测试仍只编译和运行普通 Linux 用户态示例，不会启动虚拟机；表中数字来自这次独立的 KVM 实验。<a href="virtio-balloon.html#balloon-measured">balloon 实测</a>进一步观察后备页被回收、重新访问时的 RSS 变化。</p>
+  <p>表中读数来自独立的 KVM 客户机实验。自动测试在普通 Linux 用户态编译并运行同一程序。<a href="virtio-balloon.html#balloon-measured">balloon 实测</a>记录了回收后备页、重新访问内存时 QEMU 进程的 RSS。</p>
 </section>
 
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>客户机页表缺项由 Guest 内核处理，普通 RAM 的二级映射缺项由 KVM 处理，设备寄存器的值由相应设备提供。实验里的 <code>first_minor</code> 统计客户机进程的缺页。要分析宿主开销，可在同一读写时间窗口采集 EPT/NPT 缺页、VM-Exit 和硬件支持的 TLB 事件，并与应用的吞吐和延迟对照。</p>
+</section>
 <section id="sources" class="mechanism-section">
   <h2>版本与参考资料</h2>
 <ul>

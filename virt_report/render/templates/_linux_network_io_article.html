@@ -1,7 +1,7 @@
 {% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 {% from '_mechanism_diagram.html' import diagram with context %}
 <section id="preface" class="mechanism-section">
-  <h2>接收事件与发送请求</h2>
+  <h2>序言</h2>
   <p>外部可随时发来报文。网卡接收后，内核按协议、地址和端口分派，匹配的数据进入 socket 队列。应用调用 <code>recvmsg()</code> 从队列读取数据，队列为空时可以等待后续报文。</p>
   <p>以普通 UDP、复制式缓冲区交接和网卡 NAPI 路径为例，下面跟踪接收、发送与资源回收。UDP 提供数据报传输，本身不提供逐包的远端收到确认。</p>
   {% include '_mechanism_baselines.html' %}
@@ -48,7 +48,7 @@
   <h2>从 sendto 到缓冲区回收</h2>
   <p>应用提交载荷，协议栈形成报文，经过路由、排队和驱动提交给设备。普通复制式 <code>sendto()</code> 成功返回表示本地接受了返回长度对应的数据，不保证物理发送已经结束。网卡完成 DMA/发送工作后，驱动再回收该次提交占用的描述符与缓冲区；这个完成不等于远端收到，更不等于远端应用处理成功。</p>
   <h3>发送缓冲区的所有权交接</h3>
-  {{ diagram('linux-network-tx-ownership', '先返回发送调用，再回收设备资源', '示意路由已就绪、驱动直接接受且设备稍后完成的一次 UDP 复制发送。图中的先后是一条允许的执行轨迹，不代表 sendto 必须等待物理发送。') }}
+  {{ diagram('linux-network-tx-ownership', '先返回发送调用，再回收设备资源', '示意路由已就绪、驱动直接接受且设备稍后完成的一次 UDP 复制发送。图中是一种调度顺序；sendto 在本地发送路径接受数据后即可返回。') }}
   <p>继续看普通 UDP 复制发送，并假设路由与邻居解析已就绪。应用提交载荷后，内核构造或填充 skb、建立 UDP/IP 等协议头，选择出口设备与发送队列。qdisc 管理设备前的软件排队和调度；可以直接发送时也可能走快速路径，并非每个包都会在软件队列里停留。</p>
   <ol>
     <li><strong>用户到内核：</strong>载荷复制进内核维护的报文存储。成功返回后，这条普通复制路径不再引用原用户 buffer，应用可以重用它。</li>
@@ -57,11 +57,11 @@
     <li><strong>恢复提交：</strong>如果此前因 TX ring 空间不足停止了队列，回收出空间后可唤醒队列，让上游继续发送。</li>
   </ol>
   <p>驱动必须在资源用尽前适当停止队列，并协调检查与唤醒，避免“已经回收出空间，队列却永远停着”。如果返回 <code>NETDEV_TX_BUSY</code>，skb 所有权仍属于调用方，驱动不能保留或释放它。驱动约定见 <a href="{{ linux }}Documentation/networking/driver.rst">Softnet 驱动指南</a>。这条所有权链解释了：sendto 已返回，内核仍会在之后处理 TX completion。</p>
-  <table><thead><tr><th>观察到的事件</th><th>确认的边界</th><th>不能推出</th></tr></thead><tbody>
-    <tr><td>sendto 返回</td><td>本地发送调用的接受结果；普通复制路径不再依赖原用户 buffer</td><td>物理 NIC 已发完</td></tr>
-    <tr><td>virtio-net TX Used</td><td>虚拟后端结束了对此 Guest 描述符链的访问</td><td>宿主物理 NIC 已完成，或远端已收到</td></tr>
-    <tr><td>物理 NIC TX completion</td><td>按驱动／设备协议可回收本地 TX 资源</td><td>远端协议栈或应用已经处理</td></tr>
-    <tr><td>协议／应用层应答</td><td>取决于该协议：例如 TCP ACK 确认接收序列空间</td><td>TCP ACK 也不证明远端应用已读；UDP 本身没有这类确认</td></tr>
+  <table><thead><tr><th>观察到的事件</th><th>确认的边界</th><th>下一层的观察点</th></tr></thead><tbody>
+    <tr><td>sendto 返回</td><td>本地发送调用的接受结果；普通复制路径不再依赖原用户 buffer</td><td>查网卡发送完成记录，确认本地设备进度</td></tr>
+    <tr><td>virtio-net TX Used</td><td>虚拟后端结束了对此 Guest 描述符链的访问</td><td>在宿主跟踪后续转发；对端接收须看对端证据</td></tr>
+    <tr><td>物理 NIC TX completion</td><td>按驱动／设备协议可回收本地 TX 资源</td><td>到对端跟踪接收，或查看协议和应用应答</td></tr>
+    <tr><td>协议／应用层应答</td><td>取决于该协议：例如 TCP ACK 确认接收序列空间</td><td>远端应用读取要由应用层确认；UDP 本身没有这类确认</td></tr>
   </tbody></table>
   <p>以 QEMU + TAP 普通复制发送为例，TAP 接受帧后，后端结束对 Guest 发送缓冲区的访问并可发布 Used。宿主继续转发自己的报文副本。Guest Used 与物理 NIC completion 分别归还两层的资源，后续转发可与 Guest 回收并行。</p>
   <p>发布 Used、通过 irqfd 或 QEMU 设备通知 KVM、交付 Guest 中断，是同一完成事件的不同环节。通知是否发出还受抑制、合并和驱动轮询影响。</p>
@@ -72,7 +72,7 @@
   <p>NAPI 一轮 poll 受到 RX 预算约束；仍有工作时可继续被调度，处理完成才恢复相应通知。这样可以摊薄每次中断和调度的成本，但一次取很多包也可能让先到的小请求多等一会儿。TX completion 也可在 poll 中回收，不能把 poll 返回的 RX 工作量直接当作所有完成操作的数量。</p>
   <p>例如 RX 预算为 64、队列已有 100 个包，期间无新到包：第一轮处理 64 个并返回预算值，保留后续轮询；下一轮处理剩余 36 个，调用 <code>napi_complete_done()</code> 成功结束本轮后，再按设备规则恢复通知。若处理数量恰好等于预算且队列已空，可继续保留轮询，也可完成后返回 <code>budget - 1</code>。预算为 0 的调用用于 TX 等处理，此时禁止调用 <code>napi_complete_done()</code>。</p>
   <p>RSS 由网卡选择接收队列，RPS 在内核中选择后续协议处理 CPU，RFS 进一步考虑应用位置，XPS 影响发送队列选择。这些机制按流分工，兼顾并行与局部性。跨核转交会增加 IPI 和缓存迁移成本，已有合适硬件分流时，应测量软件分流的额外收益。见 <a href="{{ linux }}Documentation/networking/scaling.rst">Linux 网络扩展机制</a>。</p>
-  <p>GSO 在发送方向保留较大的逻辑报文，稍后由软件或支持卸载的设备分段；GRO 在接收方向合并符合条件的报文，减少后续重复处理。可否合并、如何分段取决于协议与特性协商，不能把任意 UDP 数据报都当作一个连续字节流。相关约束见 <a href="{{ linux }}Documentation/networking/segmentation-offloads.rst">分段卸载文档</a>。</p>
+  <p>GSO 在发送方向保留较大的逻辑报文，稍后由软件或支持卸载的设备分段；GRO 在接收方向合并符合条件的报文，减少后续重复处理。合并和分段取决于协议与协商特性，UDP 数据报保留各自的消息边界。相关约束见 <a href="{{ linux }}Documentation/networking/segmentation-offloads.rst">分段卸载文档</a>。</p>
   <p>AF_XDP 用 UMEM 和 FILL、RX、TX、COMPLETION rings 管理缓冲区；发送帧返回 completion 后，应用才能复用该帧。它支持 copy 模式，以及依赖驱动能力的 zero-copy 模式。两种模式都要求按环上的所有权约定交接内存，见 <a href="{{ linux }}Documentation/networking/af_xdp.rst">AF_XDP 的 rings 与模式</a>。</p>
 </section>
 <section id="observe" class="mechanism-section">
@@ -81,6 +81,12 @@
   <p>接收路径上，RX ring、协议栈处理能力和 socket 接收额度是不同的容量约束。应用消费不及时，可能使 socket 排队和丢包，即使网卡 ring 仍有空间；扩大 socket 缓冲区能吸收部分突发，但也可能延长排队，无法弥补持续的处理速率差。普通 UDP 没有接收窗口反馈，接收方本地缓冲区耗尽时不能依靠 UDP 自动让发送方减速。</p>
   <p>虚机接收时，Guest 驱动也先发布可写 RX buffer；后端将外部到达的数据写入这些缓冲区并发布 Used，Guest 协议栈再交给 socket。应用无需先为每个包发 virtio 请求。结合 <a href="network-io.html">网络 I/O 演示</a> 和 <a href="network-io.html">Virtio RX 路径</a>，可以把 Guest 与宿主的两套队列分开观察。</p>
 </section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>收包要经过两处独立的队列：驱动提供的 RX 缓冲区承接数据，socket 接收队列保存交给应用的报文。遇到丢包，分别查网卡缺缓冲、内核丢弃和 socket 溢出；单看应用调用次数，定位不到丢在哪一段。</p>
+</section>
+
 <section id="sources" class="mechanism-section">
   <h2>源码与参考资料</h2>
   <ul>

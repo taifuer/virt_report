@@ -55,13 +55,13 @@ def test_orthus_follows_the_problem_design_example_results_reading_order():
     sections = [section["id"] for section in article["sections"]]
     assert sections == ["preface", "alternatives", "dual-kvm", "grafting",
                         "device-handover", "downtime", "evolution", "hyperfresh",
-                        "compatibility", "sources"]
+                        "compatibility", "summary", "sources"]
     assert re.findall(r'<section id="([^"]+)" class="mechanism-section">', page) == sections
     preface = _section(page, "preface")
     assert "运行数据库服务" in preface and "维护窗口" in preface
     alternatives = _section(page, "alternatives")
     for phrase in ("停机更新", "跨主机热迁移", "只替换 QEMU", "1 GiB/s",
-                   "约 8 秒", "不能直接算成停机时间", "三个难点"):
+                   "约 8 秒", "停机时间从客户机暂停执行时算起", "三个难点"):
         assert phrase in alternatives
     assert "不属于 Orthus 论文当年的实验对照" in alternatives
     assert "8 GiB" in _section(page, "grafting")
@@ -78,7 +78,7 @@ def test_orthus_explains_coexistence_grafting_and_device_handover():
     assert ORTHUS_DOI in _section(page, 'sources')
     assert "源码版本：" not in page
     assert "4 vCPU、8 GiB" in preface
-    assert "不代表论文的测试配置" in preface
+    assert "论文的实测配置见实验部分" in preface
     dual = _section(page, "dual-kvm")
     for phrase in ("kvm.ko", "/dev/kvm0", "/dev/kvm1", "全局变量按实例隔离",
                    "最后一台", "不在本次替换范围内"):
@@ -106,7 +106,7 @@ def test_orthus_limits_metrics_and_compares_a_directly_related_followup():
         assert phrase in downtime
     assert "保存状态到恢复执行" in _section(page, "grafting")
     assert "两次记录的规模与运维条件不同" in downtime
-    assert "不能直接用日历时间相除得到算法加速比" in downtime
+    assert "45 分钟是执行时间，三天是灰度发布用时" in downtime
     assert "两行的负载和采样范围分别列出" in downtime
     evolution = _section(page, "evolution")  # Preserve the old subsection link.
     for phrase in ("KVM Forum 2020", "2022", "pi_desc", "PIR", "Interrupt Remapping Table",
@@ -132,7 +132,7 @@ def test_upgrade_followups_distinguish_kvm_replacement_from_retained_layers():
     hyperfresh = _section(page, "hyperfresh")
     for phrase in ("L0 hyperplexor", "L1", "L2", "APSys 2017", "VEE 2019",
                    "同一工作的演进", "原 Guest 内存页", "约 100 ms", "约 10 ms",
-                   "L0 的更新不在此次接管范围内", "不能直接套到普通单层 KVM"):
+                   "L0 的更新不在此次接管范围内", "以预先部署 L0 为前提"):
         assert phrase in hyperfresh
     assert "../assets/hyperfresh-handoff.svg" in hyperfresh
     assert 'href="kvm-nested-vmx.html"' in hyperfresh
@@ -140,8 +140,9 @@ def test_upgrade_followups_distinguish_kvm_replacement_from_retained_layers():
         assert f'href="https://doi.org/{doi}"' in _section(page, 'sources')
     compatibility = _section(page, "compatibility")
     for phrase in ("Orthus / Dual KVM", "字节跳动 VMM Live Upgrade", "HyperFresh",
-                   "保留 L0", "vCPU 只在一端运行"):
+                   "保留 L0"):
         assert phrase in compatibility
+    assert "vCPU 只在一端运行" in _section(page, "summary")
 
 
 def test_upgrade_article_keeps_the_agreed_scope_and_plain_headings():

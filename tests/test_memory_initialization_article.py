@@ -11,7 +11,7 @@ def test_memory_article_follows_initialization_before_the_local_mapping_lab():
     assert "QEMU 内存初始化与地址空间管理" in page
     sections = re.findall(r'<section id="([^"]+)" class="mechanism-section">', page)
     assert sections == ["preface", "backing", "layout", "structures", "flatten", "mmio",
-                        "topology", "lookup", "updates", "evolution", "sources"]
+                        "topology", "lookup", "updates", "evolution", "summary", "sources"]
     for marker in ("MachineState.ram_size", "create_default_memdev()",
                    "memory-backend-ram", "machine_consume_memdev()",
                    "RAMBlock", "qemu_anon_ram_alloc()", "qemu_ram_mmap()",

@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=1934a7814284">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1934a7814284">
-<link rel="stylesheet" href="../assets/migration-stream.css?v=1934a7814284"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=5eb1bb7dc04a">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=5eb1bb7dc04a">
+<link rel="stylesheet" href="../assets/migration-stream.css?v=5eb1bb7dc04a"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -50,10 +50,10 @@
   <div class="mechanism-layout">
     <nav class="mechanism-toc" aria-label="文章目录">
       <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
-      <ol id="mechanism-toc-links"><li><a href="#preface">一、迁移流的组成与状态恢复</a></li><li><a href="#structure">二、完整示例：从流头到状态恢复</a></li><li><a href="#headers">三、流头、分段与边界</a><ol><li><a href="#headers-part-1">1. 流头与配置摘要</a></li><li><a href="#headers-part-2">2. 两种 section 头</a></li></ol></li><li><a href="#ram-records">四、内存记录的编码</a><ol><li><a href="#ram-records-part-1">1. 布局先于页面</a></li><li><a href="#ram-records-part-2">2. 偏移与标志共用八字节</a></li></ol></li><li><a href="#device-state">五、暂停后保存 CPU 与设备状态</a></li><li><a href="#loading">六、接收解析与恢复执行</a></li><li><a href="#evolution">七、格式的演进与兼容</a></li><li><a href="#sources">八、参考资料</a></li></ol>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a></li><li><a href="#structure">二、完整示例：从流头到状态恢复</a></li><li><a href="#headers">三、流头、分段与边界</a><ol><li><a href="#headers-part-1">1. 流头与配置摘要</a></li><li><a href="#headers-part-2">2. 两种 section 头</a></li></ol></li><li><a href="#ram-records">四、内存记录的编码</a><ol><li><a href="#ram-records-part-1">1. 布局先于页面</a></li><li><a href="#ram-records-part-2">2. 偏移与标志共用八字节</a></li></ol></li><li><a href="#device-state">五、暂停后保存 CPU 与设备状态</a></li><li><a href="#loading">六、接收解析与恢复执行</a></li><li><a href="#evolution">七、格式的演进与兼容</a></li><li><a href="#summary">八、总结</a></li><li><a href="#sources">九、参考资料</a></li></ol>
     </nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">一、</span>迁移流的组成与状态恢复</h2>
+  <h2><span class="mechanism-heading-number">一、</span>序言</h2>
   <p>QEMU 迁移流承载 RAM、CPU 和设备的运行状态。目的端先创建兼容的机器与设备模型，再根据流中的记录恢复源端状态：识别流格式和机器配置，解析 RAM 布局并更新页面，装载源端暂停后保存的 CPU 与设备状态，最后完成恢复执行前的检查。</p>
   <p>这条路径由两层格式配合完成：外层 section 选择处理器并校验边界，内层载荷描述页面或设备字段。以下用同一组四个内存页贯穿完整流示例，再逐层展开头部、RAM 编码、VMState 和接收流程。</p>
 <p class="mechanism-baselines">源码版本：QEMU 10.2.0。</p>  <p>以下以 x86 / KVM、普通 RAM 的单流预拷贝为例，机器与设备已在目的端创建，存储另行准备。内存重传和停机切换条件见<a href="qemu-memory-migration.html">《QEMU 热迁移流程》</a>。</p>
@@ -78,9 +78,9 @@
       <button type="button" data-mechanism-expand aria-label="放大查看 QEMU 迁移流与字段布局" hidden>放大查看</button>
     </div>
     <div class="mechanism-wire-scroll" role="region" aria-label="迁移流与字段布局全景图">
-      <img src="../assets/migration-wire-layout.svg?v=1934a7814284" alt="QEMU 迁移流全景：左侧从流头到 EOF 的连续记录，连线指向右侧配置、RAM、CPU 与设备状态的字段布局；RAM EOS 和 section footer 分层标注。" loading="lazy">
+      <img src="../assets/migration-wire-layout.svg?v=5eb1bb7dc04a" width="1580" height="1640" alt="QEMU 迁移流全景：左侧从流头到 EOF 的连续记录，连线指向右侧配置、RAM、CPU 与设备状态的字段布局；RAM EOS 和 section footer 分层标注。" loading="lazy">
     </div>
-    <figcaption>点击放大查看字段细节。字段宽度不按字节数等比绘制。<a href="../assets/migration-wire-layout.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
+    <figcaption>点击放大查看字段细节。字段宽度不按字节数等比绘制。<a href="../assets/migration-wire-layout.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
   </figure>
   <p>下面把 <code>pc.ram</code> 的四页例子逐条展开。先跟随左侧记录识别当前阶段，再看字段条如何编码。A2 重传时，目的端通过块名和偏移覆盖原位置；流中的 section ID 则用于找到处理这些页的 RAM 处理器。</p>
 <section class="stream-lab" data-stream-lab data-mechanism-view="lab" aria-labelledby="stream-lab-title">
@@ -294,7 +294,7 @@ type | JSON 字节数        | { … }
     <tr><td>Section Footer · <code>0x7e</code>＋ID</td><td>校验刚消费完的 section；每批都可以有，不等于整个 RAM 完成。</td></tr>
     <tr><td>EOF · <code>0x00</code></td><td>结束主状态记录循环，不等于网络连接立即关闭。</td></tr>
   </tbody></table>
-  <p><code>ram_save_iterate()</code>每次调用可以只传输部分待传页，首次扫描本身就可能跨多个 PART。停机后 <code>ram_save_complete()</code>做最终脏页同步，再用相同的页编码发送余页。流里没有统一的轮次序号；分析抓取数据时，不宜把 PART 个数当作预拷贝轮数。</p>
+  <p><code>ram_save_iterate()</code>每次调用可以只传输部分待传页，首次扫描本身就可能跨多个 PART。停机后 <code>ram_save_complete()</code>做最终脏页同步，再用相同的页编码发送余页。流里没有统一的轮次序号；一个 RAM 扫描轮次可跨多个 PART，统计轮次应识别扫描边界。</p>
 </section>
 
 <section id="device-state" class="mechanism-section">
@@ -326,9 +326,9 @@ VMSTATE_UINTTL(env.eflags, X86CPU),</code></pre>
     <button type="button" data-mechanism-expand aria-label="放大查看接收端的处理器分发与恢复边界" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="接收端的处理器分发与恢复边界">
-    <img src="../assets/migration-load-dispatch.svg?v=1934a7814284" alt="普通预拷贝主路径：处理器按自己的格式消费载荷，返回后检查外层 footer；错误会中断装载。EOF 结束记录循环，后续仍需完成状态同步与运行条件检查。" loading="lazy">
+    <img src="../assets/migration-load-dispatch.svg?v=5eb1bb7dc04a" width="1052" height="612" alt="普通预拷贝主路径：处理器按自己的格式消费载荷，返回后检查外层 footer；错误会中断装载。EOF 结束记录循环，后续仍需完成状态同步与运行条件检查。" loading="lazy">
   </div>
-  <figcaption>普通预拷贝主路径：处理器按自己的格式消费载荷，返回后检查外层 footer；错误会中断装载。EOF 结束记录循环，后续仍需完成状态同步与运行条件检查。 <a href="../assets/migration-load-dispatch.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>普通预拷贝主路径：处理器按自己的格式消费载荷，返回后检查外层 footer；错误会中断装载。EOF 结束记录循环，后续仍需完成状态同步与运行条件检查。 <a href="../assets/migration-load-dispatch.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TD
     accTitle: 迁移流的处理器分发与恢复边界
     accDescr: 接收端按外层记录匹配处理器，由处理器消费载荷，再校验 section footer。EOF 结束主记录循环，装载收尾与运行条件检查之后才允许客户机执行。
@@ -358,8 +358,13 @@ VMSTATE_UINTTL(env.eflags, X86CPU),</code></pre>
   <p>MultiFD 将部分内存数据移到并行通道，后拷贝调整执行权交接与页面传输的先后顺序，设备并行传输也会引入独立通道。这些路径需要额外的同步协议，保证目的端恢复时各部分状态已经就绪。外层框架继续负责识别状态处理器，具体处理器负责解析载荷和检查版本兼容性。</p>
 </section>
 
+<section id="summary" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">八、</span>总结</h2>
+  <p>定位恢复失败，先按外层记录的类型找到对应处理器。START/FULL 标识设备实例及版本，后续 PART/END 通过 section ID 续接；RAM 处理器解释页记录，设备处理器按各自定义装载状态。拿错实例或版本，即使字节已全部送达，也恢复不出源端的机器。</p>
+</section>
+
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">八、</span>参考资料</h2>
+  <h2><span class="mechanism-heading-number">九、</span>参考资料</h2>
   <ul class="mechanism-sources">
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/savevm.c">savevm.c</a>：流头、section、命令、状态处理器分发与装载收尾。</li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.c">ram.c</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/migration/ram.h">ram.h</a>：RAM 布局、页编码、内部标志及对应解码。</li>
@@ -374,6 +379,6 @@ VMSTATE_UINTTL(env.eflags, X86CPU),</code></pre>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=1934a7814284" defer></script>
-<script src="../assets/migration-stream.js?v=1934a7814284" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=5eb1bb7dc04a" defer></script>
+<script src="../assets/migration-stream.js?v=5eb1bb7dc04a" defer></script></body>
 </html>

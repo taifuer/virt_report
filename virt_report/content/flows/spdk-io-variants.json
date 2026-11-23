@@ -395,9 +395,9 @@
           "QEMU 已通过 vhost-user 交换共享 RAM、vring、kickfd/callfd 并建立路由；本次数据面不调用 QEMU virtio-blk 设备模拟或文件后端。",
           "Guest 对 /dev/vda 做对齐 4 KiB、偏移 1 MiB 的 O_DIRECT 同步 I/O；固定单页、单 bio、单请求、单数据段，不拆分、合并或走文件系统页缓存。",
           "SPDK bdev 直接对应一个 PCIe NVMe namespace，逻辑块 512 B；映射、注册和 DMA/IOMMU 条件已满足，无 bounce buffer、加密、校验元数据或额外复制路径。",
-          "固定单 iovec，无 memory-domain/加速序列与 metadata，NVMe 非延迟提交；提交和完成 poller 是逻辑上下文，不承诺与 Guest 队列一一对应。",
+          "固定单 iovec，无 memory-domain/加速序列与 metadata，NVMe 非延迟提交；提交和完成 poller 表示执行上下文，与 Guest 队列的对应关系取决于线程配置。",
           "只展示成功路径，无资源不足、重试、设备移除或重置；完成通知未抑制、通知合并关闭，Guest 可接收中断。",
-          "本次无 FLUSH、FUA、O_SYNC/O_DSYNC；写入完成只表示命令成功，不承诺掉电持久性。",
+          "本次无 FLUSH、FUA、O_SYNC/O_DSYNC；普通写成功时，数据仍可能留在易失缓存。",
           "地址与执行顺序是教学示例。控制器内部 DMA/存储行为按接口语义展示，不伪称由 SPDK 源码揭示固件内部每一步。"
         ],
         "request": {
@@ -575,7 +575,7 @@
             "title": "NVMe 设备执行读取与数据搬运",
             "actor": "backend",
             "description": "本步示意控制器执行 READ、通过 DMA 向已映射的 Guest 用户页传输数据；SPDK 尚未确认完成，缓冲区仍显示等待结果。",
-            "detail": "控制器完成命令后会形成 CQ 项，下一步由 SPDK 轮询确认并更新结果状态。本图不模拟 DMA 的逐字节进度，也不把控制器内部行为当成 SPDK C 函数。源码只用于核验 SQ 提交与 CQ 处理边界；本例映射满足直接 DMA 条件，不推广为所有配置都零拷贝。",
+            "detail": "控制器完成命令后会形成 CQ 项，下一步由 SPDK 轮询确认并更新结果状态。图中将控制器的 DMA 传输作为一次设备操作展示。源码只用于核验 SQ 提交与 CQ 处理边界；本例的内存映射满足直接 DMA 条件。",
             "sourceIds": [
               "spdk-nvme-submit",
               "spdk-nvme-cq"
@@ -813,7 +813,7 @@
               "spdk-signal",
               "spdk-callfd"
             ],
-            "boundary": "先写响应，再在同一 enqueue 内写 used 项、屏障及 used.idx。本例关闭通知合并、Guest 未抑制完成通知；poller 通过 DPDK callfd 通知 KVM irqfd，发布 used 不代表中断已经注入。"
+            "boundary": "先写响应，再在同一 enqueue 内写 used 项、屏障及 used.idx。本例关闭通知合并、Guest 未抑制完成通知；poller 通过 DPDK callfd 通知 KVM irqfd；used 发布与中断投递是两个步骤。"
           },
           {
             "id": "kvm-completion-irq",
@@ -905,7 +905,7 @@
           },
           "stepPatches": {
             "ready": {
-              "detail": "Guest virtblk_req 与 SPDK vhost task 是不同本地对象。用户页已有待写数据，SPDK 尚未消费；R1 不代表跨进程指针。"
+              "detail": "Guest virtblk_req 与 SPDK vhost task 是不同本地对象。用户页已有待写数据，SPDK 尚未消费；R1 是用于跟踪同一请求的标签。"
             },
             "prepare-buffers": {
               "detail": "OUT 请求头和 payload 对设备只读；末尾 1 B status 可写。SPDK 访问已共享、注册的同一用户页，磁盘写方向与描述符 WRITE 权限不同。"
@@ -948,7 +948,7 @@
             },
             "write-status": {
               "description": "NVMe/bdev 成功后进入 blk_request_complete_cb，再由 blk_request_finish 写入 VIRTIO_BLK_S_OK。",
-              "detail": "SPDK 只向 Guest 写入 1 B 状态，不把写入 payload 再复制回来。随后发布 used；状态或 used 完成都不自动代表持久化。"
+              "detail": "SPDK 只向 Guest 写入 1 B 状态，不把写入 payload 再复制回来。随后发布 used；状态和 used 记录请求完成；断电持久性由写入和刷新语义决定。"
             },
             "write-used": {
               "description": "SPDK 写 used.ring[0]={id:0,len:1}，只计入设备写入的 1 B 状态。",
@@ -986,7 +986,7 @@
               "title": "SPDK 解析 OUT 与 bdev 写入"
             },
             "spdk-nvme-submit": {
-              "boundary": "固定 PCIe NVMe、512 B LBA、单 iovec、md=NULL、无 memory-domain/加速序列。该分支调用 write_with_md，写 SQ 并敲物理控制器门铃；没有 FLUSH/FUA，不承诺掉电持久化。"
+              "boundary": "固定 PCIe NVMe、512 B LBA、单 iovec、md=NULL、无 memory-domain/加速序列。该分支调用 write_with_md，写 SQ 并敲物理控制器门铃；本次普通写未请求 FLUSH/FUA，掉电时易失缓存中的数据可能丢失。"
             },
             "application-resume": {
               "title": "pwrite 等待返回",
@@ -1399,12 +1399,12 @@
           "QEMU 已通过 vhost-user 交换共享 RAM、vring、kickfd/callfd 并建立路由；本次数据面不调用 QEMU SCSI 设备模拟或文件后端。",
           "Guest 对 /dev/sda 做对齐 4 KiB、偏移 1 MiB 的 O_DIRECT 同步 I/O；固定单页、单 bio、单请求、单数据段，不拆分、合并或走文件系统页缓存。",
           "SPDK bdev 直接对应一个 PCIe NVMe namespace，逻辑块 512 B；映射、注册和 DMA/IOMMU 条件已满足，无 bounce buffer、加密、校验元数据或额外复制路径。",
-          "固定单 iovec，无 memory-domain/加速序列与 metadata，NVMe 非延迟提交；提交和完成 poller 是逻辑上下文，不承诺与 Guest 队列一一对应。",
+          "固定单 iovec，无 memory-domain/加速序列与 metadata，NVMe 非延迟提交；提交和完成 poller 表示执行上下文，与 Guest 队列的对应关系取决于线程配置。",
           "只展示成功路径，无资源不足、重试、设备移除或重置；完成通知未抑制、通知合并关闭，Guest 可接收中断。",
-          "本次无 FLUSH、FUA、O_SYNC/O_DSYNC；写入完成只表示命令成功，不承诺掉电持久性。",
+          "本次无 FLUSH、FUA、O_SYNC/O_DSYNC；普通写成功时，数据仍可能留在易失缓存。",
           "地址与执行顺序是教学示例。控制器内部 DMA/存储行为按接口语义展示，不伪称由 SPDK 源码揭示固件内部每一步。",
           "只用 request queue 2，control/event 队列不承载本次普通读写；target/LUN 已存在，无双向 I/O、T10 PI 或 sense 错误路径。",
-          "固定 CDB 配置区 32 B、sense 配置区 96 B：packed 请求=8+8+1+1+1+32=51 B，响应=4+4+2+1+1+96=108 B。READ/WRITE(10) 的有效 CDB 为 10 B，不代表请求头只有 10 B。",
+          "固定 CDB 配置区 32 B、sense 配置区 96 B：packed 请求=8+8+1+1+1+32=51 B，响应=4+4+2+1+1+96=108 B。READ/WRITE(10) 的有效 CDB 是请求头中的 10 B。",
           "固定 Guest sd 的 use_10_for_rw=1、use_16_for_rw=0，512 B 逻辑块；LBA=2048、8 块。否则 Linux 也可能选择 READ/WRITE(6) 或 (16)。",
           "本例响应区初始清零且无 sense 错误。SPDK 成功回调写 status 与 resid；response=OK 在 task_submit 先行设置，不把每个响应字段都虚构成完成时重新写入。"
         ],
@@ -1614,7 +1614,7 @@
             "title": "SPDK SCSI 层转换为 bdev 读取",
             "actor": "spdk",
             "description": "task_submit 先设置 response=OK，经 spdk_scsi_dev_queue_task；SCSI 层解析 READ(10)，以8个块提交 spdk_bdev_readv_blocks。",
-            "detail": "bdev_scsi_process_block 提取 CDB 的 LBA/长度，bdev_scsi_readwrite 进入 bdev。response=OK 的早期写入仅表示传输请求已接受，不能在 used 发布前把它当作 I/O 完成。",
+            "detail": "bdev_scsi_process_block 提取 CDB 的 LBA/长度，bdev_scsi_readwrite 进入 bdev。提前填写 response=OK 表示传输请求已接受；I/O 完成后才发布 used。",
             "sourceIds": [
               "spdk-scsi-submit",
               "spdk-scsi-dev",
@@ -1637,7 +1637,7 @@
             "title": "NVMe 设备执行读取与数据搬运",
             "actor": "backend",
             "description": "本步示意控制器执行 READ、通过 DMA 向已映射的 Guest 用户页传输数据；SPDK 尚未确认完成，缓冲区仍显示等待结果。",
-            "detail": "控制器完成命令后会形成 CQ 项，下一步由 SPDK 轮询确认并更新结果状态。本图不模拟 DMA 的逐字节进度，也不把控制器内部行为当成 SPDK C 函数。源码只用于核验 SQ 提交与 CQ 处理边界；本例映射满足直接 DMA 条件，不推广为所有配置都零拷贝。",
+            "detail": "控制器完成命令后会形成 CQ 项，下一步由 SPDK 轮询确认并更新结果状态。图中将控制器的 DMA 传输作为一次设备操作展示。源码只用于核验 SQ 提交与 CQ 处理边界；本例的内存映射满足直接 DMA 条件。",
             "sourceIds": [
               "spdk-nvme-submit",
               "spdk-nvme-cq"
@@ -1756,7 +1756,7 @@
           },
           "reclaim-chain": {
             "description": "virtqueue_get_buf 按 used.id=0 找回 virtio_scsi_cmd，归还三个描述符并推进驱动完成消费位置。",
-            "detail": "virtscsi_vq_done 得到原来的 cmd 上下文后调用 virtscsi_complete_cmd。响应解释、scsi_done 和 bio 完成属于后续边界，不能把回收链直接等同于应用返回。",
+            "detail": "virtscsi_vq_done 得到原来的 cmd 上下文后调用 virtscsi_complete_cmd。驱动回收描述符链后，还需解释响应、调用 scsi_done 并完成 bio。",
             "sourceIds": [
               "guest-reclaim",
               "spdk-guest-scsi-reclaim"
@@ -1764,7 +1764,7 @@
           },
           "complete-bio": {
             "description": "成功 SCSI 完成经 scsi_done / 块层完成上下文进入 scsi_io_completion，scsi_end_request 通过 blk_update_request 完成 bio。",
-            "detail": "virtscsi_complete_cmd 解释 response/status/resid 后调用 scsi_done，不调用 virtblk_request_done。bio_endio 的同步等待回调满足原线程的等待条件；完成可由块层调度，不承诺全部在同一中断栈。",
+            "detail": "virtscsi_complete_cmd 解释 response/status/resid 后调用 scsi_done，不调用 virtblk_request_done。bio_endio 的同步等待回调满足原线程的等待条件；块层可以另行调度后续完成处理。",
             "sourceIds": [
               "spdk-guest-scsi-response",
               "spdk-guest-scsi-done",
@@ -1777,7 +1777,7 @@
           },
           "finish-request": {
             "description": "scsi_end_request 在更新 bio 后清理 SCSI 命令，再通过 __blk_mq_end_request 结束块请求。",
-            "detail": "这是 SCSI 的块请求收尾，不经过 virtio-blk 完成函数。本例选择完成侧清理后恢复原等待线程，不声称它们不可并发。",
+            "detail": "这是 SCSI 的块请求收尾，不经过 virtio-blk 完成函数。本例中完成侧清理先结束，原等待线程随后恢复。",
             "sourceIds": [
               "spdk-guest-scsi-end"
             ]
@@ -2198,7 +2198,7 @@
             },
             "write-used": {
               "description": "SPDK发布used.ring[0]={id:0,len:108}，只计入固定SCSI响应空间。",
-              "detail": "SPDK TO_DEV分支在task_data_setup设置used_len=sizeof(response)。data-out是设备读取的4096 B，不计入设备可写长度；仍不能据此承诺持久化。",
+              "detail": "SPDK TO_DEV分支在task_data_setup设置used_len=sizeof(response)。data-out是设备读取的4096 B，不计入设备可写长度；断电持久性由写入与刷新语义决定。",
               "sourceIds": [
                 "spdk-scsi-layout",
                 "spdk-scsi-used",
@@ -2263,7 +2263,7 @@
               "title": "SPDK 解析 WRITE(10) 与 bdev 写入"
             },
             "spdk-nvme-submit": {
-              "boundary": "固定 PCIe NVMe、512 B LBA、单 iovec、md=NULL、无 memory-domain/加速序列。该分支调用 write_with_md，写 SQ 并敲物理控制器门铃；没有 FLUSH/FUA，不承诺掉电持久化。"
+              "boundary": "固定 PCIe NVMe、512 B LBA、单 iovec、md=NULL、无 memory-domain/加速序列。该分支调用 write_with_md，写 SQ 并敲物理控制器门铃；本次普通写未请求 FLUSH/FUA，掉电时易失缓存中的数据可能丢失。"
             },
             "application-resume": {
               "title": "pwrite 等待返回",
@@ -2279,7 +2279,7 @@
               "boundary": "按返回方向列出等待、页面引用释放及写入一致性收尾，pwrite 返回 4096 后可复用缓冲区；普通成功完成不表示已持久化。"
             },
             "spdk-completion": {
-              "boundary": "bdev_scsi_task_complete_cmd经SCSI task更新response的status/resid，再发布used.len=108。写入payload是设备读内存，不计入used；callfd只触发完成通知，不代表持久化。"
+              "boundary": "bdev_scsi_task_complete_cmd经SCSI task更新response的status/resid，再发布used.len=108。写入payload是设备读内存，不计入used；callfd 触发完成通知；断电持久性由写入与刷新语义决定。"
             }
           }
         }

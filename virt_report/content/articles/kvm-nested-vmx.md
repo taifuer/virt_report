@@ -1,4 +1,4 @@
-## 在虚拟机中运行 Hypervisor {#preface}
+## 序言 {#preface}
 
 嵌套虚拟化允许一台虚拟机继续运行 Hypervisor，并创建自己的虚拟机。在 Intel VMX 路径中，物理宿主上的 KVM 称为 L0；运行在客户机中的 Hypervisor 称为 L1；由 L1 管理的客户机称为 L2。它常用于虚拟化开发测试、云主机内的实验环境，以及需要虚拟化隔离的客户机软件。
 
@@ -46,11 +46,11 @@ VMCS02 必须保留 L0 的隔离约束，也要实现 L1 对 L2 承诺的行为�
 | 部分异常和控制寄存器拦截 | 合并两层要求，并处理掩码及读影子 | L1 放行某事件时，L0 仍可能必须拦截 |
 | EPT、TSC 和部分扩展控制 | 转换或合成相应状态；不支持直接执行的能力由软件模拟 | 地址和时间均处在嵌套上下文中 |
 
-以 I/O 为例，`prepare_vmcs02_early()` 设置 `CPU_BASED_UNCOND_IO_EXITING`，清除 `CPU_BASED_USE_IO_BITMAPS`。因此，即使 L1 的 I/O bitmap 放行了 `0xe0`，L2 的这条指令仍会真实退出到 L0。L1 的 bitmap 用于稍后的退出归属判断。其他控制位有只采用 L1 设置、按条件清除或单独计算的分支，不能把整份 VMCS 的构造概括成一次按位或。[执行控制的合成](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/nested.c#L2375-L2482)
+以 I/O 为例，`prepare_vmcs02_early()` 设置 `CPU_BASED_UNCOND_IO_EXITING`，清除 `CPU_BASED_USE_IO_BITMAPS`。因此，即使 L1 的 I/O bitmap 放行了 `0xe0`，L2 的这条指令仍会真实退出到 L0。L1 的 bitmap 用于稍后的退出归属判断。其他控制位则分别采用 L1 的设置、按条件清除或单独计算。[执行控制的合成](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/nested.c#L2375-L2482)
 
 ### 进入失败保留原有边界
 
-`VMLAUNCH` 和 `VMRESUME` 对 VMCS 启动状态有不同要求。对已启动的 VMCS 再执行 `VMLAUNCH`，会得到 VM 指令失败；非法控制字段也在检查时拒绝。另一些无效客户机状态按照 VM-entry 失败语义返回，不能简单当作一次正常的 L2 I/O 退出。只有完成进入检查，才会有后文的指令执行和退出处理。
+`VMLAUNCH` 和 `VMRESUME` 对 VMCS 启动状态有不同要求。对已启动的 VMCS 再执行 `VMLAUNCH`，会得到 VM 指令失败；非法控制字段也在检查时拒绝。另一些无效客户机状态按 VM-entry 失败的语义返回给 L1。只有完成进入检查，才会有后文的指令执行和退出处理。
 
 ## 一次 I/O 退出的两条处理路径 {#exit-path}
 
@@ -139,9 +139,11 @@ L2: OUT → 真实 VM-Exit → L0
 
 VMCS shadowing 加速的是 L1 访问控制字段的路径；VMCS02 仍负责实际运行 L2。Linux 在进入时根据配置从 shadow VMCS 或 enlightened VMCS 更新 VMCS12，随后完成合成；两者的角色不应混用。[进入时的同步](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/nested.c#L3832-L3842)、[影子 VMCS 关联](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/nested.c#L5917-L5930)
 
-迁移同样不能只保存外层 RAM 和普通寄存器。QEMU 通过 `KVM_GET_NESTED_STATE` 取得嵌套状态，在恢复时通过 `KVM_SET_NESTED_STATE` 交还内核；KVM 再重建本机执行所需的状态。真实 VMCS02 属于当前宿主的运行资源，不应直接当作可跨机器搬运的硬件内存镜像。[QEMU 嵌套状态保存与恢复](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/target/i386/kvm/kvm.c#L5222-L5294)
+迁移同样不能只保存外层 RAM 和普通寄存器。QEMU 通过 `KVM_GET_NESTED_STATE` 取得嵌套状态，在恢复时通过 `KVM_SET_NESTED_STATE` 交还内核；KVM 再重建本机执行所需的状态。VMCS02 是本机运行资源，由目的宿主按恢复的嵌套状态重建。[QEMU 嵌套状态保存与恢复](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/target/i386/kvm/kvm.c#L5222-L5294)
 
-回到最初的一次 `OUT`：L1 拦截时，增加了 L2 状态交接、恢复 L1、L1 处理和再次嵌套进入；L1 放行时，L0 仍要按自身设备模型完成访问。评价性能应区分 L2 纯计算、频繁 I/O、嵌套缺页与 L1 控制操作，分别观察退出频率、处理路径、内存缺页和延迟。减少 VMREAD / VMWRITE 的退出，并不能消除设备模拟或页表更新的成本。嵌套虚拟化提供了部署与测试上的灵活性，其性能取舍取决于负载实际跨越哪些边界。
+## 总结 {#summary}
+
+回到最初的一次 `OUT`：L1 拦截时，增加了 L2 状态交接、恢复 L1、L1 处理和再次嵌套进入；L1 放行时，L0 仍要按自身设备模型完成访问。评价性能应区分 L2 纯计算、频繁 I/O、嵌套缺页与 L1 控制操作，分别观察退出频率、处理路径、内存缺页和延迟。减少 VMREAD / VMWRITE 引起的退出后，设备模拟和页表更新的开销仍在。嵌套虚拟化提供了部署与测试上的灵活性，其性能取舍取决于负载实际跨越哪些边界。
 
 ## 参考资料 {#sources}
 

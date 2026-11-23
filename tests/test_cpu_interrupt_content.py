@@ -339,7 +339,7 @@ def test_posted_interrupt_distinguishes_pir_virr_and_visr():
     ("interrupt_overview", ["preface", "example", "controllers", "notification",
                             "delivery", "irqfd", "acceleration", "walkthrough",
                             "implementation", "evolution",
-                            "evaluation", "sources"]),
+                            "evaluation", "summary", "sources"]),
 ])
 def test_articles_have_main_line_shared_player_and_existing_local_links(stem, sections):
     article = (TEMPLATES / f"_{stem}_article.html").read_text()

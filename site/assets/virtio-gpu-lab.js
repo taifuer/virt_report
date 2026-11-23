@@ -38,7 +38,7 @@
       ['客户机修改矩形', `客户机把 (${rect.x},${rect.y}) 开始的 ${rect.width}×${rect.height} 区域改为 B。此时 pixman 图像仍为 A。`, 'CPU 写 backing', 'guest'],
       ['复制局部像素', `TRANSFER_TO_HOST_2D 从 offset ${rect.offset} 开始，逐行复制 ${rect.height} 行、每行 ${rect.width * BPP} B。QEMU 图像变为 B；显示端的上次消费结果仍为 A。`, 'TRANSFER_TO_HOST_2D', 'host'],
       ['通知显示区域更新', 'RESOURCE_FLUSH 对可见区域求交并提交 dpy_gfx_update。此步没有再次复制 backing，显示后端已有待处理的区域更新。', 'RESOURCE_FLUSH · FENCE = 1', 'display'],
-      ['命令处理完成', 'QEMU 返回携带 fence_id = 42 的完成响应，发布 used 记录。该完成不保证显示端已消费更新，更不代表物理屏幕刷新完成。', 'RESP_OK_NODATA · fence_id = 42', 'host'],
+      ['命令处理完成', 'QEMU 返回携带 fence_id = 42 的完成响应，发布 used 记录。显示后端消费更新和物理屏幕扫描各有自己的时刻。', 'RESP_OK_NODATA · fence_id = 42', 'host'],
       ['显示端消费更新', '显示后端处理此前通知的区域，演示画面更新为 B。真实显示端与命令响应可以采用不同调度顺序；这里明确展示二者独立。', '显示后端处理待更新区域', 'display']
     ];
     const [title, detail, command, active] = steps[index];
@@ -68,7 +68,7 @@
       get('detail').textContent = state.detail;
       get('command').textContent = state.command;
       get('fields').textContent = state.index === 2 ? 'resource_id = 7 · mem_entry[] → res.iov' : state.index === 3 ? 'resource_id = 7 · r = (0,0,1024,768) · offset = 0' : state.index === 4 ? 'scanout_id = 0 · resource_id = 7 · r = (0,0,1024,768)' : state.index >= 7 ? `resource_id = 7 · r = (${r.x},${r.y},${r.width},${r.height})${state.index === 7 ? ` · offset = ${r.offset}` : ''}` : 'resource_id = 7 · 1024×768 · B8G8R8X8_UNORM';
-      get('response').textContent = state.fenceReturned ? 'fence_id = 42 已返回；不代表物理呈现完成' : state.index === 8 ? '等待本次 FLUSH 的 fence 响应' : state.index >= 1 && state.index <= 5 ? '本演示已完成当前初始化操作' : state.index === 7 ? '像素复制已完成' : '本步尚无新的命令完成';
+      get('response').textContent = state.fenceReturned ? 'fence_id = 42 已返回，FLUSH 命令处理完成' : state.index === 8 ? '等待本次 FLUSH 的 fence 响应' : state.index >= 1 && state.index <= 5 ? '本演示已完成当前初始化操作' : state.index === 7 ? '像素复制已完成' : '本步尚无新的命令完成';
       get('guest-state').textContent = state.guestVersion === 'B' ? '矩形已改为 B，其余仍为 A' : '初始画面 A';
       get('host-state').textContent = state.hostVersion === 'none' ? '尚未创建资源' : state.hostVersion === 'allocated' ? '图像已分配，像素待初始化' : state.hostVersion === 'B' ? '矩形已复制为 B' : '已保存画面 A';
       get('backing-state').textContent = state.attached ? 'backing 已关联 · iov → 客户机内存' : 'backing 尚未关联';

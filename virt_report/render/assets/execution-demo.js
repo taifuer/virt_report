@@ -210,7 +210,7 @@
     if (scene.callPaths) {
       components.sourcePaths(sources, scene.callPaths, demo.sources, scene.sourceSteps || []);
     } else {
-    sources.replaceChildren(el('p', '按执行阶段列出实现入口。跨线程通知、硬件行为与回调分别标明；连线表示事件先后，不代表同一条调用栈。'));
+    sources.replaceChildren(el('p', '按执行阶段列出实现入口。跨线程通知、硬件行为与回调分别标明；连线表示事件先后，调用栈见各执行上下文。'));
     trace.slice(1).forEach(frame => {
       const row = el('section', undefined, 'execution-source-row'); row.dataset.executionSourceStep = frame.id;
       row.append(el('small', frame.actor), el('h4', frame.title));

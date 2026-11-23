@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=1934a7814284">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1934a7814284">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=5eb1bb7dc04a">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=5eb1bb7dc04a">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -50,11 +50,11 @@
   <div class="mechanism-layout">
     <nav class="mechanism-toc" aria-label="文章目录">
       <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
-      <ol id="mechanism-toc-links"><li><a href="#preface">一、客户机访存与宿主内存映射</a></li><li><a href="#addresses">二、客户机页表与 EPT 的两级转换</a></li><li><a href="#first-access">三、首次读取：从 GPA 找到 PFN，再安装 EPT</a><ol><li><a href="#first-access-part-1">1. EPT 映射缺失与内核缺页处理</a></li><li><a href="#first-access-part-2">2. 把地址计算完整走一遍</a></li><li><a href="#first-access-part-3">3. 提交映射后，处理器重试同一条读取</a></li></ol></li><li><a href="#structures">四、映射结构：内存槽、缺页状态与 EPT 表项</a><ol><li><a href="#structures-part-1">1. 给示例 GPA 登记一段后备内存</a></li><li><a href="#structures-part-2">2. memslot 范围与逐页映射的衔接</a></li><li><a href="#structures-part-3">3. EPT 页表的实际布局</a></li></ol></li><li><a href="#fault-types">五、访问分支：RAM 缺页、写保护与设备地址</a></li><li><a href="#invalidation">六、后备页变化：撤销旧映射，防止旧 PFN 回填</a></li><li><a href="#implementation">七、源码调用链：解释访问、解析后备、提交映射</a></li><li><a href="#evolution">八、演进与取舍：影子页表、EPT 与并行 TDP MMU</a><ol><li><a href="#evolution-part-1">1. 硬件分离第二级转换，减少客户机页表跟踪</a></li><li><a href="#evolution-part-2">2. 并行建图降低多 vCPU 首次访问的锁争用</a></li><li><a href="#evolution-part-3">3. 访存成本的分段测量</a></li></ol></li><li><a href="#sources">九、参考资料</a></li></ol>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a></li><li><a href="#addresses">二、客户机页表与 EPT 的两级转换</a></li><li><a href="#first-access">三、首次读取：从 GPA 找到 PFN，再安装 EPT</a><ol><li><a href="#first-access-part-1">1. EPT 映射缺失与内核缺页处理</a></li><li><a href="#first-access-part-2">2. 把地址计算完整走一遍</a></li><li><a href="#first-access-part-3">3. 提交映射后，处理器重试同一条读取</a></li></ol></li><li><a href="#structures">四、映射结构：内存槽、缺页状态与 EPT 表项</a><ol><li><a href="#structures-part-1">1. 给示例 GPA 登记一段后备内存</a></li><li><a href="#structures-part-2">2. memslot 范围与逐页映射的衔接</a></li><li><a href="#structures-part-3">3. EPT 页表的实际布局</a></li></ol></li><li><a href="#fault-types">五、访问分支：RAM 缺页、写保护与设备地址</a></li><li><a href="#invalidation">六、后备页变化：撤销旧映射，防止旧 PFN 回填</a></li><li><a href="#implementation">七、源码调用链：解释访问、解析后备、提交映射</a></li><li><a href="#evolution">八、演进与取舍：影子页表、EPT 与并行 TDP MMU</a><ol><li><a href="#evolution-part-1">1. 硬件分离第二级转换，减少客户机页表跟踪</a></li><li><a href="#evolution-part-2">2. 并行建图降低多 vCPU 首次访问的锁争用</a></li><li><a href="#evolution-part-3">3. 访存成本的分段测量</a></li></ol></li><li><a href="#summary">九、总结</a></li><li><a href="#sources">十、参考资料</a></li></ol>
     </nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">一、</span>客户机访存与宿主内存映射</h2>
+  <h2><span class="mechanism-heading-number">一、</span>序言</h2>
   <p>客户机页表记录客户机虚拟地址到客户机物理地址的映射，宿主页的位置则由宿主内存管理决定。宿主可能按需分配、回收或迁移这些页。第二级地址转换在保留客户机地址空间的同时，将访问映射到当前宿主页；后备页变化时，KVM 需要撤销旧映射并重新建立转换。</p>
   <p>Intel EPT 为此增加 GPA → HPA 转换：QEMU 登记 RAM 后备范围，KVM 按需建立并维护 EPT，处理器利用这些页表和 TLB 执行访存。本文跟踪一次 <code>GVA 0x40203080</code> 的读取，依次走过“登记范围 → 缺页建图 → 重试访问 → 后备页变更后重建”。</p>
   <p>源码路径采用 x86、Intel EPT 和 KVM TDP MMU。后备内存使用 QEMU 可访问的匿名内存或文件映射，示例以 4 KiB 页展开；私有内存与嵌套虚拟化另有处理路径。</p>
@@ -72,9 +72,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看客户机访存与 KVM 建图路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="客户机访存与 KVM 建图路径">
-    <img src="../assets/ept-address-mapping.svg?v=1934a7814284" alt="实线表示客户机的硬件地址转换；虚线表示 KVM 根据 memslot 和宿主映射找到后备页，再填写 EPT。HVA 用于软件建图，不属于客户机硬件遍历的地址层级。" loading="lazy">
+    <img src="../assets/ept-address-mapping.svg?v=5eb1bb7dc04a" width="1232" height="335" alt="实线表示客户机的硬件地址转换；虚线表示 KVM 根据 memslot 和宿主映射找到后备页，再填写 EPT。HVA 用于软件建图，不属于客户机硬件遍历的地址层级。" loading="lazy">
   </div>
-  <figcaption>实线表示客户机的硬件地址转换；虚线表示 KVM 根据 memslot 和宿主映射找到后备页，再填写 EPT。HVA 用于软件建图，不属于客户机硬件遍历的地址层级。 <a href="../assets/ept-address-mapping.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>实线表示客户机的硬件地址转换；虚线表示 KVM 根据 memslot 和宿主映射找到后备页，再填写 EPT。HVA 用于软件建图，不属于客户机硬件遍历的地址层级。 <a href="../assets/ept-address-mapping.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: EPT 硬件地址转换与 KVM 软件建图
     accDescr: 客户机 GVA 经客户机页表转换为 GPA，再经 EPT 转成 HPA。KVM 按 GPA 查 memslot 得到 QEMU HVA，查询宿主内存得到 PFN，配置 EPT；HVA 不属于硬件客户机访存路径。
@@ -132,7 +132,7 @@ memslot.npages            = 0x200 = 512 页
 EPT 叶子映射             = GPA 页 0x00403000 → HPA 页 0x21000000
 本次访问的 HPA           = 0x21000000 + 0x080
                          = 0x21000080</code></pre>
-  <p>GFN 是 GPA 除以页大小得到的客户机页号，PFN 是宿主物理页号。KVM 先用槽内偏移找到 HVA，再让宿主内存管理提供当前 PFN；负责这两步的入口分别是 <code>__gfn_to_hva_memslot()</code> 与 <code>__kvm_faultin_pfn()</code>。后备页未驻留时还需分配、调入或等待 I/O。这里取得的是临时页引用，不能推导为整台 VM 的 RAM 永久固定在同一物理地址。GFN → HVA、宿主取页</p>
+  <p>GFN 是 GPA 除以页大小得到的客户机页号，PFN 是宿主物理页号。KVM 先用槽内偏移找到 HVA，再让宿主内存管理提供当前 PFN；负责这两步的入口分别是 <code>__gfn_to_hva_memslot()</code> 与 <code>__kvm_faultin_pfn()</code>。后备页未驻留时还需分配、调入或等待 I/O。KVM 在这里取得当前后备页的临时引用。GFN → HVA、宿主取页</p>
   <h3 id="first-access-part-3"><span class="mechanism-heading-number">3. </span>提交映射后，处理器重试同一条读取</h3>
   <p>在 TDP MMU 慢路径中，KVM 取得 PFN 后获取 <code>mmu_lock</code> 读锁，确认本次结果没有失效，再逐级创建缺少的页表页，以原子操作安装叶子 SPTE（KVM 管理的页表项，这里对应 EPT 项）。若其他 vCPU 已建立映射或修改同一项，会检查结果或重试；成功后重新进入客户机，由处理器重试原来的访存。通常无需返回 QEMU，也不需要修改客户机页表。缺页入口、叶子项安装</p>
   <p>本例最终读取 <code>HPA 0x21000080</code>。后续相同访问若命中有效 TLB / EPT 映射，就沿硬件路径完成；QEMU 不会再次逐项计算 HVA，KVM 也无需每次重新取得 PFN。按需建图把工作集中到首次访问和映射变化时。</p>
@@ -180,7 +180,7 @@ EPT 叶子映射             = GPA 页 0x00403000 → HPA 页 0x21000000
     <tr><td>宿主后备页无法取得</td><td>RAM 槽存在，但宿主内存解析出错</td><td>根据错误类型重试、处理信号或报错，不能一律转换成普通 MMIO</td></tr>
   </tbody></table>
   <p>例如迁移开启写保护式脏页跟踪后，客户机对已存在 RAM 页的首次写入会触发 EPT 处理，KVM 记录页被修改，再允许后续写入。<code>KVM_MEM_READONLY</code> 则声明槽的只读属性：x86 对它的写请求可交给用户态 MMIO 处理，不应像脏页记录那样随意恢复可写。脏页记录也可以结合硬件辅助机制，不能把所有记录模式都归结为逐页写退出。只读槽约定</p>
-  <p>无槽访问还可能缓存成特殊 MMIO SPTE，后续通过 EPT misconfiguration 等路径识别；“看到 EPT 退出”不足以判断是否需要 QEMU。对应实现见 <code>kvm_handle_noslot_fault()</code> 与 <code>handle_ept_misconfig()</code>。用户态往返见<a href="kvm-vcpu-run.html#paths">vCPU 退出处理</a>，迁移脏页交接见<a href="kvm-dirty-ring.html">Dirty Ring</a>。</p>
+  <p>无槽访问还可能缓存成特殊 MMIO SPTE，后续通过 EPT misconfiguration 等路径识别；决定是否返回 QEMU，要看这次 EPT 退出对应的是 RAM 建图还是需要用户态处理的访问。对应实现见 <code>kvm_handle_noslot_fault()</code> 与 <code>handle_ept_misconfig()</code>。用户态往返见<a href="kvm-vcpu-run.html#paths">vCPU 退出处理</a>，迁移脏页交接见<a href="kvm-dirty-ring.html">Dirty Ring</a>。</p>
 </section>
 
 <section id="invalidation" class="mechanism-section">
@@ -193,9 +193,9 @@ EPT 叶子映射             = GPA 页 0x00403000 → HPA 页 0x21000000
     <button type="button" data-mechanism-expand aria-label="放大查看缺页建图与宿主映射失效的竞争" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="缺页建图与宿主映射失效的竞争">
-    <img src="../assets/ept-fault-invalidation.svg?v=1934a7814284" alt="示例中，缺页线程取得旧 PFN 后遇到宿主页替换。安装前的锁内检查发现失效序号变化，放弃旧结果并重新取页，阻止旧 SPTE 被回填。" loading="lazy">
+    <img src="../assets/ept-fault-invalidation.svg?v=5eb1bb7dc04a" width="696" height="1138" alt="示例中，缺页线程取得旧 PFN 后遇到宿主页替换。安装前的锁内检查发现失效序号变化，放弃旧结果并重新取页，阻止旧 SPTE 被回填。" loading="lazy">
   </div>
-  <figcaption>示例中，缺页线程取得旧 PFN 后遇到宿主页替换。安装前的锁内检查发现失效序号变化，放弃旧结果并重新取页，阻止旧 SPTE 被回填。 <a href="../assets/ept-fault-invalidation.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>示例中，缺页线程取得旧 PFN 后遇到宿主页替换。安装前的锁内检查发现失效序号变化，放弃旧结果并重新取页，阻止旧 SPTE 被回填。 <a href="../assets/ept-fault-invalidation.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: EPT 缺页与宿主物理页替换的并发处理
     accDescr: 缺页线程保存序号并取得旧 PFN。宿主内存管理通过 MMU notifier 撤销旧 EPT 项并推进序号。缺页线程持 MMU 读锁检查发现结果过期，释放旧页引用后重新查询，最终安装新 PFN。
@@ -277,8 +277,13 @@ return r;</code></pre>
   <p>大页条件与迁移期间的粒度变化见<a href="kvm-hugepages.html">KVM 大页映射的建立、拆分与恢复</a>，其中逐步展示 2 MiB 叶子与 512 个 4 KiB 叶子的转换。</p>
 </section>
 
+<section id="summary" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">九、</span>总结</h2>
+  <p>分析一次访存停顿，先区分客户机自身的缺页、KVM 补建二级映射，以及宿主为后备页等待的时间。普通 RAM 建图成功后可以重试原指令；如果目标是设备寄存器，还要沿 MMIO 路径检查由谁提供数据。</p>
+</section>
+
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">九、</span>参考资料</h2>
+  <h2><span class="mechanism-heading-number">十、</span>参考资料</h2>
   <ul>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L360-L392">QEMU 10.2.0：内存槽注册</a></li>
     <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst#L1355-L1427">Linux 6.18：KVM_SET_USER_MEMORY_REGION</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst#L6312-L6358">REGION2 扩展接口</a></li>
@@ -294,6 +299,6 @@ return r;</code></pre>
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=1934a7814284" defer></script>
+<script src="../assets/mechanism-viewer.js?v=5eb1bb7dc04a" defer></script>
 </body>
 </html>

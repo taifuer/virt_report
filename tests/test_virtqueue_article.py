@@ -20,13 +20,28 @@ def test_queue_article_combines_split_and_packed_at_the_existing_url():
     assert "RING_PACKED" in page
 
 
+def test_four_slot_experiment_precedes_layout_details_and_has_a_static_equivalent():
+    root = versions.Document(render_mechanisms_html(Config(), "packed-virtqueue")).root
+    sections = [s for s in root.find("section") if s.attrs.get("class") == "mechanism-section"]
+    assert [s.attrs["id"] for s in sections[:3]] == ["preface", "interactive", "split-layout"]
+    experiment = sections[1]
+    assert {"publish", "complete", "reclaim", "reset"} == {
+        b.attrs["data-packed-action"] for b in experiment.find("button") if "data-packed-action" in b.attrs
+    }
+    fallback, = experiment.find("noscript")
+    for marker in ("avail.idx", "used.idx", "A/U", "驱动回收"):
+        assert marker in fallback.text()
+    for section in sections:
+        assert ("发布四项" in section.text()) == (section is experiment)
+
+
 def test_protocol_history_keeps_draft_status_and_source_baselines_separate():
     page = render_mechanisms_html(Config(), "virtio-device-initialization")
     for label in ("2007", "0.8.7", "0.9.5", "1.0", "1.1", "1.2", "1.3 CSD01", "1.4 CS01"):
         assert label in page
-    assert "不能据此称它为第一版" in page
+    assert "2007 年 Virtio draft II 原始邮件" in page
     assert "Modern 可以使用 Split" in page
     assert "virtio-win 0.1.xxx" in page
-    assert "目前缺乏可核验的全行业部署比例" in page
+    assert "接口模式、队列格式、已协商特性" in page
     assert "10.2.0" in page and "6.18" in page
     assert 'href="packed-virtqueue.html#interactive"' in page

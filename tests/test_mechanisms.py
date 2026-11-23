@@ -53,7 +53,7 @@ def test_editorial_metadata_pins_each_repository_and_only_published_articles():
             assert re.fullmatch(r"10\.\d{4,9}/\S+", publication["doi"])
             assert publication["url"] == f'https://doi.org/{publication["doi"]}'
         assert {item["project"] for item in article["baselines"]} <= {
-            "QEMU", "Linux", "Libvirt", "SPDK", "DPDK", "Mesa", "virglrenderer", "SeaBIOS",
+            "QEMU", "Linux", "Libvirt", "SPDK", "DPDK", "Mesa", "virglrenderer", "SeaBIOS", "AMD GIM",
         }
         for field in ("script", "stylesheet"):
             if article.get(field):
@@ -202,7 +202,7 @@ def test_existing_articles_link_to_backend_and_dirty_log_explanations():
     assert 'href="qemu-postcopy.html"' not in memory
     vhost = render.render_mechanisms_html(Config(), "qemu-vhost-net")
     assert 'href="network-io.html#virtqueue"' in vhost
-    assert 'href="qemu-vfio-dma.html"' in vhost
+    assert 'href="interrupt-virtualization.html#irqfd"' in vhost
 
 
 def test_memory_and_interrupt_articles_connect_to_existing_paths():

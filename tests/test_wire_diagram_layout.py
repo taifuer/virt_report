@@ -3,6 +3,7 @@
 from html.parser import HTMLParser
 from pathlib import Path
 import re
+from xml.etree import ElementTree
 
 from virt_report.config import Config
 from virt_report.render import render
@@ -39,6 +40,9 @@ def test_wire_diagram_offers_explicit_zoom_and_original_fallback():
     assert "QEMU 迁移流与字段布局" in button["aria-label"]
     assert any(tag == "a" and "migration-wire-layout.svg" in attrs["href"]
                for tag, attrs in parsed.nodes)
+    image = next(attrs for tag, attrs in parsed.nodes if tag == "img")
+    svg = ElementTree.parse(render.ASSETS_DIR / "migration-wire-layout.svg").getroot()
+    assert (image["width"], image["height"]) == (svg.attrib["width"], svg.attrib["height"])
     assert "图内可左右滚动" not in page
     assert "点击放大查看字段细节" in page
 

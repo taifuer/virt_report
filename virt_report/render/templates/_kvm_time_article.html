@@ -2,7 +2,7 @@
 {% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 {% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 <section id="preface" class="mechanism-section">
-  <h2>虚拟机时间读取与定时中断</h2>
+  <h2>序言</h2>
   <p>客户机安排一个 1 ms 后执行的任务，需要先知道当前时间，再设置一个到期通知。虚拟化使这两步有了不同的困难：vCPU 可能被宿主抢占，恢复时应能读出已经经过的时间；定时事件即使已经到期，处理线程也可能还没有得到 CPU。迁移到另一台服务器后，物理计数器的起点和频率还可能改变。</p>
   <p>Linux 将提供时间读数的机制称为 <strong>clocksource</strong>，将产生定时中断的机制称为 <strong>clockevent</strong>。本文以 x86 客户机的 KVM pvclock 和 Intel TSC-deadline 定时器为例，沿“读出当前时间—设置截止时刻—接收到期中断”说明两条路径。示例使用内核虚拟 LAPIC。</p>
   <p>客户机 Linux 读取时钟、安排自己的任务，并处理虚拟定时中断；宿主 KVM 提供时间换算参数和虚拟 LAPIC 定时器，宿主 Linux 提供实际定时及线程调度。QEMU 主要在创建、暂停和迁移时协调这些状态，不参与客户机每一次 pvclock 读取。</p>
@@ -11,7 +11,7 @@
 </section>
 <section id="tsc" class="mechanism-section">
   <h2>TSC 偏移与缩放建立客户机的计数坐标</h2>
-  <p>TSC 是处理器提供的计数器，客户机可通过 RDTSC 等指令读取。具有 invariant TSC 能力的处理器使用稳定的计数频率；这个频率与程序当前执行指令的速度不同，不能用计数增量直接当作已执行的指令数。</p>
+  <p>TSC 是处理器提供的计数器，客户机可通过 RDTSC 等指令读取。具有 invariant TSC 能力的处理器使用稳定的计数频率；计数增量用来计算经过的时间；执行了多少条指令要看指令计数。</p>
   <p>物理 TSC 的起点属于宿主。KVM 为客户机配置<strong>偏移</strong>来选择起点，在支持硬件 TSC scaling 时还可配置<strong>比例</strong>来选择计数频率。Intel VMX 的比例采用 48 位小数，概念上的变换为：</p>
   <pre><code>guest_tsc = ((host_tsc × tsc_multiplier) &gt;&gt; 48) + tsc_offset</code></pre>
   <p>偏移可使迁移目的端从客户机原来的计数位置接续；比例可使不同物理 TSC 频率呈现同一个客户机频率。两者都不改变客户机获得多少 CPU 时间。常见的非嵌套 VMX 路径不拦截每次 RDTSC，处理器直接完成上述变换；配置更新才由 KVM 写入 VMCS。<a href="{{ linux }}arch/x86/kvm/vmx/vmx.c#L1908-L1915">VMCS 字段</a>、<a href="{{ linux }}arch/x86/kvm/vmx/vmx.c#L4435-L4446">RDTSC 退出控制</a></p>
@@ -54,7 +54,7 @@ now_ns   = 5,000,000,000 + 2,000,000 = 5.002 s</code></pre>
   <p>这条路径中有三个时间点：deadline、客户机进入中断处理程序、应用任务实际开始运行。它们之间可夹着宿主排队、客户机屏蔽中断以及客户机调度。时钟保持连续，只保证能够计量经过的时间；到期通知和任务执行仍可能迟到。</p>
   <h3>运行中的硬件定时与阻塞后的切换</h3>
   <p>支持且适用时，VMX 后端可用 <strong>VMX preemption timer</strong> 辅助实现虚拟 LAPIC 定时器。它按换算后的宿主计数安排 VM exit，再由 KVM 处理到期；客户机写入的 deadline 并非直接独占宿主物理 LAPIC 定时器。计数范围等条件不满足时会回退到 hrtimer。vCPU 将要阻塞时，KVM 把正在使用的硬件定时切换为软件定时，避免依赖只在 VMX non-root 环境中倒计时的机制。<a href="{{ linux }}arch/x86/kvm/vmx/vmx.c#L8187-L8224">VMX 换算</a>、<a href="{{ linux }}arch/x86/kvm/x86.c#L11530-L11551">阻塞前后的切换</a></p>
-  <p>APICv 与 posted timer interrupt 还可减少部分事件交接。后者有配置、APICv 和 <code>IN_GUEST_MODE</code> 等条件，不能据此推断宿主已经阻塞的 vCPU 总能直接收到硬件投递。<a href="{{ linux }}arch/x86/kvm/lapic.c#L131-L146">投递条件</a></p>
+  <p>APICv 与 posted timer interrupt 还可减少部分事件交接。后者有配置、APICv 和 <code>IN_GUEST_MODE</code> 等条件；已经阻塞的 vCPU 需要相应的唤醒路径。<a href="{{ linux }}arch/x86/kvm/lapic.c#L131-L146">投递条件</a></p>
 </section>
 <section id="state" class="mechanism-section">
   <h2>时间与定时器的状态归属</h2>
@@ -69,8 +69,8 @@ now_ns   = 5,000,000,000 + 2,000,000 = 5.002 s</code></pre>
 <section id="migration" class="mechanism-section">
   <h2>暂停与迁移中的时间衔接</h2>
   <p>从源端搬到目的端，不能直接沿用宿主 TSC 原值。QEMU 保存客户机 TSC、频率、deadline 等状态，在目的端恢复；KVM 根据新宿主建立偏移和可支持的比例。QEMU 通过 <code>KVM_GET_CLOCK</code> / <code>KVM_SET_CLOCK</code> 保存、重建 kvmclock 参考点，跨宿主频率不兼容时还需检查 TSC 控制能力。<a href="{{ qemu }}target/i386/kvm/kvm.c#L883-L941">客户机频率设置</a></p>
-  <p>具体停顿怎样计入取决于恢复策略。QEMU 10.2 的 kvmclock 设备在停止时保存读数，恢复时用保存值重新设置基准；迁移运行中的 VM 时，<code>pre_save</code> 会再取一次读数，把停止到保存之间的末批传输时间计入。已经显式暂停的 VM 则保留之前的基准。这能减少迁移丢失的时间，但不意味着所有停机区间都会自动补全。<a href="{{ qemu }}hw/i386/kvm/clock.c#L163-L218">状态变化</a>、<a href="{{ qemu }}hw/i386/kvm/clock.c#L266-L299">迁移保存</a></p>
-  <p>还要区分经过时间与日期。pvclock 的纳秒读数配合 wallclock 基准可提供日期参考；客户机操作系统在其上维护 CLOCK_MONOTONIC、CLOCK_REALTIME 等接口，后者还受设置日期和 NTP 校时影响。MONOTONIC 不随手工设置日期直接跳变，也不等于 vCPU 累计执行时长。宿主暂停、客户机自行挂起和迁移是不同事件，不能仅凭某个时钟名称推断它们都采用同一种停顿语义。</p>
+  <p>具体停顿怎样计入取决于恢复策略。QEMU 10.2 的 kvmclock 设备在停止时保存读数，恢复时用保存值重新设置基准；迁移运行中的 VM 时，<code>pre_save</code> 会再取一次读数，把停止到保存之间的末批传输时间计入。已经显式暂停的 VM 则保留之前的基准。实际补偿的时间取决于迁移时保存和恢复的时钟状态。<a href="{{ qemu }}hw/i386/kvm/clock.c#L163-L218">状态变化</a>、<a href="{{ qemu }}hw/i386/kvm/clock.c#L266-L299">迁移保存</a></p>
+  <p>还要区分经过时间与日期。pvclock 的纳秒读数配合 wallclock 基准可提供日期参考；客户机操作系统在其上维护 CLOCK_MONOTONIC、CLOCK_REALTIME 等接口，后者还受设置日期和 NTP 校时影响。MONOTONIC 不随手工设置日期直接跳变，也不等于 vCPU 累计执行时长。宿主暂停、客户机自行挂起和迁移要分别看对应的时钟保存、推进和恢复规则。</p>
   <p><code>PVCLOCK_GUEST_STOPPED</code> 用于告知客户机发生过宿主暂停，让看门狗避免据此误判锁死；这个标志本身不负责补齐墙钟。<a href="{{ linux }}Documentation/virt/kvm/api.rst#L2957-L2978">暂停通知接口</a></p>
 </section>
 <section id="evolution" class="mechanism-section">
@@ -84,7 +84,7 @@ now_ns   = 5,000,000,000 + 2,000,000 = 5.002 s</code></pre>
   <p>这些改进分别作用于计数、换算和通知，可以共同使用。KVM 还会按条件提前唤醒定时路径、在真正截止时刻前等待，以补偿注入开销；这以一定 CPU 消耗换取较低迟延。评价时应把时钟漂移、跨 vCPU 后退、定时迟到和应用调度延迟分开测量，避免只看平均值。<a href="{{ linux }}arch/x86/kvm/lapic.c#L1881-L1959">提前量与等待处理</a></p>
 </section>
 <section id="summary" class="mechanism-section">
-  <h2>总结：时间读数、到期事件与执行机会</h2>
+  <h2>总结</h2>
   <p>回到 5.003 s 到期的任务，客户机内可记录设定的截止时刻与处理程序实际执行时刻，得到可见的迟到量；宿主侧再对应定时器到期、vCPU 唤醒和运行事件，定位迟到发生在哪段。两侧时间戳来自不同时间基准，跨端相减前需要建立对应关系。pvclock 读数连续、定时中断及时、应用按时运行是三个可以分别验证的结果。</p>
 </section>
 <section id="sources" class="mechanism-section">

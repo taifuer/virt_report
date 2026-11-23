@@ -3,7 +3,7 @@ import re
 
 import pytest
 
-from virt_report import mechanisms
+from virt_report import mechanisms, versions
 from virt_report.config import Config
 from virt_report.render import render
 
@@ -20,7 +20,8 @@ from virt_report.render import render
 def test_foundation_guides_introduce_principles_before_examples_and_tradeoffs(slug, sequence):
     article = mechanisms.get_article(slug)
     section_ids = [section['id'] for section in article['sections']]
-    tail = ['sources']
+    tail = (['summary', 'sources'] if slug in {'memory-virtualization', 'interrupt-virtualization'}
+            else ['sources'])
     assert section_ids == [*sequence, *tail]
     page = render.render_mechanisms_html(Config(), slug)
     positions = [page.index(f'<section id="{section}"') for section in sequence]
@@ -83,17 +84,20 @@ def test_directory_links_do_not_underline_but_keep_focus_feedback():
     assert '.mechanisms-index a:focus-visible{outline:2px solid var(--brand)' in css
 
 
-@pytest.mark.parametrize('slug', ['hotplug'])
-def test_operation_guides_explain_state_before_handoff_and_evaluate_outcomes(slug):
-    article = mechanisms.get_article(slug)
-    assert [section['id'] for section in article['sections']] == [
-        'preface', 'state', 'process', 'example', 'evolution', 'evaluation', 'sources',
+def test_hotplug_overview_pairs_one_handoff_diagram_with_a_resource_comparison():
+    page = render.render_mechanisms_html(Config(), 'hotplug')
+    root = versions.Document(page).root
+    sections = {s.attrs['id']: s for s in root.find('section') if 'id' in s.attrs}
+    assert list(sections) == ['preface', 'process', 'example', 'evaluation', 'sources']
+    assert [fig.attrs.get('data-diagram') for fig in root.find('figure')] == ['hotplug-overview-lifecycle']
+    comparison, = sections['example'].find('table')
+    assert [cell.text() for cell in comparison.find('th') if cell.attrs.get('scope') == 'row'] == [
+        'PCIe 网卡', 'x86 vCPU', 'DIMM 内存',
     ]
-    page = render.render_mechanisms_html(Config(), slug)
-    for section in ('state', 'example', 'evaluation'):
-        body = re.search(fr'<section id="{section}".*?</section>', page, re.S).group()
-        assert '<p>' in body
-    assert '<table>' in page
+    assert 'device_del' in sections['process'].text() and 'DEVICE_DELETED' in sections['process'].text()
+    for old in ('state', 'evolution', 'process-part-1', 'process-part-2',
+                'example-part-1', 'example-part-2', 'example-part-3', 'example-part-4'):
+        assert page.count(f'id="{old}"') == 1
 
 
 @pytest.mark.parametrize('slug,diagram,example_fields', [

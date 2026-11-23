@@ -1,4 +1,4 @@
-## 设备分配中的地址空间管理 {#preface}
+## 序言 {#preface}
 
 把一块网卡 VF 分配给虚拟机，需要同时建立两类访问：客户机通过设备寄存器提交请求，网卡通过 DMA 访问客户机内存。VFIO 提供设备区域、配置空间和中断接口；IOMMUFD 管理 DMA 使用的地址空间与硬件页表。两者通过设备绑定和页表附着连接起来。
 
@@ -16,7 +16,7 @@ QEMU 打开 `/dev/vfio/devices/vfioX`，得到设备文件描述符 `devfd`；�
 | VFIO 设备 fd | 绑定 IOMMUFD、附着或脱离页表、访问设备区域与中断 | 应用与具体设备的访问关系 |
 | IOMMUFD fd | 分配 IOAS / HWPT、映射内存、查询能力与销毁对象 | 一个上下文中的地址空间、页表及对象 ID |
 
-`dev_id`、`ioas_id` 和 `hwpt_id` 都是 IOMMUFD 上下文里的对象编号，不能当作 Linux 文件描述符传给 `close()`。同一编号在另一个独立打开的 IOMMUFD 上下文中，也不代表同一对象。
+`dev_id`、`ioas_id` 和 `hwpt_id` 都是 IOMMUFD 上下文里的对象编号，不能当作 Linux 文件描述符传给 `close()`。同一编号由各自的 IOMMUFD 上下文独立解释。
 
 | 对象 | 含义 | 本例中的内容 |
 | --- | --- | --- |
@@ -24,7 +24,7 @@ QEMU 打开 `/dev/vfio/devices/vfioX`，得到设备文件描述符 `devfd`；�
 | IOAS | I/O Address Space，逻辑 I/O 地址空间 | `ioas_id = 10`；保存 IOVA 区间与后备内存的关系 |
 | HWPT_PAGING | 由内核管理的硬件 I/O 页表对象 | `hwpt_id = 20`；关联 IOAS，对应 IOMMU 的 `iommu_domain` |
 
-IOAS 统一表达映射，HWPT 把这些映射落实到具体 IOMMU 能使用的页表。一个 IOAS 可以关联多个 HWPT：兼容的设备可共享已有 HWPT；无法共用同一硬件页表、但允许共享这组映射的设备，可以使用另一个 HWPT。内核维护这些 HWPT 中一致的 IOVA 映射。**共享 IOAS 也意味着共享 DMA 可见的地址范围**，不能据此把相互不信任的设备放入同一地址空间。
+IOAS 统一表达映射，HWPT 把这些映射落实到具体 IOMMU 能使用的页表。一个 IOAS 可以关联多个 HWPT：兼容的设备可共享已有 HWPT；无法共用同一硬件页表、但允许共享这组映射的设备，可以使用另一个 HWPT。内核维护这些 HWPT 中一致的 IOVA 映射。**共享 IOAS 的设备可访问同一组 DMA 地址**，相互不信任的设备应使用隔离的地址空间。
 
 ```diagram iommufd-objects
 IOMMUFD 中的设备、逻辑地址空间与硬件页表
@@ -145,9 +145,11 @@ IOMMUFD 把通用 I/O 页表管理独立出来，用对象 ID 明确表达“逻
 | 嵌套 DMA 转换 | 用嵌套 HWPT 与父页表表达两阶段关系 | 依赖硬件、驱动与 VMM 配套，不能给普通 HWPT 任意添加一层 |
 | DMA 脏页跟踪 | 支持的 HWPT 可启停跟踪并读取位图 | 能力按 IOMMU / 驱动判断，设备状态迁移仍需另行支持 |
 
-QEMU 10.2 已在 `hw/vfio/iommufd.c` 查询 `IOMMU_HW_CAP_DIRTY_TRACKING`，具备能力时请求 `IOMMU_HWPT_ALLOC_DIRTY_TRACKING`，并实现跟踪启停及位图读取。它并不代表所有平台都提供该能力，也不代表任何直通设备都能热迁移。设备状态保存、队列停止、DMA 一致性以及目标端兼容性仍需共同满足。[能力门控与 HWPT 分配](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/iommufd.c#L348-L399)、[脏页跟踪操作](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/backends/iommufd.c#L337-L387)
+QEMU 10.2 已在 `hw/vfio/iommufd.c` 查询 `IOMMU_HW_CAP_DIRTY_TRACKING`，具备能力时请求 `IOMMU_HWPT_ALLOC_DIRTY_TRACKING`，并实现跟踪启停及位图读取。部署时须分别核对平台能力和所用直通设备的迁移支持。设备状态保存、队列停止、DMA 一致性以及目标端兼容性仍需共同满足。[能力门控与 HWPT 分配](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/iommufd.c#L348-L399)、[脏页跟踪操作](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/backends/iommufd.c#L337-L387)
 
-对最初的网卡 VF，正常运行的数据路径依旧是设备通过 IOMMU 访问 RAM。IOMMUFD 的主要收益体现在地址空间表达、能力扩展与资源管理上。评估时应分别测量接入与大内存映射耗时、运行期 I/O 性能、动态映射更新和回收成本，不能仅凭更换接口就推导吞吐提升。
+## 总结 {#summary}
+
+对最初的网卡 VF，正常运行的数据路径依旧是设备通过 IOMMU 访问 RAM。IOMMUFD 的主要收益体现在地址空间表达、能力扩展与资源管理上。接口变化的成本要分项测量：接入、大内存映射、运行期 I/O，以及动态映射的更新和回收。
 
 ## 参考资料 {#sources}
 

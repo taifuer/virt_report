@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=1934a7814284">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1934a7814284">
-<link rel="stylesheet" href="../assets/iommu-lab.css?v=1934a7814284"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=5eb1bb7dc04a">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=5eb1bb7dc04a">
+<link rel="stylesheet" href="../assets/iommu-lab.css?v=5eb1bb7dc04a"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -50,10 +50,10 @@
   <div class="mechanism-layout">
     <nav class="mechanism-toc" aria-label="文章目录">
       <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
-      <ol id="mechanism-toc-links"><li><a href="#preface">一、DMA 地址转换与隔离</a></li><li><a href="#address-path">二、一个接收缓冲区的地址路径</a></li><li><a href="#translation">三、从设备上下文到页表与 IOTLB</a><ol><li><a href="#translation-part-1">1. 设备标识选择页表根</a></li><li><a href="#translation-part-2">2. 页表提供映射，缓存减少重复遍历</a></li><li><a href="#translation-part-3">3. 三类结构各自保存的内容</a></li></ol></li><li><a href="#receive">四、接收、缓存命中与访问故障</a></li><li><a href="#invalidation">五、撤销映射与安全回收</a></li><li><a href="#implementation">六、Linux 的映射与失效实现</a><ol><li><a href="#implementation-part-1">1. 把通用映射请求写入硬件页表</a></li><li><a href="#implementation-part-2">2. 分开收集撤销范围与同步硬件缓存</a></li></ol></li><li><a href="#evolution">七、扩展能力与性能取舍</a><ol><li><a href="#evolution-part-1">1. 大页与较长映射生命周期</a></li><li><a href="#evolution-part-2">2. ATS、PASID 与 PRI 的分工</a></li></ol></li><li><a href="#sources">八、参考资料</a></li></ol>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a></li><li><a href="#address-path">二、一个接收缓冲区的地址路径</a></li><li><a href="#translation">三、从设备上下文到页表与 IOTLB</a><ol><li><a href="#translation-part-1">1. 设备标识选择页表根</a></li><li><a href="#translation-part-2">2. 页表提供映射，缓存减少重复遍历</a></li><li><a href="#translation-part-3">3. 三类结构各自保存的内容</a></li></ol></li><li><a href="#receive">四、接收、缓存命中与访问故障</a></li><li><a href="#invalidation">五、撤销映射与安全回收</a></li><li><a href="#implementation">六、Linux 的映射与失效实现</a><ol><li><a href="#implementation-part-1">1. 把通用映射请求写入硬件页表</a></li><li><a href="#implementation-part-2">2. 分开收集撤销范围与同步硬件缓存</a></li></ol></li><li><a href="#evolution">七、扩展能力与性能取舍</a><ol><li><a href="#evolution-part-1">1. 大页与较长映射生命周期</a></li><li><a href="#evolution-part-2">2. ATS、PASID 与 PRI 的分工</a></li></ol></li><li><a href="#summary">八、总结</a></li><li><a href="#sources">九、参考资料</a></li></ol>
     </nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
-<h2><span class="mechanism-heading-number">一、</span>DMA 地址转换与隔离</h2>
+<h2><span class="mechanism-heading-number">一、</span>序言</h2>
 <p>网卡接收报文时，会把数据直接写进驱动提供的缓冲区。设备发出的地址必须落到正确的物理页；同一台宿主机上运行着多台虚拟机，还需要限制每个设备能访问的范围。IOMMU 在设备到内存的路径上完成地址转换与权限检查，使这两个要求可以由同一套映射表达。</p>
 <p>本文以一块直通网卡接收 64 B 数据为例，沿着设备标识、I/O 页表、转换缓存和内存回收分析完整过程。硬件结构采用 Intel VT-d 的传统转换模式，设备未启用 ATS，客户机未配置虚拟 IOMMU。宿主 IOMMU 开启转换，客户机 RAM 已由宿主固定并建立映射；此时设备使用的 IOVA 与客户机 GPA 数值相同。</p>
 <p class="mechanism-baselines">源码版本：Linux 6.18。</p>
@@ -120,9 +120,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看一次 DMA 写入的转换路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="一次 DMA 写入的转换路径">
-    <img src="../assets/iommu-address-path.svg?v=1934a7814284" alt="设备上下文确定地址空间，IOTLB 与页表提供转换和权限。图中的“遍历页表”由硬件执行，Linux 的映射函数负责事先维护页表。" loading="lazy">
+    <img src="../assets/iommu-address-path.svg?v=5eb1bb7dc04a" width="466" height="958" alt="设备上下文确定地址空间，IOTLB 与页表提供转换和权限。图中的“遍历页表”由硬件执行，Linux 的映射函数负责事先维护页表。" loading="lazy">
   </div>
-  <figcaption>设备上下文确定地址空间，IOTLB 与页表提供转换和权限。图中的“遍历页表”由硬件执行，Linux 的映射函数负责事先维护页表。 <a href="../assets/iommu-address-path.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>设备上下文确定地址空间，IOTLB 与页表提供转换和权限。图中的“遍历页表”由硬件执行，Linux 的映射函数负责事先维护页表。 <a href="../assets/iommu-address-path.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 设备标识、IOTLB 与 I/O 页表共同确定一次 DMA 写入
     accDescr: PCIe 网卡携带 Requester ID 和 IOVA 发起 DMA 写。设备上下文确定地址空间，IOTLB 命中时复用转换，未命中时硬件遍历页表。有效映射并且写权限允许时访问 HPA；缺失映射或权限不足则阻止访问。
@@ -195,7 +195,7 @@
     <section data-iommu-node="memory"><h4>客户机 RAM 后备页</h4><dl><div><dt>宿主物理页</dt><dd>HPA 0x21000000</dd></div><div><dt>数据位置</dt><dd>偏移 0x80 · 64 B</dd></div><div><dt>缓冲区内容</dt><dd data-iommu-memory>原有数据 A</dd></div></dl><p data-iommu-owner>映射持有后备页引用</p></section>
   </div>
   <div class="iommu-detail" data-iommu-detail hidden><strong data-iommu-title></strong><p data-iommu-description></p></div>
-  <p class="iommu-note">示例未启用 ATS。回收阶段从设备停止使用该区域开始；页表清除与缓存失效展示同步 UNMAP 的内部过程，不代表每次接收都要撤销映射。</p>
+  <p class="iommu-note">示例未启用 ATS。回收阶段从设备停止使用该区域开始；图中展示同步 UNMAP 的清表与缓存失效步骤；设备也可跨多次接收复用映射。</p>
   <div data-iommu-fallback><ol><li>设备标识选择地址空间，IOTLB 命中时复用转换，未命中时遍历页表。</li><li>有效映射与写权限都满足后，数据写入 HPA 0x21000080；否则目标缓冲区保持不变。</li><li>正常接收完成。最终停用区域时，先停止设备访问，再撤销映射并等待失效完成，最后释放后备页引用。</li></ol><p>启用 JavaScript 后可选择缓存或故障情形，逐步查看状态。</p></div>
 </section>
 <p>成功写入后，网卡按照自身协议更新完成信息，客户机驱动才能消费数据。驱动仍需遵守队列、内存顺序与 DMA 同步要求。IOMMU 负责地址与权限，不代替设备的完成协议，也不判断一条报文是否已经被客户机应用读取。</p>
@@ -211,9 +211,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看从停止使用到解除映射" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="从停止使用到解除映射">
-    <img src="../assets/iommu-buffer-lifetime.svg?v=1934a7814284" alt="示意按安全回收顺序拆开设备停止、页表修改、转换缓存失效及后备页释放。图中 UNMAP 内的子步骤不表示调用返回后还允许保留旧转换。" loading="lazy">
+    <img src="../assets/iommu-buffer-lifetime.svg?v=5eb1bb7dc04a" width="919" height="676" alt="示意按安全回收顺序拆开设备停止、页表修改、转换缓存失效及后备页释放。图中 UNMAP 内的子步骤不表示调用返回后还允许保留旧转换。" loading="lazy">
   </div>
-  <figcaption>示意按安全回收顺序拆开设备停止、页表修改、转换缓存失效及后备页释放。图中 UNMAP 内的子步骤不表示调用返回后还允许保留旧转换。 <a href="../assets/iommu-buffer-lifetime.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>示意按安全回收顺序拆开设备停止、页表修改、转换缓存失效及后备页释放。图中 UNMAP 内的子步骤不表示调用返回后还允许保留旧转换。 <a href="../assets/iommu-buffer-lifetime.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: DMA 缓冲区从停止使用到安全回收
     accDescr: 设备队列停止并确认在途访问结束后，宿主执行撤销映射，内核清除页表并同步转换缓存。等待失效完成后再释放映射对后备页的引用。示意采用无 ATS 的同步撤销路径。
@@ -234,7 +234,7 @@
 </code></pre></details>
 </figure>
 <p>交互中“页表已删除、缓存待同步”是内核撤销流程中的中间状态，设备已停止使用该区域。它帮助说明两项工作的先后关系。Linux 的 <code>iommu_unmap()</code> 在清除映射后执行 <code>iommu_iotlb_sync()</code>；<code>iommu_unmap_fast()</code> 则供调用方批量收集范围，再负责完成同步。应用不应在 UNMAP 尚未成功完成时把后备页交给新的使用者。同步撤销与批处理接口</p>
-<p>映射建立也有同步要求。例如，硬件可能缓存过某些无效转换，上下文从无效改为有效时就要执行对应处理。Intel 驱动的 <code>context_present_cache_flush()</code> 根据硬件能力决定上下文、IOTLB 或写缓冲同步；因此，失效操作不能简单概括成“只在删除映射时需要”。上下文生效处理</p>
+<p>映射建立也有同步要求。例如，硬件可能缓存过某些无效转换，上下文从无效改为有效时就要执行对应处理。Intel 驱动的 <code>context_present_cache_flush()</code> 根据硬件能力决定上下文、IOTLB 或写缓冲同步；新增或修改映射时是否需要失效，也要看原有缓存和具体接口的要求。上下文生效处理</p>
 </section>
 <section id="implementation" class="mechanism-section">
 <h2><span class="mechanism-heading-number">六、</span>Linux 的映射与失效实现</h2>
@@ -302,14 +302,17 @@ IOMMU 子系统执行 iotlb_sync
 </tr>
 </tbody>
 </table>
-<p>内核 DMA API 的非严格延迟失效策略是另一项明确的隔离与性能取舍，不能直接套用于本文同步撤销的解释，也不能推导成“所有 UNMAP 都立即逐页刷新”。无论采用哪种策略，软件必须遵守对应接口约定，不能自行跳过设备停止与内存生命周期管理。</p>
+<p>本文讲同步撤销；内核 DMA API 也可采用延迟失效，以缩短操作路径，代价是旧转换可能暂时仍在缓存中。无论采用哪种策略，软件必须遵守对应接口约定，不能自行跳过设备停止与内存生命周期管理。</p>
 <h3 id="evolution-part-2"><span class="mechanism-heading-number">2. </span>ATS、PASID 与 PRI 的分工</h3>
 <p>ATS 允许支持该能力的设备取得并缓存地址转换，缓存位于设备侧，常称 ATC 或 Device-TLB；IOMMU 内部的 IOTLB 仍然存在。PASID 为请求增加地址空间标识，使同一个设备可以区分多个进程或上下文。PRI 则提供设备请求处理缺页的协议。三者解决的是缓存位置、地址空间选择和缺页处理三个不同问题。</p>
 <p>在 SVA 等配置中，这些能力可以协作，让设备访问进程虚拟地址，并与 CPU 页表更新同步。本文固定后备页、预先建立映射的路径不自动具备这些行为；启用 ATS 也不等于已经实现可恢复缺页。Linux SVA 与 PCIe 扩展说明</p>
+</section>
+<section id="summary" class="mechanism-section">
+<h2><span class="mechanism-heading-number">八、</span>总结</h2>
 <p>对本例而言，先区分三类现象最有帮助：没有映射或写权限不足属于访问故障；有效映射下大量 IOTLB 未命中属于转换开销；映射建立、撤销或停止设备较慢属于控制路径成本。然后再分别观察工作集、页大小、DMA 方向和映射生命周期，避免把所有现象归为“直通性能”。</p>
 </section>
 <section id="sources" class="mechanism-section">
-<h2><span class="mechanism-heading-number">八、</span>参考资料</h2>
+<h2><span class="mechanism-heading-number">九、</span>参考资料</h2>
 <ul>
 <li><a href="https://docs.kernel.org/6.18/core-api/dma-api-howto.html">Linux DMA API 使用指南</a>：CPU 地址、设备地址与 DMA 同步。</li>
 <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/intel/iommu.c">Linux 6.18 Intel IOMMU 驱动</a>：上下文、页表映射与撤销。</li>
@@ -326,6 +329,6 @@ IOMMU 子系统执行 iotlb_sync
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=1934a7814284" defer></script>
-<script src="../assets/iommu-lab.js?v=1934a7814284" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=5eb1bb7dc04a" defer></script>
+<script src="../assets/iommu-lab.js?v=5eb1bb7dc04a" defer></script></body>
 </html>

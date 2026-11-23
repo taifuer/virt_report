@@ -3,7 +3,7 @@
 {% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 {% set spec = 'https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html' %}
 <section id="preface" class="mechanism-section">
-  <h2>virtio 设备初始化的阶段与约束</h2>
+  <h2>序言</h2>
   <p>客户机驱动与 virtio 设备通过共享内存交接请求。第一次 I/O 前，驱动先找到设备的控制区域，与设备选定共同支持的功能，再分配队列并公布地址。设备确认这些约定后，才能按相同格式读取描述符、访问缓冲区并归还结果。</p>
   <p>本文跟踪现代 virtio-pci 接口上的一个 virtio-blk 队列。例子采用 4 个描述符、split 格式，普通 RAM，无客户机 IOMMU 地址转换；队列地址以 GPA 表示。开启平台访问约束时，需要使用相应 DMA 映射，不能沿用这里“地址就是 GPA”的假设。协议依据 VIRTIO 1.2，实例由 QEMU 与 Linux 驱动实现。</p>
   <p>这次初始化依次经过：发现设备 → 复位并选择特性 → 确认共同格式 → 配置队列内存 → 允许处理 → 发布读取请求。特性确认决定队列的解释方式；队列地址和设备状态决定何时可以开始访问。阅读数据路径时，可先在这里确认队列何时可用，再进入<a href="qemu-virtio-blk.html">磁盘 I/O 演示</a>或<a href="network-io.html">网络 I/O 演示</a>观察请求的交接。</p>
@@ -26,7 +26,7 @@
   <h2>先选择特性，再让设备确认</h2>
   <h3>特性选择包含依赖，不能只取交集</h3>
   <p>设备公布它支持的 feature bits，驱动选择自身支持并准备启用的特性子集。公共配置用 <code>device_feature_select</code> 选择每组 32 位，再从 <code>device_feature</code> 读取；驱动以对应的 <code>driver_feature_select / driver_feature</code> 写回选择。QEMU 头文件把后两者称为 guest_feature，表达的是同一组寄存器。</p>
-  <p>本例选择 <code>VIRTIO_F_VERSION_1</code>，使用现代接口；不选择 <code>RING_PACKED</code>，所以采用 split 队列，也不选择 EVENT_IDX、RING_RESET、通知数据扩展。VERSION_1 位说明采用现代协议，不能据此断言设备实现了某个文档版本的所有可选功能。</p>
+  <p>本例选择 <code>VIRTIO_F_VERSION_1</code>，使用现代接口；不选择 <code>RING_PACKED</code>，所以采用 split 队列，也不选择 EVENT_IDX、RING_RESET、通知数据扩展。其他可选功能要分别协商对应的特性位。</p>
   <p>选择还要满足依赖与环境要求。比如 virtio-net 的 HOST_TSO4 要求 CSUM，不能只打开分段能力而忽略其校验和前提。平台要求设备使用受控 DMA 地址时，ACCESS_PLATFORM 也可能是运行条件。Linux 因而在初步交集后继续进行传输层和设备驱动验证。现代 PCI 路径还明确检查 VERSION_1。<a href="{{ linux }}drivers/virtio/virtio.c#L270-L345">驱动特性筛选</a>、<a href="{{ linux }}drivers/virtio/virtio_pci_modern.c#L419-L442">现代 PCI 验证与写回</a></p>
   <h3>状态位表示已经完成的步骤</h3>
   <table><thead><tr><th scope="col">操作</th><th scope="col">本例状态值</th><th scope="col">此时能确认什么</th></tr></thead><tbody>
@@ -67,8 +67,8 @@ avail.ring[0] = 0
 <section id="failure-reset" class="mechanism-section">
   <h2>协商失败处理与设备复位</h2>
   <h3>设备复位重新开始整轮协商</h3>
-  <p>驱动遇到无法恢复的初始化错误时，标记 FAILED 并停止继续初始化。FAILED 本身不是“设备已停止访问内存”的证明；重试需要复位。设备报告 DEVICE_NEEDS_RESET 时，在途请求可能已经完成，也可能尚未完成，驱动不能据此推断结果或盲目重放。</p>
-  <p>现代 PCI 的设备复位通过向 device_status 写 0 发起，读取到 0 才确认完成；此时设备不再访问旧队列或发送相应通知。驱动还需停止自己的提交与回调，之后才能安全拆除队列、释放缓冲区，并从 ACKNOWLEDGE 重新协商。复位不会替应用证明一次磁盘写入是否持久化，设备特有状态仍遵循对应协议。<a href="{{ linux }}drivers/virtio/virtio_pci_modern.c#L544-L568">PCI 复位等待</a></p>
+  <p>驱动遇到无法恢复的初始化错误时，标记 FAILED 并停止继续初始化。FAILED 本身不是“设备已停止访问内存”的证明；重试需要复位。设备报告 DEVICE_NEEDS_RESET 时，在途请求的完成状态可能未知；驱动应按设备协议恢复，以免重复执行。</p>
+  <p>现代 PCI 的设备复位通过向 device_status 写 0 发起，读取到 0 才确认完成；此时设备不再访问旧队列或发送相应通知。驱动还需停止自己的提交与回调，之后才能安全拆除队列、释放缓冲区，并从 ACKNOWLEDGE 重新协商。磁盘写入的持久性由块设备的完成和刷新语义决定。<a href="{{ linux }}drivers/virtio/virtio_pci_modern.c#L544-L568">PCI 复位等待</a></p>
   <h3>队列复位是独立的可选功能</h3>
   <p>只有先协商 RING_RESET，驱动才可使用 <code>queue_reset</code>。选中队列后写 1，等待读回 queue_reset=0 且 queue_enable=0，再回收该队列资源、重新配置并启用。其他队列和设备级特性协商不随之重置；队列复位不能用来更换全设备的 split/packed 格式。本例没有选择 RING_RESET，不能走这条路径。</p>
   <p>现代 PCI 传输通过已协商的队列复位或整设备复位停止队列。其 queue_enable 用于启用，QEMU 的公共配置写处理只接受 queue_enable=1；写 0 没有关闭队列的效果。MMIO 传输的寄存器操作另有约定。<a href="{{ qemu }}hw/virtio/virtio-pci.c#L1717-L1766">队列启用与复位</a>、<a href="{{ linux }}drivers/virtio/virtio_pci_modern_dev.c#L508-L543">Linux 队列复位等待</a></p>
@@ -88,7 +88,7 @@ avail.ring[0] = 0
   <h2>从早期草案到 1.4：接口与队列逐步演进</h2>
   <p>2007 年，Rusty Russell 已在公开邮件中讨论统一的 virtio 驱动接口。不同虚拟化实现如果各自定义网络、磁盘前后端协议，客户机就要维护多套驱动；共享队列与统一设备约定让驱动和后端可以分别演进。<a href="https://lwn.net/Articles/237693/">2007 年 Virtio draft II 原始邮件</a>记录了这段早期设计，早于这里收录的编号规范。</p>
   <table><thead><tr><th scope="col">经典文档</th><th scope="col">背景与变化</th><th scope="col">对理解现有设备的意义</th></tr></thead><tbody>
-    <tr><td><a href="https://ozlabs.org/~rusty/virtio-spec/old/virtio-spec-0.8.7.pdf">0.8.7 草案，2010</a></td><td>将早期 virtio PCI 接口、共享环和设备约定整理成文档</td><td>可用于追溯 Legacy 设计。封面有可核验日期，但不能据此称它为第一版</td></tr>
+    <tr><td><a href="https://ozlabs.org/~rusty/virtio-spec/old/virtio-spec-0.8.7.pdf">0.8.7 草案，2010</a></td><td>将早期 virtio PCI 接口、共享环和设备约定整理成文档</td><td>可用于追溯 Legacy 设计。这份有日期的编号草案记录了早期 PCI 和共享环设计</td></tr>
     <tr><td><a href="https://ozlabs.org/~rusty/virtio-spec/virtio-0.9.5.pdf">0.9.5 草案，2012</a></td><td>OASIS 标准化前的经典接口基线；后续规范保留其 Legacy 兼容说明</td><td>旧 PCI 寄存器布局、32 位特性空间及环地址约定，与 Modern 初始化要分开理解</td></tr>
     <tr><td><a href="https://docs.oasis-open.org/virtio/virtio/v1.0/cs04/virtio-v1.0-cs04.html">1.0，Modern 接口</a></td><td>明确字节序、扩展特性空间，引入 VERSION_1、FEATURES_OK 与现代 PCI 能力区域</td><td>本文的“协商后确认，再放行运行”建立在这套接口上；transitional 设备兼容两种接口</td></tr>
     <tr><td><a href="https://docs.oasis-open.org/virtio/virtio/v1.1/virtio-v1.1.html">1.1，2019</a></td><td>引入可选 Packed virtqueue，在元数据布局和缓存访问之间作新取舍</td><td>需协商 RING_PACKED。Modern 设备继续使用 Split 完全符合规范</td></tr>
@@ -96,11 +96,16 @@ avail.ring[0] = 0
     <tr><td><a href="https://docs.oasis-open.org/virtio/virtio/v1.3/csd01/virtio-v1.3-csd01.html">1.3 CSD01，2023</a></td><td>委员会规范草案中加入 administration virtqueue 等管理机制</td><td>管理命令与常规 I/O 队列的职责分开；草案阶段按原始文档标注</td></tr>
     <tr><td><a href="https://docs.oasis-open.org/virtio/virtio/v1.4/cs01/virtio-v1.4-cs01.html">1.4 CS01，2026</a></td><td>扩展设备状态管理与 device parts，加入 SUSPEND 等约定，并扩充设备类型</td><td>状态交接逐步拥有协议级表达；能否使用仍取决于驱动、前端和后端共同实现</td></tr>
   </tbody></table>
-  <p>这些修订解决的是不同阶段的需求：先统一设备接口，再明确兼容边界，随后改善队列效率、恢复与管理能力。版本号标识一份规范文档，运行时启用的是协商后的特性集合。看到“QEMU 支持 Virtio”或 <code>VIRTIO_F_VERSION_1</code>，都还不足以判断某项 1.4 新能力是否可用；应继续检查设备类型、驱动和实际后端的特性实现。</p>
-  <p>Legacy、Modern 和 Split、Packed 是两个维度。Modern 可以使用 Split；Packed 需要额外协商。<code>virtio-win 0.1.xxx</code> 又属于 Windows 驱动包编号，不对应 0.9.5 或 1.x 规范号。目前缺乏可核验的全行业部署比例，不能认定某个小版本“用得最多”。选型时更实用的记录是接口模式、队列格式、已协商特性以及 QEMU/Linux/后端版本。</p>
+  <p>这些修订解决的是不同阶段的需求：先统一设备接口，再明确兼容边界，随后改善队列效率、恢复与管理能力。版本号标识一份规范文档，运行时启用的是协商后的特性集合。要使用某项 1.4 功能，设备、驱动和后端都需支持相应特性，并在初始化时协商启用。</p>
+  <p>Legacy、Modern 和 Split、Packed 是两个维度。Modern 可以使用 Split；Packed 需要额外协商。<code>virtio-win 0.1.xxx</code> 又属于 Windows 驱动包编号，不对应 0.9.5 或 1.x 规范号。选型时更实用的记录是接口模式、队列格式、已协商特性以及 QEMU/Linux/后端版本。</p>
   <p>完整文档日期、批准阶段与 PDF 见<a href="../versions.html?project=virtio">Virtio 版本记录</a>。本文源码仍固定在所列 QEMU/Linux 基线；新增规范发布后，不会自动改变前面初始化例子的技术前提。</p>
+</section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
   <p>排查“设备可见却没有 I/O”，可依次核对特性选择及依赖、FEATURES_OK 读回、三个队列地址与大小、queue_enable、DRIVER_OK，最后检查 available 与门铃。初始化成功只表明接口约定成立，吞吐和延迟仍取决于队列深度、通知策略与实际后端。</p>
 </section>
+
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>

@@ -1,6 +1,6 @@
 {% from '_mechanism_diagram.html' import diagram with context %}
 <section id="preface" class="mechanism-section">
-  <h2>Guest 页面与宿主后备内存</h2>
+  <h2>序言</h2>
   <p>virtio-balloon 让客户机主动交出暂时不用的页面，供宿主回收对应的后备内存。虚拟机仍保持原来的 RAM 地址布局，客户机内的气球驱动负责占住这些页，避免应用继续使用。负载增长后，管理端可以缩小气球，驱动再把页交还客户机分配器。</p>
   <p>以配置了 8 GiB RAM 的虚拟机为例：管理端希望客户机暂时只使用其中的 6 GiB，于是要求气球占用 2 GiB。这个操作要经过“设置目标 → Guest 收集页 → 队列提交 → 宿主处理 → Guest 报告结果”。管理端不能仅根据宿主看到的地址范围，随意丢弃客户机还在使用的数据。</p>
   <p>这里有三个需要分别观察的量：虚拟机配置的 RAM、气球驱动持有的页，以及 QEMU 后备内存的实际驻留量。前两个量决定客户机可管理的范围；后一个量还受宿主内存分配、共享页、大页和内存后端影响。</p>
@@ -27,14 +27,14 @@
   <h2>内存压力与回收边界</h2>
   <p>inflate 时，驱动从 Guest 分配器取得页面并持有，提交 PFN 后等待设备处理。QEMU 找到对应 RAMBlock，尝试丢弃后备页；Guest 仍保留这些地址，但业务不能使用被气球持有的页。deflate 时，Linux 驱动先通过 deflateq 告知设备，再把本批页释放给分配器。QEMU 对后备地址发出 <code>MADV_WILLNEED</code> 提示，实际物理页何时重新驻留仍由宿主管理。</p>
   <p>回收目标过大时，Guest 可能需要回收缓存、换出页面，甚至无法分配足够的气球页。管理端应观察 actual 的推进、可用内存、换页和业务延迟，逐步调整目标。协商 <code>DEFLATE_ON_OOM</code> 后，Linux 可在 OOM 路径主动缩小气球；这是缓解机制，不能代替容量规划，也不保证业务一定避免 OOM。</p>
-  <p>宿主侧还有另一组限制：部分迁移阶段会禁止并发 discard；后备页大于 4 KiB 时，交出的子页可能不足以组成可丢弃的完整宿主页；discard 也可能失败。QEMU 仍可完成相应队列交接。判断收益时，应同时观察 Guest 的实际气球大小、QEMU RSS/PSS 与内存后端指标，不能只看目标已到达。</p>
+  <p>宿主侧还有另一组限制：部分迁移阶段会禁止并发 discard；后备页大于 4 KiB 时，需要凑齐覆盖同一宿主页的子页才可整体丢弃；discard 也可能失败。QEMU 仍可完成相应队列交接。判断收益时，应同时观察 Guest 的实际气球大小、QEMU RSS/PSS 与内存后端指标，不能只看目标已到达。</p>
 </section>
 <section id="evolution" class="mechanism-section">
   <h2>统计、空闲页优化与内存热插拔</h2>
   <p>基础气球协议解决了运行中回收和归还页面的问题，后续扩展改善了管理端的信息和空闲页处理。它们可以组合使用，控制的对象与完成条件各不相同。</p>
   <table><thead><tr><th>机制</th><th>用途</th><th>完成后页面的状态</th></tr></thead><tbody>
     <tr><td>statsq</td><td>Guest 提供可用内存、换页和缺页等统计，帮助管理端决定目标</td><td>不直接回收页。QEMU 轮询间隔为 0 时不继续请求；应同时检查 last-update，旧值可能仍能读取</td></tr>
-    <tr><td>FREE_PAGE_HINT</td><td>QEMU 预拷贝迁移中，通过命令 ID 标识一轮空闲页提示，减少无用页面传输</td><td>按该协议的持有和结束规则处理；QEMU 会停止、结束相应轮次。不能把它当成持续降低 RSS 的接口</td></tr>
+    <tr><td>FREE_PAGE_HINT</td><td>QEMU 预拷贝迁移中，通过命令 ID 标识一轮空闲页提示，减少无用页面传输</td><td>按该协议的持有和结束规则处理；QEMU 会停止、结束相应轮次。空闲页报告允许宿主回收当前空闲的后备页，RSS 会随客户机再次使用这些页而变化</td></tr>
     <tr><td>PAGE_REPORTING</td><td>Guest 暂时隔离空闲页，经 reporting_vq 让宿主尝试丢弃后备页</td><td>队列完成后重新允许 Guest 分配；num_pages / actual 不因报告而增大</td></tr>
     <tr><td>virtio-mem</td><td>按设备内存块执行 plug / unplug，并配合 Guest 内存上线、下线</td><td>调整可用设备内存块，回收仍可能受页面迁移和不可移除页限制</td></tr>
     <tr><td>DIMM 热插拔</td><td>以 DIMM 设备及其地址范围为管理单位</td><td>涉及设备增删、固件通知和 Guest 内存热插拔流程</td></tr>
@@ -70,17 +70,23 @@
   <p>接口与单位可对照 <a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qapi/machine.json#L1085-L1175">本文 QEMU 基线的 QAPI 定义</a>。下面记录一次按上述容量和内存后端配置完成的实机测量结果。</p>
   <h3 id="balloon-measured">实测：容量恢复与页面重新驻留</h3>
   {% include '_kvm_memory_experiment_environment.html' %}
-  <p>初始值、收缩完成、恢复完成分别采样；后两次先等待 <code>query-balloon</code> 达到目标，再等 1 秒。第四次采样前，Guest 申请 512 MiB 匿名内存，使用 <code>MADV_NOHUGEPAGE</code> 并每隔 4096 B 写入一次，释放这段映射后再读取统计。表中 Guest 总量取自 <code>/proc/meminfo</code> 的 <code>MemTotal</code>，QEMU RSS 取自宿主 <code>/proc/&lt;QEMU_PID&gt;/status</code> 的 <code>VmRSS</code>；各列在同一采样阶段依次读取。</p>
+  <p>分别在初始状态、气球膨胀到 256 MiB、放气后恢复 1 GiB 目标时采样；后两次先等待 <code>query-balloon</code> 达到目标，再等 1 秒。第四次采样前，Guest 申请 512 MiB 匿名内存，使用 <code>MADV_NOHUGEPAGE</code> 并每隔 4096 B 写入一次，释放这段映射后再读取统计。表中 Guest 总量取自 <code>/proc/meminfo</code> 的 <code>MemTotal</code>，QEMU RSS 取自宿主 <code>/proc/&lt;QEMU_PID&gt;/status</code> 的 <code>VmRSS</code>；各列在同一采样阶段依次读取。</p>
   <table id="balloon-measurements"><thead><tr><th>采样阶段</th><th>QMP actual（MiB）</th><th>Guest 总量（KiB）</th><th>QEMU RSS（KiB）</th></tr></thead><tbody>
     <tr><td>初始</td><td>1024</td><td>994728</td><td>1091428</td></tr>
     <tr><td>回收 256 MiB 后</td><td>768</td><td>732584</td><td>829328</td></tr>
     <tr><td>恢复 1 GiB 后</td><td>1024</td><td>994728</td><td>829328</td></tr>
     <tr><td>再次访问后</td><td>1024</td><td>994728</td><td>1091472</td></tr>
   </tbody></table>
-  <p>收缩后，Guest 的 MemTotal 减少 262144 KiB，QEMU RSS 也下降约 256 MiB；恢复后，QMP actual 和 Guest MemTotal 已回到初始值，RSS 仍保持低位。直到后续逐页写入，RSS 才回到约 1066 MiB。Guest 的 <code>munmap</code> 将页面交还自己的分配器；本例关闭了空闲页报告，释放这段 Guest 映射后，宿主仍可保留已驻留的后备页。</p>
-  <p>QMP actual 表示扣除气球后的逻辑字节数；Guest MemTotal 还受客户机保留内存等因素影响；QEMU RSS 则包含 RAM 后备和进程的其他映射，因此三列不能直接等同。后续访问的页面由 Guest 分配器选择，其他环境下 RSS 的回升幅度也可能不同。</p>
-  <p>收缩完成时，Guest 的 <code>MemAvailable</code> 仍有 627608 KiB。四次采样的 <code>oom_kill</code> 均为 0；该客户机未配置 swap，<code>pswpin</code>、<code>pswpout</code> 也为 0。实验结束前已恢复初始目标并正常关闭测试机。这组数据验证了气球交页、宿主回收和再次驻留的关系；没有对内存压力、共享后备、大页后备或迁移并发场景做比较，也不作为性能基准。<a href="memory-virtualization.html#first-touch-measured">首次触碰实验</a>可对照 Guest 进程自身的缺页行为。</p>
+  <p>气球膨胀后，Guest 的 MemTotal 减少 262144 KiB，QEMU RSS 也下降约 256 MiB；恢复后，QMP actual 和 Guest MemTotal 已回到初始值，RSS 仍保持低位。直到后续逐页写入，RSS 才回到约 1066 MiB。Guest 的 <code>munmap</code> 将页面交还自己的分配器；本例关闭了空闲页报告，释放这段 Guest 映射后，宿主仍可保留已驻留的后备页。</p>
+  <p>QMP actual 表示扣除气球后的逻辑字节数；Guest MemTotal 还受客户机保留内存等因素影响；QEMU RSS 还包括进程的其他驻留映射，三列衡量的是不同对象。后续访问的页面由 Guest 分配器选择，其他环境下 RSS 的回升幅度也可能不同。</p>
+  <p>客户机容量降到 768 MiB 时，Guest 的 <code>MemAvailable</code> 仍有 627608 KiB。四次采样的 <code>oom_kill</code> 均为 0；该客户机未配置 swap，<code>pswpin</code>、<code>pswpout</code> 也为 0。实验结束前已恢复初始目标并正常关闭测试机。这四次读数记录同一内存配置下容量和驻留量的变化。<a href="memory-virtualization.html#first-touch-measured">首次触碰实验</a>可对照 Guest 进程自身的缺页行为。</p>
 </section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>气球膨胀让驱动交出页，收缩让客户机重新使用这些页。本次放气后，QMP <code>query-balloon</code> 的 actual 已恢复到 1024 MiB，QEMU RSS 仍为 829328 KiB；直到客户机重新写这些内存，RSS 才回升。前者报告客户机逻辑容量，后者记录宿主进程的实际驻留。</p>
+</section>
+
 <section id="sources" class="mechanism-section">
   <h2>源码与相关内容</h2>
   <ul class="mechanism-sources">

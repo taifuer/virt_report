@@ -2,7 +2,7 @@
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>TCG 动态翻译与代码复用</h2>
+  <h2>序言</h2>
   <p>TCG（Tiny Code Generator）把客户机指令转换为宿主机能够执行的代码，并缓存翻译结果。客户机再次运行到同一段程序时，QEMU 可以复用这些代码；循环、函数调用和分支因此不必每次重新译码。缓存的有效性取决于指令内容、执行模式和地址映射，代码改写或运行环境变化时需要重新检查。</p>
   <p>本文沿一个三块循环展开：第一次执行 A 时查找缓存，未命中便翻译；执行到 B 后决定回到 A 还是进入 C；循环重复时复用并链接已有代码；程序改写 A 后撤销旧翻译。客户机访存、异常与多 vCPU 同步都围绕这条执行路径解释。</p>
   <p>源码采用 QEMU 10.2.0，以 x86 系统模拟和 x86-64 宿主为例。TCG 在用户态实现客户机 CPU 的指令语义、特权状态和访存检查；KVM 的硬件执行路径可对照<a href="kvm-vcpu-run.html">KVM vCPU 的执行循环与退出处理</a>。两种加速器共享许多机器与设备模型，CPU 的执行机制各有不同。</p>
@@ -117,7 +117,7 @@
   <p>MTTCG 为每个 vCPU 创建宿主线程，线程拥有自己的 CPU 状态、跳转缓存和翻译上下文。运行普通翻译代码时释放 BQL；进入需要全局串行化的设备或控制路径时，再按相应规则同步。QEMU 10.2 的 x86 前端声明支持 MTTCG，默认自动模式会在未启用 icount 时选择它；显式 <code>thread=single</code> 则保留轮转执行方式。</p>
   <p>全局 TB 查询表和已生成代码仍可共享。并行翻译使用各线程的上下文与代码区域，同时通过代码页锁、QHT 插入和跳转锁保证发布与失效安全。如果两条线程生成了等价 TB，发布阶段可以保留已有结果、丢弃重复翻译。增加 vCPU 线程后，代码改写、跨 vCPU TLB 操作和全局 flush 的协调成本也随之增加。</p>
   <p>客户机 CPU 的并行还要求保持它的内存模型。x86 前端声明允许普通 Store→Load 重排，而其他规定的顺序要维持；<code>tcg_gen_req_mo()</code> 比较客户机要求与宿主默认保证，生成缺少的屏障。带 LOCK 的原子读改写不能拆成让其他 vCPU 任意插入的普通 load/store。遇到后端无法直接支持的原子操作，QEMU 可通过 <code>EXCP_ATOMIC</code> 退出，在排他执行区内用单指令 TB 完成，再恢复并行执行。</p>
-  <p>每个 TB 有多个客户机指令，不代表整个 TB 是一笔原子事务。并行 vCPU 可以观察到客户机内存模型允许的中间状态；QEMU 内部的页锁和跳转锁保护翻译元数据，也不代替客户机程序自己的锁与屏障。</p>
+  <p>TB 包含多条客户机指令，各条指令仍有各自的异常和副作用边界。并行 vCPU 可以观察到客户机内存模型允许的中间状态；QEMU 内部的页锁和跳转锁保护翻译元数据，也不代替客户机程序自己的锁与屏障。</p>
 </section>
 
 <section id="evolution" class="mechanism-section">
@@ -139,7 +139,12 @@
 -d in_asm,op,op_opt,out_asm \
 -D /tmp/qemu-tcg.log</code></pre>
   <p><code>in_asm</code> 展示客户机指令，<code>op</code> 与 <code>op_opt</code> 展示优化前后 IR，<code>out_asm</code> 展示生成的宿主代码。对 A 的 load/add/jump，可以沿这几段核对翻译过程。它们主要记录代码生成，热循环复用既有 TB 时未必再次输出，因此日志条数不能直接换算为执行次数；详细日志也会改变运行速度。</p>
-  <p>对较大工作负载，<code>-perfmap</code> 或 <code>-jitdump</code> 能帮助宿主 perf 识别 JIT 代码。分析时还应查看 helper 和设备路径的采样，避免把所有耗时都归因于翻译器。TCG 的优势是跨架构执行、软件可观测性和 CPU 语义模拟；需要同架构生产负载吞吐时，应结合硬件虚拟化路径比较。</p>
+  <p>对较大工作负载，<code>-perfmap</code> 或 <code>-jitdump</code> 能帮助宿主 perf 识别 JIT 代码。将翻译器、helper 和设备路径的采样分开，可以看出时间花在哪里。TCG 的优势是跨架构执行、软件可观测性和 CPU 语义模拟；需要同架构生产负载吞吐时，应结合硬件虚拟化路径比较。</p>
+</section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>翻译块能否复用，取决于代码位置、执行状态和代码页是否仍有效。分析一段慢代码，应把首次翻译、已缓存块的执行以及 helper 或设备访问分开计时；相同的客户机指令数可能对应不同的宿主工作量。</p>
 </section>
 
 <section id="sources" class="mechanism-section">

@@ -1,6 +1,6 @@
 flowchart TB
   accTitle: Q35 的 8 GiB RAM 基础别名布局
-  accDescr: 此图不按比例绘制。QEMU 10.2 Q35 在默认低端 RAM 上限下，把八 GiB 后备划为两个无复制别名。客户机物理地址零至二 GiB 对应后备零至二 GiB，四至十 GiB 对应后备二至八 GiB。二至四 GiB 为 PCI 和固件等窗口，其中可以存在未映射区。低端基础 RAM 布局内部还会叠加 VGA、ROM 等区域。十 GiB 仅为本例高端 RAM 的末端，不代表整个客户机物理地址空间的上限。
+  accDescr: 此图不按比例绘制。QEMU 10.2 Q35 在默认低端 RAM 上限下，把八 GiB 后备划为两个无复制别名。客户机物理地址零至二 GiB 对应后备零至二 GiB，四至十 GiB 对应后备二至八 GiB。二至四 GiB 为 PCI 和固件等窗口，其中可以存在未映射区。低端基础 RAM 布局内部还会叠加 VGA、ROM 等区域。本例的高端 RAM 在十 GiB 处结束，客户机物理地址空间还可包含其他区域。
   %% QEMU baseline: 698104725efad4b29079d857dfdebbd804e34c99
   %% hw/i386/pc_q35.c: lowmem = 0x80000000 for ram_size >= 0xb0000000
   %% hw/i386/x86.c: above_4g_mem_start = 4 * GiB

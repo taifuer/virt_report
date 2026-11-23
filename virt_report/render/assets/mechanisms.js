@@ -303,7 +303,7 @@
         description = `${state.rounds === 1 ? '首次复制' : '脏页重传'} ${number(state.lastTransferMiB)} MiB，用时 ${duration(state.lastDurationSeconds)}；期间形成 ${number(state.remainingMiB)} MiB 待传脏页。`;
         if (state.remainingMiB <= state.thresholdMiB) description += ' 已达到模型切换条件，下一步暂停源端。';
         else if (state.observationEnded) description += state.endReason === 'stable'
-          ? ` 连续 ${STABLE_ROUNDS} 轮没有减少，演示停止观察，不代表迁移已完成或 QEMU 自动失败。可提高带宽或降低脏页速率后重试。`
+          ? ` 连续 ${STABLE_ROUNDS} 轮没有减少，演示在此停止，迁移仍未收敛。可提高带宽或降低脏页速率后重试。`
           : ` 已观察 ${MAX_ROUNDS} 轮，演示停止观察；仍在缓慢下降，但尚未达到切换条件，未强行暂停或判定迁移失败。`;
         else description += ` 仍高于 ${number(state.thresholdMiB)} MiB 的阈值，继续迭代。`;
       }

@@ -714,7 +714,7 @@
           "title": "写入 Guest RX 数据",
           "actor": "QEMU virtio-net · receive",
           "description": "设备把 P1 报文写入已经借给设备的 RX 缓冲区。",
-          "detail": "数据写入与通知分离。此刻 used.idx 仍为 7，驱动还不能仅凭数据变化认定请求完成。",
+          "detail": "数据写入与通知分离。此刻 used.idx 仍为 7，驱动须等完成记录发布后才能回收。",
           "active": [
             "device",
             "queue"
@@ -789,7 +789,7 @@
           "title": "检查是否需要通知",
           "actor": "QEMU · virtio_should_notify",
           "description": "本例 NO_INTERRUPT 为 0，因此允许为此次完成发出通知。",
-          "detail": "EVENT_IDX 未协商；若启用该特性，要改用事件索引判断，不能把两种策略同时当作必经判断。",
+          "detail": "EVENT_IDX 未协商；启用该特性时改用事件索引判断是否通知。",
           "active": [
             "device",
             "queue"
@@ -1841,7 +1841,7 @@
           "title": "写入 Guest RX 数据",
           "actor": "QEMU virtio-net · receive",
           "description": "设备把 P1 报文写入已经借给设备的 RX 缓冲区。",
-          "detail": "数据写入与通知分离。此刻 used.idx 仍为 7，驱动还不能仅凭数据变化认定请求完成。",
+          "detail": "数据写入与通知分离。此刻 used.idx 仍为 7，驱动须等完成记录发布后才能回收。",
           "active": [
             "source",
             "queue"
@@ -1916,7 +1916,7 @@
           "title": "检查是否需要通知",
           "actor": "QEMU · virtio_should_notify",
           "description": "本例 NO_INTERRUPT 为 0，因此允许为此次完成发出通知。",
-          "detail": "EVENT_IDX 未协商；若启用该特性，要改用事件索引判断，不能把两种策略同时当作必经判断。",
+          "detail": "EVENT_IDX 未协商；启用该特性时改用事件索引判断是否通知。",
           "active": [
             "source",
             "queue"
@@ -1968,7 +1968,7 @@
           "title": "保留等待，不注入",
           "actor": "KVM · VMX 条件检查",
           "description": "Guest IF = 0，当前不能注入这条可屏蔽中断，IRR 保留。",
-          "detail": "KVM 可安排中断窗口检查；pending 表示已有事件，不代表客户机 handler 已运行。",
+          "detail": "KVM 可安排中断窗口检查；pending 表示事件待处理，客户机随后才进入 handler。",
           "active": [
             "lapic",
             "kvm"
@@ -2444,7 +2444,7 @@
           "title": "写入 Guest RX 数据",
           "actor": "QEMU virtio-net · receive",
           "description": "设备把 P1 报文写入已经借给设备的 RX 缓冲区。",
-          "detail": "数据写入与通知分离。此刻 used.idx 仍为 7，驱动还不能仅凭数据变化认定请求完成。",
+          "detail": "数据写入与通知分离。此刻 used.idx 仍为 7，驱动须等完成记录发布后才能回收。",
           "active": [
             "device",
             "queue"
@@ -2519,7 +2519,7 @@
           "title": "检查是否需要通知",
           "actor": "QEMU · virtio_should_notify",
           "description": "本例 NO_INTERRUPT 为 0，因此允许为此次完成发出通知。",
-          "detail": "EVENT_IDX 未协商；若启用该特性，要改用事件索引判断，不能把两种策略同时当作必经判断。",
+          "detail": "EVENT_IDX 未协商；启用该特性时改用事件索引判断是否通知。",
           "active": [
             "device",
             "queue"
@@ -2569,7 +2569,7 @@
           "title": "客户机解除屏蔽",
           "actor": "客户机驱动 → MSI-X 表项",
           "description": "驱动清除表项 mask，QEMU 的 mask update 检查发现 PBA[2] = 1。",
-          "detail": "这是一次配置变化。设备侧可以补发之前被屏蔽的通知，尚不代表 CPU 已接受该中断。",
+          "detail": "这是一次配置变化。设备可以补发先前屏蔽的通知，随后由 CPU 按投递条件接收。",
           "active": [
             "guest",
             "msix"
@@ -3510,7 +3510,7 @@
         "目标 vCPU 可运行，Guest IF = 1、无 interrupt shadow，APIC 优先级允许",
         "具体发起方为一次 QEMU virtio-net RX 完成；split queue，VIRTIO_F_EVENT_IDX 未协商，本例 avail.flags 设置 NO_INTERRUPT",
         "缓冲区已经发布且容量足够；此处不重复收包、描述符分配与网络协议栈的全部过程",
-        "Guest 已在接收轮询期间抑制队列通知；本例显示后续一次明确的 NAPI 轮询，不承诺无轮询时自动及时消费",
+        "Guest 已在接收轮询期间抑制队列通知；本例由后续一次 NAPI 轮询读取完成记录",
         "未协商 VIRTIO_F_NOTIFY_ON_EMPTY；不触发队列清空时的强制通知例外"
       ],
       "nodes": [
@@ -3739,7 +3739,7 @@
           "title": "写入 Guest RX 数据",
           "actor": "QEMU virtio-net · receive",
           "description": "设备把 P1 报文写入已经借给设备的 RX 缓冲区。",
-          "detail": "数据写入与通知分离。此刻 used.idx 仍为 7，驱动还不能仅凭数据变化认定请求完成。",
+          "detail": "数据写入与通知分离。此刻 used.idx 仍为 7，驱动须等完成记录发布后才能回收。",
           "active": [
             "device",
             "queue"
@@ -3909,7 +3909,7 @@
             "guest-receive",
             "consume"
           ],
-          "boundary": "本场景由已安排的轮询继续推进，不经过 vring_interrupt 或 skb_recv_done；通知被抑制不意味着完成数据不存在。",
+          "boundary": "本场景由已安排的轮询继续推进，不经过 vring_interrupt 或 skb_recv_done；即使通知被抑制，驱动仍可轮询队列读取完成记录。",
           "entry": {
             "kind": "async",
             "label": "此前已安排的 NAPI 继续轮询；本次完成没有 IRQ 通知"
@@ -3926,7 +3926,7 @@
         "示例 Requester ID 为 03:00.0（0x0300），IRTE 索引为 0x20、subhandle 为 0；均为说明字段关系的示例值。实际索引和向量由系统分配。",
         "VT-d 中断重映射已启用，IRTE 为 Present，按设备拓扑设置 Source-ID 校验；示例为无别名的普通 PCIe 端点，来源必须匹配 0x0300。",
         "Guest 的目标 APIC ID 为 1，中断向量为 0x51；Guest IF = 1、无 interrupt shadow，APIC 优先级允许交付。Guest APIC ID 与宿主 APIC ID 属于不同编号空间。",
-        "IRTE 可以命中 IOMMU 缓存；图中“查询 IRTE”表示逻辑查找，不代表每次中断都读取内存。",
+        "IRTE 可以命中 IOMMU 缓存；图中展示 IRTE 的逻辑查找，实际读取可命中缓存。",
         "设备 posting 未启用、平台不支持或中断路由不满足条件时，可走宿主转发。MSI-X 不按网卡、NVMe 或 GPU 类型划分递送方式，也不是应用逐次 I/O 选择的加速开关。",
         "本场景关闭 APICv，不使用设备 posted interrupt，也不使用宿主 Posted MSI 加速；IRTE 采用普通 remapped 格式，明确展示完整的软件转发路径。关闭 APICv 只是本例条件：宿主转发进入 KVM 后，在支持条件下也可由 KVM 写 PIR，使用 CPU 侧 posted 交付。",
         "IRTE 的宿主目标 APIC ID = 2、宿主向量 = 0xB1；VFIO eventfd 已与 KVM irqfd 连接，路由键 GSI 37 指向 Guest APIC ID 1 / 向量 0x51。QEMU 参与配置，逐次中断不经过 QEMU 用户态。",
@@ -4324,7 +4324,7 @@
           "title": "触发 eventfd / irqfd",
           "actor": "VFIO → KVM",
           "description": "vfio_msihandler() 调用 eventfd_signal()。绑定的 irqfd 回调按预登记的 GSI 37 路由生成 Guest MSI 请求。",
-          "detail": "eventfd 传递通知，KVM 路由保存 Guest APIC ID 1 与向量 0x51。本次转发无需先回到 QEMU 用户态；这里显示触发事件，不把 eventfd 当作请求完成数量。",
+          "detail": "eventfd 传递通知，KVM 路由保存 Guest APIC ID 1 与向量 0x51。本次转发无需先回到 QEMU 用户态；eventfd 记录通知，完成的请求数从队列读取。",
           "active": [
             "vfio",
             "kvm"
@@ -4430,7 +4430,7 @@
           "title": "应答服务状态",
           "actor": "Guest LAPIC / KVM",
           "description": "Guest 写 EOI，结束当前向量在 LAPIC 中的服务状态；后续是否还有设备完成需要处理，由驱动按设备协议检查。",
-          "detail": "EOI 与 DMA 数据消费相互独立。Linux 的边沿中断处理可以先做 APIC 应答，再调用设备 handler，因此本步不把 EOI 等同于“完成数据已读完”。",
+          "detail": "EOI 与 DMA 数据消费相互独立。Linux 可以先应答 APIC 的边沿中断，再调用设备 handler 读取完成数据。",
           "active": [
             "guest",
             "lapic"
@@ -4463,7 +4463,7 @@
         "示例 Requester ID 为 03:00.0（0x0300），IRTE 索引为 0x20、subhandle 为 0；均为说明字段关系的示例值。实际索引和向量由系统分配。",
         "VT-d 中断重映射已启用，IRTE 为 Present，按设备拓扑设置 Source-ID 校验；示例为无别名的普通 PCIe 端点，来源必须匹配 0x0300。",
         "Guest 的目标 APIC ID 为 1，中断向量为 0x51；Guest IF = 1、无 interrupt shadow，APIC 优先级允许交付。Guest APIC ID 与宿主 APIC ID 属于不同编号空间。",
-        "IRTE 可以命中 IOMMU 缓存；图中“查询 IRTE”表示逻辑查找，不代表每次中断都读取内存。",
+        "IRTE 可以命中 IOMMU 缓存；图中展示 IRTE 的逻辑查找，实际读取可命中缓存。",
         "VT-d 支持 posted interrupt，内核启用中断重映射与设备 posting，Intel APICv / virtual-interrupt delivery 已启用。VFIO irq-bypass 绑定成功，Guest 使用内核 LAPIC。同一网卡、NVMe 或 GPU 均可能满足这些条件；不是设备类型或应用逐次 I/O 决定路径。",
         "KVM 路由为可 posting 的单一 vCPU 普通中断；多播、广播及 NMI 等不适用本例。绑定时把 Guest 向量和该 vCPU 的 PID 地址写入 posted IRTE。",
         "目标 vCPU 1 正在宿主 APIC ID 2 对应的 CPU 上以 VMX non-root 模式运行；不考虑嵌套虚拟化和迁核。PID 为 64 字节对齐的宿主内存结构，并非 Guest RAM。",

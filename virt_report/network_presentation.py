@@ -113,7 +113,7 @@ def clarify_network_presentation(scene: dict) -> None:
     elif backend == "dpdk":
         scene["summary"] = "Guest 帧复制为独立的宿主 mbuf 后即可归还 TX 链；PMD 继续发送该副本。Guest 完成中断不是物理发送或远端收包确认。"
     elif backend == "vdpa":
-        scene["summary"] = "硬件直接读取 Guest TX 缓冲区，结束使用后发布 used；Guest 回收发送资源，不能据此确认远端已收包。"
+        scene["summary"] = "硬件直接读取 Guest TX 缓冲区，结束使用后发布 used；Guest 可回收发送资源；远端接收要看协议或应用应答。"
 
     for phase in scene["phases"]:
         if phase["start"] == "fill-used":

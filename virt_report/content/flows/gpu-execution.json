@@ -655,7 +655,7 @@
         "固定 Linux 6.18 / QEMU 10.2.0，x86 KVM，整块 AMD Vega10 / SDMA 4.0 GPU 经 vfio-pci 直通；不是 SR-IOV VF 或 mdev。",
         "Guest 使用公开 AMDGPU DRM CS ioctl 提交合法 SDMA IB，未启用 Guest vIOMMU。GTT 与 VRAM BO、GPU VA、Guest RAM 的宿主 IOMMU 映射和 MSI 路由均已准备；不模拟设备初始化、缺页、复位、迁移或竞争作业。",
         "宿主这块 PCI 设备绑定 vfio-pci，而非 amdgpu；AMDGPU 作业驱动运行在 Guest。SDMA ring 由 Guest 驱动在 GTT 分配，本例 IB1 也固定在 GTT 系统内存，不将所有 GPU 命令缓冲区泛化为 Guest RAM。",
-        "示例限定 use_doorbell=true，doorbell BAR 子区间允许 VFIO mmap，且 CPU EPT 映射已建立。Guest CPU 的写指针写入直接到物理 BAR，不需每次退出后由宿主 VFIO 或 QEMU 转发；需捕获的寄存器及 MSI-X 表等区域不能据此推断为直映。",
+        "示例限定 use_doorbell=true，doorbell BAR 子区间允许 VFIO mmap，且 CPU EPT 映射已建立。Guest CPU 的写指针写入直接到物理 BAR，不需每次退出后由宿主 VFIO 或 QEMU 转发；需捕获的寄存器和 MSI-X 表等区域保留各自的处理路径。",
         "使用正常 MSI→VFIO eventfd→KVM irqfd 软件递送，关闭 posted interrupt；中断未屏蔽，Guest 可接受。本例不用超时、信号打断和错误分支。",
         "G1、IB1、fence 42 和示意 GPU VA 用于关联对象，不是真实采样。软件发布与硬件完成分开；用户缓冲区可见性需遵守 DRM 映射与同步约定。"
       ],
@@ -1192,7 +1192,7 @@
           "title": "作业进入调度队列",
           "actor": "Guest 内核 · amdgpu_cs_submit",
           "description": "G1 被交给 DRM 调度器，建立供用户态等待的完成关系。",
-          "detail": "提交和执行是异步的。这里选择 ioctl 先返回、GPU 稍后执行的一种合法时序，不承诺所有负载都按相同延迟运行。",
+          "detail": "提交和执行是异步的。本例中 ioctl 先返回，GPU 随后执行。",
           "active": [
             "driver"
           ],
@@ -1213,7 +1213,7 @@
           "id": "submit-return",
           "title": "提交调用返回",
           "actor": "Guest 用户态",
-          "description": "应用获得本次提交的句柄，尚不能把它当作 GPU 已完成。",
+          "description": "应用取得提交句柄，随后可用对应的完成对象等待 GPU。",
           "detail": "本演示随后等待该句柄关联的 fence；不把 ioctl 返回和硬件完成合并成一步。",
           "active": [
             "app"
@@ -1458,7 +1458,7 @@
           "title": "注入中断并进入 Guest handler",
           "actor": "宿主 KVM → Guest 内核",
           "description": "目标 vCPU 检查可注入条件，VMX 准备外部中断信息并成功 VM-entry，Guest AMDGPU handler 随后处理 SDMA trap。",
-          "detail": "普通软件递送路径分为 eventfd、vLAPIC pending、实际注入与 Guest 处理；不能把 irqfd 唤起当成注入完成。本例已满足接受条件，未启用 posted interrupt。完整 IRR/ISR/EOI 细节见中断演示。",
+          "detail": "普通软件递送路径分为 eventfd、vLAPIC pending、实际注入与 Guest 处理；irqfd 被唤起后，KVM 继续处理注入。本例已满足接受条件，未启用 posted interrupt。完整 IRR/ISR/EOI 细节见中断演示。",
           "active": [
             "kvm",
             "driver"
@@ -1546,7 +1546,7 @@
         "固定 Linux 6.18 / QEMU 10.2.0，x86 KVM，整块 AMD Vega10 / SDMA 4.0 GPU 经 vfio-pci 直通；不是 SR-IOV VF 或 mdev。",
         "Guest 使用公开 AMDGPU DRM CS ioctl 提交合法 SDMA IB，未启用 Guest vIOMMU。GTT 与 VRAM BO、GPU VA、Guest RAM 的宿主 IOMMU 映射和 MSI 路由均已准备；不模拟设备初始化、缺页、复位、迁移或竞争作业。",
         "宿主这块 PCI 设备绑定 vfio-pci，而非 amdgpu；AMDGPU 作业驱动运行在 Guest。SDMA ring 由 Guest 驱动在 GTT 分配，本例 IB1 也固定在 GTT 系统内存，不将所有 GPU 命令缓冲区泛化为 Guest RAM。",
-        "示例限定 use_doorbell=true，doorbell BAR 子区间允许 VFIO mmap，且 CPU EPT 映射已建立。Guest CPU 的写指针写入直接到物理 BAR，不需每次退出后由宿主 VFIO 或 QEMU 转发；需捕获的寄存器及 MSI-X 表等区域不能据此推断为直映。",
+        "示例限定 use_doorbell=true，doorbell BAR 子区间允许 VFIO mmap，且 CPU EPT 映射已建立。Guest CPU 的写指针写入直接到物理 BAR，不需每次退出后由宿主 VFIO 或 QEMU 转发；需捕获的寄存器和 MSI-X 表等区域保留各自的处理路径。",
         "使用正常 MSI→VFIO eventfd→KVM irqfd 软件递送，关闭 posted interrupt；中断未屏蔽，Guest 可接受。本例不用超时、信号打断和错误分支。",
         "G1、IB1、fence 42 和示意 GPU VA 用于关联对象，不是真实采样。软件发布与硬件完成分开；用户缓冲区可见性需遵守 DRM 映射与同步约定。"
       ],
@@ -2083,7 +2083,7 @@
           "title": "作业进入调度队列",
           "actor": "Guest 内核 · amdgpu_cs_submit",
           "description": "G1 被交给 DRM 调度器，建立供用户态等待的完成关系。",
-          "detail": "提交和执行是异步的。这里选择 ioctl 先返回、GPU 稍后执行的一种合法时序，不承诺所有负载都按相同延迟运行。",
+          "detail": "提交和执行是异步的。本例中 ioctl 先返回，GPU 随后执行。",
           "active": [
             "driver"
           ],
@@ -2104,7 +2104,7 @@
           "id": "submit-return",
           "title": "提交调用返回",
           "actor": "Guest 用户态",
-          "description": "应用获得本次提交的句柄，尚不能把它当作 GPU 已完成。",
+          "description": "应用取得提交句柄，随后可用对应的完成对象等待 GPU。",
           "detail": "本演示随后等待该句柄关联的 fence；不把 ioctl 返回和硬件完成合并成一步。",
           "active": [
             "app"
@@ -2349,7 +2349,7 @@
           "title": "注入中断并进入 Guest handler",
           "actor": "宿主 KVM → Guest 内核",
           "description": "目标 vCPU 检查可注入条件，VMX 准备外部中断信息并成功 VM-entry，Guest AMDGPU handler 随后处理 SDMA trap。",
-          "detail": "普通软件递送路径分为 eventfd、vLAPIC pending、实际注入与 Guest 处理；不能把 irqfd 唤起当成注入完成。本例已满足接受条件，未启用 posted interrupt。完整 IRR/ISR/EOI 细节见中断演示。",
+          "detail": "普通软件递送路径分为 eventfd、vLAPIC pending、实际注入与 Guest 处理；irqfd 被唤起后，KVM 继续处理注入。本例已满足接受条件，未启用 posted interrupt。完整 IRR/ISR/EOI 细节见中断演示。",
           "active": [
             "kvm",
             "driver"
@@ -2434,11 +2434,11 @@
       "label": "GVT-g · BLT 缓冲区复制",
       "summary": "跟踪 G1：Skylake GVT-g 客户机提交一次 4 KiB BLT 复制，经宿主审核与影子上下文调度，完成后发布虚拟 GPU 事件并由 Guest 确认结果。",
       "assumptions": [
-        "固定 Linux 6.18 / QEMU 10.2.0，受 GVT-g 支持的旧代 Intel Skylake 集成 GPU、i915 execlists 与已创建的 mdev 实例；这是受限历史实现，不代表现代全部 Intel/NVIDIA vGPU。",
+        "固定 Linux 6.18 / QEMU 10.2.0，受 GVT-g 支持的旧代 Intel Skylake 集成 GPU、i915 execlists 与已创建的 mdev 实例；本例采用历史上的 GVT-g 实现。",
         "使用 Guest i915 的 GEM_EXECBUFFER2 提交合法 BLT batch。A、B 与命令缓冲区均位于受管理的共享系统内存，已完成对象分配和 GPU 映射；不要把它们标成离散 GPU 的独立 VRAM。",
         "GVT-g BAR0 没有 MMAP 能力，ELSP 写固定由硬件 VM-exit 进入 KVM，再以 exit_reason = KVM_EXIT_MMIO 返回 QEMU，经过 VFIO region 进入 GVT-g。BAR2 仅开放该 vGPU 获分配的 aperture 窗口直映；映射已建立时，该窗口访问不逐次返回 QEMU。",
         "Host i915/GVT-g 的审核、影子页表和调度与 Guest 驱动是不同执行域。物理执行成功，无 GPU hang、复位、迁移、页故障或其他 vGPU 的抢占。",
-        "虚拟 MSI 未屏蔽，已配置 VFIO eventfd / KVM irqfd，采用软件递送；应用在 Guest 完成并按 GEM CPU 访问同步约定后使用 B。动画只说明先后，不模拟调度公平性或真实延迟。"
+        "虚拟 MSI 未屏蔽，已配置 VFIO eventfd / KVM irqfd，采用软件递送；应用在 Guest 完成并按 GEM CPU 访问同步约定后使用 B。动画按事件顺序播放，公平性与延迟需实测。"
       ],
       "nodes": [
         {
@@ -3016,7 +3016,7 @@
           "title": "宿主收齐 ELSP 描述符",
           "actor": "宿主 mdev / GVT-g",
           "description": "VFIO write 进入 GVT-g 的 MMIO 处理，ELSP 写处理器收齐描述符并提交 execlist。",
-          "detail": "elsp_mmio_write 收集四个 dword 后调用 intel_vgpu_submit_execlist；此时不代表实际 GPU 已接受该虚拟上下文。",
+          "detail": "elsp_mmio_write 收集四个 dword 后调用 intel_vgpu_submit_execlist；实际 GPU 还要等宿主调度并提交该上下文。",
           "active": [
             "qemu",
             "gvt"
@@ -3073,7 +3073,7 @@
           "title": "审核命令与影子状态",
           "actor": "宿主 GVT-g 调度线程",
           "description": "dispatch_workload 扫描 workload，并准备宿主控制的 shadow context、命令和地址映射。",
-          "detail": "Guest 原始上下文不能不经处理直接作为宿主物理上下文使用；具体审核与重定位由选定 GVT-g 实现决定，不能推广为所有厂商 vGPU 内部。",
+          "detail": "Guest 原始上下文不能不经处理直接作为宿主物理上下文使用；审核与重定位遵循此处所用的 GVT-g 实现。",
           "active": [
             "gvt",
             "shadow"
@@ -3155,7 +3155,7 @@
           "title": "目标 B 已更新",
           "actor": "物理 GPU · BLT",
           "description": "本次复制的数据已经写入目标 B。",
-          "detail": "目标内容已改变仍不意味着 Guest 驱动已观察完成；应用继续等待请求的完成关系，不提前使用仍由 GPU 访问的缓冲区。",
+          "detail": "目标内容已改变；Guest 驱动还要观察完成通知；应用继续等待请求的完成关系，不提前使用仍由 GPU 访问的缓冲区。",
           "active": [
             "gpu",
             "buffer"
@@ -3346,9 +3346,9 @@
       "summary": "跟踪 MI300X VF 的一次 4 KiB 上传：PF 保留给 GIM 管理，Guest AMDGPU 经已直映的 VF 门铃提交 SDMA 4.4.2 作业，随后按 VF 完成通知确认结果。",
       "assumptions": [
         "AMD MI300X / SDMA 4.4.2 的机制示例：PF 由 GIM 管理，选定 VF 绑定 vfio-pci；其他 VF 可供其他 Guest 使用。部署需满足 AMD 支持矩阵，本场景未做硬件实测。",
-        "Linux 6.18 源码用于核对 Guest AMDGPU 的 SDMA 提交机制，QEMU 10.2.0 用于核对 VFIO。二者不代表已验证的 GIM、固件和发行版组合。",
+        "Linux 6.18 源码用于核对 Guest AMDGPU 的 SDMA 提交机制，QEMU 10.2.0 用于核对 VFIO。两者标明各自的源码版本；实际部署还需核对 GIM、固件与发行版的组合。",
         "Guest 已完成 VF 初始化、BO 和 GPU VM 建立，IB1 与 ring 位于 Guest RAM / GTT；源为 4 KiB 系统内存，目标为该 VF 可访问的显存配额。",
-        "选取 use_doorbell 已开启、VF 门铃子区间可 mmap、EPT 与 IOMMU 映射已经建立的成功路径。未映射区域、PF/VF 管理通信、复位和迁移不沿此快速路径推断。",
+        "选取 use_doorbell 已开启、VF 门铃子区间可 mmap、EPT 与 IOMMU 映射已经建立的成功路径。未映射区域、PF/VF 管理通信、复位和迁移各走自己的控制路径。",
         "本 VF 获得执行资源后完成作业；不模拟厂商资源调度算法、公平性或其他 VF 的抢占。资源分配不会给 Guest 整块物理 GPU 的所有权限。",
         "VF 的 MSI/MSI-X 已接入 VFIO eventfd / KVM irqfd，采用软件注入、关闭 posted interrupt。完成写回、虚拟中断和应用等待分开观察。"
       ],
@@ -3922,7 +3922,7 @@
           "title": "作业进入调度队列",
           "actor": "Guest 内核 · amdgpu_cs_submit",
           "description": "G1 被交给 DRM 调度器，建立供用户态等待的完成关系。",
-          "detail": "提交和执行是异步的。这里选择 ioctl 先返回、GPU 稍后执行的一种合法时序，不承诺所有负载都按相同延迟运行。",
+          "detail": "提交和执行是异步的。本例中 ioctl 先返回，GPU 随后执行。",
           "active": [
             "driver"
           ],
@@ -3943,7 +3943,7 @@
           "id": "submit-return",
           "title": "提交调用返回",
           "actor": "Guest 用户态",
-          "description": "应用获得本次提交的句柄，尚不能把它当作 GPU 已完成。",
+          "description": "应用取得提交句柄，随后可用对应的完成对象等待 GPU。",
           "detail": "本演示随后等待该句柄关联的 fence；不把 ioctl 返回和硬件完成合并成一步。",
           "active": [
             "app"
@@ -4188,7 +4188,7 @@
           "title": "注入中断并进入 Guest handler",
           "actor": "宿主 KVM → Guest 内核",
           "description": "目标 vCPU 检查可注入条件，VMX 准备外部中断信息并成功 VM-entry，Guest AMDGPU handler 随后处理 SDMA trap。",
-          "detail": "普通软件递送路径分为 eventfd、vLAPIC pending、实际注入与 Guest 处理；不能把 irqfd 唤起当成注入完成。本例已满足接受条件，未启用 posted interrupt。完整 IRR/ISR/EOI 细节见中断演示。",
+          "detail": "普通软件递送路径分为 eventfd、vLAPIC pending、实际注入与 Guest 处理；irqfd 被唤起后，KVM 继续处理注入。本例已满足接受条件，未启用 posted interrupt。完整 IRR/ISR/EOI 细节见中断演示。",
           "active": [
             "kvm",
             "driver"
@@ -4278,7 +4278,7 @@
         "先展示配置，再展示运行。配置完成后假定 Guest GPU 驱动、可用计算 profile、上下文与缓冲区均已准备；G1 为同一 stream 中 A → B 的 4 KiB 复制，随后记录 event E1。",
         "公开文档没有给出本组合的逐寄存器直映/捕获清单。本图不假定 ELSP、不规定 doorbell 地址，也不把 Guest 提交画成必然逐次返回 QEMU；厂商提交接口用独立边界表示。 图中的厂商内部框跨越软件与硬件，不归属 QEMU 或某个已知内核函数。",
         "运行阶段展示成功完成与一种可选的软件中断通知：假定 VFIO eventfd / KVM irqfd 已接通。厂商内部从 GPU 完成到虚拟事件的处理不展开；每个作业不保证一对一产生中断，event 等待也可由轮询推进。",
-        "这是公开接口的示意顺序，未做对应硬件实测，不据动画推断资源隔离强度、固件调度算法或完成延迟。"
+        "图中按公开接口展示操作顺序；隔离强度、调度和完成延迟需在相应硬件上验证。"
       ],
       "nodes": [
         {
@@ -4738,7 +4738,7 @@
           "title": "获得资源并执行 G1",
           "actor": "厂商执行边界 → 物理 GPU",
           "description": "G1 获得该实例可用的资源，物理 GPU 执行本次复制。",
-          "detail": "资源分区与调度取决于产品和 profile。这里不推导固定时间片、物理引擎数量或固件调用顺序。",
+          "detail": "资源分区与调度取决于产品和 profile。时间片、引擎数量和固件调度由具体设备决定。",
           "active": [
             "vendor-path",
             "gpu",
@@ -4794,7 +4794,7 @@
           "title": "可选完成通知进入 KVM",
           "actor": "设备事件接口 → KVM",
           "description": "在本例选定的软件通知分支中，完成事件通过 eventfd / irqfd 形成目标 vLAPIC 的待处理中断。",
-          "detail": "事件如何从硬件到达该接口未展开。中断可以合并，等待也可由轮询推进；此处不声称每个 G1 或 E1 必然产生一个中断。",
+          "detail": "事件如何从硬件到达该接口未展开。中断可以合并，等待也可由轮询推进；中断是否产生取决于设备的通知策略。",
           "active": [
             "vendor-path",
             "kvm"
@@ -4820,7 +4820,7 @@
           "title": "Guest 接受完成通知",
           "actor": "KVM vCPU → Guest 内核",
           "description": "目标 vCPU 满足接收条件后，KVM 准备注入并成功进入 Guest 中断入口。",
-          "detail": "这一阶段只说明选择了软件中断递送时的 KVM 边界。Guest 厂商 handler 的内部实现不提供虚构调用链。",
+          "detail": "此处跟踪 KVM 的软件中断递送路径。Guest 厂商 handler 的内部实现不提供虚构调用链。",
           "active": [
             "kvm",
             "driver"

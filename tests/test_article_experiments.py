@@ -114,8 +114,8 @@ def test_first_touch_observations_keep_the_measured_code_and_counts():
     assert [[cell.text() for cell in row.find("td")]
             for row in table.find("tbody")[0].find("tr")] == [
         [f"第 {number} 次", "4096", "8192", "0"] for number in range(1, 4)]
-    for marker in ("三个独立进程", "-static", "不会启动虚拟机",
-                   "没有采集 NPT 缺页、VM-Exit 或 TLB 计数", "没有做吞吐或延迟比较"):
+    for marker in ("三个独立进程", "-static", "独立的 KVM 客户机实验",
+                   "普通 Linux 用户态", "first_minor", "EPT/NPT 缺页", "吞吐和延迟"):
         assert marker in document.text()
     assert 'id="first-touch-measured"' in page
     assert 'href="virtio-balloon.html#balloon-measured"' in page
@@ -140,7 +140,7 @@ def test_balloon_measurements_preserve_units_and_lazy_residency():
     for marker in ("512 MiB", "4096 B", "627608 KiB", "VmRSS", "oom_kill",
                    "pswpin", "pswpout", "各列在同一采样阶段依次读取",
                    "同样的 balloon 调整未必带来相同的 RSS 降幅",
-                   "已恢复初始目标并正常关闭测试机", "不作为性能基准"):
+                   "已恢复初始目标并正常关闭测试机", "气球膨胀后", "本次放气后"):
         assert marker in document.text()
     assert 'id="balloon-measured"' in page
     assert 'href="memory-virtualization.html#first-touch-measured"' in page

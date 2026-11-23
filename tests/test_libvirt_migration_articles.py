@@ -49,7 +49,7 @@ def test_cpr_example_shell_is_valid_and_uses_isolated_resources():
         assert marker in shell
     assert shell.count('"$QEMU" "${COMMON[@]}"') == 2
     assert "未在本文中执行" in example
-    assert "不能据此精确测量停机时间" in example
+    assert "串口缓冲会延迟末尾输出，精确测量停机时间需要独立的时间记录" in example
     assert "不要把旧端" in example
 
     decoder = json.JSONDecoder()

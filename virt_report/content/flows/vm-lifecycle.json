@@ -734,7 +734,7 @@
           "title": "布置 Guest RAM 并注册内存槽",
           "actor": "QEMU 内存系统 → KVM",
           "description": "Q35 把已经准备好的 RAM 后备挂入低端、高端客户机物理地址空间，内存监听器随后向 KVM 注册对应内存槽。",
-          "detail": "pc_q35_init 先创建 CPU，再通过 pc_memory_init 布置 RAM 地址；后备分配发生在更早的机器初始化阶段。内存槽关联 GPA 范围与 QEMU 用户态地址，建立映射不代表 8 GiB 宿主页已经全部驻留。",
+          "detail": "pc_q35_init 先创建 CPU，再通过 pc_memory_init 布置 RAM 地址；后备分配发生在更早的机器初始化阶段。内存槽把 GPA 范围关联到 QEMU 用户态地址；8 GiB 后备内存可按需驻留。",
           "active": [
             "qemu",
             "resources",
@@ -999,7 +999,7 @@
             "guest-init",
             "guest-virtio"
           ],
-          "boundary": "cont 放行后固件与 Guest 独立执行；管理端启动成功不代表应用就绪。"
+          "boundary": "cont 放行后固件与 Guest 独立执行；管理端确认虚机已启动；应用有独立的就绪信号。"
         },
         {
           "id": "resume-event",
@@ -1334,7 +1334,7 @@
           "title": "客户机请求断电",
           "actor": "Guest → QEMU ACPI",
           "description": "客户机向 ACPI 控制寄存器写入 S5 关机值，QEMU 记录 Guest shutdown 请求。",
-          "detail": "至此才出现客户机实际关机的信号。此前电源按钮请求被接受，并不意味着已经到达这里。",
+          "detail": "至此才出现客户机实际关机的信号。这里记录关机完成；此前的电源按钮事件是关机请求。",
           "active": [
             "guest",
             "qemu"
@@ -1426,7 +1426,7 @@
           "title": "释放运行实例",
           "actor": "宿主内核",
           "description": "QEMU 退出后，所属 FD 与映射解除；KVM 对象在最后的相关引用释放后销毁。",
-          "detail": "VM、vCPU FD 和相关映射共同影响引用生命周期。宿主 RAM 后备被释放不代表删除系统盘；Libvirt 还需清理自己的运行资源。",
+          "detail": "VM、vCPU FD 和相关映射共同影响引用生命周期。释放的是宿主 RAM 后备，系统盘保留；Libvirt 还需清理自己的运行资源。",
           "active": [
             "qemu",
             "kvm",

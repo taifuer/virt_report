@@ -23,7 +23,7 @@ def test_multi_vcpu_article_is_discoverable_with_pinned_sources():
     assert article["topic"] == "cpu-virtualization"
     assert [item["id"] for item in article["sections"]] == [
         "preface", "machine", "discovery", "firmware", "kernel",
-        "cooperation", "scheduling", "application", "verification", "sources",
+        "cooperation", "scheduling", "application", "verification", "summary", "sources",
     ]
     assert {item["project"] for item in article["baselines"]} == {
         "QEMU", "Linux", "SeaBIOS",

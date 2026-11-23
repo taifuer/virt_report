@@ -2,7 +2,7 @@
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>QEMU 进程替换中的资源与状态保留</h2>
+  <h2>序言</h2>
   <p>更新 QEMU 二进制后，已经运行的虚拟机仍由旧进程维护。要让新版本接管，需要保留客户机内存，交接 CPU 和设备状态，并重新连接相关宿主资源。QEMU 的 CheckPoint and Restart（CPR）为同一宿主机上的进程替换提供了几种迁移模式。</p>
   <p>本文重点分析 <code>cpr-transfer</code>：旧、新 QEMU 进程短暂并存，内存在原共享后端中保留，文件描述符通过 Unix socket 传递，CPU 与设备状态通过主迁移通道恢复。客户机在交接期间暂停，随后从原执行进度继续；共享 RAM 减少了停机窗口中的内存搬运。</p>
   <p>本文的 QEMU 10.2 CPR-transfer 处理用户态进程替换，宿主内核继续运行。连同 KVM 实现一起升级的同机方案见<a href="kvm-live-upgrade.html">KVM 热升级：Orthus 与 Dual KVM</a>：它增加新旧 KVM 共存和逐台接管机制，两种路径都需要协调状态兼容与单一执行权。</p>
@@ -42,7 +42,7 @@
   {{ diagram('cpr-transfer-sequence', 'CPR-transfer 的准备、停机与恢复', '源端先发送 fd 清单，目标据此准备资源；目标监听 main 后关闭 CPR 通道。源端随后建立 main 并停止客户机，发送执行状态，目标恢复完成后才运行客户机。') }}
   <p>main 连接就绪后，<code>migrate_fd_connect()</code> 对 CPR 模式先调用 <code>migration_stop_vm()</code>，将源虚拟机置于 finish-migrate，再创建迁移线程。此后保存的 CPU 和设备状态对应停止后的执行点。CPR 在保存内存状态前停止客户机，不依赖运行期间的脏页迭代。</p>
   <p><code>migrate_ram_is_ignored()</code> 对 cpr-transfer 返回 true，普通 RAM 数据不再按预拷贝方式发送。CPU 与设备状态仍需经过 VMState 保存和恢复；目标为新建的 KVM vCPU 写回寄存器等状态，恢复中断路由与后端关系。主迁移流的分段和设备状态编码见<a href="qemu-migration-stream.html">QEMU 迁移流格式与状态恢复</a>。</p>
-  <p>完成交接时，源端保持 postmigrate，目标按照原运行状态与 autostart 设置决定是否执行。只有目标恢复完成并允许启动后，客户机才由新 QEMU 继续运行。源进程短暂保留用于管理和清理，不意味着可以重新执行同一份共享内存里的客户机。</p>
+  <p>完成交接时，源端保持 postmigrate，目标按照原运行状态与 autostart 设置决定是否执行。只有目标恢复完成并允许启动后，客户机才由新 QEMU 继续运行。源进程短暂保留用于管理和清理，客户机运行权已交给目标进程。</p>
 </section>
 
 <section id="structures" class="mechanism-section">
@@ -113,7 +113,7 @@ TARGET_PID=$!</code></pre>
     <tr><td>旧端 <code>query-migrate</code></td><td><code>status: completed</code></td><td>源侧迁移任务完成；仍需核对目标与客户机</td></tr>
     <tr><td>旧端 <code>query-status</code></td><td><code>status: postmigrate</code>、<code>running: false</code></td><td>旧进程还在，客户机已停止执行</td></tr>
     <tr><td>新端 <code>query-status</code></td><td><code>status: running</code>、<code>running: true</code></td><td>目标已经放行客户机 CPU</td></tr>
-    <tr><td>两个串口日志</td><td>旧端停止输出，新端继续原计数，未重新出现启动流程</td><td>计数只用于辨认连续性；串口缓冲可能影响末尾少量输出，不能据此精确测量停机时间</td></tr>
+    <tr><td>两个串口日志</td><td>旧端停止输出，新端继续原计数，未重新出现启动流程</td><td>计数只用于辨认连续性；串口缓冲会延迟末尾输出，精确测量停机时间需要独立的时间记录</td></tr>
   </tbody></table>
   <p>计数器可在客户机测试程序中每秒递增并打印，同时保存一次启动标识。新端若从初始值重来或启动标识变化，应检查是否发生了客户机重启。要测量停顿，另由宿主记录每条输出到达的单调时间；周期为一秒的输出只能发现较大间断，无法给出毫秒级 downtime。</p>
   <p>确认目标正常后，给旧端发送 <code>{"execute":"quit"}</code> 清理旧进程。结束测试时再退出新端，确认两个 PID 均已退出后删除本次运行目录。若迁移失败，先按下一节核对双端状态与资源归属，保留日志；不要把旧端 <code>cont</code> 当作统一恢复步骤。使用不同 QEMU 版本前，还需要单独验证机器类型及设备迁移兼容性。</p>
@@ -125,11 +125,11 @@ TARGET_PID=$!</code></pre>
   <p>前面的最小示例没有直通设备。扩展到 VFIO / IOMMUFD 时，还要交接设备 fd、已固定页、中断 eventfd 和 DMA 关联。该版本的相应 CPR 路径会保留设备资源，调整旧 KVM 的中断连接，再在目标恢复路由；已进入旧 LAPIC 的待处理中断随 CPU 状态恢复。因此除了共享 RAM 与 VMState，还需逐项检查物理设备的资源和通知路径。地址与 DMA 对应关系见<a href="qemu-vfio-dma.html">VFIO 设备直通的 DMA 地址转换与隔离</a>。</p>
   <p>停机窗口从源端停止执行延续到目标客户机恢复，包括状态保存与加载、资源激活、寄存器同步和必要的线程调度。fd 预交接和一部分目标初始化在停机前完成。即使 RAM 数据没有复制，目标页表建立、KVM 映射恢复和后端重连仍可能带来成本，应分别测量准备时间、客户机停顿和恢复后的尾延迟。</p>
   <table><thead><tr><th scope="col">失败阶段</th><th scope="col">需要判断的事实</th><th scope="col">处理边界</th></tr></thead><tbody>
-    <tr><td>资源预交接或 main 连接之前</td><td>旧客户机可能仍在运行；目标可能仅持有 fd 引用</td><td>检查实际运行状态与目标清理结果，不把连接失败当作客户机必然已停机</td></tr>
+    <tr><td>资源预交接或 main 连接之前</td><td>旧客户机可能仍在运行；目标可能仅持有 fd 引用</td><td>分别检查虚机的实际运行状态、连接状况和目标端清理结果</td></tr>
     <tr><td>源端已停机、目标未确认接管</td><td>状态是否完整、块设备与中断连接处于哪一侧</td><td>依赖迁移错误处理和后端恢复结果；不能承诺任意失败都可无损自动回滚</td></tr>
     <tr><td>目标已执行客户机</td><td>共享内存和磁盘内容已由新执行流推进</td><td>旧进程不能直接 cont；否则会出现双端执行与并发写入</td></tr>
   </tbody></table>
-  <p>本版本的 CPR-transfer 不与 postcopy、background-snapshot 或 COLO 组合，也不支持 memory-backend-epc。文档把更多 vhost、字符设备 fd 的连续保留列为后续方向，不能据此推断所有后端已能无中断交接。是否可用应检查具体设备的 CPR 路径及迁移 blocker。</p>
+  <p>本版本的 CPR-transfer 不与 postcopy、background-snapshot 或 COLO 组合，也不支持 memory-backend-epc。文档所述版本把更多 vhost 和字符设备 fd 的连续保留列为后续工作。是否可用应检查具体设备的 CPR 路径及迁移 blocker。</p>
 </section>
 
 <section id="evolution" class="mechanism-section">
@@ -143,6 +143,11 @@ TARGET_PID=$!</code></pre>
   </tbody></table>
   <p>这些机制把“更新运行虚拟机的软件”拆成可检查的资源保留、状态恢复和执行切换。选择方案时，首先确定哪些资源能够保留、哪些必须重建，再评估状态兼容和失败恢复，最后才比较停机时长。</p>
   <p><a href="kvm-live-upgrade.html#device-handover">Orthus 的直通设备交接</a>同样需要保留 DMA 映射与完成通知。共享 RAM 解决数据保留，设备连接和中断状态还需要各自的接管协议。</p>
+</section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>同机接管要同时保住 RAM 内容、可继承的资源句柄和可装载的 CPU、设备状态。旧进程退出、新进程拿到句柄、新实例恢复执行是三个时点；新实例开始修改共享 RAM 后，直接重启旧实例会让旧寄存器与新内存进度错位。</p>
 </section>
 
 <section id="implementation" class="mechanism-section">

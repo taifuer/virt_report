@@ -14,6 +14,6 @@
     <section data-iommu-node="memory"><h4>客户机 RAM 后备页</h4><dl><div><dt>宿主物理页</dt><dd>HPA 0x21000000</dd></div><div><dt>数据位置</dt><dd>偏移 0x80 · 64 B</dd></div><div><dt>缓冲区内容</dt><dd data-iommu-memory>原有数据 A</dd></div></dl><p data-iommu-owner>映射持有后备页引用</p></section>
   </div>
   <div class="iommu-detail" data-iommu-detail hidden><strong data-iommu-title></strong><p data-iommu-description></p></div>
-  <p class="iommu-note">示例未启用 ATS。回收阶段从设备停止使用该区域开始；页表清除与缓存失效展示同步 UNMAP 的内部过程，不代表每次接收都要撤销映射。</p>
+  <p class="iommu-note">示例未启用 ATS。回收阶段从设备停止使用该区域开始；图中展示同步 UNMAP 的清表与缓存失效步骤；设备也可跨多次接收复用映射。</p>
   <div data-iommu-fallback><ol><li>设备标识选择地址空间，IOTLB 命中时复用转换，未命中时遍历页表。</li><li>有效映射与写权限都满足后，数据写入 HPA 0x21000080；否则目标缓冲区保持不变。</li><li>正常接收完成。最终停用区域时，先停止设备访问，再撤销映射并等待失效完成，最后释放后备页引用。</li></ol><p>启用 JavaScript 后可选择缓存或故障情形，逐步查看状态。</p></div>
 </section>

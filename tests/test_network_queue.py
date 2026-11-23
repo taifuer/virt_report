@@ -154,7 +154,7 @@ def test_backend_call_paths_have_actual_symbols_and_do_not_fake_hardware(demo):
             assert set(path["sourceIds"]) <= demo["sources"].keys()
         if item["id"].startswith("vdpa"):
             hardware = next(path for path in item["callPaths"] if path["id"] == "vdpa-backend")
-            assert "不虚构" in hardware["boundary"]
+            assert "公开的硬件接口" in hardware["boundary"]
         elif item["id"] == "qemu-rx":
             complete = next(path for path in item["callPaths"] if path["id"] == "backend-complete")
             assert "qemu-push" not in complete["sourceIds"]

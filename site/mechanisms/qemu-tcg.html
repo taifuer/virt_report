@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=1934a7814284">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1934a7814284">
-<link rel="stylesheet" href="../assets/tcg-tb.css?v=1934a7814284"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=5eb1bb7dc04a">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=5eb1bb7dc04a">
+<link rel="stylesheet" href="../assets/tcg-tb.css?v=5eb1bb7dc04a"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -50,11 +50,11 @@
   <div class="mechanism-layout">
     <nav class="mechanism-toc" aria-label="文章目录">
       <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
-      <ol id="mechanism-toc-links"><li><a href="#preface">一、TCG 动态翻译与代码复用</a></li><li><a href="#main-path">二、从当前 PC 到下一个翻译块</a></li><li><a href="#pipeline">三、第一次执行 A：从指令译码到宿主机器码</a><ol><li><a href="#pipeline-part-1">1. 缓存未命中时的三阶段翻译</a></li><li><a href="#pipeline-part-2">2. 把 A 的三个操作逐层展开</a></li></ol></li><li><a href="#cache">四、重复执行 A、B：缓存查找与直接链接</a><ol><li><a href="#cache-part-1">1. 第一次选中目标：查询或生成 TB</a></li><li><a href="#cache-part-2">2. 同页循环：把 A、B 的出口直接连起来</a></li><li><a href="#cache-part-3">3. B 转向 C：跨页查找仍可复用代码</a></li></ol></li><li><a href="#structures">五、缓存依据：TB 保存代码，CPU 状态保存运行值</a><ol><li><a href="#structures-part-1">TB 查找的地址与执行状态条件</a></li></ol></li><li><a href="#memory">六、A 读取内存：软件 TLB、RAM 与设备慢路径</a></li><li><a href="#exceptions">七、A 的读取发生异常：恢复准确的客户机位置</a></li><li><a href="#invalidation">八、A 的指令被改写：失效旧 TB 并撤销链接</a></li><li><a href="#parallel">九、扩展到多 vCPU：共享代码与同步边界</a></li><li><a href="#evolution">十、TCG 的演进与性能取舍</a><ol><li><a href="#evolution-part-1">1. 从 dyngen 到 TCG，再到多线程执行</a></li><li><a href="#evolution-part-2">2. 沿主路径判断优化是否有效</a></li></ol></li><li><a href="#sources">十一、参考资料</a></li></ol>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a></li><li><a href="#main-path">二、从当前 PC 到下一个翻译块</a></li><li><a href="#pipeline">三、第一次执行 A：从指令译码到宿主机器码</a><ol><li><a href="#pipeline-part-1">1. 缓存未命中时的三阶段翻译</a></li><li><a href="#pipeline-part-2">2. 把 A 的三个操作逐层展开</a></li></ol></li><li><a href="#cache">四、重复执行 A、B：缓存查找与直接链接</a><ol><li><a href="#cache-part-1">1. 第一次选中目标：查询或生成 TB</a></li><li><a href="#cache-part-2">2. 同页循环：把 A、B 的出口直接连起来</a></li><li><a href="#cache-part-3">3. B 转向 C：跨页查找仍可复用代码</a></li></ol></li><li><a href="#structures">五、缓存依据：TB 保存代码，CPU 状态保存运行值</a><ol><li><a href="#structures-part-1">TB 查找的地址与执行状态条件</a></li></ol></li><li><a href="#memory">六、A 读取内存：软件 TLB、RAM 与设备慢路径</a></li><li><a href="#exceptions">七、A 的读取发生异常：恢复准确的客户机位置</a></li><li><a href="#invalidation">八、A 的指令被改写：失效旧 TB 并撤销链接</a></li><li><a href="#parallel">九、扩展到多 vCPU：共享代码与同步边界</a></li><li><a href="#evolution">十、TCG 的演进与性能取舍</a><ol><li><a href="#evolution-part-1">1. 从 dyngen 到 TCG，再到多线程执行</a></li><li><a href="#evolution-part-2">2. 沿主路径判断优化是否有效</a></li></ol></li><li><a href="#summary">十一、总结</a></li><li><a href="#sources">十二、参考资料</a></li></ol>
     </nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">一、</span>TCG 动态翻译与代码复用</h2>
+  <h2><span class="mechanism-heading-number">一、</span>序言</h2>
   <p>TCG（Tiny Code Generator）把客户机指令转换为宿主机能够执行的代码，并缓存翻译结果。客户机再次运行到同一段程序时，QEMU 可以复用这些代码；循环、函数调用和分支因此不必每次重新译码。缓存的有效性取决于指令内容、执行模式和地址映射，代码改写或运行环境变化时需要重新检查。</p>
   <p>本文沿一个三块循环展开：第一次执行 A 时查找缓存，未命中便翻译；执行到 B 后决定回到 A 还是进入 C；循环重复时复用并链接已有代码；程序改写 A 后撤销旧翻译。客户机访存、异常与多 vCPU 同步都围绕这条执行路径解释。</p>
   <p>源码采用 QEMU 10.2.0，以 x86 系统模拟和 x86-64 宿主为例。TCG 在用户态实现客户机 CPU 的指令语义、特权状态和访存检查；KVM 的硬件执行路径可对照<a href="kvm-vcpu-run.html">KVM vCPU 的执行循环与退出处理</a>。两种加速器共享许多机器与设备模型，CPU 的执行机制各有不同。</p>
@@ -95,9 +95,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看TCG 的翻译与运行路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="TCG 的翻译与运行路径">
-    <img src="../assets/tcg-translation-pipeline.svg?v=1934a7814284" alt="译码、IR 优化和代码生成发生在缓存未命中时；生成的宿主代码可多次执行，并按需要访问 CPU 状态、客户机内存和 helper。" loading="lazy">
+    <img src="../assets/tcg-translation-pipeline.svg?v=5eb1bb7dc04a" width="1182" height="524" alt="译码、IR 优化和代码生成发生在缓存未命中时；生成的宿主代码可多次执行，并按需要访问 CPU 状态、客户机内存和 helper。" loading="lazy">
   </div>
-  <figcaption>译码、IR 优化和代码生成发生在缓存未命中时；生成的宿主代码可多次执行，并按需要访问 CPU 状态、客户机内存和 helper。 <a href="../assets/tcg-translation-pipeline.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>译码、IR 优化和代码生成发生在缓存未命中时；生成的宿主代码可多次执行，并按需要访问 CPU 状态、客户机内存和 helper。 <a href="../assets/tcg-translation-pipeline.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: TCG 的翻译与运行路径
     accDescr: 缓存未命中时，客户机前端将 x86 指令译为 TCG IR，公共优化与寄存器分配后由宿主后端输出代码。运行时 CPUArchState 提供寄存器状态，生成代码通过软件 TLB 或 helper 访问客户机内存与设备。
@@ -142,9 +142,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看TB 的查找、生成、链接与失效" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="TB 的查找、生成、链接与失效">
-    <img src="../assets/tcg-tb-lifecycle.svg?v=1934a7814284" alt="已缓存但尚未链接的代码仍需查找；直接链接省去目标查找。代码写入触发失效时，同时清理查询结构和跳转关系。" loading="lazy">
+    <img src="../assets/tcg-tb-lifecycle.svg?v=5eb1bb7dc04a" width="723" height="1115" alt="已缓存但尚未链接的代码仍需查找；直接链接省去目标查找。代码写入触发失效时，同时清理查询结构和跳转关系。" loading="lazy">
   </div>
-  <figcaption>已缓存但尚未链接的代码仍需查找；直接链接省去目标查找。代码写入触发失效时，同时清理查询结构和跳转关系。 <a href="../assets/tcg-tb-lifecycle.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>已缓存但尚未链接的代码仍需查找；直接链接省去目标查找。代码写入触发失效时，同时清理查询结构和跳转关系。 <a href="../assets/tcg-tb-lifecycle.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TD
     accTitle: TB 的查找、生成、链接与失效
     accDescr: 主循环查询每 vCPU 跳转缓存与全局 QHT。未命中时翻译并发布 TB，命中则执行缓存代码。同页静态分支可修补为直接链接，其他合适分支通过 helper 查询。代码改写使相交 TB 失效，同时清理缓存并撤销入链与出链。
@@ -255,7 +255,7 @@
   <p>MTTCG 为每个 vCPU 创建宿主线程，线程拥有自己的 CPU 状态、跳转缓存和翻译上下文。运行普通翻译代码时释放 BQL；进入需要全局串行化的设备或控制路径时，再按相应规则同步。QEMU 10.2 的 x86 前端声明支持 MTTCG，默认自动模式会在未启用 icount 时选择它；显式 <code>thread=single</code> 则保留轮转执行方式。</p>
   <p>全局 TB 查询表和已生成代码仍可共享。并行翻译使用各线程的上下文与代码区域，同时通过代码页锁、QHT 插入和跳转锁保证发布与失效安全。如果两条线程生成了等价 TB，发布阶段可以保留已有结果、丢弃重复翻译。增加 vCPU 线程后，代码改写、跨 vCPU TLB 操作和全局 flush 的协调成本也随之增加。</p>
   <p>客户机 CPU 的并行还要求保持它的内存模型。x86 前端声明允许普通 Store→Load 重排，而其他规定的顺序要维持；<code>tcg_gen_req_mo()</code> 比较客户机要求与宿主默认保证，生成缺少的屏障。带 LOCK 的原子读改写不能拆成让其他 vCPU 任意插入的普通 load/store。遇到后端无法直接支持的原子操作，QEMU 可通过 <code>EXCP_ATOMIC</code> 退出，在排他执行区内用单指令 TB 完成，再恢复并行执行。</p>
-  <p>每个 TB 有多个客户机指令，不代表整个 TB 是一笔原子事务。并行 vCPU 可以观察到客户机内存模型允许的中间状态；QEMU 内部的页锁和跳转锁保护翻译元数据，也不代替客户机程序自己的锁与屏障。</p>
+  <p>TB 包含多条客户机指令，各条指令仍有各自的异常和副作用边界。并行 vCPU 可以观察到客户机内存模型允许的中间状态；QEMU 内部的页锁和跳转锁保护翻译元数据，也不代替客户机程序自己的锁与屏障。</p>
 </section>
 
 <section id="evolution" class="mechanism-section">
@@ -277,11 +277,16 @@
 -d in_asm,op,op_opt,out_asm \
 -D /tmp/qemu-tcg.log</code></pre>
   <p><code>in_asm</code> 展示客户机指令，<code>op</code> 与 <code>op_opt</code> 展示优化前后 IR，<code>out_asm</code> 展示生成的宿主代码。对 A 的 load/add/jump，可以沿这几段核对翻译过程。它们主要记录代码生成，热循环复用既有 TB 时未必再次输出，因此日志条数不能直接换算为执行次数；详细日志也会改变运行速度。</p>
-  <p>对较大工作负载，<code>-perfmap</code> 或 <code>-jitdump</code> 能帮助宿主 perf 识别 JIT 代码。分析时还应查看 helper 和设备路径的采样，避免把所有耗时都归因于翻译器。TCG 的优势是跨架构执行、软件可观测性和 CPU 语义模拟；需要同架构生产负载吞吐时，应结合硬件虚拟化路径比较。</p>
+  <p>对较大工作负载，<code>-perfmap</code> 或 <code>-jitdump</code> 能帮助宿主 perf 识别 JIT 代码。将翻译器、helper 和设备路径的采样分开，可以看出时间花在哪里。TCG 的优势是跨架构执行、软件可观测性和 CPU 语义模拟；需要同架构生产负载吞吐时，应结合硬件虚拟化路径比较。</p>
+</section>
+
+<section id="summary" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">十一、</span>总结</h2>
+  <p>翻译块能否复用，取决于代码位置、执行状态和代码页是否仍有效。分析一段慢代码，应把首次翻译、已缓存块的执行以及 helper 或设备访问分开计时；相同的客户机指令数可能对应不同的宿主工作量。</p>
 </section>
 
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">十一、</span>参考资料</h2>
+  <h2><span class="mechanism-heading-number">十二、</span>参考资料</h2>
   <ul>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/tcg/translator.c#L111-L225">公共翻译循环与同页链接条件</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/target/i386/tcg/translate.c#L3807-L3932">x86 前端回调</a></li>
     <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/exec/translation-block.h#L44-L147">TranslationBlock 与跳转链表</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/tcg/tcg.h#L323-L453">TCGOp 与 TCGContext</a></li>
@@ -305,6 +310,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=1934a7814284" defer></script>
-<script src="../assets/tcg-tb.js?v=1934a7814284" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=5eb1bb7dc04a" defer></script>
+<script src="../assets/tcg-tb.js?v=5eb1bb7dc04a" defer></script></body>
 </html>

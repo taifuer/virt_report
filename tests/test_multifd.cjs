@@ -76,7 +76,7 @@ test('article provides a no-JS flow and fullscreen hooks without global page ove
   assert.match(template, /data-mechanism-view="lab"/);
   assert.match(template, /data-multifd-fallback>/);
   assert.match(template, /源端 QEMU/); assert.match(template, /目的端 QEMU/);
-  assert.match(template, /主迁移流/); assert.match(template, /每步为逻辑时刻/);
+  assert.match(template, /主迁移流/); assert.match(template, /步数表示事件顺序/);
 });
 
 class Element {

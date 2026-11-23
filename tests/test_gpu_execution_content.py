@@ -335,7 +335,7 @@ def test_hybrid_separates_instance_creation_unknown_internals_and_completion():
     assert "pending" in snapshot(scene_id, "notify")["irqState"]
     assert position(scene_id, "guest-complete") < position(scene_id, "return")
     assumptions = " ".join(scene["assumptions"])
-    assert "可选" in assumptions and "轮询" in assumptions and "未做对应硬件实测" in assumptions
+    assert "可选" in assumptions and "轮询" in assumptions and "隔离强度、调度和完成延迟需在相应硬件上验证" in assumptions
     boundary = next(path for path in scene["callPaths"] if path["id"] == "vendor-boundary")
     assert "内部未展开" in boundary["context"]
     domain = next(domain for domain in scene["layout"]["domains"] if "vendor-path" in domain["nodes"])

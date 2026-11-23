@@ -2,7 +2,7 @@
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 
 <section id="preface" class="mechanism-section">
-  <h2>QOM 类型复用与设备实例状态</h2>
+  <h2>序言</h2>
   <p>QEMU 用 C 语言实现大量设备模型。每种设备既有独立的寄存器、队列和配置，又需要复用总线、复位、迁移与热插拔框架。QEMU Object Model（QOM）提供类型、继承、属性和对象生命周期；qdev 在其上增加设备与总线的组织规则。</p>
   <p>以两块 <code>virtio-net-pci</code> 网卡为例，两者复用相同的 PCI 和 virtio 方法，却各有队列、MAC 地址和后端。这些类与实例都位于宿主 QEMU 进程中，客户机看到的是它们提供的 PCI 配置空间和设备接口。QOM 把共同方法放在类中，把每块网卡的状态放在实例中；PCI 包装对象组合独立的 virtio 网络对象，分别负责传输接口与网络功能。</p>
   <p>创建一块网卡依次经过“查找类型 → 初始化实例 → 设置属性 → 接入总线并 realize”。realize 检查配置并建立设备工作状态，客户机驱动在设备呈现后再执行自己的初始化。</p>
@@ -19,7 +19,7 @@
   <p>这里有两个独立的 QOM 对象。外层对象继承 PCI 传输层，嵌入的 <code>vdev</code> 另有自己的 <code>Object</code>、类指针和引用计数。<code>virtio_instance_init_common()</code> 把它初始化成 <code>virtio-net-device</code>，以 <code>virtio-backend</code> 为名称加入外层对象的组合树。嵌入结构的内存由外层一起分配，内部对象的初始化和生命周期仍由 QOM 管理。<a href="{{ qemu_source }}hw/virtio/virtio-net-pci.c#L36-L39">实例布局</a>、<a href="{{ qemu_source }}hw/virtio/virtio.c#L3529-L3538">内部对象初始化</a></p>
   {{ diagram('qom-types-objects', 'virtio-net-pci 的类型、对象与总线关系', '类型继承决定方法和内存布局；child 属性建立对象所有权；parent_bus 决定设备接入哪条总线。图中 virtio-backend 是独立对象，不是外层 PCI 对象的父类。') }}
   <p>QOM 的 <code>Object.parent</code> 和 qdev 的 <code>DeviceState.parent_bus</code> 可以不同。外层网卡可以放在机器的 peripheral 容器下，却接到某条 PCI 总线上；内部网络对象归外层所有，却接到外层创建的 virtio 总线上。前者组织对象的路径与所有权，后者决定总线操作、复位和设备连接关系。调试时，<code>info qom-tree</code> 与 <code>info qtree</code> 回答的是不同问题。</p>
-  <p>对 Libvirt 管理的测试虚拟机，可在宿主机执行以下只读查询，比较同一网卡的对象路径与总线位置。<code>demo</code> 替换为实例名称；第一条显示组合树，第二条显示设备/总线树，二者都不能直接证明客户机驱动已经工作：</p>
+  <p>对 Libvirt 管理的测试虚拟机，可在宿主机执行以下只读查询，比较同一网卡的对象路径与总线位置。<code>demo</code> 替换为实例名称；第一条显示组合树，第二条显示设备/总线树；要确认驱动是否已绑定，还需在客户机内检查设备。宿主侧两条查询如下：</p>
   <pre><code>virsh -c qemu:///system qemu-monitor-command demo --hmp 'info qom-tree'
 virsh -c qemu:///system qemu-monitor-command demo --hmp 'info qtree'</code></pre>
   <p>相应命令由 QEMU 的<a href="{{ qemu_source }}hmp-commands-info.hx#L547-L584">HMP 查询接口</a>提供；自行启动的 QEMU 可在其 HMP monitor 中直接输入 <code>info qom-tree</code> 与 <code>info qtree</code>。</p>
@@ -89,6 +89,10 @@ virsh -c qemu:///system qemu-monitor-command demo --hmp 'info qtree'</code></pre
   <h2>从 qdev 到统一对象模型</h2>
   <p>qdev 已经为设备配置提供了公共框架，但类型、属性和所有权问题同样存在于机器、内存后端等非设备对象。2012 年初合入的 <a href="https://github.com/qemu/qemu/commit/2f28d2ff9dce3c404b36e90e64541a4d48daf0ca">Object 基类</a> 引入通用对象基础；同年 <a href="https://github.com/qemu/qemu/commit/57c9fafe0f759c9f1efa5451662b3627f9bb95e0">属性从 qdev 下沉到 Object</a>，让非设备对象也能使用属性与对象路径。设备管理继续由 qdev 负责，QOM 承担更底层的公共机制。</p>
   <p>2013 年的 <a href="https://github.com/qemu/qemu/commit/249d41720b7dfbb5951b430b9eefdbee7464f515">realized 属性改造</a> 为设备实现引入明确的状态转换，最初通过兼容回调包装旧的 init 方法，再逐步迁移设备。把对象构造、用户配置与可失败的设备实现分开，便于查询属性、按配置组合设备，也让热插拔与错误处理有共同入口。</p>
+</section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
   <p>统一框架减少了重复的注册和管理代码，也增加了间接层：一个方法名可能对应多层类回调，一个对象路径未必就是它的总线拓扑，属性也可能是别名或带副作用的 setter。分析设备创建时，先确认具体类型和父类型，再区分实例初始化、属性写入与 realize，最后检查失败分支的资源归属，通常比单纯沿函数名跳转更容易找到完整路径。</p>
 </section>
 

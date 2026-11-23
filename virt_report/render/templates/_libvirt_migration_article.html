@@ -1,9 +1,8 @@
 {% from '_mechanism_diagram.html' import diagram with context %}
 {% set libvirt_source = 'https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/' %}
 <section id="preface" class="mechanism-section">
-  <h2>把运行中的虚拟机从 A 交给 B</h2>
-  <p>Libvirt 热迁移协调两端资源，让客户机在保留内存、CPU 和设备状态的情况下更换宿主。QEMU 负责传输与恢复运行状态，Libvirt 负责准备、推进迁移、确认接管和清理源实例。客户机在大部分内存复制期间继续运行，最后短暂停止，再从目的端继续执行。</p>
-  <p>本文用共享存储上的虚拟机 <code>demo</code> 演示预拷贝迁移。A、B 分别运行 Libvirt 守护进程和 QEMU；操作者连接 A 发起任务。先说明命令与前提，再跟踪任务在两端的执行过程。</p>
+  <h2>序言</h2>
+  <p>把运行在宿主 A 的虚拟机 <code>demo</code> 搬到 B，磁盘留在两端都能访问的共享存储上。操作者向 A 的 Libvirt 提交迁移；A 联系 B 准备资源，两端 QEMU 预拷贝内存。最后 A 暂停 vCPU，把余下的内存和设备、CPU 状态交给 B，客户机从同一个执行点继续运行。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 <section id="preparation" class="mechanism-section">
@@ -36,14 +35,13 @@
     <tr><td><code>--copy-storage-all</code></td><td>完整复制非共享磁盘数据；预先准备目标镜像、容量与权限。</td></tr>
     <tr><td><code>--copy-storage-inc</code></td><td>增量复制顶层，要求两端存在一致的基础镜像。</td></tr>
   </tbody></table>
-  <p>若 B 已配置 TCP 管理监听和认证，也可使用 <code>virsh -c qemu:///system migrate --live --p2p --persistent demo qemu+tcp://host-b/system</code>。TCP URI 本身不承诺加密，仅用于已有安全控制的环境，勿暴露未认证的管理端口。</p>
-  <p>非共享存储增加磁盘复制路径。是否复制、目标如何准备、哪些磁盘参与，应在执行前确定；存储复制选项不会自动建立任意布局的目标存储。</p>
+  <p>若 B 已配置 TCP 管理监听和认证，也可使用 <code>virsh -c qemu:///system migrate --live --p2p --persistent demo qemu+tcp://host-b/system</code>。TCP URI 本身不提供加密，仅用于已有安全控制的网络；管理端口须启用认证。</p>
 </section>
 <section id="paths" class="mechanism-section">
   <h2>控制连接与状态传输走不同通道</h2>
   <p>p2p 的控制路径是 <code>virsh → A 的 Libvirt → B 的 Libvirt</code>，两端通过 QMP 控制各自 QEMU。原生数据路径是 <code>A 的 QEMU → B 的 QEMU</code>，承载 RAM、CPU 和设备状态；域 XML、迁移 cookie 和阶段结果走管理连接。</p>
   <p>SSH 保护 Libvirt 控制连接，原生迁移流需单独配置 TLS 或隔离网络。tunnelled 模式才让状态流经 Libvirt 隧道传输。<code>--p2p</code> 决定协调者，<code>--tunnelled</code> 决定数据路线。</p>
-  <p>省略 p2p 时，常用的 managed direct 由客户端同时连接 A、B，交替推进阶段。p2p 使用 A 的守护进程凭据访问 B，因此运维电脑能登录 B，不能代替 A 到 B 的认证检查。</p>
+  <p>managed direct 由客户端分别连接 A、B。在本例的 p2p 模式下，请在 A 核对源端守护进程访问 B 的凭据。</p>
 </section>
 <section id="phases" class="mechanism-section">
   <h2>从准备目标到清理源端</h2>
@@ -56,7 +54,6 @@
     <tr><td>Finish · B</td><td>验证接收完成，处理持久定义，恢复客户机并返回结果；A 保持停止。</td></tr>
     <tr><td>Confirm · A</td><td>成功则清理旧 QEMU 与资源；按参数保留或删除源持久定义。</td></tr>
   </tbody></table>
-  <p>预拷贝时 Guest 写入会让已发送页面再次变脏。切换时要让最后的 RAM、寄存器、定时器和设备队列对应同一个执行点；能修改 RAM 的设备与异步后端也需收尾。QEMU 传完状态、B 恢复执行、A 清理结束是相互关联的三个完成点。</p>
 </section>
 <section id="evaluation" class="mechanism-section">
   <h2>查看进度与迁移结果</h2>
@@ -67,17 +64,26 @@ virsh -c qemu+ssh://host-a/system domstate demo --reason
 virsh -c qemu+ssh://host-b/system domstate demo --reason
 virsh -c qemu+ssh://host-b/system dominfo demo</code></pre>
   <p><code>--completed</code> 读取保留的完成统计，<code>--keep-completed</code> 保留本次读取后的记录；失败统计可结合 <code>--anystats</code> 查询。活动作业消失后，还要核对同一 UUID 的双端状态。未使用 <code>--undefinesource</code> 时，A 留下关闭的持久定义属于正常结果。</p>
-  <p>验收同时检查 B 正在运行、A 已停止、网络与应用恢复，并分别记录迁移总时间、客户机停顿和业务不可用时间。</p>
 </section>
 <section id="failure" class="mechanism-section">
-  <h2>失败时先确认执行位置</h2>
-  <p>目标准备失败通常还未影响源客户机执行；传输出错时，Libvirt 根据阶段取消作业并清理未完成的目标。切换附近的连接错误需要核对两端：B 可能已恢复客户机，但 Finish 的成功响应没有返回 A。</p>
-  <p>先检查运行状态、迁移日志和共享存储锁。保留的暂停源进程可能只是在等确认，直接恢复会造成双端写同一磁盘。网络分区时遵循已有集群隔离与存储仲裁流程。p2p 让任务脱离客户端生命周期，源端守护进程、网络和存储仍是迁移依赖。</p>
+  <h2>迁移中断后的双端状态</h2>
+  <table>
+    <thead><tr><th scope="col">中断位置</th><th scope="col">应核对的状态</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">B 准备失败</th><td>通常 A 仍在运行。在 B 的日志中查看网络、存储或设备准备错误，确认未完成的目标实例已清理。</td></tr>
+      <tr><th scope="row">预拷贝中断</th><td>在 A 用 <code>domjobinfo</code> 查看作业，以双端 <code>domstate</code> 确认源虚机仍由 A 执行、B 未接管。</td></tr>
+      <tr><th scope="row">切换后管理连接断开</th><td>B 可能已经运行，只是 Finish 的成功响应没有返回 A。在两端核对同一 UUID、运行状态和共享存储锁。直接恢复暂停的 A 可能造成双端写同一磁盘；网络分区按集群隔离和存储仲裁流程处理。</td></tr>
+    </tbody>
+  </table>
 </section>
 <section id="implementation" class="mechanism-section">
   <h2>源码中的管理流程</h2>
   <p>managed direct 的入口为 <code>virDomainMigrateVersion3Full()</code>；p2p 在源端驱动的 <code>qemuMigrationSrcPerformPeer2Peer3()</code> 中组织调用。<code>vm-&gt;job</code> 保存作业与阶段，<code>qemuMigrationCookie</code> 交换身份、锁、能力和统计等管理信息。</p>
   <p>目的端 <code>qemuMigrationDstFinishFresh()</code> 核对接收结果并推进 CPU 恢复，源端 <code>qemuMigrationSrcConfirmPhase()</code> 根据目标结果结束作业。管理信息帮助协调，RAM 和寄存器仍通过 QEMU 状态流传输。</p>
+</section>
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>一次迁移的验收分三处：B 接管同一 UUID 的虚机，A 停止旧实例，业务能经新的网络路径访问。用两端的域状态核对前两项，用应用请求核对最后一项。记录迁移总时间、vCPU 停顿和业务中断时间时，三者各有起止点。</p>
 </section>
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>

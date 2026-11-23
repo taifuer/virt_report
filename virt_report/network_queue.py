@@ -177,7 +177,7 @@ def _split_publications(scene: dict) -> None:
         _insert_before(scene, publish_id, _queue_step(
             publish, "prepare-buffer", "准备 RX 描述符", "desc[2] 指向一块 1530 B 设备可写空间。",
             "固定 non-mergeable small-buffer 路径，长度为 12 B virtio 头 + GOOD_PACKET_LEN（1518 B）。"
-            "页片段实际分配还包括 headroom 和 skb 元数据，不能把分配容量当作描述符长度。此时尚未发布 available。",
+            "页片段的分配容量还包括 headroom 和 skb 元数据，描述符长度记录可用的数据范围。此时尚未发布 available。",
             prepared, ["net-add-small", "ring-add-in", "ring-add-split"],
         ))
     head = 0 if tx else 2
@@ -211,7 +211,7 @@ def _split_publications(scene: dict) -> None:
         fill_used["description"] = "设备已结束对 Guest 链和缓冲区的使用，填写 used.ring[0] = { id: 0, len: 0 }。"
         fill_used["detail"] = (
             "只有满足缓冲区归还条件，设备才会填写完成项并随后发布 used.idx。"
-            "具体硬件何时结束内部发送流水线由实现决定，本步不宣称已复制到设备私有缓冲区或已完成线缆发送。"
+            "此后驱动可以回收该缓冲区；内部发送流水线何时完成由设备决定。"
         )
     used["description"] = "先完成数据与 used 环项写入，再发布 used.idx = 1；驱动现在可以消费。"
     used["sourceIds"] = flush_sources
@@ -728,12 +728,12 @@ def _call_paths(scene: dict) -> None:
                   "flush_shadow_used_ring_split 先复制 shadow used 项，再 release 更新共享 used.idx。TX Guest 链完成后，独立 mbuf 仍可继续进入 PMD。"),
             _path("dpdk-pmd", "独立 mbuf 与物理网卡", "宿主用户态 · DPDK PMD 接口边界",
                   ["dpdk-pmd-tx", "dpdk-api"] if tx else ["dpdk-pmd-rx", "dpdk-api"],
-                  "ethdev burst 是设备驱动接口，不指定某家网卡实现；接受 mbuf 的数量与 Guest 队列完成不是同一事件，不宣称 TX used 等于对端收到。"),
+                  "ethdev burst 是设备驱动接口，不指定某家网卡实现；PMD 接受 mbuf、Guest 回收发送链和对端接收分别由各自一侧记录。"),
         ]
     else:
         paths = [_path("vdpa-backend", "硬件读取队列与 DMA", "硬件 vDPA · 固定 direct 模式",
                        ["vdpa-map", "virtio-ring-spec", "virtio-net-spec"],
-                       "QEMU 配置 DMA 映射，硬件按协议执行队列。此处引用硬件接口规范，不虚构设备固件内部函数；未启用 SVQ。")]
+                       "QEMU 配置 DMA 映射，设备按公开的硬件接口直接消费队列；此配置未启用 SVQ。")]
     scene["callPaths"].extend(paths)
     step_by_id = {step["id"]: step for step in scene["steps"]}
     kick_sources = list(dict.fromkeys(
@@ -853,7 +853,7 @@ def _parallel_network_paths(scene: dict) -> None:
         guest_id, guest_title = "guest-completion", "Guest 队列完成"
         guest_summary = "发布 used，经 KVM 递送完成中断，驱动回收 TX 链。"
         host_id, host_title = "host-forwarding", "宿主网络转发"
-        host_summary = "观察已接受帧的本地转发；不据此推断物理发送完成或远端收到。"
+        host_summary = "观察已接受帧的本地转发；物理发送看网卡完成记录，远端接收看对端应答。"
     elif identifier == "dpdk-tx":
         after, host_steps = "route-interrupt", ["pmd", "pmd-cleanup"]
         title = "dequeue 返回后，Guest 回收与 PMD 发送分别推进"

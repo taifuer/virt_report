@@ -2,9 +2,8 @@
 {% set libvirt = 'https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/' %}
 {% set qemu = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 <section id="preface" class="mechanism-section">
-  <h2>从控制一个进程到管理一组虚拟机</h2>
-  <p>Libvirt 为虚拟机、网络和存储提供统一的管理接口。在 QEMU/KVM 环境中，它负责保存虚拟机定义、检查操作权限、准备宿主资源、启动 QEMU，并通过 QMP 管理运行中的实例。运行配置、异步事件和异常清理也由相应驱动协调。</p>
-  <p>直接使用 QEMU 命令行与 QMP 可以管理单个实例；管理多台虚拟机时，还需处理持久配置、资源分配以及并发操作。Libvirt 把这些工作组织成对象与操作接口：上层请求暂停或启动指定虚拟机，服务端查找实例、检查条件、执行动作并维护状态。本文以暂停与恢复为例，介绍接口分层、作业协调和事件处理。</p>
+  <h2>序言</h2>
+  <p>Libvirt 把虚拟机、网络和存储组织成可管理的对象。以暂停一台虚机为例：操作者用名字指定实例，Libvirt 在宿主机核对权限和运行状态，通过 QMP 通知 QEMU 暂停。QEMU 进程和客户机内存保留在原处，之后可以恢复执行。</p>
   <table><thead><tr><th>组件</th><th>运行位置</th><th>保留的主要状态</th></tr></thead><tbody>
     <tr><td>virsh 与 Libvirt 客户端库</td><td>发起命令的进程，可位于管理机或宿主机</td><td>连接、调用参数与虚拟机句柄</td></tr>
     <tr><td>virtqemud / libvirtd 的 QEMU 驱动</td><td>宿主机管理守护进程</td><td>虚拟机定义、资源分配、作业与管理状态</td></tr>
@@ -17,9 +16,9 @@
   <h2>API、连接、RPC 与驱动的分层</h2>
   <h3>API 表达操作，连接确定管理范围</h3>
   <p>应用调用 <code>virDomainSuspend()</code> 表达暂停；virsh 是使用这些 API 的命令行客户端。这里的 domain 指受管理的虚拟机，客户端句柄保存名称、UUID 和所属连接等标识。它不包含完整的客户机内存，也不等同于 QEMU 的进程号。</p>
-  <p>连接确定操作目标与管理范围。<code>qemu:///system</code> 访问本机系统级 QEMU 管理服务，<code>qemu:///session</code> 访问当前用户的会话级服务；两者可见的实例和权限不同。远程连接还要选择传输方式并验证身份。请求指向同一个名称，并不代表在不同连接里操作的是同一台机器。<a href="https://libvirt.org/uri.html">连接 URI</a></p>
+  <p>连接确定操作目标与管理范围。<code>qemu:///system</code> 访问本机系统级 QEMU 管理服务，<code>qemu:///session</code> 访问当前用户的会话级服务；两者可见的实例和权限不同。远程连接还要选择传输方式并验证身份。同名虚机可存在于不同连接，查找时要同时确定连接和对象。<a href="https://libvirt.org/uri.html">连接 URI</a></p>
   <h3>RPC 跨越进程，驱动落实具体实现</h3>
-  <p>管理应用与服务端通常不在同一进程。客户端把操作、对象标识和参数编码为消息，由服务端解码并分发，这就是 RPC。调用序号用来把响应交回原来的等待者；传输成功只说明消息到达，服务端仍需检查权限与对象状态。</p>
+  <p>管理应用与服务端通常不在同一进程。客户端把操作、对象标识和参数编码为消息，由服务端解码并分发，这就是 RPC。调用序号用来把响应交回原来的等待者；消息送达后，服务端还要检查权限与对象状态。</p>
   <p>服务端的 QEMU 驱动知道如何准备宿主资源、启动进程以及发送 QMP 命令。于是同一个公开 API 可以保持稳定，而底层处理随具体后端变化。一项 API 可能需要多条 QMP 命令，也可能只读取服务端已有记录。Libvirt 属于管理路径，客户机日常的读盘和发包不逐项经过这条 RPC 链。</p>
   {{ diagram('libvirt-internals-overview', '管理请求与状态反馈的组件路径', 'API 表达操作，RPC 负责跨进程交接，QEMU 驱动处理资源和状态，QMP 操作具体实例。命令响应和异步事件分别处理，数据请求走虚拟机自己的 I/O 路径。') }}
 </section>
@@ -27,13 +26,8 @@
 <section id="example" class="mechanism-section">
   <h2>示例：暂停 demo，再从原处继续</h2>
   <p>假设 demo 已在系统级服务中运行，执行 <code>virsh -c qemu:///system suspend demo</code>。暂停保留 QEMU 进程和客户机 RAM，停止客户机 vCPU 执行；客户机电源管理休眠、保存内存到磁盘和关闭虚拟机则是另外的操作。</p>
-  {{ diagram('libvirt-suspend-sequence', '一次暂停请求中的命令与事件', '示例跟踪普通运行状态下的暂停。QMP 响应交付命令结果，STOP 事件驱动状态记录；图中分开展示两条反馈，不能把事件订阅当成 API 调用返回的一部分。') }}
-  <ol>
-    <li>virsh 查找 demo，调用暂停 API。客户端按连接的实现编码 RPC，将虚拟机标识交给服务端。</li>
-    <li>QEMU 驱动重新查找对象，检查权限，取得暂停作业，并确认实例仍然活跃。客户端之前查到的状态不能替代这次检查。</li>
-    <li>驱动进入 QEMU 监控接口，发送 <code>stop</code>。QEMU 协调 vCPU 停止，保留运行现场；QMP 响应返回命令结果。</li>
-    <li>Libvirt 收到 <code>STOP</code> 事件后记录暂停状态和原因，保存运行状态，并向已订阅的客户端发送生命周期通知。管理程序也可查询当前状态。</li>
-  </ol>
+  {{ diagram('libvirt-suspend-sequence', '一次暂停请求中的命令与事件', '示例跟踪普通运行状态下的暂停。QMP 响应交付命令结果，STOP 事件驱动状态记录；图中分别列出 API 的返回值和事件订阅者收到的异步通知。') }}
+  <p>QEMU 驱动取得该域的作业后还要复查它是否活跃：从客户端查到 <code>demo</code> 到服务端执行暂停，另一项操作可能已让它关机。QMP 的 <code>stop</code> 响应交代命令结果，异步的 <code>STOP</code> 事件用来更新暂停原因并通知订阅者。</p>
   <p>恢复时，<code>virsh -c qemu:///system resume demo</code> 经恢复 API 和 QEMU 驱动发送 <code>cont</code>，相关宿主资源也要恢复到允许运行的条件。QEMU 继续执行，Libvirt 的 <code>RESUME</code> 事件处理更新运行状态。事件与命令响应有各自处理路径，应用不应假设自己的事件回调一定早于或晚于 API 返回。<a href="{{ libvirt }}src/qemu/qemu_driver.c#L1621-L1723">暂停与恢复入口</a>、<a href="{{ libvirt }}src/qemu/qemu_process.c#L816-L919">状态事件处理</a></p>
   <p>在宿主机另开终端，先订阅 <code>virsh -c qemu:///system event --domain demo --event lifecycle --loop</code>，再执行暂停与恢复，可以观察该连接收到的生命周期通知。暂停前后分别查询 <code>virsh -c qemu:///system domstate demo --reason</code>：成功暂停后应报告 paused，恢复后应报告 running。查询展示当前状态，事件展示订阅期间的变化；晚建立的订阅不会补齐此前所有历史事件。</p>
 </section>
@@ -66,8 +60,8 @@
 </section>
 
 <section id="summary" class="mechanism-section">
-  <h2>沿请求、状态与资源检查管理过程</h2>
-  <p>遇到操作慢或结果不确定，依次确认请求是否到达、是否在等待作业、QMP 是否返回、是否仍需客户机配合，再检查实际状态。这样能把管理链路的问题与客户机数据路径的性能问题分开，也能避免把某次成功响应当作所有后续动作的完成证明。</p>
+  <h2>总结</h2>
+  <p>遇到操作慢或结果不确定，依次确认请求是否到达、是否在等待作业、QMP 是否返回、是否仍需客户机配合，再检查实际状态。管理连接、客户机数据路径和异步完成事件各有独立的观察点。</p>
 </section>
 
 

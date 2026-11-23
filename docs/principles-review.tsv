@@ -1,0 +1,57 @@
+文章标识	文章	处理	检查结果
+linux-kernel-evolution	Linux 内核基础	保留	以一次文件读取串起用户态、页缓存、等待和调度；Linux 历史与具体运行路径各有用途。
+linux-boot	Linux 系统启动：从固件到用户空间	修订	保留固件到真实根的启动链和观察命令；将 /init 与真实根 init 的关系说清：同一个 PID 1 换入程序。
+linux-execution-scheduling	Linux 进程：执行与调度	修订	保留任务创建、调度算法和 CPU 配额；结尾区分等数据与唤醒后等 CPU。
+linux-memory	Linux 内存：地址空间、缺页与页面回收	保留	缺页表给出匿名页、文件页、COW 和信号的分支；两个进程的页表图与 RSS/PSS 观察配套。
+linux-interrupts	Linux 中断处理	修订	保留硬中断、延后处理与设备状态；用收包队列重新使能通知时的复查解释漏唤醒。
+linux-block-io	Linux 存储 I/O：页缓存、块请求与持久化	修订	保留 VFS、页缓存与块请求的边界；用三种完成时点解释同一次写入的观测差异。
+linux-network-io	Linux 网络 I/O：收包、发包与缓冲区交接	修订	保留 NAPI 预算与多核收发；结尾用 RX 缓冲区、协议层和 socket 队列区分丢包位置。
+virtualization-basics	虚拟化基础：资源隔离、执行与系统分工	保留	两台虚机的资源隔离与共享是独立的入门问题，没有并入 KVM 专文。
+cpu-virtualization	CPU 虚拟化：执行方式、隔离与调度	整合	对照表直接区分 VM Exit、返回 QEMU 和换下宿主线程；保留独占核等待前提，轮询与时钟细节回归专文。
+memory-virtualization	内存虚拟化：地址转换、影子页表与两级映射	保留	地址示例分开 GVA/GPA/HVA/HPA；首次写页实测统计客户机缺页，与宿主建图分层。
+virtio-device-initialization	Virtio 协议演进与设备初始化	整合	保留特性握手和现代 PCI 队列配置；把按状态位检查首笔 I/O 的结论移出版本演进段。
+interrupt-virtualization	QEMU/KVM 中断虚拟化：基本原理与演进	保留	同一收包过程区分数据就绪、通知、目标 vCPU 接受与 Guest 驱动处理；保留分阶段演示。
+qemu-memory-migration	QEMU 热迁移流程	保留	预拷贝脏页迭代解释收敛，设备收尾与目标装载解释停机；不与管理命令或字节流格式重复。
+qemu-migration-stream	QEMU 迁移流格式与状态恢复	修订	保留节头、RAM 记录与设备载荷的字节结构；结尾把版本、处理器和 section ID 对应到恢复错误。
+qemu-multifd	QEMU MultiFD 并行迁移	整合	保留批次分发和通道同步；把用 trace 与迁移耗时判断瓶颈的段落移到总结。
+qemu-vhost-net	virtio-net 的后端处理：vhost-net 与 vhost-user	整合	聚焦内存表、vring、kick/call 的配置与停用；删除一遍通用 TX 步骤，保留复制与零拷贝的归还差异。
+dpdk-vhost-user-net	DPDK vhost-user 的报文转发与缓冲区管理	整合	压缩通用 vhost-user 初始化；保留 32 个 mbuf 只有 20 个获 PMD 接受的背压实例。
+spdk-vhost-user-blk	SPDK vhost-user-blk 的请求处理路径	整合	保留 virtqueue、bdev 与 NVMe 队列各自的完成回调；把返回 0、在途计数和收尾的判断集中到结尾。
+kvm-ept-fault	KVM 内存映射与 EPT 缺页处理	修订	保留 TDP MMU 建图与宿主页失效的源码路径；把 Guest 缺页、后备等待和设备 MMIO 分开判断。
+kvm-hugepages	KVM 大页映射的建立、拆分与恢复	修订	保留 2 MiB 叶子拆成 512 个 4 KiB 叶子的演示；结尾明确恢复大页所需的后备、对齐和权限。
+kvm-dirty-ring	KVM 脏页日志：位图与 Dirty Ring	整合	保留 reset、重新保护与 QEMU 迁移位图的次序；满环退出、重复写与统计口径归入总结。
+vfio-device-migration	VFIO 设备热迁移	保留	v1/v2、QEMU 状态传输、AMD GIM 驱动与 SR-IOV VF 位于同一条线；核对客户机 RAM、显存、在途 DMA 的分工。
+libvirt-live-migration	Libvirt 热迁移流程	保留	管理 URI 与迁移数据通道分开；保留命令、同一 UUID 的双端检查和服务连通性验收。
+qemu-vfio-dma	VFIO 设备直通的 DMA 地址转换与隔离	整合	保留 VFIO 注册内存与设备 IOVA 的关系；删去结尾旁支，回到访问权限、在途 DMA 与释放映射。
+hotplug	虚拟机热插拔	保留	以一张交接图和 PCIe 网卡、CPU、DIMM 对照表明确上线与移除完成条件。
+qemu-pcie-hotplug	QEMU PCIe 设备热插拔与异步移除	修订	保留 PCIe 插槽与客体驱动的异步握手；把设备树、完成事件、后端回收写成管理端检查顺序。
+libvirt-internals	Libvirt 架构与工作原理	保留	从管理 API 到驱动、作业和 QMP 的分工自成一篇；保留与 RPC 编码专文的区别。
+libvirt-rpc	Libvirt RPC 的编码与调用分发	整合	保留 CALL/REPLY 的长度、过程号及 serial 配对；将一次查询的四个核对点放入总结。
+qemu-internals	QEMU 架构与工作原理	保留	4 KiB 磁盘读串起 QOM、事件循环和块后端；保留架构图，与单项设备实现分工。
+qemu-qom-device	QEMU 对象模型与设备初始化	整合	保留类型注册、实例初始化、属性和 realize 失败回滚；按类型与资源所有者读源码的建议收束于结尾。
+libvirt-domain-start	虚拟机启动：从 Libvirt 到客户机引导	保留	以暂停启动区分进程创建、QMP cont 和服务就绪；保留管理端独有的准备与失败清理。
+qemu-vm-startup	QEMU 虚拟机启动	修订	保留 Q35、RAM 与 ROM、网卡磁盘、中断和复位向量；用 -S 区分建机、首次执行和引导失败。
+qemu-cpr-transfer	QEMU 热升级：CPR 的资源交接与状态恢复	修订	保留同机 CPR 的 FD 与 RAM 交接示例和源码附录；将切换后不能任意回退的原因落在共享状态上。
+live-upgrade-overview	虚拟机热升级：QEMU、KVM 与直通设备交接	保留	对照 QEMU、KVM 与 VFIO 的接管范围；留作总览，与 CPR 和双 KVM 方案分别成篇。
+kvm-live-upgrade	KVM 热升级：Orthus 与 Dual KVM	整合	保留 Orthus、后续 VMM 方案和 HyperFresh 的证据与保留层；把同一 vCPU 只由一端运行等验收条件收在结尾。
+qemu-memory-region	QEMU 内存初始化与地址空间管理	整合	保留 8 GiB Q35 地址布局与独立 64 KiB 教学模型；将别名偏移、FlatView 和内存槽的核对放进总结。
+iommu-dma	IOMMU：DMA 地址转换、缓存与失效	整合	保留设备访问和 IOTLB 失效的例子；把访问故障、转换成本和配置成本的区分收在结尾。
+iommufd	IOMMUFD：设备绑定与 I/O 地址空间管理	整合	保留设备 fd、IOAS、HWPT 的绑定、映射与回滚；将接入成本与常态 DMA 的测量区分移到结尾。
+qemu-viommu	vIOMMU：客户机 DMA 映射与失效同步	修订	保留 Guest IOVA、宿主映射和撤销顺序的交互；总结只讲复用 IOVA 前要核对的映射与失效。
+virtio-gpu	virtio-gpu：资源、渲染与编解码	整合	保留二维更新、渲染与视频路径；将资源、fence、scanout 的诊断从演进段移到总结，并让旧总结链接直达。
+network-io	虚拟网卡收发流程	整合	主线保留一包 UDP 的发送、接收、NAPI 与缓冲区回收；删掉完成章节中再次逐项解释队列发布的段落。
+gpu-execution	GPU 命令执行：直通与共享虚拟化	修订	保留整卡、VF 与 mdev 的执行及 XML 对照；配置示例注明宿主前提，结尾按作业提交、执行和完成定位。
+qemu-virtio-blk	虚拟磁盘读写流程	整合	正文、三张离线图与本地 virtio-blk 写演示统一为 8 槽、链 0→1→2；合并缓存与持久化两节，区别普通写、FLUSH 和 FUA。
+packed-virtqueue	Virtqueue：Split 与 Packed	保留	四槽练习区分设备完成与驱动回收，Split 与 Packed 可切换；无脚本说明保留同一例子。
+vhost-vdpa	vhost-vDPA：队列配置、硬件数据路径与迁移	修订	保留设备消费队列和 SVQ 转接的两种路径；结尾区分正常运行与迁移期间的成本和可恢复状态。
+qemu-aio-iothread	QEMU AioContext、协程与 IOThread	整合	保留协程挂起、BH、跨线程完成和 drain 的条件；将 virtqueue、IOThread、worker 数量的区别收在总结。
+virtio-balloon	virtio-balloon：内存回收、归还与空闲页报告	修订	把降低客户机容量明确写为气球膨胀；实测数据不变，结尾对照放气后 QMP actual 和 RSS 的不同变化。
+x86-vcpu-hotplug	x86 vCPU 热插拔：拓扑、上线与异步移除	整合	区分 QEMU 创建、客户机 online、客户机下线和最终拆除；用这些时点替换笼统的验收文案。
+kvm-vcpu-run	KVM vCPU 运行流程	保留	以 CPUID 和 MMIO 对比硬件退出与返回用户态；保留再次 KVM_RUN 完成 I/O 和宿主 trace 的边界。
+kvm-vm-creation	KVM 虚拟机创建：内存、vCPU 与中断初始化	修订	最小 C 程序保持独立；用 GPA 0x1000 取指、0x2000 写内存和端口 0xe9 说明怎样核对创建结果。
+multi-vcpu-coordination	多 vCPU 协同：从固件启动到应用并行	修订	沿固件枚举、内核上线和应用并行保留同一台四 vCPU 虚机；区分拓扑可见、任务可运行与宿主实际并行。
+kvm-vcpu-halt	KVM vCPU 的阻塞、轮询与唤醒	整合	把可调事件、轮询预算、调度等待的实验移到 30 µs 案例之后；保留防漏唤醒源码和测量方法。
+kvm-virtual-time	KVM 虚拟时钟与定时器	修订	保留 pvclock、TSC 与定时器的职责；总结仍沿 1 ms 案例区分时钟读数、到期通知和任务获调度。
+qemu-tcg	QEMU TCG 的翻译块与执行循环	修订	保留 TB 复用、失效、helper 和多 vCPU 同步；结尾区分首次翻译、热块执行及设备访问成本。
+kvm-nested-vmx	KVM 嵌套虚拟化：VMCS 合成与退出转发	整合	保留 VMCS01/12/02 与同一 OUT 的 L0/L1 分派；将按退出、缺页和 L1 拦截判断代价移到总结。
+kvm-vcpu-requests	KVM vCPU 请求与跨 CPU 同步	修订	保留请求位、kick 与 IPI 确认源码；结尾区分目标越过执行边界和操作实际完成。

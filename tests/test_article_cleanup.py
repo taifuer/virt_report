@@ -22,7 +22,7 @@ def test_qemu_migration_is_a_complete_flow_with_iteration_and_device_state():
     assert article['title'] == 'QEMU 热迁移流程'
     assert [section['id'] for section in article['sections']] == [
         'preface', 'state', 'principle', 'example', 'iteration', 'convergence',
-        'downtime', 'implementation', 'optimization', 'sources',
+        'downtime', 'implementation', 'optimization', 'summary', 'sources',
     ]
     page = render.render_mechanisms_html(Config(), article['slug'])
     for text in ('incoming', '共享存储', 'used ring', 'drain', 'bmap',

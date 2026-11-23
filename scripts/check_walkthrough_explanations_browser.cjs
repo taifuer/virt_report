@@ -190,7 +190,7 @@ const diskCases = [
             if (frame.followup) return frame.id === 'sync-return'
               ? 'R1 与独立刷新 F1 均成功，fsync 返回。' : 'R1 已完成；正在跟踪后续独立刷新 F1。';
             if (mode === 'fua') return s.completed
-              ? '上层块请求 R1 完成，数据已获持久化保证；不推断应用调用返回。' : '跟踪已有 REQ_FUA 的 R1；不模拟应用系统调用。';
+              ? '上层块请求 R1 已完成，本次写入满足 FUA 的持久化要求。' : '跟踪已有 REQ_FUA 的 R1；不模拟应用系统调用。';
             const text = s.userReturned ? (operation === 'write'
               ? 'pwrite() 已返回，可复用缓冲区；本演示未执行 flush / FUA' : 'pread() 已返回，应用可读取结果')
               : s.completed ? '块请求结束，应用调用尚未返回'

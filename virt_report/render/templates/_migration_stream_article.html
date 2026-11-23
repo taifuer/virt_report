@@ -1,7 +1,7 @@
 {% from '_mechanism_diagram.html' import diagram with context %}
 {% set qemu_source = 'https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/' %}
 <section id="preface" class="mechanism-section">
-  <h2>迁移流的组成与状态恢复</h2>
+  <h2>序言</h2>
   <p>QEMU 迁移流承载 RAM、CPU 和设备的运行状态。目的端先创建兼容的机器与设备模型，再根据流中的记录恢复源端状态：识别流格式和机器配置，解析 RAM 布局并更新页面，装载源端暂停后保存的 CPU 与设备状态，最后完成恢复执行前的检查。</p>
   <p>这条路径由两层格式配合完成：外层 section 选择处理器并校验边界，内层载荷描述页面或设备字段。以下用同一组四个内存页贯穿完整流示例，再逐层展开头部、RAM 编码、VMState 和接收流程。</p>
   {% include '_mechanism_baselines.html' %}
@@ -27,7 +27,7 @@
       <button type="button" data-mechanism-expand aria-label="放大查看 QEMU 迁移流与字段布局" hidden>放大查看</button>
     </div>
     <div class="mechanism-wire-scroll" role="region" aria-label="迁移流与字段布局全景图">
-      <img src="{{ root }}assets/migration-wire-layout.svg?v={{ mechanism_asset_version }}" alt="QEMU 迁移流全景：左侧从流头到 EOF 的连续记录，连线指向右侧配置、RAM、CPU 与设备状态的字段布局；RAM EOS 和 section footer 分层标注。" loading="lazy">
+      <img src="{{ root }}assets/migration-wire-layout.svg?v={{ mechanism_asset_version }}" width="1580" height="1640" alt="QEMU 迁移流全景：左侧从流头到 EOF 的连续记录，连线指向右侧配置、RAM、CPU 与设备状态的字段布局；RAM EOS 和 section footer 分层标注。" loading="lazy">
     </div>
     <figcaption>点击放大查看字段细节。字段宽度不按字节数等比绘制。<a href="{{ root }}assets/migration-wire-layout.svg?v={{ mechanism_asset_version }}" target="_blank" rel="noopener">打开原图</a></figcaption>
   </figure>
@@ -88,7 +88,7 @@
     <tr><td>Section Footer · <code>0x7e</code>＋ID</td><td>校验刚消费完的 section；每批都可以有，不等于整个 RAM 完成。</td></tr>
     <tr><td>EOF · <code>0x00</code></td><td>结束主状态记录循环，不等于网络连接立即关闭。</td></tr>
   </tbody></table>
-  <p><code>ram_save_iterate()</code>每次调用可以只传输部分待传页，首次扫描本身就可能跨多个 PART。停机后 <code>ram_save_complete()</code>做最终脏页同步，再用相同的页编码发送余页。流里没有统一的轮次序号；分析抓取数据时，不宜把 PART 个数当作预拷贝轮数。</p>
+  <p><code>ram_save_iterate()</code>每次调用可以只传输部分待传页，首次扫描本身就可能跨多个 PART。停机后 <code>ram_save_complete()</code>做最终脏页同步，再用相同的页编码发送余页。流里没有统一的轮次序号；一个 RAM 扫描轮次可跨多个 PART，统计轮次应识别扫描边界。</p>
 </section>
 
 <section id="device-state" class="mechanism-section">
@@ -125,6 +125,11 @@ VMSTATE_UINTTL(env.eflags, X86CPU),</code></pre>
   <p>早期设备分别手写保存与装载函数，字段顺序与条件容易在两端产生偏差。2009 年引入的<a href="https://github.com/qemu/qemu/commit/9ed7d6ae0fe7abb444c65caaadb5ef307df82c60">声明式 VMState</a>集中字段类型与读写逻辑，降低重复维护的成本，但旧式处理器仍然存在。已经发布的线格式也不会因此自动兼容：字段顺序、版本号与条件子段都必须谨慎设计。</p>
   <p>二进制流本身没有为每个字段携带名称；离线分析通常需要对应设备代码。后来增加的<a href="https://github.com/qemu/qemu/commit/8118f0950fc77cce7873002a5021172dd6e040b5">VM Description</a>在 EOF 后附加诊断 JSON，便于工具还原字段含义，并保留已有二进制编码。跨版本迁移仍受机器类型、设备字段及双方能力约束。</p>
   <p>MultiFD 将部分内存数据移到并行通道，后拷贝调整执行权交接与页面传输的先后顺序，设备并行传输也会引入独立通道。这些路径需要额外的同步协议，保证目的端恢复时各部分状态已经就绪。外层框架继续负责识别状态处理器，具体处理器负责解析载荷和检查版本兼容性。</p>
+</section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>定位恢复失败，先按外层记录的类型找到对应处理器。START/FULL 标识设备实例及版本，后续 PART/END 通过 section ID 续接；RAM 处理器解释页记录，设备处理器按各自定义装载状态。拿错实例或版本，即使字节已全部送达，也恢复不出源端的机器。</p>
 </section>
 
 <section id="sources" class="mechanism-section">

@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=1934a7814284">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1934a7814284">
-<link rel="stylesheet" href="../assets/iommufd-lab.css?v=1934a7814284"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=5eb1bb7dc04a">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=5eb1bb7dc04a">
+<link rel="stylesheet" href="../assets/iommufd-lab.css?v=5eb1bb7dc04a"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -50,10 +50,10 @@
   <div class="mechanism-layout">
     <nav class="mechanism-toc" aria-label="文章目录">
       <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
-      <ol id="mechanism-toc-links"><li><a href="#preface">一、设备分配中的地址空间管理</a></li><li><a href="#objects">二、两个文件描述符与三类对象</a></li><li><a href="#setup">三、一块 VF 从打开到可用</a><ol><li><a href="#setup-part-1">1. 打开与绑定</a></li><li><a href="#setup-part-2">2. 分配地址空间与附着页表</a></li><li><a href="#setup-part-3">3. 注册 RAM 映射</a></li></ol></li><li><a href="#lifecycle">四、映射建立后的 DMA 与资源回收</a></li><li><a href="#sharing">五、共享与失败处理</a></li><li><a href="#implementation">六、源码中的控制路径</a></li><li><a href="#evolution">七、从 VFIO Container 到独立的页表管理</a></li><li><a href="#sources">八、参考资料</a></li></ol>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a></li><li><a href="#objects">二、两个文件描述符与三类对象</a></li><li><a href="#setup">三、一块 VF 从打开到可用</a><ol><li><a href="#setup-part-1">1. 打开与绑定</a></li><li><a href="#setup-part-2">2. 分配地址空间与附着页表</a></li><li><a href="#setup-part-3">3. 注册 RAM 映射</a></li></ol></li><li><a href="#lifecycle">四、映射建立后的 DMA 与资源回收</a></li><li><a href="#sharing">五、共享与失败处理</a></li><li><a href="#implementation">六、源码中的控制路径</a></li><li><a href="#evolution">七、从 VFIO Container 到独立的页表管理</a></li><li><a href="#summary">八、总结</a></li><li><a href="#sources">九、参考资料</a></li></ol>
     </nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
-<h2><span class="mechanism-heading-number">一、</span>设备分配中的地址空间管理</h2>
+<h2><span class="mechanism-heading-number">一、</span>序言</h2>
 <p>把一块网卡 VF 分配给虚拟机，需要同时建立两类访问：客户机通过设备寄存器提交请求，网卡通过 DMA 访问客户机内存。VFIO 提供设备区域、配置空间和中断接口；IOMMUFD 管理 DMA 使用的地址空间与硬件页表。两者通过设备绑定和页表附着连接起来。</p>
 <p>本文沿一块 PCIe VF 的接入过程展开：打开设备，建立 DMA 所有权，准备 I/O 地址空间，把客户机 RAM 映射进去，最后停止设备并回收资源。采用 x86 / KVM、普通可固定的 RAM、无客户机虚拟 IOMMU 的配置。设备发出的 IOVA 与 GPA 数值相同，宿主 IOMMU 再把它转换为 HPA。地址转换本身见 <a href="iommu-dma.html">IOMMU：DMA 地址转换、缓存与失效</a>，这里重点分析转换关系的建立与管理。</p>
 <p class="mechanism-baselines">源码版本：QEMU 10.2.0、Linux 6.18。</p>
@@ -82,7 +82,7 @@
 </tr>
 </tbody>
 </table>
-<p><code>dev_id</code>、<code>ioas_id</code> 和 <code>hwpt_id</code> 都是 IOMMUFD 上下文里的对象编号，不能当作 Linux 文件描述符传给 <code>close()</code>。同一编号在另一个独立打开的 IOMMUFD 上下文中，也不代表同一对象。</p>
+<p><code>dev_id</code>、<code>ioas_id</code> 和 <code>hwpt_id</code> 都是 IOMMUFD 上下文里的对象编号，不能当作 Linux 文件描述符传给 <code>close()</code>。同一编号由各自的 IOMMUFD 上下文独立解释。</p>
 <table>
 <thead>
 <tr>
@@ -109,16 +109,16 @@
 </tr>
 </tbody>
 </table>
-<p>IOAS 统一表达映射，HWPT 把这些映射落实到具体 IOMMU 能使用的页表。一个 IOAS 可以关联多个 HWPT：兼容的设备可共享已有 HWPT；无法共用同一硬件页表、但允许共享这组映射的设备，可以使用另一个 HWPT。内核维护这些 HWPT 中一致的 IOVA 映射。<strong>共享 IOAS 也意味着共享 DMA 可见的地址范围</strong>，不能据此把相互不信任的设备放入同一地址空间。</p>
+<p>IOAS 统一表达映射，HWPT 把这些映射落实到具体 IOMMU 能使用的页表。一个 IOAS 可以关联多个 HWPT：兼容的设备可共享已有 HWPT；无法共用同一硬件页表、但允许共享这组映射的设备，可以使用另一个 HWPT。内核维护这些 HWPT 中一致的 IOVA 映射。<strong>共享 IOAS 的设备可访问同一组 DMA 地址</strong>，相互不信任的设备应使用隔离的地址空间。</p>
 <figure class="mechanism-diagram" data-diagram="iommufd-objects" data-mechanism-view="diagram">
   <div class="mechanism-view-heading">
     <span data-mechanism-title>IOMMUFD 中的设备、逻辑地址空间与硬件页表</span>
     <button type="button" data-mechanism-expand aria-label="放大查看IOMMUFD 中的设备、逻辑地址空间与硬件页表" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="IOMMUFD 中的设备、逻辑地址空间与硬件页表">
-    <img src="../assets/iommufd-objects.svg?v=1934a7814284" alt="上半部分是用户态管理入口，下半部分是对象关系。第二块设备和 HWPT 展示同一 IOAS 的扩展方式；它们不属于后文单 VF 演示的必需对象。" loading="lazy">
+    <img src="../assets/iommufd-objects.svg?v=5eb1bb7dc04a" width="748" height="648" alt="上半部分是用户态管理入口，下半部分是对象关系。第二块设备和 HWPT 展示同一 IOAS 的扩展方式；它们不属于后文单 VF 演示的必需对象。" loading="lazy">
   </div>
-  <figcaption>上半部分是用户态管理入口，下半部分是对象关系。第二块设备和 HWPT 展示同一 IOAS 的扩展方式；它们不属于后文单 VF 演示的必需对象。 <a href="../assets/iommufd-objects.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>上半部分是用户态管理入口，下半部分是对象关系。第二块设备和 HWPT 展示同一 IOAS 的扩展方式；它们不属于后文单 VF 演示的必需对象。 <a href="../assets/iommufd-objects.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: IOMMUFD 的文件描述符与对象关系
     accDescr: QEMU 分别通过 VFIO 设备文件和 IOMMUFD 文件管理设备及页表；DEVICE 附着到 HWPT，HWPT 关联统一的 IOAS 映射。兼容设备可共享硬件页表，其他设备可以通过另一个硬件页表共享 IOAS。
@@ -179,9 +179,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看单个 VF 的初始化、运行与回收" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="单个 VF 的初始化、运行与回收">
-    <img src="../assets/iommufd-lifecycle.svg?v=1934a7814284" alt="初始化沿 QEMU 的先附着、后映射顺序；回收示意显式释放依赖。正常 DMA 位于设备与宿主内存之间，用户态只参与配置和生命周期管理。" loading="lazy">
+    <img src="../assets/iommufd-lifecycle.svg?v=5eb1bb7dc04a" width="927" height="1180" alt="初始化沿 QEMU 的先附着、后映射顺序；回收示意显式释放依赖。正常 DMA 位于设备与宿主内存之间，用户态只参与配置和生命周期管理。" loading="lazy">
   </div>
-  <figcaption>初始化沿 QEMU 的先附着、后映射顺序；回收示意显式释放依赖。正常 DMA 位于设备与宿主内存之间，用户态只参与配置和生命周期管理。 <a href="../assets/iommufd-lifecycle.svg?v=1934a7814284" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>初始化沿 QEMU 的先附着、后映射顺序；回收示意显式释放依赖。正常 DMA 位于设备与宿主内存之间，用户态只参与配置和生命周期管理。 <a href="../assets/iommufd-lifecycle.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 单个 VF 的 IOMMUFD 生命周期
     accDescr: QEMU 先绑定 VFIO 设备，再分配 IOAS 和 HWPT，附着设备，映射 RAM；设备使用映射进行 DMA。停止队列和在途 DMA 后，解除关联、撤销映射并回收对象及文件描述符。
@@ -394,11 +394,14 @@
 </tr>
 </tbody>
 </table>
-<p>QEMU 10.2 已在 <code>hw/vfio/iommufd.c</code> 查询 <code>IOMMU_HW_CAP_DIRTY_TRACKING</code>，具备能力时请求 <code>IOMMU_HWPT_ALLOC_DIRTY_TRACKING</code>，并实现跟踪启停及位图读取。它并不代表所有平台都提供该能力，也不代表任何直通设备都能热迁移。设备状态保存、队列停止、DMA 一致性以及目标端兼容性仍需共同满足。能力门控与 HWPT 分配、脏页跟踪操作</p>
-<p>对最初的网卡 VF，正常运行的数据路径依旧是设备通过 IOMMU 访问 RAM。IOMMUFD 的主要收益体现在地址空间表达、能力扩展与资源管理上。评估时应分别测量接入与大内存映射耗时、运行期 I/O 性能、动态映射更新和回收成本，不能仅凭更换接口就推导吞吐提升。</p>
+<p>QEMU 10.2 已在 <code>hw/vfio/iommufd.c</code> 查询 <code>IOMMU_HW_CAP_DIRTY_TRACKING</code>，具备能力时请求 <code>IOMMU_HWPT_ALLOC_DIRTY_TRACKING</code>，并实现跟踪启停及位图读取。部署时须分别核对平台能力和所用直通设备的迁移支持。设备状态保存、队列停止、DMA 一致性以及目标端兼容性仍需共同满足。能力门控与 HWPT 分配、脏页跟踪操作</p>
+</section>
+<section id="summary" class="mechanism-section">
+<h2><span class="mechanism-heading-number">八、</span>总结</h2>
+<p>对最初的网卡 VF，正常运行的数据路径依旧是设备通过 IOMMU 访问 RAM。IOMMUFD 的主要收益体现在地址空间表达、能力扩展与资源管理上。接口变化的成本要分项测量：接入、大内存映射、运行期 I/O，以及动态映射的更新和回收。</p>
 </section>
 <section id="sources" class="mechanism-section">
-<h2><span class="mechanism-heading-number">八、</span>参考资料</h2>
+<h2><span class="mechanism-heading-number">九、</span>参考资料</h2>
 <ul>
 <li><a href="https://docs.kernel.org/6.18/userspace-api/iommufd.html">Linux 6.18：IOMMUFD 用户 API</a>：IOAS、HWPT、设备绑定及对象生命周期。</li>
 <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/driver-api/vfio.rst">Linux：VFIO 设备与隔离组</a>：cdev 接口、DMA 所有权及 group 隔离。</li>
@@ -415,6 +418,6 @@
   <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=1934a7814284" defer></script>
-<script src="../assets/iommufd-lab.js?v=1934a7814284" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=5eb1bb7dc04a" defer></script>
+<script src="../assets/iommufd-lab.js?v=5eb1bb7dc04a" defer></script></body>
 </html>

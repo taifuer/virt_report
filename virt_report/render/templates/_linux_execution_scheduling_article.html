@@ -1,7 +1,7 @@
 {% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 {% from '_mechanism_diagram.html' import diagram with context %}
 <section id="preface" class="mechanism-section">
-  <h2>线程与执行上下文</h2>
+  <h2>序言</h2>
   <p>Linux 用 <code>task_struct</code> 描述可调度的任务。同一进程的多个线程通常共享地址空间和文件表，各自保留寄存器现场、内核栈和调度状态。</p>
   <p>线程调用 <code>read()</code> 时，由该线程进入内核执行系统调用。需要等待数据或发生抢占时，调度器才可能切换到其他任务。用户态到内核态的转换改变执行权限，线程上下文切换则改变当前运行的任务。</p>
   {% include '_mechanism_baselines.html' %}
@@ -105,7 +105,7 @@
 </section>
 <section id="observe" class="mechanism-section">
   <h2>只读观察与虚拟化对照</h2>
-  <p>可在自己的实验机用 <code>ps -eLo pid,tid,psr,stat,comm</code> 区分进程和线程，用 <code>/proc/PID/task/TID/status</code> 查看任务状态与切换计数。PSR 是最近使用的 CPU，不承诺后续固定在那里；采样也可能错过短暂的运行和等待。读取这些信息不需要改变调度策略，权限仍取决于系统配置。</p>
+  <p>可在自己的实验机用 <code>ps -eLo pid,tid,psr,stat,comm</code> 区分进程和线程，用 <code>/proc/PID/task/TID/status</code> 查看任务状态与切换计数。PSR 显示线程最近运行的 CPU，后续调度可将它迁到别处；采样也可能错过短暂的运行和等待。读取这些信息不需要改变调度策略，权限仍取决于系统配置。</p>
   <table><thead><tr><th>观察入口</th><th>可以回答的问题</th><th>统计边界</th></tr></thead><tbody>
     <tr><td><code>/proc/PID/task/TID/status</code></td><td>线程标识、状态、允许的 CPU，以及自愿／非自愿切换计数</td><td>切换次数不包含每次等待持续了多久</td></tr>
     <tr><td><code>/proc/PID/task/TID/stat</code></td><td>累计用户态、内核态 CPU 时间</td><td>时间字段按时钟滴答计，阻塞期间没有持续累加为执行时间</td></tr>
@@ -116,6 +116,12 @@
   <p>QEMU 的 vCPU 线程仍是宿主可调度任务。Guest 调度器先决定让哪个 Guest 线程占用 vCPU，宿主调度器再决定该 vCPU 线程何时占用物理 CPU；Guest 已经“可运行”，宿主却可能没给它 CPU。VM-exit 只是离开 Guest 执行环境，宿主线程可以继续在 KVM 中处理，并不必然被换出。</p>
   <p>Guest 空闲时，HLT exiting 与 halt polling 等配置决定宿主是否继续执行、轮询或睡眠，见 <a href="kvm-vcpu-halt.html">KVM vCPU 阻塞、轮询与唤醒</a>。</p>
 </section>
+
+<section id="summary" class="mechanism-section">
+  <h2>总结</h2>
+  <p>系统调用可以在当前线程上直接返回；等待数据才可能让出 CPU。定位一次迟到，把线程睡眠到被唤醒的时间与唤醒后排队等 CPU 的时间分开。前者看等待的资源，后者看可运行线程、亲和性和 CPU 配额。</p>
+</section>
+
 <section id="sources" class="mechanism-section">
   <h2>源码与参考资料</h2>
   <ul>

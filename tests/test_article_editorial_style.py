@@ -8,9 +8,17 @@ from virt_report.config import Config
 from virt_report.render import render
 
 
+# Target stock editorial caveats without banning useful technical conditions.
+STOCK_CAVEAT = re.compile(
+    r"(?:不能|无法|不足以)(?:据此|由此)(?:认定|断言|声称|推断)"
+    r"|(?:不足以|不能单独|不能直接)证明|不能据此概括"
+)
+
+
 @pytest.mark.parametrize("article", mechanisms.articles(), ids=lambda article: article["slug"])
 def test_articles_omit_redundant_scope_commentary(article):
     page = render.render_mechanisms_html(Config(), article["slug"])
+    assert not STOCK_CAVEAT.search(page)
     # These are discarded editorial asides, not restrictions on words such as
     # "不" or on useful qualifications about ownership, completion and errors.
     for phrase in (

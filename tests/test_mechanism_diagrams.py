@@ -55,7 +55,9 @@ def test_diagram_registry_matches_sources_and_exported_assets():
 def test_inline_diagrams_do_not_upscale_or_fill_multiple_screens():
     css = (render.ASSETS_DIR / "mechanisms.css").read_text()
     rule = re.search(r"\.mechanism-diagram-scroll img\{([^}]+)\}", css).group(1)
-    assert "width:auto;" in rule
+    # The HTML width reserves the natural size while lazy SVGs are pending.
+    assert "width:100%;" not in rule.replace("max-width:100%;", "")
+    assert "object-fit:contain" in rule
     assert "height:auto;" in rule
     assert "max-width:100%;" in rule
     assert "max-height:min(640px,70svh);" in rule
@@ -64,6 +66,15 @@ def test_inline_diagrams_do_not_upscale_or_fill_multiple_screens():
     viewer = (render.ASSETS_DIR / "mechanism-viewer.css").read_text()
     assert ".mechanism-viewer-image" in viewer
     assert "max-height:" not in viewer.split(".mechanism-viewer-image{", 1)[1].split("}", 1)[0]
+
+
+def test_lazy_diagrams_reserve_their_intrinsic_space_for_deep_links():
+    page = render.render_mechanisms_html(Config(), "vfio-device-migration")
+    for name in ("vfio-migration-handoff", "vfio-migration-consistency"):
+        svg = ElementTree.parse(render.ASSETS_DIR / f"{name}.svg").getroot()
+        size = [round(float(svg.attrib[key])) for key in ("width", "height")]
+        image = re.search(rf'<img src="[^"]*/{name}\.svg[^"]*"[^>]*>', page).group()
+        assert f'width="{size[0]}" height="{size[1]}"' in image and 'loading="lazy"' in image
 
 
 @pytest.mark.parametrize("slug", [article['slug'] for article in mechanisms.articles()])

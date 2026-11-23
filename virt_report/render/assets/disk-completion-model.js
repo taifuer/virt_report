@@ -76,7 +76,7 @@
         flow: 'sequence', relations: [],
         sourceIds: ['scsi-linux-queue', 'scsi-linux-cdb', 'scsi-linux-rw10', 'scsi-linux-command',
           'scsi-linux-sg', 'scsi-linux-add', 'ring-add', 'ring-publish', 'kick-check', 'pci-notify'],
-        boundary: 'R1 和有效输入页已存在；这里只展示 REQ_FUA 到 CDB 再到共享队列的路径，不推断上层调用方式。',
+        boundary: 'R1 和有效输入页已存在；这里从已有 REQ_FUA 块请求开始，跟踪 CDB 和共享队列。',
       });
       const completedPath = scene.callPaths.find(path => path.id === 'guest-scsi-completion');
       completedPath.sourceIds = completedPath.sourceIds.filter(id => id !== 'guest-wait-complete');
@@ -86,7 +86,7 @@
       scene.callPaths.push({id: 'fua-contract', title: 'R1 的 FUA 完成要求', context: 'Guest SCSI → QEMU 文件后端',
         flow: 'sequence',
         sourceIds: ['sync-scsi-fua', 'sync-scsi-detect', 'sync-file-fua', 'sync-layers', 'sync-file'],
-        boundary: '已有 REQ_FUA 经 SCSI CDB 传递；本例 threads 文件后端在写入后同步。没有第二条 Guest FUA 命令，也不代表完整 O_DSYNC 应用路径。'});
+        boundary: '已有 REQ_FUA 经 SCSI CDB 传递；本例 threads 文件后端在写入后同步。该例展示一个块请求及其完成条件，O_DSYNC 应用还涉及文件系统同步。'});
       Object.assign(frames[0], {
         id: 'fua-ready', title: '已有 FUA 块请求 R1',
         description: '上层已提交携带 REQ_FUA 的 4 KiB 写请求；R1 的输入页有效，blk-mq 开始交给 SCSI 中间层。',
@@ -108,7 +108,7 @@
       Object.assign(frames.find(frame => frame.id === 'finish-request'), {
         id: 'fua-upper-complete', phase: 'return', title: '上层块请求完成',
         description: 'scsi_end_request 清理 SCSI 命令并结束 R1；该次写入已获得下层承诺的持久化保证。',
-        detail: '演示止于块请求完成。FUA 约束的是这条命令的成功条件，不保证所有无关前序写入，也不能据此宣称某个应用系统调用已经返回。',
+        detail: '演示止于块请求完成。FUA 的保证针对这条写命令；上层系统调用另有完成条件。',
       });
       const cdb = frames.find(frame => frame.id === 'scsi-build-cdb');
       cdb.description = '支持 FUA 的 SCSI 设备把 REQ_FUA 编码为 WRITE(10) CDB 的 FUA 位。'; cdb.sourceIds.push('sync-scsi-fua');
@@ -163,7 +163,7 @@
         ['flush-inject','F1 中断成功注入','kvm','flush-completion',['event-inject','vmx-inject','vmx-entry'],['interrupt'],null,{irqInjected:true},'本例 IF 与优先级允许，成功 VM-entry 后中断递送给 Guest。'],
         ['flush-handler','Guest 处理中断','guest','flush-completion',['guest-irq','guest-done'],['reclaim'],{from:'interrupt',to:'reclaim',kind:'notification',label:'Guest 完成回调'},{irqHandled:true},'Guest 驱动开始检查 used 环，fsync 尚未返回。'],
         ['flush-reclaim','Guest 回收 F1','guest','flush-completion',['guest-reclaim','guest-done','guest-end','guest-bio-end','guest-wait-complete'],['reclaim','queue'],null,{reclaimed:true},'驱动消费第二个 used 项，回收两个描述符，再结束刷新等待。'],
-        ['sync-return','fsync 返回成功','guest-user','sync-return',['sync-fsync'],['application'],null,{},'R1 的写入与后续 F1 刷新均成功；fsync 返回 0。不模拟掉电实验，也不承诺失效硬件的行为。'],
+        ['sync-return','fsync 返回成功','guest-user','sync-return',['sync-fsync'],['application'],null,{},'R1 的写入与后续 F1 刷新均成功；fsync 返回 0。掉电恢复取决于设备实际兑现的持久化约定。'],
       ];
       let stable = false;
       for (const [id,title,actor,phase,sourceIds,active,edge,patch,detail] of events) {

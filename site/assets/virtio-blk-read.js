@@ -426,7 +426,7 @@
       for (const key of ['host', 'device', 'stable']) setText(`[data-vbr-durable-${key}]`, frame.durability[key]);
       durability.dataset.confirmed = String(frame.durability.stableConfirmed);
       if (frame.durability.stableConfirmed) setText('[data-vbr-node-state="storage"]', '本次数据已确认持久化');
-      if (completionMode === 'fua') ownership = s.completed ? '上层块请求 R1 完成，数据已获持久化保证；不推断应用调用返回。' : '跟踪已有 REQ_FUA 的 R1；不模拟应用系统调用。';
+      if (completionMode === 'fua') ownership = s.completed ? '上层块请求 R1 已完成，本次写入满足 FUA 的持久化要求。' : '跟踪已有 REQ_FUA 的 R1；不模拟应用系统调用。';
     }
     if (frame.followup) {
       setText('[data-vbr-buffer-title]', 'Buffers');
