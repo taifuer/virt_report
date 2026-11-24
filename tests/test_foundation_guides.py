@@ -9,13 +9,12 @@ from virt_report.render import render
 
 
 @pytest.mark.parametrize('slug,sequence', [
-    ('virtualization-basics', ['preface', 'isolation', 'devices', 'architecture', 'example', 'evolution', 'tradeoffs']),
+    ('virtualization-basics', ['preface', 'isolation', 'devices', 'architecture', 'example', 'tradeoffs']),
     ('cpu-virtualization', ['preface', 'paths', 'walkthrough', 'comparison', 'evolution', 'evaluation']),
     ('memory-virtualization', ['preface', 'addresses', 'evolution', 'access', 'walkthrough',
                                'address-routing', 'comparison', 'evaluation', 'verification', 'experiment']),
-    ('interrupt-virtualization', ['preface', 'example', 'controllers', 'notification',
-                                  'delivery', 'irqfd', 'acceleration', 'walkthrough',
-                                  'implementation', 'evolution', 'evaluation']),
+    ('interrupt-virtualization', ['preface', 'controllers', 'notification', 'delivery',
+                                  'acceleration', 'walkthrough', 'evaluation']),
 ])
 def test_foundation_guides_introduce_principles_before_examples_and_tradeoffs(slug, sequence):
     article = mechanisms.get_article(slug)
@@ -40,7 +39,7 @@ def test_interrupt_guide_compares_distinct_layers_and_preserves_previous_anchors
     for concept in ('PIC', 'I/O APIC', 'MSI-X', 'in-kernel irqchip', 'split irqchip',
                     'irqfd', 'APICv', 'AVIC', 'VT-d', 'IRR', 'EOI', 'NAPI'):
         assert concept in page
-    assert 'lwn.net/Articles/329837/' in article_source('interrupt-virtualization')
+    assert '/v2.6.32/virt/kvm/eventfd.c' in article_source('interrupt-virtualization')
 
 
 def test_interrupt_guide_traces_software_delivery_before_acceleration():
@@ -54,8 +53,9 @@ def test_interrupt_guide_traces_software_delivery_before_acceleration():
     assert page.index('data-diagram="interrupt-software-delivery"') < page.index('id="acceleration"')
     # Message semantics and host event delivery must not be taught as one layer.
     assert 'MSI-X / irqfd 路由' not in page
-    assert '现在把收包处理从 QEMU 切换到 vhost-net' in page
-    assert '换成 VFIO 分配的物理设备后' in page
+    routes = page.split('<section id="acceleration"', 1)[1].split('</section>', 1)[0]
+    assert all(term in routes for term in ('vhost-net', 'KVM_SET_GSI_ROUTING',
+                                           'VFIO', 'IRTE', 'PID.PIR'))
     source = (render.ASSETS_DIR.parents[1] / 'content/diagrams'
               / 'interrupt-software-delivery.mmd').read_text()
     assert source.index('Linux 边沿应答') < source.index('V->>K: EOI') < source.index('驱动回调 → NAPI')
@@ -63,7 +63,7 @@ def test_interrupt_guide_traces_software_delivery_before_acceleration():
 
 @pytest.mark.parametrize('slug,sequence', [
     ('kvm-vcpu-run', ['paths', 'structures', 'completion', 'notifications']),
-    ('interrupt-virtualization', ['notification', 'msix', 'delivery', 'structures', 'irqfd']),
+    ('interrupt-virtualization', ['structures', 'notification', 'msix', 'delivery', 'irqfd']),
     ('libvirt-rpc', ['layers', 'framing', 'dispatch', 'responses']),
 ])
 def test_request_walkthrough_finishes_baseline_before_comparisons(slug, sequence):
@@ -119,7 +119,7 @@ def test_component_guides_have_local_example_diagrams_and_state_handoffs(slug, d
 def test_device_comparison_retains_negotiation_without_repeating_protocol_detail():
     page = render.render_mechanisms_html(Config(), 'virtualization-basics')
     initialization = page.split('<section id="devices"', 1)[1].split('</section>', 1)[0]
-    assert '先协商特性、配置队列' in initialization
+    assert '特性协商、配置队列' in initialization
     for interface in ('e1000', 'virtio-net', 'vhost-user', 'VFIO', 'SR-IOV', 'vDPA'):
         assert interface in initialization
     assert 'FEATURES_OK' not in initialization

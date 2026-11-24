@@ -11,7 +11,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from virt_report.config import Config
-from virt_report import db
+from virt_report import db, industry
 from virt_report.locking import process_lock
 from virt_report.summarize import periods
 
@@ -82,8 +82,13 @@ def scheduled_commands(config: Config, now: datetime) -> list[tuple[str, list[st
             *backup_retention,
         ]),
     ]
-    return [(name, command) for name, expression, command in jobs
-            if cron_matches(expression, now)]
+    due = [(name, command) for name, expression, command in jobs if cron_matches(expression, now)]
+    if config.schedule.industry_cron and cron_matches(config.schedule.industry_cron, now.astimezone(industry.BEIJING)):
+        command = ["industry-draft", industry.previous_week(now)]
+        if config.schedule.industry_draft_ai:
+            command.append("--ai")
+        due.append(("industry", command))
+    return due
 
 
 def due_commands(config: Config, since: datetime,
@@ -312,7 +317,7 @@ def _run_loop(config: Config, config_path: str | None, timezone: ZoneInfo,
                     name not in REPORT_JOBS or
                     _report_exists(config, name, command)
                 )
-                status = ("success" if healthy else "partial" if name == "fetch" and result.returncode == 3
+                status = ("success" if healthy else "partial" if name in {"fetch", "industry"} and result.returncode == 3
                           else "coverage_wait" if name in REPORT_JOBS and result.returncode == 4
                           else "fallback" if result.returncode == 0 else "failed")
             except subprocess.TimeoutExpired:

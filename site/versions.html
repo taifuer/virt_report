@@ -33,7 +33,7 @@
         <a href="topics.html" class="">专题</a>
         <a href="conferences.html" class="">会议</a>
         <a href="versions.html" class="on" aria-current="page">版本</a>
-        <a href="mechanisms.html" class="">原理</a>
+        <a href="industry/index.html" class="">产业</a>
         <a href="about.html" class="">关于</a>
         <a href="search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -56,11 +56,11 @@
     </div>
     <p class="version-view-note" data-version-help>精简显示所选范围内全部功能版本；切换详细视图可查看发布要点与相关统计。</p>
     <div id="virtio-specifications" class="version-topic-note" data-version-spec-note hidden>
-      <p>这里收录早期草案 0.8.7、Legacy 经典规范 0.9.5 与 OASIS 1.x 规范。CS 为委员会规范，CSD 为委员会规范草案。日期取自文档封面；0.8.7 是可核验的早期版本，尚不能据此认定它是首版。<a href="mechanisms/virtio-device-initialization.html#evolution">协议演进与兼容关系</a></p>
+      <p>这里收录早期草案 0.8.7、Legacy 经典规范 0.9.5 与 OASIS 1.x 规范。CS 为委员会规范，CSD 为委员会规范草案。日期取自文档封面；0.8.7 是此处收录最早的编号草案。<a href="mechanisms/virtio-device-initialization.html#evolution">协议演进与兼容关系</a></p>
       <details>
         <summary>实际部署：Legacy、Modern 与驱动包版本</summary>
-        <p>面向现代客户机，选型通常以 1.0 起的 Modern 接口为基础；兼容旧驱动时可使用同时提供 Legacy 与 Modern 接口的 transitional PCI 设备。Libvirt 默认建议使用通用的 <code>virtio</code> 模型；显式选择 PCI 变体时，无旧客户机兼容要求可选 <code>virtio-non-transitional</code>。这是接口选型建议，不能据此推断各版本的部署占比。<a href="https://www.libvirt.org/formatdomain.html#virtio-device-models" target="_blank" rel="noopener noreferrer">Libvirt 设备模型说明</a></p>
-        <p>运行时由驱动与设备协商特性位。<code>VIRTIO_F_VERSION_1</code> 标识 Modern 接口，packed ring 等能力还需分别协商；使用 split 队列也不能据此判定为 0.9.5。1.1、1.2、1.4 是规范修订号，目前缺乏可核验的部署统计来判断哪个小版本使用最多。原理文章会分别标明规范依据与源码版本。<a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html#x1-140002" target="_blank" rel="noopener noreferrer">特性协商规则</a></p>
+        <p>面向现代客户机，选型通常以 1.0 起的 Modern 接口为基础；兼容旧驱动时可使用同时提供 Legacy 与 Modern 接口的 transitional PCI 设备。Libvirt 默认建议使用通用的 <code>virtio</code> 模型；显式选择 PCI 变体时，无旧客户机兼容要求可选 <code>virtio-non-transitional</code>。<a href="https://www.libvirt.org/formatdomain.html#virtio-device-models" target="_blank" rel="noopener noreferrer">Libvirt 设备模型说明</a></p>
+        <p>运行时由驱动与设备协商特性位。<code>VIRTIO_F_VERSION_1</code> 标识 Modern 接口，packed ring 等能力还需分别协商；Legacy 和 Modern 设备都可以使用 split 队列。1.1、1.2、1.4 是规范修订号，目前缺乏可核验的部署统计来判断哪个小版本使用最多。原理文章会分别标明规范依据与源码版本。<a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html#x1-140002" target="_blank" rel="noopener noreferrer">特性协商规则</a></p>
         <p><code>virtio-win 0.1.xxx</code> 则是 Windows 驱动包的版本号，与上面的协议版本分开编号。<a href="https://github.com/virtio-win/kvm-guest-drivers-windows/wiki/Builds-and-tags-mapping" target="_blank" rel="noopener noreferrer">驱动构建与版本对应</a></p>
       </details>
     </div>
@@ -997,7 +997,7 @@
                 </div>
               </div>
               <div class="version-detail">
-<ul class="version-notes"><li>新增 KVM_SET_MEMORY_ATTRIBUTES，用于配置来宾内存逐页属性并配合 guest_memfd。</li><li>x86 增加用于验证该基础设施的软件保护虚机类型；它本身不等同于机密计算安全保障。</li></ul>              </div>
+<ul class="version-notes"><li>新增 KVM_SET_MEMORY_ATTRIBUTES，用于配置来宾内存逐页属性并配合 guest_memfd。</li><li>x86 增加软件保护虚机类型，用于测试内存属性接口。</li></ul>              </div>
             </div>
           </li>
           <li class="version-entry" id="release-libvirt-10.1.0" data-version-item data-project="libvirt" data-kind="feature" data-year="2024" data-topics="virtio" hidden>
@@ -2295,7 +2295,7 @@
                 </div>
               </div>
               <div class="version-detail">
-<ul class="version-notes"><li>Arm 架构专用代码集中到 arch/arm64/kvm，继续清理移除 32 位宿主支持后的代码。</li><li>合入部分非侵入式嵌套虚拟化前置改造，尚不代表完整嵌套支持。</li></ul>              </div>
+<ul class="version-notes"><li>Arm 架构专用代码集中到 arch/arm64/kvm，继续清理移除 32 位宿主支持后的代码。</li><li>这一版合入了部分嵌套虚拟化的前置改造。</li></ul>              </div>
             </div>
           </li>
           <li class="version-entry" id="release-spdk-20.07" data-version-item data-project="spdk" data-kind="feature" data-year="2020" data-topics="" hidden>
@@ -2347,7 +2347,7 @@
                 </div>
               </div>
               <div class="version-detail">
-<ul class="version-notes"><li>x86 可在启用脏页记录时将位图初始置满，避免立即批量修改页表。</li><li>Arm 增加 GICv4.1 支持，并移除 32 位 Arm 宿主支持；不等同于移除所有 32 位来宾。</li></ul>              </div>
+<ul class="version-notes"><li>x86 可在启用脏页记录时将位图初始置满，避免立即批量修改页表。</li><li>Arm 增加 GICv4.1 支持，并移除 32 位 Arm 宿主支持；这项移除针对的是宿主端。</li></ul>              </div>
             </div>
           </li>
           <li class="version-entry" id="release-dpdk-20.05.0" data-version-item data-project="dpdk" data-kind="feature" data-year="2020" data-topics="" hidden>
@@ -2511,7 +2511,7 @@
                 </div>
               </div>
               <div class="version-detail">
-<div class="version-topic-tags" aria-label="相关主题"><span>设备直通 / VFIO</span><span>热迁移</span></div><ul class="version-notes"><li>VFIO PCI 设备增加 failover_pair_id，为网络故障切换式迁移提供设备配对；不等同于任意直通设备都可迁移。</li><li>改善 LUKS 磁盘 AES-XTS 加密性能，并增加用于指令与内存访问观察的 TCG 插件机制。</li></ul><div class="version-meta">
+<div class="version-topic-tags" aria-label="相关主题"><span>设备直通 / VFIO</span><span>热迁移</span></div><ul class="version-notes"><li>VFIO PCI 设备增加 failover_pair_id，为网络故障切换式迁移提供设备配对；网络流量可在切换期间经备用设备转发。</li><li>改善 LUKS 磁盘 AES-XTS 加密性能，并增加用于指令与内存访问观察的 TCG 插件机制。</li></ul><div class="version-meta">
 <span>2200+ 次提交</span><span>198 位贡献者</span>                </div>              </div>
             </div>
           </li>
@@ -4007,7 +4007,7 @@
                 </div>
               </div>
               <div class="version-detail">
-<div class="version-topic-tags" aria-label="相关主题"><span>虚拟 I/O / virtio</span></div><ul class="version-notes"><li>virtio-pci 可显式启用 virtio 1 模式，也可禁用旧接口创建 non-transitional 设备。</li><li>Arm virt 默认磁盘接口改为 virtio；当时 64 位来宾的 PCI 驱动支持仍有限，不能视为所有来宾均可直接切换。</li></ul><div class="version-meta">
+<div class="version-topic-tags" aria-label="相关主题"><span>虚拟 I/O / virtio</span></div><ul class="version-notes"><li>virtio-pci 可显式启用 virtio 1 模式，也可禁用旧接口创建 non-transitional 设备。</li><li>Arm virt 默认磁盘接口改为 virtio；切换前需核对 64 位来宾的 PCI 驱动支持。</li></ul><div class="version-meta">
 <a href="https://wiki.qemu.org/ChangeLog/2.4" target="_blank" rel="noopener noreferrer">发布要点来源</a>                </div>              </div>
             </div>
           </li>
@@ -5392,7 +5392,7 @@
 <a class="version-source" href="https://ozlabs.org/~rusty/virtio-spec/old/virtio-spec-0.8.7.pdf" target="_blank" rel="noopener noreferrer">下载 PDF</a>                </div>
               </div>
               <p class="version-spec-stage" data-draft="true"><strong>Legacy</strong> · 早期规范草案</p>
-<div class="version-detail"><ul class="version-notes" aria-label="规范核心要点"><li>可核验的早期 Virtio PCI 草案，封面日期为 2010 年 4 月 20 日；用于了解 OASIS 标准化之前的接口约定。</li><li>Virtio 的公开接口设计在 2007 年已有讨论。0.8.7 是这里收录的历史文档，不据此认定为协议首版；维护者仓库中的 2012 年导入时间也不作为发布日期。</li><li>阅读早期设备布局时应与 1.0 起的 Modern 接口区分；当前设备的实际功能仍需根据驱动与设备的特性协商结果判断。</li></ul></div>            </div>
+<div class="version-detail"><ul class="version-notes" aria-label="规范核心要点"><li>可核验的早期 Virtio PCI 草案，封面日期为 2010 年 4 月 20 日；用于了解 OASIS 标准化之前的接口约定。</li><li>Virtio 的公开接口设计在 2007 年已有讨论。0.8.7 是本页收录最早的编号草案；文档日期取自封面，2012 年是维护者将文件导入仓库的时间。</li><li>阅读早期设备布局时应与 1.0 起的 Modern 接口区分；当前设备的实际功能仍需根据驱动与设备的特性协商结果判断。</li></ul></div>            </div>
           </li>
           <li class="version-entry" id="release-libvirt-0.8.0" data-version-item data-project="libvirt" data-kind="feature" data-year="2010" data-topics="" hidden>
             <time class="version-date" datetime="2010-04-12">2010-04-12</time>
@@ -6394,13 +6394,13 @@
   <div class="version-sources" data-version-software-sources>
     <p>两种视图均展示正式功能版本，不仅限于整数大版本；不列出维护补丁及 RC。最近检查：2026-11-09。</p>
     <p>QEMU 自 2003 年起；KVM 自 2007 年起；Libvirt 自 2005 年起；DPDK 自 2014 年起；SPDK 自 2017 年起。日期来自官方公告或带日期的发布标签；早期缺乏可核验日期的版本暂不列出。</p>
-    <p>提交与贡献者数量仅在官方提供时显示，不等同于代码行数；KVM 随内核发布，不代表每个版本均有 KVM 功能变更。</p>
+    <p>提交数和贡献者数采用官方公布的统计；KVM 随 Linux 内核发布，相关改动见各版本的 KVM 要点。</p>
     <p>DPDK 是面向高性能数据面的库与驱动集合，SPDK 是面向高性能存储的软件开发套件；两者可以实现 vhost-user 后端，各自维护软件发布版本。</p>
     <p><span>官方完整版本记录：</span><a href="https://gitlab.com/qemu-project/qemu/-/tags" target="_blank" rel="noopener noreferrer">QEMU</a><a href="https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux/+refs" target="_blank" rel="noopener noreferrer">KVM / Linux</a><a href="https://gitlab.com/libvirt/libvirt/-/tags?search=%5Ev" target="_blank" rel="noopener noreferrer">Libvirt</a><a href="https://core.dpdk.org/download/" target="_blank" rel="noopener noreferrer">DPDK</a><a href="https://spdk.io/releases/" target="_blank" rel="noopener noreferrer">SPDK</a></p>
   </div>
 </article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="assets/site.js?v=61edf5bbcdc7"></script>
 </body>

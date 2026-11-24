@@ -6,6 +6,8 @@
   <h2>序言</h2>
   <p>以一次本地写入为例：客户机用 <code>O_DIRECT</code> 打开块设备，向偏移 1 MiB 处写入 4 KiB。跟随请求 R1，看应用缓冲区怎样进入 virtio-blk 队列、QEMU 何时归还描述符，以及何时可以确认数据已经持久化。</p>
   <p>示例使用 x86/KVM、modern virtio PCI 和八槽 Split 队列，客户机未启用 vIOMMU。缓冲区按 4 KiB 对齐；本次直接 I/O 形成一个 bio 和一个块请求。在演示中选择 virtio-blk、本地文件和「写入」即可对照 R1；切换到读取或 virtio-scsi 时，请求头、缓冲区方向和完成记录会相应改变。队列已经就绪，建立过程见<a href="virtio-device-initialization.html">设备初始化与特性协商</a>，布局见 <a href="packed-virtqueue.html#split-layout">Virtqueue：Split 与 Packed</a>。</p>
+  <h3 id="history">从模拟磁盘控制器到多队列</h3>
+  <p>模拟 IDE 等控制器时，客户机通过一组硬件寄存器描述操作。virtio-blk 把命令、数据和状态放在同一个描述符链中。多队列将不同 CPU 的提交分开；QEMU 9.0 引入队列到 IOThread 的映射后，同一块虚拟盘的多个队列也能交给不同线程。请求完成和持久化的含义在这些配置中保持一致。</p>
 </section>
 
 <section id="request" class="mechanism-section">
@@ -238,27 +240,24 @@ virsh domblkstat VM vda --human</code></pre>
 </section>
 
 <section id="sources" class="mechanism-section">
-  <h2>版本与参考资料</h2>
-<ul class="mechanism-sources">
-    <li><a href="{{ linux_source }}drivers/block/virtio_blk.c">Linux 6.18：virtio_blk.c</a>，blk-mq 入口、请求组装、队列回调及客户机完成。</li>
-    <li><a href="{{ qemu_source }}hw/block/virtio-blk.c">QEMU 10.2.0：virtio-blk.c</a>，请求解析、合并、完成、刷新及错误恢复。</li>
-    <li><a href="{{ qemu_source }}include/hw/virtio/virtio-blk.h">QEMU 10.2.0：virtio-blk.h</a>，设备、请求、批处理和逐队列 AioContext 结构。</li>
-    <li><a href="{{ qemu_source }}block/block-backend.c">QEMU 10.2.0：block-backend.c</a>、<a href="{{ qemu_source }}block/io.c">block/io.c</a>，异步接口、协程执行、写缓存和刷新。</li>
-    <li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">VIRTIO 1.2</a>，第 2.7 节 split virtqueue，第 5.2 节块设备接口与写入稳定性。</li>
-  </ul>
-<p>“源码路径”按执行上下文列出关键函数路径，并高亮当前步骤涉及的函数，辅助调用已省略。Guest 与宿主通过共享队列和通知协作；异步提交与完成回调分开展示。示例中的 R1 用来关联两端各自保存的请求对象，具体源码随设备与后端选择更新。</p>
-  <ul class="mechanism-sources">
-    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/block/virtio_blk.c#L139-L157" target="_blank" rel="noopener noreferrer">Linux virtio_blk.c</a>：请求组装、提交、完成回调与回收。</li>
-    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_ring.c#L674-L686" target="_blank" rel="noopener noreferrer">Linux virtio_ring.c</a>：描述符、available 发布顺序与通知条件。</li>
-    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/eventfd.c#L804-L815" target="_blank" rel="noopener noreferrer">KVM eventfd.c</a>：匹配队列门铃写入并触发 ioeventfd。</li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/block/virtio-blk.c#L54-L66" target="_blank" rel="noopener noreferrer">QEMU virtio-blk.c</a>：读取、回调以及 status、used 和通知的顺序。</li>
-    {% for route_id, source_id, label, description in [
-      ('local-scsi', 'scsi-qemu-vq', 'QEMU virtio-scsi.c', '命令队列处理与 SCSI 请求分派。'),
-      ('rbd-blk', 'rbd-submit', 'QEMU rbd.c', '向 librbd 提交异步读写并等待完成。'),
-      ('spdk-blk', 'spdk-blk-vq', 'SPDK vhost_blk.c', '轮询共享队列，提交块请求并回写完成。'),
-      ('spdk-scsi', 'spdk-scsi-vq', 'SPDK vhost_scsi.c', '消费 SCSI 命令队列并建立后端任务。')
-    ] %}{% set route = io_scenarios.routes|selectattr('id', 'equalto', route_id)|first %}{% set source = route.scenarios.read.sources[source_id] %}
-    <li><a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ label }}</a>：{{ description }}</li>
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">VIRTIO 1.2：块设备请求、写缓存与刷新</a></li>
+    <li><a href="{{ linux_source }}drivers/block/virtio_blk.c">Linux virtio_blk.c：组装块请求并处理完成回调</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_ring.c#L674-L686" target="_blank" rel="noopener noreferrer">Linux virtio_ring.c：发布描述符并判断是否通知设备</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/eventfd.c#L804-L815" target="_blank" rel="noopener noreferrer">Linux KVM eventfd.c：将队列门铃写入转成事件通知</a></li>
+    <li><a href="{{ qemu_source }}hw/block/virtio-blk.c">QEMU virtio-blk.c：解析请求、提交 I/O 并通知完成</a></li>
+    <li><a href="{{ qemu_source }}include/hw/virtio/virtio-blk.h">QEMU virtio-blk.h：请求结构与每个队列的 AioContext</a></li>
+    <li><a href="{{ qemu_source }}block/block-backend.c">QEMU block-backend.c：向块后端提交异步读写</a></li>
+    <li><a href="{{ qemu_source }}block/io.c">QEMU block/io.c：执行块读写与刷新</a></li>
+    {% for route_id, source_id, label in [
+      ('local-scsi', 'scsi-qemu-vq', 'QEMU virtio-scsi.c：从命令队列分派 SCSI 请求'),
+      ('rbd-blk', 'rbd-submit', 'QEMU rbd.c：向 librbd 提交异步读写'),
+      ('spdk-blk', 'spdk-blk-vq', 'SPDK vhost_blk.c：从共享队列取出块请求'),
+      ('spdk-scsi', 'spdk-scsi-vq', 'SPDK vhost_scsi.c：把命令描述符转换为 SCSI 任务')
+    ] %}
+    {% set route = io_scenarios.routes|selectattr('id', 'equalto', route_id)|first %}
+    <li><a href="{{ route.scenarios.read.sources[source_id].url }}">{{ label }}</a></li>
     {% endfor %}
   </ul>
 </section>

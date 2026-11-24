@@ -6,6 +6,7 @@ from virt_report import mechanisms
 from virt_report.config import Config
 from virt_report.execution_demos import get_demo
 from virt_report.render import render
+from virt_report.versions import Document
 
 
 def test_embedded_demos_belong_to_canonical_articles():
@@ -25,10 +26,16 @@ def test_embedded_demos_belong_to_canonical_articles():
 
 def test_directory_demo_links_match_real_widgets_in_all_published_articles():
     directory = render.render_mechanisms_html(Config())
-    badges = re.findall(r'class="mechanism-demo-link" href="mechanisms/([\w-]+)\.html#([\w-]+)"',
-                        directory)
-    assert len(badges) == len(dict(badges))
-    links = dict(badges)
+    links = {}
+    for badge in Document(directory).root.find("a"):
+        if "mechanism-demo-link" not in badge.attrs.get("class", "").split():
+            continue
+        match = re.fullmatch(r"mechanisms/([\w-]+)\.html#([\w-]+)", badge.attrs["href"])
+        assert match and badge.text() == "▷"
+        slug, anchor = match.groups()
+        assert slug not in links
+        assert badge.attrs.get("aria-label") == f"{mechanisms.get_article(slug)['title']}：交互演示"
+        links[slug] = anchor
     widget = r'(?:data-mechanism-view="lab"|data-walkthrough-lab\b)'
     for article in mechanisms.articles():
         slug = article["slug"]
@@ -92,14 +99,14 @@ def test_directory_has_reading_order_and_real_anchors_only():
 def test_directory_counts_primary_articles_without_extra_related_rows():
     counts = {topic['slug']: len(topic['articles']) for topic in mechanisms.topics()}
     assert counts == {'linux-foundations': 7, 'virtualization-basics': 1,
-                      'cpu-virtualization': 2, 'memory-virtualization': 2,
-                      'device-virtualization': 14, 'interrupt-virtualization': 1,
+                      'cpu-virtualization': 2, 'memory-virtualization': 1,
+                      'device-virtualization': 15, 'interrupt-virtualization': 1,
                       'vm-startup': 2, 'migration': 5, 'hotplug': 3,
                       'live-upgrade': 3, 'qemu-internals': 5, 'libvirt-internals': 2,
                       'kvm-internals': 9}
     assert [article['slug'] for article in
             mechanisms.get_topic('memory-virtualization')['articles']] == [
-                'memory-virtualization', 'virtio-balloon',
+                'memory-virtualization',
             ]
     page = render.render_mechanisms_html(Config())
     migration = re.search(r'<section class="mechanism-topic" id="migration".*?</section>',
@@ -116,7 +123,7 @@ def test_merged_io_topic_keeps_legacy_anchor_without_duplicate_articles():
     canonical = mechanisms.get_topic('device-virtualization')
     assert mechanisms.get_topic('io-virtualization') is canonical
     assert [article['slug'] for article in canonical['articles']] == [
-        'virtio-device-initialization',
+        'device-virtualization', 'virtio-device-initialization',
         'qemu-vhost-net', 'dpdk-vhost-user-net', 'spdk-vhost-user-blk', 'qemu-vfio-dma',
         'iommu-dma', 'iommufd', 'qemu-viommu', 'virtio-gpu',
         'network-io', 'gpu-execution', 'qemu-virtio-blk', 'packed-virtqueue', 'vhost-vdpa',

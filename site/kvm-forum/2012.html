@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=02b518d59aa4">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=02b518d59aa4">
-<link rel="stylesheet" href="../assets/forum.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e7d4bbc16c93">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e7d4bbc16c93">
+<link rel="stylesheet" href="../assets/forum.css?v=e7d4bbc16c93">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -36,7 +36,7 @@
         <a href="../topics.html" class="">专题</a>
         <a href="../conferences.html" class="on" aria-current="page">会议</a>
         <a href="../versions.html" class="">版本</a>
-        <a href="../mechanisms.html" class="">原理</a>
+        <a href="../industry/index.html" class="">产业</a>
         <a href="../about.html" class="">关于</a>
         <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -72,7 +72,7 @@
 <p>设备只声明自己的 MemoryRegion，桥和容器负责组合区域，内存核心按优先级生成平坦可见布局。RAM、I/O、容器和别名等区域各自表达不同语义，字节序、访问宽度和对齐规则由统一接口承接。事务把相关配置变化合并，避免消费者看到不完整更新。</p>
 <p>MemoryListener 通知需要平坦布局的组件处理区域增删，还承载脏页跟踪、coalesced MMIO 和 ioeventfd 等状态变化。内部查询结构使用可变深度树，让大段相同区域共享较少元数据；更新构建新结构，也为后续 RCU 读取提供条件。</p>
 <h3 id="memory-api-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>讲稿给出地址覆盖示例、接口和 info mtree 输出，可以直接检查设备声明与最终视图是否一致。它还比较旧、新查询结构的元素大小与层级组织，但没有完整应用基准，不能把结构压缩比例当作 QEMU 总内存下降比例。主要贡献是统一模型及可调试性。</p>
+<p>讲稿给出地址覆盖示例、接口和 info mtree 输出，可以直接检查设备声明与最终视图是否一致。讲稿比较的是新旧查询结构的单个元素大小和组织层次；QEMU 进程的总内存还包括其他分配。主要贡献是统一模型及可调试性。</p>
 <h3 id="memory-api-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>统一描述地址关系并不自动解决所有设备内部并发，监听者也必须正确执行更新。后续验证需要覆盖 BAR 移动、别名覆盖、不同发起者和热拔除，确认 KVM 与设备后端不保留失效映射。RCU 是材料中的准备方向，不能仅凭“更新时创建新结构”就判定整个访问路径已经无锁安全。</p>
 </section>
@@ -90,7 +90,7 @@
 <p>APIC 寄存器虚拟化利用虚拟 APIC 页处理部分访问，对仍需软件处理的写操作可提供已完成写入的退出信息，减少指令解码。虚拟中断投递使用 RVI、SVI 等状态在合适时机交付中断，EOI-exit bitmap 决定哪些结束操作仍需要退出。</p>
 <p>Posted Interrupt 使用描述符保存待处理向量，并通过通知让正在运行的目标 vCPU 接收更新。讲稿的客户机 IPI 示例中，发送侧访问 ICR 仍可能退出，由软件设置目标描述符并发送通知；目标侧免退出并不表示整个 IPI 路径完全没有软件参与。</p>
 <h3 id="apicv-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>作者报告 APIC 寄存器与虚拟投递补丁已经提交评审，Posted Interrupt 的目标侧无退出路径有工作原型。初步 Netperf 结果最多消除约 50% 的 VM-exit，并让部分其余退出的模拟更简单。这是退出数量与处理路径的结果，不能直接换算成吞吐提升 50%，材料也没有完整平台与负载配置。</p>
+<p>作者报告 APIC 寄存器与虚拟投递补丁已经提交评审，Posted Interrupt 的目标侧无退出路径有工作原型。初步 Netperf 结果最多消除约 50% 的 VM-exit，并让部分其余退出的模拟更简单。</p>
 <h3 id="apicv-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>硬件功能、客户机 APIC 模式、路由和 vCPU 调度状态都会影响快速路径是否成立。后续应测量端到端延迟、CPU 时间和阻塞 vCPU 的唤醒，并验证 EOI、重路由及迁移时状态同步。讲稿展示的是 2012 年启用方案，实际支持范围需要对应具体软件和硬件版本。</p>
 </section>
@@ -110,7 +110,7 @@
 <h3 id="multiqueue-net-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
 <p>双 E5620、82599 网卡、4 vCPU 客户机的实验，把 vCPU 与 vhost 线程放在不同 NUMA 节点。100 个 TCP_RR 会话时，四队列图示约为每秒 26 万次事务，单队列约 11 万次。但两会话、512 字节发送场景的吞吐从 9263 降至 4662，CPU 使用量还增加；作者将其与 TCP 批量减小联系起来。</p>
 <h3 id="multiqueue-net-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
-<p>多队列收益依赖流数量、报文大小、批量及线程放置，单流并不会自然扩展到所有队列。后续工作包括流转向、NUMA、零复制和更多网卡测试。部署评估应同时测量事务延迟、流式吞吐和宿主 CPU，保留单队列作为对照，避免把队列数当作性能保证。</p>
+<p>多队列收益依赖流数量、报文大小、批量及线程放置，单流并不会自然扩展到所有队列。后续工作包括流转向、NUMA、零复制和更多网卡测试。部署评估应以单队列作对照，逐项比较事务延迟、流式吞吐和宿主 CPU 消耗。</p>
 </section>
 <section id="arm-kvm" class="mechanism-section">
 <h2><span class="mechanism-heading-number">五、</span>KVM/ARM：Hyp 模式、二级页表与设备协作</h2>
@@ -121,14 +121,14 @@
 <h3 id="arm-kvm-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
 <p>Arm 设备和服务器需要复用 Linux 的调度与内存管理来承载虚拟机。Armv7 虚拟化扩展提供 Hyp 模式和 Stage-2，但它与 x86 的硬件状态容器和进入退出方式不同。KVM/ARM 的任务是在这些硬件约束下建立 Linux 宿主与客户机之间的运行路径，并接入既有 QEMU 管理接口。</p>
 <h3 id="arm-kvm-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
-<p>当时 Hyp 模式不足以直接承载完整宿主 Linux，关键切换代码与普通内核分处不同模式。引导时还必须正确取得 Hyp 控制权。客户机寄存器、异常和二级缺页需要在两部分之间交接；MMIO 解码提示也不能覆盖所有指令形式，平台设备与中断模型仍要配套。</p>
+<p>当时的实现让关键切换代码在 Hyp 模式下运行，宿主 Linux 主体仍在原有模式下运行。引导时还必须正确取得 Hyp 控制权。客户机寄存器、异常和二级缺页需要在两部分之间交接；MMIO 解码提示也不能覆盖所有指令形式，平台设备与中断模型仍要配套。</p>
 <h3 id="arm-kvm-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
 <p>宿主 Linux 保留普通内核执行环境，低层 Hyp 代码负责关键寄存器和世界切换。KVM 按需建立 Stage-2 映射：客户机访问尚未映射的 IPA 时进入缺页处理，查找宿主页面并安装映射，随后恢复执行。MMU notifier 等机制连接宿主换页和映射失效。</p>
 <p>RAM 之外的访问交给设备模拟，QEMU 负责平台和多数设备；VGIC 与架构定时器等高频功能由 KVM 配合硬件处理。虚拟中断装入 List Registers，客户机部分计数器读取无需陷入。讲稿同时说明硬件中断返回宿主处理的路径。</p>
 <h3 id="arm-kvm-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>材料报告 Cortex-A15/A7 等支持虚拟化扩展的平台，以及第 14 版上游补丁的评审进展，并安排运行演示。PDF 没有系统性能数据，部分大页支持仍待依赖条件满足。它证明的是实现路径与集成进度，无法据此声称所有 Arm 设备都支持 KVM，或与 x86 性能等同。</p>
+<p>材料报告 Cortex-A15/A7 等支持虚拟化扩展的平台，以及第 14 版上游补丁的评审进展，并安排运行演示。PDF 没有系统性能数据，部分大页支持仍待依赖条件满足。演示展示了这套 Arm 平台上的运行路径与内核集成进度。</p>
 <h3 id="arm-kvm-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
-<p>固件启动模式、平台设备和指令解码都会影响可用性。并发缺页、页面回收、VGIC 状态和定时器恢复需要继续验证。阅读时应限定为早期 Armv7 KVM 架构，不能把后来 Arm64 VHE 或更先进中断能力提前套入这一设计。</p>
+<p>固件启动模式、平台设备和指令解码都会影响可用性。并发缺页、页面回收、VGIC 状态和定时器恢复需要继续验证。这里讨论的是早期 Armv7 KVM 的特权模式和中断支持。</p>
 </section>
 <section id="bql" class="mechanism-section">
 <h2><span class="mechanism-heading-number">六、</span>绕过 BQL：低延迟设备路径需要怎样的锁规则</h2>
@@ -144,7 +144,7 @@
 <p>作者提出由粗到细的加锁规则，避免持有细锁时调用需要 BQL 的服务。内存分发在保护地址视图期间取得区域引用，再按区域声明选择细粒度处理或传统 BQL 路径。移除与回收分开，最后一个引用释放后才销毁对象；回调不得重新激活已进入销毁流程的设备。</p>
 <p>前后端可以采用独立锁加受控回调，也可以把后端作为由调用者管理上下文的库。讲稿用 RTC 周期中断贯通 PIO、定时器和中断路径，展示真正绕开 BQL 需要多个子系统同时提供相容接口。</p>
 <h3 id="bql-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>原型能够让客户机把 RTC 作为可靠时钟源，但作者明确列出未处理的热插拔、HPET 联动、丢失 tick 补偿和部分时钟模式。PDF 没有可复核的延迟分布，因此应将其视作路径可行性验证，不能写成完整低延迟设备框架已经完成。</p>
+<p>原型能够让客户机把 RTC 作为可靠时钟源，但作者明确列出未处理的热插拔、HPET 联动、丢失 tick 补偿和部分时钟模式。原型演示了这条路径可以工作，端到端延迟的分布仍待测量。</p>
 <h3 id="bql-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>阻止嵌套 MMIO 可以降低死锁风险，也可能限制合法设备行为，需要进一步论证。调度优先级、对象回收和事件源停用同样影响结果。后续验证应在设备拔除、回调并发和管理操作压力下测量长尾延迟，确保优化路径的可维护性与原有功能都得到保留。</p>
 </section>
@@ -153,8 +153,8 @@
   <nav class="mechanism-related" aria-label="会议资料"><a href="../kvm-forum.html#year-2012">返回年度总览</a><a href="https://www.linux-kvm.org/page/KVM_Forum_2012" target="_blank" rel="noopener noreferrer">原始议程</a></nav>
 </article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=02b518d59aa4" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=e7d4bbc16c93" defer></script></body>
 </html>

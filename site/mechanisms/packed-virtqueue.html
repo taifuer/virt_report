@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=5eb1bb7dc04a">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=5eb1bb7dc04a">
-<link rel="stylesheet" href="../assets/packed-virtqueue.css?v=5eb1bb7dc04a"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=1b35da490c57">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1b35da490c57">
+<link rel="stylesheet" href="../assets/packed-virtqueue.css?v=1b35da490c57"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -35,7 +35,7 @@
         <a href="../topics.html" class="">专题</a>
         <a href="../conferences.html" class="">会议</a>
         <a href="../versions.html" class="">版本</a>
-        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../industry/index.html" class="">产业</a>
         <a href="../about.html" class="">关于</a>
         <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -50,30 +50,18 @@
   <div class="mechanism-layout">
     <nav class="mechanism-toc" aria-label="文章目录">
       <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
-      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a></li><li><a href="#interactive">二、四槽演示：发布、完成与回收</a></li><li><a href="#split-layout">三、Split：描述缓冲区，分别发布请求和完成</a></li><li><a href="#split-lifecycle">四、一次 Split 请求的发布、完成与回收</a><ol><li><a href="#split-lifecycle-part-1">多缓冲区请求通过链头交接</a></li></ol></li><li><a href="#layout">五、Packed：一个描述符环，加两个事件抑制结构</a></li><li><a href="#wrap">六、AVAIL、USED 与 wrap 的状态判定</a></li><li><a href="#chains">七、描述符链沿相邻槽位前进，ID 负责找回请求</a><ol><li><a href="#chains-part-1">1. 直接链使用连续槽位</a></li><li><a href="#chains-part-2">2. 完成记录的位置与原请求的位置可以不同</a></li></ol></li><li><a href="#events">八、事件位置减少通知，复查关闭竞态窗口</a></li><li><a href="#implementation">九、QEMU 的链长度记录与完成发布</a></li><li><a href="#evolution">十、总结</a></li><li><a href="#sources">十一、参考资料</a></li></ol>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a><ol><li><a href="#history">从 Split 到 Packed</a></li></ol></li><li><a href="#split-layout">二、Split：描述缓冲区，分别发布请求和完成</a></li><li><a href="#split-lifecycle">三、一次 Split 请求的发布、完成与回收</a><ol><li><a href="#split-lifecycle-part-1">多缓冲区请求通过链头交接</a></li></ol></li><li><a href="#layout">四、Packed：一个描述符环，加两个事件抑制结构</a></li><li><a href="#wrap">五、AVAIL、USED 与 wrap 的状态判定</a></li><li><a href="#chains">六、描述符链沿相邻槽位前进，ID 负责找回请求</a><ol><li><a href="#chains-part-1">1. 直接链使用连续槽位</a></li><li><a href="#chains-part-2">2. 完成记录的位置与原请求的位置可以不同</a></li></ol></li><li><a href="#events">七、事件位置减少通知，复查关闭竞态窗口</a></li><li><a href="#interactive">八、四槽演示：发布、完成与回收</a></li><li><a href="#implementation">九、QEMU 的链长度记录与完成发布</a></li><li><a href="#evolution">十、总结</a></li><li><a href="#sources">十一、参考资料</a></li></ol>
     </nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>序言</h2>
   <p>virtqueue 是驱动与设备共用的请求队列。驱动用描述符交出缓冲区，设备写回完成记录，驱动据此找回并复用缓冲区。Split 把待处理请求和完成记录放在两个环里；Packed 把它们放在同一个描述符环，用状态位区分。报文或磁盘数据都在描述符指向的缓冲区里。</p>
   <p>实际设备在初始化时选定一种格式。按 VIRTIO 1.2，只有双方协商了 <code>VIRTIO_F_RING_PACKED</code> 才使用 Packed。</p>
+  <h3 id="history">从 Split 到 Packed</h3>
+  <p>早期 virtqueue 分开存放描述符、可用项和完成项，驱动与设备轮流更新不同的环。Virtio 1.1 纳入 Packed 格式，将所有权与完成状态放回描述符本身，以减少元数据访问。Split 与 Packed 通过特性位协商，采用同样的提交与归还语义。</p>
 <p class="mechanism-baselines">源码版本：QEMU 10.2.0、Linux 6.18。</p><p class="mechanism-baselines">规范依据：VIRTIO 1.2 CS01。<a href="../versions.html#virtio-specifications">规范版本记录</a></p></section>
-<section id="interactive" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">二、</span>四槽演示：发布、完成与回收</h2>
-  <p>连续发布四项，让设备完成两项，观察“空闲描述符”：此时仍为 0。点击一次“驱动回收”，空闲数变成 1，才能发布下一项。随时切换 Split / Packed 可以对照同一进度下的索引和状态位。</p>
-  <div class="packed-lab" id="packed-lab" data-packed-lab data-mechanism-view="lab">
-    <div class="mechanism-view-heading"><span data-mechanism-title>四槽 virtqueue：Split 与 Packed</span><button type="button" data-mechanism-expand hidden>全屏演示</button></div>
-    <div class="packed-lab-formats" role="group" aria-label="队列格式" hidden><button type="button" data-queue-format="split" aria-pressed="true">Split</button><button type="button" data-queue-format="packed" aria-pressed="false">Packed</button></div>
-    <div class="packed-lab-controls" hidden><button type="button" data-packed-action="publish">发布一项</button><button type="button" data-packed-action="complete">设备完成</button><button type="button" data-packed-action="reclaim">驱动回收</button><button type="button" data-packed-action="reset">重置</button></div>
-    <p data-packed-status role="status" aria-live="polite">初始没有可用项或完成项；描述符均为空闲状态。</p>
-    <div class="packed-lab-cursors" data-packed-cursors></div>
-    <div class="packed-lab-slots" data-packed-slots></div>
-    <div class="split-lab-rings" data-split-rings hidden></div>
-    <noscript><p>以第一项为例：驱动发布时，Split 的 avail.idx 从 0 变为 1，Packed 的 A/U 从 0/0 变为 1/0；设备完成时，Split 的 used.idx 变为 1，Packed 的 A/U 变为 1/1。两种格式都由驱动回收描述符。</p></noscript>
-    <p class="packed-lab-note">每项占一个描述符，缓冲区容量 256 B，设备按顺序写入 64 B。不启用 IN_ORDER 批量归还，不模拟 DMA 时延。A/U 分别表示 AVAIL 和 USED。</p>
-  </div>
-</section>
+
 <section id="split-layout" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">三、</span>Split：描述缓冲区，分别发布请求和完成</h2>
+  <h2><span class="mechanism-heading-number">二、</span>Split：描述缓冲区，分别发布请求和完成</h2>
   <table><thead><tr><th scope="col">共享区域</th><th scope="col">保存内容</th><th scope="col">更新方</th></tr></thead><tbody>
     <tr><td>描述符表 desc</td><td>每项 16 B：<code>addr / len / flags / next</code>。NEXT 连接描述符，WRITE 允许设备写缓冲区</td><td>驱动准备，设备读取</td></tr>
     <tr><td>可用环 available</td><td><code>ring[N]</code> 中每项为 16 位链头编号；<code>idx</code> 发布新增请求的进度</td><td>驱动写入，设备读取</td></tr>
@@ -83,7 +71,7 @@
   <p>驱动还会在自己的内存中保存链头到请求上下文的对应关系。设备归还 <code>used.id</code> 后，驱动据此找回请求、释放描述符及缓冲区引用。QEMU 后端也有解析后的 iovec、设备消费位置等私有状态；这些对象不能直接写进共享环让另一侧解引用。描述符地址属于设备可访问的 DMA 地址空间，本例按 GPA 理解；开启 IOMMU 或平台访问约束时还要经过相应映射。</p>
 </section>
 <section id="split-lifecycle" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">四、</span>一次 Split 请求的发布、完成与回收</h2>
+  <h2><span class="mechanism-heading-number">三、</span>一次 Split 请求的发布、完成与回收</h2>
   <p>设队列大小 N=4，索引都从 0 开始。驱动选中空闲描述符 2，提供容量 256 B 的可写缓冲区；设备本次实际写入 64 B。描述符编号 2 与 available 的槽 0 分属两个数组，可以不同。</p>
   <ol>
     <li><strong>准备：</strong>驱动填写 <code>desc[2] = {addr, len:256, flags:WRITE}</code>，记录本次请求。此时设备还不能使用这项请求。</li>
@@ -98,7 +86,7 @@
   <p>两端不要求一提交就通知。驱动发布后检查设备是否需要 kick；设备发布完成后检查驱动是否需要中断。未协商 EVENT_IDX 时用抑制标志，协商后按对方填写的事件索引判断是否越过通知点。队列索引承载事实，门铃和中断用于唤醒处理；即使通知被合并，接收方仍可通过索引读取全部新增项。</p>
 </section>
 <section id="layout" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">五、</span>Packed：一个描述符环，加两个事件抑制结构</h2>
+  <h2><span class="mechanism-heading-number">四、</span>Packed：一个描述符环，加两个事件抑制结构</h2>
   <p>Split 的区域划分清楚，但处理一项请求需要在 available、描述符表和 used 之间访问元数据。Packed 随 VIRTIO 1.1 引入，将发布和完成状态放回描述符环，减少部分分散访问。交接规则仍然成立，只是“有没有新项”的判定从两个共享索引改成描述符状态位和各方进度。</p>
   <table><thead><tr><th scope="col">区域</th><th scope="col">组成</th><th scope="col">职责</th></tr></thead><tbody>
     <tr><td>Descriptor Ring</td><td>N 个 16 B 描述符：<code>addr:64 / len:32 / id:16 / flags:16</code></td><td>驱动发布缓冲区，设备写入完成记录</td></tr>
@@ -113,9 +101,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看同一环中的提交、完成与事件抑制" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="同一环中的提交、完成与事件抑制">
-    <img src="../assets/packed-virtqueue-layout.svg?v=5eb1bb7dc04a" width="697" height="508" alt="驱动和设备在描述符环上交换记录，数据缓冲区位于环外。两个事件抑制结构决定通知时机；它们不保存额外的可用项或完成项。" loading="lazy">
+    <img src="../assets/packed-virtqueue-layout.svg?v=1b35da490c57" width="697" height="508" alt="驱动和设备在描述符环上交换记录，数据缓冲区位于环外。两个事件抑制结构决定通知时机；它们不保存额外的可用项或完成项。" loading="lazy">
   </div>
-  <figcaption>驱动和设备在描述符环上交换记录，数据缓冲区位于环外。两个事件抑制结构决定通知时机；它们不保存额外的可用项或完成项。 <a href="../assets/packed-virtqueue-layout.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>驱动和设备在描述符环上交换记录，数据缓冲区位于环外。两个事件抑制结构决定通知时机；它们不保存额外的可用项或完成项。 <a href="../assets/packed-virtqueue-layout.svg?v=1b35da490c57" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: Packed virtqueue 的共享布局与访问方向
     accDescr: 驱动和设备共同访问一个描述符环，驱动事件区控制完成通知，设备事件区控制新请求通知。环外缓冲区存放数据，Buffer ID 关联驱动上下文。
@@ -136,7 +124,7 @@
 </figure>
 </section>
 <section id="wrap" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">六、</span>AVAIL、USED 与 wrap 的状态判定</h2>
+  <h2><span class="mechanism-heading-number">五、</span>AVAIL、USED 与 wrap 的状态判定</h2>
   <p>flags 的 bit 7 为 AVAIL，bit 15 为 USED。描述符初始清零，各方的 wrap 初值都是 1。驱动发布、设备处理和驱动回收各有自己的位置，谁越过环尾，谁的 wrap 就翻转。</p>
   <table><thead><tr><th scope="col">当前期望 wrap</th><th scope="col">驱动发布后的 A / U</th><th scope="col">设备完成后的 A / U</th></tr></thead><tbody>
     <tr><td>1，第一圈</td><td>1 / 0</td><td>1 / 1</td></tr>
@@ -145,7 +133,7 @@
   <p>设备判断可用时检查 <code>A == expected_wrap &amp;&amp; U != expected_wrap</code>；驱动判断完成时，A、U 都应等于回收位置的 wrap。因此槽 0 的 0/0 在初始化时表示空，到第二圈却可以表示完成。驱动回收后不需要把槽位清零；用 wrap 辨认新旧记录，用 Buffer ID 找回原请求。QEMU 的可用状态判断</p>
 </section>
 <section id="chains" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">七、</span>描述符链沿相邻槽位前进，ID 负责找回请求</h2>
+  <h2><span class="mechanism-heading-number">六、</span>描述符链沿相邻槽位前进，ID 负责找回请求</h2>
   <h3 id="chains-part-1"><span class="mechanism-heading-number">1. </span>直接链使用连续槽位</h3>
   <p>split 描述符含 next 字段，可以把不相邻槽位串起来；packed 没有 next 字段。设置 NEXT 后，链的下一项就是环中的下一槽，越过末尾便从槽 0 继续。一个请求占槽 3、0、1 时，驱动需要按各位置所属的 wrap 填好所有状态，最后才发布槽 3 这个链头，防止设备读到半条链。</p>
   <p>直接链的 Buffer ID 放在最后一个描述符中。设备处理完整条链后，只为整项缓冲区写一个完成描述符；驱动用完成 ID 找回私有上下文和该链占用的描述符数，然后跳过相应槽位继续回收。used 中 NEXT 是保留位，不能拿它来重新遍历提交时的链。</p>
@@ -154,10 +142,26 @@
   <p>协商 INDIRECT_DESC 后，还可以让主环一项指向环外的间接描述符表，减少主环占用。packed 的间接项使用 packed 描述符布局，顺序遍历，内部仅 WRITE 标志有效；不能直接拿 split 的 next 索引规则解释。协议要求与特性选择必须在初始化时就一致。QEMU 沿环取下一项、读取直接链和间接表</p>
 </section>
 <section id="events" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">八、</span>事件位置减少通知，复查关闭竞态窗口</h2>
+  <h2><span class="mechanism-heading-number">七、</span>事件位置减少通知，复查关闭竞态窗口</h2>
   <p>每个事件结构含 off_wrap 和 flags。off_wrap 的低 15 位为描述符位置，高 1 位为该位置所属 wrap。flags 可以要求启用通知、禁用通知，或者在协商 EVENT_IDX 后按指定位置触发通知。不能只比较裸索引大小：从槽 3 到槽 0 虽然数字变小，队列实际上继续前进了。</p>
   <p>两个事件结构由等待方填写：驱动用 Driver Event 请求完成通知，设备用 Device Event 请求新工作通知。发布方先让描述符状态可见，再读取对方的事件配置，按进度变化判断是否通知。等待方从轮询切回通知时，重新检查切换窗口内到达的工作。</p>
   <p>如果等待方先看到没有工作，发布方恰好在通知仍被抑制时发布，等待方随后直接睡眠，就可能错过唤醒。packed 改变共享队列布局，没有消除生产者与消费者并发产生的通知竞态。内存屏障、通知抑制和最后复查仍共同构成正确交接。</p>
+</section>
+
+<section id="interactive" class="mechanism-section">
+  <h2><span class="mechanism-heading-number">八、</span>四槽演示：发布、完成与回收</h2>
+  <p>连续发布四项，让设备完成两项，观察“空闲描述符”：此时仍为 0。点击一次“驱动回收”，空闲数变成 1，才能发布下一项。随时切换 Split / Packed 可以对照同一进度下的索引和状态位。</p>
+  <div class="packed-lab" id="packed-lab" data-packed-lab data-mechanism-view="lab">
+    <div class="mechanism-view-heading"><span data-mechanism-title>四槽 virtqueue：Split 与 Packed</span><button type="button" data-mechanism-expand hidden>全屏演示</button></div>
+    <div class="packed-lab-formats" role="group" aria-label="队列格式" hidden><button type="button" data-queue-format="split" aria-pressed="true">Split</button><button type="button" data-queue-format="packed" aria-pressed="false">Packed</button></div>
+    <div class="packed-lab-controls" hidden><button type="button" data-packed-action="publish">发布一项</button><button type="button" data-packed-action="complete">设备完成</button><button type="button" data-packed-action="reclaim">驱动回收</button><button type="button" data-packed-action="reset">重置</button></div>
+    <p data-packed-status role="status" aria-live="polite">初始没有可用项或完成项；描述符均为空闲状态。</p>
+    <div class="packed-lab-cursors" data-packed-cursors></div>
+    <div class="packed-lab-slots" data-packed-slots></div>
+    <div class="split-lab-rings" data-split-rings hidden></div>
+    <noscript><p>以第一项为例：驱动发布时，Split 的 avail.idx 从 0 变为 1，Packed 的 A/U 从 0/0 变为 1/0；设备完成时，Split 的 used.idx 变为 1，Packed 的 A/U 变为 1/1。两种格式都由驱动回收描述符。</p></noscript>
+    <p class="packed-lab-note">每项占一个描述符，缓冲区容量 256 B，设备按顺序写入 64 B。不启用 IN_ORDER 批量归还，不模拟 DMA 时延。A/U 分别表示 AVAIL 和 USED。</p>
+  </div>
 </section>
 <section id="implementation" class="mechanism-section">
   <h2><span class="mechanism-heading-number">九、</span>QEMU 的链长度记录与完成发布</h2>
@@ -191,11 +195,11 @@
 </section></div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#device-virtualization">设备与 I/O 虚拟化</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-11-09">2026-11-09</time> · 针对文中标注的源码与规范基线。</p></article>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-24">2026-11-24</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=5eb1bb7dc04a" defer></script>
-<script src="../assets/packed-virtqueue.js?v=5eb1bb7dc04a" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=1b35da490c57" defer></script>
+<script src="../assets/packed-virtqueue.js?v=1b35da490c57" defer></script></body>
 </html>

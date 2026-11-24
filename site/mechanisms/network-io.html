@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=1b09c2d270c2">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1b09c2d270c2">
-<link rel="stylesheet" href="../assets/execution-demo.css?v=1b09c2d270c2"><link rel="stylesheet" href="../assets/walkthrough.css?v=1b09c2d270c2"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=5ca28448cc93">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=5ca28448cc93">
+<link rel="stylesheet" href="../assets/execution-demo.css?v=5ca28448cc93"><link rel="stylesheet" href="../assets/walkthrough.css?v=5ca28448cc93"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -35,7 +35,7 @@
         <a href="../topics.html" class="">专题</a>
         <a href="../conferences.html" class="">会议</a>
         <a href="../versions.html" class="">版本</a>
-        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../industry/index.html" class="">产业</a>
         <a href="../about.html" class="">关于</a>
         <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -50,7 +50,7 @@
   <div class="mechanism-layout">
     <nav class="mechanism-toc" aria-label="文章目录">
       <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
-      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a></li><li><a href="#interfaces">二、接口选择：e1000 寄存器与 virtio 队列</a><ol><li><a href="#interfaces-part-1">1. e1000：实现硬件定义的接口</a></li><li><a href="#interfaces-part-2">2. virtio-net：通用队列与网络设备格式</a></li></ol></li><li><a href="#virtqueue">三、发送与接收共用的队列约定</a><ol><li><a href="#virtqueue-private-state">1. 共享队列与两侧私有对象</a></li><li><a href="#virtqueue-part-2">2. 从描述符到后端访问</a></li></ol></li><li><a href="#flow">四、从驱动提交到后端发送</a><ol><li><a href="#flow-part-1">1. e1000 的发送路径</a></li><li><a href="#flow-part-2">2. virtio-net 的发送路径</a></li></ol></li><li><a href="#walkthrough">五、收发与后端处理演示</a></li><li><a href="#completion">六、缓冲区与完成语义</a></li><li><a href="#napi">七、NAPI 的中断与批量轮询切换</a></li><li><a href="#notification">八、通知边界：kick、完成记录与中断</a><ol><li><a href="#notification-part-1">发布队列与发送 kick</a></li></ol></li><li><a href="#races">九、通知恢复与接收缓冲区补充</a><ol><li><a href="#races-part-1">1. 队列刚空时，可能又来了新报文</a></li><li><a href="#races-part-2">2. 接收空间耗尽后的背压与补充</a></li></ol></li><li><a href="#implementation">十、源码路径：从网卡接口到 TAP</a><ol><li><a href="#tap-host-rx">1. TAP 文件描述符连接宿主网卡接收路径</a></li><li><a href="#implementation-part-2">2. 源码中的准备、完成与重新补充</a></li></ol></li><li><a href="#evolution">十一、后端演进与取舍</a></li><li><a href="#verification">十二、排查入口：沿收发方向逐段确认</a></li><li><a href="#summary">十三、总结</a></li><li><a href="#sources">十四、版本与参考资料</a></li></ol>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a><ol><li><a href="#history">从模拟网卡到共享队列</a></li></ol></li><li><a href="#interfaces">二、接口选择：e1000 寄存器与 virtio 队列</a><ol><li><a href="#interfaces-part-1">1. e1000：实现硬件定义的接口</a></li><li><a href="#interfaces-part-2">2. virtio-net：通用队列与网络设备格式</a></li></ol></li><li><a href="#virtqueue">三、发送与接收共用的队列约定</a><ol><li><a href="#virtqueue-private-state">1. 共享队列与两侧私有对象</a></li><li><a href="#virtqueue-part-2">2. 从描述符到后端访问</a></li></ol></li><li><a href="#flow">四、从驱动提交到后端发送</a><ol><li><a href="#flow-part-1">1. e1000 的发送路径</a></li><li><a href="#flow-part-2">2. virtio-net 的发送路径</a></li></ol></li><li><a href="#walkthrough">五、收发与后端处理演示</a></li><li><a href="#completion">六、缓冲区与完成语义</a></li><li><a href="#napi">七、NAPI 的中断与批量轮询切换</a></li><li><a href="#notification">八、通知边界：kick、完成记录与中断</a><ol><li><a href="#notification-part-1">发布队列与发送 kick</a></li></ol></li><li><a href="#races">九、通知恢复与接收缓冲区补充</a><ol><li><a href="#races-part-1">1. 队列刚空时，可能又来了新报文</a></li><li><a href="#races-part-2">2. 接收空间耗尽后的背压与补充</a></li></ol></li><li><a href="#implementation">十、源码路径：从网卡接口到 TAP</a><ol><li><a href="#tap-host-rx">1. TAP 文件描述符连接宿主网卡接收路径</a></li><li><a href="#implementation-part-2">2. 源码中的准备、完成与重新补充</a></li></ol></li><li><a href="#evolution">十一、网络后端的执行位置与成本</a></li><li><a href="#verification">十二、排查入口：沿收发方向逐段确认</a></li><li><a href="#summary">十三、总结</a></li><li><a href="#sources">十四、参考资料</a></li></ol>
     </nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
@@ -61,6 +61,8 @@
   <p>队列按 8 个槽位展示，使用直接描述符。发送选取头部不能直接压入 skb 的分支，<code>desc[0] → desc[2]</code> 分别指向 12 B 网络头和 60 B 帧；接收采用 <code>add_recvbuf_small()</code>，<code>desc[2]</code> 提供 <code>12 + GOOD_PACKET_LEN = 1530 B</code> 可写空间。本次实际写入仍为 72 B。页片段还会分配 headroom 和 skb 元数据，分配大小不等于描述符向设备暴露的长度。</p>
   <p>演示采用 x86 + KVM、QEMU 10.2.0、Linux 6.18；DPDK 路径采用 24.11。设备为 modern virtio-net，使用 split ring 和一个队列对：队列 0 接收，队列 1 发送。路由、邻居、设备协商与内存映射已经就绪；使用普通 UDP 复制路径，关闭分段、校验和卸载、合并 RX 缓冲区、UDP cork 和零拷贝发送。报文不带 IP 选项或 VLAN，也无需分片。</p>
 <p class="mechanism-baselines">源码版本：QEMU 10.2.0、Linux 6.18、DPDK 24.11。</p><p class="mechanism-baselines">规范依据：VIRTIO 1.2 CS01。<a href="../versions.html#virtio-specifications">规范版本记录</a></p>  <p>先选择后端及 TX / RX，再沿一条成功路径观察处理者与字段变化。TX 从应用发送开始；RX 展示驱动预置空间、外部到包、socket 排队、应用随后读取。关键结构分别展示描述符表、内存缓冲区、available ring 和 used ring；点击描述符地址可对照相应缓冲区。填写环项与发布索引分成不同步骤，源码路径按执行上下文列出关键函数。</p>
+  <h3 id="history">从模拟网卡到共享队列</h3>
+  <p>e1000 等模拟网卡保留硬件寄存器和描述符格式，方便使用现成驱动。virtio-net 改用驱动与后端共同定义的收发队列。vhost-net 把队列处理移入宿主内核，vhost-user 把队列交给独立进程，vDPA 还允许设备消费同样的队列。这些后端共用 virtio 接口，差异在于谁读写缓冲区、谁发出通知。</p>
 </section>
 
 <section id="interfaces" class="mechanism-section">
@@ -98,9 +100,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看共享队列与两侧管理对象" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="共享队列与两侧管理对象">
-    <img src="../assets/virtqueue-private-shared.svg?v=1b09c2d270c2" width="699" height="708" alt="描述符、环槽和数据缓冲区位于 Guest RAM；Guest 驱动与后端各自维护私有索引和对象，不把对方的软件结构当作协议格式。" loading="lazy">
+    <img src="../assets/virtqueue-private-shared.svg?v=5ca28448cc93" width="699" height="708" alt="描述符、环槽和数据缓冲区位于 Guest RAM；Guest 驱动与后端各自维护私有索引和对象，不把对方的软件结构当作协议格式。" loading="lazy">
   </div>
-  <figcaption>描述符、环槽和数据缓冲区位于 Guest RAM；Guest 驱动与后端各自维护私有索引和对象，不把对方的软件结构当作协议格式。 <a href="../assets/virtqueue-private-shared.svg?v=1b09c2d270c2" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>描述符、环槽和数据缓冲区位于 Guest RAM；Guest 驱动与后端各自维护私有索引和对象，不把对方的软件结构当作协议格式。 <a href="../assets/virtqueue-private-shared.svg?v=5ca28448cc93" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: Linux 与 QEMU 的私有队列对象及共享区域
   accDescr: Linux 的 vring_virtqueue 位于客户机 RAM，记录驱动私有状态。共享描述符表、可用环和已用环也位于客户机 RAM。QEMU 的 VirtQueue 位于宿主进程内存，保存共享区域地址及设备私有状态。驱动发布描述符和可用项，设备读取后发布已用项；双方各自保存消费索引。
@@ -447,7 +449,7 @@ Linux · __sys_recvfrom() · Linux · udp_recvmsg() · Linux recv(2)：阻塞接
     </tbody>
   </table>
   <p>发送在队列发布后分成并行的两条路径：Guest 沿系统调用返回，宿主后端消费已发布的链。本页展示先返回、后处理的一种调度顺序，后端也可能更早运行。图中返回边直接连接客户机协议栈和应用，设备完成不会作为 <code>sendto()</code> 返回的前置条件。真实系统若先把 skb 排入客户机 qdisc，返回还可能早于 virtqueue 发布。</p>
-  <p>QEMU + TAP 的普通 TX 路径在 <code>writev()</code> 成功返回后发布 used，再判断完成通知条件。此时宿主已经接受了帧，网络转发可以独立推进；Guest 侧依次处理虚拟中断和队列回收。宿主转发可能在写 TAP 的调用内部就已开始，两条路径之间没有“Guest 回收后才发送”的依赖。TAP 暂不可写时则保留请求，等待重试成功后发布 used。QEMU 发送与完成、TAP 写入</p>
+  <p>QEMU + TAP 的普通 TX 路径在 <code>writev()</code> 成功返回后发布 used，再判断是否需要通知客户机。宿主拿到帧即可转发，转发甚至可能在写 TAP 的调用中开始。客户机收到<a href="interrupt-virtualization.html">虚拟中断</a>后，驱动回收队列里的完成项。TAP 暂不可写时，QEMU 会保留请求，等重试成功后才发布 used。</p>
   <p>RX 演示选取单帧接收路径：NAPI poll 从 used 取回链，构造 skb 并交给 GRO；<code>GRO_NORMAL</code> 普通列表尚未达到提前刷新条件，驱动先补充新 RX 空间。本轮处理量小于 budget，随后在 NAPI 完成阶段由 <code>gro_flush_normal()</code> 把普通列表交给协议栈。IPv4 / UDP 校验与分发完成后，数据才进入 socket。批量阈值或处理预算不同，协议交付与 refill 可以交错；补充新空间始终不以应用读完旧数据为前提。</p>
   <p>本例数据先进入 socket，应用随后调用 recvfrom，直接读取已有数据。若应用先调用、socket 尚无数据，阻塞调用会等待；入队时再唤醒等待者，线程获得 CPU 后才能复制载荷。非阻塞调用在无数据时返回 EAGAIN。这是同一接收机制下调用时机的区别，不需要另选一种收包模式。设备完成也不保证数据能进入 socket：协议校验、接收预算等可能导致后续丢弃。</p>
   <p>DPDK 的普通同步路径有两份独立存储。TX 将 Guest 帧复制为 mbuf，在发布 used 并检查通知条件后返回；应用取得 mbuf，即可交给 PMD，无需等待 Guest 执行中断或回收描述符。RX 则从 mbuf 复制到 Guest 空间；<code>rte_vhost_enqueue_burst()</code> 成功返回后，应用可释放已复制报文对应的宿主 mbuf，Guest 的 NAPI 与协议栈继续处理自己的副本。<code>rte_vhost_dequeue_burst()</code> 从 Guest 取包，<code>rte_vhost_enqueue_burst()</code> 向 Guest 送包，两个名字以 vhost 接口为视角。</p>
@@ -538,7 +540,7 @@ TAP 后端
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">十一、</span>后端演进与取舍</h2>
+  <h2><span class="mechanism-heading-number">十一、</span>网络后端的执行位置与成本</h2>
   <p>同一个 virtio-net 接口可以接到不同执行者。下面对照哪一端消费队列、怎样观察拥塞；vhost 的内存与通知配置见<a href="qemu-vhost-net.html#architecture">队列怎样交给后端</a>。</p>
   <table>
     <thead><tr><th scope="col">后端</th><th scope="col">数据面变化</th><th scope="col">代价与适用条件</th></tr></thead>
@@ -573,38 +575,31 @@ virsh domifstat VM vnet0</code></pre>
 </section>
 
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">十四、</span>版本与参考资料</h2>
-<p>演示每一步均附相应源码或规范。客户机发送从 <code>__sys_sendto() → udp_sendmsg() → ip_make_skb()</code> 进入网络输出，再由 <code>start_xmit()</code> 提交给 virtio 队列。接收由驱动进入 UDP socket 排队，<code>__sys_recvfrom() → udp_recvmsg()</code> 在读取时复制载荷。QEMU 路径跟踪 <code>virtio_net_flush_tx()</code>、<code>virtio_net_receive_rcu()</code> 和 TAP 回调；vhost-net 跟踪 <code>handle_tx_copy()</code>、<code>handle_rx()</code>；DPDK 跟踪 split 队列消费、复制与 used 发布。</p>
+  <h2><span class="mechanism-heading-number">十四、</span>参考资料</h2>
   <ul>
-    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/socket.c#L2209">Linux 6.18 sendto</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/socket.c#L2269">recvfrom</a>与<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/ipv4/udp.c#L2053">UDP 载荷复制</a>：客户机应用入口和返回。</li>
-    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/ipv4/ip_output.c#L933">用户数据复制</a>与<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/ipv4/udp.c#L1699">UDP socket 排队和唤醒</a>：用户缓冲区与内核 skb 的交接。</li>
-    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/net/virtio_net.c#L3022">virtio-net 接收与 refill</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/core/gro.c#L598">GRO_NORMAL 普通接收列表</a>与<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/net/core/dev.c#L6649">NAPI 完成</a>：驱动回收和协议交付的分界。</li>
-    <li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">VIRTIO 网络设备规范</a>：收发队列、网络头与缓冲区方向。</li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/virtio-net.c#L2716">QEMU 10.2.0 TX</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/virtio-net.c#L1903">RX</a>与<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/net/tap.c#L180">TAP</a>：交付、背压及完成。</li>
-    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vhost/net.c#L754">Linux 6.18 vhost-net TX</a>与<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vhost/net.c#L1133">RX</a>：宿主内核中的队列处理。</li>
-    <li><a href="https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/vhost/virtio_net.c#L3092">DPDK 24.11 dequeue</a>与<a href="https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/vhost/virtio_net.c#L1393">enqueue</a>：同步复制及完成发布。</li>
-    <li><a href="interrupt-virtualization.html">virtio 完成通知</a>：从队列通知到 KVM 中断交付。</li>
+    <li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">VIRTIO 网络设备规范：收发队列与网络报文头</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/e1000.c">QEMU e1000：模拟网卡如何处理发送描述符</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/net/virtio_net.c">Linux virtio-net 驱动：提交发送缓冲区、补充接收缓冲区</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_ring.c">Linux virtio_ring：发布描述符、检查通知并回收完成项</a></li>
+    <li><a href="https://docs.kernel.org/6.18/networking/napi.html">Linux NAPI 文档：驱动何时轮询与重新启用中断</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/virtio-net.c#L2716">QEMU virtio-net：处理客户机发送队列</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/virtio-net.c#L1903">QEMU virtio-net：把收到的报文写入客户机缓冲区</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/net/tap.c">QEMU TAP 后端：发送报文与处理写入背压</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vhost/net.c#L754">Linux vhost-net：在宿主内核处理发送队列</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vhost/net.c#L1133">Linux vhost-net：向客户机接收队列交包</a></li>
+    <li><a href="https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/vhost/virtio_net.c#L3092">DPDK vhost：从客户机发送队列取出报文</a></li>
+    <li><a href="https://github.com/DPDK/dpdk/blob/1b3bf1128d9bda5595861814792f74b8f57160c8/lib/vhost/virtio_net.c#L1393">DPDK vhost：向客户机接收队列写入报文</a></li>
   </ul>
-<ul class="mechanism-sources">
-    <li>QEMU 10.2.0：<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/e1000.c">e1000.c</a>，寄存器访问、TX 描述符与状态回写；<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/virtio-net.c">virtio-net.c</a>，用户态发送路径、网络头与异步完成。</li>
-    <li>QEMU 10.2.0：<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio.c">virtio.c</a>，队列消费、完成发布与通知；<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-pci.c">virtio-pci.c</a>，PCI 通知区及 ioeventfd。</li>
-    <li>QEMU 10.2.0：<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/net/tap.c">tap.c</a>，TAP 数据提交与暂不可写处理；<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/net/net.c">net.c</a>，网络队列及发送分派。</li>
-    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/net/tun.c">Linux 6.18 tun.c</a>：TAP 字符设备、tun_file 与 net_device 的关联，以及用户态写入到宿主接收路径的交接。</li>
-    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst#L2092-L2135">Linux 6.18 KVM_IOEVENTFD</a>：客户机 PIO / MMIO 写与 eventfd 的关联。</li>
-    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/uapi/linux/virtio_ring.h">Linux 6.18 virtio_ring.h</a>：描述符、可用环、已用环及 packed 格式；<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_ring.c">virtio_ring.c</a>：驱动发布、通知检查与回收。</li>
-    <li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">VIRTIO 1.2 规范</a>：split virtqueue、驱动通知和网络设备发送约定；<a href="https://docs.oasis-open.org/virtio/virtio/v1.1/cs01/virtio-v1.1-cs01.html">VIRTIO 1.1 规范</a>：split 与 packed 队列格式。</li>
-  </ul>
-<ul><li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/virtio-net.c">QEMU 10.2.0 virtio-net</a>：RX 空间检查、可写缓冲区填充与 used 发布。</li><li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/net/virtio_net.c">Linux 6.18 virtio-net</a>：接收队列、缓冲区补充、NAPI poll 与协议栈交付。</li><li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/virtio/virtio_ring.c">Linux 6.18 virtqueue</a>：队列回调、进度检查与共享结构访问。</li><li><a href="https://docs.kernel.org/6.18/networking/napi.html">Linux 6.18 NAPI</a>：调度、预算、完成条件及通知恢复。</li><li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">VIRTIO 1.2 §5.1</a>：网络头、RX 队列、合并接收缓冲区与通知约定。</li></ul>
 </section></div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#device-virtualization">设备与 I/O 虚拟化</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-11-01">2026-11-01</time> · 针对文中标注的源码与规范基线。</p></article>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-24">2026-11-24</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=1b09c2d270c2" defer></script>
-<template id="mechanism-lab-assets"><script data-lab-name="walkthrough-fullscreen.js" src="../assets/walkthrough-fullscreen.js?v=1b09c2d270c2"></script><script data-lab-name="walkthrough-routing.js" src="../assets/walkthrough-routing.js?v=1b09c2d270c2"></script><script data-lab-name="walkthrough-components.js" src="../assets/walkthrough-components.js?v=1b09c2d270c2"></script><script data-lab-name="walkthrough-events.js" src="../assets/walkthrough-events.js?v=1b09c2d270c2"></script><script data-lab-name="execution-model.js" src="../assets/execution-model.js?v=1b09c2d270c2"></script><script data-lab-name="execution-demo.js" src="../assets/execution-demo.js?v=1b09c2d270c2"></script></template>
-<script src="../assets/mechanism-labs.js?v=1b09c2d270c2" data-lab-loader data-asset-root="../assets/" data-asset-version="1b09c2d270c2" defer></script>
+<script src="../assets/mechanism-viewer.js?v=5ca28448cc93" defer></script>
+<template id="mechanism-lab-assets"><script data-lab-name="walkthrough-fullscreen.js" src="../assets/walkthrough-fullscreen.js?v=5ca28448cc93"></script><script data-lab-name="walkthrough-routing.js" src="../assets/walkthrough-routing.js?v=5ca28448cc93"></script><script data-lab-name="walkthrough-components.js" src="../assets/walkthrough-components.js?v=5ca28448cc93"></script><script data-lab-name="walkthrough-events.js" src="../assets/walkthrough-events.js?v=5ca28448cc93"></script><script data-lab-name="execution-model.js" src="../assets/execution-model.js?v=5ca28448cc93"></script><script data-lab-name="execution-demo.js" src="../assets/execution-demo.js?v=5ca28448cc93"></script></template>
+<script src="../assets/mechanism-labs.js?v=5ca28448cc93" data-lab-loader data-asset-root="../assets/" data-asset-version="5ca28448cc93" defer></script>
 </body>
 </html>

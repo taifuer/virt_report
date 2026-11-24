@@ -6,6 +6,8 @@
   <h2>序言</h2>
   <p>设备直通把物理设备的功能交给客户机驱动使用。驱动向设备提交缓冲区地址后，设备可以通过 DMA 读写客户机内存。宿主机需要把这些地址转换成实际的物理页，同时限制设备能够访问的范围。VFIO 管理设备访问与 DMA 资源，宿主 IOMMU 执行地址转换和权限检查。</p>
   <p>本文分析 x86 / KVM 下普通 PCIe 设备访问客户机 RAM 的过程：客户机不配置虚拟 IOMMU，设备使用 GPA 作为 DMA 地址，宿主启用 IOMMU 隔离；内存采用常规可固定的 RAM。本例不涉及 PCIe 对等访问、ATS、PASID 和可恢复页故障。设备寄存器与中断仅作为请求提交和完成的上下文。</p>
+  <h3 id="history">从 VFIO container 到 IOMMUFD</h3>
+  <p>传统 VFIO 以 group 表示最小隔离单元，在 container 上管理 DMA 映射。IOMMUFD 将 I/O 地址空间和硬件页表抽成单独的对象；使用设备字符节点的 VMM 把设备绑定到这个上下文，再附着页表。两代接口要解决的是同一个问题：设备开始 DMA 前，指定它可以访问哪些宿主页。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -94,7 +96,7 @@ IOMMUFD：iommufd_ioas_map()
 <section id="tradeoffs" class="mechanism-section">
   <h2>直通减少的开销与保留的成本</h2>
   <p>回到 GPA <code>0x00400080</code> 的例子，映射建立后，设备通过 IOMMU 访问对应宿主页，无需 QEMU 为这次数据搬运解析一条 virtqueue 或复制报文。省下的是软件设备数据路径的一部分工作；IOMMU 转换、硬件队列、设备中断以及客户机驱动仍要运行。BAR 是否能够直接映射、设备是否需要其他模拟，也会影响实际退出次数。</p>
-  <p>对本例可以先核对地址和方向：IOVA 0x00400080 应命中映射页，读写权限应与设备操作相符，页内偏移仍为 0x80。映射缺失或越权出现的是 IOMMU 访问故障；性能低但没有故障时，则继续检查队列、中断、DMA 带宽与 NUMA，不能把两种现象都归为地址转换错误。</p>
+  <p>对本例可以先核对地址和方向：IOVA 0x00400080 应命中映射页，读写权限应与设备操作相符，页内偏移仍为 0x80。映射缺失或越权出现的是 IOMMU 访问故障；性能低但没有故障时，则继续检查队列、中断、DMA 带宽与 NUMA。</p>
   <p>评估应分开一次性的接管与映射成本、正常运行的吞吐和尾延迟，以及停止、复位和迁移的管理成本。大内存虚拟机还要观察页固定规模与映射耗时；高频小 I/O 则更容易暴露中断和调度开销。若增加虚拟 IOMMU 来细化客户机 DMA 权限，还需评估动态映射和 IOTLB 更新，不能沿用本例长期映射全部可访问 RAM 的开销结论。</p>
 </section>
 
@@ -118,12 +120,15 @@ IOMMUFD：iommufd_ioas_map()
 
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
-  <ul class="mechanism-sources">
-    <li><a href="qemu-viommu.html">vIOMMU：客户机 DMA 映射与失效同步</a>：客户机启用虚拟 IOMMU 后，IOVA 映射的建立、撤销与缓存一致性。</li>
-    <li><a href="vfio-device-migration.html">VFIO 设备热迁移</a>：QEMU 与 AMD GPU 驱动迁移客户机内存、VF 显存和硬件状态的过程。</li>
-    <li>QEMU：<a href="{{ qemu_source }}hw/vfio/listener.c">VFIO MemoryListener</a>、<a href="{{ qemu_source }}hw/vfio/container.c">公共映射分派</a>、<a href="{{ qemu_source }}hw/vfio/container-legacy.c">传统 container</a>。</li>
-    <li>QEMU：<a href="{{ qemu_source }}hw/vfio/iommufd.c">VFIO IOMMUFD 后端</a>、<a href="{{ qemu_source }}backends/iommufd.c">IOMMUFD ioctl 封装</a>、<a href="{{ qemu_source }}docs/devel/vfio-iommufd.rst">后端设计说明</a>。</li>
-    <li>Linux：<a href="{{ kernel_source }}drivers/vfio/vfio_iommu_type1.c">Type1 映射实现</a>、<a href="{{ kernel_source }}drivers/iommu/iommufd/ioas.c">IOAS 管理</a>、<a href="{{ kernel_source }}Documentation/driver-api/vfio.rst">VFIO 设备与隔离组</a>。</li>
-    <li><a href="https://docs.kernel.org/6.18/userspace-api/iommufd.html">Linux IOMMUFD 文档</a>：IOAS、硬件页表、设备绑定与接口语义。</li>
+  <ul>
+    <li><a href="{{ kernel_source }}Documentation/driver-api/vfio.rst">Linux VFIO 文档：设备访问与 IOMMU 隔离组</a></li>
+    <li><a href="{{ qemu_source }}hw/vfio/listener.c">QEMU VFIO MemoryListener：监听客户机内存映射变更</a></li>
+    <li><a href="{{ qemu_source }}hw/vfio/container.c">QEMU VFIO：按容器后端分派 DMA 映射请求</a></li>
+    <li><a href="{{ qemu_source }}hw/vfio/container-legacy.c">QEMU VFIO：传统 container 的 DMA 映射与撤销</a></li>
+    <li><a href="{{ kernel_source }}drivers/vfio/vfio_iommu_type1.c">Linux VFIO Type1：在宿主 IOMMU 中建立映射</a></li>
+    <li><a href="{{ qemu_source }}hw/vfio/iommufd.c">QEMU VFIO：用 IOMMUFD 后端绑定直通设备</a></li>
+    <li><a href="{{ qemu_source }}backends/iommufd.c">QEMU IOMMUFD：向内核提交映射与撤销请求</a></li>
+    <li><a href="{{ kernel_source }}drivers/iommu/iommufd/ioas.c">Linux IOMMUFD：管理 I/O 地址空间</a></li>
+    <li><a href="https://docs.kernel.org/6.18/userspace-api/iommufd.html">Linux IOMMUFD 用户接口文档</a></li>
   </ul>
 </section>

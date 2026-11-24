@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=5eb1bb7dc04a">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=5eb1bb7dc04a">
-<link rel="stylesheet" href="../assets/vfio-migration-lab.css?v=5eb1bb7dc04a"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=1b35da490c57">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1b35da490c57">
+<link rel="stylesheet" href="../assets/vfio-migration-lab.css?v=1b35da490c57"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -35,7 +35,7 @@
         <a href="../topics.html" class="">专题</a>
         <a href="../conferences.html" class="">会议</a>
         <a href="../versions.html" class="">版本</a>
-        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../industry/index.html" class="">产业</a>
         <a href="../about.html" class="">关于</a>
         <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -108,9 +108,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看单块 GPU VF 从源端切换到目的端" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="单块 GPU VF 从源端切换到目的端">
-    <img src="../assets/vfio-migration-handoff.svg?v=5eb1bb7dc04a" width="920" height="746" alt="源端运行时可以同时传客户机 RAM 和设备数据；停机后，最终 DMA 脏页与剩余设备字节在目的端会合。" loading="lazy">
+    <img src="../assets/vfio-migration-handoff.svg?v=1b35da490c57" width="920" height="746" alt="源端运行时可以同时传客户机 RAM 和设备数据；停机后，最终 DMA 脏页与剩余设备字节在目的端会合。" loading="lazy">
   </div>
-  <figcaption>源端运行时可以同时传客户机 RAM 和设备数据；停机后，最终 DMA 脏页与剩余设备字节在目的端会合。 <a href="../assets/vfio-migration-handoff.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>源端运行时可以同时传客户机 RAM 和设备数据；停机后，最终 DMA 脏页与剩余设备字节在目的端会合。 <a href="../assets/vfio-migration-handoff.svg?v=1b35da490c57" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
     accTitle: 从运行中的 AMD GPU VF 到目的端恢复
     accDescr: 源端 QEMU 通过 Linux VFIO 将预拷贝和停止请求交给 AMD GIM。两台 QEMU 传输客户机 RAM 和 VF 状态；目的端在恢复显存与硬件状态后接管。图中呈现单块 VF 的成功路径。
@@ -187,9 +187,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看显存和客户机内存的两条传输路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="显存和客户机内存的两条传输路径">
-    <img src="../assets/vfio-migration-consistency.svg?v=5eb1bb7dc04a" width="454" height="801" alt="显存经驱动环形缓冲区和 VFIO 数据 FD 传输；DMA 写脏的客户机内存由 QEMU 的 RAM 迁移发送。目的端用两条路径的数据恢复同一次计算。" loading="lazy">
+    <img src="../assets/vfio-migration-consistency.svg?v=1b35da490c57" width="454" height="801" alt="显存经驱动环形缓冲区和 VFIO 数据 FD 传输；DMA 写脏的客户机内存由 QEMU 的 RAM 迁移发送。目的端用两条路径的数据恢复同一次计算。" loading="lazy">
   </div>
-  <figcaption>显存经驱动环形缓冲区和 VFIO 数据 FD 传输；DMA 写脏的客户机内存由 QEMU 的 RAM 迁移发送。目的端用两条路径的数据恢复同一次计算。 <a href="../assets/vfio-migration-consistency.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>显存经驱动环形缓冲区和 VFIO 数据 FD 传输；DMA 写脏的客户机内存由 QEMU 的 RAM 迁移发送。目的端用两条路径的数据恢复同一次计算。 <a href="../assets/vfio-migration-consistency.svg?v=1b35da490c57" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: AMD GPU VF 显存与客户机 RAM 的两条迁移路径
     accDescr: GPU 修改的客户机内存通过 IOMMU 脏页记录汇入 QEMU 的 RAM 迁移。VF 显存按 AMD 驱动的显存位图复制到源端环形缓冲区，经 VFIO 数据 FD 送到目的 QEMU，再由目的端环形缓冲区写回 VF 显存。两路数据和最终硬件状态共同组成恢复点。
@@ -280,12 +280,18 @@
 <section id="sources" class="mechanism-section">
 <h2><span class="mechanism-heading-number">八、</span>核心源码</h2>
 <ul>
-<li><strong>QEMU 迁移流程</strong>：<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L449">hw/vfio/migration.c</a>（建立会话、迭代、收尾和加载）；<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/listener.c#L1184">hw/vfio/listener.c</a>（DMA 脏页并入 RAM 迁移）。</li>
-<li><strong>QEMU 并行传输</strong>：<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration-multifd.c#L165">hw/vfio/migration-multifd.c</a>（停机分块、块序号与目的端加载）。</li>
-<li><strong>Linux VFIO</strong>：<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/uapi/linux/vfio.h#L1011">include/uapi/linux/vfio.h</a>（状态、数据 FD 和预拷贝查询）；<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vfio/vfio_main.c#L888">drivers/vfio/vfio_main.c</a>（向厂商驱动分派状态请求）。</li>
-<li><strong>AMD VF 接入和迁移数据路径</strong>：<a href="https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/gim/amd-vfio-pci/amd-vfio.c#L115">gim/amd-vfio-pci/amd-vfio.c</a>（能力与回调注册）；<a href="https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/gim/gim_shim/gim_mig.c#L710">gim/gim_shim/gim_mig.c</a>（预拷贝查询、显存复制、环形缓冲区与状态转换）。</li>
-<li><strong>AMD 显存和固件状态</strong>：<a href="https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/libgv/core/amdgv_dirtybit.c#L333">libgv/core/amdgv_dirtybit.c</a>（累积变化位图）；<a href="https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/libgv/core/hw/AI/mi300/mi300_dirtybit.c#L440">mi300_dirtybit.c</a>（芯片查询实现）；<a href="https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/libgv/core/amdgv_live_migration.c#L404">libgv/core/amdgv_live_migration.c</a>（固件状态导出和导入）。</li>
-<li><strong>接口沿革</strong>：QEMU 的 <a href="https://github.com/qemu/qemu/commit/31bcbbb5be04c7036223ce680a12927f5e51dc77">v2 实现说明</a>与<a href="https://github.com/qemu/qemu/commit/eda7362af9595a9c6b1f1fefdd94b5ef711c250c">设备预拷贝变更</a>。</li>
+<li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L449">QEMU hw/vfio/migration.c：设备迁移会话、预拷贝与恢复</a></li>
+<li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/listener.c#L1184">QEMU hw/vfio/listener.c：把设备 DMA 脏页并入 RAM 迁移</a></li>
+<li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration-multifd.c#L165">QEMU hw/vfio/migration-multifd.c：停机时拆分并传输设备状态</a></li>
+<li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/uapi/linux/vfio.h#L1011">Linux include/uapi/linux/vfio.h：迁移状态、数据 FD 与预拷贝查询</a></li>
+<li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vfio/vfio_main.c#L888">Linux drivers/vfio/vfio_main.c：向厂商驱动分派状态请求</a></li>
+<li><a href="https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/gim/amd-vfio-pci/amd-vfio.c#L115">AMD gim/amd-vfio-pci/amd-vfio.c：为 GPU 的 VF 注册迁移回调</a></li>
+<li><a href="https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/gim/gim_shim/gim_mig.c#L710">AMD gim/gim_shim/gim_mig.c：跟踪预拷贝进度、通过环形缓冲区搬运显存</a></li>
+<li><a href="https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/libgv/core/amdgv_dirtybit.c#L333">AMD libgv/core/amdgv_dirtybit.c：累积显存脏页位图</a></li>
+<li><a href="https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/libgv/core/hw/AI/mi300/mi300_dirtybit.c#L440">AMD mi300_dirtybit.c：读取 MI300 的硬件脏页记录</a></li>
+<li><a href="https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/libgv/core/amdgv_live_migration.c#L404">AMD libgv/core/amdgv_live_migration.c：导出与导入固件状态</a></li>
+<li><a href="https://github.com/qemu/qemu/commit/31bcbbb5be04c7036223ce680a12927f5e51dc77">QEMU 提交：接入 VFIO v2 迁移接口</a></li>
+<li><a href="https://github.com/qemu/qemu/commit/eda7362af9595a9c6b1f1fefdd94b5ef711c250c">QEMU 提交：为 VFIO 设备加入预拷贝</a></li>
 </ul>
 </section>
 </div>
@@ -293,9 +299,9 @@
   <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#migration">热迁移</a><a href="../topics/migration/index.html">热迁移动态</a></nav>
 <p class="mechanism-review">技术复核：<time datetime="2026-11-23">2026-11-23</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=5eb1bb7dc04a" defer></script>
-<script src="../assets/vfio-migration-lab.js?v=5eb1bb7dc04a" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=1b35da490c57" defer></script>
+<script src="../assets/vfio-migration-lab.js?v=1b35da490c57" defer></script></body>
 </html>

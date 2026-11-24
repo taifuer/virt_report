@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=02b518d59aa4">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=02b518d59aa4">
-<link rel="stylesheet" href="../assets/forum.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e7d4bbc16c93">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e7d4bbc16c93">
+<link rel="stylesheet" href="../assets/forum.css?v=e7d4bbc16c93">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -36,7 +36,7 @@
         <a href="../topics.html" class="">专题</a>
         <a href="../conferences.html" class="on" aria-current="page">会议</a>
         <a href="../versions.html" class="">版本</a>
-        <a href="../mechanisms.html" class="">原理</a>
+        <a href="../industry/index.html" class="">产业</a>
         <a href="../about.html" class="">关于</a>
         <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -72,7 +72,7 @@
 <p>Nested EPT 合成 L2 客户机物理地址到宿主物理地址的映射，让硬件继续遍历 L2 自己的进程页表。进程创建和 CR3 切换因此不必反复重建同一类影子进程地址空间；相较于进程页表，虚拟机物理映射通常变化更少。L1 与 L0 的权限和地址关系被组合到硬件实际使用的二级表中。</p>
 <p>实现把 KVM 影子页表处理中的格式差异参数化，补充 EPT 语义。指令模拟仍需要从 L2 虚拟地址开始的软件翻译，因此使用额外的 nested MMU 上下文，依次得到 L2 物理地址和 L1 物理地址，不能直接拿只接受 L2 物理地址的 EPT 上下文代替。</p>
 <h3 id="nested-ept-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>讲稿给出内核编译示例：Shadow-on-EPT 为 33 分 22 秒，Nested EPT 为 9 分 46 秒，运行时间约缩短 71%。平台、内核配置和重复次数披露有限，不能把这个比例推广到所有嵌套负载。它有力说明了频繁进程页表变化的场景会受益于不同的合成位置。</p>
+<p>讲稿给出内核编译示例：Shadow-on-EPT 为 33 分 22 秒，Nested EPT 为 9 分 46 秒，运行时间约缩短 71%。它有力说明了频繁进程页表变化的场景会受益于不同的合成位置。</p>
 <h3 id="nested-ept-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>嵌套二级映射仍是软件维护的合成结果，页表更新、失效和故障归属都不能省略。大页、权限组合和指令模拟需要分别测试。后续评价应包括 L1 频繁改映射、L2 多 vCPU 并发和迁移，观察稳态收益之外的缓存重建成本与正确性。</p>
 </section>
@@ -90,7 +90,7 @@
 <p>FlatView 按不可变快照更新，读取者持有引用，更新者发布新视图；MemoryRegion 通过所有者关系维持设备寿命。设备从客户机视图移除与实际内存回收分开，已有访问结束后才释放资源。讲稿进一步以 RCU 降低读取侧同步成本，写侧仍可保留 BQL 简化更新。</p>
 <p>无锁 MMIO/PIO 采用选择性开放，优先面向静态映射或语义清楚的半虚拟设备。对动态映射，需要额外检查或锁来保证翻译与访问的关系。该设计承认通用管理路径与高频数据路径的需求不同，并不追求一次删除全部全局锁。</p>
 <h3 id="memory-concurrency-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>四 CPU Ivy Bridge 平台上的 ACPI PM timer 微基准中，单 vCPU 去除 BQL 后约改善 3%，四 vCPU 访问成本约减少 30%；八 vCPU 时仍有明显额外成本。结果说明锁竞争随并发程度改变，不能由单线程测试判断优化价值。材料还明确脏页位图处理等工作尚未完成。</p>
+<p>四 CPU Ivy Bridge 平台上的 ACPI PM timer 微基准中，单 vCPU 去除 BQL 后约改善 3%，四 vCPU 访问成本约减少 30%；八 vCPU 时仍有明显额外成本。并发访问越多，锁竞争对访问成本的影响越明显。材料还明确脏页位图处理等工作尚未完成。</p>
 <h3 id="memory-concurrency-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>地址空间快照解决读取稳定性，却不自动保证设备内部状态的原子性。脏页记录、迁移、热拔除和跨设备 DMA 仍需共同审查。后续验证应检查对象回收时机及映射变化期间的访问，避免只验证无竞争的吞吐，把低频但危险的生命周期错误留在系统中。</p>
 </section>
@@ -106,9 +106,9 @@
 <p>客户机上下文、纹理和着色器需要在宿主维护对应对象，异步执行还要求明确完成通知。客户机能力不能超过宿主接口能够表达的范围，着色器语言转换也可能遇到语义差异。命令与资源都来自不可信客户机，宿主渲染器及图形驱动成为新的输入处理边界。</p>
 <h3 id="virgil-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
 <p>客户机 Mesa 驱动把 Gallium 状态、绘制和资源操作编码后送入 Virtio 队列，宿主渲染器将其转换为 OpenGL 调用，并把 TGSI 着色器转换为 GLSL。客户机上下文对应宿主 GL 上下文，以维持条件渲染等语义。资源传输、能力查询和 fence 共同构成设备协议。</p>
-<p>讲稿同时区分基础 virtio-gpu 显示设备与可附着的 3D 渲染器。多显示头、光标和窗口系统属于显示集成工作，绘制加速属于渲染路径；这两部分相关，但完成其中一项并不意味着另一项全部可用。</p>
+<p>讲稿同时区分基础 virtio-gpu 显示设备与可附着的 3D 渲染器。多显示头、光标和窗口系统属于显示集成工作，绘制加速属于渲染路径；显示集成和 3D 渲染各自有独立的能力要求。</p>
 <h3 id="virgil-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>2013 年材料把项目明确标为研究原型，展示 Linux 图形渲染和多显示头演示。客户机接口当时主要达到 OpenGL 2.1 一类能力，更高版本仍涉及多重采样、上下文和迁移问题。PDF 没有足够的帧率、延迟或资源占用数据，不能据此声称接近原生 GPU 性能。</p>
+<p>2013 年材料把项目明确标为研究原型，展示 Linux 图形渲染和多显示头演示。客户机接口当时主要达到 OpenGL 2.1 一类能力，更高版本仍涉及多重采样、上下文和迁移问题。演示验证了图形功能；与原生 GPU 的帧率、延迟及资源占用对比仍待测量。</p>
 <h3 id="virgil-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>完成事件的返回方式、64 位状态传递、安全隔离及 libvirt 集成仍在讨论。DRM render nodes、EGL 和 dma-buf 被列为后续方向。工程评价需要同时测试图形正确性、恶意命令、资源耗尽和上下文销毁；一个成功演示只覆盖了功能路径的一小部分。</p>
 </section>
@@ -126,9 +126,9 @@
 <p>输入报文复制给主备虚拟机，备用输出回传比较模块。输出相同时对外发送，不同时触发检查点同步。讲稿使用流量镜像与重定向接入既有虚拟网卡路径，避免要求客户机应用或驱动专门配合。</p>
 <p>存储路径增加磁盘管理层，分别维护主副本写缓存，按检查点或故障切换状态选择提交内容。QEMU 迁移流程被改造成可重复同步内存与设备的检查点机制，主备之间还需要心跳和切换协调。网络、存储和虚拟机状态构成一个整体协议。</p>
 <h3 id="colo-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>原稿的 Web Bench 与 Pgbench 图表明确标注为基于 SoCC 2013 数据的性能预测，不能写成这版 KVM 实现的新实测。图中结果随并发数和 vCPU 数量变化明显，高并发 Web 场景仍有较大损失。讲稿的后续计划包括重新设计、开发并提交评审，说明当时方案距离完整上游实现还有工程工作。</p>
+<p>Web Bench 和 Pgbench 图给出的是基于 SoCC 2013 数据的性能预测。图中结果随并发数和 vCPU 数量变化明显，高并发 Web 场景仍有较大损失。讲稿的后续计划包括重新设计、开发并提交评审，说明当时方案距离完整上游实现还有工程工作。</p>
 <h3 id="colo-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
-<p>响应一致不意味着任意外部副作用都已被覆盖，实际系统必须限定可控的 I/O 与故障模型。比较延迟、频繁检查点和副本落后也会影响服务质量。从工程角度，还需要独立验证故障检测、隔离旧主机和重复输出防护。本文保留这一设计思路，不把“无停机”当作未经条件限定的保证。</p>
+<p>COLO 覆盖哪些外部副作用，取决于系统接管了哪些 I/O，以及如何处理故障。比较延迟、频繁检查点和副本落后也会影响服务质量。从工程角度，还需要独立验证故障检测、隔离旧主机和重复输出防护。</p>
 </section>
 <section id="idle-latency" class="mechanism-section">
 <h2><span class="mechanism-heading-number">六、</span>短时空闲：消息负载中的 vCPU 切换成本</h2>
@@ -142,9 +142,9 @@
 <p>宿主并不知道客户机上次运行期间是否切换过任务、是否使用了 FPU，通常必须按安全规则保存状态。让客户机持续占用 CPU 可以避免部分切换，却可能阻止真正负责产生响应的宿主线程运行。延迟保存状态还涉及抢占、跨 CPU 迁移和调试读取，不能只改一条空闲路径。</p>
 <h3 id="idle-latency-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
 <p>作者逐步拆分调度、vCPU 加载卸载与 FPU 保存，再比较三条方向：客户机感知的短时空闲策略、延迟 FPU 保存，以及让当前任务短暂进入可唤醒等待而不立即完整切换上下文。最后一种提案允许有其他任务需要 CPU 时执行正常保存和调度，试图同时兼顾短等待与宿主公平性。</p>
-<p>讲稿讨论的 idle_poll 等接口属于实验设计。它们揭示了等待策略应考虑状态保存成本和事件到达时间，但不能直接当作现代内核的推荐参数或实现细节。</p>
+<p>讲稿讨论的 idle_poll 等接口属于实验设计。在这个版本的实现中，保存上下文的成本和下一次事件到达的时间共同决定了轮询是否划算。</p>
 <h3 id="idle-latency-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>Java 读写线程队列实验中，默认路径约为每秒 13.55 万次，绕过部分保存与调度后可达到约 21 万次。部分测量通过跳过必要工作来定位成本，并不是可以直接部署的安全实现。材料没有给出完整平台、功耗和竞争负载结果，数值主要用于说明开销分布。</p>
+<p>Java 读写线程队列实验中，默认路径约为每秒 13.55 万次，绕过部分保存与调度后可达到约 21 万次。部分测量通过跳过必要工作来定位成本，并不是可以直接部署的安全实现。这些测量将开销分解到各执行步骤。</p>
 <h3 id="idle-latency-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>空闲预测错误会浪费 CPU，过量分配时也可能放大等待依赖。跨 CPU 保存状态的 IPI 成本可能使长尾更差。后续验证应加入竞争线程、不同消息间隔和功耗测量，比较吞吐改善与宿主可调度性，并确保所有状态在抢占和迁移边界得到正确保存。</p>
 </section>
@@ -153,8 +153,8 @@
   <nav class="mechanism-related" aria-label="会议资料"><a href="../kvm-forum.html#year-2013">返回年度总览</a><a href="https://www.linux-kvm.org/page/KVM_Forum_2013" target="_blank" rel="noopener noreferrer">原始议程</a></nav>
 </article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=02b518d59aa4" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=e7d4bbc16c93" defer></script></body>
 </html>

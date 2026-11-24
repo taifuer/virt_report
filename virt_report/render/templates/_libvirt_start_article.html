@@ -9,6 +9,9 @@
   {% include '_mechanism_baselines.html' %}
   {{ diagram('startup-overview-handoff', '资源准备、虚拟硬件建立与客户机引导', 'Libvirt 准备宿主资源并启动 QEMU；QEMU 创建 CPU、内存与设备；放行后，客户机执行固件、操作系统和服务。') }}
   <p>同样表现为“虚机没起来”，磁盘权限错误要查宿主准备，QEMU 创建设备失败要查机器配置，固件找不到启动盘则要查客户机引导。暂停启动可以把建机和引导分开观察。</p>
+  <h3 id="history">从 monitor 到 QMP 与锁管理</h3>
+  <p>早期人类可读的 monitor 适合人工交互，自动管理需要解析文本输出。QMP 提供结构化 JSON 命令、错误和异步事件，减少命令输出格式变化带来的歧义。Libvirt 在 2010 年加入<a href="https://github.com/libvirt/libvirt/commit/5d72a8944264bef63f490d1bd602fca1aea4be2c">连接时的 qmp_capabilities 协商</a>；如今启动路径依赖 QMP 查询线程、设置运行参数和同步生命周期。</p>
+  <p>同年，QEMU 驱动<a href="https://github.com/libvirt/libvirt/commit/12317957ecd6c37a2fb16275dcdeeacfe25c517e">接入锁管理基础设施</a>，把磁盘锁、标签修改和 fork / exec 时序联系起来。随着直通设备、外部后端、NUMA 和 cgroup 等能力增加，创建进程逐渐成为更大资源事务中的一步。</p>
 </section>
 
 {% include '_vm_lifecycle_lab.html' %}
@@ -93,9 +96,8 @@ virsh -c qemu:///system resume demo</code></pre>
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>QMP 状态协调的收益与启动成本</h2>
-  <p>早期人类可读的 monitor 适合人工交互，自动管理需要解析文本输出。QMP 提供结构化 JSON 命令、错误和异步事件，减少命令输出格式变化带来的歧义。Libvirt 在 2010 年加入<a href="https://github.com/libvirt/libvirt/commit/5d72a8944264bef63f490d1bd602fca1aea4be2c">连接时的 qmp_capabilities 协商</a>；如今启动路径依赖 QMP 查询线程、设置运行参数和同步生命周期。</p>
-  <p>同年，QEMU 驱动<a href="https://github.com/libvirt/libvirt/commit/12317957ecd6c37a2fb16275dcdeeacfe25c517e">接入锁管理基础设施</a>，把磁盘锁、标签修改和 fork / exec 时序联系起来。随着直通设备、外部后端、NUMA 和 cgroup 等能力增加，创建进程逐渐成为更大资源事务中的一步。</p>
+  <h2>启动准备的成本</h2>
+
   <p>收益是资源隔离、并发控制与故障恢复可以统一处理，成本则是更多阶段、状态和失败出口。排查启动慢或启动失败，最有效的起点是定位最后一个完成的阶段：配置校验、宿主资源准备、exec、QMP 协商、运行前设置，还是客户机自己的引导。将这些耗时全部归入“QEMU 启动”会掩盖实际瓶颈。</p>
   <table><thead><tr><th>优化方向</th><th>减少的等待</th><th>需要承担的代价</th></tr></thead><tbody>
     <tr><td>提前准备网络和存储</td><td>请求中的宿主准备</td><td>资源提前占用，还需处理失效与清理</td></tr>
@@ -112,9 +114,13 @@ virsh -c qemu:///system resume demo</code></pre>
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>
-    <li><a href="{{ libvirt_source }}tools/virsh-domain.c#L4409-L4521">Libvirt 12.0.0：virsh start</a>、<a href="{{ libvirt_source }}src/qemu/qemu_driver.c#L6327-L6455">QEMU 驱动启动入口</a></li>
-    <li><a href="{{ libvirt_source }}src/qemu/qemu_process.c#L8096-L8470">进程启动与 monitor 配置</a>、<a href="{{ libvirt_source }}src/qemu/qemu_process.c#L8566-L8707">完成启动与失败处理</a></li>
-    <li><a href="{{ libvirt_source }}src/util/vircommand.c#L387-L432">exec 前握手</a>、<a href="{{ libvirt_source }}src/qemu/qemu_monitor_json.c#L1524-L1575">QMP 协商与 cont</a></li>
-    <li><a href="{{ libvirt_source }}docs/kbase/internals/qemu-threads.rst">QEMU 驱动作业与锁</a>、<a href="{{ qemu_source }}docs/interop/qmp-spec.rst">QEMU 10.2.0：QMP 协议</a></li>
+    <li><a href="{{ libvirt_source }}tools/virsh-domain.c#L4409-L4521">Libvirt virsh 手册：启动已定义的虚拟机</a></li>
+    <li><a href="{{ libvirt_source }}src/qemu/qemu_driver.c#L6327-L6455">Libvirt QEMU 驱动：域启动入口</a></li>
+    <li><a href="{{ libvirt_source }}src/qemu/qemu_process.c#L8096-L8470">Libvirt：创建 QEMU 进程并建立 monitor 连接</a></li>
+    <li><a href="{{ libvirt_source }}src/util/vircommand.c#L387-L432">Libvirt：执行 QEMU 之前的父子进程握手</a></li>
+    <li><a href="{{ qemu_source }}docs/interop/qmp-spec.rst">QEMU QMP 规范：握手与能力协商</a></li>
+    <li><a href="{{ libvirt_source }}src/qemu/qemu_monitor_json.c#L1524-L1575">Libvirt monitor：协商 QMP 并发送 cont</a></li>
+    <li><a href="{{ libvirt_source }}src/qemu/qemu_process.c#L8566-L8707">Libvirt：结束启动作业及回收失败启动的资源</a></li>
+    <li><a href="{{ libvirt_source }}docs/kbase/internals/qemu-threads.rst">Libvirt QEMU 驱动：管理域作业和锁</a></li>
   </ul>
 </section>

@@ -30,8 +30,10 @@ HOME_REPORT_LIMITS = {"daily": 15, "weekly": 9, "monthly": 6}
 STATIC_ASSET_NAMES = ("brand-mark.png", "site.css", "site.js")
 FORUM_ASSET_NAMES = ("forum.css", "mechanisms.css", "mechanism-viewer.css", "mechanism-viewer.js")
 SEARCH_ASSET_NAMES = ("search.css", "editorial-search.js")
+INDUSTRY_ASSET_NAMES = ("industry.css",)
 FAVICON_ASSET_NAMES = ("favicon-32.png", "favicon.ico")
 MECHANISM_DIAGRAM_NAMES = (
+    "device-io-read-handoff",
     "linux-boot-handoff", "kvm-creation-resources", "live-upgrade-handoff",
     "linux-kernel-architecture", "linux-kernel-milestones",
     "linux-isolation-layers", "linux-read-cooperation",
@@ -90,7 +92,6 @@ MECHANISM_DIAGRAM_NAMES = (
     "viommu-shadow-path", "viommu-map-lifecycle",
     "vfio-migration-consistency", "vfio-migration-handoff",
     "nested-vmx-controls", "nested-vmx-exit-path",
-    "balloon-page-handoff",
 )
 MECHANISM_LAYOUT_NAMES = ("migration-wire-layout",)
 MECHANISM_ASSET_NAMES = ("mechanisms.css", "mechanisms.js", "precopy-lab.css",
@@ -345,6 +346,40 @@ def render_about_html(config: Config) -> str:
     return tpl.render(root="", site_name=config.name)
 
 
+def render_industry_html(config: Config, page: str = "index", *, editions: list | None = None) -> str | None:
+    from virt_report import industry
+
+    if editions is None and page == "archive":
+        editions = industry.issues(config)
+    if editions is None:
+        issue = industry.get(config, None if page == "index" else page)
+    elif page == "index":
+        issue = editions[0] if editions else None
+    else:
+        issue = next((entry for entry in editions if entry["week"] == page), None)
+    if page not in {"index", "archive"} and issue is None:
+        return None
+    version = hashlib.sha256((ASSETS_DIR / "industry.css").read_bytes()).hexdigest()[:12]
+    return _env().get_template("industry.html").render(
+        root="../", site_name=config.name, style_version=version, archive=page == "archive",
+        issue=issue, editions=editions)
+
+
+def render_industry(config: Config) -> list[Path]:
+    """Export only approved briefs. Publish the index after its link targets exist."""
+    from virt_report import industry
+
+    editions = industry.issues(config)
+    industry.write_text(config.output_dir / "assets/industry.css",
+                        (ASSETS_DIR / "industry.css").read_text(encoding="utf-8"))
+    paths = []
+    for page in [*(issue["week"] for issue in editions), "archive", "index"]:
+        path = config.output_dir / "industry" / f"{page}.html"
+        industry.write_text(path, render_industry_html(config, page, editions=editions))
+        paths.append(path)
+    return paths
+
+
 def render_search(config: Config, result: dict, filename: str = "search.html") -> Path:
     """导出搜索入口；带查询参数的结果由动态服务返回。"""
     html = render_search_html(config, result, static_mode=True)
@@ -513,10 +548,11 @@ def _render_mechanism_page(site_name: str, slug: str | None) -> str | None:
         for mapping in aliases:
             for old, new in mapping.items():
                 if f'id="{old}"' not in body:
-                    marker = f'<section id="{new}"'
                     alias = (f'<span id="{old}" class="mechanism-topic-alias" '
                              'aria-hidden="true"></span>\n')
-                    body = body.replace(marker, alias + marker, 1)
+                    marker = re.search(fr'<(?:section|h3) id="{re.escape(new)}"', body)
+                    if marker:
+                        body = body[:marker.start()] + alias + body[marker.start():]
         body = canonicalize_article_links(body, mechanisms.redirects())
         body = compact_references(body)
         context["article_body"], context["article_outline"] = prepare_outline(body, article["sections"])
@@ -550,6 +586,9 @@ def render_mechanisms(config: Config) -> list[Path]:
         target="../mechanisms.html#kvm-internals", title="KVM 原理",
     ), encoding="utf-8")
     paths.append(path)
+    # An in-place export may still contain these two retired public files.
+    for retired in ("mechanisms/virtio-balloon.html", "assets/balloon-page-handoff.svg"):
+        (config.output_dir / retired).unlink(missing_ok=True)
     return paths
 
 

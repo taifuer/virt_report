@@ -1,17 +1,21 @@
 """Guard specific editorial regressions without banning technical negations."""
 import re
+from pathlib import Path
 
 import pytest
 
-from virt_report import mechanisms
+from virt_report import conferences, kvm_forum, mechanisms
 from virt_report.config import Config
 from virt_report.render import render
 
 
 # Target stock editorial caveats without banning useful technical conditions.
 STOCK_CAVEAT = re.compile(
-    r"(?:不能|无法|不足以)(?:据此|由此)(?:认定|断言|声称|推断)"
-    r"|(?:不足以|不能单独|不能直接)证明|不能据此概括"
+    r"(?:不能|无法|不足以)(?:据此|由此|直接|单独)?(?:证明|说明|推断|断言|概括)"
+    r"|(?:不能|无法)(?:据此|由此)(?:认定|声称)"
+    r"|(?:并不代表|而非证明|不作为.{0,12}结论|分析仅供参考)"
+    r"|关闭(?:状态)?(?:不代表|不自动等于).{0,4}(?:修复|实现)"
+    r"|不能把.{0,42}(?:理解为|当作|看成|套到|套用|画成)"
 )
 
 
@@ -32,6 +36,37 @@ def test_articles_omit_redundant_scope_commentary(article):
         "不是“所有任务运行同样久”，而是",
     ):
         assert phrase not in page
+
+
+def test_reviews_omit_stock_caveats_and_keep_the_basis_for_comparisons():
+    config = Config()
+    content = conferences.load_content()
+    editions, analysis = kvm_forum.load_content()
+    pages = {
+        "conferences": render.render_conferences_html(config, content),
+        "academic": render.render_academic_conferences_html(config, content),
+        "papers": render.render_conference_papers_html(config, content),
+        "forum": render.render_kvm_forum_html(config, editions, analysis),
+    }
+    pages.update({edition["year"]: render.render_kvm_forum_review_html(config, edition)
+                  for edition in editions if edition.get("review")})
+    for name, page in pages.items():
+        assert not STOCK_CAVEAT.search(page), name
+
+    # The two readings are maxima observed during one timed run.
+    paragraph = next(p for p in pages[2011].split("</p>") if "29 µs" in p)
+    assert all(term in paragraph for term in ("cyclictest", "三小时", "最高延迟", "112 µs"))
+
+
+def test_published_site_omits_stock_caveats():
+    # Includes the industry archive and historic reports that are only in the snapshot.
+    site = Path(__file__).resolve().parents[1] / "site"
+    matches = {}
+    for page in site.rglob("*.html"):
+        match = STOCK_CAVEAT.search(page.read_text(encoding="utf-8"))
+        if match:
+            matches[str(page.relative_to(site))] = match.group()
+    assert not matches, matches
 
 
 def test_wait_queue_explanation_sets_state_before_rechecking_condition(article_source):

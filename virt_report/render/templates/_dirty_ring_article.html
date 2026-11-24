@@ -7,6 +7,9 @@
   <p>本文分析 KVM 位图接口和 Dirty Ring 的记录、收割与重新保护过程，始终跟踪 P3 这一页：客户机把内容从 v1 改为 v2，迁移器必须发出 v2，或者留下再次发送 P3 的记录。硬件缓冲以 x86 PML 为例，接口演进部分再说明跨架构内存顺序与补充位图。</p>
   {% include '_mechanism_baselines.html' %}
   <p>内存迭代和停机切换见<a href="qemu-memory-migration.html">《QEMU 热迁移流程》</a>。</p>
+  <h3 id="history">从整槽位图到每 vCPU 的脏页记录</h3>
+  <span id="evolution-part-1" class="mechanism-topic-alias" aria-hidden="true"></span>
+  <p>位图适合按页索引和集合运算；Dirty Ring 让内核与用户态可以按新增地址记录交接，并将生产位置分散到各 vCPU。QEMU 在 2021 年加入 Dirty Ring 支持。对于大内存、稀疏写入负载，这种接口减少了反复交接整张内核位图的需求；它同时引入满环退出、周期收割和重置同步。按脏页数处理的是环中的记录，QEMU 还要扫描迁移内存并处理内部位图。<a href="https://github.com/qemu/qemu/commit/b4420f198dd8eab53cf6062c1871d0e5f5601e86">Dirty Ring 支持提交</a></p>
 </section>
 
 <section id="principle" class="mechanism-section">
@@ -26,7 +29,7 @@
   <h2>位图接口：按内存槽收集脏页</h2>
   <p><code>KVM_GET_DIRTY_LOG</code> 按 memslot 返回位图，每个比特对应一个页偏移。例如槽中 P1、P3、P6 被修改，位图按 P0 至 P7 展示为 <code>0 1 0 1 0 0 1 0</code>。它可以直接合并同页的重复写入，也方便按内存地址扫描。</p>
   <p>位图长度由内存槽大小决定。以 1 TiB 内存、4 KiB 页为例，一份位图为 32 MiB；即使本次只修改少数页面，传统接口仍需交接对应槽的位图。内存规模大、写入较稀疏时，处理整张位图的开销会更加明显。这只是单份位图的大小，QEMU 与内核还可能维护其他用途的位图。</p>
-  <p>反过来，如果同一批页面被密集重复修改，位图天然把重复事件合并成一位；环形日志仍要消费已发布的地址记录。选择接口时应比较内存规模、记录密度与收割成本，不能把“环”本身看作所有负载都更快的保证。</p>
+  <p>反过来，如果同一批页面被密集重复修改，位图天然把重复事件合并成一位；环形日志仍要消费已发布的地址记录。比较两种接口，应测量扫描位图的成本，以及消费环中地址记录的成本；两者分别受内存规模和记录密度影响。</p>
   <h3>收取与清除的两种方式</h3>
   <p>传统 <code>KVM_GET_DIRTY_LOG</code> 路径在返回前清除所收取的脏位，并完成相应的跟踪重置。启用 <code>KVM_CAP_MANUAL_DIRTY_LOG_PROTECT2</code> 后，收取和重新保护分开：用户态先获得位图，再通过 <code>KVM_CLEAR_DIRTY_LOG</code> 处理选定范围。QEMU 可以据此安排清除与读页，减少过早重新保护造成的重复记录。<a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L7997-L8036">手动保护接口</a></p>
   <p>两种方式都需要维护“重新保护在前、读取页面在后”的顺序。Dirty Ring 改变了内核向用户态交付地址记录的形式，这条顺序仍然适用。</p>
@@ -60,7 +63,7 @@
   <h3>条目发布的内存顺序</h3>
   <p>KVM 先填入 slot、offset，再用内存屏障保证它们先于 DIRTY 标记可见。QEMU 以 acquire 语义读取 flags，确认条目有效后才读取地址；收割完成后以 release 语义发布 RESET。内核处理重置时再以 acquire 语义读取该标记。这个交接避免了“看见新状态，却读到旧地址”的重排问题。<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L848-L875">QEMU acquire / release</a>、<a href="{{ linux_source }}virt/kvm/dirty_ring.c#L218-L235">KVM 发布记录</a></p>
   <h3>硬件缓冲与全局同步</h3>
-  <p>环已经读空时，硬件中仍可能留有尚未提交的记录，例如 x86 PML 缓冲。因此，QEMU 的 <code>kvm_dirty_ring_flush()</code> 先同步 kick 所有 vCPU，保证它们至少退出到用户态一次，让硬件记录进入环，然后再收割。单纯扫描一次用户态可见的环，无法替代这次完整同步。<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L979-L1021">同步退出与 flush</a></p>
+  <p>环已经读空时，硬件中仍可能留有尚未提交的记录，例如 x86 PML 缓冲。因此，QEMU 的 <code>kvm_dirty_ring_flush()</code> 先同步 kick 所有 vCPU，保证它们至少退出到用户态一次，让硬件记录进入环，然后再收割。同步完成后，用户态才能从环中收齐本轮记录。<a href="{{ qemu_source }}accel/kvm/kvm-all.c#L979-L1021">同步退出与 flush</a></p>
   <p>全局同步也没有冻结客户机未来的写入。同步之后产生的新脏页继续进入日志；停机阶段则在 vCPU 和相关设备停止产生修改后完成最后的状态汇总。</p>
 </section>
 
@@ -80,13 +83,12 @@
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>接口演进与代价</h2>
-  <h3>从整槽位图到地址记录</h3>
-  <p>位图适合按页索引和集合运算；Dirty Ring 让内核与用户态可以按新增地址记录交接，并将生产位置分散到各 vCPU。QEMU 在 2021 年加入 Dirty Ring 支持。对于大内存、稀疏写入负载，这种接口减少了反复交接整张内核位图的需求；它同时引入满环退出、周期收割和重置同步。按脏页数处理的是环中的记录，QEMU 还要扫描迁移内存并处理内部位图。<a href="https://github.com/qemu/qemu/commit/b4420f198dd8eab53cf6062c1871d0e5f5601e86">Dirty Ring 支持提交</a></p>
-  <h3>内存顺序与 ARM 支持</h3>
+  <h2>记录顺序与脏页跟踪开销</h2>
+
+  <h3 id="evolution-part-2">内存顺序与 ARM 支持</h3>
   <p>QEMU 在 2022 年补充 flags 读取的内存屏障，保证地址字段不会先于有效标记读取。2023 年的 ARM 支持使用 <code>KVM_CAP_DIRTY_LOG_RING_ACQ_REL</code>，并处理 <code>KVM_CAP_DIRTY_LOG_RING_WITH_BITMAP</code>。后者允许在缺少 vCPU 环上下文时仍通过内核位图记录修改，例如保存 GIC / ITS 状态时写入客户机内存。<a href="https://github.com/qemu/qemu/commit/4802bf910eee98312c4a9777ac2567e6a0445c46">读取屏障修正</a>、<a href="https://github.com/qemu/qemu/commit/856e23a0fb92b0949eace7f43a521e0214246735">ARM 支持提交</a></p>
   <p>补充位图要在最后相关状态写入完成后收取。QEMU 通过全局同步的 <code>last_stage</code> 参数安排这一步，避免在收取之后又产生未覆盖的修改。是否启用这些能力需要在运行时探测，不能只依据客户机架构或版本号判断。</p>
-  <h3>脏页跟踪开销的观测</h3>
+  <h3 id="evolution-part-3">脏页跟踪开销的观测</h3>
   <p><code>kvm_dirty_ring_full</code>、<code>kvm_dirty_ring_reap</code> 和 <code>kvm_dirty_ring_flush</code> 是宿主 QEMU 的 trace 事件。可在目标 QEMU 的 HMP monitor 中用 <code>info trace-events</code> 查看事件与开关，再按所选 trace backend 收集输出；它们不属于 Linux 内核的 <code>kvm:*</code> 事件列表。<code>reap</code> 给出本次收割条目数和耗时，<code>flush</code> 标识全局同步的开始与结束。<a href="{{ qemu_source }}accel/kvm/trace-events">事件定义</a>、<a href="{{ qemu_source }}docs/devel/tracing.rst">QEMU tracing 接口</a></p>
 </section>
 

@@ -22,9 +22,9 @@
 
 网卡收到报文后，发出目标为 `IOVA 0x00400080` 的 DMA 写请求。IOMMU 根据设备身份选择转换上下文，查到页映射，再加上偏移，得到 `HPA 0x21000080`。这次 64 B 写入全部位于同一页内。请求跨页时，各段都必须满足相应映射和权限，不能只检查第一个地址。
 
-同一个 IOVA 数值可以在不同转换域中映射到不同物理页。因此，“地址有效”包含两个条件：设备使用正确的转换域，地址在该域内得到允许。PCI segment 与平台拓扑帮助宿主选择对应的 IOMMU，不能把示例的 16 位 Requester ID 当作全系统唯一标识。
+同一个 IOVA 数值可以在不同转换域中映射到不同物理页。因此，“地址有效”包含两个条件：设备使用正确的转换域，地址在该域内得到允许。PCI segment 与平台拓扑帮助宿主选择对应的 IOMMU。16 位 Requester ID 在所属 PCI segment 内标识设备功能。
 
-客户机 CPU 读取这个缓冲区时，使用的是另一条路径：客户机页表把 GVA 转成 GPA，EPT/NPT 再把 GPA 转成 HPA。CPU 的 TLB 与 IOMMU 的 IOTLB 分别缓存各自的转换。给客户机建立 EPT 映射，并不等于允许网卡向该页 DMA。两条路径最终需要指向同一后备页。有关 QEMU 建立 DMA 映射的过程，可结合 [VFIO 设备直通与 DMA](qemu-vfio-dma.html) 阅读。
+客户机 CPU 读取这个缓冲区时，使用的是另一条路径：客户机页表把 GVA 转成 GPA，EPT/NPT 再把 GPA 转成 HPA。CPU 的 TLB 与 IOMMU 的 IOTLB 分别缓存各自的转换。客户机 CPU 的访问权限由 EPT 控制，网卡的 DMA 权限由 IOMMU 控制。两条路径最终需要指向同一后备页。有关 QEMU 建立 DMA 映射的过程，可结合 [VFIO 设备直通与 DMA](qemu-vfio-dma.html) 阅读。
 
 ## 从设备上下文到页表与 IOTLB {#translation}
 
@@ -117,7 +117,7 @@ IOMMU 子系统执行 iotlb_sync
     iommu_put_pages_list(...)        释放已脱离的页表页
 ```
 
-`gather` 可以汇集撤销范围，减少逐页重复发出同步操作。图中的后备数据页，与这里 `freelist` 中待释放的**页表页**是两类内存：页表页保存转换结构，后备数据页保存客户机数据。后者由上层映射管理代码维护固定引用，不能把这段页表页释放代码解释成整个虚拟机内存已经回收。[清除映射与同步](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/intel/iommu.c#L3619-L3673)
+`gather` 可以汇集撤销范围，减少逐页重复发出同步操作。图中的后备数据页，与这里 `freelist` 中待释放的**页表页**是两类内存：页表页保存转换结构，后备数据页保存客户机数据。后者由上层映射管理代码维护固定引用，其回收由后备内存的生命周期决定。[清除映射与同步](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/intel/iommu.c#L3619-L3673)
 
 Linux 6.18 的 `cache_tag_flush_range()` 区分 IOMMU IOTLB 与设备转换缓存，按域关联的标签分别处理。使用 Queued Invalidation 时，`qi_submit_sync()` 提交描述符及等待描述符，并检查完成状态。图中的“等待失效完成”在这里落实为同步协议，不能只看 CPU 已写入队列就认为硬件处理完毕。[缓存范围失效](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/intel/cache.c#L429-L476) · [队列提交与完成等待](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/intel/dmar.c#L1369-L1487)
 
@@ -150,8 +150,8 @@ ATS 允许支持该能力的设备取得并缓存地址转换，缓存位于设�
 
 ## 参考资料 {#sources}
 
-- [Linux DMA API 使用指南](https://docs.kernel.org/6.18/core-api/dma-api-howto.html)：CPU 地址、设备地址与 DMA 同步。
-- [Linux 6.18 Intel IOMMU 驱动](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/intel/iommu.c)：上下文、页表映射与撤销。
-- [Intel IOMMU 缓存管理](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/intel/cache.c)与 [Queued Invalidation 实现](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/intel/dmar.c)。
-- [VFIO 设备、隔离组与生命周期](https://docs.kernel.org/6.18/driver-api/vfio.html)。
-- [IOMMUFD：设备绑定与 I/O 地址空间管理](iommufd.html)：从用户态组织设备、逻辑地址空间与硬件页表。
+- [Linux DMA API 指南：CPU 地址、设备地址与缓存同步](https://docs.kernel.org/6.18/core-api/dma-api-howto.html)
+- [Linux Intel IOMMU 驱动：设置上下文、建立与撤销页表映射](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/intel/iommu.c)
+- [Linux Intel IOMMU：管理地址转换缓存](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/intel/cache.c)
+- [Linux Intel DMAR：提交排队失效请求](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/intel/dmar.c)
+- [Linux VFIO：设备隔离组与 DMA 映射的生命周期](https://docs.kernel.org/6.18/driver-api/vfio.html)

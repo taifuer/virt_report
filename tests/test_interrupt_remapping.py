@@ -155,7 +155,7 @@ def test_posted_scheduling_is_not_taught_as_an_automatic_remapping_fallback():
     assert "另一类配置变化" in scheduling["boundary"]
     assert "保留 pending" in scheduling["boundary"]
     eoi = next(step for step in item["steps"] if step["id"] == "eoi")
-    assert "不等于自动切回普通 IRTE" in eoi["detail"]
+    assert "仍可保留 posted 路由" in eoi["detail"]
     assert {"pi-put", "pi-load"} <= set(eoi["sourceIds"])
     assert "关闭 APICv 只是本例条件" in " ".join(scene("vtd-remapped")["assumptions"])
 
@@ -164,7 +164,7 @@ def test_posted_scheduling_is_not_taught_as_an_automatic_remapping_fallback():
 def test_related_articles_distinguish_msix_route_configuration_and_scheduling(template):
     content = (PACKAGE / "render" / "templates" / template).read_text()
     for concept in ("都使用 MSI-X", "NVMe 控制器或 GPU", "单一 vCPU",
-                    "CPU 侧", "暂时未运行不等于自动切回普通 IRTE",
+                    "CPU 侧", "vCPU 暂停执行时仍可保留 posted 路由",
                     "arch/x86/kvm/irq.c#L426-L475",
                     "arch/x86/kvm/vmx/posted_intr.c#L223-L267"):
         assert concept in content

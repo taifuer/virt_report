@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=02b518d59aa4">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=02b518d59aa4">
-<link rel="stylesheet" href="../assets/forum.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e7d4bbc16c93">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e7d4bbc16c93">
+<link rel="stylesheet" href="../assets/forum.css?v=e7d4bbc16c93">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -36,7 +36,7 @@
         <a href="../topics.html" class="">专题</a>
         <a href="../conferences.html" class="on" aria-current="page">会议</a>
         <a href="../versions.html" class="">版本</a>
-        <a href="../mechanisms.html" class="">原理</a>
+        <a href="../industry/index.html" class="">产业</a>
         <a href="../about.html" class="">关于</a>
         <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -70,9 +70,9 @@
 <p>直接使用信号处理缺页会涉及信号屏蔽、执行上下文和地址空间修改。对于 QEMU 的 vCPU 线程，缺页可能发生在 KVM 执行期间，不适合要求该线程返回用户态自行处理。补页还必须具有原子可见性：其他线程不能观察到只复制了一半的页面。并发访问同一页、后台传输与按需请求之间也需要协调。</p>
 <h3 id="userfaultfd-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
 <p>应用创建 userfaultfd、协商能力并注册地址范围。缺失页面被访问时，内核阻塞访问线程，把地址等信息送到文件描述符；另一个用户态线程读取事件并取得数据，通过 UFFDIO_COPY 或 UFFDIO_ZEROPAGE 安装页面并唤醒等待者。vCPU 可以始终停留在内核等待，处理线程独立完成网络通信。</p>
-<p>讲稿强调快速路径不需要反复拆分 VMA。2016 年已合入的基础支持主要面向匿名内存缺页；写保护、其他内存类型和跨进程管理等扩展处于不同开发阶段，不能把讲稿列出的全部方向视为当时已经发布。</p>
+<p>讲稿强调快速路径不需要反复拆分 VMA。2016 年已合入的基础支持主要面向匿名内存缺页；写保护、其他内存类型和跨进程管理在当时仍是开发中的扩展。</p>
 <h3 id="userfaultfd-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>120 GiB 客户机、10 Gbit 网络的数据库实验中，持续写入使预拷贝长期不能完成，业务吞吐也受到干扰；切换到按需取页的后拷贝后，示例在约两分钟内传完剩余内存，但期间出现明显吞吐下降。图表说明迁移可完成性与访问延迟之间的交换，无法证明所有负载都能在相同时间完成。讲稿另外列出 Linux 4.3、QEMU 2.5 等基础支持版本。</p>
+<p>120 GiB 客户机、10 Gbit 网络的数据库实验中，持续写入使预拷贝长期不能完成，业务吞吐也受到干扰；切换到按需取页的后拷贝后，示例在约两分钟内传完剩余内存，但期间出现明显吞吐下降。按需取页使迁移得以完成，代价是业务访存可能需要等待页面传输。讲稿另外列出 Linux 4.3、QEMU 2.5 等基础支持版本。</p>
 <h3 id="userfaultfd-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>远端失联会直接影响缺页等待线程，应用需要考虑超时、故障恢复和资源耗尽。页面粒度也影响大页恢复与访问性能。写保护扩展还要处理交换和并发写入的一致性。这篇材料的价值在于建立通用内存事件接口的模型；具体使用时，应按目标内核协商实际能力，并分别验证正常补页和失败时的行为。</p>
 </section>
@@ -90,9 +90,9 @@
 <p>厂商驱动注册物理设备及支持的虚拟设备类型，mdev 核心管理实例，VFIO 接口把实例呈现给 QEMU。对于模拟区域，客户机 MMIO 访问被捕获，经 KVM、QEMU 和 VFIO 读写接口交给厂商回调。对于可直映区域，映射建立后 CPU 可以直接访问对应设备区域，稳定路径不要求每次重新经过软件模拟。</p>
 <p>内存方面，QEMU 提供客户机地址与用户态内存范围关系，厂商驱动按需要固定并转换页面，再建立设备 DMA 映射。中断通过 eventfd 与 KVM irqfd 等接口连接。框架统一的是这些协作接口，具体隔离强度仍取决于设备能力和厂商实现。</p>
 <h3 id="mdev-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>讲稿报告在 Linux 4.7 上测试了多个 mdev、多个直通设备以及二者混用，并提供 NVIDIA vGPU 演示。当时补丁处于 v7 评审阶段。材料没有提供足够的性能、隔离压力测试或公平性数据，因此可以确认接口与集成路径被验证，不能把“接近原生”当作已经量化的普遍结论。</p>
+<p>讲稿报告在 Linux 4.7 上测试了多个 mdev、多个直通设备以及二者混用，并提供 NVIDIA vGPU 演示。当时补丁处于 v7 评审阶段。原型验证了接口和集成路径，多客户机并发时的性能、隔离和公平性仍待测量。</p>
 <h3 id="mdev-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
-<p>POWER 的 IOMMU 接入、QEMU/libvirt 管理和更完整的生命周期支持仍属于后续工作。直映区域必须确实只暴露该实例获准使用的资源，实例销毁也要停止 DMA 并回收映射。讲稿中的 sysfs 细节属于当时接口提案，适合理解架构，不应直接作为当前系统的操作命令。</p>
+<p>POWER 的 IOMMU 接入、QEMU/libvirt 管理和更完整的生命周期支持仍属于后续工作。直映区域必须确实只暴露该实例获准使用的资源，实例销毁也要停止 DMA 并回收映射。这里的 sysfs 示例使用的是当时提议的接口。</p>
 </section>
 <section id="sev" class="mechanism-section">
 <h2><span class="mechanism-heading-number">四、</span>SEV 的早期架构：客户机内存与密钥隔离</h2>
@@ -103,14 +103,14 @@
 <h3 id="sev-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
 <p>传统虚拟化依赖宿主配置页表和设备权限，宿主本身通常能够读取客户机内存。云租户因此必须把机密数据托付给宿主管理栈。SEV 尝试用每台虚拟机独立的内存加密密钥缩小这一信任关系，使普通宿主软件无法直接取得客户机私有内存的明文。这是理解后续机密虚拟机软件改造的重要起点。</p>
 <h3 id="sev-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
-<p>加密影响整个生命周期：启动镜像需要进入受保护状态，vCPU 必须使用正确密钥身份，迁移要保护传输内容，调试权限要由客户机策略控制。设备和宿主后端仍需要读写 I/O 缓冲区，因此全部页面都私有并不可行。密钥隔离本身也不能推导出对所有篡改、重放或侧信道的防护。</p>
+<p>加密影响整个生命周期：启动镜像需要进入受保护状态，vCPU 必须使用正确密钥身份，迁移要保护传输内容，调试权限要由客户机策略控制。设备和宿主后端仍需要读写 I/O 缓冲区，因此全部页面都私有并不可行。早期 SEV 的密钥隔离保护内存机密性；篡改、重放和侧信道属于不同的防护目标。</p>
 <h3 id="sev-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
 <p>讲稿区分使用系统级密钥的 SME 与按虚拟机区分密钥的 SEV。安全处理器负责密钥和启动等管理操作，内存控制器完成加解密；ASID 参与确定虚拟机使用的密钥。客户机通过页面属性区分私有和共享内存，Virtio 队列、宿主需要访问的缓冲区及 DMA 页面必须按协议共享。</p>
-<p>KVM、QEMU 与管理工具需要配合处理平台认证、启动测量、ASID 分配和策略。共享与私有缓冲区之间可能通过 SWIOTLB 等路径复制。加密能力因而同时改变 CPU 状态管理和 I/O 路径，不能仅理解成内存控制器上的一个开关。</p>
+<p>KVM、QEMU 与管理工具需要配合处理平台认证、启动测量、ASID 分配和策略。共享与私有缓冲区之间可能通过 SWIOTLB 等路径复制。这使内存加密同时改变了 CPU 状态管理和 I/O 数据路径。</p>
 <h3 id="sev-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>这份材料是早期架构与集成说明，没有给出可复核的应用性能表，也没有完整攻击验证。作者列出的软件状态包括内核 RFC、固件与驱动开发，以及待完成的 KVM/QEMU 支持。“较小性能影响”等目标缺少本文可量化的依据，应保留为设计预期。讲稿最扎实的部分是接口职责和共享内存要求。</p>
+<p>讲稿记录的是第一代 SEV 的架构和集成进度。作者列出的软件状态包括内核 RFC、固件与驱动开发，以及待完成的 KVM/QEMU 支持。低开销是这套设计的目标，实际代价要分别测量私有内存访问与共享缓冲区复制。</p>
 <h3 id="sev-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
-<p>不能用后来的寄存器保护或页面完整性能力解释这份早期 SEV 材料。实际安全结论需要对应具体代际、固件和威胁模型。共享 I/O 缓冲区、测量链、调试策略与迁移目标认证都值得分别审查；性能验证也应区分私有内存访问、共享缓冲区复制和生命周期操作的成本。</p>
+<p>这代 SEV 的重点是内存加密；寄存器保护和页面完整性属于后续代际。实际安全结论需要对应具体代际、固件和威胁模型。共享 I/O 缓冲区、测量链、调试策略与迁移目标认证都值得分别审查；性能验证也应区分私有内存访问、共享缓冲区复制和生命周期操作的成本。</p>
 </section>
 <section id="atomics" class="mechanism-section">
 <h2><span class="mechanism-heading-number">五、</span>QEMU 原子操作：从共享变量到内存顺序</h2>
@@ -121,12 +121,12 @@
 <h3 id="atomics-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
 <p>QEMU 的多线程扩展需要减少粗粒度锁，但共享变量仍必须正确交换状态。队列生产者发布一个指针时，消费者不仅要读到完整指针，还要看到指向对象的初始化内容。单个整数统计与对象发布的同步需求不同。讲稿用 C11 内存模型解释这些区别，帮助开发者判断原子操作适合替代哪部分锁。</p>
 <h3 id="atomics-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
-<p>编译器优化和处理器重排都会影响观测顺序，代码在一台 x86 机器上运行正常并不能证明可移植。普通读写与并发写入形成数据竞争时，语言层面可能已经出现未定义行为。volatile、编译器屏障和硬件屏障的作用也不同，随意组合容易留下缺口，尤其是在兼容旧编译器的代码中。</p>
+<p>编译器优化和处理器重排都会影响观测顺序，跨架构代码需要明确规定访问顺序。普通读写与并发写入形成数据竞争时，语言层面可能已经出现未定义行为。volatile、编译器屏障和硬件屏障的作用也不同，随意组合容易留下缺口，尤其是在兼容旧编译器的代码中。</p>
 <h3 id="atomics-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
 <p>讲稿从 happens-before 关系说明发布与获取：当 acquire 读取对应的 release 发布值时，初始化数据可以通过同步关系对消费者可见。独立统计量可以使用较弱的原子操作，因为它不承担发布其他对象状态的责任；同样的 relaxed 访问放到对象发布路径，却不能自动保证内部字段已可见。</p>
 <p>QEMU 把旧编译器兼容处理集中在 atomic.h，避免业务代码散落架构汇编与编译器特例。API 选择在表达能力和可审查性之间取舍，较强的默认语义便于维护，需要更弱顺序时应有明确理由。讲稿还提醒 seqlock 保护的数据访问也要考虑语言层面的竞争规则。</p>
 <h3 id="atomics-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>材料提供小型并发示例、不同架构的指令映射和内存顺序反例，没有给出端到端性能提升。它的验证方式主要是说明哪些执行结果被模型允许、哪些同步关系能够排除错误。原子性、acquire/release 与顺序一致性仍应分别理解，不能把任意“使用了原子操作”的程序都判定为顺序一致。</p>
+<p>讲稿通过并发示例、架构指令映射和内存顺序反例检验正确性。它的验证方式主要是说明哪些执行结果被模型允许、哪些同步关系能够排除错误。单次更新的原子性、acquire/release 的排序和顺序一致性提供不同的保证。</p>
 <h3 id="atomics-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>原子变量不会自动解决对象寿命、内存回收或多字段不变量，相关问题仍需要锁、RCU 或其他协议。讲稿提出继续整理旧屏障代码、采用更明确的访问封装。用于代码审查时，应写清共享数据、发布点、读取点和回收条件，并结合目标编译器与弱内存架构测试，而非只统计减少了多少锁。</p>
 </section>
@@ -139,14 +139,14 @@
 <h3 id="cpu-hotplug-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
 <p>运行中的虚拟机增加或减少 CPU，可以按负载调整计算资源。早期 cpu-add 接口主要面向 x86，缺少统一查询与拔除模型，管理软件需要猜测 CPU 拓扑。POWER 按核热插拔、x86 按线程热插拔等差异，又使“新增一个 vCPU”无法覆盖所有平台。讲稿讨论如何把这些差异放入统一设备管理框架。</p>
 <h3 id="cpu-hotplug-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
-<p>客户机固件协议决定可操作的粒度，QEMU 对象粒度也必须匹配。热插拔顺序还会影响迁移：若 CPU 标识按创建顺序分配，源端与目标端即使最终拓扑相同，也可能无法匹配迁移状态。CPU 创建失败时，如果已经完成内核资源分配，回滚会变得复杂；拔除也不等于所有 KVM 对象都能立即销毁。</p>
+<p>客户机固件协议决定可操作的粒度，QEMU 对象粒度也必须匹配。热插拔顺序还会影响迁移：若 CPU 标识按创建顺序分配，源端与目标端即使最终拓扑相同，也可能无法匹配迁移状态。CPU 创建失败时，如果已经完成内核资源分配，回滚会变得复杂。拔除客户机 CPU 与释放宿主 KVM 对象分属两个阶段。</p>
 <h3 id="cpu-hotplug-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
 <p>QEMU 使用 QOM 对象表示可热插拔单元，并允许通过标准 device_add/device_del 管理。query-hotpluggable-cpus 返回类型、拓扑属性和可用槽位，让管理软件按机器模型提供的信息操作。机器的 pre_plug 回调在设备实现前检查约束并补充属性，减少晚期失败。</p>
 <p>迁移身份改为由稳定拓扑信息决定，避免依赖历史插拔顺序。对于当时 KVM 无法单独销毁并重新创建的 vCPU 实例，QEMU 可以保留处于停放状态的内核对象，后续同一 CPU 再插入时复用。客户机可见移除与宿主资源寿命因此需要分别管理。</p>
 <h3 id="cpu-hotplug-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>讲稿展示 x86 与 pseries 的对象模型，以及 POWER 单线程、SMT4、SMT8 下的查询和插拔示例。这些例子验证接口能够表达不同热插拔粒度；材料没有给出大规模频繁插拔的稳定性统计。迁移身份问题提供了明确的故障原因，也说明功能测试必须包含不同创建顺序下的迁移。</p>
+<p>讲稿展示 x86 与 pseries 的对象模型，以及 POWER 单线程、SMT4、SMT8 下的查询和插拔示例。这些例子验证接口能够表达不同热插拔粒度；大规模反复插拔仍需单独测试。迁移身份问题提供了明确的故障原因，也说明功能测试必须包含不同创建顺序下的迁移。</p>
 <h3 id="cpu-hotplug-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
-<p>NUMA 归属查询、更多机器类型、启动 CPU 拔除和部分 POWER 热插拔状态迁移仍待完善。平台允许创建对象也不意味着客户机一定愿意下线 CPU，负载与客户机策略会影响操作完成。管理层应观察异步完成与失败，并验证并发迁移、插拔和清理流程，而非只以 QMP 命令返回作为成功标准。</p>
+<p>NUMA 归属查询、更多机器类型、启动 CPU 拔除和部分 POWER 热插拔状态迁移仍待完善。客户机根据负载和自身策略决定是否下线 CPU。管理层应观察异步完成与失败，并验证并发迁移、插拔和清理流程，而非只以 QMP 命令返回作为成功标准。</p>
 </section>
 <section id="vhost-iommu" class="mechanism-section">
 <h2><span class="mechanism-heading-number">七、</span>vhost 与 vIOMMU：DMA 权限和转换缓存</h2>
@@ -160,9 +160,9 @@
 <p>vIOMMU 的地址翻译在 QEMU 中，而高频数据处理位于内核 vhost。每次访问都往返用户态查询会产生很大开销；缓存翻译又必须及时处理解除映射和权限变化。中断重映射同样影响 irqfd 快速路径，需要在保留内核注入能力的同时，让路由与客户机配置保持一致。</p>
 <h3 id="vhost-iommu-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
 <p>客户机驱动使用 DMA API 提交设备地址，后端通过设备 IOTLB 缓存把 IOVA 转换到获准访问的宿主地址。缓存缺失时向 QEMU 请求翻译，更新和失效消息同步映射变化；区间树用于维护缓存范围。这种分工保留用户态 vIOMMU 的平台语义，也让常见命中路径留在内核。</p>
-<p>中断方面，讲稿利用 KVM 的 GSI 路由，在设置阶段完成重映射相关翻译，运行时继续使用 irqfd 通知。2016 年方案对 irqchip 模式存在限制，不能将其理解成所有中断配置都已透明支持。</p>
+<p>中断方面，讲稿利用 KVM 的 GSI 路由，在设置阶段完成重映射相关翻译，运行时继续使用 irqfd 通知。可用的中断路径取决于 2016 年方案所支持的 irqchip 模式。</p>
 <h3 id="vhost-iommu-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>当时动态 DMA 映射实验中，TCP_STREAM 从 24500 Mbps 降到 600 Mbps，TCP_RR 从 25000 降到 11600 次事务每秒；采用静态映射的 DPDK 类负载，吞吐下降约 5%。平台细节披露有限，这些数据不能用于预测现代实现，但清楚表明映射更新频率对性能有决定性影响。只引用静态映射结果会掩盖主要问题。</p>
+<p>当时动态 DMA 映射实验中，TCP_STREAM 从 24500 Mbps 降到 600 Mbps，TCP_RR 从 25000 降到 11600 次事务每秒；采用静态映射的 DPDK 类负载，吞吐下降约 5%。动态映射要反复更新地址转换，静态映射则可摊薄这部分成本。</p>
 <h3 id="vhost-iommu-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>讲稿当时的组件状态并不一致：部分驱动和中断支持已合入，QEMU DMA 路径仍在评审，vhost-user 的缓存支持也在开发。后续重点包括动态映射成本、失效通知和错误处理。工程评价需要覆盖频繁 map/unmap、权限撤销与并发请求，检查安全语义在优化后是否仍然完整。</p>
 </section>
@@ -171,8 +171,8 @@
   <nav class="mechanism-related" aria-label="会议资料"><a href="../kvm-forum.html#year-2016">返回年度总览</a><a href="https://www.linux-kvm.org/page/KVM_Forum_2016" target="_blank" rel="noopener noreferrer">原始议程</a></nav>
 </article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=02b518d59aa4" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=e7d4bbc16c93" defer></script></body>
 </html>

@@ -7,6 +7,8 @@
   <p>Linux 将提供时间读数的机制称为 <strong>clocksource</strong>，将产生定时中断的机制称为 <strong>clockevent</strong>。本文以 x86 客户机的 KVM pvclock 和 Intel TSC-deadline 定时器为例，沿“读出当前时间—设置截止时刻—接收到期中断”说明两条路径。示例使用内核虚拟 LAPIC。</p>
   <p>客户机 Linux 读取时钟、安排自己的任务，并处理虚拟定时中断；宿主 KVM 提供时间换算参数和虚拟 LAPIC 定时器，宿主 Linux 提供实际定时及线程调度。QEMU 主要在创建、暂停和迁移时协调这些状态，不参与客户机每一次 pvclock 读取。</p>
   <p>客户机在 5.002 s 安排一个 1 ms 后的任务，目标时刻为 5.003 s。如果 vCPU 到 5.004 s 才获得运行机会，恢复后应能读到经过的时间，此时定时任务已迟到约 1 ms。时钟读数的一致性与到期事件的交付时机需要分别处理。</p>
+  <h3 id="history">从模拟计时器到硬件计数与共享时钟</h3>
+  <p>传统客户机编程 PIT、HPET 等计时设备，读取寄存器或处理周期中断都会增加模拟工作。x86 的 TSC 加上偏移、缩放，可以让客户机直接读计数；KVM 的 pvclock 在共享页中公布换算参数。读取当前时间与安排未来的定时中断是两项服务，后者还要把到期事件送达 vCPU。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 <section id="tsc" class="mechanism-section">
@@ -74,7 +76,7 @@ now_ns   = 5,000,000,000 + 2,000,000 = 5.002 s</code></pre>
   <p><code>PVCLOCK_GUEST_STOPPED</code> 用于告知客户机发生过宿主暂停，让看门狗避免据此误判锁死；这个标志本身不负责补齐墙钟。<a href="{{ linux }}Documentation/virt/kvm/api.rst#L2957-L2978">暂停通知接口</a></p>
 </section>
 <section id="evolution" class="mechanism-section">
-  <h2>从模拟计时设备到协作与硬件辅助</h2>
+  <h2>计数、换算与定时通知的开销</h2>
   <table><thead><tr><th scope="col">需要解决的成本或限制</th><th scope="col">改进方向</th><th scope="col">剩余代价</th></tr></thead><tbody>
     <tr><td>PIT、HPET 等设备访问及周期事件带来模拟工作</td><td>高分辨率计数源、按需的单次定时</td><td>兼容客户机仍可能使用传统设备</td></tr>
     <tr><td>TSC 起点、频率及跨 CPU 条件不同</td><td>硬件 offset / scaling，稳定性能力检查</td><td>迁移须匹配能力，稳定频率不等于共享同一起点</td></tr>
@@ -90,9 +92,11 @@ now_ns   = 5,000,000,000 + 2,000,000 = 5.002 s</code></pre>
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>
-    <li><a href="https://docs.kernel.org/timers/timekeeping.html">Linux：Clock sources 与 Clock events</a>、<a href="{{ linux }}Documentation/virt/kvm/x86/msr.rst">KVM pvclock 接口</a></li>
-    <li><a href="https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html">Intel SDM</a>：TSC、TSC-deadline、VMX TSC 变换与 preemption timer。</li>
-    <li><a href="{{ linux }}arch/x86/kernel/pvclock.c">Linux 客户机：pvclock 一致读取与单调性处理</a>、<a href="{{ linux }}Documentation/virt/kvm/api.rst#L1038-L1109">KVM 时钟保存与恢复接口</a></li>
-    <li><a href="{{ qemu }}hw/i386/kvm/clock.c">QEMU：kvmclock 状态与迁移</a></li>
+    <li><a href="https://docs.kernel.org/timers/timekeeping.html">Linux 时间子系统：时钟源与定时事件设备</a></li>
+    <li><a href="{{ linux }}Documentation/virt/kvm/x86/msr.rst">Linux KVM：pvclock 共享的时间数据</a></li>
+    <li><a href="https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html">Intel 软件开发者手册：时间戳计数器与虚拟化</a></li>
+    <li><a href="{{ linux }}arch/x86/kernel/pvclock.c">Linux pvclock：客户机如何一致地读取时间</a></li>
+    <li><a href="{{ linux }}Documentation/virt/kvm/api.rst#L1038-L1109">Linux KVM API：保存与恢复客户机时钟</a></li>
+    <li><a href="{{ qemu }}hw/i386/kvm/clock.c">QEMU kvmclock：把客户机时钟写入迁移状态</a></li>
   </ul>
 </section>

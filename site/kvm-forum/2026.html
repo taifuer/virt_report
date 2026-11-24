@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=02b518d59aa4">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=02b518d59aa4">
-<link rel="stylesheet" href="../assets/forum.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e7d4bbc16c93">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e7d4bbc16c93">
+<link rel="stylesheet" href="../assets/forum.css?v=e7d4bbc16c93">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -36,7 +36,7 @@
         <a href="../topics.html" class="">专题</a>
         <a href="../conferences.html" class="on" aria-current="page">会议</a>
         <a href="../versions.html" class="">版本</a>
-        <a href="../mechanisms.html" class="">原理</a>
+        <a href="../industry/index.html" class="">产业</a>
         <a href="../about.html" class="">关于</a>
         <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -159,7 +159,7 @@
 </table>
 <p>HLT 基线关闭 CPU-PM，后两组开启 CPU-PM。结果表明，在这组配置中，写保护唤醒把响应时间恢复到接近 HLT 的水平，并避免了定时检查组的明显性能损失。</p>
 <p>轻量 vCPU 的独立微基准以每个 vCPU 一个内核线程为基线，报告唤醒到客户机入口减少约 1.7 µs，vCPU 交接减少约 1.6 µs。原稿把前一项收益与轮询联系起来，把后一项与轻量上下文切换联系起来；两组数字对应具体微基准，整机实例密度与业务吞吐仍需独立测试。</p>
-<p>sched_ext 部分报告了原场景中观察到的最长约 13 ms vCPU 调度延迟，用于说明待解决的问题。讲稿没有提供这项策略优化前后的完整对照结果，13 ms 不能用作已经消除的延迟收益。</p>
+<p>改用 sched_ext 策略前，作者观测到 vCPU 最长约 13 ms 的调度延迟。讲稿未给出同负载下启用新策略后的延迟。</p>
 <h3 id="cpu-overcommit-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>动态 MWAIT 适合有持续空闲窗口、监控写入频率适中的绑核虚机。作者报告，高并发、低负载场景仍可能因频繁退出而退化。工程评估应同时观察借出了多少 CPU 时间、监控页增加了多少写保护退出，以及原实例重新繁忙后的响应。借用专用实例的空闲 CPU，还需符合平台承诺的隔离和服务质量。</p>
 <p>轻量 vCPU 减少了部分线程调度工作，跨 CPU 移动仍会影响缓存局部性。接入实际平台时，需要核对每台 VM 的 CPU 配额与计费、上下文调度公平性，以及阻塞和唤醒的并发正确性。微基准之外，应测量同一宿主上不同负载混跑时的吞吐与尾延迟。</p>
@@ -175,7 +175,7 @@
 <p>内存分层将经常访问的页面保留在 DRAM，把仍有业务内容、访问较少的页面放到成本较低的存储层。宿主可以通过内存控制组、swap 和页面回收策略管理 QEMU，客户机继续使用原有地址空间。这对内存长期驻留、活跃工作集较小的虚机有直接价值。</p>
 <p>热迁移会破坏这种分布。迁移线程遍历客户机内存时，已经换出的冷页被重新读入 DRAM；内存压力又可能把业务热页挤出去。目的端接收页面后，也要重新建立冷热分布。虚机虽然一直运行，业务却可能经历明显的缺页等待与尾延迟上升。</p>
 <h3 id="memory-tiering-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
-<p>迁移需要读取每个有效页面，但这些读取来自维护操作，不能准确代表业务对页面的需求。源端需要保存迁移前的分层信息，目的端需要按这个信息恢复页面驻留状态，同时继续满足内存数据一致性和脏页迭代的要求。</p>
+<p>迁移读取全部有效页，其中既有业务正在使用的热页，也有久未访问的冷页。源端需要保存迁移前的分层信息，目的端需要按这个信息恢复页面驻留状态，同时继续满足内存数据一致性和脏页迭代的要求。</p>
 <p>现有接口也有精度与时序限制。<code>mincore()</code> 提供某一时刻的驻留快照，访问频率还需要其他信息判断；<code>MADV_PAGEOUT</code> 尽力请求回收，返回时页面可能仍在内存或 swap cache 中。<code>memory.high</code> 是触发回收与节流的阈值，实际驻留量会随负载变化。多个进程映射同一页时，PAGEOUT 还存在限制，vhost-user 需要特别关注这一点。</p>
 <h3 id="memory-tiering-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
 <p>Peter Xu 比较了三条路径：</p>
@@ -256,7 +256,7 @@
 <p>共享一份初始化快照、只为各实例保存修改，能够减少重复内存与数据传输。这场分享的重点是把共享扩展到整个虚机：vCPU、VMM 和独立的 vhost-user 后端要访问同一份实例数据，同时保持不同实例之间的隔离。</p>
 <h3 id="ept-cow-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
 <p>普通的进程私有写时复制按进程产生独立页面。虚机的 VMM 和 vhost-user 后端却需要共享客户机内存；若它们各自复制，双方看到的数据就会分离。这里需要的复制单位是“一台 VM 及其后端进程”。</p>
-<p>页面切换还涉及并发。一个 vCPU 已经把页面复制到私有后备，另一个尚未结束的读缺页可能仍持有旧地址。设备模拟与 vhost-user 又可以从宿主访问内存，单独处理客户机的写异常不足以覆盖这些入口。</p>
+<p>页面切换还涉及并发。一个 vCPU 已经把页面复制到私有后备，另一个尚未结束的读缺页可能仍持有旧地址。设备模拟与 vhost-user 也能从宿主访问内存，这些入口需要和客户机写入一起处理。</p>
 <p>快照存储同样需要可回收的可写层。讲稿使用 virtio-pmem DAX，将相关存储缓存交给宿主管理，并把远端按需读取、文件支持的私有修改与 RAM 快照复用放在同一套设计中。</p>
 <h3 id="ept-cow-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
 <p>实验实现为同一段客户机物理地址设置配对的 C/W memslot。C 指向共享只读内容，W 指向该 VM 的可写后备。读取未修改页面时使用 C，首次写入复制 4 KiB 到 W，并将二级页表映射切到 W。<code>KVM_ENABLE_COW</code> 等接口属于这个实验实现。</p>
@@ -368,7 +368,7 @@
 <p>控制器还设置持续负载观察、冷却时间、失败后的暂停期，以及每轮可调节的 VM 数量上限。QEMU 执行时暂停相关 I/O，完成线程增减与队列重绑定后恢复处理；控制器根据随后的性能决定保留或撤销调整。</p>
 <h3 id="io-thread-controller-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
 <p>原稿展示了运行中的控制器界面，可以观察线程数、线程利用率与 IOPS；同时说明重绑定会造成毫秒级暂停。公开材料以监测与调节的原型展示为主，尚缺少跨负载、跨硬件的完整性能对照。</p>
-<p>评测这类控制器，应让负载经历低谷、突增和稳定阶段，分别记录吞吐、每 I/O CPU 成本、扩缩容次数及调节窗口内的 p99/p999 延迟。这样才能判断减少了多少资源开销，以及业务为调节动作付出了什么代价。讲稿中的 3% 是保留一次扩容的策略门槛，不能作为整个方案的性能收益。</p>
+<p>评测这类控制器，应让负载经历低谷、突增和稳定阶段，分别记录吞吐、每 I/O CPU 成本、扩缩容次数及调节窗口内的 p99/p999 延迟。节省的线程和重绑定时的尾延迟需要一起测量。</p>
 <h3 id="io-thread-controller-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>作者列出的后续方向包括：按队列热点分配线程、一次移动一个队列以减小暂停、引入延迟与队列深度等指标、进行规模分析，并允许为不同 VM 设置独立规则。当前按轮转方式分配队列，可能把多个热点放到同一线程，平均利用率也会掩盖局部瓶颈。</p>
 <p>这项工作的实际价值在于可回退的自动调参机制。延迟敏感 VM 需要明确的调节许可和暂停预算，整机策略需要遵守 CPU 限额并控制并发调整数量。稳定的工作负载识别和低成本队列重绑定，将决定它能否从演示走向日常运维。</p>
@@ -475,8 +475,8 @@
   <nav class="mechanism-related" aria-label="会议资料"><a href="../kvm-forum.html#year-2026">返回年度总览</a><a href="https://pretalx.com/kvm-forum-2026/schedule/nojs" target="_blank" rel="noopener noreferrer">原始议程</a><a href="https://kvm-forum.qemu.org/2026/" target="_blank" rel="noopener noreferrer">会议资料</a></nav>
 </article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=02b518d59aa4" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=e7d4bbc16c93" defer></script></body>
 </html>

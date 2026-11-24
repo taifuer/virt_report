@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=02b518d59aa4">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=02b518d59aa4">
-<link rel="stylesheet" href="../assets/forum.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e7d4bbc16c93">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e7d4bbc16c93">
+<link rel="stylesheet" href="../assets/forum.css?v=e7d4bbc16c93">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -36,7 +36,7 @@
         <a href="../topics.html" class="">专题</a>
         <a href="../conferences.html" class="on" aria-current="page">会议</a>
         <a href="../versions.html" class="">版本</a>
-        <a href="../mechanisms.html" class="">原理</a>
+        <a href="../industry/index.html" class="">产业</a>
         <a href="../about.html" class="">关于</a>
         <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -72,7 +72,7 @@
 <p>控制器优先用 balloon 回收，再降低 cgroup 限额；扩容时提高宿主限额后再释放 balloon 占用，避免两侧动作互相施压。客户机迟迟不响应时，系统回退到宿主换页。宿主保留一小部分未分配内存，满足紧急增长后再逐步补回储备，以容量利用率换取响应速度。</p>
 <p>需求评估结合客户机交换统计和 QEMU 的主要缺页，并用 Idle Page Tracking 对物理页抽样估计工作集。采样结果做滑动平均，减少短期噪声。分配按需求排序，回收按可释放容量分摊；这套策略承认无法精确预测每台虚机下一刻需要多少内存，通过连续反馈修正决定。</p>
 <h3 id="memory-overcommit-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>材料来自生产方案的设计经验，但没有给出足以复算的统一吞吐或容量提升数字。最具体的验证是迁移与共享内存路径暴露的问题：全量扫描会读回换出页、分配原本未驻留的零页，并污染工作集判断。作者用 MADV_COLD、MADV_PAGEOUT 等机制缓解影响，同时指出共享页的 pagemap 信息与普通私有映射不同。</p>
+<p>生产部署暴露了一个容量问题：迁移全量扫描会把已换出的冷页读回内存，甚至为原本不驻留的零页分配空间。扫描产生的访问也会干扰工作集判断。作者用 MADV_COLD、MADV_PAGEOUT 等机制缓解影响，同时指出共享页的 pagemap 信息与普通私有映射不同。</p>
 <h3 id="memory-overcommit-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>工作集抽样有误差，备用池也不可能吸收所有同时到来的需求。控制系统应限制单轮调整幅度，并监测业务尾延迟及持续换页，防止反馈来回震荡。共享交换空间、迁移时只传冷页位置等方案属于后续方向。这里最有价值的经验是把回收方式、观测口径与失效回退一起设计，而非仅选择一个看似精确的内存使用指标。</p>
 </section>
@@ -88,7 +88,7 @@
 <p>写入捕获和结果上报是两个环节：写保护或硬件记录负责发现修改，位图或每 vCPU ring 负责汇报。进入 QEMU 后，KVM memslot、通用 RAM 脏标记和迁移逻辑还可能维护多层位图，vhost、VFIO 等来源也需要合并。并发置位与清除必须可靠，否则会漏掉迁移期间的写入；但逐字原子操作的成本不低。</p>
 <h3 id="dirty-tracking-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
 <p>讲稿梳理 dirty ring、并行 MMU 缺页处理和延迟写保护等已有进展，并把位图归并作为独立优化目标。候选方法包括减少重复层次，以及用更明确的同步区间替代整张位图上的大量原子交换。作者提出写入侧在读锁下原子置位、收集侧持写锁批量复制的思路，以交换并发度和复制效率。</p>
-<p>这套替换需要证明所有置位来源都受同一协议保护。原子操作虽有成本，却承担了正确性职责，不能直接改成普通 memcpy。内核 CLEAR_DIRTY_LOG 路径与 QEMU 的归并方式也不同，定位时应分别测量，避免把用户态热点误归因于 KVM 捕获写入。</p>
+<p>这套替换需要证明所有置位来源都受同一协议保护。原子操作虽有成本，却承担了正确性职责，不能直接改成普通 memcpy。KVM 的 CLEAR_DIRTY_LOG 与 QEMU 的位图归并走不同路径，两处开销应分开测量。</p>
 <h3 id="dirty-tracking-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
 <p>256 MB 位图对应约 8 TB、4 KiB 粒度内存。微基准中，i7-8665U 上逐字 xchg 约 240 ms，普通复制约 80 ms；Xeon E5-2630 v4 上约为 525 ms 与 148 ms。结果说明批量处理有优化空间，并非迁移总时间可以缩短三倍。微基准运行环境与前述 3 TB 虚机观察不同，读写并发和缓存状态也会改变比例。</p>
 <h3 id="dirty-tracking-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
@@ -108,7 +108,7 @@
 <p>VDUSE 通过字符设备和 ioctl 创建设备、声明特征与队列参数，内核承担大部分 vDPA 控制逻辑。需要用户态处理的状态变更和队列查询通过消息传递。达到 DRIVER_OK 后，守护进程获取队列信息、建立被允许的 IOVA 映射，再消费描述符。</p>
 <p>虚机场景共享对应内存，宿主 virtio-vDPA 场景使用回弹缓冲区和软件 IOTLB，限制用户态后端可访问范围。kick 可以通过 eventfd 接收，完成后更新 used ring 并请求注入队列中断。队列和数据缓冲区都必须通过映射接口取得访问权，不能只映射描述符后就信任其中的任意地址。</p>
 <h3 id="vduse-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>演讲给出了内核第 11 版补丁系列、用户态示例及完整初始化步骤，已经可以沿接口搭建后端。讲稿没有提供各路径的吞吐与延迟对照，因此不宜宣称它普遍快于内核设备或其他用户态协议。结果主要证明统一接入方式的可实现性，也展示了虚机共享内存与宿主回弹缓冲区之间的实际区别。</p>
+<p>演讲给出了内核第 11 版补丁系列、用户态示例及完整初始化步骤，已经可以沿接口搭建后端。这里比较的是各条路径的接口和职责；吞吐与延迟尚无对照数据。结果主要证明统一接入方式的可实现性，也展示了虚机共享内存与宿主回弹缓冲区之间的实际区别。</p>
 <h3 id="vduse-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>当时用户态公共库、更多设备类型和性能改进仍在计划中。后端崩溃、消息超时、IOTLB 撤销与设备复位的交互需要充分测试，尤其不能让等待用户态的控制请求永久卡住设备管理。回弹复制还可能成为宿主路径的成本。对使用者而言，统一接口降低维护负担，但仍应按虚机和容器分别测量实际数据路径。</p>
 </section>
@@ -123,12 +123,12 @@
 <h3 id="sev-snp-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
 <p>宿主仍要分配物理页和建立嵌套页表，客户机又必须决定何时接受页面。私有页转换为共享页时，大页粒度可能与 RMP 记录不一致，产生新的缺页处理。设备 I/O、额外 vCPU 创建和证明请求也需要通过受控协议与宿主或安全处理器通信，不能沿用会泄露私有寄存器和数据的普通路径。</p>
 <h3 id="sev-snp-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
-<p>RMP 按系统物理页记录归属及相关属性，硬件检查页面是否可被当前主体使用或写入。客户机通过 GHCB 页面状态变更请求协调宿主更新记录，再用 PVALIDATE 接受私有页面。页面归属与客户机主动验证共同限制恶意重映射；单纯在嵌套页表里建立映射并不能完成私有页交付。</p>
+<p>RMP 按系统物理页记录归属及相关属性，硬件检查页面是否可被当前主体使用或写入。客户机通过 GHCB 页面状态变更请求协调宿主更新记录，再用 PVALIDATE 接受私有页面。页面归属与客户机主动验证共同限制恶意重映射；私有页的交付还需要完成所有权和访问权限的转换。</p>
 <p>启动流程由安全处理器建立客户机上下文、加入初始页并形成测量，完成后使客户机可运行。不同页面类型区分普通内容、寄存器状态、密钥信息和受过滤的 CPUID 信息。客户机驱动可请求证明报告与派生密钥，让远端验证与应用密钥使用有明确接口。</p>
 <h3 id="sev-snp-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>2021 年的材料列出内核、OVMF 和 QEMU 的开发分支及补丁版本，已有多 vCPU、证明报告、过滤 CPUID 和 THP 后备内存等支持。固件当时在启动阶段验证全部客户机 RAM。该演讲主要报告实现状态与接口流程，没有给出性能基准，也不能把后续才完善的内核、管理工具集成算入当年的成果。</p>
+<p>2021 年的材料列出内核、OVMF 和 QEMU 的开发分支及补丁版本，已有多 vCPU、证明报告、过滤 CPUID 和 THP 后备内存等支持。固件当时在启动阶段验证全部客户机 RAM。当年的材料记录了已实现的接口流程；内核和管理工具的进一步集成属于后续工作。</p>
 <h3 id="sev-snp-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
-<p>延迟验证、客户机 kexec、热迁移、HugeTLB 和受限中断注入都列在后续工作中。硬件具备相关能力与软件栈完整使用该能力之间存在距离。SNP 也不保证宿主持续调度客户机，部分侧信道和高级物理攻击在范围之外。部署时需要核对固件、内核、VMM 和证明策略的组合，明确保护目标，避免把“内存加密开启”视为所有威胁均已消除。</p>
+<p>延迟验证、客户机 kexec、热迁移、HugeTLB 和受限中断注入都列在后续工作中。硬件具备相关能力与软件栈完整使用该能力之间存在距离。SNP 也不保证宿主持续调度客户机，部分侧信道和高级物理攻击在范围之外。部署时需要核对固件、内核、VMM 和证明策略的组合，明确哪些数据和状态受保护。</p>
 </section>
 <section id="device-migration" class="mechanism-section">
 <h2><span class="mechanism-heading-number">六、</span>外部设备迁移：状态格式与兼容性如何约定</h2>
@@ -142,19 +142,19 @@
 <p>设备状态包含寄存器和恢复处理所需的内部进度，例如队列消费位置；宿主文件描述符等本地资源需要在目标端重新建立。不同实现即使提供相同设备类型，也未必使用相同状态格式。状态格式升级还可能修复历史错误，兼容版本与软件发布版本之间不能简单画等号。</p>
 <h3 id="device-migration-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
 <p>传统 vhost-user 迁移可在停止后端后由 QEMU 接管 virtqueue，并复用 Virtio 状态保存。具有额外内部状态的设备则需要扩展协议或辅助状态通道。VFIO 和 vfio-user 通过设备提供的数据流保存恢复，使 QEMU 无需理解每种设备内部结构，但格式演进责任也随之落到设备实现者。</p>
-<p>作者提出设备模型标识和迁移兼容版本，由目标查询是否接受源端组合；兼容时再实例化目标设备并传输状态。相容的软件和硬件实现可以约定同一状态表示。版本切换需要设备确认不会破坏客户机可见接口，不能只修改一个字符串就强行宣告兼容。</p>
+<p>作者提出设备模型标识和迁移兼容版本，由目标查询是否接受源端组合；兼容时再实例化目标设备并传输状态。相容的软件和硬件实现可以约定同一状态表示。版本标识用于查询，实际兼容性由目标设备根据客户机可见接口和状态格式判断。</p>
 <h3 id="device-migration-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>讲稿比较了已有迁移机制，并给出面向管理工具的协议提案。它没有展示完整实现之间的跨设备性能测试，模型和版本协商也仍待讨论与落地。因此成果在于把隐含兼容条件变成可检查契约，而非证明所有 VFIO 设备已经能够互相迁移。已有的数据流接口和提出的通用兼容方案应分开理解。</p>
+<p>讲稿比较了已有迁移机制，并给出面向管理工具的协议提案。它没有展示完整实现之间的跨设备性能测试，模型和版本协商也仍待讨论与落地。当时已有设备状态数据流；演讲提出的跨实现兼容检查仍处于设计阶段。</p>
 <h3 id="device-migration-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
-<p>将创建参数固定进版本可以简化检查，却可能使版本组合膨胀；复杂设备还需要更细致的能力描述。共享格式必须覆盖完整客户机状态，并定义拒绝、回滚及部分恢复失败的行为。后续需要 libvirt 等管理工具接入，以及多个独立实现共同验证。能提前检查兼容性，可减少无效迁移，但无法替代实际的端到端恢复测试。</p>
+<p>将创建参数固定进版本可以简化检查，却可能使版本组合膨胀；复杂设备还需要更细致的能力描述。共享格式必须覆盖完整客户机状态，并定义拒绝、回滚及部分恢复失败的行为。后续需要 libvirt 等管理工具接入，以及多个独立实现共同验证。兼容性检查可以在传输前排除不匹配的组合；目标端恢复后还需要验证设备能继续处理请求。</p>
 </section>
 </div>
   </div>
   <nav class="mechanism-related" aria-label="会议资料"><a href="../kvm-forum.html#year-2021">返回年度总览</a><a href="https://kvm-forum.qemu.org/2021/" target="_blank" rel="noopener noreferrer">原始议程</a></nav>
 </article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=02b518d59aa4" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=e7d4bbc16c93" defer></script></body>
 </html>

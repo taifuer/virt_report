@@ -1,8 +1,6 @@
 """Run only the small userspace example; never resize an actual virtual machine."""
 import hashlib
-import json
 import re
-import shlex
 import shutil
 import subprocess
 from html.parser import HTMLParser
@@ -57,30 +55,8 @@ def test_first_touch_example_compiles_and_runs_as_an_unprivileged_process(tmp_pa
     assert int(counts["second_minor"]) >= 0  # No environment-specific performance assertion.
 
 
-def test_balloon_example_separates_requests_observations_and_restore():
-    page = render.render_mechanisms_html(Config(), "virtio-balloon")
-    parser = CodeBlocks()
-    parser.feed(page)
-    commands = [json.loads(line) for block in parser.blocks
-                if "data-balloon-qmp" in block["attrs"] for line in block["text"].splitlines()]
-    assert commands[0] == {"execute": "qmp_capabilities"}
-    values = [item["arguments"]["value"] for item in commands if item["execute"] == "balloon"]
-    assert values == [768 * 1024**2, 1024**3]
-    assert [item["execute"] for item in commands].count("query-balloon") == 3
-    assert "可丢弃" in page and "恢复初始" in page and "实机测量结果" in page
-    launch = next(block["text"] for block in parser.blocks
-                  if "data-balloon-launch" in block["attrs"])
-    args = shlex.split(launch)
-    assert args[args.index("-machine") + 1] == "q35,accel=kvm,memory-backend=ram"
-    assert args[args.index("-m") + 1] == "1024"
-    assert args[args.index("-smp") + 1] == "2"
-    assert args[args.index("-object") + 1] == "memory-backend-ram,id=ram,size=1G,prealloc=on"
-    assert args[args.index("-device") + 1] == "virtio-balloon-pci,free-page-reporting=off"
-    assert args[args.index("-qmp") + 1].startswith("unix:${LAB_DIR}/")
-
-
-@pytest.mark.parametrize("slug", ["memory-virtualization", "virtio-balloon"])
-def test_measured_environment_is_separate_from_source_baselines(slug):
+def test_measured_environment_is_separate_from_source_baselines():
+    slug = "memory-virtualization"
     page = render.render_mechanisms_html(Config(), slug)
     document = Document(page).root
     experiment = next(node for node in document.find("section")
@@ -118,29 +94,4 @@ def test_first_touch_observations_keep_the_measured_code_and_counts():
                    "普通 Linux 用户态", "first_minor", "EPT/NPT 缺页", "吞吐和延迟"):
         assert marker in document.text()
     assert 'id="first-touch-measured"' in page
-    assert 'href="virtio-balloon.html#balloon-measured"' in page
-
-
-def test_balloon_measurements_preserve_units_and_lazy_residency():
-    page = render.render_mechanisms_html(Config(), "virtio-balloon")
-    document = Document(page).root
-    table = next(node for node in document.find("table")
-                 if node.attrs.get("id") == "balloon-measurements")
-    assert [cell.text() for cell in table.find("th")] == [
-        "采样阶段", "QMP actual（MiB）", "Guest 总量（KiB）", "QEMU RSS（KiB）"]
-    # Reviewed samples from the local KVM run on 2026-11-08; no VM in unit tests.
-    rows = [[cell.text() for cell in row.find("td")]
-            for row in table.find("tbody")[0].find("tr")]
-    assert rows == [
-        ["初始", "1024", "994728", "1091428"],
-        ["回收 256 MiB 后", "768", "732584", "829328"],
-        ["恢复 1 GiB 后", "1024", "994728", "829328"],
-        ["再次访问后", "1024", "994728", "1091472"],
-    ]
-    for marker in ("512 MiB", "4096 B", "627608 KiB", "VmRSS", "oom_kill",
-                   "pswpin", "pswpout", "各列在同一采样阶段依次读取",
-                   "同样的 balloon 调整未必带来相同的 RSS 降幅",
-                   "已恢复初始目标并正常关闭测试机", "气球膨胀后", "本次放气后"):
-        assert marker in document.text()
-    assert 'id="balloon-measured"' in page
-    assert 'href="memory-virtualization.html#first-touch-measured"' in page
+    assert "virtio-balloon.html" not in page

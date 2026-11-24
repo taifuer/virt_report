@@ -1,0 +1,43 @@
+{
+  "week": "2026-W46",
+  "published_on": "2026-11-24",
+  "lead": "AWS Nitro Sandboxes 让一个 Pod 或 ECS 任务独占一台轻量虚机。NVIDIA 展示了 vGPU 热迁移时让 GPU DMA 与 QEMU 读写并行的方法。KubeVirt 从 CNCF 毕业，基金会同时披露了生产部署情况。",
+  "points": [
+    {
+      "event": "aws-nitro-sandboxes-ga",
+      "title": "AWS Nitro Sandboxes 正式提供虚机级的容器隔离",
+      "date": "2026-11-09",
+      "refs": ["aws-launch"],
+      "paragraphs": [
+        {"text": "EKS Pod 或 ECS 任务可以各自在一台轻量虚机里运行。父 EC2 实例提供 vCPU、内存和 I/O；在 Nitro Hypervisor 看来，沙箱与父实例都是直接运行在它之上的虚机。一个应用的客户机内核与同机其他应用分开。"},
+        {"text": "父实例可以为沙箱接入 virtio 网络和块设备，vCPU 可以和父实例分时使用物理核心。需要自行管理虚机时，EC2 路径支持 Firecracker；需要验证运行映像时，应用可用密码学证明作为发放密钥的条件。", "refs": ["aws-design"]}
+      ]
+    },
+    {
+      "event": "nvidia-vgpu-vfio-migration-buffer-pool",
+      "title": "NVIDIA 展示 vGPU 热迁移中的 DMA 缓冲池",
+      "date": "2026-11-13",
+      "refs": ["nvidia-forum"],
+      "paragraphs": [
+        {"text": "在 KVM Forum 的演示中，NVIDIA 介绍了 vGPU 迁移驱动的一项改动。原路径由 GPU 把状态写入厂商用户态暂存区，数据复制进内核缓冲区后，QEMU 才能从 VFIO 迁移文件描述符读取。恢复时则反向搬运。"},
+        {"text": "新实现由内核驱动维护一组已建立 DMA 映射的缓冲区，把可用缓冲区交给用户态管理器安排 GPU 直接读写。QEMU 读取上一块时，GPU 可以填充下一块。省掉的是厂商驱动内部的一次复制；QEMU 仍使用原有的 VFIO 保存和恢复接口。"}
+      ]
+    },
+    {
+      "event": "kubevirt-cncf-graduation",
+      "title": "KubeVirt 从 CNCF 毕业，披露云平台上的虚机部署",
+      "date": "2026-11-10",
+      "refs": ["cncf-graduation"],
+      "paragraphs": [
+        {"text": "KubeVirt 把虚机纳入 Kubernetes 的管理接口，使虚机和容器可以在同一集群调度。CNCF 在毕业公告中列出字节跳动、Cloudflare、CoreWeave 和 NVIDIA 等生产用户，应用包括 CI 执行节点、云游戏和带 GPU 的云端虚机。"},
+        {"text": "Swisscom 的托管 Kubernetes 服务就是其中一个例子：底层组合 KubeVirt 和 Kube-OVN，承载上层客户集群。CNCF 此次公布的运行规模为 390 个集群、2,100 个工作节点。"}
+      ]
+    }
+  ],
+  "sources": {
+    "aws-launch": {"date": "2026-11-09", "publisher": "AWS", "title": "Introducing AWS Nitro Sandboxes on Amazon EKS, ECS and EC2", "url": "https://aws.amazon.com/about-aws/whats-new/2026/11/nitro-sandboxes-eks-ecs-ec2/"},
+    "aws-design": {"date": "2026-11-10", "publisher": "AWS Compute Blog", "title": "Nitro Sandboxes: Hardware isolation for every EKS pod, ECS task, and EC2 workload", "url": "https://aws.amazon.com/blogs/compute/nitro-sandboxes-hardware-isolation-for-every-eks-pod-ecs-task-and-ec2-workload/"},
+    "nvidia-forum": {"date": "2026-11-13", "publisher": "NVIDIA / KVM Forum", "title": "NVIDIA vGPU: Towards zero-copy live migration", "url": "https://pretalx.com/kvm-forum-2026/talk/7NLBGB/"},
+    "cncf-graduation": {"date": "2026-11-10", "publisher": "CNCF", "title": "Cloud Native Computing Foundation Announces KubeVirt Graduation", "url": "https://www.cncf.io/announcements/2026/11/10/cloud-native-computing-foundation-announces-kubevirt-graduation/"}
+  }
+}

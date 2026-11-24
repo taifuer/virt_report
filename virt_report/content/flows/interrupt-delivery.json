@@ -4844,7 +4844,7 @@
           "title": "发布 PIR 位",
           "actor": "VT-d posted 硬件",
           "description": "IOMMU 在 PID 中原子设置 PIR[0x51]。本例 SN = 0 且 ON = 0，更新 ON 为 1 并需要发出通知。",
-          "detail": "PIR 保存 Guest 待处理向量，ON 表示已有通知待处理。其他通知已在途或通知被抑制时，可以只积累 pending；不能把每个 PIR 置位都计算成一次宿主中断。",
+          "detail": "PIR 保存 Guest 待处理向量，ON 表示已有通知待处理。其他通知已在途或通知被抑制时，可以只积累 pending，多个置位可共用一次通知。",
           "active": [
             "iommu",
             "pid"
@@ -4956,7 +4956,7 @@
           "title": "虚拟 EOI",
           "actor": "Guest / APICv",
           "description": "Guest 应答当前中断，虚拟 APIC 清除服务位并重估优先级；驱动继续按直通设备的协议处理完成状态。",
-          "detail": "本例未要求该向量 EOI 退出。EOI 不表示 DMA 数据已被消费。vCPU 暂时未运行时保留 pending，KVM 按需维护 PID、唤醒或等待调度；不等于自动切回普通 IRTE。路由不再满足 posting 条件时，才涉及另一类路由回退处理。",
+          "detail": "本例未要求该向量 EOI 退出。EOI 不表示 DMA 数据已被消费。vCPU 暂时未运行时保留 pending，KVM 按需维护 PID、唤醒或等待调度；vCPU 暂停执行时仍可保留 posted 路由。路由不再满足 posting 条件时，才涉及另一类路由回退处理。",
           "active": [
             "guest",
             "lapic"

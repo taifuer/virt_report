@@ -86,6 +86,8 @@ class Schedule:
     monthly_cron: str = "35 0 1 * *"
     backup_cron: str = "5 1 * * *"
     versions_cron: str = "35 3 * * *"
+    industry_cron: str = "0 9 * * 1"
+    industry_draft_ai: bool = False
     backup_keep_count: int = 1
     backup_keep_days: int = 0  # Compatibility for explicitly configured legacy policies.
     job_timeout_seconds: int = 3600

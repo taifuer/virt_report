@@ -26,8 +26,8 @@ def test_editorial_matches_titles_sections_scenarios_and_multiple_terms():
     for query in ("virtqueue", "ioeventfd", "irqfd"):
         assert {"qemu-virtio-blk", "network-io"} <= {
             item["slug"] for item in editorial_search.find(query)["articles"]}
-    result = editorial_search.find("balloon")
-    assert result["articles"][0]["slug"] == "virtio-balloon"
+    result = editorial_search.find("设备与 I/O 虚拟化原理")
+    assert result["articles"][0]["slug"] == "device-virtualization"
     assert not result["demos"]  # Embedded demos stay with their parent article.
     assert editorial_search.find("irqfd doesnotexist")["articles"] == []
     assert editorial_search.find("内存")["articles"]

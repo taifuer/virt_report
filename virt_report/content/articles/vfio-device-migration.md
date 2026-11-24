@@ -97,9 +97,15 @@ VFIO 迁移要交接两样东西：设备写过的客户机内存，以及设备
 
 ## 核心源码 {#sources}
 
-- **QEMU 迁移流程**：[hw/vfio/migration.c](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L449)（建立会话、迭代、收尾和加载）；[hw/vfio/listener.c](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/listener.c#L1184)（DMA 脏页并入 RAM 迁移）。
-- **QEMU 并行传输**：[hw/vfio/migration-multifd.c](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration-multifd.c#L165)（停机分块、块序号与目的端加载）。
-- **Linux VFIO**：[include/uapi/linux/vfio.h](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/uapi/linux/vfio.h#L1011)（状态、数据 FD 和预拷贝查询）；[drivers/vfio/vfio_main.c](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vfio/vfio_main.c#L888)（向厂商驱动分派状态请求）。
-- **AMD VF 接入和迁移数据路径**：[gim/amd-vfio-pci/amd-vfio.c](https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/gim/amd-vfio-pci/amd-vfio.c#L115)（能力与回调注册）；[gim/gim_shim/gim_mig.c](https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/gim/gim_shim/gim_mig.c#L710)（预拷贝查询、显存复制、环形缓冲区与状态转换）。
-- **AMD 显存和固件状态**：[libgv/core/amdgv_dirtybit.c](https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/libgv/core/amdgv_dirtybit.c#L333)（累积变化位图）；[mi300_dirtybit.c](https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/libgv/core/hw/AI/mi300/mi300_dirtybit.c#L440)（芯片查询实现）；[libgv/core/amdgv_live_migration.c](https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/libgv/core/amdgv_live_migration.c#L404)（固件状态导出和导入）。
-- **接口沿革**：QEMU 的 [v2 实现说明](https://github.com/qemu/qemu/commit/31bcbbb5be04c7036223ce680a12927f5e51dc77)与[设备预拷贝变更](https://github.com/qemu/qemu/commit/eda7362af9595a9c6b1f1fefdd94b5ef711c250c)。
+- [QEMU hw/vfio/migration.c：设备迁移会话、预拷贝与恢复](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration.c#L449)
+- [QEMU hw/vfio/listener.c：把设备 DMA 脏页并入 RAM 迁移](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/listener.c#L1184)
+- [QEMU hw/vfio/migration-multifd.c：停机时拆分并传输设备状态](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/migration-multifd.c#L165)
+- [Linux include/uapi/linux/vfio.h：迁移状态、数据 FD 与预拷贝查询](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/include/uapi/linux/vfio.h#L1011)
+- [Linux drivers/vfio/vfio_main.c：向厂商驱动分派状态请求](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vfio/vfio_main.c#L888)
+- [AMD gim/amd-vfio-pci/amd-vfio.c：为 GPU 的 VF 注册迁移回调](https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/gim/amd-vfio-pci/amd-vfio.c#L115)
+- [AMD gim/gim_shim/gim_mig.c：跟踪预拷贝进度、通过环形缓冲区搬运显存](https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/gim/gim_shim/gim_mig.c#L710)
+- [AMD libgv/core/amdgv_dirtybit.c：累积显存脏页位图](https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/libgv/core/amdgv_dirtybit.c#L333)
+- [AMD mi300_dirtybit.c：读取 MI300 的硬件脏页记录](https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/libgv/core/hw/AI/mi300/mi300_dirtybit.c#L440)
+- [AMD libgv/core/amdgv_live_migration.c：导出与导入固件状态](https://github.com/amd/MxGPU-Virtualization/blob/1336e0c98e90e719375abeda5269fd72bd8f34bc/libgv/core/amdgv_live_migration.c#L404)
+- [QEMU 提交：接入 VFIO v2 迁移接口](https://github.com/qemu/qemu/commit/31bcbbb5be04c7036223ce680a12927f5e51dc77)
+- [QEMU 提交：为 VFIO 设备加入预拷贝](https://github.com/qemu/qemu/commit/eda7362af9595a9c6b1f1fefdd94b5ef711c250c)

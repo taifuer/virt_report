@@ -150,11 +150,16 @@ P1 再次被写入       后续脏页同步将 P1 重新标成 1</code></pre>
 </section>
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
-  <ul class="mechanism-sources">
-    <li>QEMU 10.2.0：<a href="{{ qemu_source }}migration/migration.c">migration.c</a>负责迁移决策与时间统计；<a href="{{ qemu_source }}migration/ram.c">ram.c</a>负责脏位图、页扫描与发送；<a href="{{ qemu_source }}migration/savevm.c">savevm.c</a>负责状态处理器调度。</li>
-    <li><a href="{{ qemu_source }}hw/block/virtio-blk.c">virtio-blk 的请求完成、设备状态及暂存请求保存</a>、<a href="{{ qemu_source }}block/io.c">块层 drain 与在途 I/O</a>。</li>
-    <li><a href="{{ qemu_source }}qapi/migration.json">QEMU 10.2.0 QAPI 定义</a>：参数、能力与统计口径；<a href="{{ qemu_source }}migration/trace-events">迁移 trace 事件</a>：阶段与处理开销观察。</li>
-    <li><a href="{{ kernel_source }}Documentation/virt/kvm/api.rst">Linux 6.18 KVM API</a>：dirty bitmap、手动脏页保护与 dirty ring。</li>
-    <li>QEMU 社区文档：<a href="https://www.qemu.org/docs/master/devel/migration/main.html">迁移框架</a>、<a href="https://www.qemu.org/docs/master/devel/migration/dirty-limit.html">Dirty limit</a>。</li>
+  <ul>
+    <li><a href="https://www.qemu.org/docs/master/devel/migration/main.html">QEMU 迁移框架：预拷贝、停机与目标端恢复</a></li>
+    <li><a href="{{ qemu_source }}migration/migration.c">QEMU migration.c：迁移线程、迭代与切换条件</a></li>
+    <li><a href="{{ qemu_source }}migration/ram.c">QEMU ram.c：同步脏页位图并发送内存页</a></li>
+    <li><a href="{{ qemu_source }}migration/savevm.c">QEMU savevm.c：保存与装载设备状态</a></li>
+    <li><a href="{{ qemu_source }}hw/block/virtio-blk.c">QEMU virtio-blk：在迁移时保存尚待重试的请求</a></li>
+    <li><a href="{{ qemu_source }}block/io.c">QEMU 块层：排空在途 I/O</a></li>
+    <li><a href="{{ qemu_source }}qapi/migration.json">QEMU QAPI：迁移命令、能力与统计字段</a></li>
+    <li><a href="{{ qemu_source }}migration/trace-events">QEMU trace 事件：定位迁移各阶段的耗时</a></li>
+    <li><a href="{{ kernel_source }}Documentation/virt/kvm/api.rst">Linux KVM API：记录客户机写过的内存页</a></li>
+    <li><a href="https://www.qemu.org/docs/master/devel/migration/dirty-limit.html">QEMU dirty-limit：限制客户机产生脏页的速度</a></li>
   </ul>
 </section>

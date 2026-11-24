@@ -612,7 +612,7 @@
           "title": "一次 virtio-scsi 本地文件写入",
           "request": {
             "command": "WRITE(10)",
-            "usedLengthNote": "QEMU 10.2 的 WRITE 也报告 used.len=4204；实际可写区域只有响应 108 B，不能把报告计数解释成设备写回 4096 B payload。",
+            "usedLengthNote": "QEMU 10.2 的 WRITE 也报告 used.len=4204；设备可写的响应区为 108 B，4096 B 的输入数据保留在原缓冲区。",
             "descriptors": [
               {
                 "id": 0,
@@ -1169,7 +1169,7 @@
               ]
             },
             "write-status": {
-              "detail": "RBD协程经BH恢复并成功返回后，virtio_blk_rw_complete 才进入标准virtio状态回写；不能把librbd completion与Guest中断视为同一回调。"
+              "detail": "RBD协程经BH恢复并成功返回后，virtio_blk_rw_complete 才进入标准virtio状态回写；librbd 回调通知 QEMU，客户机根据 virtio 完成记录回收请求。"
             },
             "return-to-user": {
               "detail": "Guest同步等待结束、释放页面引用，pread返回4096；结果已在用户页，used.len=4097不是系统调用返回值。"
@@ -1329,14 +1329,14 @@
             },
             "read-data": {
               "title": "RBD 写入在客户端完成",
-              "description": "librbd报告本次4KiB写入成功，输入payload保持原位；该成功不等于动画已核验物理持久化。",
+              "description": "librbd报告本次4KiB写入成功，输入缓冲区保持原位。断电持久性取决于缓存设置及刷新操作。",
               "sourceIds": [
                 "rbd-aio-write",
                 "rbd-callback"
               ]
             },
             "write-status": {
-              "detail": "RBD协程经BH恢复并成功返回后，virtio_blk_rw_complete 才进入标准virtio状态回写；不能把librbd completion与Guest中断视为同一回调。"
+              "detail": "RBD协程经BH恢复并成功返回后，virtio_blk_rw_complete 才进入标准virtio状态回写；librbd 回调通知 QEMU，客户机根据 virtio 完成记录回收请求。"
             },
             "return-to-user": {
               "detail": "Guest同步bio完成、页面引用释放后pwrite返回4096。used.len=1；本例执行普通写，未请求 FLUSH/FUA；掉电持久性取决于缓存策略。"

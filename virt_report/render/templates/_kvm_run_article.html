@@ -6,6 +6,8 @@
   <h2>序言</h2>
   <p>QEMU 的 vCPU 线程调用 <code>KVM_RUN</code>，让处理器执行客户机指令。以 Intel VMX 上连续执行的两个操作为例：查询 <code>CPUID</code> 时，KVM 在内核里填好寄存器，客户机继续执行；读取由 QEMU 模拟的设备寄存器时，这次调用才返回用户态。两次硬件退出，处理工作落在不同的地方。</p>
   <p>Linux 调度器决定这条线程何时占用物理 CPU。它被调度出去、处理器退出客户机、KVM 返回 QEMU，是三件可以分别观测的事。</p>
+  <h3 id="history">从用户态设备模拟到内核通知</h3>
+  <p>早期设备模型在用户态解释寄存器访问，客户机一次 I/O 可能让 vCPU 多次从 KVM 返回 VMM。共享队列把一批工作写入内存；2009 年引入的 ioeventfd 和 irqfd 分别把门铃和完成通知接入内核。今天，同一个 vCPU 仍会因不同事件走三条路径：直接继续客户机、由 KVM 处理退出，或交回 QEMU。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -80,7 +82,7 @@ mmio.data[0..3]   = 78 56 34 12</code></pre>
     break;</code></pre>
   <p>本例 <code>is_write = 0</code>，设备读取回调把 <code>0x12345678</code> 放进 mmio.data。QEMU 的执行循环随后再次调用 KVM_RUN，内核消费这 4 个字节，完成此前暂停的指令模拟，更新客户机寄存器与指令位置。客户机下一条指令才可以使用读取结果；一次设备读取到这里完成。</p>
   {{ diagram('kvm-run-exits', '一次 KVM_RUN 内的处理与用户态交接', 'CPUID 在 KVM 中完成；需要 QEMU 的设备读取经过共享区往返，并在下一次 KVM_RUN 中完成指令。') }}
-  <p>普通 RAM 访问通常直接经过客户机页表与 EPT / NPT 完成地址转换；EPT / NPT 缺页也可能在 KVM 中修复映射。内核设备、ioeventfd 匹配的写入和硬件直通设备又有不同路径。因此不能把所有 MMIO、所有 EPT 退出或所有设备请求都算成一次用户态退出。</p>
+  <p>普通 RAM 访问通常直接经过客户机页表与 EPT / NPT 完成地址转换；EPT / NPT 缺页也可能在 KVM 中修复映射。内核设备、ioeventfd 匹配的写入和硬件直通设备又有不同路径。统计用户态退出时，计数点是 KVM_RUN 返回到 QEMU。</p>
 </section>
 
 <section id="structures" class="mechanism-section">
@@ -145,7 +147,7 @@ mmio.data[0..3]   = 78 56 34 12</code></pre>
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>演进与取舍：减少往返，保留正确交接</h2>
+  <h2>设备通知与空闲退出的成本</h2>
   <p>用户态设备模拟便于实现多种设备，但高频寄存器访问会反复经过 KVM_RUN 返回、地址空间分派和重新进入。virtio 将大量工作描述放进共享队列，把寄存器访问集中到配置与通知；队列记录和实际数据留在客户机内存中。这降低了每个请求必须经过用户态寄存器处理的需求。</p>
   <p>2009 年，Linux 引入 <a href="https://github.com/torvalds/linux/commit/d34e6b175e61821026893ec5298cc8e7558df43a">ioeventfd</a> 和 <a href="https://github.com/torvalds/linux/commit/721eecbf4fe995ca94a9edec0c9843b1cc0eaaf3">irqfd</a>。ioeventfd 的原始设计抓住了两类访问的区别：设备寄存器读取需要同步返回数据，而队列 doorbell 写入只负责通知后端有新工作，可以在发布事件后继续执行客户机。这为通知路径提供了比完整设备模拟更短的交接方式。</p>
   <p>ioeventfd / irqfd 缩短通知交接，<a href="qemu-vhost-net.html">vhost 与 vhost-user</a>再调整由谁执行队列的数据处理。两项优化可以组合，但收益来源不同：前者减少控制通知往返，后者改变数据面的执行上下文。配置变更、异常处理及不匹配访问仍需完整设备语义。</p>
@@ -166,11 +168,11 @@ mmio.data[0..3]   = 78 56 34 12</code></pre>
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>
-    <li><a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L6521-L6707">Linux 6.18：kvm_run、I/O 数据与完成语义</a></li>
-    <li><a href="{{ linux_source }}arch/x86/kvm/x86.c">Linux 6.18：x86 vCPU 运行循环与指令模拟收尾</a></li>
-    <li><a href="{{ linux_source }}arch/x86/kvm/vmx/vmx.c">Linux 6.18：VMX 进入与退出处理</a></li>
-    <li><a href="{{ qemu_source }}accel/kvm/kvm-all.c">QEMU 10.2.0：vCPU 映射、执行与用户态设备分派</a></li>
-    <li><a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L2092-L2135">KVM_IOEVENTFD</a>、<a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L3177-L3204">KVM_IRQFD</a></li>
-    <li><a href="https://docs.kernel.org/virt/kvm/api.html">KVM API 文档</a></li>
+    <li><a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L6521-L6707">Linux KVM API：kvm_run、I/O 数据与完成条件</a></li>
+    <li><a href="{{ linux_source }}arch/x86/kvm/x86.c">Linux KVM x86：vCPU 运行循环与指令模拟收尾</a></li>
+    <li><a href="{{ linux_source }}arch/x86/kvm/vmx/vmx.c">Linux KVM/VMX：进入客户机与处理退出</a></li>
+    <li><a href="{{ qemu_source }}accel/kvm/kvm-all.c">QEMU：运行 KVM vCPU 并分派用户态设备访问</a></li>
+    <li><a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L2092-L2135">KVM_IOEVENTFD：将客户机的寄存器写入转成 eventfd 通知</a></li>
+    <li><a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L3177-L3204">KVM_IRQFD：将 eventfd 通知路由为客户机中断</a></li>
   </ul>
 </section>

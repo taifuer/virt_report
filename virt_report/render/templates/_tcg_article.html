@@ -7,6 +7,9 @@
   <p>本文沿一个三块循环展开：第一次执行 A 时查找缓存，未命中便翻译；执行到 B 后决定回到 A 还是进入 C；循环重复时复用并链接已有代码；程序改写 A 后撤销旧翻译。客户机访存、异常与多 vCPU 同步都围绕这条执行路径解释。</p>
   <p>源码采用 QEMU 10.2.0，以 x86 系统模拟和 x86-64 宿主为例。TCG 在用户态实现客户机 CPU 的指令语义、特权状态和访存检查；KVM 的硬件执行路径可对照<a href="kvm-vcpu-run.html">KVM vCPU 的执行循环与退出处理</a>。两种加速器共享许多机器与设备模型，CPU 的执行机制各有不同。</p>
   <p>译码器、IR 优化器、宿主代码生成器以及生成的代码都运行在 QEMU 宿主用户态中。客户机寄存器保存在每个 vCPU 的 CPUArchState，翻译好的机器码保存在 QEMU 的代码缓存。即使客户机与宿主都是 x86-64，TCG 执行的仍是按客户机语义生成的宿主代码。</p>
+  <h3 id="history">从 dyngen 到 TCG 和多线程执行</h3>
+  <p><a href="https://lists.gnu.org/archive/html/qemu-devel/2008-02/msg00011.html">2008 年引入 TCG</a>时，Fabrice Bellard 明确提出要减少不同 GCC 版本带来的问题，并改善代码生成。早期 dyngen 依赖预先编译的微操作片段；TCG 逐步改为由公共 IR 和宿主后端直接组织代码，使优化与寄存器分配拥有更明确的接口。代价是每种宿主后端都要实现、验证指令编码及相关约束。</p>
+  <p><a href="https://lists.gnu.org/archive/html/qemu-devel/2017-02/msg05682.html">2017 年的 MTTCG 设计</a>进一步把系统模拟从单线程轮转推向每 vCPU 一线程。旧模型天然串行化了许多共享访问；并行后，原子指令、内存屏障、TB 发布与清理都要获得明确的同步规则。当前实现支持并行翻译和细粒度锁，但设备共享状态、代码改写频率及客户机锁竞争仍会限制扩展性。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -59,10 +62,10 @@
   <p>同页静态分支预留 <code>goto_tb</code> 槽。第一次经过该出口时，槽仍指向本块的原始退出路径，执行流回到主循环。主循环找到目标 TB 后，<code>tb_add_jump()</code> 将槽修补到目标的宿主代码入口，并把来源挂到目标的入链表。下一次经过相同出口便可直接进入目标块，省去主循环和目标查询。</p>
   <p><code>translator_use_goto_tb()</code> 要求分支目标与当前 TB 的起始 PC 位于同一客户机虚拟页，且没有禁止链接；系统模拟主循环还拒绝将该直链指向跨两个代码页的 TB。跨页映射可以独立变化，未经重新查询就保留跳转容易运行到旧代码。断点、单步和需要重新检查中断的状态变化也会限制链接。</p>
   <h3>B 转向 C：跨页查找仍可复用代码</h3>
-  <p>跨页或间接跳转仍有另一条快路径：<code>lookup_and_goto_ptr</code> 调用 <code>helper_lookup_tb_ptr()</code>，按新的 CPU 状态查询目标。命中就返回目标代码入口，由生成的 <code>goto_ptr</code> 继续执行；未命中才回到主循环生成代码。因此应区分三种成本：翻译新块、查询已有块、沿已修补链接直接跳转。缓存命中不等于已经建立直链，跨页也不等于每次重新翻译。</p>
+  <p>跨页或间接跳转仍有另一条快路径：<code>lookup_and_goto_ptr</code> 调用 <code>helper_lookup_tb_ptr()</code>，按新的 CPU 状态查询目标。命中就返回目标代码入口，由生成的 <code>goto_ptr</code> 继续执行；未命中才回到主循环生成代码。因此应区分三种成本：翻译新块、查询已有块、沿已修补链接直接跳转。跨页跳转也能复用缓存中已有的块；同页且满足链接条件时，还可以直接跳到目标块。</p>
   <p>下面固定执行模式和地址映射，用 A、B、C 三个块观察这些路径。A 与 B 在同一页，C 位于另一页；“改写 A/B 指令”修改与这两个块相交的代码范围，C 保持有效。演示一次推进一个 TB，真实执行会连续运行，直到退出请求、异常或其他条件需要返回调度循环。</p>
   {% include '_tcg_lab.html' %}
-  <p>直链循环仍需响应退出请求。普通 TB 的入口代码检查退出标记，主循环再处理相应中断或工作；开启 icount 时还有指令预算。TB 长度、链接策略与这些检查共同影响调度开销，不能单凭“链接越长”判断运行速度。</p>
+  <p>直链循环仍需响应退出请求。普通 TB 的入口代码检查退出标记，主循环再处理相应中断或工作；开启 icount 时还有指令预算。TB 长度、链接策略与这些检查共同影响调度开销。</p>
 </section>
 
 <section id="structures" class="mechanism-section">
@@ -121,12 +124,12 @@
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>TCG 的演进与性能取舍</h2>
-  <h3>从 dyngen 到 TCG，再到多线程执行</h3>
-  <p><a href="https://lists.gnu.org/archive/html/qemu-devel/2008-02/msg00011.html">2008 年引入 TCG</a>时，Fabrice Bellard 明确提出要减少不同 GCC 版本带来的问题，并改善代码生成。早期 dyngen 依赖预先编译的微操作片段；TCG 逐步改为由公共 IR 和宿主后端直接组织代码，使优化与寄存器分配拥有更明确的接口。代价是每种宿主后端都要实现、验证指令编码及相关约束。</p>
+  <h2>翻译块复用与性能观察</h2>
+  <h3 id="evolution-part-1">翻译块大小与失效成本</h3>
+
   <p>TB 缓存和直接链接减少热代码的重复工作，同时需要维护代码页追踪、跳转撤销和精确异常恢复。较大的块可以摊薄入口开销，也会增加生成成本与失效后的重做量。短生命周期程序还对首次翻译延迟敏感；TCG 在块大小、生成速度和重复执行收益之间取舍。</p>
-  <p><a href="https://lists.gnu.org/archive/html/qemu-devel/2017-02/msg05682.html">2017 年的 MTTCG 设计</a>进一步把系统模拟从单线程轮转推向每 vCPU 一线程。旧模型天然串行化了许多共享访问；并行后，原子指令、内存屏障、TB 发布与清理都要获得明确的同步规则。当前实现支持并行翻译和细粒度锁，但设备共享状态、代码改写频率及客户机锁竞争仍会限制扩展性。</p>
-  <h3>沿主路径判断优化是否有效</h3>
+
+  <h3 id="evolution-part-2">沿主路径判断优化是否有效</h3>
   <table><thead><tr><th scope="col">主要耗时</th><th scope="col">改进方向</th><th scope="col">代价与验证</th></tr></thead><tbody>
     <tr><td>冷启动大量翻译</td><td>减少重复生成，控制翻译与优化复杂度</td><td>比较启动时间和进入稳定执行后的耗时；更复杂优化未必能在短任务中回本</td></tr>
     <tr><td>热循环 A ↔ B</td><td>复用 TB、满足条件时直接链接</td><td>检查查找 / helper 占比与真实吞吐；链接仍需退出检查和正确失效</td></tr>
@@ -150,18 +153,16 @@
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>
-    <li><a href="{{ qemu_source }}accel/tcg/translator.c#L111-L225">公共翻译循环与同页链接条件</a>、<a href="{{ qemu_source }}target/i386/tcg/translate.c#L3807-L3932">x86 前端回调</a></li>
-    <li><a href="{{ qemu_source }}include/exec/translation-block.h#L44-L147">TranslationBlock 与跳转链表</a>、<a href="{{ qemu_source }}include/tcg/tcg.h#L323-L453">TCGOp 与 TCGContext</a></li>
-    <li><a href="{{ qemu_source }}target/i386/cpu.h#L1846-L1875">CPUX86State</a>、<a href="{{ qemu_source }}target/i386/tcg/translate.c#L3714-L3727">客户机寄存器对应的 TCG 全局变量</a></li>
-    <li><a href="{{ qemu_source }}target/i386/cpu.c#L9266-L9278">x86 系统模拟默认启用 CF_PCREL</a>、<a href="{{ qemu_source }}target/i386/tcg/tcg-cpu.c#L51-L115">x86 查询状态与异常状态恢复</a>、<a href="{{ qemu_source }}accel/tcg/cpu-exec.c#L152-L263">TB 缓存键和两级查询</a></li>
-    <li><a href="{{ qemu_source }}accel/tcg/translate-all.c#L261-L325">TB 分配与翻译</a>、<a href="{{ qemu_source }}accel/tcg/translate-all.c#L479-L541">代码发布与重复 TB 处理</a>、<a href="{{ qemu_source }}tcg/tcg.c#L6845-L6933">优化、活跃性分析与寄存器分配</a></li>
-    <li><a href="{{ qemu_source }}accel/tcg/cpu-exec.c#L366-L450">helper 查询与进入宿主代码</a>、<a href="{{ qemu_source }}accel/tcg/cpu-exec.c#L616-L651">跳转槽修补</a>、<a href="{{ qemu_source }}accel/tcg/cpu-exec.c#L934-L1018">执行循环</a></li>
-    <li><a href="{{ qemu_source }}target/i386/tcg/translate.c#L2284-L2380">x86 块尾、goto_ptr 与 goto_tb</a>、<a href="{{ qemu_source }}accel/tcg/translator.c#L43-L103">TB 入口退出请求检查</a></li>
-    <li><a href="{{ qemu_source }}tcg/i386/tcg-target.c.inc#L2424-L2459">宿主 x86 后端的 qemu_ld</a>、<a href="{{ qemu_source }}accel/tcg/cputlb.c#L1335-L1357">代码页慢写入口</a></li>
-    <li><a href="{{ qemu_source }}accel/tcg/tb-maint.c#L870-L959">失效标记、缓存清理与撤链</a>、<a href="{{ qemu_source }}accel/tcg/tb-maint.c#L1112-L1227">写入范围检查与精确自修改代码处理</a></li>
-    <li><a href="{{ qemu_source }}accel/tcg/translate-all.c#L88-L215">恢复表编码及宿主 PC 定位</a>、<a href="{{ qemu_source }}accel/tcg/tb-maint.c#L770-L808">安全的全局 TB flush</a></li>
-    <li><a href="{{ qemu_source }}accel/tcg/tcg-accel-ops-mttcg.c#L58-L135">MTTCG 线程循环</a>、<a href="{{ qemu_source }}accel/tcg/tcg-all.c#L104-L154">默认线程模式选择</a></li>
-    <li><a href="{{ qemu_source }}target/i386/tcg/tcg-cpu.c#L160-L171">x86 客户机内存模型</a>、<a href="{{ qemu_source }}tcg/tcg-op-ldst.c#L129-L136">补充访存屏障</a>、<a href="{{ qemu_source }}accel/tcg/cpu-exec.c#L549-L598">原子操作的排他执行回退</a></li>
-    <li><a href="{{ qemu_source }}docs/devel/tcg.rst">翻译器内部机制</a>、<a href="{{ qemu_source }}docs/devel/tcg-ops.rst">TCG IR 与操作语义</a>、<a href="{{ qemu_source }}docs/devel/multi-thread-tcg.rst">多线程 TCG 设计</a></li>
+    <li><a href="{{ qemu_source }}docs/devel/tcg.rst">QEMU TCG 设计：翻译块、块间跳转与精确异常</a></li>
+    <li><a href="{{ qemu_source }}docs/devel/tcg-ops.rst">QEMU TCG 中间表示：操作数与指令语义</a></li>
+    <li><a href="{{ qemu_source }}accel/tcg/translator.c#L111-L225">QEMU translator.c：从客户机指令生成翻译块</a></li>
+    <li><a href="{{ qemu_source }}target/i386/tcg/translate.c#L3807-L3932">QEMU x86 前端：解码客户机指令并产生中间操作</a></li>
+    <li><a href="{{ qemu_source }}include/exec/translation-block.h#L44-L147">QEMU TranslationBlock：代码范围与跳转链表</a></li>
+    <li><a href="{{ qemu_source }}accel/tcg/cpu-exec.c#L152-L263">QEMU cpu-exec.c：通过两级缓存查找翻译块</a></li>
+    <li><a href="{{ qemu_source }}tcg/tcg.c#L6845-L6933">QEMU tcg.c：优化中间操作并分配宿主寄存器</a></li>
+    <li><a href="{{ qemu_source }}accel/tcg/cpu-exec.c#L934-L1018">QEMU CPU 执行循环：运行翻译块并处理退出</a></li>
+    <li><a href="{{ qemu_source }}accel/tcg/tb-maint.c#L870-L959">QEMU tb-maint.c：使翻译块失效并解除块间链接</a></li>
+    <li><a href="{{ qemu_source }}accel/tcg/translate-all.c#L88-L215">QEMU translate-all.c：根据宿主 PC 恢复客户机异常现场</a></li>
+    <li><a href="{{ qemu_source }}docs/devel/multi-thread-tcg.rst">QEMU 多线程 TCG：vCPU 并行执行与同步</a></li>
   </ul>
 </section>

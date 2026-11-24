@@ -20,11 +20,13 @@ def test_queue_article_combines_split_and_packed_at_the_existing_url():
     assert "RING_PACKED" in page
 
 
-def test_four_slot_experiment_precedes_layout_details_and_has_a_static_equivalent():
+def test_four_slot_experiment_follows_queue_semantics_and_has_a_static_equivalent():
     root = versions.Document(render_mechanisms_html(Config(), "packed-virtqueue")).root
     sections = [s for s in root.find("section") if s.attrs.get("class") == "mechanism-section"]
-    assert [s.attrs["id"] for s in sections[:3]] == ["preface", "interactive", "split-layout"]
-    experiment = sections[1]
+    ids = [s.attrs["id"] for s in sections]
+    assert ids[:3] == ["preface", "split-layout", "split-lifecycle"]
+    assert ids.index("events") < ids.index("interactive") < ids.index("implementation")
+    experiment = sections[ids.index("interactive")]
     assert {"publish", "complete", "reclaim", "reset"} == {
         b.attrs["data-packed-action"] for b in experiment.find("button") if "data-packed-action" in b.attrs
     }

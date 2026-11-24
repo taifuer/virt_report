@@ -31,7 +31,7 @@ def test_linux_prerequisites_share_navigation_and_pinned_source_baseline(slug):
     rendered_sections = re.findall(r'<section id="([^"]+)" class="mechanism-section">', page)
     assert rendered_sections == [section["id"] for section in article["sections"]]
     assert rendered_sections[0] == 'preface' and rendered_sections[-1] == 'sources'
-    assert rendered_sections[1] == {'linux-kernel-evolution': 'privilege',
+    assert rendered_sections[1] == {'linux-kernel-evolution': 'evolution',
                                     'linux-boot': 'firmware'}.get(slug, 'history')
     figures = re.findall(r'data-diagram="(linux-[^"]+)"', page)
     assert len(figures) == {'linux-kernel-evolution': 4, 'linux-boot': 1}.get(slug, 3)
@@ -51,7 +51,7 @@ def test_linux_overview_covers_history_boundaries_and_subsystem_cooperation():
     page = render.render_mechanisms_html(Config(), "linux-kernel-evolution")
     for phrase in ("1991", "1994", "1996", "2003", "SMP", "单体内核", "发行版",
                    "namespace", "cgroup", "2.6.20", "2.6.24", "回移", "合并窗口",
-                   "同一线程", "唤醒不等于已经返回", "RELNOTES-0.01"):
+                   "同一线程", "等获得 CPU 后检查结果", "RELNOTES-0.01"):
         assert phrase in page
     for phrase in ('用户空间', '内核空间', 'CPL 3', 'CPL 0', 'mm_struct', '系统调用'):
         assert phrase in page

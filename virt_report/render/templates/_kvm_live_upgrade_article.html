@@ -10,7 +10,8 @@
   <p>一台虚拟机长期运行时，支撑它的虚拟化软件仍需要修复漏洞、改进性能和增加功能。KVM 在宿主内核中管理 vCPU 执行，QEMU 在用户态组织虚拟机内存和设备。安装新版软件包后，已有的 QEMU 进程和 KVM 实例仍在执行旧代码；运行中的虚拟机需要一次明确的状态交接，才能用上新实现。</p>
   <p>以一台运行数据库服务的虚拟机为例：它有 4 vCPU、8 GiB RAM 和一块直通网卡。宿主需要更新 KVM，客户机中已有的进程、内存内容和网络连接都应保留。如果每次修复都要求客户重启业务，更新就会受维护窗口限制；如果先把所有虚机迁走，云平台又要准备接收它们的服务器与网络容量。单台机器上的维护步骤，到了数万台宿主上就会成为升级进度的瓶颈。</p>
   <p>Orthus 利用同机升级的条件，把 Guest RAM 和物理设备留在原处，由新 KVM 与新 QEMU 接管运行状态。虚拟机会短暂停顿，随后从原来的执行位置继续，客户机操作系统不重新引导。本文沿上述数据库虚机的一次升级，介绍这条路径的设计、实现和效果；以下配置用于演示状态交接，论文的实测配置见实验部分。只更新 QEMU 的方式见 <a href="qemu-cpr-transfer.html">QEMU 热升级：CPR 的资源交接与状态恢复</a>。</p>
-  <p>后文再对照字节跳动的 VMM Live Upgrade 和 HyperFresh：前者继续处理同机模块交接中的设备与通知，后者借助嵌套虚拟化替换承载业务虚机的 Hypervisor。本文关注实际 KVM 实现的在线替换，保留 Guest 运行状态，允许切换时短暂停顿；宿主基础内核或底层管理层保持运行。</p>
+  <h3 id="history">同机升级的两条路线</h3>
+  <p>2017 年的 HyperFresh 利用嵌套虚拟化，把运行客户机的管理层与底层控制分开；2019 年的 Orthus 则在同一宿主并存两套 KVM 实现，逐台交接虚机。切换期间，宿主基础内核或底层管理层保持运行。2020 年和 2022 年字节跳动的分享进一步讨论直通设备的待处理中断，以及保持 vhost-user 后端运行时的状态交接。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -141,11 +142,15 @@
 <section id="sources" class="mechanism-section">
   <h2>论文与相关资料</h2>
   <ul>
-    <li><a href="{{ orthus_doi }}">Fast and Scalable VMM Live Upgrade in Large Cloud Infrastructure</a>，ASPLOS 2019，93–105 页；<a href="https://dl.acm.org/doi/pdf/10.1145/3297858.3304034">出版方 PDF</a>。§2 介绍升级成本，§3 给出设计，§4 给出实验与部署记录，§6 讨论适用范围和兼容性。</li>
-    <li><a href="{{ forum_slides }}">KVM Live Upgrade with Properly Handling of Passthrough Devices</a>，Zhimin Feng，KVM Forum 2020；<a href="https://kvm-forum.qemu.org/2020/">官方日程与录像入口</a>。</li>
-    <li><a href="{{ forum_2022_slides }}">Deep Optimization of VMM Live Upgrade</a>，Shenming Lu，KVM Forum 2022；<a href="https://kvm-forum.qemu.org/2022/">官方日程与录像入口</a>。</li>
-    <li><a href="{{ hyperfresh_2017_doi }}">HyperFresh: Live Refresh of Hypervisors Using Nested Virtualization</a>，APSys 2017；<a href="https://kartikgopalan.github.io/publications/bagdi17hyperfresh.pdf">作者公开全文</a>。介绍嵌套架构、内存共映射与早期原型。</li>
-    <li><a href="{{ hyperfresh_2019_doi }}">Fast and Live Hypervisor Replacement</a>，VEE 2019；<a href="https://kartikgopalan.github.io/publications/doddamani19fast.pdf">作者公开全文</a>。扩展 HyperFresh 的多虚机支持及运行开销优化；<a href="../conference-papers.html?q=HyperFresh#paper-vee19-live-replacement">论文目录</a>。</li>
-    <li><a href="qemu-cpr-transfer.html">QEMU 热升级：CPR 的资源交接与状态恢复</a>，对照用户态进程替换；<a href="qemu-vfio-dma.html">VFIO 设备直通的 DMA 地址转换与隔离</a>，补充设备与内存映射关系。</li>
+    <li><a href="{{ orthus_doi }}">Orthus（ASPLOS 2019）：Fast and Scalable VMM Live Upgrade in Large Cloud Infrastructure</a></li>
+    <li><a href="https://dl.acm.org/doi/pdf/10.1145/3297858.3304034">Orthus 论文全文（PDF）：架构、停机开销与部署结果</a></li>
+    <li><a href="{{ forum_slides }}">KVM Forum 2020 讲稿：热升级时交接直通设备（Zhimin Feng）</a></li>
+    <li><a href="{{ forum_2022_slides }}">KVM Forum 2022 讲稿：优化 VMM 热升级（Shenming Lu）</a></li>
+    <li><a href="{{ hyperfresh_2017_doi }}">HyperFresh（APSys 2017）：用嵌套虚拟化更新 Hypervisor</a></li>
+    <li><a href="https://kartikgopalan.github.io/publications/bagdi17hyperfresh.pdf">HyperFresh 作者全文（APSys 2017，PDF）</a></li>
+    <li><a href="{{ hyperfresh_2019_doi }}">Fast and Live Hypervisor Replacement（VEE 2019）：多虚机在线接管</a></li>
+    <li><a href="https://kartikgopalan.github.io/publications/doddamani19fast.pdf">Fast and Live Hypervisor Replacement 作者全文（VEE 2019，PDF）</a></li>
+    <li><a href="../conference-papers.html?q=HyperFresh#paper-vee19-live-replacement">HyperFresh 与后续工作的中文论文解读</a></li>
+    <li><a href="qemu-cpr-transfer.html">QEMU 热升级：CPR 如何在两个进程间交接资源</a></li>
   </ul>
 </section>

@@ -142,15 +142,6 @@
       return nodes;
     });
     nodesBoard.replaceChildren(domains);
-    if (demo.id === 'virtio-balloon') {
-      const memory = el('section', undefined, 'balloon-memory-map');
-      memory.append(el('h4', 'Guest 页的分配状态 · 配置 RAM 始终为 8 GiB'));
-      const bar = el('div', undefined, 'balloon-page-map'); bar.dataset.balloonMap = '';
-      for (let n = 0; n < 64; n++) bar.append(el('span'));
-      const caption = el('p'); caption.dataset.balloonCaption = '';
-      memory.append(bar, caption, el('p', '每格代表 128 MiB 的容量。色块仅表示 Guest 暂停分配的比例，不表示连续 GPA 或宿主已释放的物理页。', 'walkthrough-help'));
-      nodesBoard.append(memory);
-    }
     if (scene.layout.memory) {
       const group = scene.layout.memory, memory = el('section', undefined, 'walkthrough-memory');
       const heading = el('h4', group.title); heading.append(el('span', group.description));
@@ -402,14 +393,6 @@
 
   function render(speak = false, updateURL = true) {
     const frame = trace[index];
-    if (demo.id === 'virtio-balloon') {
-      const held = Number(frame.values.held);
-      all('[data-balloon-map] span').forEach((cell, n) => {
-        const fraction = Math.max(0, Math.min(1, held / 32768 - n));
-        cell.style.setProperty('--balloon-filled', `${fraction * 100}%`);
-      });
-      setText('[data-balloon-caption]', `Guest 暂停分配：${held} 页（${held / 256} MiB）。config.actual = ${frame.values.actual}；${frame.values.discard}。`);
-    }
     renderTimeline(frame);
     one('.execution-key').textContent = scene.presentation === 'cpu-timeline'
       ? '高亮泳道表示当前执行位置，字段高亮表示本步变化。普通指令由物理 CPU 直接执行；仅在需要处理退出事件时进入 KVM 或 QEMU。'

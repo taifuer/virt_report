@@ -69,7 +69,7 @@
 <section id="scaling" class="mechanism-section">
   <h2>批处理、多核与缓冲区生命期</h2>
   {{ diagram('linux-napi-budget', '一次通知可以启动多轮轮询', '示例固定 100 个 RX 包、每轮预算 64、期间无新包。第二轮靠已保留的 NAPI 调度状态继续，不需要设备为剩下的 36 个包再发一次中断。') }}
-  <p>NAPI 一轮 poll 受到 RX 预算约束；仍有工作时可继续被调度，处理完成才恢复相应通知。这样可以摊薄每次中断和调度的成本，但一次取很多包也可能让先到的小请求多等一会儿。TX completion 也可在 poll 中回收，不能把 poll 返回的 RX 工作量直接当作所有完成操作的数量。</p>
+  <p>NAPI 一轮 poll 受到 RX 预算约束；仍有工作时可继续被调度，处理完成才恢复相应通知。这样可以摊薄每次中断和调度的成本，但一次取很多包也可能让先到的小请求多等一会儿。一次 poll 还可以回收 TX 完成项。返回值统计 RX 工作量，TX 回收单独计数。</p>
   <p>例如 RX 预算为 64、队列已有 100 个包，期间无新到包：第一轮处理 64 个并返回预算值，保留后续轮询；下一轮处理剩余 36 个，调用 <code>napi_complete_done()</code> 成功结束本轮后，再按设备规则恢复通知。若处理数量恰好等于预算且队列已空，可继续保留轮询，也可完成后返回 <code>budget - 1</code>。预算为 0 的调用用于 TX 等处理，此时禁止调用 <code>napi_complete_done()</code>。</p>
   <p>RSS 由网卡选择接收队列，RPS 在内核中选择后续协议处理 CPU，RFS 进一步考虑应用位置，XPS 影响发送队列选择。这些机制按流分工，兼顾并行与局部性。跨核转交会增加 IPI 和缓存迁移成本，已有合适硬件分流时，应测量软件分流的额外收益。见 <a href="{{ linux }}Documentation/networking/scaling.rst">Linux 网络扩展机制</a>。</p>
   <p>GSO 在发送方向保留较大的逻辑报文，稍后由软件或支持卸载的设备分段；GRO 在接收方向合并符合条件的报文，减少后续重复处理。合并和分段取决于协议与协商特性，UDP 数据报保留各自的消息边界。相关约束见 <a href="{{ linux }}Documentation/networking/segmentation-offloads.rst">分段卸载文档</a>。</p>
@@ -90,8 +90,11 @@
 <section id="sources" class="mechanism-section">
   <h2>源码与参考资料</h2>
   <ul>
-    <li><a href="https://www.usenix.org/system/files/conference/atc12/atc12-final186.pdf">netmap（USENIX ATC 2012）</a>让应用与内核共享一批收发缓冲区，一次系统调用可以交接多个包。</li>
-    <li><a href="{{ linux }}net/ipv4/udp.c#L1270">udp_sendmsg()</a>、<a href="{{ linux }}net/core/dev.c#L4670">__dev_queue_xmit()</a>、<a href="{{ linux }}net/ipv4/udp.c#L2053">udp_recvmsg()</a>。</li>
-    <li><a href="{{ linux }}Documentation/networking/napi.rst">NAPI 轮询、预算和 TX completion</a>；<a href="https://man7.org/linux/man-pages/man2/send.2.html">send(2)</a> 的成功与交付边界。</li>
+    <li><a href="{{ linux }}net/ipv4/udp.c#L1270">Linux UDP：udp_sendmsg() 组织发送数据</a></li>
+    <li><a href="{{ linux }}net/core/dev.c#L4670">Linux 网络设备层：__dev_queue_xmit() 提交报文</a></li>
+    <li><a href="{{ linux }}Documentation/networking/napi.rst">Linux NAPI：轮询预算与发送完成处理</a></li>
+    <li><a href="{{ linux }}net/ipv4/udp.c#L2053">Linux UDP：udp_recvmsg() 从套接字读取报文</a></li>
+    <li><a href="https://man7.org/linux/man-pages/man2/send.2.html">Linux send(2)：应用提交数据的返回语义</a></li>
+    <li><a href="https://www.usenix.org/system/files/conference/atc12/atc12-final186.pdf">netmap（USENIX ATC 2012）：共享缓冲区与批量收发</a></li>
   </ul>
 </section>

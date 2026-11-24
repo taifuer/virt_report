@@ -1,0 +1,42 @@
+{
+  "week": "2026-W44",
+  "published_on": "2026-11-24",
+  "lead": "Oracle 公布了 RDMA 与普通流量共用云前端网络时的拥塞控制设计。Proxmox VE 接入 Lightbits 共享块存储；AWS ECS 则把分散在多台 EC2 实例上的任务放在一起调度，以释放闲置实例。",
+  "points": [
+    {
+      "event": "oci-acceleron-front-end-rdma",
+      "title": "Oracle 公布前端 RDMA 的 SmartNIC 拥塞控制设计",
+      "date": "2026-10-27",
+      "refs": ["oci-design"],
+      "paragraphs": [
+        {"text": "OCI 将 RDMA 从专用集群网络扩展到承载存储访问、跨集群传输和普通业务的前端网络。这里的难点是流量共存：RDMA 和 TCP 调节发送速率的方式不同，一类流量可能挤占另一类的带宽。"},
+        {"text": "Oracle 披露的实现把控制放在 Acceleron SmartNIC 上。网卡用分层令牌桶给两类流量分别计量；一方空闲时，另一方可以借用剩余带宽。出现拥塞时，网卡为支持显式拥塞通知的报文打上 `ECN` 标记，使发送端降低速率。"}
+      ]
+    },
+    {
+      "event": "proxmox-lightbits-nvme-tcp",
+      "title": "Proxmox VE 通过 Lightbits 插件接入 NVMe/TCP 共享磁盘",
+      "date": "2026-10-29",
+      "refs": ["proxmox-lightbits"],
+      "paragraphs": [
+        {"text": "Proxmox 与 Lightbits 公布了已可使用的原生存储插件。管理员可以在 Proxmox VE 中创建虚机磁盘、扩容、做快照和回滚。各计算节点沿现有以太网，通过 `NVMe/TCP` 访问同一块存储卷。"},
+        {"text": "虚机迁移到另一台计算节点时，目的节点可以继续使用原卷；存储节点之间的卷副本负责应对磁盘或存储节点故障。计算节点迁移和存储端故障恢复各自处理不同的问题。"}
+      ]
+    },
+    {
+      "event": "ecs-managed-instances-cross-instance-consolidation",
+      "title": "AWS ECS 支持跨实例合并任务，并纳入 Spot 容量",
+      "date": "2026-10-28",
+      "refs": ["aws-ecs"],
+      "paragraphs": [
+        {"text": "过去，ECS Managed Instances 逐台判断替换一台 EC2 实例能否节省资源。新策略同时评估多台低利用率实例，把各自的任务重新组合到较少的实例上。调整的单位是 ECS 任务：替代任务启动后，旧任务才会停止。"},
+        {"text": "对于 Spot 实例，ECS 会先核实可取得替代容量，再开始合并。AWS 已在所有提供该服务的区域启用这一策略，新旧 Managed Instances 容量提供程序均自动生效。"}
+      ]
+    }
+  ],
+  "sources": {
+    "oci-design": {"date": "2026-10-27", "publisher": "Oracle Cloud Infrastructure", "title": "First Principles: Oracle Acceleron Network Innovations for AI at Scale", "url": "https://blogs.oracle.com/cloud-infrastructure/first-principles-networking-for-ai-scale"},
+    "proxmox-lightbits": {"date": "2026-10-29", "publisher": "Proxmox", "title": "Proxmox and Lightbits partner on native storage integration for Proxmox VE", "url": "https://proxmox.com/en/about/company-details/press-releases/proxmox-ve-lightbits-storage-integration"},
+    "aws-ecs": {"date": "2026-10-28", "publisher": "AWS", "title": "Amazon ECS Managed Instances adds cross-instance and Spot consolidation", "url": "https://aws.amazon.com/about-aws/whats-new/2026/10/ecs-managed-instances-consolidation/"}
+  }
+}

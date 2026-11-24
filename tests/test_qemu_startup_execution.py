@@ -57,7 +57,7 @@ def test_kernel_entry_and_userspace_handoff_are_not_conflated_with_reset():
     html = page()
     for marker in ("0x7c00", "boot_params", "startup_32", "startup_64", "start_kernel()",
                    "PID 1", "kernel_execve()", "/init", "/sbin/init", "CPL 从 0 到 3",
-                   "VMX 仍是 non-root", "不天然引起 VM-exit", "动态链接器"):
+                   "VMX 仍是 non-root", "这次权限切换在客户机内完成", "动态链接器"):
         assert marker in html
     assert "VM-entry → 固件 → 引导程序 → Guest 内核 → Guest 用户态" in html
     assert "Guest 内核从引导协议入口、架构启动到执行首个用户程序的路径" in html

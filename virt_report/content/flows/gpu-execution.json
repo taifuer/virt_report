@@ -2826,7 +2826,7 @@
             "gvt-submit",
             "gvt-create"
           ],
-          "boundary": "只代表本例 ELSP 寄存器；共享图形内存或允许直接映射的 aperture 不都经过这些回调。",
+          "boundary": "这些回调处理 ELSP 寄存器访问；共享图形内存和直接映射的 aperture 另有访问路径。",
           "entry": {
             "kind": "notification",
             "label": "QEMU 写入 VFIO region fd 后进入宿主 mdev 驱动"
@@ -3233,7 +3233,7 @@
           "title": "虚拟事件进入 KVM 路由",
           "actor": "Host i915/GVT-g → KVM",
           "description": "虚拟 MSI 已启用且未屏蔽，GVT-g 触发 eventfd，KVM irqfd 路由到目标 vLAPIC，记录待处理中断。",
-          "detail": "宿主 GVT-g 决定何时发布虚拟完成事件；不能把事件记录、eventfd 唤起和 Guest handler 画成同一动作。本例无 posted interrupt，仍需目标 vCPU 在允许时注入。",
+          "detail": "宿主 GVT-g 决定何时发布虚拟完成事件，随后才有 eventfd 通知和客户机中断处理。本例无 posted interrupt，仍需目标 vCPU 在允许时注入。",
           "active": [
             "gvt",
             "kvm"

@@ -6,6 +6,9 @@
   <p>应用程序调用 Libvirt API 时，连接 URI 决定请求交给哪个驱动。对于常见的 <code>qemu:///system</code> 连接，客户端通过 RPC 访问管理守护进程，再由服务端 QEMU 驱动处理虚拟机对象。应用拿到的 <code>virDomainPtr</code> 是本进程中的句柄，跨进程传输的是对象标识与参数。</p>
   <p>本文跟踪一次 <code>virDomainGetInfo()</code>：查询已有虚拟机的状态、内存、vCPU 数和 CPU 时间。连接建立与认证已完成；传输采用本机 UNIX socket，服务端可以是 <code>libvirtd</code> 或模块化的 <code>virtqemud</code>。</p>
   <p>以虚拟机 <code>demo</code> 为例，客户端把 UUID 等标识编码进 CALL；服务端按过程号选择查询函数，用 UUID 找到对象，再把结果放入 REPLY。客户端靠调用序号找到原等待者。编码解决跨进程表示，分发决定执行哪项操作，序号解决多个调用并发时的响应归属。</p>
+  <h3 id="evolution">从远程连接到共用 RPC 协议</h3>
+  <p>RPC 起初服务于客户端库与 libvirtd 的通信，后来公共消息、连接和分发代码独立为可复用的 RPC 基础设施。program/version 选择一组协议，procedure 选择其中的操作，具体参数则由各自的 XDR 定义。新服务因而可以复用消息收发和认证，而不必把所有业务都塞进同一张过程表。<a href="{{ libvirt_source }}docs/kbase/internals/rpc.rst">RPC 架构文档</a></p>
+  <p>这种分离也有维护约束：过程号和已经发布的字段布局需要保持兼容，公共编解码成功后仍要做业务权限与参数检查。客户端和服务端由同一协议定义生成样板，减少手写两份编码的偏差；调用的权限、输入约束和错误语义仍由接口本身定义。后来的<a href="libvirt-internals.html#evolution">守护进程拆分</a>改变了消息最终到达的进程，上层 API 和 RPC 边界得以保留。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -68,12 +71,6 @@
   <p>serial 负责本连接内的响应关联，不是服务端的持久化去重键。尤其对于启动、修改配置等写操作，断线时请求可能已经执行，只是响应尚未抵达；应用应先查询实际状态，再决定是否重试。启动过程见<a href="libvirt-domain-start.html">Libvirt 虚拟机启动的进程与状态管理</a>。</p>
 </section>
 
-<section id="evolution" class="mechanism-section">
-  <h2>协议复用、接口扩展与兼容成本</h2>
-  <p>RPC 起初服务于客户端库与 libvirtd 的通信，后来公共消息、连接和分发代码独立为可复用的 RPC 基础设施。program/version 选择一组协议，procedure 选择其中的操作，具体参数则由各自的 XDR 定义。新服务因而可以复用消息收发和认证，而不必把所有业务都塞进同一张过程表。<a href="{{ libvirt_source }}docs/kbase/internals/rpc.rst">RPC 架构文档</a></p>
-  <p>这种分离也有维护约束：过程号和已经发布的字段布局需要保持兼容，公共编解码成功后仍要做业务权限与参数检查。客户端和服务端由同一协议定义生成样板，减少手写两份编码的偏差，但不能替代对接口语义的设计。后来的<a href="libvirt-internals.html#evolution">守护进程拆分</a>改变了消息最终到达的进程，上层 API 和 RPC 边界得以保留。</p>
-</section>
-
 <section id="summary" class="mechanism-section">
   <h2>总结</h2>
   <p>对本例，可以依次核对四个结果：完整请求已按 length 接收；proc=16 已分派；UUID 查询取得对象；serial=42 的响应已交回调用者。请求延迟可能出现在连接、RPC 排队或驱动执行中，应分段定位；API 调用耗时还包括服务端处理与等待时间。</p>
@@ -82,9 +79,13 @@
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>
-    <li><a href="{{ libvirt_source }}src/rpc/virnetprotocol.x">Libvirt 12.0.0：RPC 公共协议</a>、<a href="{{ libvirt_source }}src/remote/remote_protocol.x">remote 接口定义</a></li>
-    <li><a href="{{ libvirt_source }}src/rpc/virnetmessage.c">消息长度、头与载荷编解码</a>、<a href="{{ libvirt_source }}src/rpc/virnetclientprogram.c#L261-L393">客户端调用与错误处理</a></li>
-    <li><a href="{{ libvirt_source }}src/rpc/virnetserverprogram.c#L350-L483">服务端分发与响应</a>、<a href="{{ libvirt_source }}src/qemu/qemu_driver.c#L2438-L2490">QEMU 驱动查询实现</a></li>
-    <li><a href="https://www.rfc-editor.org/rfc/rfc4506">RFC 4506：XDR 编码</a>、<a href="https://libvirt.org/kbase/internals/rpc.html">Libvirt RPC 内部设计</a></li>
+    <li><a href="https://libvirt.org/kbase/internals/rpc.html">Libvirt RPC 设计：客户端与守护进程的通信</a></li>
+    <li><a href="{{ libvirt_source }}src/rpc/virnetprotocol.x">Libvirt RPC 公共协议：消息类型与报头</a></li>
+    <li><a href="{{ libvirt_source }}src/remote/remote_protocol.x">Libvirt remote 协议：远程调用的参数与返回值</a></li>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc4506">RFC 4506：XDR 数据编码标准</a></li>
+    <li><a href="{{ libvirt_source }}src/rpc/virnetmessage.c">Libvirt RPC：编码和解码消息报头与载荷</a></li>
+    <li><a href="{{ libvirt_source }}src/rpc/virnetclientprogram.c#L261-L393">Libvirt RPC 客户端：发起调用并处理错误</a></li>
+    <li><a href="{{ libvirt_source }}src/rpc/virnetserverprogram.c#L350-L483">Libvirt RPC 服务端：分派请求并返回结果</a></li>
+    <li><a href="{{ libvirt_source }}src/qemu/qemu_driver.c#L2438-L2490">Libvirt QEMU 驱动：实现虚机信息查询</a></li>
   </ul>
 </section>

@@ -5,23 +5,11 @@
   <h2>序言</h2>
   <p>virtqueue 是驱动与设备共用的请求队列。驱动用描述符交出缓冲区，设备写回完成记录，驱动据此找回并复用缓冲区。Split 把待处理请求和完成记录放在两个环里；Packed 把它们放在同一个描述符环，用状态位区分。报文或磁盘数据都在描述符指向的缓冲区里。</p>
   <p>实际设备在初始化时选定一种格式。按 VIRTIO 1.2，只有双方协商了 <code>VIRTIO_F_RING_PACKED</code> 才使用 Packed。</p>
+  <h3 id="history">从 Split 到 Packed</h3>
+  <p>早期 virtqueue 分开存放描述符、可用项和完成项，驱动与设备轮流更新不同的环。Virtio 1.1 纳入 Packed 格式，将所有权与完成状态放回描述符本身，以减少元数据访问。Split 与 Packed 通过特性位协商，采用同样的提交与归还语义。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
-<section id="interactive" class="mechanism-section">
-  <h2>四槽演示：发布、完成与回收</h2>
-  <p>连续发布四项，让设备完成两项，观察“空闲描述符”：此时仍为 0。点击一次“驱动回收”，空闲数变成 1，才能发布下一项。随时切换 Split / Packed 可以对照同一进度下的索引和状态位。</p>
-  <div class="packed-lab" id="packed-lab" data-packed-lab data-mechanism-view="lab">
-    <div class="mechanism-view-heading"><span data-mechanism-title>四槽 virtqueue：Split 与 Packed</span><button type="button" data-mechanism-expand hidden>全屏演示</button></div>
-    <div class="packed-lab-formats" role="group" aria-label="队列格式" hidden><button type="button" data-queue-format="split" aria-pressed="true">Split</button><button type="button" data-queue-format="packed" aria-pressed="false">Packed</button></div>
-    <div class="packed-lab-controls" hidden><button type="button" data-packed-action="publish">发布一项</button><button type="button" data-packed-action="complete">设备完成</button><button type="button" data-packed-action="reclaim">驱动回收</button><button type="button" data-packed-action="reset">重置</button></div>
-    <p data-packed-status role="status" aria-live="polite">初始没有可用项或完成项；描述符均为空闲状态。</p>
-    <div class="packed-lab-cursors" data-packed-cursors></div>
-    <div class="packed-lab-slots" data-packed-slots></div>
-    <div class="split-lab-rings" data-split-rings hidden></div>
-    <noscript><p>以第一项为例：驱动发布时，Split 的 avail.idx 从 0 变为 1，Packed 的 A/U 从 0/0 变为 1/0；设备完成时，Split 的 used.idx 变为 1，Packed 的 A/U 变为 1/1。两种格式都由驱动回收描述符。</p></noscript>
-    <p class="packed-lab-note">每项占一个描述符，缓冲区容量 256 B，设备按顺序写入 64 B。不启用 IN_ORDER 批量归还，不模拟 DMA 时延。A/U 分别表示 AVAIL 和 USED。</p>
-  </div>
-</section>
+
 <section id="split-layout" class="mechanism-section">
   <h2>Split：描述缓冲区，分别发布请求和完成</h2>
   <table><thead><tr><th scope="col">共享区域</th><th scope="col">保存内容</th><th scope="col">更新方</th></tr></thead><tbody>
@@ -82,6 +70,22 @@
   <p>每个事件结构含 off_wrap 和 flags。off_wrap 的低 15 位为描述符位置，高 1 位为该位置所属 wrap。flags 可以要求启用通知、禁用通知，或者在协商 EVENT_IDX 后按指定位置触发通知。不能只比较裸索引大小：从槽 3 到槽 0 虽然数字变小，队列实际上继续前进了。</p>
   <p>两个事件结构由等待方填写：驱动用 Driver Event 请求完成通知，设备用 Device Event 请求新工作通知。发布方先让描述符状态可见，再读取对方的事件配置，按进度变化判断是否通知。等待方从轮询切回通知时，重新检查切换窗口内到达的工作。</p>
   <p>如果等待方先看到没有工作，发布方恰好在通知仍被抑制时发布，等待方随后直接睡眠，就可能错过唤醒。packed 改变共享队列布局，没有消除生产者与消费者并发产生的通知竞态。内存屏障、通知抑制和最后复查仍共同构成正确交接。</p>
+</section>
+
+<section id="interactive" class="mechanism-section">
+  <h2>四槽演示：发布、完成与回收</h2>
+  <p>连续发布四项，让设备完成两项，观察“空闲描述符”：此时仍为 0。点击一次“驱动回收”，空闲数变成 1，才能发布下一项。随时切换 Split / Packed 可以对照同一进度下的索引和状态位。</p>
+  <div class="packed-lab" id="packed-lab" data-packed-lab data-mechanism-view="lab">
+    <div class="mechanism-view-heading"><span data-mechanism-title>四槽 virtqueue：Split 与 Packed</span><button type="button" data-mechanism-expand hidden>全屏演示</button></div>
+    <div class="packed-lab-formats" role="group" aria-label="队列格式" hidden><button type="button" data-queue-format="split" aria-pressed="true">Split</button><button type="button" data-queue-format="packed" aria-pressed="false">Packed</button></div>
+    <div class="packed-lab-controls" hidden><button type="button" data-packed-action="publish">发布一项</button><button type="button" data-packed-action="complete">设备完成</button><button type="button" data-packed-action="reclaim">驱动回收</button><button type="button" data-packed-action="reset">重置</button></div>
+    <p data-packed-status role="status" aria-live="polite">初始没有可用项或完成项；描述符均为空闲状态。</p>
+    <div class="packed-lab-cursors" data-packed-cursors></div>
+    <div class="packed-lab-slots" data-packed-slots></div>
+    <div class="split-lab-rings" data-split-rings hidden></div>
+    <noscript><p>以第一项为例：驱动发布时，Split 的 avail.idx 从 0 变为 1，Packed 的 A/U 从 0/0 变为 1/0；设备完成时，Split 的 used.idx 变为 1，Packed 的 A/U 变为 1/1。两种格式都由驱动回收描述符。</p></noscript>
+    <p class="packed-lab-note">每项占一个描述符，缓冲区容量 256 B，设备按顺序写入 64 B。不启用 IN_ORDER 批量归还，不模拟 DMA 时延。A/U 分别表示 AVAIL 和 USED。</p>
+  </div>
 </section>
 <section id="implementation" class="mechanism-section">
   <h2>QEMU 的链长度记录与完成发布</h2>

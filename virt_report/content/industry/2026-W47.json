@@ -1,0 +1,86 @@
+{
+  "week": "2026-W47",
+  "published_on": "2026-11-24",
+  "lead": "Cloud Hypervisor 55 更新了直通设备之间的 DMA 映射方式。Azure 开放直接虚拟化的私有预览申请，并将 Guest RDMA 公开预览扩展到所有提供相应虚机规格的区域。AWS 为 EC2 加速实例增加了硬件性能状态检查。",
+  "points": [
+    {
+      "event": "cloud-hypervisor-55",
+      "date": "2026-11-19",
+      "title": "Cloud Hypervisor 55 发布：VFIO 设备间 DMA 支持 dma-buf",
+      "refs": ["ch55"],
+      "paragraphs": [
+        {"text": "两个直通设备进行点对点 DMA 时，Cloud Hypervisor 可以通过 VFIO 将设备可共享的 BAR 内存区域导出为 `dma-buf`，再由 `iommufd` 将它映射到另一台设备的 DMA 地址空间。宿主内核不支持这条路径时，仍使用原有的映射方式。"},
+        {"text": "热迁移的 CPU 兼容性检查也加入了 AMD 特有的 `CPUID` 项。源端与目标端在这些能力上不兼容时，以前能通过检查的迁移请求现在会被拒绝。"}
+      ]
+    },
+    {
+      "event": "azure-direct-virtualization-private-preview",
+      "date": "2026-11-18",
+      "title": "Azure 直接虚拟化开放私有预览申请",
+      "refs": ["direct"],
+      "paragraphs": [
+        {"text": "Direct Virtualization 让 Azure 虚机内的沙箱直接由底层 Hypervisor 运行，服务仍可选择沙箱操作系统，省去在虚机内再运行一层 KVM 的开销。微软在相同宿主配置上测试 Redis：基线密度下两者吞吐接近，负载密度增至四倍时，直接虚拟化比嵌套 KVM 高约 32%。"},
+        {"text": "Red Hat 与微软正为 OpenShift Virtualization 适配这一执行后端，合作涉及 KubeVirt、libvirt、QEMU 和 Linux 内核。", "refs": ["rh-direct"]}
+      ]
+    },
+    {
+      "event": "azure-boost-guest-rdma-all-regions-preview",
+      "date": "2026-11-18",
+      "title": "Azure Boost 扩大 Guest RDMA 公开预览范围",
+      "refs": ["guest-rdma"],
+      "paragraphs": [
+        {"text": "公开预览现覆盖所有提供相应机型的 Azure 区域，支持部分第五代 Intel Xeon 和 AMD EPYC 虚机。客户机应用通过 RDMA verbs 收发数据，Azure Boost 网卡负责传输处理，RDMA 数据绕过客户机的常规网络栈。"},
+        {"text": "网卡配置使用 `2026-07-01` 版 API，同时开启加速网络（`enableAcceleratedNetworking`）和 `enableGuestRdma`。"}
+      ]
+    },
+    {
+      "event": "azure-amd-turin-secure-avic-preview",
+      "date": "2026-11-17",
+      "title": "Azure 的 AMD 机密虚机开始预览 Secure AVIC",
+      "refs": ["secure-avic"],
+      "paragraphs": [
+        {"text": "采用第五代 AMD EPYC 的 Azure v7 机密虚机引入 `Secure AVIC`，由硬件保护 `SEV-SNP` 客户机的中断注入，并加快客户机对本地 APIC 的访问。微软在美国中南部和英国南部提供受限预览。"}
+      ]
+    },
+    {
+      "event": "azure-boost-intel-tdisp-demo",
+      "date": "2026-11-18",
+      "title": "微软演示 Intel TDX 机密虚机与 Azure Boost 设备之间的直接 DMA",
+      "refs": ["tdisp"],
+      "paragraphs": [
+        {"text": "微软在 Ignite 上展示了支持 `TDISP` 的 Boost 设备如何接入机密虚机：平台验证设备身份，建立安全通道，并把设备配置和访问策略绑定到虚机的启动度量。经验证的设备可以直接访问受保护内存，省去通过共享缓冲区中转数据的一次复制。"}
+      ]
+    },
+    {
+      "event": "aro-bgp-connector-standard-available",
+      "date": "2026-11-19",
+      "title": "Azure Red Hat OpenShift 发布 BGP 连接器，保留虚机源 IP",
+      "refs": ["bgp"],
+      "paragraphs": [
+        {"text": "连接器让集群内的路由节点通过 BGP 向 Azure Route Server 宣告虚机所在网段。虚机对外通信时保留自己的源 IP，外部防火墙可以区分同一工作节点上的不同虚机。"},
+        {"text": "Red Hat 的部署文档使用 ARO Standard、OpenShift 4.22 和服务主体认证，通过两个路由节点验证了虚机与集群外网络的双向连通。", "refs": ["bgp-guide"]}
+      ]
+    },
+    {
+      "event": "aws-ec2-accelerator-performance-status-checks",
+      "date": "2026-11-19",
+      "title": "EC2 为加速实例增加硬件性能状态检查",
+      "refs": ["ec2"],
+      "paragraphs": [
+        {"text": "EC2 可在实例仍在线时报告影响性能的底层硬件问题。例如，GPU 出现可修复的显存行故障时，检查结果可以指出重启即可完成显存行重映射，无需更换实例。"},
+        {"text": "状态检查本身免费。另行启用详细监控后，可按一分钟粒度取得 GPU 指标、按十秒粒度观察 CPU 利用率；这些指标按 CloudWatch 详细监控计费。"}
+      ]
+    }
+  ],
+  "sources": {
+    "ch55": {"publisher": "Cloud Hypervisor", "date": "2026-11-19", "title": "Cloud Hypervisor v55.0 Released!", "url": "https://www.cloudhypervisor.org/blog/cloud-hypervisor-v55.0-released/"},
+    "guest-rdma": {"publisher": "Microsoft", "date": "2026-11-18", "title": "Announcing Public Preview of Guest RDMA for Azure Boost", "url": "https://techcommunity.microsoft.com/blog/AzureCompute/announcing-public-preview-of-guest-rdma-for-azure-boost/4573027"},
+    "direct": {"publisher": "Microsoft", "date": "2026-11-18", "title": "Direct Virtualization: A New Foundation for Agentic AI in Azure", "url": "https://techcommunity.microsoft.com/blog/azurecompute/direct-virtualization-a-new-foundation-for-agentic-ai-in-azure/4573925"},
+    "rh-direct": {"publisher": "Red Hat", "date": "2026-11-18", "title": "Red Hat Deepens Collaboration with Microsoft to Power the Future of Enterprise Virtualization", "url": "https://www.redhat.com/en/about/press-releases/red-hat-deepens-collaboration-microsoft-power-future-enterprise-virtualization"},
+    "secure-avic": {"publisher": "Microsoft", "date": "2026-11-17", "title": "Announcing gated preview of next-gen Azure confidential VMs with 5th Generation AMD EPYC processor", "url": "https://techcommunity.microsoft.com/blog/AzureConfidentialComputingBlog/announcing-gated-preview-of-next-gen-azure-confidential-vms-with-5th-generation-/4570276"},
+    "tdisp": {"publisher": "Microsoft", "date": "2026-11-18", "title": "Advancing confidential computing with Intel TDX: more performance, more resiliency", "url": "https://techcommunity.microsoft.com/blog/azureconfidentialcomputingblog/advancing-confidential-computing-with-intel-tdx-more-performance-more-resiliency/4572307"},
+    "bgp": {"publisher": "Red Hat", "date": "2026-11-19", "title": "BGP cloud connector for Microsoft Azure Red Hat OpenShift now available", "url": "https://www.redhat.com/en/blog/bgp-cloud-connector-microsoft-azure-red-hat-openshift-now-available"},
+    "bgp-guide": {"publisher": "Red Hat Cloud Experts", "date": "2026-11-17", "title": "Deploying BGP Cloud Connector on ARO Standard", "url": "https://cloud.redhat.com/experts/aro/bgp-cloud-connector/"},
+    "ec2": {"publisher": "AWS", "date": "2026-11-19", "title": "Amazon EC2 launches performance status checks and new utilization metrics for EC2 Detailed Monitoring", "url": "https://aws.amazon.com/about-aws/whats-new/2026/11/ec2-performance-status-checks/"}
+  }
+}

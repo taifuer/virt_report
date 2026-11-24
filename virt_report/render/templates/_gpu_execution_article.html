@@ -1,6 +1,13 @@
 <section id="preface" class="mechanism-section">
   <h2>序言</h2>
   <p>GPU 作业从 Guest 用户态提交，经过驱动组织命令、硬件执行和完成通知，最后由应用取得结果。整卡直通把相应 PCI 功能交给一个 Guest；共享虚拟化则需要划分可见资源，并协调多个使用者。下面沿同一条提交主线，对照设备归属、门铃访问和完成交接。</p>
+  <p>整卡直通、Intel GVT-g 与 AMD VF 三个例子都从一笔 4 KiB 复制开始，跟踪驱动提交的门铃、GPU 访问的缓冲区和完成通知。另一个例子展示 NVIDIA 通过 PF、VF 和 mdev 向虚机分配实例时，各层管理的对象。</p>
+  {% include '_mechanism_baselines.html' %}
+</section>
+
+<section id="comparison" class="mechanism-section">
+  <h2>提交、数据与完成的边界</h2>
+  <p>提交、数据访问和完成通知各有自己的路径。以直通为例，客户机驱动写门铃提交命令，<a href="qemu-vfio-dma.html">宿主 IOMMU 限定 GPU 的 DMA 访问范围</a>，设备完成后通过<a href="interrupt-virtualization.html">虚拟中断</a>通知驱动。演示的源码视图列出驱动执行的函数，GPU 硬件执行则标注对应命令包。</p>
   <table aria-label="GPU 虚拟化方案对比">
     <thead><tr><th scope="col">演示方案</th><th scope="col">Guest 获得的设备</th><th scope="col">宿主职责</th><th scope="col">提交入口与适用范围</th></tr></thead>
     <tbody>
@@ -10,19 +17,6 @@
       <tr><td>组合 · NVIDIA SR-IOV + mdev</td><td>创建在 VF 上的 mdev 实例</td><td>厂商管理资源与实例生命周期</td><td>展示 PF → VF → mdev → VM 的配置及作业完成边界；内部寄存器路径不展开</td></tr>
     </tbody>
   </table>
-  <p>前三组以 4 KiB 复制为例，设备初始化、BO 分配和基础映射已完成。GVT-g 的 A、B 和 batch 使用系统内存，限于受支持的旧代 Intel 平台。组合方案从实例建立开始，运行阶段只展示公开接口能够确认的交接，不把 GVT-g 的 ELSP 机制套用到 NVIDIA vGPU。各场景均为源码与文档讲解，未在对应 GPU 上实测；驱动、固件和宿主发行版需另按厂商支持矩阵匹配。</p>
-  <p>图中按职责分为 Guest、KVM、QEMU、Host kernel 和物理 GPU。KVM 运行在宿主内核，负责 vCPU 与中断虚拟化；同属宿主内核的 VFIO、i915/GVT-g 负责设备管理。提交、数据访问和完成通知各有自己的路径，后文分别展开。</p>
-  {% include '_mechanism_baselines.html' %}
-</section>
-
-<section id="walkthrough" class="mechanism-section">
-  <h2>逐步演示</h2>
-  {% include '_execution_lab.html' %}
-  <p>G1、IB1、地址和 fence 序号为示例值，用于关联同一次操作。播放间隔用于控制动画速度。</p>
-</section>
-
-<section id="comparison" class="mechanism-section">
-  <h2>提交、数据与完成的边界</h2>
   <table>
     <thead><tr><th scope="col">观察点</th><th scope="col">已经发生</th><th scope="col">如何跟踪后续进度</th></tr></thead>
     <tbody>
@@ -64,8 +58,14 @@
   <p>PF 是物理功能，负责建立和管理 VF；每个 VF 有自己的 PCI 身份和寄存器空间。AMD 示例保留宿主 GIM 对 PF 的管理，将一个 VF 绑定 vfio-pci 并分配给 Guest。Guest AMDGPU 提交自己的作业，硬件按该 VF 获得的资源执行。允许直映的门铃无需逐笔交给 PF 驱动；资源分配、复位和管理通信仍有宿主参与。每个 VF 获得哪些引擎和显存资源，取决于具体 GPU 的分配方式。<a href="{{ demo.sources['sriov-doc'].url }}">PCI SR-IOV 文档</a>、<a href="{{ demo.sources['amd-vf-doc'].url }}">AMD PF/VF 部署说明</a>。</p>
   <h3>SR-IOV + mdev：VF 之上再建立实例</h3>
   <p>NVIDIA 的一类部署先启用 VF，再在 VF 的 <code>mdev_supported_types</code> 下创建实例，最后把实例 UUID 交给虚拟机。关系是 PF → VF → mdev UUID → VM；所引文档限定每个 VF 创建一个 mdev。VFIO 提供设备访问接口，SR-IOV 提供硬件功能，mdev 提供实例管理，三者可以组合。这里沿公开配置与完成接口展示，厂商内部命令格式、寄存器捕获范围和调度细节保留为未展开区域。<a href="{{ demo.sources['nvidia-vgpu-doc'].url }}">NVIDIA 配置文档</a>。</p>
-  <p>同一文档还区分了厂商 VFIO 路径：某些宿主版本直接通过 VF 的 PCI 地址接入已配置的 vGPU，不再创建 mdev。两种部署不能混用 XML，也不能把承载实例的同一个 VF 再当作独立设备重复直通。另一类“混合使用”是多块 GPU 分别采用不同方案，或一个 VM 分配多个互不冲突的设备；是否支持仍需核对 IOMMU 分组、复位范围与厂商矩阵。</p>
+  <p>同一文档还区分了厂商 VFIO 路径：某些宿主版本直接通过 VF 的 PCI 地址接入已配置的 vGPU，不再创建 mdev。两种部署各有对应的 XML；承载 vGPU 实例的 VF 已由该实例占用。另一类“混合使用”是多块 GPU 分别采用不同方案，或一个 VM 分配多个互不冲突的设备；是否支持仍需核对 IOMMU 分组、复位范围与厂商矩阵。</p>
   <p>virtio-gpu 使用另一套前后端协议，继续在<a href="virtio-gpu.html">渲染与编解码演示</a>中说明。以上对比集中于 Guest 使用厂商 GPU 驱动的路径。</p>
+</section>
+
+<section id="walkthrough" class="mechanism-section">
+  <h2>逐步演示</h2>
+  {% include '_execution_lab.html' %}
+  <p>演示根据源码与文档还原执行顺序，未在对应 GPU 上实测。G1、IB1、地址和 fence 序号为示例值，用于关联同一次操作。</p>
 </section>
 
 <section id="configuration" class="mechanism-section">
@@ -115,15 +115,18 @@
 
 <section id="sources" class="mechanism-section">
   <h2>源码与相关内容</h2>
-  <p>源码路径按执行上下文列出关键函数，GPU 硬件执行则标注对应命令包。宿主中断、KVM 递送、Guest 驱动和用户态等待通过事件衔接，分别展示各自的调用链。</p>
   <ul>
-    <li><a href="{{ demo.sources['cs'].url }}">AMDGPU CS 提交</a>、<a href="{{ demo.sources['job'].url }}">DRM 调度回调</a>、<a href="{{ demo.sources['doorbell'].url }}">SDMA 4.0 doorbell</a>与<a href="{{ demo.sources['wait'].url }}">CS 等待</a>。</li>
-    <li><a href="{{ demo.sources['ring-init'].url }}">GTT 中的 SDMA ring</a>、<a href="{{ demo.sources['bar-map'].url }}">QEMU VFIO BAR 映射</a>与<a href="{{ demo.sources['bar-write'].url }}">被捕获的 region 写</a>。</li>
-    <li><a href="{{ demo.sources['vfio-irq'].url }}">VFIO MSI eventfd</a>、<a href="{{ demo.sources['irqfd'].url }}">KVM irqfd 路由</a>与<a href="{{ demo.sources['vmx-inject'].url }}">VM-entry 注入</a>。</li>
-    <li><a href="{{ demo.sources['gvt-elsp'].url }}">GVT-g ELSP 提交</a>、<a href="{{ demo.sources['gvt-dispatch'].url }}">命令审核与调度</a>、<a href="{{ demo.sources['gvt-complete'].url }}">完成交接</a>与<a href="{{ demo.sources['gvt-event'].url }}">虚拟事件</a>。</li>
-    <li><a href="{{ demo.sources['vf-doorbell'].url }}">SDMA 4.4.2 的 VF 门铃路径</a>、<a href="{{ demo.sources['vf-copy-packet'].url }}">复制包格式</a>及<a href="{{ demo.sources['amd-vf-doc'].url }}">AMD VF 部署</a>。源码版本用于核对执行机制，不替代厂商部署支持矩阵。</li>
-    <li><a href="{{ demo.sources['nvidia-vgpu-doc'].url }}">NVIDIA SR-IOV、mdev 与厂商 VFIO 接入</a>及<a href="{{ demo.sources['cuda-events'].url }}">CUDA event 完成接口</a>。厂商在线文档核对日期：2026-11-08；图中的内部未展开区域不提供虚构的函数调用链。</li>
-    <li><a href="qemu-vfio-dma.html">VFIO 直通与 DMA 映射</a>、<a href="memory-virtualization.html">内存访问与 MMIO</a>、<a href="interrupt-virtualization.html">中断传递</a>及<a href="virtio-gpu.html">virtio-gpu 的二维资源路径</a>。</li>
-    <li><a href="virtio-gpu.html">virtio-gpu：资源、渲染与编解码</a>：结合二维更新与三维渲染演示，分析客户机资源、协议和同步。</li>
+    <li><a href="{{ demo.sources['cs'].url }}">Linux AMDGPU：提交用户态命令缓冲区</a></li>
+    <li><a href="{{ demo.sources['job'].url }}">Linux DRM：调度 GPU 作业</a></li>
+    <li><a href="{{ demo.sources['doorbell'].url }}">AMD SDMA 4.0：通过 doorbell 通知 GPU 取命令</a></li>
+    <li><a href="{{ demo.sources['bar-map'].url }}">QEMU VFIO：把 GPU 的 BAR 映射给客户机</a></li>
+    <li><a href="{{ demo.sources['vfio-irq'].url }}">Linux VFIO：将设备 MSI 通知送到 eventfd</a></li>
+    <li><a href="{{ demo.sources['irqfd'].url }}">Linux KVM：通过 irqfd 路由设备中断</a></li>
+    <li><a href="{{ demo.sources['gvt-elsp'].url }}">Intel GVT-g：接收客户机的执行列表</a></li>
+    <li><a href="{{ demo.sources['gvt-dispatch'].url }}">Intel GVT-g：审核和调度客户机 GPU 命令</a></li>
+    <li><a href="{{ demo.sources['vf-doorbell'].url }}">AMD SDMA 4.4.2：虚拟功能（VF）的门铃路径</a></li>
+    <li><a href="{{ demo.sources['amd-vf-doc'].url }}">AMD MxGPU：虚拟功能部署文档</a></li>
+    <li><a href="{{ demo.sources['nvidia-vgpu-doc'].url }}">NVIDIA vGPU：SR-IOV、mdev 与厂商 VFIO 驱动配置</a></li>
+    <li><a href="{{ demo.sources['cuda-events'].url }}">NVIDIA CUDA：用 event 查询或等待 GPU 工作完成</a></li>
   </ul>
 </section>

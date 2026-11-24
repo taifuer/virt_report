@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=02b518d59aa4">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=02b518d59aa4">
-<link rel="stylesheet" href="../assets/forum.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e7d4bbc16c93">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e7d4bbc16c93">
+<link rel="stylesheet" href="../assets/forum.css?v=e7d4bbc16c93">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -36,7 +36,7 @@
         <a href="../topics.html" class="">专题</a>
         <a href="../conferences.html" class="on" aria-current="page">会议</a>
         <a href="../versions.html" class="">版本</a>
-        <a href="../mechanisms.html" class="">原理</a>
+        <a href="../industry/index.html" class="">产业</a>
         <a href="../about.html" class="">关于</a>
         <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -67,14 +67,14 @@
 <h3 id="qdev-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
 <p>早期 QEMU 设备各有参数与创建路径：磁盘、网卡、串口和 USB 设备使用不同的命令行形式，初始化代码与管理逻辑也散布在各处。增加一种设备往往需要修改多个入口。qdev 将这些共同行为集中起来，让机器初始化、命令行和热插拔能够使用同一套设备描述与创建接口。</p>
 <h3 id="qdev-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
-<p>不同设备连接到不同总线，配置属性、可迁移状态与运行时资源也并不相同。设备删除尤其涉及客户机配合：管理端发出请求后，客户机还可能使用该设备。统一接口需要保留这些差异，同时明确设备的标识、归属和生命周期，避免把“请求已接受”误当作资源已经释放。</p>
+<p>不同设备连接到不同总线，配置属性、可迁移状态与运行时资源也并不相同。设备删除尤其涉及客户机配合：管理端发出请求后，客户机还可能使用该设备。统一接口需要保留这些差异，并分别报告设备标识、归属、请求受理和资源释放。</p>
 <h3 id="qdev-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
 <p>qdev 以设备与总线组成树，将名称、属性和生命周期回调放入设备描述。创建过程分为分配设备、设置属性和初始化；具体设备通过回调建立自身资源。命令行 <code>-device</code>、monitor 的 <code>device_add</code> 与配置文件可以复用这套结构，减少各入口重复解析和分派设备类型的代码。</p>
 <p>讲稿用 ISA 串口展示 DeviceState、ISADevice 与具体设备状态的关系，并把属性表、初始化函数和 VMState 描述放到同一设备定义中。属性表达配置，VMState 表达需要保存的状态，两者用途不同。PCI 热拔除则通过 ACPI 与客户机协调，删除命令本身只启动这一过程。</p>
 <h3 id="qdev-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>原稿提供串口实现、设备树与管理命令示例，展示了可落地的代码组织方式，没有给出性能基准。作者同时指出设备路径、标识歧义和热拔除完成通知仍需改进。这里可确认的价值是减少设备接入和管理路径的重复，不能据此声称初始化速度或运行性能提高。</p>
+<p>原稿提供串口实现、设备树与管理命令示例。作者同时指出设备路径、标识歧义和热拔除完成通知仍需改进。qdev 把设备接入和管理的共用步骤集中起来，减少了每个设备重复实现的代码。</p>
 <h3 id="qdev-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
-<p>当时仍有设备保留旧式入口，属性自描述和设备分类也有待完善。后续验证需要覆盖创建失败、部分初始化后的清理，以及客户机拒绝或延迟热拔除等情况。qdev 的早期接口也不能直接等同于后来 QOM 的完整对象体系；阅读当前代码时，应按对应版本检查具体生命周期。</p>
+<p>当时仍有设备保留旧式入口，属性自描述和设备分类也有待完善。后续验证需要覆盖创建失败、部分初始化后的清理，以及客户机拒绝或延迟热拔除等情况。这里讨论的是早期 qdev 的设备模型，后来的 QOM 又扩展了对象体系；阅读当前代码时，应按对应版本检查具体生命周期。</p>
 </section>
 <section id="transparent-hugepages" class="mechanism-section">
 <h2><span class="mechanism-heading-number">三、</span>透明大页：降低虚拟机地址转换成本</h2>
@@ -88,11 +88,11 @@
 <p>2 MiB 映射需要连续且满足对齐条件的物理内存，长期运行后的碎片会降低分配成功率。内存不足时，系统还必须能够拆分和回收。客户机与宿主各有自己的页表，宿主使用大页并不会自动让客户机也使用大页，两层映射需要分别观察。</p>
 <h3 id="transparent-hugepages-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
 <p>满足条件的匿名缺页尝试建立大页映射，无法满足时回退到小页；后台 khugepaged 把合适的 512 个 4 KiB 页面合并成 2 MiB 页面。内存压力下又可拆分大页，恢复细粒度回收和换页。扫描、分配与合并需要控制频率，避免后台工作抵消访问路径上的收益。</p>
-<p>讲稿用四级页表的模型说明缩短遍历路径的价值：在其简化条件下，嵌套遍历需要的访问次数可由 24 降到 19 或 15。这是未计入目标数据访问、也未体现缓存命中的理论模型，不应当作每次访存实际发生的 DRAM 访问次数。</p>
+<p>讲稿用四级页表的模型说明缩短遍历路径的价值：在其简化条件下，嵌套遍历需要的访问次数可由 24 降到 19 或 15。这个理论模型计算的是页表遍历次数，未计入目标数据访问和缓存命中。</p>
 <h3 id="transparent-hugepages-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
 <p>编译实验使用双路、12 个物理核和 24 个硬件线程，宿主 16 GB 内存，客户机 24 vCPU、15 GB 内存；GCC 还做了 2 MiB 对齐分配改造。相对启用透明大页的裸机，EPT 虚拟机在两层均关闭透明大页时慢 24.81%，仅宿主启用时慢 12.71%，两层都启用时慢 5.67%。这些数值来自同一特定基线与定制负载。</p>
 <h3 id="transparent-hugepages-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
-<p>当时透明大页仍处于上游推进阶段。大块清零、复制和内存整理可能增加延迟或内存占用，吞吐改善不能直接代表所有工作负载受益。后续评估应同时检查大页命中率、内存压力、NUMA 放置与长尾延迟，并使用未修改的实际应用验证，而非只复用这组编译结果。</p>
+<p>当时透明大页仍处于上游推进阶段。吞吐提高的同时，大块清零、复制和内存整理也可能增加延迟或内存占用。后续评估应同时检查大页命中率、内存压力、NUMA 放置与长尾延迟，并使用未修改的实际应用验证，而非只复用这组编译结果。</p>
 </section>
 <section id="vmstate" class="mechanism-section">
 <h2><span class="mechanism-heading-number">四、</span>VMState：描述可迁移的设备状态</h2>
@@ -106,11 +106,11 @@
 <p>设备状态既包含寄存器和队列，也包含由其他字段推导出的中间结果。部分状态只在特定工作模式或在途操作中存在。新版本增加字段后，还要明确哪些旧版本可以接收，以及缺少某段状态会不会改变设备行为。单纯复制内存结构无法解决这些问题。</p>
 <h3 id="vmstate-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
 <p>VMStateDescription 描述状态名称、版本、最低兼容版本与字段表，字段可以是标量、数组或嵌套结构。公共代码据此处理传输格式，设备通过版本条件和测试函数表达布局变化。加载后的回调负责恢复派生状态；讲稿中的触摸屏设备就需要重新计算相关状态并更新中断。</p>
-<p>可选子节用于组织仅在特定条件下出现的扩展状态，例如 IDE 尚未结束的 PIO 操作。发送方根据条件决定是否包含子节；这可以减少新功能对旧接收端的影响，但需要该状态确实可以省略。对运行必需且接收端不理解的状态，仍不能宣称兼容。</p>
+<p>可选子节用于组织仅在特定条件下出现的扩展状态，例如 IDE 尚未结束的 PIO 操作。发送方根据条件决定是否包含子节；这可以减少新功能对旧接收端的影响，但需要该状态确实可以省略。接收端必须能解释运行所需的全部状态，才能恢复执行。</p>
 <h3 id="vmstate-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
 <p>原稿通过设备字段与回调示例说明转换方法，并列出尚未完成改造的 Virtio、网络和 CPU 等状态路径，没有迁移吞吐或停机时间基准。声明式结构提高了格式的可检查性，正确性仍需要保存与恢复后的行为比较，特别是中断、定时器和在途 I/O，而非只确认加载函数返回成功。</p>
 <h3 id="vmstate-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
-<p>设备描述不能替代 RAM 脏页管理，也不会自动传输外部共享存储的全部内容。新旧版本之间的兼容还受机器配置和设备行为影响。讲稿把格式清理、校验与更强的自描述能力列为改进方向；工程验证应覆盖多版本组合、缺失子节、损坏数据和恢复后的持续运行。</p>
+<p>设备描述保存设备状态，RAM 修改由脏页跟踪处理，外部共享存储在两端单独配置。新旧版本之间的兼容还受机器配置和设备行为影响。讲稿把格式清理、校验与更强的自描述能力列为改进方向；工程验证应覆盖多版本组合、缺失子节、损坏数据和恢复后的持续运行。</p>
 </section>
 <section id="qmp" class="mechanism-section">
 <h2><span class="mechanism-heading-number">五、</span>QMP：建立面向管理程序的控制接口</h2>
@@ -126,7 +126,7 @@
 <p>QMP 通过 JSON 对象承载请求、成功返回、错误和事件，并在连接建立时协商能力。原稿用弹出介质说明成功与 DeviceNotFound 等结构化错误的区别，再用 BLOCK_IO_ERROR 展示设备、操作类型、处理动作与时间戳等事件字段，管理程序可以按字段处理而不必匹配一整句提示。</p>
 <p>作者进一步讨论长操作的响应语义，以及原有全局错误状态如何妨碍多个异步操作并存。延迟回复、显式异步标记和独立异步执行形式在讲稿中属于设计讨论，应与当时已提供的命令和事件区分开。</p>
 <h3 id="qmp-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>讲稿记录 QMP 已合入 QEMU 0.13，包含 40 个命令和 11 个事件，libvirt 与 kvm-autotest 已开始使用，同时明确接口仍不稳定。原始消息示例证明管理程序能够按结构解析结果，但材料没有自动化可靠性或性能统计，采用数量也不能替代兼容性测试。</p>
+<p>讲稿记录 QMP 已合入 QEMU 0.13，包含 40 个命令和 11 个事件，libvirt 与 kvm-autotest 已开始使用，同时明确接口仍不稳定。原始消息示例展示了管理程序如何解析命令结果和异步事件。</p>
 <h3 id="qmp-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>结构化编码只解决消息表达的一部分问题，操作完成条件、错误分类与事件顺序仍需逐项定义。后续测试应覆盖事件与回复交错、连接中断、客户机不响应和重复请求，让管理端能够判断任务是否真正完成。长期接口演进还需要兼容策略，避免将内部实现细节直接固定为外部契约。</p>
 </section>
@@ -146,15 +146,15 @@
 <h3 id="async-page-faults-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
 <p>测试在 512 MB 内存 cgroup 中运行配置 2 GB 内存、4 vCPU 的客户机，包含四个随机访问内存的任务和四个计数工作线程，持续 60 秒。在这种重度超分条件下，计数总量由约 1297.5 亿增加到 2588.5 亿，按原始计数计算约为两倍。讲稿图中的百分比标注与这些计数不一致，此处以计数比值呈现。</p>
 <h3 id="async-page-faults-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
-<p>计数程序验证了等待期间可以推进其他工作，并不代表数据库或所有应用都能获得同等收益。方案需要客户机配合，也要求存在不依赖缺失页面的可运行任务；它不能消除换页 I/O 或过度超分本身。后续应检查通知竞争、不可调度上下文、连续缺页和真实应用的响应时间，确认额外协作成本可接受。</p>
+<p>计数程序在等待期间继续推进，演示了把这段 CPU 时间用于其他工作的可能性。方案需要客户机配合，也要求存在不依赖缺失页面的可运行任务；它不能消除换页 I/O 或过度超分本身。后续应检查通知竞争、不可调度上下文、连续缺页和真实应用的响应时间，确认额外协作成本可接受。</p>
 </section>
 </div>
   </div>
   <nav class="mechanism-related" aria-label="会议资料"><a href="../kvm-forum.html#year-2010">返回年度总览</a><a href="https://kvm-forum.qemu.org/2010/" target="_blank" rel="noopener noreferrer">原始议程</a></nav>
 </article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=02b518d59aa4" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=e7d4bbc16c93" defer></script></body>
 </html>

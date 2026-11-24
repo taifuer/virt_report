@@ -33,7 +33,7 @@
         <a href="topics.html" class="">专题</a>
         <a href="conferences.html" class="on" aria-current="page">会议</a>
         <a href="versions.html" class="">版本</a>
-        <a href="mechanisms.html" class="">原理</a>
+        <a href="industry/index.html" class="">产业</a>
         <a href="about.html" class="">关于</a>
         <a href="search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -203,7 +203,7 @@
   <div class="paper-meta"><span>2026</span><strong>ATC</strong></div>
   <div class="paper-body">
     <h2><a href="https://doi.org/10.1145/3828523.3857031" target="_blank" rel="noopener noreferrer">PAVE: Prebuilding Address Translations for Fast Nested MicroVM Restore</a></h2>
-<div class="paper-credit" title="单位元数据来源：出版方或会议官方页面；核验时间：2026-11-19"><strong>单位</strong><div class="paper-credit-content"><span>University of Macau</span></div></div>      <p class="paper-summary"><strong>内容</strong>快照页已经在内存里，并不代表嵌套虚机可以直接访问。PAVE 在最外层 KVM 利用快照元数据和工作集预建最终的 EPT 映射；来自同一快照的干净只读页可共享映射，写入则转入各虚机私有的写时复制层。</p><p class="editor-comment"><strong>点评</strong>快照页已经在内存里，vCPU 仍要等地址映射建好才能访问。PAVE 让从同一份快照启动的虚机共用只读映射。某个实例改写页面时，再为它单独建映射。</p>
+<div class="paper-credit" title="单位元数据来源：出版方或会议官方页面；核验时间：2026-11-19"><strong>单位</strong><div class="paper-credit-content"><span>University of Macau</span></div></div>      <p class="paper-summary"><strong>内容</strong>嵌套虚机访问驻留在内存中的快照页时，还需要覆盖这些页的地址映射。PAVE 在最外层 KVM 利用快照元数据和工作集预建最终的 EPT 映射；来自同一快照的干净只读页可共享映射，写入则转入各虚机私有的写时复制层。</p><p class="editor-comment"><strong>点评</strong>快照页已经在内存里，vCPU 仍要等地址映射建好才能访问。PAVE 让从同一份快照启动的虚机共用只读映射。某个实例改写页面时，再为它单独建映射。</p>
     <div class="paper-tags"><a class="tag" href="conference-papers.html?scope=all&amp;topic=microVM" data-paper-topic="microVM" title="筛选microVM论文">microVM</a><a class="tag" href="conference-papers.html?scope=all&amp;topic=%E5%B5%8C%E5%A5%97%E8%99%9A%E6%8B%9F%E5%8C%96" data-paper-topic="嵌套虚拟化" title="筛选嵌套虚拟化论文">嵌套虚拟化</a><a class="tag" href="conference-papers.html?scope=all&amp;topic=%E5%BF%AB%E7%85%A7%E6%81%A2%E5%A4%8D" data-paper-topic="快照恢复" title="筛选快照恢复论文">快照恢复</a><a class="tag" href="conference-papers.html?scope=all&amp;topic=%E5%9C%B0%E5%9D%80%E8%BD%AC%E6%8D%A2" data-paper-topic="地址转换" title="筛选地址转换论文">地址转换</a><a class="tag" href="conference-papers.html?scope=all&amp;topic=EPT" data-paper-topic="EPT" title="筛选EPT论文">EPT</a></div>
   </div>
 </article><article class="paper-row" id="paper-nsdi26-cstar" data-conference-item data-curated="false" data-order="20" data-venue="nsdi" data-year="2026" data-publication-type="research" data-topics='["\u865a\u62df\u7f51\u7edc", "NFV", "FPGA", "\u786c\u4ef6\u5378\u8f7d"]'>
@@ -350,7 +350,7 @@
   <div class="paper-meta"><span>2025</span><strong>SOSP</strong></div>
   <div class="paper-body">
     <h2><a href="https://doi.org/10.1145/3731569.3764795" target="_blank" rel="noopener noreferrer">Device-Assisted Live Migration of RDMA Devices</a></h2>
-<div class="paper-credit" title="单位元数据来源：出版方或会议官方页面；核验时间：2026-11-19"><strong>单位</strong><div class="paper-credit-content"><span>NVIDIA</span></div></div>      <p class="paper-summary"><strong>内容</strong>直通 RNIC 后，连接状态留在网卡里，设备之间还可能直接通过 PCIe 通信；只复制虚机 RAM 不足以迁移连接。作者设计设备与 Hypervisor 之间的迁移接口，在 ConnectX 网卡中实现状态交接，并在切换时让设备间的直接通信停到一致的位置。</p><p class="editor-comment"><strong>点评</strong>拷完虚机内存，RDMA 连接的状态还留在网卡上。ConnectX 要先让设备间的通信停在可以接手的位置，再交出状态。论文测到的停顿不到一秒，用的是支持这套迁移接口的网卡。</p>
+<div class="paper-credit" title="单位元数据来源：出版方或会议官方页面；核验时间：2026-11-19"><strong>单位</strong><div class="paper-credit-content"><span>NVIDIA</span></div></div>      <p class="paper-summary"><strong>内容</strong>直通 RNIC 后，连接状态留在网卡里，设备之间还可能直接通过 PCIe 通信。迁移这些连接还要转移网卡上的状态，并协调设备间的通信。作者设计设备与 Hypervisor 之间的迁移接口，在 ConnectX 网卡中实现状态交接，并在切换时让设备间的直接通信停到一致的位置。</p><p class="editor-comment"><strong>点评</strong>拷完虚机内存，RDMA 连接的状态还留在网卡上。ConnectX 要先让设备间的通信停在可以接手的位置，再交出状态。论文测到的停顿不到一秒，用的是支持这套迁移接口的网卡。</p>
     <div class="paper-tags"><a class="tag" href="conference-papers.html?scope=all&amp;topic=%E8%AE%BE%E5%A4%87%E7%9B%B4%E9%80%9A" data-paper-topic="设备直通" title="筛选设备直通论文">设备直通</a><a class="tag" href="conference-papers.html?scope=all&amp;topic=RDMA" data-paper-topic="RDMA" title="筛选RDMA论文">RDMA</a><a class="tag" href="conference-papers.html?scope=all&amp;topic=%E7%83%AD%E8%BF%81%E7%A7%BB" data-paper-topic="热迁移" title="筛选热迁移论文">热迁移</a><a class="tag" href="conference-papers.html?scope=all&amp;topic=%E8%AE%BE%E5%A4%87%E7%8A%B6%E6%80%81" data-paper-topic="设备状态" title="筛选设备状态论文">设备状态</a></div>
   </div>
 </article><article class="paper-row" id="paper-sosp25-tai-chi" data-conference-item data-curated="false" data-order="41" data-venue="sosp" data-year="2025" data-publication-type="research" data-topics='["SmartNIC", "vCPU \u8c03\u5ea6", "\u865a\u62df I/O", "\u5c3e\u5ef6\u8fdf"]'>
@@ -826,7 +826,7 @@
   <div class="paper-meta"><span>2014</span><strong>VEE</strong></div>
   <div class="paper-body">
     <h2><a href="https://doi.org/10.1145/2576195.2576203" target="_blank" rel="noopener noreferrer">Mortar: Filling the Gaps in Data Center Memory</a> <a class="paper-resource-tag" href="https://faculty.cs.gwu.edu/timwood/papers/14-VEE-Mortar.pdf" target="_blank" rel="noopener noreferrer" aria-label="PDF：Mortar: Filling the Gaps in Data Center Memory">PDF</a></h2>
-<div class="paper-credit" title="单位元数据来源：Crossref；核验时间：2026-08-04"><strong>单位</strong><div class="paper-credit-content"><span>IBM T.J. Watson Research Center · George Washington University</span></div></div>      <p class="paper-summary"><strong>内容</strong>Mortar 把 Xen 宿主上暂时闲置的内存当作可回收缓存。应用能存放可重建的键值数据，虚拟磁盘也能用它预取数据块。</p><p class="editor-comment"><strong>点评</strong>虚机要用内存时，Xen 可以直接丢掉缓存，把页腾出来。缓存里只放能从别处重新取回的数据，应用不能把它当成永久存储。</p>
+<div class="paper-credit" title="单位元数据来源：Crossref；核验时间：2026-08-04"><strong>单位</strong><div class="paper-credit-content"><span>IBM T.J. Watson Research Center · George Washington University</span></div></div>      <p class="paper-summary"><strong>内容</strong>Mortar 把 Xen 宿主上暂时闲置的内存当作可回收缓存。应用能存放可重建的键值数据，虚拟磁盘也能用它预取数据块。</p><p class="editor-comment"><strong>点评</strong>虚机要用内存时，Xen 可以直接丢掉缓存，把页腾出来。因此，客户机只在缓存中存放可以从原存储重新读取的数据。</p>
     <div class="paper-tags"><a class="tag" href="conference-papers.html?scope=all&amp;topic=%E5%86%85%E5%AD%98%E8%B6%85%E5%88%86" data-paper-topic="内存超分" title="筛选内存超分论文">内存超分</a><a class="tag" href="conference-papers.html?scope=all&amp;topic=%E8%B5%84%E6%BA%90%E6%B1%A0" data-paper-topic="资源池" title="筛选资源池论文">资源池</a><a class="tag" href="conference-papers.html?scope=all&amp;topic=%E6%95%B0%E6%8D%AE%E4%B8%AD%E5%BF%83" data-paper-topic="数据中心" title="筛选数据中心论文">数据中心</a><a class="tag" href="conference-papers.html?scope=all&amp;topic=%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86" data-paper-topic="内存管理" title="筛选内存管理论文">内存管理</a></div>
   </div>
 </article><article class="paper-row" id="paper-asplos13-unikernels" data-conference-item data-curated="true" data-order="108" data-venue="asplos" data-year="2013" data-publication-type="research" data-topics='["Unikernel", "\u8f7b\u91cf\u865a\u673a", "\u5ba2\u6237\u673a\u64cd\u4f5c\u7cfb\u7edf"]'>
@@ -1014,7 +1014,7 @@
   </section>
 </article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="assets/site.js?v=61edf5bbcdc7"></script>
 </body>

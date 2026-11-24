@@ -9,6 +9,7 @@ from virt_report import mechanisms
 from virt_report.config import Config
 from virt_report.render import render
 from virt_report.render.article_links import canonicalize_article_links, compact_references
+from virt_report.versions import Document, Node
 
 
 def test_kvm_uses_the_same_category_and_article_navigation_as_other_components():
@@ -44,11 +45,31 @@ def test_basics_article_is_not_presented_as_kvm_and_has_plain_curated_sources():
     assert '虚拟化基础' in breadcrumb and 'KVM 原理' not in breadcrumb
     sources = html.split('<section id="sources"', 1)[1].split('</section>', 1)[0]
     assert '<details' not in sources
-    assert sources.count('<li>') == 4
+    assert sources.count('<li>') == 6
     assert 'Virtio 1.2' in sources and 'vhost-user 控制协议' in sources
     assert 'KVM 对象接口' not in sources
     assert '>QEMU 10.2.0</a>' not in sources
     assert '>Linux 6.18</a>' not in sources
+
+
+@pytest.mark.parametrize("article", mechanisms.articles(), ids=lambda a: a["slug"])
+def test_article_footer_has_one_continuous_list_with_one_source_per_row(article):
+    page = render.render_mechanisms_html(Config(), article["slug"])
+    footer_id = article["sections"][-1]["id"]  # The CPR article's published anchor is #implementation.
+    footer, = (s for s in Document(page).root.find("section") if s.attrs.get("id") == footer_id)
+    source_list, = footer.find("ul")
+    assert source_list in footer.children
+    rows = [el for el in source_list.children if isinstance(el, Node)]
+    assert rows and all(row.tag == "li" for row in rows)
+    # Some articles also have an annotated source table. Its links, too, stand alone.
+    rows += [row for table in footer.find("table") for row in table.find("tr") if row.find("td")]
+    urls = []
+    for row in rows:
+        link, = row.find("a")
+        assert link.text().strip() and link.attrs.get("href")
+        urls.append(link.attrs["href"])
+    assert len(set(urls)) == len(urls)
+    assert not any(not node.text() for node in footer.find("p"))
 
 
 def test_references_preserve_curated_sources_without_appending_inline_links():

@@ -1671,7 +1671,7 @@
           "title": "再入并完成读指令",
           "actor": "QEMU → KVM",
           "description": "第二次 KVM_RUN 先调用 complete_userspace_io，消费共享区结果。",
-          "detail": "内核把结果写入客户机 EAX，并完成这条两字节 mov eax, [rbx]；完成之前不能把客户机状态当成已执行完本次读取。",
+          "detail": "内核把结果写入客户机 EAX，并完成这条两字节 mov eax, [rbx]。",
           "active": [
             "kvm"
           ],
@@ -2647,7 +2647,7 @@
           "title": "宿主抢占 vCPU 线程",
           "actor": "宿主调度器",
           "description": "在 D 之前，宿主调度事件让处理器退出 Guest，并改为执行另一个宿主任务。",
-          "detail": "vCPU 线程仍为 TASK_RUNNING，只是当前未占用物理 CPU；KVM mp_state 仍为 RUNNABLE。Guest 保存的当前任务仍是 B，不能把这段停顿记为 B 主动睡眠。",
+          "detail": "vCPU 线程仍为 TASK_RUNNING，只是当前未占用物理 CPU；KVM mp_state 仍为 RUNNABLE。Guest 保存的当前任务仍是 B，此次停顿来自宿主调度。",
           "active": [
             "kvm",
             "host-scheduler"

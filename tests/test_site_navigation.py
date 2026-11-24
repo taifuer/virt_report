@@ -24,7 +24,7 @@ def test_navigation_groups_reports_and_exposes_reference_pages():
     assert reports.find("summary")[0].text() == "报告"
     assert [node.text() for node in reports.find("a")] == ["日报", "周报", "月报"]
     direct_links = [node for node in nav.children if getattr(node, "tag", "") == "a"]
-    assert [node.text() for node in direct_links] == ["首页", "专题", "会议", "版本", "原理", "关于", ""]
+    assert [node.text() for node in direct_links] == ["首页", "专题", "会议", "版本", "产业", "关于", ""]
     assert direct_links[2].attrs["href"] == "conferences.html"
     assert direct_links[0].attrs["aria-current"] == "page"
     assert 'aria-controls="site-navigation" hidden' in page

@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=02b518d59aa4">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=02b518d59aa4">
-<link rel="stylesheet" href="../assets/forum.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e7d4bbc16c93">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e7d4bbc16c93">
+<link rel="stylesheet" href="../assets/forum.css?v=e7d4bbc16c93">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -36,7 +36,7 @@
         <a href="../topics.html" class="">专题</a>
         <a href="../conferences.html" class="on" aria-current="page">会议</a>
         <a href="../versions.html" class="">版本</a>
-        <a href="../mechanisms.html" class="">原理</a>
+        <a href="../industry/index.html" class="">产业</a>
         <a href="../about.html" class="">关于</a>
         <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -67,14 +67,14 @@
 <h3 id="tdp-mmu-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
 <p>大虚机的多个 vCPU 可能同时等待二级地址映射建立。若所有缺页处理都竞争一把 MMU 锁，增加物理核也无法相应提高处理能力，在线应用还会出现长尾延迟与软锁死警告。Ben Gardon 针对非嵌套 TDP 场景提出独立、可并行的页表处理方式，目标是让内存管理随虚机规模扩展。</p>
 <h3 id="tdp-mmu-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
-<p>并发处理不仅需要原子修改 PTE，还要安全遍历和释放页表。Linux 可能通过 MMU notifier 撤销宿主映射，此时 KVM 必须阻止客户机继续访问旧物理页。CPU 的 TLB 和页表遍历缓存又可能保留已经从软件页表断开的路径，软件读者结束并不意味着硬件也停止引用相关页面。</p>
+<p>并发处理不仅需要原子修改 PTE，还要安全遍历和释放页表。Linux 可能通过 MMU notifier 撤销宿主映射，此时 KVM 必须阻止客户机继续访问旧物理页。软件读者退出后，CPU 的 TLB 和页表遍历缓存仍可能引用已经断开连接的页表页。</p>
 <h3 id="tdp-mmu-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
 <p>设计直接遍历 TDP 页表，用统一迭代器管理范围、修改和收尾，减少对通用影子页表元数据及反向映射的依赖。页表项用 cmpxchg 更新，冲突时重试；软件遍历在 RCU 保护下进行，移除的页表等待读者离开后回收。MMU 锁改为读写锁，普通缺页可并发，需独占的失效操作使用写侧保护。</p>
 <p>页表回收还需要完成必要的 TLB 失效，防止硬件继续通过缓存访问已释放页表。能够延后的失效集中在真正要求同步的位置执行，减少每次缺页的额外开销。RCU 与 TLB 分别保护软件和硬件访问，两者不能互相替代。</p>
 <h3 id="tdp-mmu-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
 <p>压力测试配置 416 个 vCPU、每个 4 GiB 地址范围，以 userfaultfd 模拟高并发按需供页。原始剖析中，MMU 自旋锁慢路径占比约 98.11%。并行化后，热点更多转向 GUP 和普通内存管理锁，说明 KVM 的主要串行点得到缓解，但系统仍有其他竞争。讲稿还估算移除部分元数据可节省约 0.2% 客户机内存，12 TB 规模约为 24 GiB。</p>
 <h3 id="tdp-mmu-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
-<p>这是针对非嵌套 TDP 的 RFC，如何与原影子 MMU 共存或整合当时仍在讨论。单项压力测试没有包含完整业务和网络传输，锁占比也不能直接转成应用加速倍数。后续需要验证大页拆合、宿主页迁移、并发失效及页表释放顺序，并继续处理移到普通 Linux 内存路径上的热点。收益来自减少共享状态和明确生命周期，不能只归结为换一种锁。</p>
+<p>这是针对非嵌套 TDP 的 RFC，如何与原影子 MMU 共存或整合当时仍在讨论。压力测试测量的是锁竞争，端到端业务还包括网络传输等开销。后续需要验证大页拆合、宿主页迁移、并发失效及页表释放顺序，并继续处理移到普通 Linux 内存路径上的热点。收益来自减少共享状态和明确生命周期。</p>
 </section>
 <section id="core-scheduling" class="mechanism-section">
 <h2><span class="mechanism-heading-number">三、</span>Core scheduling：SMT 隔离与调度成本</h2>
@@ -90,7 +90,7 @@
 <p>讲稿比较 Xen 的固定调度单元与 Linux 的标签方案。前者把固定的一组 vCPU 映射到物理核资源；后者为任务打上兼容标签，调度一个任务时，为兄弟线程寻找同标签任务，找不到则空闲。Linux 方案更灵活，也增加了匹配、优先级比较和动态迁移的复杂度。</p>
 <p>虚拟拓扑是否与物理执行位置一致需要额外策略，单纯给整台虚机同一个标签并不自动保证每对虚拟 SMT 线程始终同核。安全上，这类策略主要限制不同信任组并发共享同核资源；宿主与客户机之间的其他泄漏路径仍需要独立缓解。</p>
 <h3 id="core-scheduling-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>作者在 4 核 8 线程 Xeon 上比较关闭 HT、仅应用补丁、启用 core scheduling，覆盖一台和两台虚机及多种负载。内核编译等场景中，成组调度保留了更多 SMT 收益；sysbench 数据库场景却存在明显退化，部分结果还差于关闭 HT。测试使用开发中的补丁，作者也指出若干异常尚待解释，适合分析取舍，不能概括为普遍低开销。</p>
+<p>作者在 4 核 8 线程 Xeon 上比较关闭 HT、仅应用补丁、启用 core scheduling，覆盖一台和两台虚机及多种负载。内核编译等场景中，成组调度保留了更多 SMT 收益；sysbench 数据库场景却存在明显退化，部分结果还差于关闭 HT。作者用开发中的补丁做了测试，部分开销的来源当时仍待定位。</p>
 <h3 id="core-scheduling-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>2019 年 Linux 实现仍处于 RFC，匹配效率、公平性和超分开销需要继续改进。强制空闲比例、同组任务数量以及业务对缓存和内存带宽的敏感性都会改变结果。实际评估应比较相同安全目标下的方案，并分别测容量、尾延迟和隔离覆盖范围。把 core scheduling 当作消除全部侧信道风险的开关，会超出它的设计边界。</p>
 </section>
@@ -105,7 +105,7 @@
 <h3 id="virtio-fs-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
 <p>文件数据、路径查找和元数据缓存的共享方式并不相同。多个客户机或宿主同时修改文件时，需要失效与一致性协议。传统 FUSE 假设内核可信、守护进程受限，virtio-fs 却面对不可信客户机内核，必须检查其请求。客户机重启、卸载文件系统后，后端还可能继续存活，需要正确清理旧状态。</p>
 <h3 id="virtio-fs-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
-<p>客户机通过 Virtio 传输 FUSE 类请求，独立 virtiofsd 后端访问宿主文件，采用沙箱缩小权限。DAX 方案把部分文件页映射到客户机可见窗口，减少重复数据缓存和来回复制；窗口只是文件系统的一部分，需要按请求建立、撤销映射，不能当作整个共享目录永久直映。</p>
+<p>客户机通过 Virtio 传输 FUSE 类请求，独立 virtiofsd 后端访问宿主文件，采用沙箱缩小权限。DAX 方案把部分文件页映射到客户机可见窗口，减少重复数据缓存和来回复制；窗口只覆盖部分文件数据，映射随请求建立和撤销。</p>
 <p>缓存一致性可以在通信成本与可见性之间选择。讲稿还提出共享版本表，让多个客户机快速检查缓存是否过期，但当时尚未完整覆盖宿主文件变更。共享数据页并不会自动共享路径查找和元数据缓存，因此 DAX 不能独立解决全部一致性问题。</p>
 <h3 id="virtio-fs-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
 <p>测试使用 32 GB、24 逻辑 CPU 宿主和 ramfs 后端，客户机 8 GB、16 vCPU，DAX 窗口 8 GB；比较 cache=none 的 9p、virtio-fs 及带 DAX 的路径。同步 fio 中 DAX 明显提高多个负载吞吐；异步并发随机读写中，普通 virtio-fs 的结果却高于 DAX。图表说明减少复制并非唯一瓶颈，不能给 DAX 一个固定加速比例。</p>
@@ -126,7 +126,7 @@
 <p>一次更新中，Rust 版本变化引入未被 seccomp 白名单允许的 madvise，造成 VMM 异常退出。修复不仅补充白名单，也增加长时间、接近生产的测试，并利用日志与指标识别触发点。完全自动收集调用集合会扩大白名单，仍需对权限范围作人工判断。</p>
 <p>另一个问题出现在客户机内存模型的偏移与长度相加。项目改用受检整数运算，把隐藏的 panic 或回绕转成可传播错误；CI 加入 Clippy 检查，进一步审查 unwrap、expect 等可能终止进程的路径。设备输入模糊测试也被列入后续计划，以弥补正常客户机驱动覆盖不到的情况。</p>
 <h3 id="firecracker-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>材料明确列出受影响版本、错误表现与修复方向：系统调用白名单问题影响 0.15.0、0.15.1，整数运算问题影响 0.12.0 之前版本。故障经过生产链路发现，原有约 20 分钟 CI 未覆盖特定运行条件。这里的证据是可定位的缺陷与修复，而非证明某种语言或沙箱已经排除所有错误。</p>
+<p>材料明确列出受影响版本、错误表现与修复方向：系统调用白名单问题影响 0.15.0、0.15.1，整数运算问题影响 0.12.0 之前版本。故障经过生产链路发现，原有约 20 分钟 CI 未覆盖特定运行条件。</p>
 <h3 id="firecracker-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>延长测试会增加反馈时间，生产负载也无法穷举。较合理的组合是快速静态检查与边界测试，配合独立长测、运行时兼容测试和上线观测。Rust 能限制某些内存错误，仍需检查整数语义、外部接口和逻辑一致性。这个复盘适合所有 VMM：安全边界的变化应进入发布验收，故障处理路径本身也应保留可诊断信息。</p>
 </section>
@@ -144,9 +144,9 @@
 <p>讲稿以 vm-memory 为例，把原来的具体内存结构抽象成地址、区域和客户机内存访问接口，使匿名内存与文件映射实现可以共享调用方。linux-loader 等组件依赖这些接口加载内容，无需了解所有底层布局。KVM bindings、ioctl 封装和系统工具组件则分别承担底层交互职责。</p>
 <p>项目使用独立讨论、设计、测试和发布阶段管理 crate 成熟度。VMM 选择已经稳定的组件，暂时维护未完成组件的分支，再实现自身连接代码。这种方式把复用边界放在可审查的接口上，而非要求所有项目接受同一套完整虚机管理器。</p>
 <h3 id="rust-vmm-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>材料展示 Firecracker 内存模型的抽象过程，以及 Cloud Hypervisor 对 bindings、KVM、内存、加载器等组件的实际使用。与此同时，Cloud Hypervisor 仍有约四万行代码，设备和 Virtio 等组件还存在开发中分支，部分功能需要项目自行实现。这个数字说明公共组件已经有用，也说明“搭积木”并不等于只写少量配置即可获得成熟 VMM。</p>
+<p>材料展示 Firecracker 内存模型的抽象过程，以及 Cloud Hypervisor 对 bindings、KVM、内存、加载器等组件的实际使用。与此同时，Cloud Hypervisor 仍有约四万行代码，设备和 Virtio 等组件还存在开发中分支，部分功能需要项目自行实现。公共库承担了 KVM 和内存等共用部分，设备集成与整机行为仍由各 VMM 实现。</p>
 <h3 id="rust-vmm-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
-<p>组件版本、错误语义和并发规则需要长期协调，公共库发布也不能替代组合后的系统测试。不同项目对迁移、设备模型和兼容性的要求可能差异很大，应避免把单一需求强塞进通用接口。后续价值取决于更多独立消费者验证抽象，并共同维护模糊测试与边界条件。复用可以集中审查力量，但也会让公共组件缺陷影响更多项目。</p>
+<p>组件版本、错误语义和并发规则需要长期协调，各 VMM 还要用整机测试验证这些组件组合后的行为。不同项目对迁移、设备模型和兼容性的要求可能差异很大，应避免把单一需求强塞进通用接口。后续价值取决于更多独立消费者验证抽象，并共同维护模糊测试与边界条件。复用可以集中审查力量，但也会让公共组件缺陷影响更多项目。</p>
 </section>
 <section id="sev-evolution" class="mechanism-section">
 <h2><span class="mechanism-heading-number">七、</span>SEV 运维配套：迁移加密内存与减少启动开销</h2>
@@ -162,17 +162,17 @@
 <p>安全迁移让两端固件协商传输保护，并通过 SEND、RECEIVE 等接口转换页面；客户机通知共享与私有属性变化，宿主据此选择处理路径。迁移助手原型把认证与大量数据处理拆开：可信助手位于受保护执行上下文，完成授权后用 CPU 加密指令处理主体数据，减轻安全处理器的带宽负担。</p>
 <p>ASID 管理将已停用标识暂存为可回收集合，等可用集合耗尽时统一刷新和回收，减少每次创建、销毁都触发重操作。页面移动则探索专用固件复制接口与内核回调；缺乏支持时仍需禁止移动，不能沿用普通 memcpy。</p>
 <h3 id="sev-evolution-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>讲稿报告迁移助手概念验证可达到数 Gbit/s，但未给出完整硬件、内存容量和负载参数，适合说明卸载数据处理的可行性，不能用于直接容量规划。SEV-ES 的 GHCB、固件和内核配套当时仍在完善，SNP 作为增加完整性保护的后续方向提出。材料中的不同阶段应分别理解，不能把它们合并成已经完成的统一产品能力。</p>
+<p>迁移助手原型报告了数 Gbit/s 的传输速率；部署估算还需要对应的硬件配置、内存容量和负载参数。SEV-ES 的 GHCB、固件和内核配套当时仍在完善，SNP 作为增加完整性保护的后续方向提出。</p>
 <h3 id="sev-evolution-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
-<p>当时没有通用私有页换出接口，消除启动前全量固定内存仍需更多内核整合。迁移助手扩大了受信代码范围，身份验证、密钥交付和失败恢复必须一起设计。SEV/SEV-ES 的机密性目标也不能替代后续 SNP 所处理的完整性问题。工程评估应同时关注保护边界、启动密度、维护耗时及页面状态变化的正确性。</p>
+<p>当时没有通用私有页换出接口，消除启动前全量固定内存仍需更多内核整合。迁移助手扩大了受信代码范围，身份验证、密钥交付和失败恢复必须一起设计。SEV 和 SEV-ES 的重点是机密性，后续 SNP 扩展了对客户机内存完整性的保护。工程评估应同时关注保护边界、启动密度、维护耗时及页面状态变化的正确性。</p>
 </section>
 </div>
   </div>
   <nav class="mechanism-related" aria-label="会议资料"><a href="../kvm-forum.html#year-2019">返回年度总览</a><a href="https://kvm-forum.qemu.org/2019/" target="_blank" rel="noopener noreferrer">原始议程</a></nav>
 </article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=02b518d59aa4" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=e7d4bbc16c93" defer></script></body>
 </html>

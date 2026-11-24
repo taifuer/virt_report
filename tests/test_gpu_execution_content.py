@@ -176,7 +176,8 @@ def test_mdev_is_a_specific_historical_implementation_not_vfio_with_renamed_labe
     assert position("mdev-copy", "host-complete") < position("mdev-copy", "publish-guest")
     assert position("mdev-copy", "publish-guest") < position("mdev-copy", "notify")
     assert "尚未完成" in snapshot("mdev-copy", "write-target")["guestCompletion"]
-    assert "不能" in next(step["detail"] for step in scene["steps"] if step["id"] == "notify")
+    notify = next(step["detail"] for step in scene["steps"] if step["id"] == "notify")
+    assert notify.index("发布虚拟完成事件") < notify.index("eventfd 通知") < notify.index("客户机中断处理")
     assert "独立 VRAM" in snapshot("mdev-copy", "initial")["guestPages"]
 
 
@@ -368,7 +369,7 @@ def test_gpu_xml_examples_select_the_correct_assignment_object_and_driver_lifecy
     assert snippets["vendor-vfio"].get("managed") == "no"
     assert snippets["vendor-vfio"].find("driver") is None
     assert "不会自动启用 SR-IOV、创建 mdev" in page
-    assert "二选一" in page and "同一个 VF" in page
+    assert "二选一" in page and "承载 vGPU 实例的 VF 已由该实例占用" in page
     assert 'aria-label="GPU 虚拟化方案对比"' in page
     assert 'aria-label="GVT-g 区域与退出路径"' in page
     assert "未在对应 GPU 上实测" in page

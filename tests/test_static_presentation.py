@@ -114,23 +114,25 @@ def test_snapshot_chrome_uses_shared_navigation_without_touching_article():
     html = '<header class="site-head">old</header>' + body + '<footer class="site-foot">old</footer>'
     result = refresh_page_chrome(html, "daily/2026-10-12.html", "virt-report")
     assert body in result
-    assert 'href="../mechanisms.html"' in result
+    assert 'href="../industry/index.html"' in result
+    assert 'href="../mechanisms.html"' not in result
     assert 'href="../versions.html"' in result
     assert 'href="../daily/index.html" class="on" aria-current="page"' in result
     assert '<summary class="on">报告' in result
     assert 'data-site-menu-toggle' in result
     assert '虚拟化社区动态</span><span class="foot-note">' in result
-    assert '数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a>' in result
+    assert '数据来源：上游社区。<a href="../metrics.html">运行状态</a>' in result
     assert refresh_page_chrome(result, "daily/2026-10-12.html", "virt-report") == result
 
 
-def test_snapshot_chrome_tracks_principle_and_version_routes():
+def test_snapshot_chrome_tracks_industry_and_version_routes():
     html = '<header class="site-head"></header>'
-    for path, target in (("mechanisms/qemu-memory-migration.html", "../mechanisms.html"),
+    for path, target in (("industry/2026-W47.html", "../industry/index.html"),
                          ("kvm-forum/2026.html", "../conferences.html"),
                          ("versions.html", "versions.html")):
         result = refresh_page_chrome(html, path, "virt-report")
         assert f'href="{target}" class="on" aria-current="page"' in result
+    assert 'aria-current="page"' not in refresh_page_chrome(html, "mechanisms/qemu-memory-migration.html", "virt-report")
 
 
 def test_listing_heading_refresh_preserves_entries_breadcrumbs_and_report_dates():
@@ -185,6 +187,7 @@ def test_all_static_footers_group_copyright_and_note_with_relative_status_link()
         root = "../" * len(path.relative_to(site).parts[:-1])
         assert '<span class="foot-copyright">© 2026 ' in footer, path
         assert '虚拟化社区动态</span><span class="foot-note">' in footer, path
-        assert (f'数据来自社区，分析仅供参考。<a href="{root}metrics.html">'
+        note = "" if relative.startswith("industry/") else "数据来源：上游社区。"
+        assert (f'<span class="foot-note">{note}<a href="{root}metrics.html">'
                 '运行状态</a></span>') in footer, path
         assert "虚拟化社区动态。" not in footer, path

@@ -29,7 +29,6 @@ MERGES = {
     "virtio-blk-read": "qemu-virtio-blk",
     "virtio-gpu-execution": "virtio-gpu",
     "migration": "qemu-memory-migration",
-    "device-virtualization": "virtualization-basics",
 }
 OLD_ANCHORS = {
     "virtio-gpu-rendering": {"preface", "transport", "render", "video-support",
@@ -53,9 +52,6 @@ OLD_ANCHORS = {
     "virtio-gpu-execution": {"preface", "walkthrough", "completion", "sources"},
     "migration": {"preface", "state", "process", "example", "evolution",
                   "evaluation", "reading", "sources", "process-part-1", "process-part-2"},
-    "device-virtualization": {"preface", "example", "architecture", "queue",
-                              "queue-part-1", "backends", "evolution",
-                              "evaluation", "reading", "sources"},
 }
 
 
@@ -120,7 +116,7 @@ def test_consolidated_catalogue_has_unique_canonical_articles():
 
 def test_removed_articles_are_not_indexed_as_results_or_related_reading():
     removed = {'cpu-model-migration', 'qemu-qcow2', 'qemu-virtio-mem',
-               'qemu-live-block-operations'}
+               'qemu-live-block-operations', 'virtio-balloon'}
     assert all(mechanisms.get_article(slug) is None for slug in removed)
     documents = editorial_search._editorial_documents()
     assert removed.isdisjoint(document['slug'] for document in documents)
@@ -139,7 +135,13 @@ def test_export_includes_legacy_redirects_without_touching_reports(tmp_path, no_
         path.write_bytes(f"historical snapshot: {relative}".encode())
         reports[path] = (path.read_bytes(), path.stat().st_mtime_ns)
     config = Config(render=Render(output_dir=output))
+    retired = [output / "mechanisms" / "virtio-balloon.html",
+               output / "assets" / "balloon-page-handoff.svg"]
+    for path in retired:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("retired export", encoding="utf-8")
     paths = render.render_mechanisms(config)
+    assert not any(path.exists() for path in retired)
     assert len(paths) == len(set(paths)) == (
         1 + len(mechanisms.articles()) + len(MERGES) + 1
     )
@@ -201,7 +203,7 @@ def test_old_kvm_entry_redirects_to_the_shared_catalogue(path, method, no_databa
 
 @pytest.mark.parametrize("slug", ["unknown-article", "base", "qemu-cpr-transfer-old",
                                  "cpu-model-migration", "qemu-qcow2", "qemu-virtio-mem",
-                                 "qemu-live-block-operations"])
+                                 "qemu-live-block-operations", "virtio-balloon"])
 @pytest.mark.parametrize("method", ["GET", "HEAD"])
 def test_unregistered_articles_are_not_redirected(slug, method, no_database):
     assert mechanisms.get_redirect(slug) is None

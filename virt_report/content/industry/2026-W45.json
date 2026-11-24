@@ -1,0 +1,32 @@
+{
+  "week": "2026-W45",
+  "published_on": "2026-11-24",
+  "lead": "OpenShift Virtualization 5.0 正式发布，把虚机负载再均衡和高可用配置纳入默认策略，并提供按磁盘变化块备份的技术预览。libvirt 12.9.0 增加了迁移结束时的源端通知，也扩展了 vhost 网络后端的适用范围。",
+  "points": [
+    {
+      "event": "openshift-virtualization-5-autopilot-cbt",
+      "title": "OpenShift Virtualization 5.0 发布：默认运行策略与增量备份",
+      "date": "2026-11-03",
+      "refs": ["rh-lifecycle"],
+      "paragraphs": [
+        {"text": "Red Hat 将 11 月 3 日列为 5.0 的正式可用日。正式提供的 Autopilot 把按负载重新分布虚机、节点交换空间策略和节点故障处置纳入统一配置，并在集群升级时维持这些设置。", "refs": ["rh-details"]},
+        {"text": "磁盘增量备份处于技术预览。QEMU 的变化块跟踪（CBT）记录虚拟磁盘中哪些块被写过，备份软件据此读取变动的部分，省去每轮扫描整块虚拟磁盘的开销。"}
+      ]
+    },
+    {
+      "event": "libvirt-12-9-migration-undefined-vhost",
+      "title": "libvirt 12.9.0 区分迁移后的源端注销，MSHV 可用 vhost 网络",
+      "date": "2026-11-02",
+      "refs": ["libvirt-release"],
+      "paragraphs": [
+        {"text": "在请求迁移并注销源端定义（`VIR_MIGRATE_UNDEFINE_SOURCE`）时，迁移成功后的 QEMU 驱动会向源端发出 `VIR_DOMAIN_EVENT_UNDEFINED`。新增的原因值 `VIR_DOMAIN_EVENT_UNDEFINED_MIGRATED` 让订阅方能把这次注销识别为迁移收尾。"},
+        {"text": "同一版本也允许 QEMU 使用 Microsoft Hypervisor（`MSHV`）加速时启用 vhost 网络。CPU 的执行后端与 virtio 网卡的数据处理后端可分别选择。"}
+      ]
+    }
+  ],
+  "sources": {
+    "rh-lifecycle": {"date": "2026-11-03", "publisher": "Red Hat", "title": "OpenShift Operator Life Cycles：OpenShift Virtualization 5.0 发布记录", "url": "https://access.redhat.com/support/policy/updates/openshift_operators"},
+    "rh-details": {"date": "2026-11-11", "publisher": "Red Hat", "title": "Unlocking next-generation workloads: What’s new in Red Hat OpenShift Virtualization 5", "url": "https://www.redhat.com/en/blog/unlocking-next-generation-workloads-whats-new-red-hat-openshift-virtualization-5"},
+    "libvirt-release": {"date": "2026-11-02", "publisher": "libvirt", "title": "libvirt 12.9.0 release notes", "url": "https://libvirt.org/news.html#v12-9-0-2026-11-02"}
+  }
+}

@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=5eb1bb7dc04a">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=5eb1bb7dc04a">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=1b35da490c57">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1b35da490c57">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -35,7 +35,7 @@
         <a href="../topics.html" class="">专题</a>
         <a href="../conferences.html" class="">会议</a>
         <a href="../versions.html" class="">版本</a>
-        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../industry/index.html" class="">产业</a>
         <a href="../about.html" class="">关于</a>
         <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -50,11 +50,13 @@
   <div class="mechanism-layout">
     <nav class="mechanism-toc" aria-label="文章目录">
       <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
-      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a></li><li><a href="#scope">二、QEMU、KVM 与 VFIO 的升级范围</a></li><li><a href="#handoff">三、准备、冻结、接管与清理</a></li><li><a href="#vfio">四、VFIO：保持 DMA 与完成通知连续</a></li><li><a href="#evaluation">五、总结</a></li><li><a href="#sources">六、参考资料</a></li></ol>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a><ol><li><a href="#history">从迁走虚机到在原机接管</a></li></ol></li><li><a href="#scope">二、QEMU、KVM 与 VFIO 的升级范围</a></li><li><a href="#handoff">三、准备、冻结、接管与清理</a></li><li><a href="#vfio">四、VFIO：保持 DMA 与完成通知连续</a></li><li><a href="#evaluation">五、总结</a></li><li><a href="#sources">六、参考资料</a></li></ol>
     </nav>
     <div class="mechanism-prose"><section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>序言</h2>
   <p>热升级是在同一台宿主机上更新承载虚机的软件，让客户机保留内存、CPU 和设备状态并继续运行。更新 QEMU 可以保留原来的宿主内核；更新 KVM 则要把仍在使用的内核状态交给新实现。带直通设备的虚机还要保住在途 DMA 和完成通知。</p>
+  <h3 id="history">从迁走虚机到在原机接管</h3>
+  <p>维护宿主的一种做法是先把虚机迁到别处，升级完再迁回。原机接管利用了一个额外条件：客户机的内存页和设备可以留在原处。2019 年的 Orthus 展示了新旧 KVM 同机交接；QEMU 的 CPR 则面向 VMM 进程替换，从保存恢复发展到在新旧进程间交接内存和文件描述符。两条路线替换的软件不同，对停机窗口和设备连续性的要求也不同。</p>
 <p class="mechanism-baselines">源码版本：QEMU 10.2.0。</p></section>
 <span id="qemu" class="mechanism-topic-alias" aria-hidden="true"></span>
 <span id="kvm" class="mechanism-topic-alias" aria-hidden="true"></span>
@@ -75,9 +77,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看执行权与资源的交接" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="执行权与资源的交接">
-    <img src="../assets/live-upgrade-handoff.svg?v=5eb1bb7dc04a" width="1080" height="171" alt="切换时旧实例停止执行，新实例接管客户机状态及必要资源；确认成功后再释放旧对象。资源保留和失败恢复能力由具体方案决定。" loading="lazy">
+    <img src="../assets/live-upgrade-handoff.svg?v=1b35da490c57" width="1080" height="171" alt="切换时旧实例停止执行，新实例接管客户机状态及必要资源；确认成功后再释放旧对象。资源保留和失败恢复能力由具体方案决定。" loading="lazy">
   </div>
-  <figcaption>切换时旧实例停止执行，新实例接管客户机状态及必要资源；确认成功后再释放旧对象。资源保留和失败恢复能力由具体方案决定。 <a href="../assets/live-upgrade-handoff.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>切换时旧实例停止执行，新实例接管客户机状态及必要资源；确认成功后再释放旧对象。资源保留和失败恢复能力由具体方案决定。 <a href="../assets/live-upgrade-handoff.svg?v=1b35da490c57" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart LR
   accTitle: 热升级中的执行权与资源交接
   accDescr: 旧实例运行时准备新实现。切换窗口内停止旧 vCPU，按后端协议处理在途 I/O，交接 CPU、设备和通知状态，并保留或转交 RAM 与设备资源。新实例完成接管后恢复客户机，确认成功后清理旧对象。具体资源保留和失败恢复能力由升级方案决定。
@@ -109,18 +111,19 @@
 <section id="sources" class="mechanism-section">
   <h2><span class="mechanism-heading-number">六、</span>参考资料</h2>
   <ul>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/migration/CPR.rst">QEMU 10.2.0：CPR 模式与限制</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/cpr.c#L260">VFIO CPR 交接</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/cpr-iommufd.c">IOMMUFD 资源保留</a></li>
-    <li><a href="https://doi.org/10.1145/3297858.3304034">Orthus（ASPLOS 2019）原论文</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/migration/CPR.rst">QEMU CPR 文档：三种同机升级模式与配置条件</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/cpr.c#L260">QEMU VFIO CPR：直通设备的中断交接</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/cpr-iommufd.c">QEMU VFIO CPR：保留 IOMMUFD 设备资源</a></li>
+    <li><a href="https://doi.org/10.1145/3297858.3304034">Orthus（ASPLOS 2019）：云平台如何在线升级 VMM</a></li>
   </ul>
 </section></div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#live-upgrade">热升级</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-11-14">2026-11-14</time> · 针对文中标注的源码与规范基线。</p></article>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-24">2026-11-24</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=5eb1bb7dc04a" defer></script>
+<script src="../assets/mechanism-viewer.js?v=1b35da490c57" defer></script>
 </body>
 </html>

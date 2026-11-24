@@ -68,7 +68,7 @@
   "analysis": {
     "coverage": "1974—2026",
     "headline": "从 Hypervisor 机制优化走向轻量化、机密计算与生产协同",
-    "overview": "从可虚拟化条件、ESX 内存管理和 Xen 半虚拟化开始，QEMU、KVM 与 Virtio 分别解释指令模拟、硬件辅助执行和通用虚拟 I/O 接口。后续研究沿嵌套运行、资源管理、迁移和隔离展开。以下仅按通过相关性筛选的论文梳理机制联系，年度示例不自动进入精选，数量不用于衡量研究热度。",
+    "overview": "从可虚拟化条件、ESX 内存管理和 Xen 半虚拟化开始，QEMU、KVM 与 Virtio 分别解释指令模拟、硬件辅助执行和通用虚拟 I/O 接口。后续研究沿嵌套运行、资源管理、迁移和隔离展开。下文按年份梳理入选论文的机制联系；经典解读另行遴选。",
     "eras": [
       {
         "years": "2023—2026",
@@ -713,7 +713,7 @@
       "publication_status": "published",
       "published_on": "2025-10-12",
       "publication_source_url": "https://api.crossref.org/works/10.1145/3731569.3764795",
-      "introduction": "直通 RNIC 后，连接状态留在网卡里，设备之间还可能直接通过 PCIe 通信；只复制虚机 RAM 不足以迁移连接。作者设计设备与 Hypervisor 之间的迁移接口，在 ConnectX 网卡中实现状态交接，并在切换时让设备间的直接通信停到一致的位置。",
+      "introduction": "直通 RNIC 后，连接状态留在网卡里，设备之间还可能直接通过 PCIe 通信。迁移这些连接还要转移网卡上的状态，并协调设备间的通信。作者设计设备与 Hypervisor 之间的迁移接口，在 ConnectX 网卡中实现状态交接，并在切换时让设备间的直接通信停到一致的位置。",
       "commentary": "拷完虚机内存，RDMA 连接的状态还留在网卡上。ConnectX 要先让设备间的通信停在可以接手的位置，再交出状态。论文测到的停顿不到一秒，用的是支持这套迁移接口的网卡。",
       "relation": "直接关联",
       "topics": ["设备直通", "RDMA", "热迁移", "设备状态"],
@@ -784,7 +784,7 @@
       "publication_status": "published",
       "published_on": "2026-11-14",
       "publication_source_url": "https://api.crossref.org/works/10.1145/3828523.3857031",
-      "introduction": "快照页已经在内存里，并不代表嵌套虚机可以直接访问。PAVE 在最外层 KVM 利用快照元数据和工作集预建最终的 EPT 映射；来自同一快照的干净只读页可共享映射，写入则转入各虚机私有的写时复制层。",
+      "introduction": "嵌套虚机访问驻留在内存中的快照页时，还需要覆盖这些页的地址映射。PAVE 在最外层 KVM 利用快照元数据和工作集预建最终的 EPT 映射；来自同一快照的干净只读页可共享映射，写入则转入各虚机私有的写时复制层。",
       "commentary": "快照页已经在内存里，vCPU 仍要等地址映射建好才能访问。PAVE 让从同一份快照启动的虚机共用只读映射。某个实例改写页面时，再为它单独建映射。",
       "relation": "直接关联",
       "topics": ["microVM", "嵌套虚拟化", "快照恢复", "地址转换", "EPT"],
@@ -5105,7 +5105,7 @@
       "evidence_source_url": "https://faculty.cs.gwu.edu/timwood/papers/14-VEE-Mortar.pdf",
       "evidence_verified_at": "2026-11-19",
       "introduction": "Mortar 把 Xen 宿主上暂时闲置的内存当作可回收缓存。应用能存放可重建的键值数据，虚拟磁盘也能用它预取数据块。",
-      "commentary": "虚机要用内存时，Xen 可以直接丢掉缓存，把页腾出来。缓存里只放能从别处重新取回的数据，应用不能把它当成永久存储。",
+      "commentary": "虚机要用内存时，Xen 可以直接丢掉缓存，把页腾出来。因此，客户机只在缓存中存放可以从原存储重新读取的数据。",
       "relation": "机制相关",
       "topics": [
         "内存超分",

@@ -18,7 +18,6 @@ DEMO_PAGES = {
     "vm-lifecycle": "libvirt-domain-start",
     "gpu-execution": "gpu-execution",
     "virtio-gpu-rendering": "virtio-gpu",
-    "virtio-balloon": "virtio-balloon",
 }
 DEMO_IDS = tuple(DEMO_PAGES)
 CONTENT_DIR = Path(__file__).parent / "content" / "flows"
@@ -217,9 +216,6 @@ def load_demo(demo_id: str) -> dict:
     """Load fresh editorial input before enrichment and presentation filtering."""
     if demo_id not in DEMO_IDS:
         raise ValueError("Unregistered demo")
-    if demo_id == "virtio-balloon":
-        from virt_report.balloon_demo import build_demo
-        return build_demo()
     return json.loads((CONTENT_DIR / f"{demo_id}.json").read_text(encoding="utf-8"))
 
 

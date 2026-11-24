@@ -5,6 +5,10 @@
   <h2>序言</h2>
   <p>高报文率虚拟机常把大量宿主 CPU 时间花在队列解析、缓冲区访问和网络转发上。vhost-net 把处理放进宿主内核，vhost-user 允许独立进程接管；如果设备本身能够消费 virtio 队列，还可以进一步减少软件参与。vDPA 为这类设备提供框架：数据路径遵循 virtio，设备的配置方式可以由厂商驱动转换。</p>
   <p>QEMU 的 vhost-vDPA 网络后端通过 vDPA 接口配置队列、DMA 地址与通知。直接模式下，硬件消费 Guest virtqueue；迁移时可使用 QEMU 中转的 Shadow Virtqueue。vDPA 框架也支持软件实现，下面的发送例子采用硬件后端。</p>
+  <h3 id="evolution">从软件队列到硬件卸载</h3>
+  <p>vhost 系列的发展把“客户机使用什么接口”与“宿主哪里执行请求”逐渐分开。vhost-net 减少 QEMU 用户态往返，vhost-user 允许专用进程和轮询框架，vDPA 则进一步允许具有 virtio 数据面能力的设备接手。保留标准客户机驱动降低了客户机适配负担，但宿主仍要负责具体硬件的配置、内存隔离与生命周期。</p>
+  <p>直接硬件访问缩短正常路径，却让软件更难观察在途请求和 DMA 写入。2022 年的 QEMU SVQ 讨论把影子队列作为迁移脏页追踪的协作方案，后续实现可在迁移阶段切换，平时继续使用较短的数据路径。它用额外 CPU 和状态管理换取迁移可见性，并没有消除设备特性限制。<a href="https://lists.gnu.org/archive/html/qemu-devel/2022-03/msg02180.html">SVQ 初期设计讨论</a></p>
+  <p>vDPA 也支持软件实现；VDUSE 提供用户态数据面与内核控制、隔离之间的接口，支持的设备类型和能力取决于版本。后端选择需要同时考虑正常吞吐、CPU 开销、尾延迟、迁移降速和故障恢复。直接模式与 SVQ 的对比尤其要标明测试处于正常运行还是迁移阶段。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 <section id="roles" class="mechanism-section">
@@ -39,7 +43,7 @@
   <p>QEMU 读取设备与后端能力，结合前端配置向客户机提供可用特性，再设置协商结果。split/packed、队列数、卸载功能、控制队列等都影响后续处理。客户机设置 DRIVER_OK 前，特性和队列必须准备好；迁移目标也要能维持客户机已经看到的接口。</p>
   <h3>队列与通知：设备从哪里开始处理</h3>
   <p>配置包含队列大小、描述符/可用/完成地址和消费进度，以及 kick、call 文件描述符。常见控制操作包括 <code>VHOST_SET_VRING_NUM</code>、<code>VHOST_SET_VRING_ADDR</code>、<code>VHOST_SET_VRING_BASE</code> 和 <code>VHOST_VDPA_SET_VRING_ENABLE</code>。内核 vDPA 配置层再调用设备的队列设置方法。</p>
-  <p>kick 方向是客户机到队列消费者，call 方向是设备完成到客户机。常规路径可以连接 KVM ioeventfd / irqfd；部分配置还允许映射设备通知区域以缩短 doorbell 路径。具体是否绕过某个软件环节取决于设备和平台能力，不能把所有 vDPA 都画成完全没有宿主参与。</p>
+  <p>kick 方向是客户机到队列消费者，call 方向是设备完成到客户机。常规路径可以连接 KVM ioeventfd / irqfd；部分配置还允许映射设备通知区域以缩短 doorbell 路径。设备与平台支持的通知映射决定门铃由硬件接收还是经宿主转发。</p>
   <h3>地址与权限：设备看到的 IOVA 对应哪段 RAM</h3>
   <p>队列里写着地址，但硬件不能拿 QEMU 进程的虚拟地址直接发起 DMA。QEMU 通过 IOTLB 更新传递设备地址范围、长度、宿主用户地址和访问权限，宿主后端据此建立设备可用的映射。配置客户机 IOMMU 时，还要把映射变化与失效同步给后端。</p>
   <pre><code>VHOST_IOTLB_UPDATE
@@ -50,7 +54,7 @@
   asid : 已支持时区分设备地址空间
 
 解除对应访问：VHOST_IOTLB_INVALIDATE</code></pre>
-  <p>没有客户机 IOMMU 时，设备地址可以按 GPA 建立映射；有客户机 IOMMU 或影子队列时，IOVA 与 GPA 未必相等。地址转换、页固定和 DMA 隔离还涉及宿主 IOMMU 与具体驱动，不等于发送一条 UPDATE 就自动满足全部安全条件。QEMU 10.2 的 vhost-vDPA 初始化还会限制客户机 RAM discard，以配合固定内存的要求。<a href="{{ qemu }}hw/virtio/vhost-vdpa.c#L94-L143">映射更新与失效</a>、<a href="{{ qemu }}hw/virtio/vhost-vdpa.c#L632-L680">初始化与内存生命周期约束</a></p>
+  <p>没有客户机 IOMMU 时，设备地址可以按 GPA 建立映射；有客户机 IOMMU 或影子队列时，IOVA 与 GPA 未必相等。UPDATE 通知后端更新映射。具体驱动负责维持页的生命周期，宿主 IOMMU 限定设备可访问的地址范围。QEMU 10.2 的 vhost-vDPA 初始化还会限制客户机 RAM discard，以配合固定内存的要求。<a href="{{ qemu }}hw/virtio/vhost-vdpa.c#L94-L143">映射更新与失效</a>、<a href="{{ qemu }}hw/virtio/vhost-vdpa.c#L632-L680">初始化与内存生命周期约束</a></p>
 </section>
 <section id="shadow" class="mechanism-section">
   <h2>Shadow Virtqueue 与设备写入跟踪</h2>
@@ -84,12 +88,6 @@
   </tbody></table>
   <p>SVQ 的完成路径先从后端 used 取回关联的 VirtQueueElement，检查 ID 和有效链，再调用 virtqueue_fill/flush 向客户机发布完成。设备写出的 ID 必须引用已提交的影子请求；设备上报的完成索引须先校验，再用于访问内存。</p>
 </section>
-<section id="evolution" class="mechanism-section">
-  <h2>从软件后端到硬件数据面，再补齐可迁移性</h2>
-  <p>vhost 系列的发展把“客户机使用什么接口”与“宿主哪里执行请求”逐渐分开。vhost-net 减少 QEMU 用户态往返，vhost-user 允许专用进程和轮询框架，vDPA 则进一步允许具有 virtio 数据面能力的设备接手。保留标准客户机驱动降低了客户机适配负担，但宿主仍要负责具体硬件的配置、内存隔离与生命周期。</p>
-  <p>直接硬件访问缩短正常路径，却让软件更难观察在途请求和 DMA 写入。2022 年的 QEMU SVQ 讨论把影子队列作为迁移脏页追踪的协作方案，后续实现可在迁移阶段切换，平时继续使用较短的数据路径。它用额外 CPU 和状态管理换取迁移可见性，并没有消除设备特性限制。<a href="https://lists.gnu.org/archive/html/qemu-devel/2022-03/msg02180.html">SVQ 初期设计讨论</a></p>
-  <p>vDPA 也支持软件实现；VDUSE 提供用户态数据面与内核控制、隔离之间的接口，支持的设备类型和能力取决于版本。后端选择需要同时考虑正常吞吐、CPU 开销、尾延迟、迁移降速和故障恢复。直接模式与 SVQ 的对比尤其要标明测试处于正常运行还是迁移阶段。</p>
-</section>
 
 <section id="summary" class="mechanism-section">
   <h2>总结</h2>
@@ -98,5 +96,13 @@
 
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
-  <ul><li><a href="{{ qemu }}docs/interop/vhost-vdpa.rst">QEMU 10.2.0 Vhost-vdpa Protocol</a>：数据接口与控制适配的职责边界。</li><li><a href="{{ qemu }}hw/virtio/vhost-vdpa.c">QEMU vhost-vDPA 后端</a>、<a href="{{ qemu }}net/vhost-vdpa.c">网络后端</a>：映射、队列和迁移阶段管理。</li><li><a href="{{ qemu }}hw/virtio/vhost-shadow-virtqueue.c">QEMU Shadow Virtqueue</a>：描述符转发、地址翻译和完成发布。</li><li><a href="{{ linux }}drivers/vhost/vdpa.c">Linux vhost_vdpa</a>、<a href="{{ linux }}include/linux/vdpa.h">vDPA 配置接口</a>：内核后端与设备驱动之间的约定。</li><li><a href="{{ linux }}Documentation/userspace-api/vduse.rst">Linux 6.18 VDUSE 文档</a>：用户态数据面、IOTLB 映射和设备控制。</li></ul>
+  <ul>
+    <li><a href="{{ qemu }}docs/interop/vhost-vdpa.rst">QEMU vhost-vDPA 协议：配置设备与共享队列</a></li>
+    <li><a href="{{ qemu }}hw/virtio/vhost-vdpa.c">QEMU vhost-vDPA：连接设备、注册内存与队列</a></li>
+    <li><a href="{{ qemu }}net/vhost-vdpa.c">QEMU vDPA 网络后端：配置虚拟网卡</a></li>
+    <li><a href="{{ qemu }}hw/virtio/vhost-shadow-virtqueue.c">QEMU Shadow Virtqueue：转发描述符和完成通知</a></li>
+    <li><a href="{{ linux }}drivers/vhost/vdpa.c">Linux vhost-vDPA：把 vhost 请求转给 vDPA 设备</a></li>
+    <li><a href="{{ linux }}include/linux/vdpa.h">Linux vDPA：厂商驱动提供的配置操作</a></li>
+    <li><a href="{{ linux }}Documentation/userspace-api/vduse.rst">Linux VDUSE 文档：在用户态实现 vDPA 设备</a></li>
+  </ul>
 </section>

@@ -6,13 +6,15 @@
   <h2>序言</h2>
   <p>两台虚机都可以从物理地址零开始使用内存，写入的却是各自的宿主页。以 x86 KVM 和普通 RAM 为例，一次客户机读取涉及两层地址关系：客户机内核把应用的虚拟地址映射到客户机物理页；宿主决定这页由哪块内存承载，以及允许哪些访问。</p>
   <p>QEMU 为 RAM 提供后备并向 KVM 登记内存槽，建立过程见<a href="qemu-memory-region.html">QEMU 内存初始化与地址空间管理</a>。处理器按页表执行访问；后备页迁走后，KVM 要撤销旧的转换，再让同一条指令访问新位置。</p>
+  <h3 id="history">两级地址转换的由来</h3>
+  <p>早期 x86 处理器只遍历一套页表，VMM 用影子页表把客户机映射和宿主实际分配合成一套，并跟踪客户机对页表的修改。Intel EPT 与 AMD NPT 提供第二级硬件遍历，让客户机和宿主各管一层。今天影子映射仍用于部分配置；两级转换则把优化重点转向 TLB 命中、大页覆盖和映射失效。后文用同一个虚拟地址对照两条路径。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
 <section id="addresses" class="mechanism-section">
   <h2>GVA、GPA、HVA 与 HPA 的对应关系</h2>
   <p>设客户机执行 <code>load [0x400120]</code>，页大小为 4 KiB。客户机页表把虚拟页 <code>0x400000</code> 映射到客户机物理页 <code>0x20000</code>，偏移 <code>0x120</code> 保持不变，因此需要访问的客户机物理地址是 <code>0x20120</code>。</p>
-  {{ diagram('memory-address-overview', '客户机访问与宿主映射管理', '硬件访存从 GVA 经 GPA 到 HPA。KVM 建立映射时使用 QEMU 的 HVA 定位宿主页；HVA 不构成客户机的第三次硬件页表转换。') }}
+  {{ diagram('memory-address-overview', '客户机访问与宿主映射管理', '硬件访存从 GVA 经 GPA 到 HPA。KVM 建立映射时使用 QEMU 的 HVA 定位宿主页。') }}
   <table><thead><tr><th>名称</th><th>本例</th><th>作用</th></tr></thead><tbody>
     <tr><td>GVA，客户机虚拟地址</td><td><code>0x400120</code></td><td>程序使用的地址，由客户机页表解释</td></tr>
     <tr><td>GPA，客户机物理地址</td><td><code>0x20120</code></td><td>客户机认为存在的 RAM 或设备地址</td></tr>
@@ -116,7 +118,7 @@
 virsh dommemstat VM</code></pre>
   <table><thead><tr><th>现象</th><th>从哪里核实</th><th>可以得出的结论</th></tr></thead><tbody>
     <tr><td>应用第一次访问慢，重复访问快</td><td>在 Guest 运行下节的首次触碰实验，比较进程 minor fault</td><td>能定位 Guest 匿名页按需建立的影响；计数不包含完整的宿主 EPT/NPT 活动</td></tr>
-    <tr><td>Guest 空闲很多，宿主 RSS 仍高</td><td>对照 Guest 内存统计、<code>dommemstat</code> 的 RSS 与 XML 中的后备配置</td><td>Guest 可用容量与宿主驻留量口径不同；空闲页仍可能保留宿主后备，见 <a href="virtio-balloon.html#balloon-measured">balloon 实测</a></td></tr>
+    <tr><td>Guest 空闲很多，宿主 RSS 仍高</td><td>对照 Guest 内存统计、<code>dommemstat</code> 的 RSS 与 XML 中的后备配置</td><td>Guest 可用容量与宿主驻留量口径不同；客户机释放的页仍可能驻留在宿主内存中</td></tr>
     <tr><td>怀疑 EPT/NPT 建图或宿主调页造成停顿</td><td>进一步在宿主对齐 KVM 缺页事件、宿主缺页与负载时间窗口</td><td>先区分第二级建图和取得后备页的等待；定位 VM-Exit 原因要看宿主的 KVM 退出记录</td></tr>
   </tbody></table>
   <p><code>dommemstat</code> 的 Guest 统计依赖驱动和已有采集配置。检查 <code>last-update</code> 是否更新；缺少字段应记为“未提供”，不能填零。命令与字段口径见 <a href="https://www.libvirt.org/manpages/virsh.html#dommemstat">libvirt 手册</a>。下节保留已完成实验的环境和原始计数，便于与自己的结果比较。</p>
@@ -173,7 +175,7 @@ int main(void)
     <tr><td>第 3 次</td><td>4096</td><td>8192</td><td>0</td></tr>
   </tbody></table>
   <p>宿主已经为这台 VM 预分配了 RAM 后备，Guest 中新进程的匿名页映射仍要按需建立：<code>32 MiB / 4 KiB = 8192</code>，第一遍逐页写入触发缺页，第二遍复用这些映射。这组结果把宿主的后备分配与 Guest 应用的缺页区分开；也说明 <code>mmap</code> 成功后，页面未必已经全部准备好。</p>
-  <p>表中读数来自独立的 KVM 客户机实验。自动测试在普通 Linux 用户态编译并运行同一程序。<a href="virtio-balloon.html#balloon-measured">balloon 实测</a>记录了回收后备页、重新访问内存时 QEMU 进程的 RSS。</p>
+  <p>表中读数来自独立的 KVM 客户机实验。自动测试在普通 Linux 用户态编译并运行同一程序。</p>
 </section>
 
 <section id="summary" class="mechanism-section">
@@ -181,17 +183,15 @@ int main(void)
   <p>客户机页表缺项由 Guest 内核处理，普通 RAM 的二级映射缺项由 KVM 处理，设备寄存器的值由相应设备提供。实验里的 <code>first_minor</code> 统计客户机进程的缺页。要分析宿主开销，可在同一读写时间窗口采集 EPT/NPT 缺页、VM-Exit 和硬件支持的 TLB 事件，并与应用的吞吐和延迟对照。</p>
 </section>
 <section id="sources" class="mechanism-section">
-  <h2>版本与参考资料</h2>
-<ul>
-    <li><a href="{{ linux }}Documentation/virt/kvm/x86/mmu.rst">Linux：MMU 目标、影子模式与两级映射</a></li>
-    <li><a href="{{ linux }}Documentation/virt/kvm/api.rst">Linux：内存槽与 dirty ring API</a></li>
-    <li><a href="{{ linux }}virt/kvm/kvm_main.c#L674-L797">KVM：宿主映射失效通知</a></li>
-    <li><a href="{{ qemu }}docs/devel/memory.rst">QEMU：内存和设备地址空间</a></li>
-  </ul>
-<p>演示中的源码链接分别定位 Guest 缺页入口、VMX 退出、KVM 后备页解析、EPT 建图和用户态 MMIO 完成边界。源码视图只展开当前场景涉及的路径。</p>
-  <ul class="mechanism-sources">
-    {% for source_id in ['address-model', 'guest-fault', 'vmx-exceptions', 'ept-exit', 'ept-map', 'faultin-io', 'backing-page', 'dirty-fault', 'kvm-mmio-read', 'lapic-mmio-read', 'ioeventfd-write', 'vfio-region-map', 'qemu-slot-map', 'ram-device-map', 'ivshmem-setup', 'ivshmem-spec', 'mmio-qemu', 'mmio-completion'] %}
-    <li><a href="{{ demo.sources[source_id].url }}" target="_blank" rel="noopener noreferrer">{{ demo.sources[source_id].label }}</a></li>
-    {% endfor %}
+  <h2>参考资料</h2>
+  <ul>
+    <li><a href="{{ linux }}Documentation/virt/kvm/x86/mmu.rst">Linux KVM x86 MMU：影子页表与两级地址转换</a></li>
+    <li><a href="{{ qemu }}docs/devel/memory.rst">QEMU 内存模型：RAM 和设备寄存器如何映射进地址空间</a></li>
+    <li><a href="{{ demo.sources['guest-fault'].url }}">Linux 客户机：do_user_addr_fault() 如何处理进程缺页</a></li>
+    <li><a href="{{ demo.sources['ept-exit'].url }}">Linux KVM/VMX：handle_ept_violation() 如何接收二级缺页</a></li>
+    <li><a href="{{ demo.sources['backing-page'].url }}">Linux KVM：从宿主虚拟地址找到后备物理页</a></li>
+    <li><a href="{{ demo.sources['ept-map'].url }}">Linux KVM：为缺页地址建立 TDP 映射</a></li>
+    <li><a href="{{ linux }}virt/kvm/kvm_main.c#L674-L797">Linux KVM：宿主页表变化时撤销旧映射</a></li>
+    <li><a href="{{ demo.sources['mmio-qemu'].url }}">QEMU：把 KVM_EXIT_MMIO 交给设备地址空间处理</a></li>
   </ul>
 </section>

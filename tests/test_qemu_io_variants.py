@@ -107,7 +107,7 @@ def test_scsi_layout_distinguishes_request_response_payload_and_reported_length(
     assert "4204" in request["usedLengthNote"] and "WRITE" not in request["usedLengthNote"]
     read = route["operations"]["read"]["request"]
     write = route["operations"]["write"]["request"]
-    assert "WRITE" in write["usedLengthNote"] and "实际可写" in write["usedLengthNote"]
+    assert "WRITE" in write["usedLengthNote"] and "可写的响应区为 108 B" in write["usedLengthNote"]
     assert read["command"] == "READ(10)" and write["command"] == "WRITE(10)"
     assert [item["len"] for item in read["descriptors"]] == [51, 108, 4096]
     assert [item["len"] for item in write["descriptors"]] == [51, 4096, 108]

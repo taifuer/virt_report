@@ -10,11 +10,17 @@
   <p>这条路径通常由同一个 vCPU 线程完成：线程运行客户机指令，EPT 退出后在宿主内核中解析内存槽、取得宿主页并安装映射，随后重新进入客户机。QEMU 负责事先登记 RAM 范围；普通 RAM 建图成功时，无需让用户态设备回调参与。</p>
   {% include '_mechanism_baselines.html' %}
   <p>可结合<a href="memory-virtualization.html">内存访问交互演示</a>逐步对照 RAM、Guest 缺页、EPT 缺项、宿主取页与 MMIO 的处理路径。</p>
+  <h3 id="history">从影子页表到并行 TDP MMU</h3>
+  <span id="evolution-part-1" class="mechanism-topic-alias" aria-hidden="true"></span>
+  <p>早期影子页表把客户机页表和宿主映射合成为 GVA → HPA 的页表供硬件使用。客户机修改页表、切换地址空间时，KVM 需要维护合成结果，涉及页表写跟踪、同步和反向映射。EPT 把 GPA → HPA 单独交给硬件，客户机可以直接维护自己的 GVA → GPA 页表，减少软件跟踪客户机页表变化的工作。</p>
+  <p>2008 年，<a href="https://github.com/torvalds/linux/commit/1439442c7b257b47a83aea4daed8fbf4a32cdff9">EPT 支持进入 KVM</a>，随 Linux 2.6.26 发布。第二级页表也带来额外的遍历成本：客户机页表访问本身仍需经过 EPT，缓存未命中时尤其明显。TLB、页表遍历缓存以及满足对齐和后备条件的大页可以减少开销；大页又会与细粒度写保护、脏页记录和回收发生权衡。</p>
+  <p>2020 年，Linux 5.10 纳入新的 TDP MMU，包含<a href="https://github.com/torvalds/linux/commit/bb18842e21111a979e2e0e1c5d85c09646f18d51">独立的缺页建图路径</a>，初期默认关闭。这是 KVM 管理 EPT / NPT 页表的软件实现演进：利用 GPA 索引的树结构简化管理，减少传统实现中维护反向映射等通用逻辑的负担。硬件 EPT 与这个软件实现不在同一时间引入。</p>
+  <p>2021 年，Linux 5.12 纳入<a href="https://github.com/torvalds/linux/commit/a2855afc7ee88475e8feb16840b23f787bfc994d">并行缺页处理</a>，让 TDP 缺页路径以读模式持有 MMU 锁。大量 vCPU 同时首次访问内存时，多个缺页处理可以并行建图，降低集中锁争用；对同一页表项的竞争仍需检测与重试。</p>
 </section>
 
 <section id="addresses" class="mechanism-section">
   <h2>客户机页表与 EPT 的两级转换</h2>
-  <p>客户机页表把客户机虚拟地址 GVA 转成客户机物理地址 GPA，EPT 再把 GPA 转成宿主物理地址 HPA。客户机页表页本身也放在客户机物理内存中，因此硬件读取这些页表项时，同样需要 EPT 转换。TLB 与页表遍历缓存减少了重复遍历，不能把这条路径理解为每次访问都由软件查询两张表。</p>
+  <p>客户机页表把客户机虚拟地址 GVA 转成客户机物理地址 GPA，EPT 再把 GPA 转成宿主物理地址 HPA。客户机页表页本身也放在客户机物理内存中，因此硬件读取这些页表项时，同样需要 EPT 转换。CPU 的 TLB 可以复用最终的转换结果；TLB 未命中时，硬件页表遍历仍可利用中间层缓存。</p>
   <p>QEMU 的宿主虚拟地址 HVA 用于定位 RAM 后备内存。KVM 根据 HVA 查询宿主内存管理，取得当前物理页，再建立 EPT。已建立映射后的客户机访存直接使用硬件转换；HVA 不出现在 EPT 页表项中，也不会作为客户机的第三层硬件地址转换。<a href="{{ linux_source }}Documentation/virt/kvm/x86/mmu.rst">KVM MMU 的地址空间说明</a></p>
   {{ diagram('ept-address-mapping', '客户机访存与 KVM 建图路径', '实线表示客户机的硬件地址转换；虚线表示 KVM 根据 memslot 和宿主映射找到后备页，再填写 EPT。HVA 用于软件建图，不属于客户机硬件遍历的地址层级。') }}
   <table><thead><tr><th scope="col">一次读取经过的阶段</th><th scope="col">处理组件</th><th scope="col">处理结果</th></tr></thead><tbody>
@@ -100,16 +106,16 @@ EPT 叶子映射             = GPA 页 0x00403000 → HPA 页 0x21000000
     <tr><td>GPA 未落入 RAM 槽</td><td>可能是设备地址，也可能是未映射空洞</td><td>走无槽及 MMIO 模拟路径，由内核设备或 QEMU 地址空间继续处理；不会自动分配一页 RAM</td></tr>
     <tr><td>宿主后备页无法取得</td><td>RAM 槽存在，但宿主内存解析出错</td><td>根据错误类型重试、处理信号或报错，不能一律转换成普通 MMIO</td></tr>
   </tbody></table>
-  <p>例如迁移开启写保护式脏页跟踪后，客户机对已存在 RAM 页的首次写入会触发 EPT 处理，KVM 记录页被修改，再允许后续写入。<code>KVM_MEM_READONLY</code> 则声明槽的只读属性：x86 对它的写请求可交给用户态 MMIO 处理，不应像脏页记录那样随意恢复可写。脏页记录也可以结合硬件辅助机制，不能把所有记录模式都归结为逐页写退出。<a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L1407-L1417">只读槽约定</a></p>
+  <p>例如迁移开启写保护式脏页跟踪后，客户机对已存在 RAM 页的首次写入会触发 EPT 处理，KVM 记录页被修改，再允许后续写入。<code>KVM_MEM_READONLY</code> 则声明槽的只读属性：x86 对它的写请求可交给用户态 MMIO 处理，不应像脏页记录那样随意恢复可写。使用硬件辅助的脏页跟踪时，KVM 可以利用硬件记录的写入信息。<a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L1407-L1417">只读槽约定</a></p>
   <p>无槽访问还可能缓存成特殊 MMIO SPTE，后续通过 EPT misconfiguration 等路径识别；决定是否返回 QEMU，要看这次 EPT 退出对应的是 RAM 建图还是需要用户态处理的访问。对应实现见 <a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L3507-L3544"><code>kvm_handle_noslot_fault()</code></a> 与 <a href="{{ linux_source }}arch/x86/kvm/vmx/vmx.c#L5779-L5798"><code>handle_ept_misconfig()</code></a>。用户态往返见<a href="kvm-vcpu-run.html#paths">vCPU 退出处理</a>，迁移脏页交接见<a href="kvm-dirty-ring.html">Dirty Ring</a>。</p>
 </section>
 
 <section id="invalidation" class="mechanism-section">
   <h2>后备页变化：撤销旧映射，防止旧 PFN 回填</h2>
-  <p>QEMU 的 HVA 可以保持不变，背后的宿主物理页却因回收、页迁移或映射变更而改变。如果 KVM 继续使用旧 SPTE，客户机就可能访问错误的物理页。清理 CPU 缓存的转换结果还不够：已有页表项必须失效，正在处理的缺页也不能把旧 PFN 重新填回去。</p>
+  <p>QEMU 的 HVA 可以保持不变，背后的宿主物理页却因回收、页迁移或映射变更而改变。如果 KVM 继续使用旧 SPTE，客户机就可能访问错误的物理页。KVM 需要使旧页表项和缓存的转换结果失效；并发处理缺页的线程在安装新 SPTE 前还要重新检查映射。</p>
   <p>宿主内存管理通过 MMU notifier 通知 KVM 某个 HVA 范围即将失效。KVM 找到相交 memslot，把范围转换成 GFN，记录失效进行中，撤销对应叶子映射，并完成所需的远端 TLB 失效。失效结束时推进 <code>mmu_invalidate_seq</code>。<a href="{{ linux_source }}virt/kvm/kvm_main.c#L674-L797">范围失效与序号更新</a></p>
   {{ diagram('ept-fault-invalidation', '缺页建图与宿主映射失效的竞争', '示例中，缺页线程取得旧 PFN 后遇到宿主页替换。安装前的锁内检查发现失效序号变化，放弃旧结果并重新取页，阻止旧 SPTE 被回填。') }}
-  <p>缺页线程先保存 <code>fault.mmu_seq</code>，再解析 PFN；锁外预检查尽早避开正在失效的范围，锁内 <code>is_page_fault_stale()</code> 最后检查根是否过期、目标 GFN 是否正在失效，以及序号是否变化。发现冲突就释放本次取页结果并重试。锁外检查只用于减少争用，不能替代最后的锁内判断。<a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L4636-L4785">检查顺序</a>、<a href="{{ linux_source }}include/linux/kvm_host.h#L2126-L2154">序号与范围判定</a></p>
+  <p>缺页线程先保存 <code>fault.mmu_seq</code>，再解析 PFN；锁外预检查尽早避开正在失效的范围，锁内 <code>is_page_fault_stale()</code> 最后检查根是否过期、目标 GFN 是否正在失效，以及序号是否变化。发现冲突就释放本次取页结果并重试。锁外检查减少争用，持锁复核决定是否安装映射。<a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L4636-L4785">检查顺序</a>、<a href="{{ linux_source }}include/linux/kvm_host.h#L2126-L2154">序号与范围判定</a></p>
   <p>memslot 本身的移动、删除也需要使旧映射失效；槽的生命周期通过专门的更新同步保护。由此，HVA → PFN 查询、EPT 页表修改与宿主内存生命周期形成同一套一致性约束，才能支持按需分配、回收与迁移。</p>
 </section>
 
@@ -146,15 +152,12 @@ return r;</code></pre>
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>演进与取舍：影子页表、EPT 与并行 TDP MMU</h2>
-  <h3>硬件分离第二级转换，减少客户机页表跟踪</h3>
-  <p>早期影子页表把客户机页表和宿主映射合成为 GVA → HPA 的页表供硬件使用。客户机修改页表、切换地址空间时，KVM 需要维护合成结果，涉及页表写跟踪、同步和反向映射。EPT 把 GPA → HPA 单独交给硬件，客户机可以直接维护自己的 GVA → GPA 页表，减少软件跟踪客户机页表变化的工作。</p>
-  <p>2008 年，<a href="https://github.com/torvalds/linux/commit/1439442c7b257b47a83aea4daed8fbf4a32cdff9">EPT 支持进入 KVM</a>，随 Linux 2.6.26 发布。第二级页表也带来额外的遍历成本：客户机页表访问本身仍需经过 EPT，缓存未命中时尤其明显。TLB、页表遍历缓存以及满足对齐和后备条件的大页可以减少开销；大页又会与细粒度写保护、脏页记录和回收发生权衡。</p>
-  <h3>并行建图降低多 vCPU 首次访问的锁争用</h3>
-  <p>2020 年，Linux 5.10 纳入新的 TDP MMU，包含<a href="https://github.com/torvalds/linux/commit/bb18842e21111a979e2e0e1c5d85c09646f18d51">独立的缺页建图路径</a>，初期默认关闭。这是 KVM 管理 EPT / NPT 页表的软件实现演进：利用 GPA 索引的树结构简化管理，减少传统实现中维护反向映射等通用逻辑的负担。硬件 EPT 与这个软件实现不在同一时间引入。</p>
-  <p>2021 年，Linux 5.12 纳入<a href="https://github.com/torvalds/linux/commit/a2855afc7ee88475e8feb16840b23f787bfc994d">并行缺页处理</a>，让 TDP 缺页路径以读模式持有 MMU 锁。大量 vCPU 同时首次访问内存时，多个缺页处理可以并行建图，降低集中锁争用；对同一页表项的竞争仍需检测与重试。</p>
+  <h2>并行建图与缺页开销的测量</h2>
+
+  <h3 id="evolution-part-2">并行建图降低多 vCPU 首次访问的锁争用</h3>
+
   <p>当前代码中，RCU 保护页表遍历期间的对象生命周期，原子更新处理多个线程对同一 SPTE 的竞争；失效等操作仍需要相应同步。并行化也增加了重试、延迟释放及根生命周期管理的复杂度。<a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1264-L1355">页表遍历与并发安装</a></p>
-  <h3>访存成本的分段测量</h3>
+  <h3 id="evolution-part-3">访存成本的分段测量</h3>
   <table><thead><tr><th scope="col">性能现象与发生阶段</th><th scope="col">排查方向</th><th scope="col">收益与代价</th></tr></thead><tbody>
     <tr><td>首次读取等待宿主页分配或调入</td><td>后备内存预分配、内存压力、NUMA 布局</td><td>预分配可减少运行中等待，同时提前消耗资源；它不保证 EPT 全部预建</td></tr>
     <tr><td>稳定运行仍有较多转换开销</td><td>TLB 覆盖、客户机和宿主后备的大页条件</td><td>大页减少表项及遍历，但降低写保护、回收等操作的粒度</td></tr>
@@ -173,10 +176,14 @@ return r;</code></pre>
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>
-    <li><a href="{{ qemu_source }}accel/kvm/kvm-all.c#L360-L392">QEMU 10.2.0：内存槽注册</a></li>
-    <li><a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L1355-L1427">Linux 6.18：KVM_SET_USER_MEMORY_REGION</a>、<a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L6312-L6358">REGION2 扩展接口</a></li>
-    <li><a href="{{ linux_source }}Documentation/virt/kvm/x86/mmu.rst">KVM x86 MMU 文档</a>、<a href="{{ linux_source }}Documentation/virt/kvm/locking.rst">KVM 锁与 MMU notifier</a></li>
-    <li><a href="{{ linux_source }}arch/x86/kvm/vmx/common.h#L83-L110">EPT 退出信息转换</a>、<a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L4882-L4925">TDP 缺页处理</a></li>
-    <li><a href="{{ linux_source }}virt/kvm/kvm_main.c#L2992-L3075">宿主地址与物理页解析</a>、<a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1264-L1355">TDP 页表安装</a></li>
+    <li><a href="{{ linux_source }}Documentation/virt/kvm/x86/mmu.rst">Linux KVM x86 MMU 文档：影子页表与两级地址转换</a></li>
+    <li><a href="{{ qemu_source }}accel/kvm/kvm-all.c#L360-L392">QEMU：向 KVM 注册客户机内存槽</a></li>
+    <li><a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L1355-L1427">Linux KVM API：KVM_SET_USER_MEMORY_REGION 内存槽接口</a></li>
+    <li><a href="{{ linux_source }}Documentation/virt/kvm/api.rst#L6312-L6358">Linux KVM API：KVM_SET_USER_MEMORY_REGION2 的扩展字段</a></li>
+    <li><a href="{{ linux_source }}arch/x86/kvm/vmx/common.h#L83-L110">Linux KVM/VMX：把 EPT 退出信息转换成缺页参数</a></li>
+    <li><a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L4882-L4925">Linux KVM：处理 TDP 缺页</a></li>
+    <li><a href="{{ linux_source }}virt/kvm/kvm_main.c#L2992-L3075">Linux KVM：解析宿主虚拟地址对应的后备页</a></li>
+    <li><a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1264-L1355">Linux KVM：把后备页安装进 TDP 页表</a></li>
+    <li><a href="{{ linux_source }}Documentation/virt/kvm/locking.rst">Linux KVM 锁文档：MMU notifier 与映射失效</a></li>
   </ul>
 </section>

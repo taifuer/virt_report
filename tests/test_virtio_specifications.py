@@ -1,43 +1,9 @@
-"""Balloon accounting and protocol versions have different completion semantics."""
+"""Virtio specification stages and coverage of the device reading catalogue."""
 from datetime import date
 
 from virt_report import mechanisms, versions
 from virt_report.config import Config, Storage
-from virt_report.execution_demos import get_demo
 from virt_report.render import render
-
-
-def final_values(scene):
-    values = {field["key"]: field["initial"] for group in scene["structures"] for field in group["fields"]}
-    for step in scene["steps"]:
-        values.update(step["changes"])
-    return values
-
-
-def test_balloon_targets_are_page_counts_not_qmp_bytes_or_rss():
-    scenes = {scene["id"]: scene for scene in get_demo("virtio-balloon")["scenarios"]}
-    inflated = final_values(scenes["inflate"])
-    assert inflated["configured"] == "8 GiB"
-    assert inflated["numPages"] == inflated["actual"] == "524288"
-    assert int(inflated["actual"]) * 4096 == 2 * 1024**3
-    blocked = final_values(scenes["inhibited"])
-    assert blocked["actual"] == inflated["actual"]
-    assert "未释放" in blocked["discard"]
-    assert "需实测" in blocked["hostRss"]
-    for name in ("deflate", "report"):
-        values = final_values(scenes[name])
-        assert values["held"] == values["actual"] == values["numPages"] == "0"
-    assert "WRITE" in final_values(scenes["report"])["pages"]
-    assert "PFN[256]" in inflated["pages"]
-
-
-def test_balloon_releases_pages_only_after_queue_completion():
-    for scene in get_demo("virtio-balloon")["scenarios"]:
-        ids = [step["id"] for step in scene["steps"]]
-        assert ids.index("publish") < ids.index("complete")
-        if scene["id"] in {"deflate", "report"}:
-            release = next(i for i, step in enumerate(scene["steps"]) if "release" in step["links"])
-            assert release > ids.index("complete")
 
 
 def test_specification_stage_comes_from_cover_and_keeps_drafts_distinct():

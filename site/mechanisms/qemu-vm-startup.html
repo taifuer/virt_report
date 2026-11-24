@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=5eb1bb7dc04a">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=5eb1bb7dc04a">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=1b35da490c57">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1b35da490c57">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -35,7 +35,7 @@
         <a href="../topics.html" class="">专题</a>
         <a href="../conferences.html" class="">会议</a>
         <a href="../versions.html" class="">版本</a>
-        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../industry/index.html" class="">产业</a>
         <a href="../about.html" class="">关于</a>
         <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -50,13 +50,15 @@
   <div class="mechanism-layout">
     <nav class="mechanism-toc" aria-label="文章目录">
       <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
-      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a></li><li><a href="#example">二、包含系统盘与网卡的启动示例</a></li><li><a href="#phases">三、创建机器、KVM 虚拟机与板级设备</a></li><li><a href="#devices">四、内存、磁盘、网卡与中断的整机连接</a><ol><li><a href="#devices-part-1">1. 中断初始化先建立容器，路由随配置完善</a></li><li><a href="#devices-part-2">2. 两次驱动接管</a></li></ol></li><li><a href="#vcpu">五、vCPU 线程与内核接口的建立</a></li><li><a href="#firmware">六、固件文件与 Guest 物理地址映射</a></li><li><a href="#first-run">七、复位、继续执行与固件入口</a><ol><li><a href="#first-run-part-1">复位寄存器与第一条机器指令</a></li></ol></li><li><a href="#guest-boot">八、同一个 vCPU：固件 → 内核 → 用户态</a></li><li><a href="#objects">九、机器、执行后端与处理器对象</a></li><li><a href="#evolution">十、受控启动的演进与耗时分析</a></li><li><a href="#implementation">十一、源码：初始化与首次执行入口</a></li><li><a href="#summary">十二、总结</a></li><li><a href="#sources">十三、参考资料</a></li></ol>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a><ol><li><a href="#history">从自动引导到受控启动</a></li></ol></li><li><a href="#example">二、包含系统盘与网卡的启动示例</a></li><li><a href="#phases">三、创建机器、KVM 虚拟机与板级设备</a></li><li><a href="#devices">四、内存、磁盘、网卡与中断的整机连接</a><ol><li><a href="#devices-part-1">1. 中断初始化先建立容器，路由随配置完善</a></li><li><a href="#devices-part-2">2. 两次驱动接管</a></li></ol></li><li><a href="#vcpu">五、vCPU 线程与内核接口的建立</a></li><li><a href="#firmware">六、固件文件与 Guest 物理地址映射</a></li><li><a href="#first-run">七、复位、继续执行与固件入口</a><ol><li><a href="#first-run-part-1">复位寄存器与第一条机器指令</a></li></ol></li><li><a href="#guest-boot">八、同一个 vCPU：固件 → 内核 → 用户态</a></li><li><a href="#objects">九、机器、执行后端与处理器对象</a></li><li><a href="#evolution">十、启动控制点与分段计时</a></li><li><a href="#implementation">十一、源码：初始化与首次执行入口</a></li><li><a href="#summary">十二、总结</a></li><li><a href="#sources">十三、参考资料</a></li></ol>
     </nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
   <h2><span class="mechanism-heading-number">一、</span>序言</h2>
   <p>QEMU 根据启动参数创建一台完整的虚拟计算机：CPU 与内存提供执行环境，磁盘提供系统镜像，网卡连接外部网络，芯片组、总线、中断控制器和固件把这些部件组织起来。硬件模型完成创建与复位后，客户机 CPU 开始执行固件，再由固件装载操作系统。</p>
   <p>以 x86 的 <code>pc-q35-10.2</code>、KVM 加速、SeaBIOS、BIOS 可引导的 Linux 系统盘与 virtio 设备为例，冷启动依次经过“QEMU 建立机器 → 映射固件 → 设置复位状态 → VM-entry → 固件 → 引导程序 → Guest 内核 → Guest 用户态”。</p>
+  <h3 id="history">从自动引导到受控启动</h3>
+  <p>QEMU 通常在建好机器后直接运行客户机。管理程序需要在固件执行前检查虚拟硬件，<code>-S</code> 提供了这个暂停点。2018 年引入的 preconfig 模式又把配置窗口提前到板级设备创建之前，允许管理程序通过 QMP 补充 NUMA 等设置。这两个控制点对应不同的建机进度。</p>
 <p class="mechanism-baselines">源码版本：QEMU 10.2.0、SeaBIOS QEMU 10.2.0 随附固件、Linux 6.18。</p></section>
 
 <section id="example" class="mechanism-section">
@@ -77,7 +79,7 @@
   <p><code>-machine</code> 选择芯片组、总线和兼容属性；<code>-cpu</code> 决定客户机可见的处理器能力；<code>-smp</code> 描述启动 CPU 数量与拓扑。<code>-m</code> 配置的是客户机 RAM 容量，既不表示所有宿主物理页已分配，也不表示 EPT 已全部建好。<code>-nodefaults</code> 省去默认外设，不会取消 Q35 的核心芯片组和 CPU。</p>
   <p><code>-bios bios-256k.bin</code> 显式选择 SeaBIOS 固件文件；这是本版 Q35 的默认固件名，省略该选项也会选它。文件由 QEMU 从固件搜索路径读取，也可传入绝对路径；<code>-L</code> 可指定固件目录。下文的大小和首条指令以 QEMU 10.2.0 仓库随附的文件为准，发行版替换过的同名固件不保证字节相同。<code>bootindex=1</code> 选择之后从哪块设备引导，不设置 CPU 的复位入口。</p>
   <p>磁盘参数把文件后端 <code>os-file</code>、qcow2 格式节点 <code>os-disk</code> 和客户机可见的 <code>virtio-blk-pci</code> 分开声明。网卡参数把用户态网络后端 <code>net0</code> 与 <code>virtio-net-pci</code> 相连；该后端要求 QEMU 构建包含相应支持，无需手动建立 TAP 或宿主桥。Libvirt 的桥接网络通常使用 TAP 后端，客户机端仍可使用相同的 virtio 网卡。</p>
-  <p><code>-display none</code> 关闭图形显示，<code>-serial stdio</code> 将串口连接到当前终端；要看到客户机日志，还需客户机配置串口控制台。显示输出与启动状态彼此独立，终端没有内容不等于客户机没有运行。</p>
+  <p><code>-display none</code> 关闭图形显示，<code>-serial stdio</code> 将串口连接到当前终端；要看到客户机日志，还需客户机配置串口控制台。可通过 QMP 的 <code>query-status</code> 单独查看虚机运行状态。</p>
   <p>连接 QMP 后，先完成能力协商，再查询或继续执行：</p>
   <pre><code>{"execute":"qmp_capabilities"}
 {"execute":"query-status"}
@@ -97,9 +99,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看从后端创建到系统盘引导的初始化顺序" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="从后端创建到系统盘引导的初始化顺序">
-    <img src="../assets/qemu-startup-phases.svg?v=5eb1bb7dc04a" width="1002" height="914" alt="块后端在早期后端阶段创建，KVM 随后初始化，网络后端在晚期后端阶段创建。板级初始化建立 CPU、内存和总线，命令行设备再连接磁盘与网络后端；复位和 cont 后客户机开始固件与系统引导。" loading="lazy">
+    <img src="../assets/qemu-startup-phases.svg?v=1b35da490c57" width="1002" height="914" alt="块后端在早期后端阶段创建，KVM 随后初始化，网络后端在晚期后端阶段创建。板级初始化建立 CPU、内存和总线，命令行设备再连接磁盘与网络后端；复位和 cont 后客户机开始固件与系统引导。" loading="lazy">
   </div>
-  <figcaption>块后端在早期后端阶段创建，KVM 随后初始化，网络后端在晚期后端阶段创建。板级初始化建立 CPU、内存和总线，命令行设备再连接磁盘与网络后端；复位和 cont 后客户机开始固件与系统引导。 <a href="../assets/qemu-startup-phases.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>块后端在早期后端阶段创建，KVM 随后初始化，网络后端在晚期后端阶段创建。板级初始化建立 CPU、内存和总线，命令行设备再连接磁盘与网络后端；复位和 cont 后客户机开始固件与系统引导。 <a href="../assets/qemu-startup-phases.svg?v=1b35da490c57" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart LR
   accTitle: 从后端创建到系统盘引导的初始化顺序
   accDescr: QEMU 先创建 MachineState，在早期后端阶段打开文件与 qcow2 块图，再配置 KVM，晚期后端阶段建立 user 或 TAP 网络后端。Q35 板级初始化创建暂停的 CPU 线程、RAM、固件与总线；命令行 virtio-blk 和 virtio-net 设备连接已有后端。整机复位后由 cont 启动客户机，固件从系统盘引导操作系统，再初始化磁盘和网络驱动。
@@ -141,7 +143,7 @@
   <p><code>kvm_init()</code> 打开 /dev/kvm，检查 API 版本与能力，调用 KVM_CREATE_VM 获取 vmfd，初始化架构相关功能与中断控制器，并注册内存监听器。此时已经有 KVM 虚拟机容器，客户机 RAM 和板级设备尚未全部挂入地址空间。</p>
   <p>后端初始化分成早、晚两组。<code>qemu_create_early_backends()</code> 中的 <code>configure_blockdev()</code> 建立本例的文件与 qcow2 节点；KVM 配置完成后，<code>qemu_create_late_backends()</code> 中的 <code>net_init_clients()</code> 创建 <code>net0</code>。块后端需要尽早可用，供机器属性引用；网络后端则在后续阶段建立。两者都先于依赖它们的 virtio 设备前端。早期与晚期后端</p>
   <p>随后解析 CPU 型号与 NUMA 配置，<code>machine_run_board_init()</code> 准备 RAM 后端并调用机器类的 init。对于本例，<code>pc_q35_init()</code> 先计算低端和高端 RAM 容量，再调用 <code>x86_cpus_init()</code> 创建 CPU，然后通过 <code>pc_memory_init()</code> 布置内存、加载固件，继续创建 PCIe 根总线、ICH9、中断控制器等板级设备。</p>
-  <p>在示例的默认 Q35 布局中，4 GiB RAM 的后端被切成两个别名：前 2 GiB 映射在 4 GiB 以下，后 2 GiB 从 4 GiB 以上开始映射，为 PCI 等区域留出地址空间。低端地址中还会叠加固件和传统设备窗口，所以客户机物理地址空间不能简单理解为从 0 连续铺满 4 GiB。后备创建、RAMBlock、别名挂接与 KVM 注册的完整过程见<a href="qemu-memory-region.html">QEMU 内存初始化与地址空间管理</a>，其中使用 8 GiB RAM 展开地址换算。</p>
+  <p>在示例的默认 Q35 布局中，4 GiB RAM 的后端被切成两个别名：前 2 GiB 映射在 4 GiB 以下，后 2 GiB 从 4 GiB 以上开始映射，为 PCI 等区域留出地址空间。低端地址中还会叠加固件和传统设备窗口。后备创建、RAMBlock、别名挂接与 KVM 注册的完整过程见<a href="qemu-memory-region.html">QEMU 内存初始化与地址空间管理</a>，其中使用 8 GiB RAM 展开地址换算。</p>
   <p>内存区域加入 AddressSpace 后，KVM 的监听回调把合适的 RAM 区域转成内存槽，登记 GPA 范围与 QEMU 用户态地址。这个步骤提供地址转换的基础，EPT 的实际叶子映射通常在客户机访问时逐步建立；详见<a href="kvm-ept-fault.html">KVM 内存映射与 EPT 缺页处理</a>。</p>
   <p>板级初始化返回后，<code>qemu_create_cli_devices()</code> 才处理命令行中的 <code>-device</code>。virtio-blk 连接 <code>os-disk</code>，virtio-net 连接 <code>net0</code>，它们作为 PCI 设备接入已存在的总线；realize 过程建立设备状态、配置空间和中断资源。客户机后续通过 PCI 枚举发现它们，再由驱动协商 virtio 特性、建立 virtqueue。QEMU 创建完成与客户机驱动初始化属于两个阶段。板级与命令行设备创建</p>
   <p>按上述顺序，vCPU 线程在板级初始化中较早建立，内存布局与其他设备随后才完成。线程保持 stopped，仍可响应寄存器同步等内部工作。QEMU 用运行状态、线程条件变量和 BQL 协调初始化，使客户机在整机准备完成后才开始执行。下面展开 <code>x86_cpus_init()</code> 中的线程创建握手，再回到整机复位与放行执行的节点。</p>
@@ -172,9 +174,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看vCPU 创建握手与首次执行" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="vCPU 创建握手与首次执行">
-    <img src="../assets/qemu-startup-vcpu.svg?v=5eb1bb7dc04a" width="954" height="1612" alt="KVM vCPU 和共享区由新线程建立；主线程等待 created 通知，再继续机器初始化。cont 之后，BSP 从复位向量开始，其他处理器等待启动事件。" loading="lazy">
+    <img src="../assets/qemu-startup-vcpu.svg?v=1b35da490c57" width="954" height="1612" alt="KVM vCPU 和共享区由新线程建立；主线程等待 created 通知，再继续机器初始化。cont 之后，BSP 从复位向量开始，其他处理器等待启动事件。" loading="lazy">
   </div>
-  <figcaption>KVM vCPU 和共享区由新线程建立；主线程等待 created 通知，再继续机器初始化。cont 之后，BSP 从复位向量开始，其他处理器等待启动事件。 <a href="../assets/qemu-startup-vcpu.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>KVM vCPU 和共享区由新线程建立；主线程等待 created 通知，再继续机器初始化。cont 之后，BSP 从复位向量开始，其他处理器等待启动事件。 <a href="../assets/qemu-startup-vcpu.svg?v=1b35da490c57" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
   accTitle: vCPU 创建握手与首次执行
   accDescr: 主线程创建 CPU 对象并等待 vCPU 线程建立内核接口。机器初始化映射 BIOS ROM，复位状态经 KVM_SET_REGS 与 KVM_SET_SREGS 同步；cont 后 vCPU 宿主线程进入 KVM_RUN，物理 CPU 经 VM-entry 执行 Guest。BSP 在 0xfffffff0 取出固件远跳转，AP 等待 INIT 和 SIPI。
@@ -261,7 +263,7 @@ ROM 文件偏移           = 0xfffffff0 - 0xfffc0000 = 0x3fff0
     <tr><td>执行 cont</td><td>QEMU 解除 stopped，允许进入 KVM_RUN</td><td>QEMU 同样解除 stopped，但 AP 尚不能直接执行 BSP 的固件路径</td></tr>
     <tr><td>客户机开始执行</td><td>从复位向量取指</td><td>等待客户机的 INIT / SIPI 启动序列，随后从指定入口执行</td></tr>
   </tbody></table>
-  <p><code>qmp_cont()</code> 完成状态检查后调用 vm_start，后者更新运行状态、通知后端、恢复虚拟时钟并唤醒 vCPU。KVM_RUN 最终让 BSP 进入客户机。AP 的宿主线程也可以进入内核等待启动事件，因此看到两个线程或两次 ioctl 入口，不等于两个客户机 CPU 都在执行固件指令。</p>
+  <p><code>qmp_cont()</code> 完成状态检查后调用 vm_start，后者更新运行状态、通知后端、恢复虚拟时钟并唤醒 vCPU。KVM_RUN 最终让 BSP 进入客户机。AP 的宿主线程也可以进入内核等待启动事件，此时执行固件指令的是 BSP，AP 等待启动信号。</p>
   <p>不指定 -S 时，普通冷启动会在初始化结束路径中自动调用 cont。后续 VM-exit 可以由 KVM 在内核中处理并再次进入 Guest；需要用户态设备模拟时，KVM_RUN 才以相应退出原因返回 QEMU。一次 KVM_RUN 可以跨过很多 Guest 指令，也可以跨越固件、内核和用户态的执行阶段。详见<a href="kvm-vcpu-run.html">KVM vCPU 执行与 I/O 退出</a>。</p>
 </section>
 
@@ -276,8 +278,8 @@ ROM 文件偏移           = 0xfffffff0 - 0xfffc0000 = 0x3fff0
     <tr><td>Guest 内核初始化</td><td>Guest 内核页表映射的代码与数据</td><td>初始化调度、内存和驱动；<code>rest_init()</code> 创建 PID 1 任务，由该任务执行 <code>kernel_init()</code>，准备根文件系统并执行首个用户程序。</td></tr>
     <tr><td>Guest 用户态</td><td>initramfs 或根文件系统中的可执行文件，被装入进程地址空间</td><td>通常先执行 initramfs 的 <code>/init</code>，再切换根文件系统并 exec 真正的 init；无该早期程序时，内核按配置尝试 <code>/sbin/init</code> 等。之后启动系统服务和普通应用。</td></tr>
   </tbody></table>
-  <p>64 位 Linux 的入口取决于引导程序选择的启动协议。常见 32 位入口先到压缩映像的 <code>startup_32</code>，建立长模式条件后进入 <code>startup_64</code>；支持的 64 位入口可跳过前者。解压后的内核还有自己的 <code>startup_64</code>，再进入架构初始化与 <code>start_kernel()</code>。这些同名入口属于不同文件，不能把磁盘文件偏移、Guest 物理装载地址与最终内核虚拟地址当成同一个地址。Linux/x86 启动协议</p>
-  <p><code>kernel_init</code> 起初仍在 Guest 内核态运行。<code>run_init_process() → kernel_execve()</code> 装载用户可执行文件，设置用户栈、指令指针与用户段状态，返回用户态时 CPU 开始执行其入口；若需要动态链接器，会先进入解释器，而非直接进入应用的 <code>main()</code>。Guest CPL 从 0 到 3，但 VMX 仍是 non-root：内核态 / 用户态切换不天然引起 VM-exit，也不等于回到 QEMU。PID 1 创建；首个用户程序执行</p>
+  <p>64 位 Linux 的入口取决于引导程序选择的启动协议。常见 32 位入口先到压缩映像的 <code>startup_32</code>，建立长模式条件后进入 <code>startup_64</code>；支持的 64 位入口可跳过前者。解压后的内核还有自己的 <code>startup_64</code>，再进入架构初始化与 <code>start_kernel()</code>。这些同名入口属于不同文件。定位一条启动指令时，磁盘映像用文件偏移，加载器用物理装载地址，内核完成映射后用虚拟地址。Linux/x86 启动协议</p>
+  <p><code>kernel_init</code> 起初仍在 Guest 内核态运行。<code>run_init_process() → kernel_execve()</code> 装载用户可执行文件，设置用户栈、指令指针与用户段状态，返回用户态时 CPU 开始执行其入口；若需要动态链接器，会先进入解释器，而非直接进入应用的 <code>main()</code>。Guest CPL 从 0 到 3，但 VMX 仍是 non-root：这次权限切换在客户机内完成。PID 1 创建；首个用户程序执行</p>
   <p>操作系统接管后，加载自己的 virtio-blk 与 virtio-net 驱动，协商设备特性并配置队列。系统盘用于读取根文件系统；网卡完成接口与地址配置后才开始提供网络通信。QEMU 已创建网卡、客户机已识别网卡、客户机已取得 IP 和业务已可访问，是四个不同的检查点。常见启动故障也据此分层：镜像打不开会阻止 QEMU 初始化，固件找不到引导程序会停在引导阶段，缺少磁盘驱动可能使内核无法挂载根文件系统，网络配置失败则通常不会阻止 CPU 与操作系统运行。</p>
   <details>
     <summary>其他启动方式：哪些边界会变化</summary>
@@ -305,9 +307,8 @@ ROM 文件偏移           = 0xfffffff0 - 0xfffc0000 = 0x3fff0
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">十、</span>受控启动的演进与耗时分析</h2>
-  <p>自动启动适合直接运行虚拟机，管理程序则需要在客户机运行前检查拓扑、设置资源策略或等待迁移。<code>-S</code> 提供了“机器已经完成初始化、客户机尚未执行”的控制点。此时内存和 CPU 拓扑已经建立，运行期间的变更需通过相应设备的管理接口。</p>
-  <p>2018 年引入的 preconfig 模式 把控制点前移到板级初始化之前，让管理程序可以先查询允许的配置，再通过 QMP 设置 NUMA 等信息。在本文版本中，它仍是实验接口，只有标记允许的命令可用；<code>x-exit-preconfig</code> 才会继续创建板级设备。它也已经完成一部分前置初始化，不能理解为 QEMU 尚未创建任何对象。</p>
+  <h2><span class="mechanism-heading-number">十、</span>启动控制点与分段计时</h2>
+  <p>QEMU 10.2 的 preconfig 是实验接口，管理程序可以使用标记允许的 QMP 命令；<code>x-exit-preconfig</code> 放行板级初始化。进入 prelaunch 后，CPU 与内存拓扑已经确定，在线变更使用对应设备的管理接口。</p>
   <table><thead><tr><th scope="col">控制点</th><th scope="col">解决的问题</th><th scope="col">约束</th></tr></thead><tbody>
     <tr><td>preconfig</td><td>在板级创建前补充允许的机器配置</td><td>QMP 命令集合受限，退出后不能回到此前的配置阶段</td></tr>
     <tr><td>-S / prelaunch</td><td>机器创建完成后检查状态，再决定何时执行</td><td>已确定的启动拓扑不再通过普通配置命令重建</td></tr>
@@ -343,24 +344,25 @@ ROM 文件偏移           = 0xfffffff0 - 0xfffc0000 = 0x3fff0
 <section id="sources" class="mechanism-section">
   <h2><span class="mechanism-heading-number">十三、</span>参考资料</h2>
   <ul>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/pc_q35.c">Q35：内存、芯片组与板级中断连接</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-pci.c">virtio PCI 与 MSI-X 初始化</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/system/managed-startup.rst">QEMU 10.2.0：受控启动与 preconfig</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/x86-common.c#L57-L121">x86 CPU 对象创建与 APIC ID 分配</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/target/i386/kvm/kvm.c#L2420-L2431">KVM 的 BSP / AP 复位状态</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/hw/boards.h#L397-L448">MachineState</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/system/kvm_int.h#L104-L150">KVMState</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/hw/core/cpu.h#L479-L550">CPUState</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/pc.c#L883-L903">Q35 所用的 RAM 别名映射</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/pc_q35.c#L343-L350">Q35 机器版本与默认别名注册</a></li>
-    <li><a href="https://github.com/coreboot/seabios/blob/b52ca86e094d19b58e2304417787e96b940e39c6/src/romlayout.S#L687-L690">SeaBIOS：复位向量的远跳转</a>、<a href="https://github.com/coreboot/seabios/blob/b52ca86e094d19b58e2304417787e96b940e39c6/src/boot.c">固件启动设备选择与引导交接</a></li>
-    <li><a href="https://docs.kernel.org/arch/x86/boot.html">Linux/x86 启动协议</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/init/main.c#L1474-L1546">Linux 6.18：kernel_init 与用户态 init</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/system/managed-startup.rst">QEMU 启动选项：暂停启动与 preconfig 配置</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/pc_q35.c">QEMU Q35：连接内存、芯片组与板级中断</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/x86-common.c#L57-L121">QEMU x86：创建处理器对象并分配 APIC ID</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/target/i386/kvm/kvm.c#L2420-L2431">QEMU/KVM：引导处理器和辅助处理器的复位状态</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/pc.c#L883-L903">QEMU x86：低端和高端 RAM 的别名映射</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-pci.c">QEMU virtio PCI：初始化网卡或磁盘的 PCI 接口与 MSI-X</a></li>
+    <li><a href="https://github.com/coreboot/seabios/blob/b52ca86e094d19b58e2304417787e96b940e39c6/src/romlayout.S#L687-L690">SeaBIOS：从 x86 复位向量跳入固件</a></li>
+    <li><a href="https://github.com/coreboot/seabios/blob/b52ca86e094d19b58e2304417787e96b940e39c6/src/boot.c">SeaBIOS：选择引导设备并交出控制权</a></li>
+    <li><a href="https://docs.kernel.org/arch/x86/boot.html">Linux x86 启动协议：固件与引导器向内核传递的信息</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/init/main.c#L1474-L1546">Linux：从 kernel_init() 启动第一个用户态程序</a></li>
   </ul>
 </section></div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#vm-startup">虚拟机启动</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-11-12">2026-11-12</time> · 针对文中标注的源码与规范基线。</p></article>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-24">2026-11-24</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=5eb1bb7dc04a" defer></script>
+<script src="../assets/mechanism-viewer.js?v=1b35da490c57" defer></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-/* Shared event views, state inspection and balloon accounting in a real browser. */
+/* Shared event views and state inspection in a real browser. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -7,7 +7,7 @@ const base = (process.argv[2] || 'http://127.0.0.1:8093').replace(/\/$/, '');
 assert(['127.0.0.1', 'localhost'].includes(new URL(base).hostname));
 const shots = '/tmp/virt-report-event-review'; fs.mkdirSync(shots, {recursive:true});
 const pages = ['network-io','virtio-blk-read','cpu-execution','memory-access',
-  'interrupt-delivery','gpu-execution','virtio-gpu-execution','libvirt-domain-start','virtio-balloon'];
+  'interrupt-delivery','gpu-execution','virtio-gpu-execution','libvirt-domain-start'];
 (async () => {
   const browser = await chromium.launch({headless:true,args:['--no-sandbox']});
   try {
@@ -41,22 +41,11 @@ const pages = ['network-io','virtio-blk-read','cpu-execution','memory-access',
         const clipped = await lab.locator('.walkthrough-tabs button').evaluateAll(nodes =>
           nodes.filter(n => n.scrollWidth > n.clientWidth + 1).map(n=>n.textContent));
         assert.deepEqual(clipped, [], `${slug} clipped view buttons at ${width}`);
-        if (slug === 'network-io' || slug === 'virtio-balloon') {
+        if (slug === 'network-io') {
           await lab.locator('[data-walkthrough-expand]').click();
           await page.locator(`[data-${prefix}-view="sequence"]`).click();
           await page.screenshot({path:`${shots}/${slug}-${width}.png`});
           await page.keyboard.press('Escape');
-        }
-        if (slug === 'virtio-balloon') {
-          for (const mode of ['inflate','deflate','report','inhibited']) {
-            await lab.locator('[data-execution-scenario]').selectOption(mode);
-            await lab.locator('[data-execution-view="sequence"]').click();
-            await lab.locator('[data-event-id]').last().click();
-            const values = await lab.evaluate(node => node.executionSnapshot.frame.values);
-            assert.equal(values.actual, ['deflate','report'].includes(mode) ? '0' : '524288');
-            assert.equal(values.configured, '8 GiB');
-            assert(values.hostRss.includes('需实测'));
-          }
         }
         console.log(`PASS event view ${slug} ${width}px`);
       }

@@ -3,6 +3,10 @@
 <section id="preface" class="mechanism-section">
   <h2>序言</h2>
   <p>QEMU 建立客户机可见的整台机器：内存放在哪些地址，固件从哪里启动，磁盘和网卡呈现什么接口。以一次 4 KiB 磁盘读取为例，KVM 运行客户机驱动，驱动向 virtio-blk 的 split virtqueue 发布请求；QEMU 的 IOThread 处理队列，把读取交给宿主存储。机器模型、执行引擎和 I/O 后端各有具体工作。</p>
+  <h3 id="evolution">从整机模拟到硬件辅助与独立 I/O 后端</h3>
+  <p>QEMU 的软件翻译与设备模型让一套程序可以模拟完整机器。接入 KVM 后，兼容架构的大量指令由硬件执行，设备请求却仍可能集中于主循环。CPU 变快之后，高频 I/O 的锁等待和串行处理更容易成为瓶颈。</p>
+  <p>virtio 以共享队列减少传统寄存器模拟；IOThread 把工作从主循环分开，多队列映射进一步让一个设备使用多个执行线程。vhost、vhost-user 又把部分队列处理移入内核或外部进程，QEMU 继续组织设备配置和控制。TCG 仍服务于跨架构及模拟需求，这些路线在不同环境中并存。</p>
+  <p>每次拆分都需要新的交接规则：线程间处理同步，外部后端处理连接与共享内存生命周期，设备状态还要支持暂停、迁移和恢复。低负载或存储已饱和时，更多线程可能只增加调度与缓存竞争；必须结合实际请求深度和后端能力判断。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -51,25 +55,21 @@
   <p>移除整块设备还涉及客户机驱动停止使用它。对需要客户机配合的 PCIe 设备，<code>device_del</code> 的成功响应表示请求被受理，<code>DEVICE_DELETED</code> 才标志相应移除完成。随后才能清理已无引用的后端；设备 ID、对象引用与异步请求都要按生命周期管理，不能用“命令返回了”代替完成条件。</p>
 </section>
 
-<section id="evolution" class="mechanism-section">
-  <h2>从集中模拟到多线程与独立后端</h2>
-  <p>QEMU 的软件翻译与设备模型让一套程序可以模拟完整机器。接入 KVM 后，兼容架构的大量指令由硬件执行，设备请求却仍可能集中于主循环。CPU 变快之后，高频 I/O 的锁等待和串行处理更容易成为瓶颈。</p>
-  <p>virtio 以共享队列减少传统寄存器模拟；IOThread 把工作从主循环分开，多队列映射进一步让一个设备使用多个执行线程。vhost、vhost-user 又把部分队列处理移入内核或外部进程，QEMU 继续组织设备配置和控制。TCG 仍服务于跨架构及模拟需求，这些路线在不同环境中并存。</p>
-  <p>每次拆分都需要新的交接规则：线程间处理同步，外部后端处理连接与共享内存生命周期，设备状态还要支持暂停、迁移和恢复。低负载或存储已饱和时，更多线程可能只增加调度与缓存竞争；必须结合实际请求深度和后端能力判断。</p>
-</section>
-
 <section id="evaluation" class="mechanism-section">
   <h2>总结</h2>
   <p>排查读取变慢，依次检查 available 是否推进、处理线程何时消费、块后端耗时、used 何时发布，以及客户机何时获得运行机会。对比方案时保持镜像格式、缓存与持久化要求一致，同时记录吞吐、尾延迟、CPU 占用和锁等待。</p>
 </section>
 
-
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>
-    <li><a href="{{ qemu }}docs/system/introduction.rst">QEMU：系统模拟与执行加速器</a>、<a href="{{ qemu }}docs/devel/qom.rst">QOM 设计</a>。</li>
-    <li><a href="{{ qemu }}hw/block/virtio-blk.c#L787-L868">virtio-blk 请求解析</a>、<a href="{{ qemu }}hw/block/virtio-blk.c#L54-L66">完成与通知</a>。</li>
-    <li><a href="{{ qemu }}block/block-backend.c#L1563-L1634">异步读取、协程与延后回调</a>、<a href="{{ qemu }}docs/devel/multiple-iothreads.rst">IOThread 执行和 drain 同步</a>。</li>
-    <li><a href="{{ qemu }}qapi/qdev.json#L86-L144">设备移除请求与完成事件</a>、<a href="{{ qemu }}docs/devel/memory.rst">内存和设备地址空间</a>。</li>
+    <li><a href="{{ qemu }}docs/system/introduction.rst">QEMU 手册：系统模拟与执行加速器</a></li>
+    <li><a href="{{ qemu }}docs/devel/qom.rst">QEMU 对象模型（QOM）：类型、实例与属性</a></li>
+    <li><a href="{{ qemu }}docs/devel/memory.rst">QEMU 内存模型：设备寄存器、RAM 与地址空间</a></li>
+    <li><a href="{{ qemu }}hw/block/virtio-blk.c#L787-L868">QEMU virtio-blk：解析客户机块请求</a></li>
+    <li><a href="{{ qemu }}hw/block/virtio-blk.c#L54-L66">QEMU virtio-blk：发布完成项并通知客户机</a></li>
+    <li><a href="{{ qemu }}block/block-backend.c#L1563-L1634">QEMU 块后端：异步读取、协程与延后回调</a></li>
+    <li><a href="{{ qemu }}docs/devel/multiple-iothreads.rst">QEMU IOThread：事件循环与排空在途请求</a></li>
+    <li><a href="{{ qemu }}qapi/qdev.json#L86-L144">QEMU QMP：设备移除请求与完成事件</a></li>
   </ul>
 </section>

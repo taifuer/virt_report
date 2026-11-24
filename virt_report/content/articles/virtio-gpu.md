@@ -288,7 +288,7 @@ FLUSH 的 fence 标记该命令处理完成；远程交付与物理屏幕扫描�
 
 诊断卡顿时，可以沿着“Guest 等待提交 → QEMU/renderer 处理 → 宿主驱动排队 → GPU 执行 → 完成回传 → 显示消费”定位等待发生的位置。硬件视频单元降低 codec 计算负担，资源复制、颜色转换和同步等待仍可能占据主要时间。比较不同方案时应同时观察 CPU 占用、复制量、帧延迟和并发负载。
 
-## 技术演进与方案取舍 {#evolution}
+## 渲染后端与视频能力的选择 {#evolution}
 
 从二维像素传输到三维加速，优化目标逐渐扩展到渲染卸载、资源共享和进程隔离。下面把这些方向放在一起比较，便于按应用需求选择；这些机制可以按渲染、视频和显示需求组合使用。
 
@@ -316,7 +316,7 @@ Venus 为 Vulkan 定义另一套序列化协议，使用不同的 capset 和上�
 
 ## 源码、规范与进一步阅读 {#sources}
 
-阅读源码时，可以按执行边界逐段跟踪。controlq、宿主 GPU 提交和完成回调是异步交接点，不能把整条路径看成一次同步函数调用。
+阅读源码时，可以按执行边界逐段跟踪。controlq 入队、宿主 GPU 提交和完成回调各有独立的完成时点。
 
 | 位置 | 关键入口 | 重点观察 |
 | --- | --- | --- |
@@ -332,6 +332,7 @@ Venus 为 Vulkan 定义另一套序列化协议，使用不同的 capset 和上�
 - [Virtio 1.2，第 5.7 节 GPU Device](https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html)：二维资源、输出、队列及控制命令；VirGL 命令格式由其渲染协议另外定义。
 - [QEMU 10.2：virtio-gpu.h](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/hw/virtio/virtio-gpu.h#L45)：设备内部资源与 scanout 结构。
 - [渲染与编解码演示](#walkthrough)：切换绘制、解码与编码，观察命令和资源的逐步变化。
-- [GPU 命令执行：直通与共享虚拟化](gpu-execution.html)：对照整卡直通、GVT-g、SR-IOV 与组合方案，附设备归属和 libvirt XML；DMA 映射细节见 [VFIO 设备直通与 DMA](qemu-vfio-dma.html)。
+- [GPU 命令执行：直通与共享虚拟化](gpu-execution.html)：对照整卡直通、GVT-g 和 SR-IOV 的设备归属与命令提交路径。
+- [VFIO 设备直通与 DMA 地址转换](qemu-vfio-dma.html)：直通设备的 DMA 映射与隔离。
 - [virtio 设备初始化与特性协商](virtio-device-initialization.html)：队列、特性和设备状态。
 - [中断传递](interrupt-virtualization.html)：完成通知到客户机处理，以及通知抑制和中断加速。

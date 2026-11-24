@@ -6,6 +6,8 @@
   <h2>序言</h2>
   <p>virtio-net 驱动通过 virtqueue 提交网络请求。同一套客户机接口，可以由 QEMU 处理，也可以连接宿主内核中的 vhost-net 或独立进程中的 vhost-user 后端。后端位置改变后，队列地址、内存访问权限和通知通道需要重新安排，设备初始化和报文处理也由不同组件承担。</p>
   <p>以一个已就绪的 Split TX 队列为例：QEMU 用 ioctl 配置内核 vhost-net，或通过 Unix socket 把共享 RAM 和队列交给外部 vhost-user 后端。下面对照内存表、队列位置和两个通知句柄；客户机怎样收发一包数据见<a href="network-io.html">虚拟网卡收发流程</a>。</p>
+  <h3 id="history">从 QEMU 后端到 vhost</h3>
+  <p>virtio-net 的设备接口允许更换执行者。Linux 2.6.34 中的 vhost-net 把网络队列交给宿主内核，QEMU 仍负责设置内存和通知。QEMU 2.1 中的 vhost-user 协议把这套分工延伸到独立用户态进程：内存区域、队列位置和通知 fd 都在建立连接时交接。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -100,12 +102,10 @@ vhost_ops 分派
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>缩短数据路径的收益与管理代价</h2>
-  <h3>从 QEMU 报文处理到内核 vhost-net</h3>
-  <p>QEMU 用户态模型把设备逻辑、队列处理和网络后端连接起来，便于统一管理。高报文率场景中，队列通知、用户态调度及向 TAP 提交等环节会积累开销。vhost-net 将网络队列处理放到宿主内核，保留客户机 virtio 接口，并由 QEMU 配置运行所需的资源。</p>
+  <h2>后端线程、内存映射与通知的管理成本</h2>
+  <h3>内核后端的调度与复制</h3>
   <p>处理路径缩短后，宿主仍需执行队列检查、内存访问和网络转发。性能会受到 vhost 工作项调度、CPU 亲和性、NUMA、批量大小和网络栈的影响。Linux 发送路径有复制与零拷贝分支，实际走哪一条取决于运行条件。<a href="{{ kernel_source }}drivers/vhost/net.c#L320-L337">零拷贝条件</a></p>
-  <h3>从内核接口到外部用户态后端</h3>
-  <p>用户态交换机等组件需要直接处理 virtqueue 时，vhost-user 把内核 ioctl 的控制职责扩展为跨进程协议。QEMU 在 <a href="https://github.com/qemu/qemu/commit/5f6f6664bf24dc53f4bf98ba812d55ca93684cd5">2014 年引入 vhost-user 后端</a>，通过控制消息对应 vhost 操作，并传递共享资源的文件描述符。QEMU 提供设备配置、队列位置和共享内存，外部进程可以使用自己的调度与网络数据面，例如接入 DPDK 构建的用户态交换机。</p>
+  <h3>独立进程的资源管理</h3>
   <p>独立进程便于分离设备控制与数据处理，也增加了内存映射、文件描述符生命周期、协议兼容及后端失联处理。迁移时还要跟踪后端对客户机内存的写入，并协调队列停止与状态恢复。QEMU 10.2 的协议包含脏页日志和后端状态迁移约定，各后端的可用能力需要通过协商确认。<a href="{{ qemu_source }}docs/interop/vhost-user.rst#L529-L663">迁移与后端状态</a></p>
   <p>三种处理方式仍各有适用场景。比较时应固定客户机队列、报文大小、卸载配置及出口，再观察 CPU 消耗、延迟、吞吐和部署复杂度。轮询可减少等待唤醒的延迟，但会持续消耗 CPU；拆分进程可独立安排数据面资源，也需要额外维护状态交接和故障处理。</p>
 </section>
@@ -117,10 +117,13 @@ vhost_ops 分派
 
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
-  <ul class="mechanism-sources">
-    <li>QEMU 10.2.0：<a href="{{ qemu_source }}hw/net/vhost_net.c">vhost_net.c</a>，网络后端初始化、启动与 TAP 交接；<a href="{{ qemu_source }}hw/virtio/vhost.c">vhost.c</a>，内存、队列与通知配置。</li>
-    <li>QEMU 10.2.0：<a href="{{ qemu_source }}hw/virtio/vhost-user.c">vhost-user.c</a>，控制消息、共享内存和文件描述符发送；<a href="{{ qemu_source }}docs/interop/vhost-user.rst">Vhost-user Protocol</a>，地址转换、队列状态与迁移约定。</li>
-    <li>Linux 6.18：<a href="{{ kernel_source }}drivers/vhost/net.c">drivers/vhost/net.c</a>，TX 队列处理、复制与零拷贝分支；<a href="{{ kernel_source }}drivers/vhost/vhost.c">drivers/vhost/vhost.c</a>，描述符解析、完成发布与通知检查。</li>
-    <li><a href="{{ kernel_source }}Documentation/virt/kvm/api.rst">Linux 6.18 KVM API</a>：KVM_IOEVENTFD、KVM_IRQFD 的方向与用途。</li>
+  <ul>
+    <li><a href="{{ qemu_source }}docs/interop/vhost-user.rst">QEMU vhost-user 协议：传递内存、队列和通知描述符</a></li>
+    <li><a href="{{ qemu_source }}hw/net/vhost_net.c">QEMU vhost 网络前端：连接网卡与加速后端</a></li>
+    <li><a href="{{ qemu_source }}hw/virtio/vhost.c">QEMU vhost 通用层：建立内存表与 virtqueue</a></li>
+    <li><a href="{{ qemu_source }}hw/virtio/vhost-user.c">QEMU vhost-user 后端：收发控制消息</a></li>
+    <li><a href="{{ kernel_source }}drivers/vhost/net.c">Linux vhost-net：在宿主处理网络收发</a></li>
+    <li><a href="{{ kernel_source }}drivers/vhost/vhost.c">Linux vhost 核心：读取描述符并发布完成</a></li>
+    <li><a href="{{ kernel_source }}Documentation/virt/kvm/api.rst">Linux KVM API：ioeventfd 和 irqfd 的通知接口</a></li>
   </ul>
 </section>

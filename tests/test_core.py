@@ -16,6 +16,7 @@ from virt_report.render import render as html_render
 from virt_report import server as web_server
 from virt_report import scheduler
 from virt_report.summarize import llm_provider, periods, prompts, report
+from virt_report.versions import Document
 
 
 def _site_css() -> str:
@@ -68,7 +69,7 @@ def test_report_prompts_require_plain_language_without_losing_evidence_limits():
         prompt = prompts.system_prompt(period, "")
         assert "直接说明改动、原因和影响" in prompt
         assert "避免“不是……而是……”式铺垫、反复设问" in prompt
-        assert "技术限制、适用条件和未验证结论仍须保留" in prompt
+        assert "写出具体测试条件、实测范围和仍待确认的状态" in prompt
 
 
 def test_period_analysis_prompt_is_only_requested_for_weekly_and_monthly():
@@ -427,12 +428,13 @@ def test_about_page_and_architecture_badge_render():
     assert "摘要偏差、分类错误、链接失效或其他问题" in about
     assert "线上站点使用百度统计了解总体访问情况" not in about
     assert "项目源码及自行部署默认不包含访问统计" not in about
-    actions = about.split('<nav class="about-actions"', 1)[1].split("</nav>", 1)[0]
-    assert 'href="topics.html">查看专题</a>' in actions
-    assert 'href="conferences.html">查看会议</a>' in actions
-    assert actions.count('href="conference-papers.html">查看论文</a>') == 1
-    assert actions.index('conferences.html') < actions.index('conference-papers.html') < actions.index('versions.html')
-    assert 'href="versions.html">查看版本</a>' in actions
+    navs = {nav.attrs.get("class"): nav for nav in Document(about).root.find("nav")}
+    assert [(a.text(), a.attrs["href"]) for a in navs["about-actions"].find("a")] == [
+        ("KVM Forum 演讲解读", "kvm-forum.html"),
+        ("虚拟化相关论文", "conference-papers.html"),
+        ("虚拟化原理文章", "mechanisms.html"),
+    ]
+    assert {"专题", "会议", "版本"} <= {a.text() for a in navs["main-nav"].find("a")}
     assert about.index('class="about-contact"') < about.index('class="about-actions"') < about.index('class="about-sections"')
     assert "<h2>版本记录</h2>" not in about
     assert "会议内容与检索" not in about
@@ -475,7 +477,7 @@ def test_about_page_and_architecture_badge_render():
     assert ('<span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" '
             'target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - '
             '虚拟化社区动态</span>') in footer
-    assert ('<span class="foot-note">数据来自社区，分析仅供参考。'
+    assert ('<span class="foot-note">数据来源：上游社区。'
             '<a href="metrics.html">运行状态</a></span>') in footer
     assert "虚拟化社区动态。" not in footer
     assert footer.count("<span") == 2
@@ -1318,7 +1320,8 @@ def test_conference_catalogue_is_curated_and_renders_without_documents():
     assert '<details class="conference-sources"' not in page
     assert "待严格筛选" not in page
     assert "data-conference-browser" not in page
-    assert "不调用 DeepSeek 自动生成" in page
+    assert content["method"] in [p.text() for p in Document(page).root.find("p")
+                                 if p.attrs.get("class") == "conference-method"]
     assert 'href="conferences.html" class="on" aria-current="page">会议</a>' in page
     assert ".guide-range{display:block" in _site_css()
 

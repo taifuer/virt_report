@@ -6,6 +6,10 @@
   <p>本文分析普通 socket 迁移中未压缩 RAM 数据的分发与同步。示例采用默认同步方式：在 RAM 扫描轮次边界通过主流的 <code>RAM_SAVE_FLAG_MULTIFD_FLUSH</code> 协调数据通道。旧机器兼容模式、文件迁移及压缩路径在后文分别说明。</p>
   {% include '_mechanism_baselines.html' %}
   <p>内存迭代与停机切换见<a href="qemu-memory-migration.html">《QEMU 热迁移流程》</a>；主迁移流的记录格式见<a href="qemu-migration-stream.html">《QEMU 迁移流格式与状态恢复》</a>。</p>
+  <h3 id="history">从单条内存流到并行通道</h3>
+  <span id="evolution-part-1" class="mechanism-topic-alias" aria-hidden="true"></span>
+  <p>当页扫描、编码和发送集中在一个路径上时，CPU 处理能力可能先于网络带宽成为限制。MultiFD 把批次处理分给工作线程，让发送、接收及可选压缩获得并行机会。QMP 的 <code>multifd-channels</code> 参数自 4.0 提供，压缩方法参数自 5.0 提供；具体收益取决于 CPU、内存带宽、网络及负载。</p>
+  <p>早期协议在每个 RAM section 结束时同步全部通道。主流为了限速和迭代调度产生多个 PART 时，也会反复触发屏障，已经空闲的通道需要等待其他通道。QEMU 8.1 引入按完整 RAM 扫描轮次同步的方式，并增加 FLUSH 标记，把跨通道同步与 section 结束解耦。旧机器兼容设置仍保留逐 section 行为。<a href="https://github.com/qemu/qemu/commit/294e5a4034e81b3d8db03b4e0f691386f20d6ed3">同步粒度调整提交</a>、<a href="{{ qemu_source }}hw/core/machine.c#L104-L108">8.0 兼容属性</a></p>
 </section>
 
 <section id="principle" class="mechanism-section">
@@ -83,17 +87,16 @@
     <tr><td>页装载</td><td><a href="{{ qemu_source }}migration/multifd-nocomp.c#L161-L191"><code>multifd_nocomp_recv()</code></a>：构建目的地址 iovec，读取普通页并处理零页。</td></tr>
     <tr><td>同步两端</td><td><a href="{{ qemu_source }}migration/multifd.c#L1179-L1239"><code>multifd_recv_sync_main()</code></a>：等待所有接收线程，再统一释放。</td></tr>
   </tbody></table>
-  <p>源码中的本地同步和远端同步由 <code>MultiFDSyncReq</code> 区分。<code>MULTIFD_SYNC_LOCAL</code> 只等本地工作线程；<code>MULTIFD_SYNC_ALL</code> 还要求各通道写出 SYNC，并与主流同步标记配合。mapped-ram 文件迁移使用不同的数据定位与同步方式，不能把其完成条件直接套用到网络迁移。</p>
+  <p>源码中的本地同步和远端同步由 <code>MultiFDSyncReq</code> 区分。<code>MULTIFD_SYNC_LOCAL</code> 只等本地工作线程；<code>MULTIFD_SYNC_ALL</code> 还要求各通道写出 SYNC，并与主流同步标记配合。mapped-ram 文件迁移按文件内的位置写页，使用自己的同步方式。</p>
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>实现演进与性能取舍</h2>
-  <h3>从串行处理到并行批次</h3>
-  <p>当页扫描、编码和发送集中在一个路径上时，CPU 处理能力可能先于网络带宽成为限制。MultiFD 把批次处理分给工作线程，让发送、接收及可选压缩获得并行机会。QMP 的 <code>multifd-channels</code> 参数自 4.0 提供，压缩方法参数自 5.0 提供；具体收益取决于 CPU、内存带宽、网络及负载。</p>
-  <h3>从逐 section 同步到扫描轮次同步</h3>
-  <p>早期协议在每个 RAM section 结束时同步全部通道。主流为了限速和迭代调度产生多个 PART 时，也会反复触发屏障，已经空闲的通道需要等待其他通道。QEMU 8.1 引入按完整 RAM 扫描轮次同步的方式，并增加 FLUSH 标记，把跨通道同步与 section 结束解耦。旧机器兼容设置仍保留逐 section 行为。<a href="https://github.com/qemu/qemu/commit/294e5a4034e81b3d8db03b4e0f691386f20d6ed3">同步粒度调整提交</a>、<a href="{{ qemu_source }}hw/core/machine.c#L104-L108">8.0 兼容属性</a></p>
+  <h2>通道同步与性能测量</h2>
+
+  <h3 id="evolution-part-2">从逐 section 同步到扫描轮次同步</h3>
+
   <p>同步减少后，工作线程可以连续处理更多批次，但协议仍需要在页面可能跨轮重复发送及阶段切换的位置建立顺序。QEMU 10.2.0 的 <code>multifd_ram_sync_per_section()</code> 与 <code>multifd_ram_sync_per_round()</code> 明确区分两种路径。演进改变的是同步频率和标记位置，顺序约束始终存在。</p>
-  <h3>通道数与性能测量</h3>
+  <h3 id="evolution-part-3">通道数与性能测量</h3>
   <p>增加通道会增加线程、连接和缓冲区，也可能提高内存访问竞争。当网卡带宽已经耗尽，更多线程不能增加物理链路容量；当目的端解压或写内存较慢时，发送端的并行度也无法单独解决瓶颈。一个明显较慢的通道还会拉长屏障等待。</p>
 </section>
 
@@ -109,7 +112,7 @@
     <li><a href="{{ qemu_source }}migration/multifd-nocomp.c">QEMU 10.2.0：RAM 队列、包格式和未压缩路径</a></li>
     <li><a href="{{ qemu_source }}migration/ram.c">QEMU 10.2.0：RAM 迭代与主流标记</a></li>
     <li><a href="{{ qemu_source }}qapi/migration.json#L892-L914">QMP：MultiFD 通道与压缩参数</a></li>
-    <li><a href="https://github.com/qemu/qemu/commit/294e5a4034e81b3d8db03b4e0f691386f20d6ed3">Only flush once each full round of memory</a></li>
-    <li><a href="https://www.qemu.org/docs/master/devel/migration/main.html">QEMU Migration framework 文档</a></li>
+    <li><a href="https://github.com/qemu/qemu/commit/294e5a4034e81b3d8db03b4e0f691386f20d6ed3">QEMU 提交：将 MultiFD 的刷新合并到每轮内存传输结束时</a></li>
+    <li><a href="https://www.qemu.org/docs/master/devel/migration/main.html">QEMU 迁移框架：内存迭代与状态交接</a></li>
   </ul>
 </section>

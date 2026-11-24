@@ -6,6 +6,8 @@
   <h2>序言</h2>
   <p>virtio-net 定义客户机与虚拟设备之间的请求格式，报文的处理线程和物理出口则由后端实现。DPDK vhost-user 后端在独立用户态进程中消费客户机 virtqueue，将报文组织为 rte_mbuf，再交给网卡的轮询模式驱动（PMD）。QEMU 保留设备呈现和控制连接，通常不参与这条路径上的逐包处理。</p>
   <p>本文跟踪一个 60 B 以太网帧 P1：客户机 TX 队列 → DPDK vhost → rte_mbuf → 物理网卡 TX 队列。分析采用 DPDK 24.11 的同步 split-ring 路径、单个队列对、普通复制模式，不启用分段和校验和卸载。客户机使用 modern virtio-net，12 B 网络头与帧分别放在两个只读描述符中。关键在于两次所有权交接：客户机缓冲区何时可以复用，以及交给 PMD 的 mbuf 何时可以释放。</p>
+  <h3 id="history">vhost-user 后端与重连</h3>
+  <p>把 virtio 后端移到独立用户态进程，使交换机可以统一调度多个虚拟机和物理端口，代价是必须管理共享内存、队列状态与进程生命周期。DPDK 16.07 加入 vhost-user 客户端模式，重连能力进一步减少了固定启动顺序的约束；重连后仍需恢复一致的特性和队列状态，socket 恢复不等于在途报文自动恢复。<a href="{{ dpdk_source }}doc/guides/prog_guide/vhost_lib.rst">vhost-user 连接模式</a></p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -18,7 +20,6 @@
   <p>共享的物理页可以映射在 QEMU 和 DPDK 进程的不同虚拟地址。描述符中的设备地址需要经过已协商的内存映射或 IOTLB 转换，不能直接作为后端 C 指针使用。<a href="{{ qemu_source }}docs/interop/vhost-user.rst">vhost-user 协议</a>和<a href="{{ dpdk_source }}lib/vhost/vhost_user.c">DPDK 控制消息处理</a>分别定义和实现这些关系。</p>
   <p>轮询线程可抑制提交方向的 kick，直接检查 avail；完成方向仍须根据客户机设置判断是否发送 call。<a href="{{ dpdk_source }}lib/vhost/vhost.h#L989-L1015">DPDK 的完成通知检查</a>。</p>
 </section>
-
 
 <section id="transmit" class="mechanism-section">
   <h2>发送实例：从链 0 → 2 到物理出口</h2>
@@ -81,8 +82,8 @@ rte_eth_tx_burst(port, txq, pkts, 1)
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>从用户态后端到队列与复制优化</h2>
-  <p>把 virtio 后端移到独立用户态进程，使交换机可以统一调度多个虚拟机和物理端口，代价是必须管理共享内存、队列状态与进程生命周期。DPDK 16.07 加入 vhost-user 客户端模式，重连能力进一步减少了固定启动顺序的约束；重连后仍需恢复一致的特性和队列状态，socket 恢复不等于在途报文自动恢复。<a href="{{ dpdk_source }}doc/guides/prog_guide/vhost_lib.rst">vhost-user 连接模式</a></p>
+  <h2>队列格式与报文复制</h2>
+
   <p>split 到 packed 的队列演进把发布与完成标记集中到一张描述符环，改善元数据访问局部性，同时引入 wrap counter 和不同的所有权判断。双方在初始化时选定格式，后端据此进入各自的数据处理分支；本文使用 split 的 desc、avail、used 三个共享区域。<a href="{{ dpdk_source }}lib/vhost/virtio_net.c#L3586-L3684">split / packed 数据路径选择</a></p>
   <p>当复制成为瓶颈，可以考虑 DMA copy 卸载。复制仍然存在，只是执行者从 CPU 转为 DMA 设备；提交、完成轮询、缓冲区存活和 DMA 通道资源变得更重要。DPDK 18.11 已提供 vDPA 示例，利用硬件实现兼容 virtio 的数据面，减少专门的 vhost 轮询工作；可迁移状态、特性组合和硬件支持随之成为约束。<a href="{{ dpdk_source }}doc/guides/rel_notes/release_18_11.rst#L284-L293">18.11 的 vDPA 示例</a></p>
 </section>
@@ -94,11 +95,15 @@ rte_eth_tx_burst(port, txq, pkts, 1)
 
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
-  <ul class="mechanism-sources">
-    <li><a href="{{ dpdk_source }}lib/vhost/virtio_net.c">DPDK 24.11 virtio_net.c</a>：split 队列消费、desc_to_mbuf、used 发布及收发 API。</li>
-    <li><a href="{{ dpdk_source }}lib/vhost/vhost.h">vhost.h</a>、<a href="{{ dpdk_source }}lib/mbuf/rte_mbuf_core.h">rte_mbuf_core.h</a>、<a href="{{ dpdk_source }}lib/ethdev/rte_ethdev.h">rte_ethdev.h</a>：队列、报文对象和 PMD 收发接口。</li>
-    <li><a href="{{ dpdk_source }}examples/vhost/main.c">DPDK vhost 示例</a>：客户机与物理端口之间的批量转发、短发送和回收处理。</li>
-    <li><a href="{{ dpdk_source }}doc/guides/prog_guide/vhost_lib.rst">DPDK vhost 库说明</a>、<a href="{{ dpdk_source }}doc/guides/prog_guide/poll_mode_drv.rst">PMD 设计说明</a>、<a href="{{ dpdk_source }}lib/vhost/rte_vhost_async.h">异步复制接口</a>。</li>
-    <li><a href="{{ qemu_source }}docs/interop/vhost-user.rst">QEMU 10.2.0 vhost-user 协议</a>：内存区域、vring、通知与控制连接。</li>
+  <ul>
+    <li><a href="{{ dpdk_source }}doc/guides/prog_guide/vhost_lib.rst">DPDK vhost 编程指南：队列、缓冲区与复制模式</a></li>
+    <li><a href="{{ qemu_source }}docs/interop/vhost-user.rst">QEMU vhost-user 协议：配置队列和共享内存</a></li>
+    <li><a href="{{ dpdk_source }}lib/vhost/virtio_net.c">DPDK virtio_net.c：从 virtqueue 取包并向接收队列交包</a></li>
+    <li><a href="{{ dpdk_source }}lib/vhost/vhost.h">DPDK vhost.h：虚拟设备、队列与描述符状态</a></li>
+    <li><a href="{{ dpdk_source }}lib/mbuf/rte_mbuf_core.h">DPDK rte_mbuf_core.h：报文缓冲区与数据段</a></li>
+    <li><a href="{{ dpdk_source }}lib/ethdev/rte_ethdev.h">DPDK ethdev 接口：批量收发与网卡队列</a></li>
+    <li><a href="{{ dpdk_source }}examples/vhost/main.c">DPDK vhost 示例：把虚拟端口接到物理网卡</a></li>
+    <li><a href="{{ dpdk_source }}doc/guides/prog_guide/poll_mode_drv.rst">DPDK PMD 指南：轮询驱动的收发模型</a></li>
+    <li><a href="{{ dpdk_source }}lib/vhost/rte_vhost_async.h">DPDK vhost：异步复制提交与完成接口</a></li>
   </ul>
 </section>

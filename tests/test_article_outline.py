@@ -59,12 +59,12 @@ def test_single_subsection_keeps_its_anchor_without_body_or_toc_number(explicit_
     assert '<h3>交互标题</h3>' in html
 
 
-def test_device_guide_keeps_bookmark_after_condensing_initialization():
-    page = render.render_mechanisms_html(Config(), 'virtualization-basics')
+def test_device_article_keeps_legacy_section_bookmarks():
+    page = render.render_mechanisms_html(Config(), 'device-virtualization')
     assert 'id="queue-part-1"' in page
     assert 'href="#queue-part-1"' not in page
-    assert mechanisms.get_redirect('device-virtualization')['anchors']['queue-part-1'] == 'devices'
-    assert '<section id="devices"' in page
+    assert mechanisms.get_redirect('device-virtualization') is None
+    assert '<section id="queue"' in page
 
 
 def test_incorrect_metadata_and_fragment_collision_fail_before_publication():

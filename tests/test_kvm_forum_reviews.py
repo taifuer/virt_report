@@ -174,7 +174,7 @@ def test_cpu_review_separates_deployment_scenarios_and_evidence():
     for explanation in (
         '宿主可调度的逻辑 CPU', '没有配置 vCPU 数量超分也会遇到',
         '标志', '4 KiB', '64 字节', 'Linux 调度器仍负责承载线程',
-        '函数调用式分派', '13 ms 不能用作已经消除的延迟收益',
+        '函数调用式分派', '改用 sched_ext 策略前', '最长约 13 ms', '未给出同负载下启用新策略后的延迟',
     ):
         assert explanation in unescape(section)
     assert section.index('</table>') < section.index('实现挑战')
@@ -290,7 +290,7 @@ def test_review_preserves_benchmark_conditions_and_proposal_boundaries():
                  'QEMU RFC 尚待提交', '单线程', '36.075 s', '4.172 s',
                  '约 24 GB', '约 22 GB', '同宿主', 'RHEL 9.4',
                  '原始讲稿', '约 1.7 µs', '512 KiB', '尚缺少跨负载',
-                 '策略门槛', '未启用 TLS'):
+                 '增加线程后 IOPS 收益不足 3%', '未启用 TLS'):
         assert term in html, term
 
 

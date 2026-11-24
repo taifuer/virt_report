@@ -3,8 +3,11 @@
 {% set linux = 'https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/' %}
 <section id="preface" class="mechanism-section">
   <h2>序言</h2>
-  <p>一台 x86 Linux 服务器上运行两台 QEMU/KVM 虚拟机 A 和 B，各有 2 个虚拟 CPU（vCPU）和 4 GiB 内存。服务器上的系统称为宿主；A 和 B 中的系统称为客户机。它们各自启动内核、调度进程和驱动设备，同一个物理核可以轮流执行两台客户机的指令。</p>
+  <p>系统虚拟化让多个操作系统在同一台机器上拥有独立的执行状态、内存和设备视图。以一台 x86 Linux 服务器为例，它运行两台 QEMU/KVM 虚拟机 A 和 B，各有 2 个虚拟 CPU（vCPU）和 4 GiB 内存。服务器上的系统称为宿主；A 和 B 中的系统称为客户机。它们各自启动内核、调度进程和驱动设备，同一个物理核可以轮流执行两台客户机的指令。</p>
   <p>资源隔离决定一台虚机可以访问什么，资源调度决定它何时用得上。A 无权改写 B 的内存，但 A 的负载升高时，两者争用同一物理核或内存带宽，B 仍可能变慢。</p>
+  <h3 id="evolution">从软件模拟到硬件辅助与协作式设备</h3>
+  <p>软件可以逐条解释客户机指令，也可以把一段指令翻译为宿主代码并重复执行。这样容易控制客户机行为，还能跨指令集运行，代价是翻译和状态维护。硬件虚拟化让兼容架构的大量指令直接执行，减少软件介入；QEMU 的 TCG 与 KVM 因而服务于不同需求，前者并未失去用途。</p>
+  <p>内存也经历了类似变化：软件维护影子映射，需要跟踪客户机页表变化；EPT/NPT 允许硬件组合两级转换，但仍有页表遍历、TLB 缓存与映射失效成本。设备方面，virtio 把虚拟化环境中的请求交接规范化，vhost 和硬件卸载再改变处理位置。演变通常消除了某种重复工作，同时带来新的同步和状态管理要求。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 <section id="isolation" class="mechanism-section">
@@ -17,18 +20,12 @@
   {{ diagram('virtualization-isolation-example', '两台客户机使用相同地址而互不覆盖', '示例采用独立后备页。客户机自己的页表先得到客户机物理地址，宿主维护的二级映射再选择真实物理页；两套转换分别由不同一方管理。') }}
   <p>因此，A 的应用写坏一段已获准访问的内存，通常影响 A 内部；访问未授权的宿主页则会受映射和权限限制。设备还可以直接读写内存，这称为 DMA，其地址转换和访问权限由 IOMMU 等机制约束。CPU 与设备的访问范围需要分别控制，隔离也仍受软硬件漏洞和共享资源干扰的影响。</p>
   <h3>设备：客户机接口与宿主后端</h3>
-  <p>客户机需要磁盘、网卡和时钟，但无需每项资源都独占一块硬件。虚拟磁盘可以连接一个宿主文件，虚拟网卡可以连接宿主网络；客户机驱动按约定提交请求，后端完成真实 I/O。兼容旧驱动时可模拟已有网卡，使用专门驱动时可采用 virtio 共享队列，也可以把可隔离的设备功能直接分配给客户机。</p>
+  <p>客户机需要磁盘、网卡和时钟，但无需每项资源都独占一块硬件。虚拟磁盘可以连接一个宿主文件，虚拟网卡可以连接宿主网络；客户机驱动按约定提交请求，后端完成真实 I/O。</p>
 </section>
 <section id="devices" class="mechanism-section">
   <h2>设备模拟、半虚拟化与直通</h2>
-  <p>客户机使用什么驱动、谁处理请求、设备能访问哪些内存，是设备虚拟化中的三个问题。设备接口与后端可以分别选择：使用 virtio-net 驱动时，队列既可由 QEMU 处理，也可交给 vhost 或支持相应接口的硬件。</p>
-  <table><thead><tr><th scope="col">方式</th><th scope="col">客户机看到的接口</th><th scope="col">处理位置与主要条件</th></tr></thead><tbody>
-    <tr><th scope="row">设备模拟</th><td>例如 e1000，使用已有硬件驱动。</td><td>QEMU 实现寄存器、描述符和中断行为，连接 TAP 等宿主后端；需要维护完整的硬件接口语义。</td></tr>
-    <tr><th scope="row">半虚拟化设备</th><td>例如 virtio-net、virtio-blk，使用 virtio 驱动和共享队列。</td><td>QEMU、内核 vhost 或独立 vhost-user 后端消费队列。双方先协商特性、配置队列，再按发布与完成记录交还缓冲区。</td></tr>
-    <tr><th scope="row">设备直通</th><td>物理设备或 SR-IOV VF 的硬件接口。</td><td>宿主通过 VFIO 分配设备功能，用 IOMMU 约束 DMA 范围；设备复位、中断和迁移能力仍需支持。</td></tr>
-    <tr><th scope="row">vDPA 卸载</th><td>保持 virtio 兼容的设备接口。</td><td>由适配后的硬件或软件处理队列，控制侧仍配置地址映射和通知；状态迁移能力按实现核对。</td></tr>
-  </tbody></table>
-  <p>vhost-user 的 Unix socket 用于协商内存、队列和通知资源，报文与磁盘数据通常通过共享内存交接。SR-IOV 则把一个物理功能划分出多个 VF，常与 VFIO 分配组合使用；它和 virtio、vhost-user 分属不同层次。</p>
+  <p>模拟 e1000 网卡时，QEMU 解释网卡寄存器和发送描述符。virtio-net 驱动与设备完成特性协商、配置队列后，通过共享队列发送报文；队列可以由 QEMU、vhost-user 后端或支持 vDPA 的设备处理。直通时，宿主可通过 VFIO 把一个 SR-IOV VF 分配给虚机，由客户机原生驱动提交硬件请求，IOMMU 限定设备的 DMA 范围。</p>
+  <p><a href="device-virtualization.html">设备与 I/O 虚拟化原理</a>用同一个报文对照这三条路径，并以磁盘读取说明缓冲区何时可以交还驱动。</p>
 </section>
 
 <section id="architecture" class="mechanism-section">
@@ -51,11 +48,7 @@
   <p>A 内的程序发送一条消息，客户机网络栈先形成报文。virtio 驱动把报文所在缓冲区的地址与长度交给共享队列，再按通知条件提醒后端。选用 QEMU＋TAP 时，QEMU 从客户机内存读取报文，经宿主的虚拟网络端点 TAP 提交网络；后端不再需要该缓冲区后发布完成记录，客户机驱动回收资源。</p>
   <p>这里有四件事：CPU 执行网络代码，内存转换找到缓冲区，设备协议交接报文，中断或轮询通知完成。把后端换成内核 vhost-net，可以改变队列处理位置，但这四项责任仍然存在。发送完成通常表示缓冲区可以复用，远端收到数据则是另一层协议确认的问题。</p>
 </section>
-<section id="evolution" class="mechanism-section">
-  <h2>软件模拟、硬件辅助与半虚拟化的演进</h2>
-  <p>软件可以逐条解释客户机指令，也可以把一段指令翻译为宿主代码并重复执行。这样容易控制客户机行为，还能跨指令集运行，代价是翻译和状态维护。硬件虚拟化让兼容架构的大量指令直接执行，减少软件介入；QEMU 的 TCG 与 KVM 因而服务于不同需求，前者并未失去用途。</p>
-  <p>内存也经历了类似变化：软件维护影子映射，需要跟踪客户机页表变化；EPT/NPT 允许硬件组合两级转换，但仍有页表遍历、TLB 缓存与映射失效成本。设备方面，virtio 把虚拟化环境中的请求交接规范化，vhost 和硬件卸载再改变处理位置。演变通常消除了某种重复工作，同时带来新的同步和状态管理要求。</p>
-</section>
+
 <section id="tradeoffs" class="mechanism-section">
   <h2>总结</h2>
   <p>虚拟机让多套系统共享服务器，也增加客户机内核、虚拟设备和管理状态的开销。超分 vCPU 可以利用负载错峰，宿主繁忙时却会增加调度等待；直通可缩短 I/O 路径，但能否迁移，还取决于设备状态能否导出、恢复及停止 DMA。</p>
@@ -63,9 +56,11 @@
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>
-    <li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/cs01/virtio-v1.2-cs01.html">Virtio 1.2：设备接口与共享队列</a>；<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/vhost-user.rst">QEMU 10.2：vhost-user 控制协议</a>。</li>
-    <li><a href="{{ qemu }}docs/system/introduction.rst">QEMU：系统模拟、加速器和管理接口</a></li>
-    <li><a href="{{ linux }}Documentation/virt/kvm/api.rst">Linux：KVM API</a>、<a href="{{ linux }}Documentation/virt/kvm/x86/mmu.rst">x86 地址转换与隔离目标</a></li>
-    <li><a href="{{ qemu }}docs/devel/memory.rst">QEMU：客户机内存与地址空间</a></li>
+    <li><a href="{{ qemu }}docs/system/introduction.rst">QEMU 系统模拟手册：机器、设备与执行加速器</a></li>
+    <li><a href="{{ linux }}Documentation/virt/kvm/api.rst">Linux KVM API：创建虚拟机、创建 vCPU 与进入客户机</a></li>
+    <li><a href="{{ qemu }}docs/devel/memory.rst">QEMU 内存模型：RAM、设备寄存器与地址空间</a></li>
+    <li><a href="{{ linux }}Documentation/virt/kvm/x86/mmu.rst">Linux KVM：x86 客户机地址转换与影子页表</a></li>
+    <li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/cs01/virtio-v1.2-cs01.html">Virtio 1.2：设备接口与共享队列</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/interop/vhost-user.rst">QEMU 10.2：vhost-user 控制协议</a></li>
   </ul>
 </section>

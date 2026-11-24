@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=5eb1bb7dc04a">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=5eb1bb7dc04a">
-<link rel="stylesheet" href="../assets/memory-map.css?v=5eb1bb7dc04a"></head>
+<link rel="stylesheet" href="../assets/mechanisms.css?v=1b35da490c57">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1b35da490c57">
+<link rel="stylesheet" href="../assets/memory-map.css?v=1b35da490c57"></head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="site-head"><div class="wrap head-row">
@@ -35,7 +35,7 @@
         <a href="../topics.html" class="">专题</a>
         <a href="../conferences.html" class="">会议</a>
         <a href="../versions.html" class="">版本</a>
-        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../industry/index.html" class="">产业</a>
         <a href="../about.html" class="">关于</a>
         <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -50,7 +50,7 @@
   <div class="mechanism-layout">
     <nav class="mechanism-toc" aria-label="文章目录">
       <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
-      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a></li><li><a href="#backing">二、创建 RAM 后端与宿主映射</a><ol><li><a href="#backing-part-1">1. 默认后端的创建</a></li><li><a href="#backing-part-2">2. 地址映射与物理页分配</a></li></ol></li><li><a href="#layout">三、Q35 的低端 RAM、高端 RAM 与设备窗口</a></li><li><a href="#structures">四、区域、地址空间与平坦视图</a></li><li><a href="#flatten">五、生成 FlatView、注册 KVM 与访问高端 RAM</a><ol><li><a href="#flatten-part-1">1. 把区域树展开为可见区间</a></li><li><a href="#flatten-part-2">2. 将 GPA 与宿主地址登记到 KVM</a></li><li><a href="#flatten-part-3">3. 沿 GPA 0x100001000 找到同一份 RAM</a></li></ol></li><li><a href="#mmio">六、MMIO 的宽度与访问条件</a></li><li><a href="#topology">七、局部映射示例：别名、覆盖与空洞</a></li><li><a href="#lookup">八、交互演示：窗口开关与地址解析</a></li><li><a href="#updates">九、布局更新与 KVM 内存槽</a><ol><li><a href="#updates-part-1">1. 事务提交与新视图发布</a></li><li><a href="#updates-part-2">2. 覆盖变化时同步 KVM 内存槽</a></li><li><a href="#updates-part-3">3. 等待旧视图的读者退出</a></li></ol></li><li><a href="#evolution">十、预先展开与视图共享的收益和成本</a></li><li><a href="#summary">十一、总结</a></li><li><a href="#sources">十二、参考资料</a></li></ol>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a><ol><li><a href="#history">从分散更新到统一的地址空间视图</a></li></ol></li><li><a href="#backing">二、创建 RAM 后端与宿主映射</a><ol><li><a href="#backing-part-1">1. 默认后端的创建</a></li><li><a href="#backing-part-2">2. 地址映射与物理页分配</a></li></ol></li><li><a href="#layout">三、Q35 的低端 RAM、高端 RAM 与设备窗口</a></li><li><a href="#structures">四、区域、地址空间与平坦视图</a></li><li><a href="#flatten">五、生成 FlatView、注册 KVM 与访问高端 RAM</a><ol><li><a href="#flatten-part-1">1. 把区域树展开为可见区间</a></li><li><a href="#flatten-part-2">2. 将 GPA 与宿主地址登记到 KVM</a></li><li><a href="#flatten-part-3">3. 沿 GPA 0x100001000 找到同一份 RAM</a></li></ol></li><li><a href="#mmio">六、MMIO 的宽度与访问条件</a></li><li><a href="#topology">七、局部映射示例：别名、覆盖与空洞</a></li><li><a href="#lookup">八、交互演示：窗口开关与地址解析</a></li><li><a href="#updates">九、布局更新与 KVM 内存槽</a><ol><li><a href="#updates-part-1">1. 事务提交与新视图发布</a></li><li><a href="#updates-part-2">2. 覆盖变化时同步 KVM 内存槽</a></li><li><a href="#updates-part-3">3. 等待旧视图的读者退出</a></li></ol></li><li><a href="#evolution">十、地址视图的更新成本与观察</a></li><li><a href="#summary">十一、总结</a></li><li><a href="#sources">十二、参考资料</a></li></ol>
     </nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
@@ -58,6 +58,9 @@
   <p>QEMU 启动一台 8 GiB 内存的虚拟机，需要先准备保存 RAM 内容的宿主内存，再把它安排到客户机物理地址空间中。这个地址空间还容纳设备寄存器、ROM 和保留窗口。QEMU 用 MemoryRegion 描述各区域及其连接关系，用 AddressSpace 确定访问入口，并把展开后的 RAM 映射登记到 KVM。</p>
   <p>本文以 Linux 宿主上的 <code>pc-q35-10.2</code>、KVM 加速和 <code>-m 8G</code> 为例，沿着后备内存创建、Q35 地址布局、FlatView 生成、KVM 内存槽注册和实际访问展开。示例使用默认匿名 RAM 后端，未配置 NUMA、内存预分配或机密虚拟机。文中的 GiB 按 2<sup>30</sup> 字节计算。</p>
   <p>同一份 RAM 在这条路径中有不同的表示：RAMBlock 保存宿主存储信息，RAM MemoryRegion 描述这块存储，机器通过别名决定它出现在客户机的哪些地址，KVM 内存槽登记 GPA 与宿主用户地址的对应关系。先顺着初始化过程建立这几层联系，再看一次高端 RAM 访问，就能理解它们怎样共同工作。</p>
+  <h3 id="history">从分散更新到统一的地址空间视图</h3>
+  <p>设备配置会改变可见布局，KVM、软件访存和后端又都需要了解变化。QEMU 逐步把局部区域描述、全局可见映射和观察者通知分离：2011 年的内存事务接口允许组合布局变更；同年的内存映射观察接口把变化通知交给监听器。这使设备模型可以描述自身映射，不必各自直接维护所有使用方的状态。</p>
+  <p>2012 年的 per-AddressSpace dispatch让不同访问入口拥有相应的查找结构。随后多个地址空间可能引用同一个有效根，重复维护视图与分发树又带来额外成本；2017 年的 FlatView 共享使经别名等关系归一后根指针相同的地址空间可以复用结果。</p>
 <p class="mechanism-baselines">源码版本：QEMU 10.2.0。</p></section>
 
 <section id="backing" class="mechanism-section">
@@ -74,9 +77,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看RAM 从配置、分配到 KVM 注册的初始化顺序" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="RAM 从配置、分配到 KVM 注册的初始化顺序">
-    <img src="../assets/qemu-memory-initialization.svg?v=5eb1bb7dc04a" width="704" height="972" alt="先建立系统地址空间并注册 KVM 监听器，再创建 RAM 后端和机器布局。区域变化生成 FlatView，经监听器同步到 KVM 内存槽；实际宿主页与二级页表映射通常随访问建立。" loading="lazy">
+    <img src="../assets/qemu-memory-initialization.svg?v=1b35da490c57" width="704" height="972" alt="先建立系统地址空间并注册 KVM 监听器，再创建 RAM 后端和机器布局。区域变化生成 FlatView，经监听器同步到 KVM 内存槽；实际宿主页与二级页表映射通常随访问建立。" loading="lazy">
   </div>
-  <figcaption>先建立系统地址空间并注册 KVM 监听器，再创建 RAM 后端和机器布局。区域变化生成 FlatView，经监听器同步到 KVM 内存槽；实际宿主页与二级页表映射通常随访问建立。 <a href="../assets/qemu-memory-initialization.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>先建立系统地址空间并注册 KVM 监听器，再创建 RAM 后端和机器布局。区域变化生成 FlatView，经监听器同步到 KVM 内存槽；实际宿主页与二级页表映射通常随访问建立。 <a href="../assets/qemu-memory-initialization.svg?v=1b35da490c57" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
   accTitle: QEMU Q35 内存初始化与 KVM 内存槽登记
   accDescr: QEMU 10.2 先建立名为 system 的根区域及名为 memory 的 AddressSpace，再初始化 KVM 并注册内存监听器。RAM backend 创建 RAM MemoryRegion 与 RAMBlock，host 字段保存宿主虚拟地址，随后 machine.ram 引用该区域。Q35 依次把低端和高端 RAM 别名加入地址空间。拓扑事务生成新的 FlatView，监听器收集区间变化，在 commit 阶段登记 KVM memslots。内存槽数量取决于可见 RAM 区间；内存槽保存客户机地址与宿主后备的关系，二阶段页表由后续的 KVM MMU 路径建立。
@@ -133,9 +136,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看8 GiB RAM 的客户机地址与后备偏移" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="8 GiB RAM 的客户机地址与后备偏移">
-    <img src="../assets/q35-memory-layout.svg?v=5eb1bb7dc04a" width="534" height="451" alt="低端 RAM 别名覆盖 GPA 0 至 2 GiB，高端别名覆盖 GPA 4 至 10 GiB，分别引用同一后备内存的前 2 GiB 与后 6 GiB。2 至 4 GiB 留给设备及固件等窗口；低端内部还会叠加传统设备映射。区间上界均不包含。" loading="lazy">
+    <img src="../assets/q35-memory-layout.svg?v=1b35da490c57" width="534" height="451" alt="低端 RAM 别名覆盖 GPA 0 至 2 GiB，高端别名覆盖 GPA 4 至 10 GiB，分别引用同一后备内存的前 2 GiB 与后 6 GiB。2 至 4 GiB 留给设备及固件等窗口；低端内部还会叠加传统设备映射。区间上界均不包含。" loading="lazy">
   </div>
-  <figcaption>低端 RAM 别名覆盖 GPA 0 至 2 GiB，高端别名覆盖 GPA 4 至 10 GiB，分别引用同一后备内存的前 2 GiB 与后 6 GiB。2 至 4 GiB 留给设备及固件等窗口；低端内部还会叠加传统设备映射。区间上界均不包含。 <a href="../assets/q35-memory-layout.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>低端 RAM 别名覆盖 GPA 0 至 2 GiB，高端别名覆盖 GPA 4 至 10 GiB，分别引用同一后备内存的前 2 GiB 与后 6 GiB。2 至 4 GiB 留给设备及固件等窗口；低端内部还会叠加传统设备映射。区间上界均不包含。 <a href="../assets/q35-memory-layout.svg?v=1b35da490c57" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: Q35 的 8 GiB RAM 基础别名布局
   accDescr: 此图不按比例绘制。QEMU 10.2 Q35 在默认低端 RAM 上限下，把八 GiB 后备划为两个无复制别名。客户机物理地址零至二 GiB 对应后备零至二 GiB，四至十 GiB 对应后备二至八 GiB。二至四 GiB 为 PCI 和固件等窗口，其中可以存在未映射区。低端基础 RAM 布局内部还会叠加 VGA、ROM 等区域。本例的高端 RAM 在十 GiB 处结束，客户机物理地址空间还可包含其他区域。
@@ -219,7 +222,7 @@ memory_region_add_subregion(system_memory, x86ms-&gt;above_4g_mem_start,
   <h2><span class="mechanism-heading-number">五、</span>生成 FlatView、注册 KVM 与访问高端 RAM</h2>
   <h3 id="flatten-part-1"><span class="mechanism-heading-number">1. </span>把区域树展开为可见区间</h3>
   <p>机器和设备逐步挂接区域，每次最外层内存事务提交时，内存框架处理待更新的地址空间。<code>render_memory_region()</code> 先展开高优先级子区域，再由当前终止区域填充剩余空洞。纯容器的 <code>terminates</code> 为 false，只有已展开的子区域会进入结果。别名先修正地址基址并递归到目标，只读等属性随路径向下传递。生成结果经过相邻区间合并，再建立 AddressSpaceDispatch。</p>
-  <p>对本例的高端 RAM，展开结果记录 GPA 起点为 4 GiB、长度为 6 GiB、目标区域为 pc.ram、区域起始偏移为 2 GiB。客户机通过高端别名找到后备内存的关系，被保存为可以直接查询的区间。低端的设备覆盖会进一步切分 RAM 可见范围，因此两个 RAM 别名不等于最终只有两个 FlatRange 或 KVM 内存槽。拓扑展开、生成视图和 dispatch</p>
+  <p>对本例的高端 RAM，展开结果记录 GPA 起点为 4 GiB、长度为 6 GiB、目标区域为 pc.ram、区域起始偏移为 2 GiB。客户机通过高端别名找到后备内存的关系，被保存为可以直接查询的区间。低端的设备覆盖会进一步切分 RAM 可见范围，最终的 FlatRange 和 KVM 内存槽数量取决于分割后的区间。拓扑展开、生成视图和 dispatch</p>
   <h3 id="flatten-part-2"><span class="mechanism-heading-number">2. </span>将 GPA 与宿主地址登记到 KVM</h3>
   <p>KVM 的 MemoryListener 已在板级初始化之前注册。内存框架比较视图并通知区域变化；<code>kvm_region_add()</code> 先把新增区间排队，监听器的 <code>kvm_region_commit()</code> 再调用 <code>kvm_set_phys_mem()</code> 处理这些区间。对普通 RAM，它取得区域的宿主基址和偏移，填入 KVMSlot，最后经 <code>kvm_set_user_memory_region()</code> 调用 KVM 的内存注册 ioctl。宿主能力决定使用 <code>KVM_SET_USER_MEMORY_REGION</code> 或 REGION2 接口。</p>
   <p>本例高端 RAM 提供的对应关系是 <code>GPA 4 GiB → HVA B + 2 GiB</code>，长度为 6 GiB。内核由此知道这一段客户机 RAM 的宿主用户地址，随后才能取得对应的宿主物理页并建立二级映射。内存槽注册本身不会预建全部 EPT；首次访问与失效处理见<a href="kvm-ept-fault.html">KVM 内存映射与 EPT 缺页处理</a>。区间与宿主地址换算、更新排队与提交</p>
@@ -318,9 +321,9 @@ bus：独立容器，大小 0x8000
     <button type="button" data-mechanism-expand aria-label="放大查看区域修改、视图发布与 KVM 更新" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="区域修改、视图发布与 KVM 更新">
-    <img src="../assets/memory-region-publication.svg?v=5eb1bb7dc04a" width="852" height="886" alt="外层事务提交时生成新视图，比较区间并通知监听器。KVM 在监听器提交阶段处理内存槽增删；旧视图通过引用计数与 RCU 延迟回收。" loading="lazy">
+    <img src="../assets/memory-region-publication.svg?v=1b35da490c57" width="852" height="886" alt="外层事务提交时生成新视图，比较区间并通知监听器。KVM 在监听器提交阶段处理内存槽增删；旧视图通过引用计数与 RCU 延迟回收。" loading="lazy">
   </div>
-  <figcaption>外层事务提交时生成新视图，比较区间并通知监听器。KVM 在监听器提交阶段处理内存槽增删；旧视图通过引用计数与 RCU 延迟回收。 <a href="../assets/memory-region-publication.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>外层事务提交时生成新视图，比较区间并通知监听器。KVM 在监听器提交阶段处理内存槽增删；旧视图通过引用计数与 RCU 延迟回收。 <a href="../assets/memory-region-publication.svg?v=1b35da490c57" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: 区域修改、视图发布与 KVM 更新
   accDescr: 持有 BQL 时在内存事务中修改区域，最外层提交生成 FlatView 和 dispatch。框架比较新旧区间，通知监听器并发布 current_map，随后监听器 commit 更新 KVM 内存槽。读者通过 RCU 使用视图，旧视图在不再使用后回收。
@@ -351,7 +354,7 @@ bus：独立容器，大小 0x8000
 </figure>
   <h3 id="updates-part-1"><span class="mechanism-heading-number">1. </span>事务提交与新视图发布</h3>
   <p>调整多个区域时，设备可用 <code>memory_region_transaction_begin()</code> 与 <code>memory_region_transaction_commit()</code> 合并修改。事务允许嵌套，最外层提交才处理待更新布局；提交要求持有 BQL。它合并内存拓扑的发布，并不提供数据库式的任意错误回滚。</p>
-  <p>框架比较旧、新 FlatView，先发出删除通知，再处理新增、保持不变和日志状态变化。<code>address_space_set_flatview()</code> 发布新的 current_map；全局监听器 commit 随后执行。KVM 的 region_add / region_del 先把更新排队，在 <code>kvm_region_commit()</code> 中先移除旧槽、再加入新槽，对需要保护的重叠变化协调加速器访问。不能把用户态视图指针的替换理解为所有内核状态同时完成切换。</p>
+  <p>框架比较旧、新 FlatView，先发出删除通知，再处理新增、保持不变和日志状态变化。<code>address_space_set_flatview()</code> 发布新的 current_map；全局监听器 commit 随后执行。KVM 的 region_add / region_del 先把更新排队，在 <code>kvm_region_commit()</code> 中先移除旧槽、再加入新槽，对需要保护的重叠变化协调加速器访问。因此，用户态发布地址视图与 KVM 提交内存槽更新是两个时点。</p>
   <h3 id="updates-part-2"><span class="mechanism-heading-number">2. </span>覆盖变化时同步 KVM 内存槽</h3>
   <p>设备窗口覆盖普通 RAM 后，QEMU 的可见区间和 KVM 的可直接访问范围必须一同调整。原来覆盖较大范围的 RAM 槽可能需要删除，再按剩余可见区间重新注册；否则客户机仍可能通过旧映射直接访问已被设备窗口占用的地址。窗口关闭时，底层 RAM 重新可见，也需要恢复相应登记。这项工作随布局变化发生，RAMBlock 中未被改写的数据仍保留。区间删除与登记、KVM 更新事务</p>
   <h3 id="updates-part-3"><span class="mechanism-heading-number">3. </span>等待旧视图的读者退出</h3>
@@ -359,9 +362,8 @@ bus：独立容器，大小 0x8000
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">十、</span>预先展开与视图共享的收益和成本</h2>
-  <p>设备配置会改变可见布局，KVM、软件访存和后端又都需要了解变化。QEMU 逐步把局部区域描述、全局可见映射和观察者通知分离：2011 年的内存事务接口允许组合布局变更；同年的内存映射观察接口把变化通知交给监听器。这使设备模型可以描述自身映射，不必各自直接维护所有使用方的状态。</p>
-  <p>2012 年的 per-AddressSpace dispatch让不同访问入口拥有相应的查找结构。随后多个地址空间可能引用同一个有效根，重复维护视图与分发树又带来额外成本；2017 年的 FlatView 共享使经别名等关系归一后根指针相同的地址空间可以复用结果。</p>
+  <h2><span class="mechanism-heading-number">十、</span>地址视图的更新成本与观察</h2>
+
   <p>预先展开减少了运行时反复解释拓扑的工作，但映射变更需要重建、比较和发布视图，并协调监听器及旧对象的生命周期。热插拔、BAR 重定位主要承担更新成本；普通 MMIO 和用户态 DMA 频繁使用已经生成的查找结果。</p>
   <p>可在目标 QEMU 的 HMP monitor 中执行以下只读命令。第一条同时显示区域 owner/parent，第二条显示展开后的 FlatView。对照区域名称、起止地址与偏移，可以检查 BAR 窗口或 RAM 别名；这些输出描述 QEMU 映射，不列出客户机页表或完整 EPT 内容。命令定义</p>
   <pre><code>info mtree -o
@@ -376,23 +378,25 @@ info mtree -f</code></pre>
 <section id="sources" class="mechanism-section">
   <h2><span class="mechanism-heading-number">十二、</span>参考资料</h2>
   <ul>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/core/machine.c#L1658-L1745">机器 RAM 准备与板级初始化</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/backends/hostmem.c#L333-L429">后端完成与预分配</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/backends/hostmem-ram.c#L18-L43">匿名 RAM 后端</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/memory.c#L1585-L1604">RAM MemoryRegion 初始化</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/physmem.c#L2479-L2579">RAMBlock 分配</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/pc_q35.c#L153-L200">Q35 低端与高端 RAM 容量</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/pc.c#L883-L903">RAM 别名与客户机地址布局</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/memory.rst">QEMU 10.2.0：内存模型、别名和访问约束</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/system/memory.h#L823-L876">MemoryRegion</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/system/memory.h#L1160-L1210">AddressSpace 与 FlatView</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/memory.c#L595-L685">区域展开</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/memory.c#L1080-L1175">视图发布与事务提交</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/physmem.c#L346-L397">分发查找与偏移转换</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/physmem.c#L3238-L3453">RAM 与 MMIO 的读写分支</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L1736-L1830">KVM 内存监听器与槽位更新</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/memory.rst">QEMU 内存模型：区域、别名与访问约束</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/core/machine.c#L1658-L1745">QEMU machine：准备整机 RAM 并初始化板级设备</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/backends/hostmem.c#L333-L429">QEMU 内存后端：完成配置与预分配</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/memory.c#L1585-L1604">QEMU MemoryRegion：初始化 RAM 区域</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/physmem.c#L2479-L2579">QEMU RAMBlock：分配宿主内存</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/i386/pc.c#L883-L903">QEMU x86：把低端和高端 RAM 映射进客户机地址空间</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/memory.c#L595-L685">QEMU FlatView：将区域树展开为可访问的区间</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/memory.c#L1080-L1175">QEMU 内存事务：提交并发布新视图</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/system/physmem.c#L3238-L3453">QEMU 地址空间：分派 RAM 与 MMIO 读写</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L1736-L1830">QEMU KVM 内存监听器：把映射变化同步到内存槽</a></li>
   </ul>
 </section></div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#qemu-internals">QEMU 原理</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-10-19">2026-10-19</time> · 针对文中标注的源码与规范基线。</p></article>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-24">2026-11-24</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=5eb1bb7dc04a" defer></script>
-<script src="../assets/memory-map.js?v=5eb1bb7dc04a" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=1b35da490c57" defer></script>
+<script src="../assets/memory-map.js?v=1b35da490c57" defer></script></body>
 </html>

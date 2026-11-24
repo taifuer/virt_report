@@ -136,7 +136,7 @@ def test_earliest_listed_draft_is_verified_but_not_claimed_as_first(tmp_path):
     assert spec["stage"] == "Legacy" and spec["released_on"] == "2010-04-20"
     assert versions._valid_specification(spec, TODAY)
     assert not versions._valid_specification({**spec, "released_on": "2012-06-26"}, TODAY)
-    assert "不能据此认定它是首版" in render_versions_html(config, content)
+    assert "0.8.7 是此处收录最早的编号草案" in render_versions_html(config, content)
 
 
 def test_recent_backend_releases_have_reviewed_notes_and_real_sources(tmp_path):

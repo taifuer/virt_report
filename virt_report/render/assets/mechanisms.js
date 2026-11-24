@@ -304,7 +304,7 @@
         if (state.remainingMiB <= state.thresholdMiB) description += ' 已达到模型切换条件，下一步暂停源端。';
         else if (state.observationEnded) description += state.endReason === 'stable'
           ? ` 连续 ${STABLE_ROUNDS} 轮没有减少，演示在此停止，迁移仍未收敛。可提高带宽或降低脏页速率后重试。`
-          : ` 已观察 ${MAX_ROUNDS} 轮，演示停止观察；仍在缓慢下降，但尚未达到切换条件，未强行暂停或判定迁移失败。`;
+          : ` 已观察 ${MAX_ROUNDS} 轮，剩余数据仍在下降，尚未达到停机切换条件。本次演示到此结束。`;
         else description += ` 仍高于 ${number(state.thresholdMiB)} MiB 的阈值，继续迭代。`;
       }
       put('description', description);

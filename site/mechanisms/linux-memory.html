@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=5eb1bb7dc04a">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=5eb1bb7dc04a">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=1b35da490c57">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1b35da490c57">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -35,7 +35,7 @@
         <a href="../topics.html" class="">专题</a>
         <a href="../conferences.html" class="">会议</a>
         <a href="../versions.html" class="">版本</a>
-        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../industry/index.html" class="">产业</a>
         <a href="../about.html" class="">关于</a>
         <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -112,9 +112,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看从 TLB 查找到缺页处理" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="从 TLB 查找到缺页处理">
-    <img src="../assets/linux-page-fault.svg?v=5eb1bb7dc04a" width="308" height="656" alt="在 x86 上，TLB 未命中后由硬件遍历页表。图中触发缺页的是对私有匿名映射的首次写入：内核安装可写页，CPU 重试原指令。" loading="lazy">
+    <img src="../assets/linux-page-fault.svg?v=1b35da490c57" width="308" height="656" alt="在 x86 上，TLB 未命中后由硬件遍历页表。图中触发缺页的是对私有匿名映射的首次写入：内核安装可写页，CPU 重试原指令。" loading="lazy">
   </div>
-  <figcaption>在 x86 上，TLB 未命中后由硬件遍历页表。图中触发缺页的是对私有匿名映射的首次写入：内核安装可写页，CPU 重试原指令。 <a href="../assets/linux-page-fault.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>在 x86 上，TLB 未命中后由硬件遍历页表。图中触发缺页的是对私有匿名映射的首次写入：内核安装可写页，CPU 重试原指令。 <a href="../assets/linux-page-fault.svg?v=1b35da490c57" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TD
     accTitle: TLB 未命中与匿名页首次写入
     accDescr: TLB 未命中先由硬件查页表，页表有效时直接完成转换。对合法匿名映射首次写入但页表项尚未建立时，缺页处理分配页并建立映射，然后重试原指令。
@@ -146,9 +146,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看同一虚拟地址，写入后指向不同的物理页" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="同一虚拟地址，写入后指向不同的物理页">
-    <img src="../assets/linux-cow-mappings.svg?v=5eb1bb7dc04a" width="956" height="277" alt="父子起初共享页 P，两份 PTE 都只读。子进程写入后，子进程页表改指向已复制的可写页 Q，父进程页表仍指向 P。" loading="lazy">
+    <img src="../assets/linux-cow-mappings.svg?v=1b35da490c57" width="956" height="277" alt="父子起初共享页 P，两份 PTE 都只读。子进程写入后，子进程页表改指向已复制的可写页 Q，父进程页表仍指向 P。" loading="lazy">
   </div>
-  <figcaption>父子起初共享页 P，两份 PTE 都只读。子进程写入后，子进程页表改指向已复制的可写页 Q，父进程页表仍指向 P。 <a href="../assets/linux-cow-mappings.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>父子起初共享页 P，两份 PTE 都只读。子进程写入后，子进程页表改指向已复制的可写页 Q，父进程页表仍指向 P。 <a href="../assets/linux-cow-mappings.svg?v=1b35da490c57" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart LR
     accTitle: fork 后共享页面与子进程写时复制
     accDescr: fork 后父子进程的页表都以只读权限指向物理页 P；本例父进程继续持有 P，子进程写入触发 COW 后获得新页 Q，父进程仍指向 P。允许写的 VMA 与暂时只读的 PTE 是不同层次。
@@ -181,9 +181,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看从候选页到真正可释放的页面" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="从候选页到真正可释放的页面">
-    <img src="../assets/linux-page-reclaim.svg?v=5eb1bb7dc04a" width="698" height="767" alt="干净文件页可从原文件重读，脏文件页要写回，匿名页通常需要换出。解除映射并处理完固定引用后，物理页才能重新分配。" loading="lazy">
+    <img src="../assets/linux-page-reclaim.svg?v=1b35da490c57" width="698" height="767" alt="干净文件页可从原文件重读，脏文件页要写回，匿名页通常需要换出。解除映射并处理完固定引用后，物理页才能重新分配。" loading="lazy">
   </div>
-  <figcaption>干净文件页可从原文件重读，脏文件页要写回，匿名页通常需要换出。解除映射并处理完固定引用后，物理页才能重新分配。 <a href="../assets/linux-page-reclaim.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>干净文件页可从原文件重读，脏文件页要写回，匿名页通常需要换出。解除映射并处理完固定引用后，物理页才能重新分配。 <a href="../assets/linux-page-reclaim.svg?v=1b35da490c57" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: 冷页面不一定能够立即回收
     accDescr: 回收先选择候选页，再检查是否能解除使用和映射。干净文件页可以丢弃，脏文件页需安排写回后再评估，匿名页需有可用换出路径。被固定等不可回收页面会跳过或延后，安全释放仍需引用和映射同步。
@@ -235,20 +235,22 @@
 <section id="sources" class="mechanism-section">
   <h2><span class="mechanism-heading-number">十一、</span>源码与参考资料</h2>
   <ul>
-    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/mm/mmap.c#L278">映射建立</a>；<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/mm/memory.c#L6470">缺页分派</a>；<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/mm/vmscan.c#L6612">直接回收入口</a>。</li>
-    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/admin-guide/mm/concepts.rst">Linux 内存概念</a>。</li>
-    <li><a href="../conference-papers.html#paper-osdi16-ingens">Ingens（OSDI 2016）</a>研究 Linux/KVM 大页分配的延迟、内存浪费与公平性，将连续内存供给、后台规整和页共享协调起来。论文采用 Linux 4.3，适合对照理解大页收益与管理成本。</li>
-    <li><a href="https://retoachermann.ch/static/papers/achermann-2020-mts.pdf">Mitosis（ASPLOS 2020）</a>研究页表自身的 NUMA 局部性，通过副本同步和页表迁移减少远端遍历。原型基于 Linux 4.17；页表页与应用数据页分别放置。</li>
-    <li><a href="https://pdos.csail.mit.edu/papers/radixvm:eurosys13.pdf">RadixVM（EuroSys 2013）</a>研究多线程并发 mmap/munmap 的元数据竞争、引用计数和远端 TLB 失效。它是研究内核中的地址空间设计，可用于理解可扩展性问题；Linux 6.18 的 VMA 和页表锁以对应源码为准。</li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/admin-guide/mm/concepts.rst">Linux 内存管理文档：地址空间、页面与回收</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/mm/mmap.c#L278">Linux：建立进程的虚拟内存映射</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/mm/memory.c#L6470">Linux：处理缺页并选择对应的页面处理路径</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/mm/vmscan.c#L6612">Linux：内存分配触发的直接回收</a></li>
+    <li><a href="../conference-papers.html#paper-osdi16-ingens">Ingens（OSDI 2016）：操作系统的大页分配</a></li>
+    <li><a href="https://retoachermann.ch/static/papers/achermann-2020-mts.pdf">Mitosis（ASPLOS 2020）：在 NUMA 节点复制页表</a></li>
+    <li><a href="https://pdos.csail.mit.edu/papers/radixvm:eurosys13.pdf">RadixVM（EuroSys 2013）：研究内核中的并行地址空间管理</a></li>
   </ul>
 </section></div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#linux-foundations">Linux 内核</a></nav>
 <p class="mechanism-review">技术复核：<time datetime="2026-11-10">2026-11-10</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=5eb1bb7dc04a" defer></script>
+<script src="../assets/mechanism-viewer.js?v=1b35da490c57" defer></script>
 </body>
 </html>

@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=5eb1bb7dc04a">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=5eb1bb7dc04a">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=1b35da490c57">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1b35da490c57">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -35,7 +35,7 @@
         <a href="../topics.html" class="">专题</a>
         <a href="../conferences.html" class="">会议</a>
         <a href="../versions.html" class="">版本</a>
-        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../industry/index.html" class="">产业</a>
         <a href="../about.html" class="">关于</a>
         <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -50,7 +50,7 @@
   <div class="mechanism-layout">
     <nav class="mechanism-toc" aria-label="文章目录">
       <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
-      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a></li><li><a href="#layers">二、从驱动接口到 RPC 请求</a></li><li><a href="#framing">三、示例：56 字节请求与 60 字节响应</a></li><li><a href="#dispatch">四、服务端分发与对象查询</a></li><li><a href="#responses">五、响应匹配与错误分类</a></li><li><a href="#evolution">六、协议复用、接口扩展与兼容成本</a></li><li><a href="#summary">七、总结</a></li><li><a href="#sources">八、参考资料</a></li></ol>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a><ol><li><a href="#evolution">从远程连接到共用 RPC 协议</a></li></ol></li><li><a href="#layers">二、从驱动接口到 RPC 请求</a></li><li><a href="#framing">三、示例：56 字节请求与 60 字节响应</a></li><li><a href="#dispatch">四、服务端分发与对象查询</a></li><li><a href="#responses">五、响应匹配与错误分类</a></li><li><a href="#summary">六、总结</a></li><li><a href="#sources">七、参考资料</a></li></ol>
     </nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
@@ -58,6 +58,9 @@
   <p>应用程序调用 Libvirt API 时，连接 URI 决定请求交给哪个驱动。对于常见的 <code>qemu:///system</code> 连接，客户端通过 RPC 访问管理守护进程，再由服务端 QEMU 驱动处理虚拟机对象。应用拿到的 <code>virDomainPtr</code> 是本进程中的句柄，跨进程传输的是对象标识与参数。</p>
   <p>本文跟踪一次 <code>virDomainGetInfo()</code>：查询已有虚拟机的状态、内存、vCPU 数和 CPU 时间。连接建立与认证已完成；传输采用本机 UNIX socket，服务端可以是 <code>libvirtd</code> 或模块化的 <code>virtqemud</code>。</p>
   <p>以虚拟机 <code>demo</code> 为例，客户端把 UUID 等标识编码进 CALL；服务端按过程号选择查询函数，用 UUID 找到对象，再把结果放入 REPLY。客户端靠调用序号找到原等待者。编码解决跨进程表示，分发决定执行哪项操作，序号解决多个调用并发时的响应归属。</p>
+  <h3 id="evolution">从远程连接到共用 RPC 协议</h3>
+  <p>RPC 起初服务于客户端库与 libvirtd 的通信，后来公共消息、连接和分发代码独立为可复用的 RPC 基础设施。program/version 选择一组协议，procedure 选择其中的操作，具体参数则由各自的 XDR 定义。新服务因而可以复用消息收发和认证，而不必把所有业务都塞进同一张过程表。RPC 架构文档</p>
+  <p>这种分离也有维护约束：过程号和已经发布的字段布局需要保持兼容，公共编解码成功后仍要做业务权限与参数检查。客户端和服务端由同一协议定义生成样板，减少手写两份编码的偏差；调用的权限、输入约束和错误语义仍由接口本身定义。后来的<a href="libvirt-internals.html#evolution">守护进程拆分</a>改变了消息最终到达的进程，上层 API 和 RPC 边界得以保留。</p>
 <p class="mechanism-baselines">源码版本：Libvirt 12.0.0。</p></section>
 
 <section id="layers" class="mechanism-section">
@@ -93,9 +96,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看Libvirt RPC 的报文组成" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="Libvirt RPC 的报文组成">
-    <img src="../assets/libvirt-rpc-framing.svg?v=5eb1bb7dc04a" width="959" height="462" alt="长度与六个头字段构成 28 字节公共部分；type 和 status 决定后面的载荷类型。正常响应沿用请求的 program、version、procedure 和 serial。" loading="lazy">
+    <img src="../assets/libvirt-rpc-framing.svg?v=1b35da490c57" width="959" height="462" alt="长度与六个头字段构成 28 字节公共部分；type 和 status 决定后面的载荷类型。正常响应沿用请求的 program、version、procedure 和 serial。" loading="lazy">
   </div>
-  <figcaption>长度与六个头字段构成 28 字节公共部分；type 和 status 决定后面的载荷类型。正常响应沿用请求的 program、version、procedure 和 serial。 <a href="../assets/libvirt-rpc-framing.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>长度与六个头字段构成 28 字节公共部分；type 和 status 决定后面的载荷类型。正常响应沿用请求的 program、version、procedure 和 serial。 <a href="../assets/libvirt-rpc-framing.svg?v=1b35da490c57" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: Libvirt RPC 的报文组成
   accDescr: 一条 RPC 消息先有四字节总长度，再有二十四字节公共头，然后按消息类型和状态携带调用参数、返回值、错误或事件。GetInfo 示例请求五十六字节，响应六十字节。
@@ -135,9 +138,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看一次 virDomainGetInfo 调用的往返" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="一次 virDomainGetInfo 调用的往返">
-    <img src="../assets/libvirt-rpc-dispatch.svg?v=5eb1bb7dc04a" width="916" height="997" alt="客户端和服务端分别绑定 remote 与 QEMU 驱动。UUID 用于定位服务端对象，响应通过同一连接上的 program、version、serial 匹配等待者。" loading="lazy">
+    <img src="../assets/libvirt-rpc-dispatch.svg?v=1b35da490c57" width="916" height="997" alt="客户端和服务端分别绑定 remote 与 QEMU 驱动。UUID 用于定位服务端对象，响应通过同一连接上的 program、version、serial 匹配等待者。" loading="lazy">
   </div>
-  <figcaption>客户端和服务端分别绑定 remote 与 QEMU 驱动。UUID 用于定位服务端对象，响应通过同一连接上的 program、version、serial 匹配等待者。 <a href="../assets/libvirt-rpc-dispatch.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>客户端和服务端分别绑定 remote 与 QEMU 驱动。UUID 用于定位服务端对象，响应通过同一连接上的 program、version、serial 匹配等待者。 <a href="../assets/libvirt-rpc-dispatch.svg?v=1b35da490c57" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>sequenceDiagram
   accTitle: 一次 virDomainGetInfo 调用的往返
   accDescr: 客户端公开 API 经 remote 驱动编码请求；服务端 RPC 分发到 QEMU 驱动，按 UUID 查找对象并读取信息；结果携带相同 serial 返回给对应等待调用。
@@ -174,33 +177,31 @@
   <p>serial 负责本连接内的响应关联，不是服务端的持久化去重键。尤其对于启动、修改配置等写操作，断线时请求可能已经执行，只是响应尚未抵达；应用应先查询实际状态，再决定是否重试。启动过程见<a href="libvirt-domain-start.html">Libvirt 虚拟机启动的进程与状态管理</a>。</p>
 </section>
 
-<section id="evolution" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">六、</span>协议复用、接口扩展与兼容成本</h2>
-  <p>RPC 起初服务于客户端库与 libvirtd 的通信，后来公共消息、连接和分发代码独立为可复用的 RPC 基础设施。program/version 选择一组协议，procedure 选择其中的操作，具体参数则由各自的 XDR 定义。新服务因而可以复用消息收发和认证，而不必把所有业务都塞进同一张过程表。RPC 架构文档</p>
-  <p>这种分离也有维护约束：过程号和已经发布的字段布局需要保持兼容，公共编解码成功后仍要做业务权限与参数检查。客户端和服务端由同一协议定义生成样板，减少手写两份编码的偏差，但不能替代对接口语义的设计。后来的<a href="libvirt-internals.html#evolution">守护进程拆分</a>改变了消息最终到达的进程，上层 API 和 RPC 边界得以保留。</p>
-</section>
-
 <section id="summary" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">七、</span>总结</h2>
+  <h2><span class="mechanism-heading-number">六、</span>总结</h2>
   <p>对本例，可以依次核对四个结果：完整请求已按 length 接收；proc=16 已分派；UUID 查询取得对象；serial=42 的响应已交回调用者。请求延迟可能出现在连接、RPC 排队或驱动执行中，应分段定位；API 调用耗时还包括服务端处理与等待时间。</p>
 </section>
 
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">八、</span>参考资料</h2>
+  <h2><span class="mechanism-heading-number">七、</span>参考资料</h2>
   <ul>
-    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/rpc/virnetprotocol.x">Libvirt 12.0.0：RPC 公共协议</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/remote/remote_protocol.x">remote 接口定义</a></li>
-    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/rpc/virnetmessage.c">消息长度、头与载荷编解码</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/rpc/virnetclientprogram.c#L261-L393">客户端调用与错误处理</a></li>
-    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/rpc/virnetserverprogram.c#L350-L483">服务端分发与响应</a>、<a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L2438-L2490">QEMU 驱动查询实现</a></li>
-    <li><a href="https://www.rfc-editor.org/rfc/rfc4506">RFC 4506：XDR 编码</a>、<a href="https://libvirt.org/kbase/internals/rpc.html">Libvirt RPC 内部设计</a></li>
+    <li><a href="https://libvirt.org/kbase/internals/rpc.html">Libvirt RPC 设计：客户端与守护进程的通信</a></li>
+    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/rpc/virnetprotocol.x">Libvirt RPC 公共协议：消息类型与报头</a></li>
+    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/remote/remote_protocol.x">Libvirt remote 协议：远程调用的参数与返回值</a></li>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc4506">RFC 4506：XDR 数据编码标准</a></li>
+    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/rpc/virnetmessage.c">Libvirt RPC：编码和解码消息报头与载荷</a></li>
+    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/rpc/virnetclientprogram.c#L261-L393">Libvirt RPC 客户端：发起调用并处理错误</a></li>
+    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/rpc/virnetserverprogram.c#L350-L483">Libvirt RPC 服务端：分派请求并返回结果</a></li>
+    <li><a href="https://github.com/libvirt/libvirt/blob/4d937284669ecf180abea087d0b3ad67d9476349/src/qemu/qemu_driver.c#L2438-L2490">Libvirt QEMU 驱动：实现虚机信息查询</a></li>
   </ul>
 </section></div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#libvirt-internals">Libvirt 原理</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-10-19">2026-10-19</time> · 针对文中标注的源码与规范基线。</p></article>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-24">2026-11-24</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=5eb1bb7dc04a" defer></script>
+<script src="../assets/mechanism-viewer.js?v=1b35da490c57" defer></script>
 </body>
 </html>

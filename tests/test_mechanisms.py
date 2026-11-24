@@ -303,7 +303,7 @@ def test_catalogue_has_one_title_link_per_article_without_redundant_cta():
     assert ('<h3 id="mechanism-topic-migration"><a href="mechanisms/'
             'qemu-memory-migration.html">热迁移</a></h3>') in page
     assert ('<h3 id="mechanism-topic-device-virtualization">'
-            '<span class="mechanism-topic-label">设备与 I/O 虚拟化</span></h3>') in page
+            '<a href="mechanisms/device-virtualization.html">设备与 I/O 虚拟化</a></h3>') in page
     assert page.count('class="mechanism-topic"') == len(mechanisms.topics())
 
 
@@ -325,7 +325,7 @@ def test_catalogue_about_and_export_work_without_database_and_preserve_reports(t
             render.ASSETS_DIR / name).read_bytes()
     assert 'href="mechanisms/qemu-memory-migration.html"' in (
         tmp_path / "mechanisms.html").read_text()
-    assert 'href="mechanisms.html">查看原理' in render.render_about_html(config)
+    assert 'href="mechanisms.html">虚拟化原理文章</a>' in render.render_about_html(config)
 
 
 @pytest.mark.parametrize("path,status,marker", [

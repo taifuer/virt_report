@@ -6,6 +6,9 @@
   <p>更新 QEMU 二进制后，已经运行的虚拟机仍由旧进程维护。要让新版本接管，需要保留客户机内存，交接 CPU 和设备状态，并重新连接相关宿主资源。QEMU 的 CheckPoint and Restart（CPR）为同一宿主机上的进程替换提供了几种迁移模式。</p>
   <p>本文重点分析 <code>cpr-transfer</code>：旧、新 QEMU 进程短暂并存，内存在原共享后端中保留，文件描述符通过 Unix socket 传递，CPU 与设备状态通过主迁移通道恢复。客户机在交接期间暂停，随后从原执行进度继续；共享 RAM 减少了停机窗口中的内存搬运。</p>
   <p>本文的 QEMU 10.2 CPR-transfer 处理用户态进程替换，宿主内核继续运行。连同 KVM 实现一起升级的同机方案见<a href="kvm-live-upgrade.html">KVM 热升级：Orthus 与 Dual KVM</a>：它增加新旧 KVM 共存和逐台接管机制，两种路径都需要协调状态兼容与单一执行权。</p>
+  <h3 id="history">从 cpr-reboot 到 cpr-transfer</h3>
+  <p>普通保存恢复也能保持客户机执行位置，但暂停后写出全部 RAM、再读入新进程时，停顿会随内存复制量增长。同机升级利用共享后端保留 RAM，把这部分工作从交接路径中移除；剩余的对象创建、设备恢复与兼容性检查仍需完成。</p>
+  <p><a href="https://github.com/qemu/qemu/commit/a87e64519b027c9b36d9badbd73b13f6475dfb3d">2023 年的 cpr-reboot 实现</a> 提供保存状态、退出旧 QEMU、再启动新进程的路径。<a href="https://github.com/qemu/qemu/commit/624e6e654e110d04efd22fe7bb494010c12765f0">2025 年的 cpr-transfer 实现</a> 增加并存进程间的 fd 交接，让共享资源可以在旧进程退出前交给新进程。<a href="https://github.com/qemu/qemu/commit/a3eae205c601dd491d2e83fa9ff0d15fce7236b5">cpr-exec</a> 则使用 exec 替换当前进程映像。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -133,9 +136,9 @@ TARGET_PID=$!</code></pre>
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>从保存重启到进程间交接</h2>
-  <p>普通保存恢复也能保持客户机执行位置，但暂停后写出全部 RAM、再读入新进程时，停顿会随内存复制量增长。同机升级利用共享后端保留 RAM，把这部分工作从交接路径中移除；剩余的对象创建、设备恢复与兼容性检查仍需完成。</p>
-  <p><a href="https://github.com/qemu/qemu/commit/a87e64519b027c9b36d9badbd73b13f6475dfb3d">2023 年的 cpr-reboot 实现</a> 提供保存状态、退出旧 QEMU、再启动新进程的路径。<a href="https://github.com/qemu/qemu/commit/624e6e654e110d04efd22fe7bb494010c12765f0">2025 年的 cpr-transfer 实现</a> 增加并存进程间的 fd 交接，让共享资源可以在旧进程退出前交给新进程。<a href="https://github.com/qemu/qemu/commit/a3eae205c601dd491d2e83fa9ff0d15fce7236b5">cpr-exec</a> 则使用 exec 替换当前进程映像。</p>
+  <h2>不同 CPR 模式的资源交接</h2>
+
+
   <table><thead><tr><th scope="col">模式</th><th scope="col">进程与资源交接</th><th scope="col">主要取舍</th></tr></thead><tbody>
     <tr><td>cpr-reboot</td><td>保存状态后退出，另行启动；RAM 可共享保留或写入状态文件</td><td>步骤清晰，但新进程准备通常落入停机窗口；跨宿主重启保留 RAM 需要持久化内存后端等条件</td></tr>
     <tr><td>cpr-transfer</td><td>两个进程短暂并存，通过 Unix socket 传 fd 和主通道交状态</td><td>可提前准备目标资源，需要协调监听顺序与唯一执行权</td></tr>
@@ -153,13 +156,16 @@ TARGET_PID=$!</code></pre>
 <section id="implementation" class="mechanism-section">
   <h2>源码与资料：资源清单和状态交接</h2>
   <ul>
-    <li><a href="{{ qemu_source }}docs/devel/migration/CPR.rst">CPR 模式、配置条件、限制与示例</a></li>
-    <li><a href="{{ qemu_source }}include/migration/cpr.h#L16-L29">CPR 头部和 CprState</a>、<a href="{{ qemu_source }}migration/cpr.c#L28-L95">CprFd 与 name / id 查找</a></li>
-    <li><a href="{{ qemu_source }}migration/cpr.c#L182-L298">CPR 状态保存和启动时加载</a>、<a href="{{ qemu_source }}system/vl.c#L3769-L3782">cpr_state_load 的调用位置</a></li>
-    <li><a href="{{ qemu_source }}migration/cpr-transfer.c#L20-L73">Unix CPR 通道</a>、<a href="{{ qemu_source }}migration/qemu-file.c#L365-L415">描述符发送与接收</a></li>
-    <li><a href="{{ qemu_source }}migration/migration.c#L2260-L2300">先传 CPR 清单并等待 HUP</a>、<a href="{{ qemu_source }}migration/migration.c#L4102-L4126">main 连接后的停止与迁移线程创建</a></li>
-    <li><a href="{{ qemu_source }}backends/hostmem-memfd.c#L33-L67">memfd 后端复用</a>、<a href="{{ qemu_source }}system/physmem.c#L2450-L2477">附属 RAM 的共享 fd</a>、<a href="{{ qemu_source }}migration/ram.c#L228-L236">跳过普通 RAM 传输</a></li>
-    <li><a href="{{ qemu_source }}hw/vfio/cpr.c#L260-L293">VFIO 中断交接与失败通知</a>、<a href="{{ qemu_source }}hw/vfio/cpr-iommufd.c#L198-L226">IOMMUFD 设备资源复用</a></li>
-    <li><a href="{{ qemu_source }}migration/cpr-exec.c">cpr-exec 的 memfd、描述符继承与 exec</a></li>
+    <li><a href="{{ qemu_source }}docs/devel/migration/CPR.rst">QEMU CPR 开发文档：升级模式、配置条件与示例</a></li>
+    <li><a href="{{ qemu_source }}migration/cpr.c#L28-L95">QEMU CprFd：按名称和编号找回文件描述符</a></li>
+    <li><a href="{{ qemu_source }}migration/cpr.c#L182-L298">QEMU CPR：序列化资源清单并在新进程中加载</a></li>
+    <li><a href="{{ qemu_source }}migration/cpr-transfer.c#L20-L73">QEMU cpr-transfer：建立 Unix 域套接字通道</a></li>
+    <li><a href="{{ qemu_source }}migration/qemu-file.c#L365-L415">QEMUFile：通过套接字传递文件描述符</a></li>
+    <li><a href="{{ qemu_source }}migration/migration.c#L2260-L2300">QEMU 迁移：发送资源清单并等待对端关闭通道</a></li>
+    <li><a href="{{ qemu_source }}backends/hostmem-memfd.c#L33-L67">QEMU memfd 内存后端：复用已保存的描述符</a></li>
+    <li><a href="{{ qemu_source }}migration/ram.c#L228-L236">QEMU RAM 迁移：共享内存时跳过页面传输</a></li>
+    <li><a href="{{ qemu_source }}hw/vfio/cpr.c#L260-L293">QEMU VFIO CPR：移交中断状态并处理失败通知</a></li>
+    <li><a href="{{ qemu_source }}hw/vfio/cpr-iommufd.c#L198-L226">QEMU VFIO CPR：在 IOMMUFD 模式下复用设备资源</a></li>
+    <li><a href="{{ qemu_source }}migration/cpr-exec.c">QEMU cpr-exec：跨 exec 保留内存与描述符</a></li>
   </ul>
 </section>

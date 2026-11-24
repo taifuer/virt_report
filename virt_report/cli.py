@@ -166,6 +166,7 @@ def _render_index(config: Config, conn) -> None:
         stale.unlink()
     render.render_about(config)
     render.render_mechanisms(config)
+    render.render_industry(config)
     from virt_report import versions
     render.render_versions(config, versions.load_content(config))
     render.render_search(config, search_index.search(conn, ""))
@@ -359,6 +360,24 @@ def cmd_topics_refresh(args, config: Config) -> None:
         ))
     finally:
         conn.close()
+
+
+def cmd_industry_draft(args, config: Config) -> int:
+    from virt_report import industry, industry_watch
+
+    base, partial = industry_watch.collect_draft(config, args.week or industry.previous_week(), ai=args.ai)
+    print(f"待审资料：{base}（未发布）")
+    if partial:
+        print("部分来源访问失败；详情见 research.json，可单独重跑采编。")
+    return 3 if partial else 0
+
+
+def cmd_industry_publish(args, config: Config) -> None:
+    from virt_report import industry
+
+    key = industry.publish(config, json.loads(args.path.read_text(encoding="utf-8")))
+    render.render_industry(config)
+    print(f"已发布产业周报 {key}")
 
 
 def cmd_versions_refresh(args, config: Config) -> None:
@@ -648,6 +667,12 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("index", help="导出完整静态站点快照")
     sub.add_parser("topics-refresh", help="离线重建专题数据快照")
+    p_draft = sub.add_parser("industry-draft", help="联网采编上周产业资料，仅写入待审目录")
+    p_draft.add_argument("week", nargs="?", help="北京时间自然周，如 2026-W47")
+    p_draft.add_argument("--ai", action="store_true", help="使用已配置的模型整理待审草稿")
+    p_publish = sub.add_parser("industry-publish", help="核验后发布一期产业周报并导出产业页")
+    p_publish.add_argument("path", type=Path, help="已编辑的周报 JSON")
+    p_publish.add_argument("--reviewed", required=True, action="store_true", help="确认已核实事件、日期与原始来源")
     p_versions = sub.add_parser("versions-refresh", help="更新官方版本记录与时间线快照")
     p_versions.add_argument("--from-year", type=int, default=2003, help="起始年份（默认 2003）")
     p_versions.add_argument("--no-fetch", action="store_true", help="仅使用已有离线版本数据，不联网")
@@ -734,6 +759,7 @@ def main(argv: list[str] | None = None) -> int:
     dispatch = {"fetch": cmd_fetch, "daily": cmd_daily, "weekly": cmd_weekly,
                 "monthly": cmd_monthly, "index": cmd_index, "status": cmd_status,
                 "topics-refresh": cmd_topics_refresh,
+                "industry-draft": cmd_industry_draft, "industry-publish": cmd_industry_publish,
                 "versions-refresh": cmd_versions_refresh,
                 "search-refresh": cmd_search_refresh,
                 "backfill-kvm": cmd_backfill_kvm, "serve": cmd_serve,

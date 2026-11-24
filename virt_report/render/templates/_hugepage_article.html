@@ -6,6 +6,9 @@
   <h2>序言</h2>
   <p>同一段虚拟机内存可以由一个 2 MiB EPT 叶子项覆盖，也可以由 512 个 4 KiB 叶子项覆盖。大页减少第二级页表遍历层数和表项数量；细粒度映射则允许 KVM 分别控制子页的写权限与脏状态。迁移开始和结束时，这两种需求会推动映射粒度转换。</p>
   <p>本文以 x86、Intel EPT、KVM TDP MMU 和普通 HVA 后备 RAM 为例，跟踪大页建立、脏页记录期间的拆分，以及关闭记录后的恢复。QEMU 在宿主用户态开启或关闭内存槽的脏页记录；KVM 在宿主内核中修改 EPT，物理 CPU 使用它完成地址转换。客户机内核继续管理自己的页表。地址转换和首次缺页的完整路径见<a href="kvm-ept-fault.html">内存映射与 EPT 缺页处理</a>。</p>
+  <h3 id="evolution">大页拆分与恢复的演进</h3>
+  <p>2022 年的 <a href="https://github.com/torvalds/linux/commit/a3fe5dbda0a4bb7759dcd5a0ad713d347e020401">TDP eager splitting 提交</a>将拆分提前到启用脏页记录时，减少客户机首次写入时承担的页表处理。它采取尽力而为策略，未完成的拆分仍可通过保护和缺页保证正确性。</p>
+  <p>Linux 6.13 的 <a href="https://github.com/torvalds/linux/commit/c59de1413391868057cfe70b45dbce66de643064">KVM MMU 更新</a>加入 TDP 大页原位恢复，避免先撤销下级映射、等待再次访问才重建大页。本文基线已包含这一路径。预先拆分与原位恢复分别减少进入和退出细粒度跟踪时的 vCPU 扰动，但仍需分配页表、同步 TLB，并受宿主后备条件约束。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -74,12 +77,6 @@
   <p>宿主侧可通过支持 KVM 统计接口的工具读取目标 VM 的 <code>pages_4k</code>、<code>pages_2m</code> 和 <code>pages_1g</code>，观察不同大小的叶子映射数量。它们属于 KVM 映射统计，与宿主大页池容量、QEMU 后备映射大小是不同的数据。对前面这一个 2 MiB 范围，理想化的拆分变化是少一个 2 MiB 叶子、多 512 个 4 KiB 叶子；整台 VM 的并发缺页、其他映射和多个 MMU 根都会影响汇总值，不能用全局计数反推某个 GPA 已恢复。<a href="{{ linux_source }}arch/x86/kvm/x86.c#L244-L258">统计字段</a>、<a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1522-L1558">拆分时的统计更新</a></p>
 </section>
 
-<section id="evolution" class="mechanism-section">
-  <h2>从按需拆分到原位恢复</h2>
-  <p>2022 年的 <a href="https://github.com/torvalds/linux/commit/a3fe5dbda0a4bb7759dcd5a0ad713d347e020401">TDP eager splitting 提交</a>将拆分提前到启用脏页记录时，减少客户机首次写入时承担的页表处理。它采取尽力而为策略，未完成的拆分仍可通过保护和缺页保证正确性。</p>
-  <p>Linux 6.13 的 <a href="https://github.com/torvalds/linux/commit/c59de1413391868057cfe70b45dbce66de643064">KVM MMU 更新</a>加入 TDP 大页原位恢复，避免先撤销下级映射、等待再次访问才重建大页。本文基线已包含这一路径。预先拆分与原位恢复分别减少进入和退出细粒度跟踪时的 vCPU 扰动，但仍需分配页表、同步 TLB，并受宿主后备条件约束。</p>
-</section>
-
 <section id="summary" class="mechanism-section">
   <h2>总结</h2>
   <p>同一段 2 MiB 内存可以由一个大页叶子映射，也可以用 512 个小页叶子逐页保护。停止精细跟踪后，还要检查宿主后备、地址对齐和权限是否允许恢复大页。比较拆分与恢复的效果，应在同一负载下同时观察映射粒度、缺页和 TLB 开销。</p>
@@ -88,9 +85,10 @@
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>
-    <li><a href="{{ linux_source }}Documentation/virt/kvm/x86/mmu.rst">Linux 6.18：KVM x86 MMU 结构与页级别</a></li>
-    <li><a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L3342-L3409">Linux 6.18：后备级别与大页选择</a></li>
-    <li><a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1522-L1659">Linux 6.18：TDP 大页拆分</a>、<a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1773-L1878">大页恢复</a></li>
-    <li><a href="{{ qemu_source }}accel/kvm/kvm-all.c#L657-L753">QEMU 10.2.0：槽脏页记录标志</a></li>
+    <li><a href="{{ linux_source }}Documentation/virt/kvm/x86/mmu.rst">Linux KVM x86 MMU：二级页表与映射粒度</a></li>
+    <li><a href="{{ linux_source }}arch/x86/kvm/mmu/mmu.c#L3342-L3409">Linux KVM：按后备页大小选择映射级别</a></li>
+    <li><a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1522-L1659">Linux KVM：拆分 TDP 大页映射</a></li>
+    <li><a href="{{ linux_source }}arch/x86/kvm/mmu/tdp_mmu.c#L1773-L1878">Linux KVM：恢复可用的大页映射</a></li>
+    <li><a href="{{ qemu_source }}accel/kvm/kvm-all.c#L657-L753">QEMU：为 KVM 内存槽设置脏页跟踪标志</a></li>
   </ul>
 </section>

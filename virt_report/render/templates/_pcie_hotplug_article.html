@@ -6,6 +6,10 @@
   <p>PCIe 设备热插拔允许在虚拟机运行期间添加或移除网卡、存储控制器等设备。QEMU 通过端口的插槽状态与事件通知客户机，客户机操作系统再完成设备枚举、驱动绑定或停用。管理程序负责发起变更，并在设备移除后回收独立的宿主后端。</p>
   <p>这是<a href="hotplug.html">虚拟机热插拔</a>中的设备操作路径。<a href="x86-vcpu-hotplug.html">CPU 热插拔</a>、<a href="hotplug.html#example">DIMM 内存热插拔</a>与 PCIe 设备增删都涉及资源准备、客户机状态更新和资源回收，使用的通知协议与资源约束各有不同。本文以 q35 上预先创建的 PCIe Root Port 和一块现代 virtio-net-pci 网卡为例，分析 PCIe 原生热插拔；ACPI PCI 热插拔则使用另一套通知和应答路径。</p>
   <p>例子中的端口是 <code>rp1</code>，网卡是 <code>net1</code>，宿主网络后端是 <code>n1</code>。添加流程依次为预留插槽、创建后端与网卡、发布插槽事件、客户机枚举并绑定驱动。删除流程先通知客户机停用设备，再拆除网卡，最后清理独立后端。下文沿这两条流程说明拓扑、寄存器、源码回调和完成事件。</p>
+  <h3 id="evolution">PCIe 热插拔控制与管理接口的演进</h3>
+  <p>PCI / PCIe 热插拔的控制方式与所用机器和桥类型有关。ACPI 通过固件描述、通知及 eject 方法组织交接；PCIe 原生路径把插槽能力、事件和电源控制放在端口标准寄存器中，由客户机的 PCIe 热插拔驱动处理。两种路径长期并存，不能简单按“新旧 QEMU”划分。</p>
+  <p>2017 年 QEMU 引入<a href="https://github.com/qemu/qemu/commit/f7d6f3fac8dd7b1d1ecb2662b1751e0ed3fef727">通用 PCIe Root Port</a>，将端口能力与特定芯片模型解耦；随后增加<a href="https://github.com/qemu/qemu/commit/226263fb5cdaa4a4a95f1680fabbc9dd2123fd67">资源预留能力</a>，帮助固件为后续设备分配空间。统一端口模型简化了拓扑组织，但总线号、桥窗口和客户机支持仍需规划。</p>
+  <p>管理接口也逐步把“发起”和“完成”分开：QMP 的 device_del 从 0.14 提供，DEVICE_DELETED 从 1.5 提供，DEVICE_UNPLUG_GUEST_ERROR 从 6.2 提供。完成事件让管理程序能够安排 ID 复用及后端清理；代价是需要维护异步状态、处理连接中断，并区分可检测错误和无响应。版本标注见 <a href="{{ qemu_source }}qapi/qdev.json#L87-L165">QAPI 定义</a>。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -107,13 +111,6 @@ hc-&gt;unplug_request = pcie_cap_slot_unplug_request_cb;</code></pre>
   </tbody></table>
 </section>
 
-<section id="evolution" class="mechanism-section">
-  <h2>控制方式与管理接口的演进</h2>
-  <p>PCI / PCIe 热插拔的控制方式与所用机器和桥类型有关。ACPI 通过固件描述、通知及 eject 方法组织交接；PCIe 原生路径把插槽能力、事件和电源控制放在端口标准寄存器中，由客户机的 PCIe 热插拔驱动处理。两种路径长期并存，不能简单按“新旧 QEMU”划分。</p>
-  <p>2017 年 QEMU 引入<a href="https://github.com/qemu/qemu/commit/f7d6f3fac8dd7b1d1ecb2662b1751e0ed3fef727">通用 PCIe Root Port</a>，将端口能力与特定芯片模型解耦；随后增加<a href="https://github.com/qemu/qemu/commit/226263fb5cdaa4a4a95f1680fabbc9dd2123fd67">资源预留能力</a>，帮助固件为后续设备分配空间。统一端口模型简化了拓扑组织，但总线号、桥窗口和客户机支持仍需规划。</p>
-  <p>管理接口也逐步把“发起”和“完成”分开：QMP 的 device_del 从 0.14 提供，DEVICE_DELETED 从 1.5 提供，DEVICE_UNPLUG_GUEST_ERROR 从 6.2 提供。完成事件让管理程序能够安排 ID 复用及后端清理；代价是需要维护异步状态、处理连接中断，并区分可检测错误和无响应。版本标注见 <a href="{{ qemu_source }}qapi/qdev.json#L87-L165">QAPI 定义</a>。</p>
-</section>
-
 <section id="summary" class="mechanism-section">
   <h2>总结</h2>
   <p>新增网卡时，端口报告插槽变化，客户机还要枚举设备、绑定驱动。移除则要等客户机停用设备；管理端收到匹配的 <code>DEVICE_DELETED</code> 后才能复用设备 ID、清理后端。若连接中途断开，重连后核对实际设备树和后端占用，再决定是否重试。</p>
@@ -122,10 +119,11 @@ hc-&gt;unplug_request = pcie_cap_slot_unplug_request_cb;</code></pre>
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>
-    <li><a href="{{ qemu_source }}docs/pcie.txt">QEMU 10.2.0：PCIe 拓扑、资源与热插拔</a></li>
-    <li><a href="{{ qemu_source }}qapi/qdev.json">QMP 设备添加、删除与异步事件</a></li>
-    <li><a href="{{ qemu_source }}hw/pci/pcie.c">PCIe 插槽状态、通知与电源控制</a></li>
-    <li><a href="{{ qemu_source }}include/hw/qdev-core.h#L231-L262">DeviceState 的运行与删除状态</a>、<a href="{{ qemu_source }}include/hw/hotplug.h">HotplugHandler 接口</a></li>
-    <li><a href="{{ qemu_source }}hw/pci-bridge/gen_pcie_root_port.c">通用 Root Port 及资源预留</a></li>
+    <li><a href="{{ qemu_source }}docs/pcie.txt">QEMU PCIe 指南：拓扑、插槽与热插拔资源</a></li>
+    <li><a href="{{ qemu_source }}qapi/qdev.json">QEMU QMP：添加、移除设备及异步完成事件</a></li>
+    <li><a href="{{ qemu_source }}hw/pci/pcie.c">QEMU PCIe 插槽：状态寄存器、通知与电源控制</a></li>
+    <li><a href="{{ qemu_source }}include/hw/qdev-core.h#L231-L262">QEMU DeviceState：设备的运行与删除状态</a></li>
+    <li><a href="{{ qemu_source }}include/hw/hotplug.h">QEMU HotplugHandler：插入与拔出设备的回调</a></li>
+    <li><a href="{{ qemu_source }}hw/pci-bridge/gen_pcie_root_port.c">QEMU PCIe Root Port：创建下游端口并预留资源</a></li>
   </ul>
 </section>

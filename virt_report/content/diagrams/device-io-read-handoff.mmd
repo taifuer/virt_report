@@ -1,0 +1,17 @@
+sequenceDiagram
+  accTitle: virtio-blk 读取 4 KiB 时的缓冲区交接
+  accDescr: 客户机发布读请求，QEMU 从宿主块后端读取数据。数据就绪后，QEMU 写回状态并发布完成项，客户机随后可以使用数据并回收描述符。
+  participant G as 客户机驱动
+  participant Q as 共享 virtqueue
+  participant V as QEMU virtio-blk
+  participant B as 宿主块后端
+  G->>Q: 发布请求头、可写数据区和状态字节
+  Q-->>V: 后端看到新的 available 项
+  V->>B: 从扇区 2048 读取 4096 B
+  B-->>V: 读取完成，数据区就绪
+  V->>Q: 写入状态，再发布 used 项
+  opt 客户机启用了完成通知
+    V-->>G: 通知驱动处理完成项
+  end
+  G->>Q: 取回描述符并检查状态
+  Note over G: 读取成功，上层可以使用数据

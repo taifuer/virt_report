@@ -2,7 +2,7 @@
   "version": 1,
   "reviewed_on": "2026-11-10",
   "policy": "经典论文先过相关性筛选。研究须直接涉及虚机执行、Guest/Host 接口、设备模拟、状态交接或隔离；综述须具体比较这些机制。入选经典的论文还须提出基础概念、代表长期沿用的设计，或留下可以核实的工程经验。解读交代设计、证据和局限。",
-  "reading_method": "先交代问题与关键机制，再核对评估条件，最后区分论文结论、编辑判断和今天的适用边界；不给未读到的实验补数字。",
+  "reading_method": "解读交代问题、机制和实验条件。测量值对应原文的负载与配置，工程点评另述适用场景和局限。",
   "method_url": "https://www.cs.cmu.edu/~15712/papers/howtoreadacspaper.pdf",
   "papers": {
     "nsdi19-shinjuku": {
@@ -80,10 +80,10 @@
       "evaluation": "ESX 用气球把一台 256 MB 虚机缩到 128–224 MB 后，比一开始就配同样内存的虚机少了 1.4%–4.4% 的吞吐。测试用 Pentium III、Red Hat Linux 7.2 和 40 个 dbench 客户端。",
       "strengths": "宿主定回收量，客户机挑页。双方各管一件事，减少了双重换页。",
       "limitations": "气球回收需要客户机驱动。合并相同页还要扫描内存，并在写入时复制。跨租户共享页另有隔离要求。",
-      "relevance": "可据此理解 virtio-balloon 与 KSM 的动机，但不是两者当前代码或默认策略的说明。",
+      "relevance": "ESX 将选页交给客户机，并在宿主上合并相同页。两种机制分别处理客户机内部的回收顺序和虚机之间的内存重复。",
       "guide": "§3 balloon 与双重换页；§4 页共享；§5–6 工作集和分配策略。",
       "source_kind": "pdf", "source_url": "https://www.usenix.org/legacy/event/osdi02/tech/waldspurger/waldspurger.pdf",
-      "related_articles": ["memory-virtualization", "virtio-balloon"]
+      "related_articles": ["memory-virtualization"]
     },
     "sosp03-xen": {
       "basis": "代表性设计",
@@ -119,7 +119,7 @@
       "evaluation": "Xen 迁移 800 MB 的 SPECweb 虚机时停了 210 ms，迁移 64 MB 的游戏服务器时停了 60 ms。两次都用 XenLinux 2.4.27、千兆网和共享存储。",
       "strengths": "大部分内存是在业务继续运行时拷的。停机时间只占总迁移时间的一部分，作者还记录了期间的业务吞吐。",
       "limitations": "客户机持续改写的页越多，留到最后要拷的就可能越多。直通设备还要交接自己的状态。",
-      "relevance": "现代 QEMU 的参数更多，但带宽、脏页速率和停机预算的关系仍成立；不要把 live migration 理解成绝对零暂停。",
+      "relevance": "现代 QEMU 的参数更多，但带宽、脏页速率和停机预算的关系仍成立；热迁移在最终交接时仍有一段暂停。",
       "guide": "§3 资源与交接流程；§4 writable working set；后续实现和服务评估。",
       "source_kind": "pdf", "source_url": "https://www.usenix.org/legacy/events/nsdi05/tech/full_papers/clark/clark.pdf",
       "related_articles": ["qemu-memory-migration"]
@@ -158,8 +158,8 @@
       "evaluation": "作者给出了可用的统一驱动和 vring 实现。第 7 节说明当时掌握的性能数据还少。",
       "strengths": "驱动可以一次交出多个缓冲区，再发一次通知。设备和驱动也能用特性位约定双方支持的功能。",
       "limitations": "原文写的是早期 PCI 布局和端序约定。Packed ring、vhost 和 OASIS 规范里的后续扩展要另查。",
-      "relevance": "结合本站队列演示看清四块内容：Descriptor Table、Available Ring、Used Ring 和其引用的 Buffer；TX 完成不等于远端收到。",
-      "guide": "§3.1 virtqueue API；§4 vring；§7 性能证据边界；§9.3 缓冲区生命期。",
+      "relevance": "结合本站队列演示看清四块内容：Descriptor Table、Available Ring、Used Ring 和其引用的 Buffer；TX 完成允许本地回收缓冲区；接收要在对端确认。",
+      "guide": "§3.1 virtqueue API；§4 vring；§7 性能测试的配置与结果；§9.3 缓冲区生命期。",
       "source_kind": "pdf", "source_url": "https://ozlabs.org/~rusty/virtio-spec/virtio-paper.pdf",
       "related_articles": ["packed-virtqueue", "virtio-device-initialization"]
     },
@@ -236,7 +236,7 @@
       "evaluation": "四个 Linux 3D 负载在 gVirt 基线上达到原生性能的 47%–94%。实验用 Xen 和第四代 Intel Core 集成 GPU。CPU 和 GPU 频繁交互时，捕获寄存器访问的成本更明显。",
       "strengths": "多台虚机可以共用一套原生驱动接口。gVirt 允许普通资源直接访问，对敏感命令保留检查。",
       "limitations": "实现依赖这款 GPU 的编程模型。换工作负载后，命令检查和上下文切换次数都会影响结果。",
-      "relevance": "可用于读懂 GVT-g 类 mediated 路线的动机，但不能据此推断当前主线或硬件仍支持某个旧实现。",
+      "relevance": "gVirt 解释了 GVT-g 一类方案的取舍：客户机继续使用原生驱动，宿主承担特权操作的审计与隔离。",
       "guide": "§3.1 架构；§3.4 页表；§3.5 命令保护；§4 分负载结果。",
       "source_kind": "pdf", "source_url": "https://www.usenix.org/system/files/conference/atc14/atc14-paper-tian.pdf",
       "related_articles": ["gpu-execution", "qemu-vfio-dma"]
@@ -278,7 +278,7 @@
       "evaluation": "作者在 m5d.metal 上比较了 Firecracker 0.20.0、QEMU 4.2.0 等的启动、内存和 I/O。启动计时到 Guest init 为止，并分别报告了预先配好和从 API 配置开始的结果。",
       "strengths": "精简设备省掉了每个实例的一部分开销。论文也记下了生产环境怎样部署和回滚。",
       "limitations": "应用初始化发生在这段计时之后。当时的块 I/O 串行执行，缺少 flush-to-disk，比较写吞吐时要核对数据是否要求落盘。",
-      "relevance": "先问工作负载是否需要通用设备和管理功能，再比较 microVM；不要只用启动时间替代完整请求延迟。",
+      "relevance": "比较 microVM 时，设备种类和管理功能决定它能承载哪些负载。测量首次请求延迟，还要计入恢复后按需执行的工作。",
       "guide": "§2 选择标准；§3 设备与安全；§4 生产经验；§5 评估口径。",
       "source_kind": "pdf", "source_url": "https://www.usenix.org/system/files/nsdi20-paper-agache.pdf",
       "related_articles": ["qemu-vm-startup", "virtualization-basics"]

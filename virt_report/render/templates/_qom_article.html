@@ -6,6 +6,9 @@
   <p>QEMU 用 C 语言实现大量设备模型。每种设备既有独立的寄存器、队列和配置，又需要复用总线、复位、迁移与热插拔框架。QEMU Object Model（QOM）提供类型、继承、属性和对象生命周期；qdev 在其上增加设备与总线的组织规则。</p>
   <p>以两块 <code>virtio-net-pci</code> 网卡为例，两者复用相同的 PCI 和 virtio 方法，却各有队列、MAC 地址和后端。这些类与实例都位于宿主 QEMU 进程中，客户机看到的是它们提供的 PCI 配置空间和设备接口。QOM 把共同方法放在类中，把每块网卡的状态放在实例中；PCI 包装对象组合独立的 virtio 网络对象，分别负责传输接口与网络功能。</p>
   <p>创建一块网卡依次经过“查找类型 → 初始化实例 → 设置属性 → 接入总线并 realize”。realize 检查配置并建立设备工作状态，客户机驱动在设备呈现后再执行自己的初始化。</p>
+  <h3 id="evolution">从 qdev 到 QOM</h3>
+  <p>qdev 已经为设备配置提供了公共框架，但类型、属性和所有权问题同样存在于机器、内存后端等非设备对象。2012 年初合入的 <a href="https://github.com/qemu/qemu/commit/2f28d2ff9dce3c404b36e90e64541a4d48daf0ca">Object 基类</a> 引入通用对象基础；同年 <a href="https://github.com/qemu/qemu/commit/57c9fafe0f759c9f1efa5451662b3627f9bb95e0">属性从 qdev 下沉到 Object</a>，让非设备对象也能使用属性与对象路径。设备管理继续由 qdev 负责，QOM 承担更底层的公共机制。</p>
+  <p>2013 年的 <a href="https://github.com/qemu/qemu/commit/249d41720b7dfbb5951b430b9eefdbee7464f515">realized 属性改造</a> 为设备实现引入明确的状态转换，最初通过兼容回调包装旧的 init 方法，再逐步迁移设备。把对象构造、用户配置与可失败的设备实现分开，便于查询属性、按配置组合设备，也让热插拔与错误处理有共同入口。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 
@@ -85,12 +88,6 @@ virsh -c qemu:///system qemu-monitor-command demo --hmp 'info qtree'</code></pre
   <p>成功运行过的设备在 unrealize 时标记 <code>pending_deleted_event</code>，<code>device_finalize()</code> 再发出 <code>DEVICE_DELETED</code>。管理端发出删除命令、客户机接受拔除、设备停用和对象最终消失可能相隔一段时间；PCIe 的客户机协作过程见<a href="qemu-pcie-hotplug.html">PCIe 设备热插拔</a>。<a href="{{ qemu_source }}hw/core/qdev.c#L588-L615">停用</a>、<a href="{{ qemu_source }}hw/core/qdev.c#L711-L723">删除事件</a></p>
 </section>
 
-<section id="evolution" class="mechanism-section">
-  <h2>从 qdev 到统一对象模型</h2>
-  <p>qdev 已经为设备配置提供了公共框架，但类型、属性和所有权问题同样存在于机器、内存后端等非设备对象。2012 年初合入的 <a href="https://github.com/qemu/qemu/commit/2f28d2ff9dce3c404b36e90e64541a4d48daf0ca">Object 基类</a> 引入通用对象基础；同年 <a href="https://github.com/qemu/qemu/commit/57c9fafe0f759c9f1efa5451662b3627f9bb95e0">属性从 qdev 下沉到 Object</a>，让非设备对象也能使用属性与对象路径。设备管理继续由 qdev 负责，QOM 承担更底层的公共机制。</p>
-  <p>2013 年的 <a href="https://github.com/qemu/qemu/commit/249d41720b7dfbb5951b430b9eefdbee7464f515">realized 属性改造</a> 为设备实现引入明确的状态转换，最初通过兼容回调包装旧的 init 方法，再逐步迁移设备。把对象构造、用户配置与可失败的设备实现分开，便于查询属性、按配置组合设备，也让热插拔与错误处理有共同入口。</p>
-</section>
-
 <section id="summary" class="mechanism-section">
   <h2>总结</h2>
   <p>统一框架减少了重复的注册和管理代码，也增加了间接层：一个方法名可能对应多层类回调，一个对象路径未必就是它的总线拓扑，属性也可能是别名或带副作用的 setter。分析设备创建时，先确认具体类型和父类型，再区分实例初始化、属性写入与 realize，最后检查失败分支的资源归属，通常比单纯沿函数名跳转更容易找到完整路径。</p>
@@ -99,10 +96,14 @@ virsh -c qemu:///system qemu-monitor-command demo --hmp 'info qtree'</code></pre
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>
-    <li><a href="{{ qemu_source }}docs/devel/qom.rst">QEMU 10.2.0：QOM 开发文档</a></li>
-    <li><a href="{{ qemu_source }}include/qom/object.h#L89-L162">对象、类与属性结构</a>、<a href="{{ qemu_source }}qom/object.c#L336-L441">类与实例初始化</a></li>
-    <li><a href="{{ qemu_source }}hw/core/qdev.c#L483-L646">qdev 实现、停用与失败清理</a>、<a href="{{ qemu_source }}hw/core/qdev-properties.c#L15-L88">设备字段属性</a></li>
-    <li><a href="{{ qemu_source }}hw/virtio/virtio-net-pci.c">virtio-net-pci 的类型、实例与类方法</a>、<a href="{{ qemu_source }}hw/virtio/virtio-pci.c#L2464-L2619">virtio PCI 的继承与类型生成</a></li>
-    <li><a href="{{ qemu_source }}hw/pci/pci.c#L2228-L2300">PCI 设备 realize</a>、<a href="{{ qemu_source }}hw/net/virtio-net.c#L3866-L4050">virtio 网络设备 realize</a></li>
+    <li><a href="{{ qemu_source }}docs/devel/qom.rst">QEMU 对象模型开发指南：类型、类和对象</a></li>
+    <li><a href="{{ qemu_source }}include/qom/object.h#L89-L162">QEMU QOM：对象、类与属性的结构定义</a></li>
+    <li><a href="{{ qemu_source }}qom/object.c#L336-L441">QEMU QOM：类初始化与实例初始化</a></li>
+    <li><a href="{{ qemu_source }}hw/core/qdev.c#L483-L646">QEMU qdev：设备启用、停用与失败清理</a></li>
+    <li><a href="{{ qemu_source }}hw/core/qdev-properties.c#L15-L88">QEMU qdev：把设备字段导出为属性</a></li>
+    <li><a href="{{ qemu_source }}hw/virtio/virtio-net-pci.c">QEMU virtio-net-pci：注册类型与类方法</a></li>
+    <li><a href="{{ qemu_source }}hw/virtio/virtio-pci.c#L2464-L2619">QEMU virtio PCI：父类、派生类型与类型注册</a></li>
+    <li><a href="{{ qemu_source }}hw/pci/pci.c#L2228-L2300">QEMU PCI 总线：启用 PCI 设备</a></li>
+    <li><a href="{{ qemu_source }}hw/net/virtio-net.c#L3866-L4050">QEMU virtio-net：初始化网卡队列与后端</a></li>
   </ul>
 </section>

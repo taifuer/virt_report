@@ -4,6 +4,12 @@
 
 本文沿一块 PCIe VF 的接入过程展开：打开设备，建立 DMA 所有权，准备 I/O 地址空间，把客户机 RAM 映射进去，最后停止设备并回收资源。采用 x86 / KVM、普通可固定的 RAM、无客户机虚拟 IOMMU 的配置。设备发出的 IOVA 与 GPA 数值相同，宿主 IOMMU 再把它转换为 HPA。地址转换本身见 [IOMMU：DMA 地址转换、缓存与失效](iommu-dma.html)，这里重点分析转换关系的建立与管理。
 
+### 从 VFIO container 到独立页表管理 {#history}
+
+传统 VFIO Type1 路径以 group 和 container 组织 DMA：group 加入 container，应用在 container fd 上配置映射，再获得设备访问。它能满足常规直通，并支持兼容设备共享映射；地址空间接口与 VFIO 的 container 模型紧密关联。
+
+IOMMUFD 把通用 I/O 页表管理独立出来，用对象 ID 明确表达“逻辑地址空间”“具体硬件页表”和“设备附着”。QEMU 在 [2023 年引入 IOMMUFD 后端](https://github.com/qemu/qemu/commit/5ee3dc7af7859e7b8aa34c10c21778101c15e812)，保留公共 VFIO 内存监听逻辑，再由不同后端完成映射。这使设备访问接口和页表能力能够分别演进。
+
 ```baselines
 ```
 
@@ -70,6 +76,8 @@ QEMU 的本条路径是**先附着、后映射**。API 允许先向 IOAS 映射�
 
 ## 映射建立后的 DMA 与资源回收 {#lifecycle}
 
+客户机驱动向 VF 提交的是 DMA 地址。设备发起读写时，[宿主 IOMMU 按映射访问客户机 RAM](qemu-vfio-dma.html)；IOAS 和 HWPT 的建立发生在这笔读写之前。
+
 当客户机驱动向网卡提交 `IOVA 0x00400080` 的接收缓冲区时，设备通过已附着的页表访问对应宿主页。IOMMUFD 的 map ioctl 不出现在每个数据包的路径上；它配置的页表和内存引用，服务于后续一系列 DMA。
 
 ```diagram iommufd-lifecycle
@@ -97,7 +105,7 @@ QEMU 的本条路径是**先附着、后映射**。API 允许先向 IOAS 映射�
 | MAP | IOVA 重叠、地址受限、后备内存不能固定、资源不足 | 保留既有有效映射；回收本次初始化中已建立的资源 |
 | UNMAP / DESTROY | 范围不合法、对象仍被依赖 | 核对映射边界与引用，完成脱离或解除依赖后再释放 |
 
-例如，本次创建了 IOAS 和 HWPT，附着成功，却因目标 IOVA 落入保留区而映射失败。这时设备尚未进入正常 DMA 阶段，回滚可以从脱离 HWPT 开始。另一种情况是在已有 IOAS 上新增一段 RAM 失败：应用必须保留原来仍供其他设备使用的映射，不能把整个共享地址空间当作本次操作的临时资源删除。
+例如，本次创建了 IOAS 和 HWPT，附着成功，却因目标 IOVA 落入保留区而映射失败。这时设备尚未进入正常 DMA 阶段，回滚可以从脱离 HWPT 开始。另一种情况是在已有 IOAS 上新增一段 RAM 失败：应用必须保留原来仍供其他设备使用的映射；本次回滚只撤销新增的资源。
 
 QEMU 对复用 HWPT 的失败也作区分：附着返回 `EINVAL` 时，按不兼容处理并继续尝试其他 HWPT；其他错误中止该路径。新建 HWPT 后附着失败，则销毁刚分配的 HWPT。清理边界由本次获得的资源及其共享关系决定。[HWPT 复用与失败分支](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/iommufd.c#L315-L379)
 
@@ -132,11 +140,7 @@ iommufd_cdev_attach()
 
 QEMU 还提供以文件描述符和偏移描述后备内存的 `IOMMU_IOAS_MAP_FILE` 分支。它改变内存来源的表达方式，IOVA、IOAS 与 HWPT 的关系保持一致。[文件后备映射](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/backends/iommufd.c#L232-L267)
 
-## 从 VFIO Container 到独立的页表管理 {#evolution}
-
-传统 VFIO Type1 路径以 group 和 container 组织 DMA：group 加入 container，应用在 container fd 上配置映射，再获得设备访问。它能满足常规直通，并支持兼容设备共享映射；地址空间接口与 VFIO 的 container 模型紧密关联。
-
-IOMMUFD 把通用 I/O 页表管理独立出来，用对象 ID 明确表达“逻辑地址空间”“具体硬件页表”和“设备附着”。QEMU 在 [2023 年引入 IOMMUFD 后端](https://github.com/qemu/qemu/commit/5ee3dc7af7859e7b8aa34c10c21778101c15e812)，保留公共 VFIO 内存监听逻辑，再由不同后端完成映射。这使设备访问接口和页表能力能够分别演进。
+## IOAS 与硬件页表的管理分工 {#evolution}
 
 | 需求 | IOMMUFD 的组织方式 | 仍需付出的成本或满足的条件 |
 | --- | --- | --- |
@@ -153,8 +157,9 @@ QEMU 10.2 已在 `hw/vfio/iommufd.c` 查询 `IOMMU_HW_CAP_DIRTY_TRACKING`，具�
 
 ## 参考资料 {#sources}
 
-- [Linux 6.18：IOMMUFD 用户 API](https://docs.kernel.org/6.18/userspace-api/iommufd.html)：IOAS、HWPT、设备绑定及对象生命周期。
-- [Linux：VFIO 设备与隔离组](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/driver-api/vfio.rst)：cdev 接口、DMA 所有权及 group 隔离。
-- [QEMU：VFIO IOMMUFD 实现](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/iommufd.c)与 [IOMMUFD ioctl 后端](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/backends/iommufd.c)。
-- [Linux：IOAS 实现](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/iommufd/ioas.c)与 [VFIO 设备 cdev](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vfio/device_cdev.c)。
-- [VFIO 设备直通与 DMA 地址转换](qemu-vfio-dma.html)：结合缓冲区地址与访问权限观察完整 DMA 请求。
+- [Linux IOMMUFD 用户 API：IOAS、HWPT 与设备绑定](https://docs.kernel.org/6.18/userspace-api/iommufd.html)
+- [Linux VFIO：设备 cdev 接口、隔离组与 DMA 所有权](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/driver-api/vfio.rst)
+- [QEMU VFIO：把直通设备接入 IOMMUFD](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/vfio/iommufd.c)
+- [QEMU IOMMUFD 后端：封装映射与脏页相关 ioctl](https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/backends/iommufd.c)
+- [Linux IOMMUFD：创建与管理 I/O 地址空间](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/iommu/iommufd/ioas.c)
+- [Linux VFIO cdev：把设备绑定到 IOMMUFD](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/drivers/vfio/device_cdev.c)

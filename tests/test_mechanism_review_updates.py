@@ -83,8 +83,8 @@ def test_pcie_hotplug_explains_relation_to_resource_hotplug():
 
 def test_interrupt_guide_locates_controllers_and_separates_observation_sides():
     html = render.render_mechanisms_html(Config(), "interrupt-virtualization")
-    for marker in ("kernel-irqchip", "on：完整内核 irqchip", "split irqchip",
-                   "QEMU，宿主用户态", "KVM，宿主内核", "ioeventfd", "irqfd",
+    for marker in ("kernel-irqchip=on", "in-kernel irqchip", "split irqchip",
+                   "引脚控制器放在 QEMU", "LAPIC 仍在 KVM", "ioeventfd", "irqfd",
                    "lspci -vv -s 0000:00:03.0", "cat /proc/interrupts",
                    "在客户机执行，只查询状态", "宿主的 <code>/proc/interrupts</code>"):
         assert marker in html

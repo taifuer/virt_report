@@ -13,6 +13,8 @@
   <p>演示采用 x86 + KVM、QEMU 10.2.0、Linux 6.18；DPDK 路径采用 24.11。设备为 modern virtio-net，使用 split ring 和一个队列对：队列 0 接收，队列 1 发送。路由、邻居、设备协商与内存映射已经就绪；使用普通 UDP 复制路径，关闭分段、校验和卸载、合并 RX 缓冲区、UDP cork 和零拷贝发送。报文不带 IP 选项或 VLAN，也无需分片。</p>
   {% include '_mechanism_baselines.html' %}
   <p>先选择后端及 TX / RX，再沿一条成功路径观察处理者与字段变化。TX 从应用发送开始；RX 展示驱动预置空间、外部到包、socket 排队、应用随后读取。关键结构分别展示描述符表、内存缓冲区、available ring 和 used ring；点击描述符地址可对照相应缓冲区。填写环项与发布索引分成不同步骤，源码路径按执行上下文列出关键函数。</p>
+  <h3 id="history">从模拟网卡到共享队列</h3>
+  <p>e1000 等模拟网卡保留硬件寄存器和描述符格式，方便使用现成驱动。virtio-net 改用驱动与后端共同定义的收发队列。vhost-net 把队列处理移入宿主内核，vhost-user 把队列交给独立进程，vDPA 还允许设备消费同样的队列。这些后端共用 virtio 接口，差异在于谁读写缓冲区、谁发出通知。</p>
 </section>
 
 <section id="interfaces" class="mechanism-section">
@@ -91,7 +93,7 @@
     </tbody>
   </table>
   <p>发送在队列发布后分成并行的两条路径：Guest 沿系统调用返回，宿主后端消费已发布的链。本页展示先返回、后处理的一种调度顺序，后端也可能更早运行。图中返回边直接连接客户机协议栈和应用，设备完成不会作为 <code>sendto()</code> 返回的前置条件。真实系统若先把 skb 排入客户机 qdisc，返回还可能早于 virtqueue 发布。</p>
-  <p>QEMU + TAP 的普通 TX 路径在 <code>writev()</code> 成功返回后发布 used，再判断完成通知条件。此时宿主已经接受了帧，网络转发可以独立推进；Guest 侧依次处理虚拟中断和队列回收。宿主转发可能在写 TAP 的调用内部就已开始，两条路径之间没有“Guest 回收后才发送”的依赖。TAP 暂不可写时则保留请求，等待重试成功后发布 used。<a href="{{ demo.sources['qemu-tx'].url }}">QEMU 发送与完成</a>、<a href="{{ demo.sources['qemu-tap-write'].url }}">TAP 写入</a></p>
+  <p>QEMU + TAP 的普通 TX 路径在 <code>writev()</code> 成功返回后发布 used，再判断是否需要通知客户机。宿主拿到帧即可转发，转发甚至可能在写 TAP 的调用中开始。客户机收到<a href="interrupt-virtualization.html">虚拟中断</a>后，驱动回收队列里的完成项。TAP 暂不可写时，QEMU 会保留请求，等重试成功后才发布 used。</p>
   <p>RX 演示选取单帧接收路径：NAPI poll 从 used 取回链，构造 skb 并交给 GRO；<code>GRO_NORMAL</code> 普通列表尚未达到提前刷新条件，驱动先补充新 RX 空间。本轮处理量小于 budget，随后在 NAPI 完成阶段由 <code>gro_flush_normal()</code> 把普通列表交给协议栈。IPv4 / UDP 校验与分发完成后，数据才进入 socket。批量阈值或处理预算不同，协议交付与 refill 可以交错；补充新空间始终不以应用读完旧数据为前提。</p>
   <p>本例数据先进入 socket，应用随后调用 recvfrom，直接读取已有数据。若应用先调用、socket 尚无数据，阻塞调用会等待；入队时再唤醒等待者，线程获得 CPU 后才能复制载荷。非阻塞调用在无数据时返回 EAGAIN。这是同一接收机制下调用时机的区别，不需要另选一种收包模式。设备完成也不保证数据能进入 socket：协议校验、接收预算等可能导致后续丢弃。</p>
   <p>DPDK 的普通同步路径有两份独立存储。TX 将 Guest 帧复制为 mbuf，在发布 used 并检查通知条件后返回；应用取得 mbuf，即可交给 PMD，无需等待 Guest 执行中断或回收描述符。RX 则从 mbuf 复制到 Guest 空间；<code>rte_vhost_enqueue_burst()</code> 成功返回后，应用可释放已复制报文对应的宿主 mbuf，Guest 的 NAPI 与协议栈继续处理自己的副本。<code>rte_vhost_dequeue_burst()</code> 从 Guest 取包，<code>rte_vhost_enqueue_burst()</code> 向 Guest 送包，两个名字以 vhost 接口为视角。</p>
@@ -180,7 +182,7 @@ TAP 后端
 </section>
 
 <section id="evolution" class="mechanism-section">
-  <h2>后端演进与取舍</h2>
+  <h2>网络后端的执行位置与成本</h2>
   <p>同一个 virtio-net 接口可以接到不同执行者。下面对照哪一端消费队列、怎样观察拥塞；vhost 的内存与通知配置见<a href="qemu-vhost-net.html#architecture">队列怎样交给后端</a>。</p>
   <table>
     <thead><tr><th scope="col">后端</th><th scope="col">数据面变化</th><th scope="col">代价与适用条件</th></tr></thead>
@@ -214,26 +216,19 @@ virsh domifstat VM vnet0</code></pre>
 </section>
 
 <section id="sources" class="mechanism-section">
-  <h2>版本与参考资料</h2>
-<p>演示每一步均附相应源码或规范。客户机发送从 <code>__sys_sendto() → udp_sendmsg() → ip_make_skb()</code> 进入网络输出，再由 <code>start_xmit()</code> 提交给 virtio 队列。接收由驱动进入 UDP socket 排队，<code>__sys_recvfrom() → udp_recvmsg()</code> 在读取时复制载荷。QEMU 路径跟踪 <code>virtio_net_flush_tx()</code>、<code>virtio_net_receive_rcu()</code> 和 TAP 回调；vhost-net 跟踪 <code>handle_tx_copy()</code>、<code>handle_rx()</code>；DPDK 跟踪 split 队列消费、复制与 used 发布。</p>
+  <h2>参考资料</h2>
   <ul>
-    <li><a href="{{ demo.sources['guest-sendto'].url }}">Linux 6.18 sendto</a>、<a href="{{ demo.sources['guest-recvfrom'].url }}">recvfrom</a>与<a href="{{ demo.sources['guest-udp-recv'].url }}">UDP 载荷复制</a>：客户机应用入口和返回。</li>
-    <li><a href="{{ demo.sources['guest-copy-send'].url }}">用户数据复制</a>与<a href="{{ demo.sources['guest-udp-enqueue'].url }}">UDP socket 排队和唤醒</a>：用户缓冲区与内核 skb 的交接。</li>
-    <li><a href="{{ demo.sources['guest-rx'].url }}">virtio-net 接收与 refill</a>、<a href="{{ demo.sources['guest-gro-normal'].url }}">GRO_NORMAL 普通接收列表</a>与<a href="{{ demo.sources['guest-napi-complete'].url }}">NAPI 完成</a>：驱动回收和协议交付的分界。</li>
-    <li><a href="{{ demo.sources['virtio-net-spec'].url }}">VIRTIO 网络设备规范</a>：收发队列、网络头与缓冲区方向。</li>
-    <li><a href="{{ demo.sources['qemu-tx'].url }}">QEMU 10.2.0 TX</a>、<a href="{{ demo.sources['qemu-rx'].url }}">RX</a>与<a href="{{ demo.sources['qemu-tap'].url }}">TAP</a>：交付、背压及完成。</li>
-    <li><a href="{{ demo.sources['vhost-tx'].url }}">Linux 6.18 vhost-net TX</a>与<a href="{{ demo.sources['vhost-rx'].url }}">RX</a>：宿主内核中的队列处理。</li>
-    <li><a href="{{ demo.sources['dpdk-tx'].url }}">DPDK 24.11 dequeue</a>与<a href="{{ demo.sources['dpdk-rx'].url }}">enqueue</a>：同步复制及完成发布。</li>
-    <li><a href="interrupt-virtualization.html">virtio 完成通知</a>：从队列通知到 KVM 中断交付。</li>
+    <li><a href="{{ demo.sources['virtio-net-spec'].url }}">VIRTIO 网络设备规范：收发队列与网络报文头</a></li>
+    <li><a href="{{ qemu_source }}hw/net/e1000.c">QEMU e1000：模拟网卡如何处理发送描述符</a></li>
+    <li><a href="{{ linux }}drivers/net/virtio_net.c">Linux virtio-net 驱动：提交发送缓冲区、补充接收缓冲区</a></li>
+    <li><a href="{{ kernel_source }}drivers/virtio/virtio_ring.c">Linux virtio_ring：发布描述符、检查通知并回收完成项</a></li>
+    <li><a href="https://docs.kernel.org/6.18/networking/napi.html">Linux NAPI 文档：驱动何时轮询与重新启用中断</a></li>
+    <li><a href="{{ demo.sources['qemu-tx'].url }}">QEMU virtio-net：处理客户机发送队列</a></li>
+    <li><a href="{{ demo.sources['qemu-rx'].url }}">QEMU virtio-net：把收到的报文写入客户机缓冲区</a></li>
+    <li><a href="{{ qemu_source }}net/tap.c">QEMU TAP 后端：发送报文与处理写入背压</a></li>
+    <li><a href="{{ demo.sources['vhost-tx'].url }}">Linux vhost-net：在宿主内核处理发送队列</a></li>
+    <li><a href="{{ demo.sources['vhost-rx'].url }}">Linux vhost-net：向客户机接收队列交包</a></li>
+    <li><a href="{{ demo.sources['dpdk-tx'].url }}">DPDK vhost：从客户机发送队列取出报文</a></li>
+    <li><a href="{{ demo.sources['dpdk-rx'].url }}">DPDK vhost：向客户机接收队列写入报文</a></li>
   </ul>
-<ul class="mechanism-sources">
-    <li>QEMU 10.2.0：<a href="{{ qemu_source }}hw/net/e1000.c">e1000.c</a>，寄存器访问、TX 描述符与状态回写；<a href="{{ qemu_source }}hw/net/virtio-net.c">virtio-net.c</a>，用户态发送路径、网络头与异步完成。</li>
-    <li>QEMU 10.2.0：<a href="{{ qemu_source }}hw/virtio/virtio.c">virtio.c</a>，队列消费、完成发布与通知；<a href="{{ qemu_source }}hw/virtio/virtio-pci.c">virtio-pci.c</a>，PCI 通知区及 ioeventfd。</li>
-    <li>QEMU 10.2.0：<a href="{{ qemu_source }}net/tap.c">tap.c</a>，TAP 数据提交与暂不可写处理；<a href="{{ qemu_source }}net/net.c">net.c</a>，网络队列及发送分派。</li>
-    <li><a href="{{ kernel_source }}drivers/net/tun.c">Linux 6.18 tun.c</a>：TAP 字符设备、tun_file 与 net_device 的关联，以及用户态写入到宿主接收路径的交接。</li>
-    <li><a href="{{ kernel_source }}Documentation/virt/kvm/api.rst#L2092-L2135">Linux 6.18 KVM_IOEVENTFD</a>：客户机 PIO / MMIO 写与 eventfd 的关联。</li>
-    <li><a href="{{ kernel_source }}include/uapi/linux/virtio_ring.h">Linux 6.18 virtio_ring.h</a>：描述符、可用环、已用环及 packed 格式；<a href="{{ kernel_source }}drivers/virtio/virtio_ring.c">virtio_ring.c</a>：驱动发布、通知检查与回收。</li>
-    <li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">VIRTIO 1.2 规范</a>：split virtqueue、驱动通知和网络设备发送约定；<a href="https://docs.oasis-open.org/virtio/virtio/v1.1/cs01/virtio-v1.1-cs01.html">VIRTIO 1.1 规范</a>：split 与 packed 队列格式。</li>
-  </ul>
-<ul><li><a href="{{ qemu }}hw/net/virtio-net.c">QEMU 10.2.0 virtio-net</a>：RX 空间检查、可写缓冲区填充与 used 发布。</li><li><a href="{{ linux }}drivers/net/virtio_net.c">Linux 6.18 virtio-net</a>：接收队列、缓冲区补充、NAPI poll 与协议栈交付。</li><li><a href="{{ linux }}drivers/virtio/virtio_ring.c">Linux 6.18 virtqueue</a>：队列回调、进度检查与共享结构访问。</li><li><a href="https://docs.kernel.org/6.18/networking/napi.html">Linux 6.18 NAPI</a>：调度、预算、完成条件及通知恢复。</li><li><a href="https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html">VIRTIO 1.2 §5.1</a>：网络头、RX 队列、合并接收缓冲区与通知约定。</li></ul>
 </section>

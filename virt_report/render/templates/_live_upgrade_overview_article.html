@@ -3,6 +3,8 @@
 <section id="preface" class="mechanism-section">
   <h2>序言</h2>
   <p>热升级是在同一台宿主机上更新承载虚机的软件，让客户机保留内存、CPU 和设备状态并继续运行。更新 QEMU 可以保留原来的宿主内核；更新 KVM 则要把仍在使用的内核状态交给新实现。带直通设备的虚机还要保住在途 DMA 和完成通知。</p>
+  <h3 id="history">从迁走虚机到在原机接管</h3>
+  <p>维护宿主的一种做法是先把虚机迁到别处，升级完再迁回。原机接管利用了一个额外条件：客户机的内存页和设备可以留在原处。2019 年的 Orthus 展示了新旧 KVM 同机交接；QEMU 的 CPR 则面向 VMM 进程替换，从保存恢复发展到在新旧进程间交接内存和文件描述符。两条路线替换的软件不同，对停机窗口和设备连续性的要求也不同。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 <section id="scope" class="mechanism-section">
@@ -32,8 +34,9 @@
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>
-    <li><a href="{{ qemu }}docs/devel/migration/CPR.rst">QEMU 10.2.0：CPR 模式与限制</a></li>
-    <li><a href="{{ qemu }}hw/vfio/cpr.c#L260">VFIO CPR 交接</a>、<a href="{{ qemu }}hw/vfio/cpr-iommufd.c">IOMMUFD 资源保留</a></li>
-    <li><a href="https://doi.org/10.1145/3297858.3304034">Orthus（ASPLOS 2019）原论文</a></li>
+    <li><a href="{{ qemu }}docs/devel/migration/CPR.rst">QEMU CPR 文档：三种同机升级模式与配置条件</a></li>
+    <li><a href="{{ qemu }}hw/vfio/cpr.c#L260">QEMU VFIO CPR：直通设备的中断交接</a></li>
+    <li><a href="{{ qemu }}hw/vfio/cpr-iommufd.c">QEMU VFIO CPR：保留 IOMMUFD 设备资源</a></li>
+    <li><a href="https://doi.org/10.1145/3297858.3304034">Orthus（ASPLOS 2019）：云平台如何在线升级 VMM</a></li>
   </ul>
 </section>

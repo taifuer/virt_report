@@ -29,7 +29,7 @@
     <tr><td>memory_size</td><td>0x200000（2 MiB）</td><td>后文最小实例使用的连续 RAM 长度</td></tr>
     <tr><td>userspace_addr</td><td>HVA_base</td><td>用户态 VMM 中对应后备映射的起点</td></tr>
   </tbody></table>
-  <p>访问 GPA <code>0x2000</code> 时，KVM 可由槽定位到 <code>HVA_base + 0x2000</code>，再取得后备页建立 EPT/NPT。注册 memslot 不是一次性分配全部物理页，也不表示二级页表已经全部建好。实际 PC 还包含 RAM 空洞、ROM 与 MMIO，通常需要多个区域，不能把上表示例套成完整 Q35 地址布局。</p>
+  <p>访问 GPA <code>0x2000</code> 时，KVM 可由槽定位到 <code>HVA_base + 0x2000</code>，再取得后备页建立 EPT/NPT。注册 memslot 不是一次性分配全部物理页，也不表示二级页表已经全部建好。实际 PC 还包含 RAM 空洞、ROM 与 MMIO，通常需要多个区域；表中只列出示例程序注册的 RAM。</p>
   <p>普通设备模拟的 MMIO 区域由 QEMU 设备回调处理，通常不登记为普通 RAM 槽。未命中 RAM 的访问由 KVM 判定后可返回用户态模拟；受支持的直通映射则可能直接映射设备页。内存所有权、访问属性和生命周期必须与设备类型一致。</p>
 </section>
 <section id="interrupts" class="mechanism-section">
@@ -94,9 +94,11 @@ timeout 5s ./kvm-minimal</code></pre>
 <section id="sources" class="mechanism-section">
   <h2>源码与接口依据</h2>
   <ul>
-    <li><a href="{{ linux }}Documentation/virt/kvm/api.rst">Linux 6.18：KVM API、内存槽、中断控制器与 vCPU 接口</a></li>
-    <li><a href="{{ linux }}virt/kvm/kvm_main.c">VM/vCPU 创建与生命周期</a>、<a href="{{ linux }}arch/x86/kvm/x86.c">x86 初始化与 ioctl 分发</a></li>
-    <li><a href="{{ qemu }}accel/kvm/kvm-all.c#L2610">QEMU 10.2.0：kvm_init、kvm_init_vcpu 与内存监听器</a></li>
-    <li><a href="{{ qemu }}accel/kvm/kvm-accel-ops.c">QEMU vCPU 线程</a>、<a href="{{ qemu }}target/i386/kvm/kvm.c">x86 寄存器与启动状态同步</a></li>
+    <li><a href="{{ linux }}Documentation/virt/kvm/api.rst">Linux KVM API：创建虚机、注册内存、配置中断与添加 vCPU</a></li>
+    <li><a href="{{ linux }}virt/kvm/kvm_main.c">Linux KVM 核心：VM 和 vCPU 的创建与释放</a></li>
+    <li><a href="{{ linux }}arch/x86/kvm/x86.c">Linux KVM x86：体系结构初始化与 ioctl 分派</a></li>
+    <li><a href="{{ qemu }}accel/kvm/kvm-all.c#L2610">QEMU KVM：初始化虚机、建立 vCPU 与监听内存变化</a></li>
+    <li><a href="{{ qemu }}accel/kvm/kvm-accel-ops.c">QEMU KVM：创建运行 vCPU 的宿主线程</a></li>
+    <li><a href="{{ qemu }}target/i386/kvm/kvm.c">QEMU KVM x86：同步寄存器与复位状态</a></li>
   </ul>
 </section>

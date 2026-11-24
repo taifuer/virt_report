@@ -221,13 +221,17 @@ cat /proc/interrupts</code></pre>
 <section id="sources" class="mechanism-section">
   <h2>源码与参考资料</h2>
   <ul>
-    <li><a href="{{ qemu }}accel/kvm/kvm-accel-ops.c#L30-L75">QEMU：每 vCPU 宿主线程与执行循环</a>、<a href="{{ qemu }}accel/kvm/kvm-all.c">KVM_CREATE_VCPU、KVM_RUN 与 BQL 交接</a>。</li>
-    <li><a href="{{ qemu }}hw/i386/acpi-build.c">QEMU：x86 ACPI 表构造</a>、<a href="{{ qemu }}qapi/machine.json">query-cpus-fast 的字段定义</a>。</li>
-    <li><a href="{{ seabios }}src/fw/smp.c#L62-L184">SeaBIOS：AP 发现与初始化</a>、<a href="{{ seabios }}src/romlayout.S#L204-L221">辅助处理器入口和 HLT 停驻</a>。</li>
-    <li><a href="{{ linux }}kernel/smp.c#L992-L1010">Linux：smp_init</a>、<a href="{{ linux }}arch/x86/kernel/smpboot.c#L232-L316">start_secondary 与 CPU online</a>、<a href="{{ linux }}kernel/cpu.c">CPU hotplug 状态机</a>。</li>
-    <li><a href="{{ linux }}kernel/sched/core.c">Linux：任务唤醒与调度</a>、<a href="{{ linux }}arch/x86/kvm/lapic.c">KVM：虚拟 LAPIC 与 IPI</a>、<a href="{{ linux }}Documentation/virt/kvm/vcpu-requests.rst">宿主 KVM 请求机制</a>。</li>
-    <li><a href="{{ linux }}Documentation/core-api/wrappers/memory-barriers.rst">Linux 内存屏障</a>、<a href="{{ qemu }}docs/system/i386/kvm-pv.rst">KVM 半虚拟化特性</a>。</li>
-    <li><a href="https://uefi.org/specs/ACPI/6.6/05_ACPI_Software_Programming_Model.html#multiple-apic-description-table-madt">ACPI 6.6：MADT</a>、<a href="https://uefi.org/specs/PI/1.8/V2_DXE_Boot_Services_Protocols.html#mp-services-protocol-overview">UEFI PI 1.8：MP Services</a>。</li>
-    <li><a href="https://man7.org/linux/man-pages/man3/pthread_create.3.html">pthread_create(3)</a>、<a href="https://man7.org/linux/man-pages/man3/pthread_join.3.html">pthread_join(3)</a>、<a href="https://man7.org/linux/man-pages/man3/pthread_cond_wait.3.html">pthread_cond_wait(3)</a>。</li>
+    <li><a href="{{ qemu }}accel/kvm/kvm-accel-ops.c#L30-L75">QEMU KVM：每个 vCPU 的宿主线程与执行循环</a></li>
+    <li><a href="{{ qemu }}qapi/machine.json">QEMU QMP：query-cpus-fast 返回的 CPU 与宿主线程标识</a></li>
+    <li><a href="https://uefi.org/specs/ACPI/6.6/05_ACPI_Software_Programming_Model.html#multiple-apic-description-table-madt">ACPI 6.6：MADT 如何描述处理器与中断控制器</a></li>
+    <li><a href="{{ qemu }}hw/i386/acpi-build.c">QEMU x86：构造客户机可见的 ACPI 表</a></li>
+    <li><a href="{{ seabios }}src/fw/smp.c#L62-L184">SeaBIOS：发现和初始化辅助处理器</a></li>
+    <li><a href="https://uefi.org/specs/PI/1.8/V2_DXE_Boot_Services_Protocols.html#mp-services-protocol-overview">UEFI PI 1.8：固件调度辅助处理器的 MP Services</a></li>
+    <li><a href="{{ linux }}arch/x86/kernel/smpboot.c#L232-L316">Linux x86：辅助处理器从 start_secondary() 到上线</a></li>
+    <li><a href="{{ linux }}kernel/sched/core.c">Linux 调度器：唤醒任务并选择运行 CPU</a></li>
+    <li><a href="{{ linux }}arch/x86/kvm/lapic.c">Linux KVM：在虚拟 LAPIC 之间递送 IPI</a></li>
+    <li><a href="{{ linux }}Documentation/core-api/wrappers/memory-barriers.rst">Linux 内存屏障文档：跨 CPU 共享内存的顺序</a></li>
+    <li><a href="https://man7.org/linux/man-pages/man3/pthread_create.3.html">pthread_create(3)：应用创建可独立调度的线程</a></li>
+    <li><a href="https://man7.org/linux/man-pages/man3/pthread_join.3.html">pthread_join(3)：等待另一个线程退出</a></li>
   </ul>
 </section>

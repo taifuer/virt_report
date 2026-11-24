@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>产业周报 · 2026-W46 - virt-report</title>
+  <meta name="description" content="按周整理虚拟化产品与技术动态，附发布说明和原始资料。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
+  <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
+<link rel="stylesheet" href="../assets/industry.css?v=3462b6003dd2"></head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=61edf5bbcdc7" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../industry/index.html" class="on" aria-current="page">产业</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="industry-brief">
+  <header class="industry-heading">
+    <div class="industry-title-row">
+      <h1>产业周报</h1>
+<a href="archive.html">往期报告</a>    </div>
+<div class="industry-period"><time datetime="2026-11-09">2026-11-09</time> 至 <time datetime="2026-11-15">2026-11-15</time></div>  </header>
+    <p class="industry-lead">AWS Nitro Sandboxes 让一个 Pod 或 ECS 任务独占一台轻量虚机。NVIDIA 展示了 vGPU 热迁移时让 GPU DMA 与 QEMU 读写并行的方法。KubeVirt 从 CNCF 毕业，基金会同时披露了生产部署情况。</p>
+<ol class="industry-points">      <li id="aws-nitro-sandboxes-ga"><h2>AWS Nitro Sandboxes 正式提供虚机级的容器隔离 <a class="industry-ref" href="https://aws.amazon.com/about-aws/whats-new/2026/11/nitro-sandboxes-eks-ecs-ec2/" aria-label="来源 1：Introducing AWS Nitro Sandboxes on Amazon EKS, ECS and EC2">[1]</a></h2>
+        <time datetime="2026-11-09">2026-11-09</time>
+<p>EKS Pod 或 ECS 任务可以各自在一台轻量虚机里运行。父 EC2 实例提供 vCPU、内存和 I/O；在 Nitro Hypervisor 看来，沙箱与父实例都是直接运行在它之上的虚机。一个应用的客户机内核与同机其他应用分开。</p><p>父实例可以为沙箱接入 virtio 网络和块设备，vCPU 可以和父实例分时使用物理核心。需要自行管理虚机时，EC2 路径支持 Firecracker；需要验证运行映像时，应用可用密码学证明作为发放密钥的条件。 <a class="industry-ref" href="https://aws.amazon.com/blogs/compute/nitro-sandboxes-hardware-isolation-for-every-eks-pod-ecs-task-and-ec2-workload/" aria-label="来源 2：Nitro Sandboxes: Hardware isolation for every EKS pod, ECS task, and EC2 workload">[2]</a></p>      </li>      <li id="nvidia-vgpu-vfio-migration-buffer-pool"><h2>NVIDIA 展示 vGPU 热迁移中的 DMA 缓冲池 <a class="industry-ref" href="https://pretalx.com/kvm-forum-2026/talk/7NLBGB/" aria-label="来源 3：NVIDIA vGPU: Towards zero-copy live migration">[3]</a></h2>
+        <time datetime="2026-11-13">2026-11-13</time>
+<p>在 KVM Forum 的演示中，NVIDIA 介绍了 vGPU 迁移驱动的一项改动。原路径由 GPU 把状态写入厂商用户态暂存区，数据复制进内核缓冲区后，QEMU 才能从 VFIO 迁移文件描述符读取。恢复时则反向搬运。</p><p>新实现由内核驱动维护一组已建立 DMA 映射的缓冲区，把可用缓冲区交给用户态管理器安排 GPU 直接读写。QEMU 读取上一块时，GPU 可以填充下一块。省掉的是厂商驱动内部的一次复制；QEMU 仍使用原有的 VFIO 保存和恢复接口。</p>      </li>      <li id="kubevirt-cncf-graduation"><h2>KubeVirt 从 CNCF 毕业，披露云平台上的虚机部署 <a class="industry-ref" href="https://www.cncf.io/announcements/2026/11/10/cloud-native-computing-foundation-announces-kubevirt-graduation/" aria-label="来源 4：Cloud Native Computing Foundation Announces KubeVirt Graduation">[4]</a></h2>
+        <time datetime="2026-11-10">2026-11-10</time>
+<p>KubeVirt 把虚机纳入 Kubernetes 的管理接口，使虚机和容器可以在同一集群调度。CNCF 在毕业公告中列出字节跳动、Cloudflare、CoreWeave 和 NVIDIA 等生产用户，应用包括 CI 执行节点、云游戏和带 GPU 的云端虚机。</p><p>Swisscom 的托管 Kubernetes 服务就是其中一个例子：底层组合 KubeVirt 和 Kube-OVN，承载上层客户集群。CNCF 此次公布的运行规模为 390 个集群、2,100 个工作节点。</p>      </li></ol><section class="industry-sources"><h2>来源</h2><ol>      <li><span>[1]</span> <a href="https://aws.amazon.com/about-aws/whats-new/2026/11/nitro-sandboxes-eks-ecs-ec2/">Introducing AWS Nitro Sandboxes on Amazon EKS, ECS and EC2</a> · AWS · <time datetime="2026-11-09">2026-11-09</time></li>      <li><span>[2]</span> <a href="https://aws.amazon.com/blogs/compute/nitro-sandboxes-hardware-isolation-for-every-eks-pod-ecs-task-and-ec2-workload/">Nitro Sandboxes: Hardware isolation for every EKS pod, ECS task, and EC2 workload</a> · AWS Compute Blog · <time datetime="2026-11-10">2026-11-10</time></li>      <li><span>[3]</span> <a href="https://pretalx.com/kvm-forum-2026/talk/7NLBGB/">NVIDIA vGPU: Towards zero-copy live migration</a> · NVIDIA / KVM Forum · <time datetime="2026-11-13">2026-11-13</time></li>      <li><span>[4]</span> <a href="https://www.cncf.io/announcements/2026/11/10/cloud-native-computing-foundation-announces-kubevirt-graduation/">Cloud Native Computing Foundation Announces KubeVirt Graduation</a> · CNCF · <time datetime="2026-11-10">2026-11-10</time></li></ol></section></article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note"><a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=61edf5bbcdc7"></script>
+</body>
+</html>

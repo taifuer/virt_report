@@ -28,7 +28,7 @@ def test_q35_example_distinguishes_capacity_backing_and_gpa():
                    "[0, 2 GiB)", "[2 GiB, 4 GiB)", "[4 GiB, 10 GiB)",
                    "[2 GiB, 8 GiB)", "B + 0x80001000",
                    "0x100001000 - 0x100000000 + 0x80000000",
-                   "两个 RAM 别名不等于最终只有两个 FlatRange 或 KVM 内存槽",
+                   "最终的 FlatRange 和 KVM 内存槽数量取决于分割后的区间",
                    "内存槽注册本身不会预建全部 EPT",
                    "物理页无需连续", "不会逐次调用 QEMU 的 memcpy",
                    "没有再申请一份 6 GiB 内存"):

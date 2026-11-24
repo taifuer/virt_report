@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=5eb1bb7dc04a">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=5eb1bb7dc04a">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=1b35da490c57">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1b35da490c57">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -35,7 +35,7 @@
         <a href="../topics.html" class="">专题</a>
         <a href="../conferences.html" class="">会议</a>
         <a href="../versions.html" class="">版本</a>
-        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../industry/index.html" class="">产业</a>
         <a href="../about.html" class="">关于</a>
         <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -50,7 +50,7 @@
   <div class="mechanism-layout">
     <nav class="mechanism-toc" aria-label="文章目录">
       <h2><span data-toc-heading>目录</span><button type="button" data-toc-toggle aria-expanded="true" aria-controls="mechanism-toc-links" hidden>目录 <span data-toc-action>收起</span></button></h2>
-      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a></li><li><a href="#composition">二、virtio-net-pci 的继承、组合与总线</a></li><li><a href="#properties">三、设置属性：从 vectors=5 到实例字段</a></li><li><a href="#realize">四、realize 与两层设备实现的连接</a></li><li><a href="#structures">五、TypeInfo、类方法与实例内存</a></li><li><a href="#type-init">六、注册类型并继承初始化方法</a></li><li><a href="#cleanup">七、失败回滚与对象释放</a></li><li><a href="#evolution">八、从 qdev 到统一对象模型</a></li><li><a href="#summary">九、总结</a></li><li><a href="#sources">十、参考资料</a></li></ol>
+      <ol id="mechanism-toc-links"><li><a href="#preface">一、序言</a><ol><li><a href="#evolution">从 qdev 到 QOM</a></li></ol></li><li><a href="#composition">二、virtio-net-pci 的继承、组合与总线</a></li><li><a href="#properties">三、设置属性：从 vectors=5 到实例字段</a></li><li><a href="#realize">四、realize 与两层设备实现的连接</a></li><li><a href="#structures">五、TypeInfo、类方法与实例内存</a></li><li><a href="#type-init">六、注册类型并继承初始化方法</a></li><li><a href="#cleanup">七、失败回滚与对象释放</a></li><li><a href="#summary">八、总结</a></li><li><a href="#sources">九、参考资料</a></li></ol>
     </nav>
     <div class="mechanism-prose">
 <section id="preface" class="mechanism-section">
@@ -58,6 +58,9 @@
   <p>QEMU 用 C 语言实现大量设备模型。每种设备既有独立的寄存器、队列和配置，又需要复用总线、复位、迁移与热插拔框架。QEMU Object Model（QOM）提供类型、继承、属性和对象生命周期；qdev 在其上增加设备与总线的组织规则。</p>
   <p>以两块 <code>virtio-net-pci</code> 网卡为例，两者复用相同的 PCI 和 virtio 方法，却各有队列、MAC 地址和后端。这些类与实例都位于宿主 QEMU 进程中，客户机看到的是它们提供的 PCI 配置空间和设备接口。QOM 把共同方法放在类中，把每块网卡的状态放在实例中；PCI 包装对象组合独立的 virtio 网络对象，分别负责传输接口与网络功能。</p>
   <p>创建一块网卡依次经过“查找类型 → 初始化实例 → 设置属性 → 接入总线并 realize”。realize 检查配置并建立设备工作状态，客户机驱动在设备呈现后再执行自己的初始化。</p>
+  <h3 id="evolution">从 qdev 到 QOM</h3>
+  <p>qdev 已经为设备配置提供了公共框架，但类型、属性和所有权问题同样存在于机器、内存后端等非设备对象。2012 年初合入的 Object 基类 引入通用对象基础；同年 属性从 qdev 下沉到 Object，让非设备对象也能使用属性与对象路径。设备管理继续由 qdev 负责，QOM 承担更底层的公共机制。</p>
+  <p>2013 年的 realized 属性改造 为设备实现引入明确的状态转换，最初通过兼容回调包装旧的 init 方法，再逐步迁移设备。把对象构造、用户配置与可失败的设备实现分开，便于查询属性、按配置组合设备，也让热插拔与错误处理有共同入口。</p>
 <p class="mechanism-baselines">源码版本：QEMU 10.2.0。</p></section>
 
 <section id="composition" class="mechanism-section">
@@ -74,9 +77,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看virtio-net-pci 的类型、对象与总线关系" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="virtio-net-pci 的类型、对象与总线关系">
-    <img src="../assets/qom-types-objects.svg?v=5eb1bb7dc04a" width="1141" height="642" alt="类型继承决定方法和内存布局；child 属性建立对象所有权；parent_bus 决定设备接入哪条总线。图中 virtio-backend 是独立对象，不是外层 PCI 对象的父类。" loading="lazy">
+    <img src="../assets/qom-types-objects.svg?v=1b35da490c57" width="1141" height="642" alt="类型继承决定方法和内存布局；child 属性建立对象所有权；parent_bus 决定设备接入哪条总线。图中 virtio-backend 是独立对象，不是外层 PCI 对象的父类。" loading="lazy">
   </div>
-  <figcaption>类型继承决定方法和内存布局；child 属性建立对象所有权；parent_bus 决定设备接入哪条总线。图中 virtio-backend 是独立对象，不是外层 PCI 对象的父类。 <a href="../assets/qom-types-objects.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>类型继承决定方法和内存布局；child 属性建立对象所有权；parent_bus 决定设备接入哪条总线。图中 virtio-backend 是独立对象，不是外层 PCI 对象的父类。 <a href="../assets/qom-types-objects.svg?v=1b35da490c57" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: QOM 类型继承、对象组合与总线连接
     accDescr: TypeInfo 注册为 TypeImpl，后者关联一份按需初始化的类对象。virtio-net-pci 实例继承 PCI 传输层并组合一个 virtio-net-device 子对象；外层接 PCI 总线，内部设备接 virtio 总线。组合树所有权与总线拓扑互相区分。
@@ -132,9 +135,9 @@ virsh -c qemu:///system qemu-monitor-command demo --hmp 'info qtree'</code></pre
     <button type="button" data-mechanism-expand aria-label="放大查看qdev 的配置、实现与清理路径" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="qdev 的配置、实现与清理路径">
-    <img src="../assets/qom-device-lifecycle.svg?v=5eb1bb7dc04a" width="782" height="1308" alt="instance_init 由基类到派生类执行；realize 读取已经设置的属性。回调自身失败由该实现清理局部资源，回调成功后的框架失败才进入相应 unrealize 回滚；最终释放还要等待引用计数归零。" loading="lazy">
+    <img src="../assets/qom-device-lifecycle.svg?v=1b35da490c57" width="782" height="1308" alt="instance_init 由基类到派生类执行；realize 读取已经设置的属性。回调自身失败由该实现清理局部资源，回调成功后的框架失败才进入相应 unrealize 回滚；最终释放还要等待引用计数归零。" loading="lazy">
   </div>
-  <figcaption>instance_init 由基类到派生类执行；realize 读取已经设置的属性。回调自身失败由该实现清理局部资源，回调成功后的框架失败才进入相应 unrealize 回滚；最终释放还要等待引用计数归零。 <a href="../assets/qom-device-lifecycle.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>instance_init 由基类到派生类执行；realize 读取已经设置的属性。回调自身失败由该实现清理局部资源，回调成功后的框架失败才进入相应 unrealize 回滚；最终释放还要等待引用计数归零。 <a href="../assets/qom-device-lifecycle.svg?v=1b35da490c57" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
     accTitle: qdev 从对象创建到设备释放的生命周期
     accDescr: 新对象先执行父类到子类的实例初始化，再设置属性、关联父总线并进入 realize。回调自身失败需局部清理，框架后续阶段失败则回滚已成功的实现。正常设备通过 unrealize 和 unparent 停用、脱离总线，最后引用归零才执行 finalize。
@@ -215,34 +218,32 @@ virsh -c qemu:///system qemu-monitor-command demo --hmp 'info qtree'</code></pre
   <p>成功运行过的设备在 unrealize 时标记 <code>pending_deleted_event</code>，<code>device_finalize()</code> 再发出 <code>DEVICE_DELETED</code>。管理端发出删除命令、客户机接受拔除、设备停用和对象最终消失可能相隔一段时间；PCIe 的客户机协作过程见<a href="qemu-pcie-hotplug.html">PCIe 设备热插拔</a>。停用、删除事件</p>
 </section>
 
-<section id="evolution" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">八、</span>从 qdev 到统一对象模型</h2>
-  <p>qdev 已经为设备配置提供了公共框架，但类型、属性和所有权问题同样存在于机器、内存后端等非设备对象。2012 年初合入的 Object 基类 引入通用对象基础；同年 属性从 qdev 下沉到 Object，让非设备对象也能使用属性与对象路径。设备管理继续由 qdev 负责，QOM 承担更底层的公共机制。</p>
-  <p>2013 年的 realized 属性改造 为设备实现引入明确的状态转换，最初通过兼容回调包装旧的 init 方法，再逐步迁移设备。把对象构造、用户配置与可失败的设备实现分开，便于查询属性、按配置组合设备，也让热插拔与错误处理有共同入口。</p>
-</section>
-
 <section id="summary" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">九、</span>总结</h2>
+  <h2><span class="mechanism-heading-number">八、</span>总结</h2>
   <p>统一框架减少了重复的注册和管理代码，也增加了间接层：一个方法名可能对应多层类回调，一个对象路径未必就是它的总线拓扑，属性也可能是别名或带副作用的 setter。分析设备创建时，先确认具体类型和父类型，再区分实例初始化、属性写入与 realize，最后检查失败分支的资源归属，通常比单纯沿函数名跳转更容易找到完整路径。</p>
 </section>
 
 <section id="sources" class="mechanism-section">
-  <h2><span class="mechanism-heading-number">十、</span>参考资料</h2>
+  <h2><span class="mechanism-heading-number">九、</span>参考资料</h2>
   <ul>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/qom.rst">QEMU 10.2.0：QOM 开发文档</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/qom/object.h#L89-L162">对象、类与属性结构</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qom/object.c#L336-L441">类与实例初始化</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/core/qdev.c#L483-L646">qdev 实现、停用与失败清理</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/core/qdev-properties.c#L15-L88">设备字段属性</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-net-pci.c">virtio-net-pci 的类型、实例与类方法</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-pci.c#L2464-L2619">virtio PCI 的继承与类型生成</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/pci/pci.c#L2228-L2300">PCI 设备 realize</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/virtio-net.c#L3866-L4050">virtio 网络设备 realize</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/docs/devel/qom.rst">QEMU 对象模型开发指南：类型、类和对象</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/include/qom/object.h#L89-L162">QEMU QOM：对象、类与属性的结构定义</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/qom/object.c#L336-L441">QEMU QOM：类初始化与实例初始化</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/core/qdev.c#L483-L646">QEMU qdev：设备启用、停用与失败清理</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/core/qdev-properties.c#L15-L88">QEMU qdev：把设备字段导出为属性</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-net-pci.c">QEMU virtio-net-pci：注册类型与类方法</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/virtio/virtio-pci.c#L2464-L2619">QEMU virtio PCI：父类、派生类型与类型注册</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/pci/pci.c#L2228-L2300">QEMU PCI 总线：启用 PCI 设备</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/hw/net/virtio-net.c#L3866-L4050">QEMU virtio-net：初始化网卡队列与后端</a></li>
   </ul>
 </section></div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#qemu-internals">QEMU 原理</a></nav>
-<p class="mechanism-review">技术复核：<time datetime="2026-10-19">2026-10-19</time> · 针对文中标注的源码与规范基线。</p></article>
+<p class="mechanism-review">技术复核：<time datetime="2026-11-24">2026-11-24</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=5eb1bb7dc04a" defer></script>
+<script src="../assets/mechanism-viewer.js?v=1b35da490c57" defer></script>
 </body>
 </html>

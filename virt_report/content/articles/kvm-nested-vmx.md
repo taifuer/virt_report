@@ -2,9 +2,13 @@
 
 嵌套虚拟化允许一台虚拟机继续运行 Hypervisor，并创建自己的虚拟机。在 Intel VMX 路径中，物理宿主上的 KVM 称为 L0；运行在客户机中的 Hypervisor 称为 L1；由 L1 管理的客户机称为 L2。它常用于虚拟化开发测试、云主机内的实验环境，以及需要虚拟化隔离的客户机软件。
 
-L1 要向 L2 提供 CPU、内存与设备，同时受 L0 的资源与隔离规则约束。KVM 因此需要虚拟化 VMX 本身：向 L1 提供 VMX 指令和控制结构的语义，再把 L1 的运行要求转换成物理 CPU 可以执行的配置。
+L1 要向 L2 提供 CPU、内存与设备，同时受 L0 的资源与隔离规则约束。在通常的 [KVM vCPU 运行循环](kvm-vcpu-run.html)中，L0 处理 CPU 的真实退出。引入 L1 后，L0 还要向它提供 VMX 指令和控制结构的语义，把两层的运行要求转换成物理 CPU 可以执行的配置。
 
 本文采用 Intel VMX，沿一个简化的 L1 Hypervisor 展开：它设置 L2 的初始指令地址和 I/O 拦截位，执行 `VMLAUNCH`；L2 随后执行一条 `OUT 0xe0, AL`。观察同一条指令在不同拦截配置下的处理路径，可以同时理解 VMCS 合成、真实 VM-Exit 和嵌套退出转发。端口 `0xe0` 是演示用的通知端口，写入值为 `0x41`，并不对应某个标准硬件设备。
+
+### 嵌套 VMX 的实现背景 {#history}
+
+2010 年的 [The Turtles Project](https://www.usenix.org/conference/osdi10/turtles-project-design-and-implementation-nested-virtualization) 系统讨论了在 Intel x86 上运行未修改的客户机 Hypervisor。其重要思路是组合多层的控制要求与地址转换，让 L2 的普通指令直接执行，同时在必要边界维护 L1 应当看到的虚拟机行为。此后嵌套 VMX 的优化逐步覆盖控制结构访问、状态同步、地址转换和迁移。
 
 ```baselines
 ```
@@ -54,7 +58,7 @@ VMCS02 必须保留 L0 的隔离约束，也要实现 L1 对 L2 承诺的行为�
 
 ## 一次 I/O 退出的两条处理路径 {#exit-path}
 
-L2 执行 `OUT 0xe0, AL` 时，处理器根据 VMCS02 退出到 L0，并记录 I/O 退出原因、端口、宽度和指令长度。该指令尚未完成，L2 的 RIP 仍指向 `0x1000`。KVM 接着调用 `nested_vmx_reflect_vmexit()` 判断是否向 L1 转发：先识别必须由 L0 处理的事件，再判断 L1 的拦截要求。宿主中断和真实 EPT 缺页等有专门规则，不能把每次 L2 退出都原样传给 L1。[退出分派](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/nested.c#L6748-L6798)
+L2 执行 `OUT 0xe0, AL` 时，处理器根据 VMCS02 退出到 L0，并记录 I/O 退出原因、端口、宽度和指令长度。该指令尚未完成，L2 的 RIP 仍指向 `0x1000`。KVM 接着调用 `nested_vmx_reflect_vmexit()` 判断是否向 L1 转发：先识别必须由 L0 处理的事件，再判断 L1 的拦截要求。宿主中断和真实 EPT 缺页由 L0 按各自的规则处理；需要 L1 处理的退出才反映给 L1。[退出分派](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/nested.c#L6748-L6798)
 
 ### L1 拦截该端口
 
@@ -125,9 +129,7 @@ L2: OUT → 真实 VM-Exit → L0
 
 这里的 `enter_guest_mode()`、`is_guest_mode()` 属于 KVM 的嵌套状态标记。它们在这条路径上表示当前逻辑上运行 L2，不能单凭函数名判断处理器此刻已经处于 VMX non-root；准备这些状态的代码本身仍在 L0 执行。
 
-## 从软件合成到减少嵌套开销 {#evolution}
-
-2010 年的 [The Turtles Project](https://www.usenix.org/conference/osdi10/turtles-project-design-and-implementation-nested-virtualization) 系统讨论了在 Intel x86 上运行未修改的客户机 Hypervisor。其重要思路是组合多层的控制要求与地址转换，让 L2 的普通指令直接执行，同时在必要边界维护 L1 应当看到的虚拟机行为。此后嵌套 VMX 的优化逐步覆盖控制结构访问、状态同步、地址转换和迁移。
+## 嵌套执行的优化与迁移条件 {#evolution}
 
 | 优化方向 | 减少的开销 | 仍需处理的约束 |
 | --- | --- | --- |
@@ -147,8 +149,8 @@ VMCS shadowing 加速的是 L1 访问控制字段的路径；VMCS02 仍负责实
 
 ## 参考资料 {#sources}
 
-- [Linux 6.18：Nested VMX](https://docs.kernel.org/6.18/virt/kvm/x86/nested-vmx.html)：嵌套层次与 VMCS01 / VMCS12 / VMCS02 的术语。
-- [Linux：嵌套客户机的运行与限制](https://docs.kernel.org/virt/kvm/x86/running-nested-guests.html)：适用场景、能力配置及迁移注意事项。
-- [Linux 6.18：嵌套 VMX 实现](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/nested.c)与 [VMCS12 定义](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmcs12.h)。
-- [OSDI 2010：The Turtles Project](https://www.usenix.org/conference/osdi10/turtles-project-design-and-implementation-nested-virtualization)：嵌套虚拟化的设计、实现与性能研究。
-- [KVM vCPU 的运行与退出处理](kvm-vcpu-run.html)、[EPT 缺页与客户机内存映射](kvm-ept-fault.html)：外层执行循环与内存转换基础。
+- [Linux KVM Nested VMX：VMCS01、VMCS12 与 VMCS02](https://docs.kernel.org/6.18/virt/kvm/x86/nested-vmx.html)
+- [Linux KVM 文档：运行和迁移嵌套客户机](https://docs.kernel.org/virt/kvm/x86/running-nested-guests.html)
+- [Linux KVM nested.c：进入嵌套客户机与处理退出](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/nested.c)
+- [Linux KVM vmcs12.h：内层 VMM 使用的 VMCS 字段](https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/vmx/vmcs12.h)
+- [The Turtles Project（OSDI 2010）：嵌套虚拟化的设计与测量](https://www.usenix.org/conference/osdi10/turtles-project-design-and-implementation-nested-virtualization)

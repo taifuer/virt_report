@@ -10,8 +10,8 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=5eb1bb7dc04a">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=5eb1bb7dc04a">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=1b35da490c57">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=1b35da490c57">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -35,7 +35,7 @@
         <a href="../topics.html" class="">专题</a>
         <a href="../conferences.html" class="">会议</a>
         <a href="../versions.html" class="">版本</a>
-        <a href="../mechanisms.html" class="on" aria-current="page">原理</a>
+        <a href="../industry/index.html" class="">产业</a>
         <a href="../about.html" class="">关于</a>
         <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -62,9 +62,9 @@
     <button type="button" data-mechanism-expand aria-label="放大查看第一次 KVM_RUN 前的资源依赖" hidden>放大查看</button>
   </div>
   <div class="mechanism-diagram-scroll" role="region" aria-label="第一次 KVM_RUN 前的资源依赖">
-    <img src="../assets/kvm-creation-resources.svg?v=5eb1bb7dc04a" width="773" height="712" alt="完整内核 irqchip 先于 vCPU 创建；RAM、固件、设备与启动状态在使用前就绪。分支表示资源依赖，各机器的具体创建顺序可以不同。" loading="lazy">
+    <img src="../assets/kvm-creation-resources.svg?v=1b35da490c57" width="773" height="712" alt="完整内核 irqchip 先于 vCPU 创建；RAM、固件、设备与启动状态在使用前就绪。分支表示资源依赖，各机器的具体创建顺序可以不同。" loading="lazy">
   </div>
-  <figcaption>完整内核 irqchip 先于 vCPU 创建；RAM、固件、设备与启动状态在使用前就绪。分支表示资源依赖，各机器的具体创建顺序可以不同。 <a href="../assets/kvm-creation-resources.svg?v=5eb1bb7dc04a" target="_blank" rel="noopener">打开原图</a></figcaption>
+  <figcaption>完整内核 irqchip 先于 vCPU 创建；RAM、固件、设备与启动状态在使用前就绪。分支表示资源依赖，各机器的具体创建顺序可以不同。 <a href="../assets/kvm-creation-resources.svg?v=1b35da490c57" target="_blank" rel="noopener">打开原图</a></figcaption>
   <details class="mechanism-diagram-source"><summary>Mermaid 源码</summary><pre><code>flowchart TB
   accTitle: 第一次 KVM_RUN 前的资源依赖
   accDescr: 用户态打开 KVM 系统 fd 并查询能力后创建 VM。VM 下登记 RAM 内存槽、创建内核 irqchip 和 vCPU 对象；完整内核 irqchip 必须早于 vCPU 创建。QEMU 还要准备固件和设备，将启动状态同步到 KVM，确保依赖就绪后由 vCPU 线程调用 KVM_RUN。图中的分支表达资源依赖，不规定全部对象的唯一创建顺序。
@@ -107,7 +107,7 @@
     <tr><td>memory_size</td><td>0x200000（2 MiB）</td><td>后文最小实例使用的连续 RAM 长度</td></tr>
     <tr><td>userspace_addr</td><td>HVA_base</td><td>用户态 VMM 中对应后备映射的起点</td></tr>
   </tbody></table>
-  <p>访问 GPA <code>0x2000</code> 时，KVM 可由槽定位到 <code>HVA_base + 0x2000</code>，再取得后备页建立 EPT/NPT。注册 memslot 不是一次性分配全部物理页，也不表示二级页表已经全部建好。实际 PC 还包含 RAM 空洞、ROM 与 MMIO，通常需要多个区域，不能把上表示例套成完整 Q35 地址布局。</p>
+  <p>访问 GPA <code>0x2000</code> 时，KVM 可由槽定位到 <code>HVA_base + 0x2000</code>，再取得后备页建立 EPT/NPT。注册 memslot 不是一次性分配全部物理页，也不表示二级页表已经全部建好。实际 PC 还包含 RAM 空洞、ROM 与 MMIO，通常需要多个区域；表中只列出示例程序注册的 RAM。</p>
   <p>普通设备模拟的 MMIO 区域由 QEMU 设备回调处理，通常不登记为普通 RAM 槽。未命中 RAM 的访问由 KVM 判定后可返回用户态模拟；受支持的直通映射则可能直接映射设备页。内存所有权、访问属性和生命周期必须与设备类型一致。</p>
 </section>
 <section id="interrupts" class="mechanism-section">
@@ -304,19 +304,21 @@ timeout 5s ./kvm-minimal</code></pre>
 <section id="sources" class="mechanism-section">
   <h2><span class="mechanism-heading-number">十、</span>源码与接口依据</h2>
   <ul>
-    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst">Linux 6.18：KVM API、内存槽、中断控制器与 vCPU 接口</a></li>
-    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c">VM/vCPU 创建与生命周期</a>、<a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c">x86 初始化与 ioctl 分发</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L2610">QEMU 10.2.0：kvm_init、kvm_init_vcpu 与内存监听器</a></li>
-    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-accel-ops.c">QEMU vCPU 线程</a>、<a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/target/i386/kvm/kvm.c">x86 寄存器与启动状态同步</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/Documentation/virt/kvm/api.rst">Linux KVM API：创建虚机、注册内存、配置中断与添加 vCPU</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/virt/kvm/kvm_main.c">Linux KVM 核心：VM 和 vCPU 的创建与释放</a></li>
+    <li><a href="https://github.com/torvalds/linux/blob/7d0a66e4bb9081d75c82ec4957c50034cb0ea449/arch/x86/kvm/x86.c">Linux KVM x86：体系结构初始化与 ioctl 分派</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-all.c#L2610">QEMU KVM：初始化虚机、建立 vCPU 与监听内存变化</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/accel/kvm/kvm-accel-ops.c">QEMU KVM：创建运行 vCPU 的宿主线程</a></li>
+    <li><a href="https://github.com/qemu/qemu/blob/698104725efad4b29079d857dfdebbd804e34c99/target/i386/kvm/kvm.c">QEMU KVM x86：同步寄存器与复位状态</a></li>
   </ul>
 </section></div>
   </div>
   <nav class="mechanism-related" aria-label="相关内容"><a href="../mechanisms.html#kvm-internals">KVM 原理</a></nav>
 <p class="mechanism-review">技术复核：<time datetime="2026-11-14">2026-11-14</time> · 针对文中标注的源码与规范基线。</p></article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=5eb1bb7dc04a" defer></script>
+<script src="../assets/mechanism-viewer.js?v=1b35da490c57" defer></script>
 </body>
 </html>

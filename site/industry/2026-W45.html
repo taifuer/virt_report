@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>产业周报 · 2026-W45 - virt-report</title>
+  <meta name="description" content="按周整理虚拟化产品与技术动态，附发布说明和原始资料。">
+  <link rel="alternate" type="application/rss+xml" title="virt-report RSS" href="../feed.xml">
+  <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
+  <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
+<link rel="stylesheet" href="../assets/industry.css?v=3462b6003dd2"></head>
+<body id="top">
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="site-head"><div class="wrap head-row">
+    <div class="brand-lockup"><a class="brand" href="../index.html"><img class="brand-mark" src="../assets/brand-mark.png?v=61edf5bbcdc7" alt="" width="31" height="31"><span>virt-report</span></a><span class="brand-sub">虚拟化社区动态</span></div>
+    <div class="mobile-head-tools">
+      <a href="../search.html" class="mobile-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      <button type="button" class="site-menu-toggle" data-site-menu-toggle aria-label="展开主菜单" aria-expanded="false" aria-controls="site-navigation" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true"><path class="menu-bars" d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="menu-close" d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="head-actions" id="site-navigation">
+      <nav class="main-nav" aria-label="主导航">
+        <a href="../index.html" class="">首页</a>
+        <details class="nav-reports" data-report-menu>
+          <summary class="">报告<svg viewBox="0 0 12 8" width="10" height="7" fill="none" aria-hidden="true"><path d="m1 1.5 5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+          <div class="report-subnav">
+            <a href="../daily/index.html" class="">日报</a>
+            <a href="../weekly/index.html" class="">周报</a>
+            <a href="../monthly/index.html" class="">月报</a>
+          </div>
+        </details>
+        <a href="../topics.html" class="">专题</a>
+        <a href="../conferences.html" class="">会议</a>
+        <a href="../versions.html" class="">版本</a>
+        <a href="../industry/index.html" class="on" aria-current="page">产业</a>
+        <a href="../about.html" class="">关于</a>
+        <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
+      </nav>
+    </div>
+  </div></header>
+  <main id="main"><div class="wrap"><article class="industry-brief">
+  <header class="industry-heading">
+    <div class="industry-title-row">
+      <h1>产业周报</h1>
+<a href="archive.html">往期报告</a>    </div>
+<div class="industry-period"><time datetime="2026-11-02">2026-11-02</time> 至 <time datetime="2026-11-08">2026-11-08</time></div>  </header>
+    <p class="industry-lead">OpenShift Virtualization 5.0 正式发布，把虚机负载再均衡和高可用配置纳入默认策略，并提供按磁盘变化块备份的技术预览。libvirt 12.9.0 增加了迁移结束时的源端通知，也扩展了 vhost 网络后端的适用范围。</p>
+<ol class="industry-points">      <li id="openshift-virtualization-5-autopilot-cbt"><h2>OpenShift Virtualization 5.0 发布：默认运行策略与增量备份 <a class="industry-ref" href="https://access.redhat.com/support/policy/updates/openshift_operators" aria-label="来源 1：OpenShift Operator Life Cycles：OpenShift Virtualization 5.0 发布记录">[1]</a></h2>
+        <time datetime="2026-11-03">2026-11-03</time>
+<p>Red Hat 将 11 月 3 日列为 5.0 的正式可用日。正式提供的 Autopilot 把按负载重新分布虚机、节点交换空间策略和节点故障处置纳入统一配置，并在集群升级时维持这些设置。 <a class="industry-ref" href="https://www.redhat.com/en/blog/unlocking-next-generation-workloads-whats-new-red-hat-openshift-virtualization-5" aria-label="来源 2：Unlocking next-generation workloads: What’s new in Red Hat OpenShift Virtualization 5">[2]</a></p><p>磁盘增量备份处于技术预览。QEMU 的变化块跟踪（CBT）记录虚拟磁盘中哪些块被写过，备份软件据此读取变动的部分，省去每轮扫描整块虚拟磁盘的开销。</p>      </li>      <li id="libvirt-12-9-migration-undefined-vhost"><h2>libvirt 12.9.0 区分迁移后的源端注销，MSHV 可用 vhost 网络 <a class="industry-ref" href="https://libvirt.org/news.html#v12-9-0-2026-11-02" aria-label="来源 3：libvirt 12.9.0 release notes">[3]</a></h2>
+        <time datetime="2026-11-02">2026-11-02</time>
+<p>在请求迁移并注销源端定义（<code>VIR_MIGRATE_UNDEFINE_SOURCE</code>）时，迁移成功后的 QEMU 驱动会向源端发出 <code>VIR_DOMAIN_EVENT_UNDEFINED</code>。新增的原因值 <code>VIR_DOMAIN_EVENT_UNDEFINED_MIGRATED</code> 让订阅方能把这次注销识别为迁移收尾。</p><p>同一版本也允许 QEMU 使用 Microsoft Hypervisor（<code>MSHV</code>）加速时启用 vhost 网络。CPU 的执行后端与 virtio 网卡的数据处理后端可分别选择。</p>      </li></ol><section class="industry-sources"><h2>来源</h2><ol>      <li><span>[1]</span> <a href="https://access.redhat.com/support/policy/updates/openshift_operators">OpenShift Operator Life Cycles：OpenShift Virtualization 5.0 发布记录</a> · Red Hat · <time datetime="2026-11-03">2026-11-03</time></li>      <li><span>[2]</span> <a href="https://www.redhat.com/en/blog/unlocking-next-generation-workloads-whats-new-red-hat-openshift-virtualization-5">Unlocking next-generation workloads: What’s new in Red Hat OpenShift Virtualization 5</a> · Red Hat · <time datetime="2026-11-11">2026-11-11</time></li>      <li><span>[3]</span> <a href="https://libvirt.org/news.html#v12-9-0-2026-11-02">libvirt 12.9.0 release notes</a> · libvirt · <time datetime="2026-11-02">2026-11-02</time></li></ol></section></article>
+</div></main>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note"><a href="../metrics.html">运行状态</a></span></div></footer>
+  <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+  <script src="../assets/site.js?v=61edf5bbcdc7"></script>
+</body>
+</html>

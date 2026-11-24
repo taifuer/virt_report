@@ -4,6 +4,8 @@
 <section id="preface" class="mechanism-section">
   <h2>序言</h2>
   <p>热插拔让运行中的虚拟机增加或移除网卡、CPU 和内存。QEMU 提供虚拟硬件，客户机内核决定何时启用或停用它。例如，QEMU 可以给虚机增加一条 2 GiB 的 DIMM；直到客户机把对应内存块置为在线，应用才用得上这 2 GiB。</p>
+  <h3 id="history">从预留插槽到在线配置</h3>
+  <p>x86 虚拟机沿用了物理平台的两套通知接口：ACPI 可以通过固件描述让系统发现新增 CPU、内存或设备；PCIe 原生热插拔则由 Root Port 通过插槽状态与事件通知 PCIe 驱动。QEMU 的管理接口也从单纯调整资源数量转向显式的槽位和设备对象。预留 CPU 拓扑、DIMM 槽或 PCIe 端口，决定了机器启动后还可以增加什么。</p>
   {% include '_mechanism_baselines.html' %}
 </section>
 <section id="process" class="mechanism-section">
@@ -32,8 +34,11 @@
 <section id="sources" class="mechanism-section">
   <h2>参考资料</h2>
   <ul>
-    <li><a href="{{ qemu }}qapi/qdev.json#L86-L144">QEMU：device_del 与设备移除事件</a>、<a href="{{ qemu }}hw/pci/pcie.c">PCIe 插槽通知</a></li>
-    <li><a href="{{ qemu }}docs/specs/acpi_cpu_hotplug.rst">QEMU：ACPI CPU 热插拔</a>、<a href="{{ linux }}Documentation/core-api/cpu_hotplug.rst">Linux：CPU 上下线</a></li>
-    <li><a href="{{ qemu }}docs/specs/acpi_mem_hotplug.rst">QEMU：ACPI 内存热插拔</a>、<a href="{{ linux }}Documentation/admin-guide/mm/memory-hotplug.rst">Linux：内存块上线与下线</a></li>
+    <li><a href="{{ qemu }}docs/specs/acpi_cpu_hotplug.rst">QEMU ACPI：通知客户机添加或移除 vCPU</a></li>
+    <li><a href="{{ linux }}Documentation/core-api/cpu_hotplug.rst">Linux CPU 热插拔：处理器上线与下线</a></li>
+    <li><a href="{{ qemu }}docs/specs/acpi_mem_hotplug.rst">QEMU ACPI：内存热插拔寄存器与事件</a></li>
+    <li><a href="{{ linux }}Documentation/admin-guide/mm/memory-hotplug.rst">Linux 内存热插拔：内存块的上线与下线</a></li>
+    <li><a href="{{ qemu }}hw/pci/pcie.c">QEMU PCIe：插槽事件与热插拔通知</a></li>
+    <li><a href="{{ qemu }}qapi/qdev.json#L86-L144">QEMU QMP：device_del 请求与设备移除完成事件</a></li>
   </ul>
 </section>

@@ -10,9 +10,9 @@
   <link rel="shortcut icon" href="../favicon.ico?v=61edf5bbcdc7">
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png?v=61edf5bbcdc7">
   <link rel="stylesheet" href="../assets/site.css?v=61edf5bbcdc7">
-<link rel="stylesheet" href="../assets/mechanisms.css?v=02b518d59aa4">
-<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=02b518d59aa4">
-<link rel="stylesheet" href="../assets/forum.css?v=02b518d59aa4">
+<link rel="stylesheet" href="../assets/mechanisms.css?v=e7d4bbc16c93">
+<link rel="stylesheet" href="../assets/mechanism-viewer.css?v=e7d4bbc16c93">
+<link rel="stylesheet" href="../assets/forum.css?v=e7d4bbc16c93">
 </head>
 <body id="top">
   <a class="skip" href="#main">跳到主要内容</a>
@@ -36,7 +36,7 @@
         <a href="../topics.html" class="">专题</a>
         <a href="../conferences.html" class="on" aria-current="page">会议</a>
         <a href="../versions.html" class="">版本</a>
-        <a href="../mechanisms.html" class="">原理</a>
+        <a href="../industry/index.html" class="">产业</a>
         <a href="../about.html" class="">关于</a>
         <a href="../search.html" class="nav-search-icon " aria-label="搜索" title="搜索"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></a>
       </nav>
@@ -72,9 +72,9 @@
 <p>内核框架用 vDPA device 和配置操作表达设备，由父设备驱动负责具体控制。父对象可以来自 PCI 驱动、已有驱动上的中间层，也可以是软件模拟器。vhost-vDPA 把它连接到用户态 VMM，复用队列设置相关接口；virtio-vDPA 则向宿主 Virtio 总线呈现设备，供普通内核驱动和应用使用。</p>
 <p>管理层计划通过专用 netlink 接口创建和配置实例。这样的分层把通用队列、设备状态和资源生命周期留在公共框架中，把硬件细节放在驱动侧。标准数据路径与统一管理抽象相互配合，硬件厂商不必把所有原有控制机制改造成相同寄存器布局。</p>
 <h3 id="vdpa-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>演讲时，vDPA 核心、总线驱动、IFCVF、mlx5 相关支持和模拟器已进入 Linux，QEMU 基础支持也已合入。这些实现证明框架能够连接不同设备与上层。讲稿没有提供统一性能基准，线速与降低 CPU 成本是硬件加速的目标，实际效果仍取决于设备、队列配置和负载，不能据此承诺零宿主开销。</p>
+<p>演讲时，vDPA 核心、总线驱动、IFCVF、mlx5 相关支持和模拟器已进入 Linux，QEMU 基础支持也已合入。这些实现证明框架能够连接不同设备与上层。线速转发和降低宿主 CPU 开销是硬件加速的目标；评估实际收益需要给定设备、队列配置和负载。</p>
 <h3 id="vdpa-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
-<p>管理接口、控制 virtqueue、热迁移与网络之外的设备支持当时仍在开发，硬件脏页跟踪也属于计划。具有 Virtio 数据面并不等于已经可跨设备迁移，暂停、状态恢复与功能兼容仍需明确协议。选型时应检查端到端能力，分别验证普通收发、复位、资源回收及迁移，而不能只以硬件能够消费 virtqueue 作为完整可用性的依据。</p>
+<p>管理接口、控制 virtqueue、热迁移与网络之外的设备支持当时仍在开发，硬件脏页跟踪也属于计划。跨设备迁移需要双方约定如何暂停队列、恢复状态并保持功能兼容。选型时应检查端到端能力，分别验证普通收发、复位、资源回收及迁移。</p>
 </section>
 <section id="dirty-ring" class="mechanism-section">
 <h2><span class="mechanism-heading-number">三、</span>Dirty ring：按 vCPU 收集脏页变化</h2>
@@ -90,7 +90,7 @@
 <p>每个 vCPU 拥有一条通过 mmap 共享的环，KVM 写入内存槽及页面位置等信息，用户态按顺序收集。条目经历可用、已脏、已收集等状态，内核完成重新保护后才能再次使用。共享数据结构省去整张位图的内核到用户态复制，收集与重新保护通过独立步骤协调。</p>
 <p>环满时，vCPU 以专门退出原因返回用户态；用户态收割记录并请求重置后继续执行。这个机制为控制写入速率提供可能，也意味着环大小与消费频率影响业务延迟。讲稿提出按 vCPU 调节迁移背压的设想，但这与“启用接口即可自动得到更好的收敛算法”仍有距离。</p>
 <h3 id="dirty-ring-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>材料提供内核与 QEMU 原型分支，重点说明接口状态机和调用流程。它还回顾拆开 GET/CLEAR 操作、初始位图全置位等此前改进；其中 128 GB 虚机的迁移启动提速属于初始写保护优化，不能误算成 dirty ring 的独立收益。演讲当时仍在推动合入，没有给出足以确定各种负载收益的完整对照实验。</p>
+<p>材料提供内核与 QEMU 原型分支，重点说明接口状态机和调用流程。它还回顾拆开 GET/CLEAR 操作、初始位图全置位等此前改进；其中 128 GB 虚机的迁移启动提速来自初始写保护优化，应与 dirty ring 的收益分开计量。演讲时补丁仍在推动合入。</p>
 <h3 id="dirty-ring-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>高写入速率可能使环反复填满，频繁退出抵消减少扫描的好处。QEMU 仍可能维护自己的位图，内核接口变化不会自动消除全部用户态归并成本。后续需要更多架构支持、真实负载测试，以及对非 vCPU 写入来源的完整覆盖。部署评价应把同步 CPU 时间、环满次数和客户机尾延迟一起看，避免只比较一次收集操作的耗时。</p>
 </section>
@@ -101,14 +101,14 @@
   <p class="forum-source-author">Wanpeng Li</p>
 </div>
 <h3 id="vcpu-latency-part-1"><span class="mechanism-heading-number">1. </span>问题与工程价值</h3>
-<p>客户机的调度、跨核函数调用和锁同步依赖 vCPU 之间及时协作。一次 IPI 的处理成本，或目标 vCPU 被宿主抢占后的等待，都可能拖慢多个正在运行的 vCPU。演讲同时优化退出处理和宿主调度选择，说明多核虚机的延迟不能只看单个 vCPU 的执行速度。</p>
+<p>客户机的调度、跨核函数调用和锁同步依赖 vCPU 之间及时协作。一次 IPI 的处理成本，或目标 vCPU 被宿主抢占后的等待，都可能拖慢多个正在运行的 vCPU。演讲分别优化退出处理和宿主调度，针对的是 vCPU 自身的执行开销和 vCPU 之间的等待。</p>
 <h3 id="vcpu-latency-part-2"><span class="mechanism-heading-number">2. </span>实现挑战</h3>
 <p>常见 ICR 和 TSC-deadline MSR 写入需要模拟，进入通用退出路径会经过状态维护、检查、锁与中断控制。另一方面，同步调用可能等待一个已被抢占的目标；FIFO 锁队列中，下一个等待者无法运行，也会阻碍后续线程。缩短单次模拟只能解决前一类问题，无法代替对关键目标的调度。</p>
 <h3 id="vcpu-latency-part-3"><span class="mechanism-heading-number">3. </span>解决方案</h3>
 <p>针对符合条件的单播 IPI，KVM 在较早的退出阶段完成发送，减少后续通用路径工作。定时器写入也使用专用处理路径，处理完成后尽快重新进入客户机。快路径必须保留所需状态与退出条件，不能跳过正确性检查而任意提前返回。</p>
 <p>调度侧关注准备发送中断及等待跨核协作的 vCPU，在目标被抢占时定向让出 CPU，增加关键执行者获得运行机会的概率。锁释放时也可帮助队头继续推进。这类优化依赖任务之间的实际等待关系，因此在超分环境比独占资源环境更可能体现价值。</p>
 <h3 id="vcpu-latency-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>讲稿的 KVM 单元测试中，IPI 延迟约降低 22.3%。双路 Cascade Lake、48 核 96 线程的超分测试中，每台虚机配置 96 vCPU，一台运行 ebizzy，其余运行 CPU 密集负载；两台虚机时吞吐提升约 224%，三台时约 48.3%，单台仅约 3.4%。这些差异说明收益主要来自缓解特定调度阻塞，不能外推为所有应用的固定加速比。</p>
+<p>讲稿的 KVM 单元测试中，IPI 延迟约降低 22.3%。双路 Cascade Lake、48 核 96 线程的超分测试中，每台虚机配置 96 vCPU，一台运行 ebizzy，其余运行 CPU 密集负载；两台虚机时吞吐提升约 224%，三台时约 48.3%，单台仅约 3.4%。调度阻塞越突出，缓解阻塞给应用带来的收益就越明显。</p>
 <h3 id="vcpu-latency-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>演讲也保留了负面结果：AMD Rome 上 180 vCPU、xAPIC 配置中，AVIC 在一种广播 IPI 基准里延迟增加约 55.2%，另一负载只有小幅改善。硬件加速和软件路径都受中断模式影响。工程上应结合退出原因、目标线程调度延迟和应用尾延迟定位瓶颈，同时检查定向让出对其他虚机公平性的影响。</p>
 </section>
@@ -126,9 +126,9 @@
 <p>原型借用迁移的 vmstate 框架保存设备状态，保留客户机内存、控制台和 VFIO 等描述符，再 exec 新程序。旧 KVM 实例被销毁，新 QEMU 创建 KVM 对象、重新登记 RAM、接回中断和设备连接，随后加载状态并继续 vCPU。设备描述符与 DMA 映射的保留使直通设备无需随 QEMU 进程替换而复位。</p>
 <p>讲稿提出 MADV_DOEXEC 保留匿名映射，并要求新程序明确接受；这是当时的实验性内核接口。跨内核更新是另一条更复杂的路径，涉及 PKRAM 等内存保留工作，直通设备示例还依赖客户机代理触发挂起和恢复，不能与仅替换 QEMU 的条件混同。</p>
 <h3 id="qemu-update-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>材料展示更新演示，报告客户机暂停约 100 ms，并测试不同中断传递方式跨更新恢复。KVM 登记内存原先约每 GB 需要 1 ms 的线性开销，也通过已有内核改动得到改善。讲稿没有给出不同内存容量、设备组合和负载的完整延迟分布，100 ms 应作为示例结果，不能视为所有部署的保证。</p>
+<p>材料展示更新演示，报告客户机暂停约 100 ms，并测试不同中断传递方式跨更新恢复。KVM 登记内存原先约每 GB 需要 1 ms 的线性开销，也通过已有内核改动得到改善。用于容量规划时，还需要测量不同内存容量、设备组合和业务负载下的延迟分布。</p>
 <h3 id="qemu-update-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
-<p>匿名映射保留方案、QEMU 补丁接口与内核更新支持当时仍在讨论。为旧版进程注入保存逻辑的兼容方法依赖内部符号和结构，维护风险较高。实际应用需要明确可升级版本组合、设备状态兼容和失败回退路径，并验证持续 DMA、未完成 I/O 与连接保留。原机更新减少资源搬运，却不能替代用于硬件维护或故障隔离的跨机迁移。</p>
+<p>匿名映射保留方案、QEMU 补丁接口与内核更新支持当时仍在讨论。为旧版进程注入保存逻辑的兼容方法依赖内部符号和结构，维护风险较高。实际应用需要明确可升级版本组合、设备状态兼容和失败回退路径，并验证持续 DMA、未完成 I/O 与连接保留。原机更新减少资源搬运；更换宿主硬件或隔离故障时，虚机仍需迁往另一台机器。</p>
 </section>
 <section id="qcow2-subclusters" class="mechanism-section">
 <h2><span class="mechanism-heading-number">六、</span>qcow2 子簇：减少小写入的复制与元数据成本</h2>
@@ -144,7 +144,7 @@
 <p>扩展 L2 表项从 64 位增加到 128 位，新增状态位图，把一个簇分成 32 个子簇。较大的簇继续控制映射元数据规模，子簇状态决定哪些范围需要从当前镜像读取、哪些仍来自 backing file 或全零语义。小范围首次写入不必补齐整个簇，减少额外数据复制。</p>
 <p>每个表项虽然变大，但在相同有效分配粒度下，一个表项覆盖多个子簇，元数据仍可明显减少。压缩簇沿用原处理方式，无法获得相同收益。用户需要明确启用扩展格式，并使用能够识别它的工具；格式兼容是这项优化的实际部署条件。</p>
 <h3 id="qcow2-subclusters-part-4"><span class="mechanism-heading-number">4. </span>验证结果</h3>
-<p>讲稿用 SSD 后端、带 backing file 的空 40 GB 镜像测试随机 4 KiB 首次写入。64 KiB 簇下，约从 1634 提升到 13219 IOPS；128 KiB 簇下，约从 869 提升到 12076 IOPS。结果反映减少补齐数据的收益，不能代表已分配区域的覆盖写。无 backing file 且文件系统可高效预分配时，原有补零成本较低，提升也可能小得多。</p>
+<p>讲稿用 SSD 后端、带 backing file 的空 40 GB 镜像测试随机 4 KiB 首次写入。64 KiB 簇下，约从 1634 提升到 13219 IOPS；128 KiB 簇下，约从 869 提升到 12076 IOPS。这组测试测的是补齐数据的成本；对已分配区域的覆盖写走的是另一条路径。无 backing file 且文件系统可高效预分配时，原有补零成本较低，提升也可能小得多。</p>
 <h3 id="qcow2-subclusters-part-5"><span class="mechanism-heading-number">5. </span>局限与后续工作</h3>
 <p>演讲时实现已进入开发仓库，目标为 QEMU 5.2，旧版本无法读取新格式。子簇不改变所有存储瓶颈，已有区域写入、压缩镜像和后端设备自身限制仍需分别考虑。选择簇大小应结合首次写入比例、镜像链深度、L2 缓存和空间增长测试。该工作的核心价值是拆开原本绑定的粒度，而非给所有 qcow2 场景提供一个通用加速开关。</p>
 </section>
@@ -153,8 +153,8 @@
   <nav class="mechanism-related" aria-label="会议资料"><a href="../kvm-forum.html#year-2020">返回年度总览</a><a href="https://kvm-forum.qemu.org/2020/" target="_blank" rel="noopener noreferrer">原始议程</a></nav>
 </article>
 </div></main>
-  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来自社区，分析仅供参考。<a href="../metrics.html">运行状态</a></span></div></footer>
+  <footer class="site-foot"><div class="wrap foot-row"><span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - 虚拟化社区动态</span><span class="foot-note">数据来源：上游社区。<a href="../metrics.html">运行状态</a></span></div></footer>
   <button class="back-to-top" type="button" data-back-to-top aria-label="返回顶部" title="返回顶部"><span aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M4.75 9 10 3.75 15.25 9M10 4v12.25" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
   <script src="../assets/site.js?v=61edf5bbcdc7"></script>
-<script src="../assets/mechanism-viewer.js?v=02b518d59aa4" defer></script></body>
+<script src="../assets/mechanism-viewer.js?v=e7d4bbc16c93" defer></script></body>
 </html>

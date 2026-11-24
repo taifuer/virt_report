@@ -264,7 +264,7 @@ def analyze(config: Config, editions: list[dict]) -> dict:
     result.update({
         "model": config.llm.weekly_model,
         "source": "https://kvm-forum.qemu.org/archive/",
-        "method": "仅依据各年度官方议程页的议题名称进行 AI 辅助归纳，不读取 PPT 或视频；结论不代表演讲全文内容。",
+        "method": "趋势分析在 AI 辅助下按历年官方议程的议题标题归纳。",
         "usage": getattr(provider, "last_usage", {}),
     })
     result["llm_calls"] = [billing.snapshot_call(call, config.llm)

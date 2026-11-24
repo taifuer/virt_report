@@ -361,6 +361,7 @@ def make_handler(config: Config, *, _database_initialized: bool = False):
                     ".svg": "image/svg+xml",
                 }[Path(name).suffix]) for name in (
                     render.MECHANISM_ASSET_NAMES + render.SEARCH_ASSET_NAMES + render.FORUM_ASSET_NAMES
+                    + render.INDUSTRY_ASSET_NAMES
                 )},
             }
             if path in brand_assets:
@@ -369,7 +370,7 @@ def make_handler(config: Config, *, _database_initialized: bool = False):
                 cache_control = (
                     "public, max-age=31536000, immutable"
                     if filename in {"site.css", "site.js", *render.MECHANISM_ASSET_NAMES,
-                                    *render.SEARCH_ASSET_NAMES, *render.FORUM_ASSET_NAMES}
+                                    *render.SEARCH_ASSET_NAMES, *render.FORUM_ASSET_NAMES, *render.INDUSTRY_ASSET_NAMES}
                     else "public, max-age=3600"
                 )
                 self._send(
@@ -427,6 +428,14 @@ def make_handler(config: Config, *, _database_initialized: bool = False):
                 return
             if path in ("/about", "/about/", "/about.html"):
                 self._send(200, render.render_about_html(config), head_only)
+                return
+            if path == "/industry":
+                self._send(308, "", head_only, extra_headers={"Location": "/industry/"})
+                return
+            if path.startswith("/industry/"):
+                match = re.fullmatch(r"/industry/(?:(index|archive|[0-9]{4}-W[0-9]{2})\.html)?", path)
+                html = render.render_industry_html(config, match[1] or "index") if match else None
+                self._send(200 if html is not None else 404, html or "<h1>404</h1><p>该期不存在。</p>", head_only)
                 return
             mechanism_match = _MECHANISM_ROUTE.fullmatch(path)
             if path in ("/kvm", "/kvm/", "/kvm/index.html", "/kvm.html"):
