@@ -349,20 +349,23 @@ def render_about_html(config: Config) -> str:
 def render_industry_html(config: Config, page: str = "index", *, editions: list | None = None) -> str | None:
     from virt_report import industry
 
-    if editions is None and page == "archive":
-        editions = industry.issues(config)
-    if editions is None:
-        issue = industry.get(config, None if page == "index" else page)
-    elif page == "index":
-        issue = editions[0] if editions else None
+    if page == "archive":
+        if editions is None:
+            editions = industry.issues(config)
+        issue = previous = following = None
     else:
-        issue = next((entry for entry in editions if entry["week"] == page), None)
-    if page not in {"index", "archive"} and issue is None:
-        return None
+        issue, previous, following = industry.edition_page(
+            config, None if page == "index" else page, editions=editions)
+        if page != "index" and issue is None:
+            return None
+
+    def week_label(key: str) -> str:
+        return _period_range("weekly", key, industry.BEIJING.key)["label"]
+
     version = hashlib.sha256((ASSETS_DIR / "industry.css").read_bytes()).hexdigest()[:12]
     return _env().get_template("industry.html").render(
         root="../", site_name=config.name, style_version=version, archive=page == "archive",
-        issue=issue, editions=editions)
+        issue=issue, editions=editions, previous=previous, following=following, week_label=week_label)
 
 
 def render_industry(config: Config) -> list[Path]:

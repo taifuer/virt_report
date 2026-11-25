@@ -121,7 +121,7 @@ def test_snapshot_chrome_uses_shared_navigation_without_touching_article():
     assert '<summary class="on">报告' in result
     assert 'data-site-menu-toggle' in result
     assert '虚拟化社区动态</span><span class="foot-note">' in result
-    assert '数据来源：上游社区。<a href="../metrics.html">运行状态</a>' in result
+    assert '<span class="foot-note"><a href="../metrics.html">运行状态</a></span>' in result
     assert refresh_page_chrome(result, "daily/2026-10-12.html", "virt-report") == result
 
 
@@ -187,7 +187,6 @@ def test_all_static_footers_group_copyright_and_note_with_relative_status_link()
         root = "../" * len(path.relative_to(site).parts[:-1])
         assert '<span class="foot-copyright">© 2026 ' in footer, path
         assert '虚拟化社区动态</span><span class="foot-note">' in footer, path
-        note = "" if relative.startswith("industry/") else "数据来源：上游社区。"
-        assert (f'<span class="foot-note">{note}<a href="{root}metrics.html">'
-                '运行状态</a></span>') in footer, path
+        assert "数据来源：上游社区" not in footer, path
+        assert f'<span class="foot-note"><a href="{root}metrics.html">运行状态</a></span>' in footer, path
         assert "虚拟化社区动态。" not in footer, path

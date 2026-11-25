@@ -1,4 +1,4 @@
-/* Local-only checks: article contents and opt-in backend alignment. */
+/* Local-only checks: article contents, backend alignment and industry headings. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -11,6 +11,23 @@ const localOnly = route => new URL(route.request().url()).origin === new URL(bas
 async function noOverflow(page) {
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
 }
+async function industryBadge(page) {
+  const gap = await page.locator('.industry-title-row').evaluate(async row => {
+    await document.fonts.ready;
+    const title = row.querySelector('h1'), badge = row.querySelector('a');
+    const font = getComputedStyle(title), ctx = document.createElement('canvas').getContext('2d');
+    ctx.font = [font.fontWeight, font.fontSize, font.fontFamily].join(' ');
+    const descent = ctx.measureText(title.textContent).actualBoundingBoxDescent;
+    // A zero-height inline block marks the text baseline, excluding the line's leading.
+    const baseline = document.createElement('span');
+    baseline.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+    title.append(baseline);
+    const inkBottom = baseline.getBoundingClientRect().bottom + descent;
+    baseline.remove();
+    return badge.getBoundingClientRect().bottom - inkBottom;
+  });
+  assert(Math.abs(gap) <= 3, `badge edge is ${gap}px from the heading ink on ${page.url()}`);
+}
 (async () => {
   fs.mkdirSync(shots, {recursive: true});
   const browser = await launchBrowser({headless: true});
@@ -21,6 +38,10 @@ async function noOverflow(page) {
     page.on('pageerror', error => errors.push(String(error)));
     for (const width of [1440, 960, 390, 320]) {
       await page.setViewportSize({width, height: 900});
+      for (const edition of ['index', 'archive']) {
+        await page.goto(`${base}/industry/${edition}.html`);
+        await industryBadge(page);
+      }
       await page.goto(`${base}/mechanisms/linux-memory.html`);
       const toggle = page.locator('[data-toc-toggle]'), toc = page.locator('#mechanism-toc-links');
       if (width > 960) {

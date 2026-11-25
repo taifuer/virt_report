@@ -152,11 +152,22 @@ def _read(path: Path) -> dict:
     return issue
 
 
+def edition_page(config: Config, week: str | None = None, *,
+                 editions: list[dict] | None = None) -> tuple[dict | None, str | None, str | None]:
+    """Return the issue and its published neighbours, reading at most one issue file."""
+    index = _files(config) if editions is None else {ed["week"]: ed for ed in editions}
+    key = week or max(index, default="")
+    if key not in index:
+        return None, None, None
+    previous = max((w for w in index if w < key), default=None)
+    following = min((w for w in index if w > key), default=None)
+    issue = _read(index[key]) if editions is None else index[key]
+    return issue, previous, following
+
+
 def get(config: Config, week: str | None = None) -> dict | None:
-    """Read one published issue, or the latest, without opening the whole archive."""
-    files = _files(config)
-    path = files.get(week or max(files, default=""))
-    return _read(path) if path else None
+    """Read one published issue, or the latest."""
+    return edition_page(config, week)[0]
 
 
 def issues(config: Config) -> list[dict]:

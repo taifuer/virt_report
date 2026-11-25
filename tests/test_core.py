@@ -477,8 +477,7 @@ def test_about_page_and_architecture_badge_render():
     assert ('<span class="foot-copyright">© 2026 <a href="https://github.com/taifuer/virt_report" '
             'target="_blank" rel="noopener noreferrer"><strong>virt-report</strong></a> - '
             '虚拟化社区动态</span>') in footer
-    assert ('<span class="foot-note">数据来源：上游社区。'
-            '<a href="metrics.html">运行状态</a></span>') in footer
+    assert '<span class="foot-note"><a href="metrics.html">运行状态</a></span>' in footer
     assert "虚拟化社区动态。" not in footer
     assert footer.count("<span") == 2
     assert ".foot-row>span{min-width:0;max-width:100%;line-height:1.7}" in _site_css()

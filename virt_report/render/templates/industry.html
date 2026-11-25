@@ -1,11 +1,14 @@
 {% extends "base.html" %}
-{% block title %}{% if archive %}往期 · 产业周报{% elif issue %}产业周报 · {{ issue.week }}{% else %}产业动态{% endif %} - virt-report{% endblock %}
+{% block title %}{% if archive %}往期产业周报{% elif issue %}产业周报 · {{ week_label(issue.week) }}{% else %}产业周报{% endif %} - virt-report{% endblock %}
 {% block description %}按周整理虚拟化产品与技术动态，附发布说明和原始资料。{% endblock %}
 {% block nav_home %}{% endblock %}
 {% block nav_industry %}on{% endblock %}
 {% block head_extra %}<link rel="stylesheet" href="{{ root }}assets/industry.css?v={{ style_version }}">{% endblock %}
 {% macro prose(text) -%}{% for bit in text.split('`') %}{% if loop.index is even %}<code>{{ bit }}</code>{% else %}{{ bit }}{% endif %}{% endfor %}{%- endmacro %}
-{% macro refs(sources) -%}{% for s in sources %}<a class="industry-ref" href="{{ s.url }}" aria-label="来源 {{ s.number }}：{{ s.title }}">[{{ s.number }}]</a>{% endfor %}{%- endmacro %}
+{% macro source_link(s, numbered=false) -%}
+<a href="{{ s.url }}" target="_blank" rel="noopener noreferrer" title="在新标签页打开"{% if numbered %} class="industry-ref" aria-label="来源 {{ s.number }}：{{ s.title }}"{% endif %}>{% if numbered %}[{{ s.number }}]{% else %}{{ s.title }}{% endif %}</a>
+{%- endmacro %}
+{% macro refs(sources) -%}{% for s in sources %}{{ source_link(s, numbered=true) }}{% endfor %}{%- endmacro %}
 {% block content %}
 <article class="industry-brief">
   <header class="industry-heading">
@@ -13,19 +16,23 @@
       <h1>{% if archive %}往期产业周报{% else %}产业周报{% endif %}</h1>
       {% if archive %}<a href="index.html">最新一期</a>{% else %}<a href="archive.html">往期报告</a>{% endif %}
     </div>
-    {% if issue %}<div class="industry-period"><time datetime="{{ issue.start }}">{{ issue.start }}</time> 至 <time datetime="{{ issue.end }}">{{ issue.end }}</time></div>{% endif %}
+    {% if issue %}<div class="industry-period"><time datetime="{{ issue.week }}">{{ week_label(issue.week) }}</time></div>{% endif %}
   </header>
   {% if archive %}
-    <ul class="industry-archive">{% for ed in editions %}<li><a href="{{ ed.week }}.html">{{ ed.start }} 至 {{ ed.end }}</a><span>{{ ed.points|length }} 条</span><p>{{ prose(ed.lead) }}</p></li>{% else %}<li>尚无已发布的产业周报。</li>{% endfor %}</ul>
+    <ul class="industry-archive">{% for ed in editions %}<li><a href="{{ ed.week }}.html"><time datetime="{{ ed.week }}">{{ week_label(ed.week) }}</time></a><span>{{ ed.points|length }} 条</span><p>{{ prose(ed.lead) }}</p></li>{% else %}<li>尚无已发布的产业周报。</li>{% endfor %}</ul>
   {% elif issue %}
     <p class="industry-lead">{{ prose(issue.lead) }}</p>
     {% if issue.points %}<ol class="industry-points">{% for p in issue.points %}
-      <li id="{{ p.event }}"><h2>{{ p.title }} {{ refs(p.refs) }}</h2>
+      <li id="{{ p.event }}"><h2>{{ p.title }}&nbsp;{{ refs(p.refs) }}</h2>
         <time datetime="{{ p.date }}">{{ p.date }}</time>
-        {% for part in p.paragraphs %}<p>{{ prose(part.text) }}{% if part.refs %} {{ refs(part.refs) }}{% endif %}</p>{% endfor %}
+        {% for part in p.paragraphs %}<p>{{ prose(part.text) }}{% if part.refs %}&nbsp;{{ refs(part.refs) }}{% endif %}</p>{% endfor %}
       </li>{% endfor %}</ol>{% endif %}
+    {% if previous or following %}<nav class="industry-issue-nav" aria-label="产业周报翻页">
+      {% if previous %}<a rel="prev" href="{{ previous }}.html" aria-label="上一期：{{ week_label(previous) }}">← 上一期</a>{% endif %}
+      {% if following %}<a rel="next" href="{{ following }}.html" aria-label="下一期：{{ week_label(following) }}">下一期 →</a>{% endif %}
+    </nav>{% endif %}
     {% if issue.sources %}<section class="industry-sources"><h2>来源</h2><ol>{% for s in issue.sources %}
-      <li><span>[{{ s.number }}]</span> <a href="{{ s.url }}">{{ s.title }}</a> · {{ s.publisher }} · <time datetime="{{ s.date }}">{{ s.date }}</time></li>{% endfor %}</ol></section>{% endif %}
+      <li><span>[{{ s.number }}]</span> {{ source_link(s) }} · {{ s.publisher }} · <time datetime="{{ s.date }}">{{ s.date }}</time></li>{% endfor %}</ol></section>{% endif %}
   {% else %}<p>尚无已发布的产业周报。</p>{% endif %}
 </article>
 {% endblock %}

@@ -69,8 +69,15 @@ def test_references_are_first_cited_shared_and_directly_clickable(config):
     ready = industry.prepare(raw)
     assert [s["url"] for s in ready["sources"]] == ["https://other.example/source", "https://vendor.example/release"]
     page = render.render_industry_html(config, editions=[ready])
-    links = [a for a in Document(page).root.find("a") if a.attrs.get("class") == "industry-ref"]
+    article, = Document(page).root.find("article")
+    links = [a for a in article.find("a") if a.attrs.get("class") == "industry-ref"]
     assert [(a.text(), a.attrs["href"]) for a in links] == [(f"[{s['number']}]", s["url"]) for s in ready["sources"]]
+    sources, = article.find("section")
+    originals = sources.find("a")
+    assert [(a.text(), a.attrs["href"]) for a in originals] == [(s["title"], s["url"]) for s in ready["sources"]]
+    for link in links + originals:
+        assert link.attrs.get("target") == "_blank"
+        assert {"noopener", "noreferrer"} <= set(link.attrs["rel"].split())
     assert "<code>DMA</code>" in page and "&lt;script&gt;bad()" in page
     raw["sources"]["b"]["url"] = raw["sources"]["a"]["url"]
     with pytest.raises(ValueError, match="重复"):
@@ -93,6 +100,7 @@ def test_only_reviewed_editions_are_exported_and_retry_is_safe(config):
     assert {p.name for p in paths} == {"index.html", "archive.html", "2025-W01.html", "2025-W02.html"}
     pages = {p.stem: p.read_text() for p in paths}
     assert pages["index"] == pages["2025-W02"] and empty["lead"] in pages["index"]
+    assert 'rel="prev" href="2025-W01.html"' in pages["index"] and 'rel="next"' not in pages["index"]
     assert pages["2025-W01"] == render.render_industry_html(config, "2025-W01")
     assert pages["archive"].index("2025-W02.html") < pages["archive"].index("2025-W01.html")
     assert all("私有未发布" not in html for html in pages.values())
@@ -117,14 +125,43 @@ def test_issue_navigation_and_legacy_editorial_fields(config):
         assert title.text() == ("往期产业周报" if page == "archive" else "产业周报")
         link, = row.find("a")
         assert (link.attrs["href"], link.text()) == (destination, label)
+        assert "target" not in link.attrs
         assert not row.find("time")
         assert not article.find("footer")
+        assert not article.find("nav")  # One published issue has no neighbours.
         assert all(removed not in html for removed in ("北京时间", "值得跟进", "旧稿的编辑建议", "本期固定链接"))
         if page == "archive":
-            assert f'href="{raw["week"]}.html"' in html
+            editions, = article.find("ul")
+            edition, = editions.find("a")
+            assert edition.attrs["href"] == f"{raw['week']}.html" and "target" not in edition.attrs
+            stamp, = edition.find("time")
         else:
-            assert [t.attrs["datetime"] for t in header.find("time")] == ["2024-12-30", "2025-01-05"]
+            stamp, = header.find("time")
+            assert stamp.text() in Document(html).root.find("title")[0].text()
             assert 'class="industry-sources"' in html
+        assert (stamp.attrs["datetime"], stamp.text()) == ("2025-W01", "2025 年第 1 周（12.30–1.5）")
+
+
+def test_pager_follows_published_weeks_across_gaps_and_iso_years(config):
+    assert 'class="industry-issue-nav"' not in render.render_industry_html(config)
+    old, middle, new = "2020-W53", "2021-W02", "2021-W04"
+    for key in (new, old, middle):
+        industry.publish(config, issue(key, event="update-" + key.lower()))
+    industry.write_json(industry.store_dir(config) / "drafts/2021-W03/brief.json", issue("2021-W03"))
+    pages = {p.stem: p.read_text() for p in render.render_industry(config)}
+    assert 'class="industry-issue-nav"' not in pages["archive"]
+    for page, prev, nxt in [("index", middle, None), (new, middle, None),
+                            (middle, old, new), (old, None, middle)]:
+        html = pages[page]
+        assert html == render.render_industry_html(config, page)
+        assert html.index('class="industry-points"') < html.index('class="industry-issue-nav"') < html.index('class="industry-sources"')
+        article, = Document(html).root.find("article")
+        nav, = article.find("nav")
+        links = nav.find("a")
+        assert [(a.attrs["rel"], a.attrs["href"]) for a in links] == [
+            (direction, f"{key}.html") for direction, key in (("prev", prev), ("next", nxt)) if key]
+        assert all("target" not in a.attrs for a in links)
+    assert "2020 年第 53 周（12.28–1.3）" in pages[old]
 
 
 def test_web_routes_use_only_the_published_store(config):
@@ -288,8 +325,9 @@ def test_recent_update_does_not_make_an_old_article_a_new_release(config, monkey
 @pytest.mark.parametrize("week", ["2026-W44", "2026-W45", "2026-W46", "2026-W47"])
 def test_bundled_edition_and_static_snapshot_agree(week):
     cfg = Config()
-    ready = industry.prepare(json.loads((industry.BUNDLED / f"{week}.json").read_text()))
-    html = render.render_industry_html(cfg, week, editions=[ready])
+    editions = [industry.prepare(json.loads(p.read_text())) for p in industry.BUNDLED.glob("*.json")]
+    ready = next(ed for ed in editions if ed["week"] == week)
+    html = render.render_industry_html(cfg, week, editions=editions)
     assert (Path(__file__).parents[1] / "site" / "industry" / f"{week}.html").read_text() == html
     links = [a for a in Document(html).root.find("a") if a.attrs.get("class") == "industry-ref"]
     assert {a.attrs["href"] for a in links} == {s["url"] for s in ready["sources"]}
